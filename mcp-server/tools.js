@@ -163,6 +163,17 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_close_tab',
+    description: 'Close a browser tab by ID. Only tabs owned by the current session can be closed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tab_id: { type: 'number', description: 'Tab ID to close (get from browser_list_tabs)' },
+      },
+      required: ['tab_id'],
+    },
+  },
+  {
     name: 'browser_extract_token',
     description: 'Navigate to a provider\'s API settings page and extract the API token. Optionally store it in Agent360 vault.',
     inputSchema: {

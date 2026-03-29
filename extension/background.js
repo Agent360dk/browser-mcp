@@ -27,8 +27,10 @@ async function restoreSessions() {
       } catch {} // tab no longer exists
     }
     if (validTabIds.size > 0) {
+      const activeTabId = data.activeTabId && validTabIds.has(data.activeTabId) ? data.activeTabId : null;
       sessions.set(Number(port), {
         tabIds: validTabIds,
+        activeTabId,
         groupId: data.groupId || null,
         color: data.color || SESSION_COLORS[sessions.size % SESSION_COLORS.length],
         label: data.label || `Claude ${sessions.size + 1}`,
@@ -42,6 +44,7 @@ function getSession(port) {
     const idx = sessions.size % SESSION_COLORS.length;
     sessions.set(port, {
       tabIds: new Set(),
+      activeTabId: null,
       groupId: null,
       color: SESSION_COLORS[idx],
       label: `Claude ${sessions.size + 1}`,
@@ -55,21 +58,28 @@ async function addTabToSession(port, tabId) {
   session.tabIds.add(tabId);
 
   try {
-    // Create or update tab group
+    if (session.groupId !== null) {
+      try {
+        await chrome.tabs.group({ tabIds: [tabId], groupId: session.groupId });
+      } catch {
+        // Group no longer valid — will create new one below
+        session.groupId = null;
+      }
+    }
+
     if (session.groupId === null) {
-      const groupId = await chrome.tabs.group({ tabIds: [tabId] });
+      const validTabIds = [...session.tabIds].filter(id => {
+        try { return id; } catch { return false; }
+      });
+      const groupId = await chrome.tabs.group({ tabIds: validTabIds });
       session.groupId = groupId;
       await chrome.tabGroups.update(groupId, {
         title: session.label,
         color: session.color,
         collapsed: false,
       });
-    } else {
-      // Add tab to existing group
-      await chrome.tabs.group({ tabIds: [tabId], groupId: session.groupId });
     }
   } catch (e) {
-    // tabGroups API may fail silently — tab still works
     console.warn('[MCP] Tab group error:', e.message);
   }
 
@@ -97,6 +107,7 @@ function persistSessions() {
   for (const [port, session] of sessions) {
     data[port] = {
       tabIds: [...session.tabIds],
+      activeTabId: session.activeTabId,
       groupId: session.groupId,
       color: session.color,
       label: session.label,
@@ -105,23 +116,37 @@ function persistSessions() {
   chrome.storage.local.set({ sessions: data });
 }
 
-// Get a tab owned by this session, or create one
+// Get the active tab for this session (last navigated), or create one
 async function getSessionTab(port) {
   const session = getSession(port);
 
-  // Try to use an existing session tab
-  for (const tabId of session.tabIds) {
+  // Prefer the active (last navigated) tab
+  if (session.activeTabId) {
     try {
-      const tab = await chrome.tabs.get(tabId);
+      const tab = await chrome.tabs.get(session.activeTabId);
       if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
         return tab;
       }
     } catch {
-      session.tabIds.delete(tabId); // tab no longer exists
+      session.activeTabId = null;
+      session.tabIds.delete(session.activeTabId);
     }
   }
 
-  // No usable session tab — create a new one
+  // Fallback: any usable session tab
+  for (const tabId of session.tabIds) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
+        session.activeTabId = tabId;
+        return tab;
+      }
+    } catch {
+      session.tabIds.delete(tabId);
+    }
+  }
+
+  // No usable tab — create one
   const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
   await addTabToSession(port, tab.id);
   return tab;
@@ -226,14 +251,17 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function dispatch(port, method, params) {
   switch (method) {
     case 'navigate': {
+      const session = getSession(port);
       let tab = await getSessionTab(port);
+
       if (tab.url === 'about:blank' || tab.url.startsWith('chrome://')) {
         await chrome.tabs.update(tab.id, { url: params.url });
       } else {
-        // Create new tab for new URLs in this session
+        // Create new tab for new URL
         tab = await chrome.tabs.create({ url: params.url, active: false });
         await addTabToSession(port, tab.id);
       }
+
       // Wait for load
       await new Promise(resolve => {
         const listener = (tabId, info) => {
@@ -245,8 +273,25 @@ async function dispatch(port, method, params) {
         chrome.tabs.onUpdated.addListener(listener);
         setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 15000);
       });
+
+      // Set as active tab for this session
+      session.activeTabId = tab.id;
+
+      // Auto-close about:blank placeholder tabs in this session
+      for (const tabId of session.tabIds) {
+        if (tabId === tab.id) continue;
+        try {
+          const t = await chrome.tabs.get(tabId);
+          if (t.url === 'about:blank') {
+            await chrome.tabs.remove(tabId);
+            session.tabIds.delete(tabId);
+          }
+        } catch { session.tabIds.delete(tabId); }
+      }
+
+      persistSessions();
       const updated = await chrome.tabs.get(tab.id);
-      return { title: updated.title, url: updated.url, tab_id: tab.id, session: getSession(port).label };
+      return { title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
     }
 
     case 'get_page_content': {
@@ -504,12 +549,26 @@ async function dispatch(port, method, params) {
 
     case 'switch_tab': {
       const session = getSession(port);
-      // Only allow switching to session's own tabs
       if (!session.tabIds.has(params.tab_id)) {
         throw new Error(`Tab ${params.tab_id} does not belong to this session (${session.label})`);
       }
       const tab = await chrome.tabs.update(params.tab_id, { active: true });
+      session.activeTabId = tab.id;
+      persistSessions();
       return { id: tab.id, url: tab.url, title: tab.title };
+    }
+
+    case 'close_tab': {
+      const session = getSession(port);
+      const tabId = params.tab_id;
+      if (!session.tabIds.has(tabId)) {
+        throw new Error(`Tab ${tabId} does not belong to this session (${session.label})`);
+      }
+      await chrome.tabs.remove(tabId);
+      session.tabIds.delete(tabId);
+      if (session.activeTabId === tabId) session.activeTabId = null;
+      persistSessions();
+      return { ok: true, remaining: session.tabIds.size };
     }
 
     default:

@@ -128,6 +128,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_list_frames: 'list_frames',
       browser_get_new_tab: 'get_new_tab',
       browser_switch_tab: 'switch_tab',
+      browser_close_tab: 'close_tab',
     };
 
     if (name === 'browser_extract_token') {
