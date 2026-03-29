@@ -10,6 +10,32 @@
 
 const SESSION_COLORS = ['blue', 'green', 'yellow', 'red', 'pink', 'purple', 'cyan', 'orange'];
 const sessions = new Map(); // port → { tabIds: Set, groupId: number|null, color: string, label: string }
+let sessionsLoaded = false;
+
+// Restore sessions from storage (service workers lose in-memory state on suspend)
+async function restoreSessions() {
+  if (sessionsLoaded) return;
+  sessionsLoaded = true;
+  const { sessions: saved } = await chrome.storage.local.get({ sessions: {} });
+  for (const [port, data] of Object.entries(saved)) {
+    // Verify tabs still exist
+    const validTabIds = new Set();
+    for (const tabId of (data.tabIds || [])) {
+      try {
+        await chrome.tabs.get(tabId);
+        validTabIds.add(tabId);
+      } catch {} // tab no longer exists
+    }
+    if (validTabIds.size > 0) {
+      sessions.set(Number(port), {
+        tabIds: validTabIds,
+        groupId: data.groupId || null,
+        color: data.color || SESSION_COLORS[sessions.size % SESSION_COLORS.length],
+        label: data.label || `Claude ${sessions.size + 1}`,
+      });
+    }
+  }
+}
 
 function getSession(port) {
   if (!sessions.has(port)) {
@@ -71,6 +97,7 @@ function persistSessions() {
   for (const [port, session] of sessions) {
     data[port] = {
       tabIds: [...session.tabIds],
+      groupId: session.groupId,
       color: session.color,
       label: session.label,
     };
@@ -141,9 +168,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'mcp_command') {
     const port = msg.port;
     logAction(port, msg.method, msg.params);
-    dispatch(port, msg.method, msg.params)
-      .then(result => sendResponse(result))
-      .catch(err => sendResponse({ __error: err.message || String(err) }));
+    // Restore sessions from storage (service worker may have restarted)
+    restoreSessions().then(() => {
+      dispatch(port, msg.method, msg.params)
+        .then(result => sendResponse(result))
+        .catch(err => sendResponse({ __error: err.message || String(err) }));
+    });
     return true; // async response
   }
 
