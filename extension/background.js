@@ -446,25 +446,69 @@ async function dispatch(port, method, params) {
         iconUrl: 'icons/icon-128.png',
         title: `${session.label} — Action Required`,
         message: params.message,
+        requireInteraction: true,
+        silent: false,
         priority: 2,
       });
 
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: (message, title, fields, hasFields, timeout, sessionLabel, sessionColor) => {
+        func: (message, title, fields, hasFields, timeout, sessionLabel) => {
           return new Promise((resolve) => {
             document.getElementById('a360-overlay')?.remove();
+
+            // Notification sound — short pleasant chime
+            try {
+              const ctx = new AudioContext();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.frequency.value = 880;
+              osc.type = 'sine';
+              gain.gain.setValueAtTime(0.3, ctx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+              osc.start(ctx.currentTime);
+              osc.stop(ctx.currentTime + 0.4);
+              // Second tone (higher, pleasant ding-dong)
+              setTimeout(() => {
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.connect(gain2);
+                gain2.connect(ctx.destination);
+                osc2.frequency.value = 1320;
+                osc2.type = 'sine';
+                gain2.gain.setValueAtTime(0.2, ctx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                osc2.start(ctx.currentTime);
+                osc2.stop(ctx.currentTime + 0.3);
+              }, 150);
+            } catch {}
+
+            // Inject animation keyframes
+            if (!document.getElementById('a360-styles')) {
+              const style = document.createElement('style');
+              style.id = 'a360-styles';
+              style.textContent = `
+                @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
+                @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+              `;
+              document.head.appendChild(style);
+            }
+
             const overlay = document.createElement('div');
             overlay.id = 'a360-overlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;animation:a360-fade-in 0.3s ease-out';
+
             const card = document.createElement('div');
-            card.style.cssText = 'background:#1e293b;border-radius:12px;padding:24px;max-width:420px;width:90%;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.5)';
+            card.style.cssText = 'background:#1e293b;border-radius:12px;padding:24px;max-width:420px;width:90%;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:a360-slide-up 0.4s ease-out';
+
             const h = document.createElement('div');
             h.style.cssText = 'font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:4px';
             h.textContent = title || 'Agent360 — Action Required';
             card.appendChild(h);
             const badge = document.createElement('div');
-            badge.style.cssText = `font-size:10px;color:#94a3b8;margin-bottom:12px`;
+            badge.style.cssText = 'font-size:10px;color:#94a3b8;margin-bottom:12px';
             badge.textContent = sessionLabel;
             card.appendChild(badge);
             const msg = document.createElement('div');
@@ -492,7 +536,7 @@ async function dispatch(port, method, params) {
             btnRow.style.cssText = 'display:flex;gap:8px;margin-top:16px';
             const doneBtn = document.createElement('button');
             doneBtn.textContent = hasFields ? 'Submit' : '✓ Done';
-            doneBtn.style.cssText = 'flex:1;padding:8px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
+            doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
             doneBtn.addEventListener('click', () => {
               const values = {};
               Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
@@ -501,7 +545,7 @@ async function dispatch(port, method, params) {
             });
             const skipBtn = document.createElement('button');
             skipBtn.textContent = '✗ Skip';
-            skipBtn.style.cssText = 'flex:1;padding:8px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
+            skipBtn.style.cssText = 'flex:1;padding:10px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
             skipBtn.addEventListener('click', () => { overlay.remove(); resolve({ acknowledged: true, action: 'skip', values: {} }); });
             btnRow.appendChild(doneBtn);
             btnRow.appendChild(skipBtn);
@@ -514,7 +558,7 @@ async function dispatch(port, method, params) {
             setTimeout(() => { if (document.getElementById('a360-overlay')) { overlay.remove(); resolve({ acknowledged: false, action: 'timeout', values: {} }); } }, timeout);
           });
         },
-        args: [params.message, params.title, fields, hasFields, timeout, session.label, session.color],
+        args: [params.message, params.title, fields, hasFields, timeout, session.label],
         world: 'MAIN',
       });
 
