@@ -42,7 +42,17 @@ Eller manuelt i `~/.claude/mcp.json`:
 }
 ```
 
-### 4. Genstart Claude Code
+### 4. Fjern andre browser MCP'er
+
+Agent360 Browser MCP erstatter Playwright MCP, BrowserMCP, og lignende. Kør med **kun én browser MCP** for bedst performance — flere browser MCP'er skaber konflikter (duplikerede tool-navne, tab-kamp, uforudsigelig routing).
+
+Fjern fra `~/.claude/mcp.json`:
+```bash
+claude mcp remove Playwright
+claude mcp remove browsermcp
+```
+
+### 5. Genstart Claude Code
 Luk og åbn Claude Code. MCP serveren starter automatisk og finder en ledig port (9876-9885). Extension auto-connecter inden for 2 sekunder.
 
 ---
