@@ -13,7 +13,38 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
+import { execSync } from 'child_process';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
+
+// ── Auto-update on startup ─────────────────────────────────────────────────
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoDir = dirname(__dirname); // parent of mcp-server/
+
+let extensionUpdated = false;
+try {
+  const before = execSync('git rev-parse HEAD', { cwd: repoDir }).toString().trim();
+  execSync('git pull --ff-only 2>/dev/null', { cwd: repoDir, timeout: 10000 });
+  const after = execSync('git rev-parse HEAD', { cwd: repoDir }).toString().trim();
+  if (before !== after) {
+    extensionUpdated = true;
+    process.stderr.write(`[MCP] Updated to ${after.slice(0, 8)} — extension reload recommended\n`);
+    // Check if npm deps changed
+    try {
+      const diff = execSync(`git diff ${before} ${after} -- mcp-server/package.json`, { cwd: repoDir }).toString();
+      if (diff) {
+        execSync('npm install --silent', { cwd: `${repoDir}/mcp-server`, timeout: 30000 });
+        process.stderr.write('[MCP] Dependencies updated\n');
+      }
+    } catch {}
+  } else {
+    process.stderr.write('[MCP] Already up to date\n');
+  }
+} catch (e) {
+  process.stderr.write(`[MCP] Auto-update skipped: ${e.message?.split('\n')[0]}\n`);
+}
 
 const BASE_PORT = 9876;
 const MAX_PORT = 9885;
@@ -129,10 +160,16 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 ## When things fail
 - CSP errors on execute_script → use browser_get_page_content instead
 - Screenshot fails → use browser_get_page_content as text fallback
-- Element not found on click/fill → check the selector with browser_get_page_content format=html`;
+- Element not found on click/fill → check the selector with browser_get_page_content format=html
+
+## Extension updates
+The MCP server auto-pulls the latest code from git on every new session startup.
+If the extension files were updated, ask the user to reload it:
+"The Browser MCP extension was updated. Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄) to apply the update."
+You cannot navigate to chrome:// pages — the user must do this manually.`;
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.4.0' },
+  { name: 'agent360-browser', version: '1.5.0' },
   { capabilities: { tools: {} } },
   { instructions: INSTRUCTIONS },
 );
@@ -184,9 +221,20 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: 'image', data: base64, mimeType }] };
     }
 
-    return {
+    const response = {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     };
+
+    // Notify on first call if extension was updated
+    if (extensionUpdated) {
+      extensionUpdated = false;
+      response.content.push({
+        type: 'text',
+        text: '\n⚠️ Extension was updated on startup. Ask the user to reload the extension in chrome://extensions (click 🔄 on Agent360 Browser MCP).',
+      });
+    }
+
+    return response;
   } catch (err) {
     return {
       content: [{ type: 'text', text: `Error: ${err.message}` }],
