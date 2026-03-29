@@ -99,9 +99,42 @@ function sendToExtension(method, params = {}, timeoutMs = 30000) {
 
 // ── MCP Server ──────────────────────────────────────────────────────────────
 
+const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP server. Each session gets its own color-coded Chrome Tab Group.
+
+## Key behaviors
+- **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens.
+- **Close tabs when done** with browser_close_tab. Don't leave 10+ tabs open.
+- **Check existing tabs first** with browser_list_tabs before navigating — reuse tabs instead of opening duplicates.
+- **One task per tab** — navigate to a URL, do your work, then close or move on.
+- **Tell the user what you're doing** in the browser. "I'm navigating to Stripe to find the API key" not just silently calling tools.
+
+## Tab management
+- navigate creates tabs in your session's tab group (visible in Chrome as colored groups)
+- list_tabs only shows YOUR session's tabs — other Claude sessions have their own
+- switch_tab lets you jump between your tabs
+- close_tab cleans up when you're done
+
+## Authentication flows
+1. Navigate to login page
+2. Use browser_ask_user with fields for email/password
+3. Fill credentials with browser_fill
+4. Click submit with browser_click
+5. If 2FA required, use browser_ask_user again: "Please enter the 2FA code shown in your authenticator app"
+6. After success, extract what you need with browser_get_page_content
+
+## Screenshots
+- browser_screenshot captures the visible tab — useful for visual verification
+- The tab is auto-activated before capture, so it always shows the right page
+
+## When things fail
+- CSP errors on execute_script → use browser_get_page_content instead
+- Screenshot fails → use browser_get_page_content as text fallback
+- Element not found on click/fill → check the selector with browser_get_page_content format=html`;
+
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.3.0' },
+  { name: 'agent360-browser', version: '1.4.0' },
   { capabilities: { tools: {} } },
+  { instructions: INSTRUCTIONS },
 );
 
 mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
