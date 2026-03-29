@@ -90,13 +90,13 @@ async function releaseSession(port) {
   const session = sessions.get(port);
   if (!session) return;
 
-  // Ungroup tabs (don't close them)
-  try {
-    const tabIds = [...session.tabIds];
-    if (tabIds.length > 0) {
-      await chrome.tabs.ungroup(tabIds);
-    }
-  } catch {}
+  // Close all session tabs when session disconnects
+  const tabIds = [...session.tabIds];
+  for (const tabId of tabIds) {
+    try {
+      await chrome.tabs.remove(tabId);
+    } catch {} // tab may already be closed
+  }
 
   sessions.delete(port);
   persistSessions();
@@ -168,6 +168,271 @@ async function getSessionTab(port, activate = true) {
   }
 
   return target;
+}
+
+// ── Chrome Debugger API Helpers (CSP-bypass for Google, Stripe, Slack) ─────
+
+async function debuggerAttach(tabId) {
+  try {
+    await chrome.debugger.attach({ tabId }, '1.3');
+  } catch (e) {
+    // Already attached is fine
+    if (!e.message?.includes('Already attached')) throw e;
+  }
+}
+
+async function debuggerDetach(tabId) {
+  try {
+    await chrome.debugger.detach({ tabId });
+  } catch {} // Ignore — may already be detached
+}
+
+async function debuggerType(tabId, text) {
+  await debuggerAttach(tabId);
+  try {
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        text: char,
+        key: char,
+        code: `Key${char.toUpperCase()}`,
+        unmodifiedText: char,
+      });
+      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: char,
+        code: `Key${char.toUpperCase()}`,
+      });
+      // Human-like typing: random 30-120ms, occasional longer pause
+      const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
+        ? 150 + Math.random() * 200  // thinking pause every ~10 chars
+        : 30 + Math.random() * 90;   // normal keystroke
+      await new Promise(r => setTimeout(r, pause));
+    }
+  } finally {
+    await debuggerDetach(tabId);
+  }
+}
+
+async function debuggerClick(tabId, x, y) {
+  await debuggerAttach(tabId);
+  try {
+    // 1. mouseMoved first (triggers hover state, required by some frameworks)
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x, y,
+    });
+    await new Promise(r => setTimeout(r, 30));
+    // 2. mousePressed + mouseReleased (fires trusted mousedown/mouseup)
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
+    });
+    // 3. CDP doesn't synthesize 'click' event from mousePressed/mouseReleased.
+    //    React/Angular listen on 'click', not mouseup. Fire it via JS as backup.
+    await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: `document.elementFromPoint(${x}, ${y})?.click()`,
+    });
+  } finally {
+    await debuggerDetach(tabId);
+  }
+}
+
+async function debuggerFocus(tabId, selector) {
+  await debuggerAttach(tabId);
+  try {
+    const { root } = await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument', {});
+    const { nodeId } = await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelector', {
+      nodeId: root.nodeId, selector,
+    });
+    if (!nodeId) throw new Error('Element not found: ' + selector);
+    await chrome.debugger.sendCommand({ tabId }, 'DOM.focus', { nodeId });
+    return nodeId;
+  } catch (e) {
+    await debuggerDetach(tabId);
+    throw e;
+  }
+}
+
+async function debuggerFill(tabId, selector, value) {
+  // Check if element is contenteditable (rich text editors: LinkedIn, Slack)
+  const isContentEditable = await debuggerEval(tabId, `
+    (function() {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      return el?.isContentEditable || el?.getAttribute('contenteditable') === 'true';
+    })()
+  `);
+
+  if (isContentEditable) {
+    // Rich text editors (Quill, ProseMirror, Slate, Draft.js) maintain internal
+    // state. Key events get ignored. execCommand('insertText') fires proper
+    // InputEvent that these editors handle correctly.
+    await debuggerEval(tabId, `
+      (function() {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        el.focus();
+        // Select all existing content and delete it
+        document.execCommand('selectAll', false, null);
+        document.execCommand('delete', false, null);
+        // Insert new text — fires InputEvent with inputType='insertText'
+        document.execCommand('insertText', false, ${JSON.stringify(value)});
+      })()
+    `);
+    return;
+  }
+
+  // Standard input/textarea — focus, clear, type
+  await debuggerFocus(tabId, selector);
+  await debuggerAttach(tabId);
+  try {
+    // Ctrl+A to select all, then Backspace to clear
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'a', code: 'KeyA',
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Backspace', code: 'Backspace',
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Backspace', code: 'Backspace',
+    });
+  } finally {
+    await debuggerDetach(tabId);
+  }
+  await debuggerType(tabId, value);
+}
+
+async function debuggerEval(tabId, expression) {
+  await debuggerAttach(tabId);
+  try {
+    const result = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+    });
+    if (result.exceptionDetails) {
+      throw new Error(result.exceptionDetails.text || 'Script execution failed');
+    }
+    return result.result?.value;
+  } finally {
+    await debuggerDetach(tabId);
+  }
+}
+
+// Try executeScript first, fall back to debugger on CSP error
+async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func,
+      args,
+      ...(world === 'MAIN' ? { world: 'MAIN' } : {}),
+    });
+    return { result: result.result, usedDebugger: false };
+  } catch (e) {
+    if (e.message?.includes('Content Security Policy') || e.message?.includes('unsafe-eval')) {
+      // CSP blocked — this is expected on Google, Stripe, Slack
+      return { cspBlocked: true };
+    }
+    throw e;
+  }
+}
+
+// ── Smart Selector Resolution ─────────────────────────────────────────────
+// Supports CSS selectors AND text-based selectors:
+//   "button:text(Get started)" → finds button containing "Get started"
+//   "#my-id" → standard CSS selector
+//   "text=Submit" → any element containing "Submit"
+
+function buildTextFinderJS(textPattern, tagFilter) {
+  const escaped = JSON.stringify(textPattern);
+  const tagCheck = tagFilter ? `&& el.tagName === ${JSON.stringify(tagFilter.toUpperCase())}` : '';
+  return `(function() {
+    const text = ${escaped};
+    // Collect all elements including inside shadow DOM
+    function collectAll(root, results) {
+      for (const el of root.querySelectorAll('*')) {
+        results.push(el);
+        if (el.shadowRoot) collectAll(el.shadowRoot, results);
+      }
+      return results;
+    }
+    const all = collectAll(document, []);
+    // Exact match first (prefer leaf nodes)
+    for (const el of all) {
+      if (el.children.length > 3) continue;
+      const t = el.textContent?.trim();
+      if (t === text ${tagCheck}) {
+        return el;
+      }
+    }
+    // Partial match fallback
+    for (const el of all) {
+      if (el.children.length > 3) continue;
+      const t = el.textContent?.trim();
+      if (t && t.includes(text) ${tagCheck}) {
+        return el;
+      }
+    }
+    return null;
+  })()`;
+}
+
+function parseSelector(selector) {
+  // "button:text(Get started)" → { tag: 'button', text: 'Get started' }
+  const tagTextMatch = selector.match(/^(\w+):text\((.+)\)$/);
+  if (tagTextMatch) return { type: 'text', tag: tagTextMatch[1], text: tagTextMatch[2] };
+
+  // "text=Submit" → { text: 'Submit' }
+  if (selector.startsWith('text=')) return { type: 'text', tag: null, text: selector.slice(5) };
+
+  // Standard CSS selector
+  return { type: 'css', selector };
+}
+
+async function resolveElement(tabId, selectorStr) {
+  const parsed = parseSelector(selectorStr);
+
+  if (parsed.type === 'css') {
+    // Standard CSS — try executeScript first, debugger fallback
+    const scriptResult = await safeExecuteScript(tabId, (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName, found: true };
+    }, [parsed.selector]);
+
+    if (scriptResult.cspBlocked) {
+      const result = await debuggerEval(tabId, `
+        (function() {
+          const el = document.querySelector(${JSON.stringify(parsed.selector)});
+          if (!el) return null;
+          el.scrollIntoView({ block: 'center', behavior: 'instant' });
+          const r = el.getBoundingClientRect();
+          return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, found: true };
+        })()
+      `);
+      return result ? { ...result, method: 'debugger' } : null;
+    }
+    return scriptResult.result;
+  }
+
+  // Text-based selector — always use debugger (more reliable, no CSP issues)
+  const finderJS = buildTextFinderJS(parsed.text, parsed.tag);
+  const result = await debuggerEval(tabId, `
+    (function() {
+      const el = ${finderJS};
+      if (!el) return null;
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), found: true };
+    })()
+  `);
+  return result ? { ...result, method: 'debugger' } : null;
 }
 
 // ── Offscreen Document Setup ───────────────────────────────────────────────
@@ -316,12 +581,13 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
       const format = params.format || 'text';
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (fmt) => fmt === 'html' ? document.documentElement.outerHTML : document.body.innerText,
-        args: [format],
-      });
-      return { content: result.result, url: tab.url, title: tab.title };
+      const scriptResult = await safeExecuteScript(tab.id, (fmt) => fmt === 'html' ? document.documentElement.outerHTML : document.body.innerText, [format]);
+      if (!scriptResult.cspBlocked) {
+        return { content: scriptResult.result, url: tab.url, title: tab.title };
+      }
+      // CSP fallback
+      const content = await debuggerEval(tab.id, format === 'html' ? 'document.documentElement.outerHTML' : 'document.body.innerText');
+      return { content, url: tab.url, title: tab.title, method: 'debugger' };
     }
 
     case 'screenshot': {
@@ -331,71 +597,332 @@ async function dispatch(port, method, params) {
         const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
         return { image: dataUrl };
       } catch {
-        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 90 });
-        return { image: dataUrl };
+        try {
+          const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 90 });
+          return { image: dataUrl };
+        } catch {
+          // captureVisibleTab failed — fall back to debugger Page.captureScreenshot
+          try {
+            await debuggerAttach(tab.id);
+            const { data } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', {
+              format: 'png',
+            });
+            await debuggerDetach(tab.id);
+            return { image: 'data:image/png;base64,' + data };
+          } catch (e) {
+            await debuggerDetach(tab.id).catch(() => {});
+            throw new Error('Screenshot failed: ' + e.message);
+          }
+        }
       }
     }
 
     case 'execute_script': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot execute scripts on chrome:// pages');
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: new Function('return (' + params.code + ')'),
-        world: 'MAIN',
-      });
-      return { result: result.result };
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: new Function('return (' + params.code + ')'),
+          world: 'MAIN',
+        });
+        return { result: result.result };
+      } catch (e) {
+        if (e.message?.includes('Content Security Policy') || e.message?.includes('unsafe-eval')) {
+          // CSP blocked — fall back to debugger Runtime.evaluate
+          const value = await debuggerEval(tab.id, params.code);
+          return { result: value, method: 'debugger' };
+        }
+        throw e;
+      }
     }
 
     case 'click': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (sel) => {
-          const el = document.querySelector(sel);
-          if (!el) return { ok: false, error: 'Element not found: ' + sel };
-          el.click();
-          return { ok: true };
-        },
-        args: [params.selector],
-      });
-      return result.result;
+
+      // Resolve element (supports CSS + text selectors, auto-scrolls)
+      const el = await resolveElement(tab.id, params.selector);
+      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+
+      // Always use debugger mouse events — works on all sites including SPAs
+      await debuggerClick(tab.id, el.x, el.y);
+      return { ok: true, method: el.method || 'debugger', tag: el.tag, text: el.text };
     }
 
     case 'fill': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (sel, val) => {
-          const el = document.querySelector(sel);
-          if (!el) return { ok: false, error: 'Element not found: ' + sel };
-          el.value = val;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          return { ok: true };
-        },
-        args: [params.selector, params.value],
-      });
-      return result.result;
+      const parsed = parseSelector(params.selector);
+
+      // For text-based selectors, click the element first then type
+      if (parsed.type === 'text') {
+        const el = await resolveElement(tab.id, params.selector);
+        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+        await debuggerClick(tab.id, el.x, el.y);
+        await new Promise(r => setTimeout(r, 100));
+        await debuggerType(tab.id, params.value);
+        return { ok: true, method: 'debugger' };
+      }
+
+      // CSS selector — try executeScript first (faster on non-CSP sites)
+      const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
+        const el = document.querySelector(sel);
+        if (!el) return { ok: false, error: 'Element not found: ' + sel };
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        el.focus();
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true };
+      }, [parsed.selector, params.value]);
+
+      if (!scriptResult.cspBlocked) return scriptResult.result;
+
+      // CSP blocked — use debugger
+      try {
+        await debuggerFill(tab.id, parsed.selector, params.value);
+        return { ok: true, method: 'debugger' };
+      } catch (e) {
+        return { ok: false, error: e.message, method: 'debugger' };
+      }
     }
 
     case 'wait': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const timeout = params.timeout || 10000;
+      const sel = params.selector;
       const start = Date.now();
       while (Date.now() - start < timeout) {
-        const [result] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: (sel) => !!document.querySelector(sel),
-          args: [params.selector],
-        });
-        if (result.result) return { found: true };
+        // Text-based selectors use debugger directly
+        if (sel.startsWith('text=') || sel.match(/^\w+:text\(/)) {
+          const el = await resolveElement(tab.id, sel);
+          if (el) return { found: true, method: 'debugger' };
+        } else {
+          const scriptResult = await safeExecuteScript(tab.id, (s) => !!document.querySelector(s), [sel]);
+          if (scriptResult.cspBlocked) {
+            const found = await debuggerEval(tab.id, `!!document.querySelector(${JSON.stringify(sel)})`);
+            if (found) return { found: true, method: 'debugger' };
+          } else if (scriptResult.result) {
+            return { found: true };
+          }
+        }
         await new Promise(r => setTimeout(r, 500));
       }
       return { found: false };
+    }
+
+    case 'press_key': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
+      const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
+
+      await debuggerAttach(tab.id);
+      try {
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
+          type: 'keyDown',
+          key,
+          code: params.code || key,
+          modifiers,
+          text: key.length === 1 ? key : '',
+        });
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
+          type: 'keyUp',
+          key,
+          code: params.code || key,
+          modifiers,
+        });
+      } finally {
+        await debuggerDetach(tab.id);
+      }
+      return { ok: true, key };
+    }
+
+    case 'scroll': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      // Scroll to element or by pixels
+      if (params.selector) {
+        const el = await resolveElement(tab.id, params.selector);
+        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+        return { ok: true, scrolled_to: params.selector };
+      }
+      // Scroll by pixels
+      const dx = params.x || 0;
+      const dy = params.y || 0;
+      await debuggerEval(tab.id, `window.scrollBy(${dx}, ${dy})`);
+      return { ok: true, scrolled: { x: dx, y: dy } };
+    }
+
+    case 'hover': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const el = await resolveElement(tab.id, params.selector);
+      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      await debuggerAttach(tab.id);
+      try {
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
+          type: 'mouseMoved', x: el.x, y: el.y,
+        });
+        // Hold hover for duration (default 500ms) so menus/tooltips appear
+        await new Promise(r => setTimeout(r, params.duration || 500));
+      } finally {
+        await debuggerDetach(tab.id);
+      }
+      return { ok: true, tag: el.tag, text: el.text };
+    }
+
+    case 'select_option': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+
+      // Strategy: handle native <select> and custom dropdowns differently
+      const isNativeSelect = await debuggerEval(tab.id, `
+        (function() {
+          const el = document.querySelector(${JSON.stringify(params.selector)});
+          return el?.tagName === 'SELECT';
+        })()
+      `);
+
+      if (isNativeSelect) {
+        // Native <select> — set value directly
+        await debuggerEval(tab.id, `
+          (function() {
+            const sel = document.querySelector(${JSON.stringify(params.selector)});
+            const opt = Array.from(sel.options).find(o => o.text.includes(${JSON.stringify(params.option)}) || o.value === ${JSON.stringify(params.option)});
+            if (opt) {
+              sel.value = opt.value;
+              sel.dispatchEvent(new Event('change', { bubbles: true }));
+              sel.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return !!opt;
+          })()
+        `);
+        return { ok: true, type: 'native_select' };
+      }
+
+      // Custom dropdown (Angular Material, React Select, etc.)
+      // Step 1: Click the trigger to open
+      const trigger = await resolveElement(tab.id, params.selector);
+      if (!trigger) return { ok: false, error: 'Dropdown trigger not found: ' + params.selector };
+      await debuggerClick(tab.id, trigger.x, trigger.y);
+
+      // Step 2: Wait for options to appear
+      await new Promise(r => setTimeout(r, params.wait || 300));
+
+      // Step 3: Find and click the option by text
+      const option = await resolveElement(tab.id, `text=${params.option}`);
+      if (!option) return { ok: false, error: 'Option not found: ' + params.option };
+      await debuggerClick(tab.id, option.x, option.y);
+
+      return { ok: true, type: 'custom_dropdown', selected: params.option };
+    }
+
+    case 'handle_dialog': {
+      // Auto-handle JS alert/confirm/prompt dialogs
+      // Must be set up BEFORE the dialog appears
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const action = params.action || 'accept'; // accept, dismiss
+      const promptText = params.text || '';
+
+      await debuggerAttach(tab.id);
+      try {
+        // Enable page events to catch dialogs
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.enable', {});
+
+        // Wait for dialog to appear (or handle existing one)
+        const result = await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            chrome.debugger.onEvent.removeListener(listener);
+            resolve({ ok: false, error: 'No dialog appeared within timeout' });
+          }, params.timeout || 10000);
+
+          const listener = (source, method, eventParams) => {
+            if (source.tabId !== tab.id || method !== 'Page.javascriptDialogOpening') return;
+            chrome.debugger.onEvent.removeListener(listener);
+            clearTimeout(timeout);
+
+            chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.handleJavaScriptDialog', {
+              accept: action === 'accept',
+              promptText: promptText,
+            }).then(() => {
+              resolve({
+                ok: true,
+                dialog_type: eventParams.type,
+                message: eventParams.message,
+                action,
+              });
+            }).catch(e => resolve({ ok: false, error: e.message }));
+          };
+          chrome.debugger.onEvent.addListener(listener);
+        });
+
+        return result;
+      } finally {
+        await debuggerDetach(tab.id);
+      }
+    }
+
+    case 'wait_for_network': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const urlPattern = params.url_pattern || '';
+      const timeout = params.timeout || 15000;
+
+      await debuggerAttach(tab.id);
+      try {
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.enable', {});
+
+        const result = await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            chrome.debugger.onEvent.removeListener(listener);
+            resolve({ ok: false, error: 'No matching request within timeout' });
+          }, timeout);
+
+          const listener = (source, method, eventParams) => {
+            if (source.tabId !== tab.id) return;
+
+            if (method === 'Network.responseReceived') {
+              const url = eventParams.response?.url || '';
+              const status = eventParams.response?.status;
+              // Match by pattern (substring match) or return any if no pattern
+              if (!urlPattern || url.includes(urlPattern)) {
+                chrome.debugger.onEvent.removeListener(listener);
+                clearTimeout(timer);
+                // Try to get response body
+                chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.getResponseBody', {
+                  requestId: eventParams.requestId,
+                }).then(bodyResult => {
+                  resolve({
+                    ok: true,
+                    url,
+                    status,
+                    method: eventParams.response?.requestHeaders?.[':method'] || 'GET',
+                    body: bodyResult?.body?.substring(0, 5000) || null,
+                  });
+                }).catch(() => {
+                  resolve({
+                    ok: true,
+                    url,
+                    status,
+                    method: eventParams.response?.requestHeaders?.[':method'] || 'GET',
+                    body: null,
+                  });
+                });
+              }
+            }
+          };
+          chrome.debugger.onEvent.addListener(listener);
+        });
+
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.disable', {});
+        return result;
+      } finally {
+        await debuggerDetach(tab.id);
+      }
     }
 
     case 'list_tabs': {
@@ -421,12 +948,15 @@ async function dispatch(port, method, params) {
     case 'get_local_storage': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (key) => key ? localStorage.getItem(key) : JSON.stringify(Object.fromEntries(Object.entries(localStorage))),
-        args: [params.key || null],
-      });
-      return { value: result.result };
+      const scriptResult = await safeExecuteScript(tab.id, (key) => key ? localStorage.getItem(key) : JSON.stringify(Object.fromEntries(Object.entries(localStorage))), [params.key || null]);
+      if (!scriptResult.cspBlocked) {
+        return { value: scriptResult.result };
+      }
+      const expr = params.key
+        ? `localStorage.getItem(${JSON.stringify(params.key)})`
+        : `JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`;
+      const value = await debuggerEval(tab.id, expr);
+      return { value, method: 'debugger' };
     }
 
     case 'ask_user': {

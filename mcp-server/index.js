@@ -157,10 +157,24 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - browser_screenshot captures the visible tab — useful for visual verification
 - The tab is auto-activated before capture, so it always shows the right page
 
+## Text-based selectors (preferred for dynamic sites)
+- browser_click("text=Get started") — clicks any element containing "Get started"
+- browser_click("button:text(Submit)") — clicks a button containing "Submit"
+- browser_fill("text=Email", "user@example.com") — fills input near "Email" label
+- browser_wait("text=Success") — waits for text to appear
+- These work on ALL sites including Google Cloud, Stripe, Slack (CSP-strict)
+
+## Keyboard
+- browser_press_key("Enter") — submit forms
+- browser_press_key("Tab") — navigate between fields
+- browser_press_key("Escape") — close dialogs
+- browser_press_key("ArrowDown") — navigate dropdowns
+- browser_press_key("a", ctrl=true) — select all
+
 ## When things fail
-- CSP errors on execute_script → use browser_get_page_content instead
-- Screenshot fails → use browser_get_page_content as text fallback
-- Element not found on click/fill → check the selector with browser_get_page_content format=html
+- Element not found → try text-based selector instead of CSS
+- Screenshot fails → debugger fallback is automatic
+- Click doesn't work on SPA → debugger mouse events are used automatically
 
 ## Extension updates
 The MCP server auto-pulls the latest code from git on every new session startup.
@@ -169,7 +183,7 @@ If the extension files were updated, ask the user to reload it:
 You cannot navigate to chrome:// pages — the user must do this manually.`;
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.5.0' },
+  { name: 'agent360-browser', version: '1.9.0' },
   { capabilities: { tools: {} } },
   { instructions: INSTRUCTIONS },
 );
@@ -190,6 +204,12 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_click: 'click',
       browser_fill: 'fill',
       browser_wait: 'wait',
+      browser_press_key: 'press_key',
+      browser_scroll: 'scroll',
+      browser_hover: 'hover',
+      browser_select_option: 'select_option',
+      browser_handle_dialog: 'handle_dialog',
+      browser_wait_for_network: 'wait_for_network',
       browser_list_tabs: 'list_tabs',
       browser_get_cookies: 'get_cookies',
       browser_get_local_storage: 'get_local_storage',
