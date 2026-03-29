@@ -3,21 +3,55 @@
 chrome.storage.local.get(['mcpConnected', 'mcpCount', 'mcpPorts'], (result) => {
   const connected = result.mcpConnected === true;
   const count = result.mcpCount || 0;
-  const ports = result.mcpPorts || [];
   document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
-  document.getElementById('label').textContent = connected ? `Forbundet til ${count} MCP server${count > 1 ? 's' : ''}` : 'Ikke forbundet';
-  document.getElementById('sessions').textContent = count;
-  document.getElementById('ports').textContent = ports.length ? ports.join(', ') : '—';
+  document.getElementById('label').textContent = connected
+    ? `Forbundet til ${count} session${count > 1 ? 's' : ''}`
+    : 'Ikke forbundet';
 });
 
-// ── Active tab info ─────────────────────────────────────────────────────────
+// ── Sessions with tabs ─────────────────────────────────────────────────────
 
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  if (tabs[0]) {
-    const url = tabs[0].url || '—';
-    document.getElementById('tab').textContent = url.length > 35 ? url.slice(0, 35) + '…' : url;
-  }
-});
+function renderSessions() {
+  chrome.storage.local.get({ sessions: {} }, ({ sessions }) => {
+    const container = document.getElementById('sessions');
+    const entries = Object.entries(sessions);
+
+    if (!entries.length) {
+      container.innerHTML = '<div class="empty">Ingen aktive sessions</div>';
+      return;
+    }
+
+    // Fetch tab info for each session
+    const promises = entries.map(async ([port, session]) => {
+      const tabInfos = [];
+      for (const tabId of session.tabIds || []) {
+        try {
+          const tab = await chrome.tabs.get(tabId);
+          const url = tab.url || '';
+          const display = url.length > 40 ? url.slice(0, 40) + '…' : url;
+          tabInfos.push(display);
+        } catch {}
+      }
+      return { port, session, tabInfos };
+    });
+
+    Promise.all(promises).then(results => {
+      container.innerHTML = results.map(({ port, session, tabInfos }) => {
+        const color = session.color || 'blue';
+        const tabHtml = tabInfos.length
+          ? tabInfos.map(u => `<div>• ${u}</div>`).join('')
+          : '<div>Ingen tabs</div>';
+        return `
+          <div class="session-card color-${color}">
+            <div class="session-header">${session.label} <span style="font-weight:normal;font-size:10px;color:#64748b">port ${port}</span></div>
+            <div class="session-tabs">${tabHtml}</div>
+          </div>`;
+      }).join('');
+    });
+  });
+}
+
+renderSessions();
 
 // ── Action Log ──────────────────────────────────────────────────────────────
 
@@ -31,11 +65,8 @@ function renderLog() {
     container.innerHTML = actionLog.slice(0, 30).map(entry => {
       const time = new Date(entry.time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const cat = entry.category || 'safe';
-      let cls = 'log-safe';
-      if (cat.startsWith('destructive')) cls = cat.includes('denied') ? 'log-denied' : 'log-destructive';
-      else if (cat === 'sensitive') cls = 'log-sensitive';
-      const params = entry.params ? entry.params.replace(/^{|}$/g, '').slice(0, 50) : '';
-      return `<div class="log-entry"><span class="log-time">${time}</span><span class="log-method ${cls}">${entry.method}</span><span class="log-params">${params}</span></div>`;
+      const cls = cat === 'sensitive' ? 'log-sensitive' : 'log-safe';
+      return `<div class="log-entry"><span class="log-time">${time}</span><span class="log-method ${cls}">${entry.method}</span><span class="log-session">${entry.session || ''}</span></div>`;
     }).join('');
   });
 }
@@ -48,10 +79,14 @@ document.getElementById('reconnect').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'reconnect' });
   document.getElementById('label').textContent = 'Reconnecting...';
   setTimeout(() => {
-    chrome.storage.local.get(['mcpConnected'], (result) => {
+    chrome.storage.local.get(['mcpConnected', 'mcpCount'], (result) => {
       const connected = result.mcpConnected === true;
+      const count = result.mcpCount || 0;
       document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
-      document.getElementById('label').textContent = connected ? 'Forbundet til MCP server' : 'Ikke forbundet';
+      document.getElementById('label').textContent = connected
+        ? `Forbundet til ${count} session${count > 1 ? 's' : ''}`
+        : 'Ikke forbundet';
+      renderSessions();
     });
   }, 3000);
 });

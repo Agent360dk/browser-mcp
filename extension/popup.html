@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { width: 300px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 16px; }
+    body { width: 320px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 16px; }
     h1 { font-size: 13px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
     h1 span { color: #3b82f6; }
     .status { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; background: #1e293b; margin-bottom: 8px; }
@@ -12,29 +12,31 @@
     .dot.on { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
     .dot.off { background: #ef4444; }
     .label { font-size: 12px; }
-    .section { font-size: 11px; color: #64748b; padding: 8px 10px; background: #1e293b; border-radius: 8px; margin-bottom: 8px; }
-    .section div { margin-bottom: 4px; }
-    .section div:last-child { margin-bottom: 0; }
-    .section strong { color: #94a3b8; }
     .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #475569; margin: 10px 0 4px; font-weight: 600; }
-    code { background: #334155; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
-    input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid #334155; border-radius: 4px; background: #0f172a; color: #e2e8f0; font-size: 11px; font-family: monospace; margin-top: 4px; }
-    input:focus { outline: none; border-color: #3b82f6; }
-    button { width: 100%; padding: 7px; border: none; border-radius: 6px; background: #1e293b; color: #94a3b8; font-size: 11px; cursor: pointer; margin-top: 4px; }
-    button:hover { background: #334155; color: #e2e8f0; }
-    .btn-save { background: #3b82f6; color: white; }
-    .btn-save:hover { background: #2563eb; }
-    .log { max-height: 160px; overflow-y: auto; }
-    .log-entry { font-size: 10px; padding: 3px 0; border-bottom: 1px solid #1e293b; display: flex; gap: 6px; align-items: baseline; }
+    .sessions { display: flex; flex-direction: column; gap: 6px; }
+    .session-card { padding: 8px 10px; background: #1e293b; border-radius: 8px; border-left: 3px solid; }
+    .session-header { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+    .session-tabs { font-size: 10px; color: #94a3b8; }
+    .session-tabs div { margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { font-size: 11px; color: #475569; text-align: center; padding: 12px; background: #1e293b; border-radius: 8px; }
+    .log { max-height: 120px; overflow-y: auto; background: #1e293b; border-radius: 8px; padding: 6px 10px; }
+    .log-entry { font-size: 10px; padding: 2px 0; border-bottom: 1px solid #0f172a; display: flex; gap: 6px; align-items: baseline; }
     .log-entry:last-child { border-bottom: none; }
     .log-time { color: #475569; min-width: 45px; }
     .log-method { font-weight: 500; }
+    .log-session { font-size: 9px; color: #64748b; }
     .log-safe { color: #22c55e; }
     .log-sensitive { color: #f59e0b; }
-    .log-destructive { color: #ef4444; }
-    .log-denied { color: #ef4444; text-decoration: line-through; }
-    .log-params { color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
-    .empty { font-size: 11px; color: #475569; text-align: center; padding: 12px; }
+    button { width: 100%; padding: 7px; border: none; border-radius: 6px; background: #1e293b; color: #94a3b8; font-size: 11px; cursor: pointer; margin-top: 4px; }
+    button:hover { background: #334155; color: #e2e8f0; }
+    .color-blue { border-color: #3b82f6; } .color-blue .session-header { color: #3b82f6; }
+    .color-green { border-color: #22c55e; } .color-green .session-header { color: #22c55e; }
+    .color-yellow { border-color: #eab308; } .color-yellow .session-header { color: #eab308; }
+    .color-red { border-color: #ef4444; } .color-red .session-header { color: #ef4444; }
+    .color-pink { border-color: #ec4899; } .color-pink .session-header { color: #ec4899; }
+    .color-purple { border-color: #a855f7; } .color-purple .session-header { color: #a855f7; }
+    .color-cyan { border-color: #06b6d4; } .color-cyan .session-header { color: #06b6d4; }
+    .color-orange { border-color: #f97316; } .color-orange .session-header { color: #f97316; }
   </style>
 </head>
 <body>
@@ -45,15 +47,13 @@
     <span class="label" id="label">Tjekker...</span>
   </div>
 
-  <div class="section">
-    <div><strong>Sessions:</strong> <span id="sessions">0</span></div>
-    <div><strong>Porte:</strong> <code id="ports">—</code></div>
-    <div><strong>Tab:</strong> <span id="tab">—</span></div>
-    <div><strong>Tools:</strong> 16 browser commands</div>
+  <div class="section-title">Sessions</div>
+  <div id="sessions" class="sessions">
+    <div class="empty">Ingen aktive sessions</div>
   </div>
 
   <div class="section-title">Action Log</div>
-  <div class="section log" id="log">
+  <div class="log" id="log">
     <div class="empty">Ingen actions endnu</div>
   </div>
 

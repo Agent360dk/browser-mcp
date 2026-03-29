@@ -3,6 +3,7 @@
  *
  * Scans port range 9876-9885 and maintains connections to ALL active
  * MCP servers. Each Claude Code session gets its own port automatically.
+ * Passes port ID with every command so background.js can track tab ownership.
  *
  * Flow: MCP Server(s) ←(WS)→ this ←(chrome.runtime.sendMessage)→ Service Worker → Chrome APIs
  */
@@ -15,7 +16,7 @@ function scanPorts() {
   for (let port = BASE_PORT; port <= MAX_PORT; port++) {
     const existing = connections.get(port);
     if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
-      continue; // already connected or connecting
+      continue;
     }
     tryConnect(port);
   }
@@ -29,7 +30,6 @@ function tryConnect(port) {
     return;
   }
 
-  // Fast timeout — if port isn't listening, close quickly
   const connectTimeout = setTimeout(() => {
     if (ws.readyState !== WebSocket.OPEN) ws.close();
   }, 2000);
@@ -47,8 +47,10 @@ function tryConnect(port) {
     const { id, method, params } = cmd;
 
     try {
+      // Include port so background.js knows which session owns this command
       const result = await chrome.runtime.sendMessage({
         type: 'mcp_command',
+        port,
         method,
         params: params || {},
       });
@@ -69,6 +71,8 @@ function tryConnect(port) {
       connections.delete(port);
       console.log(`[Offscreen] Disconnected from port ${port} (${connections.size} remaining)`);
       updateStatus();
+      // Notify background to release tabs for this session
+      chrome.runtime.sendMessage({ type: 'session_disconnect', port }).catch(() => {});
     }
   };
 
@@ -88,6 +92,6 @@ function updateStatus() {
   }).catch(() => {});
 }
 
-// Initial scan + periodic rescan for new servers
+// Initial scan + frequent rescan for new servers
 scanPorts();
-setInterval(scanPorts, 5000);
+setInterval(scanPorts, 2000);

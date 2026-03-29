@@ -3,26 +3,26 @@
  * Agent360 Browser MCP Server
  *
  * Bridges Claude Code (stdio MCP) to Chrome Extension (WebSocket).
+ * Auto-selects first available port in range 9876-9885 for multi-session support.
  *
  * Architecture:
- *   Claude Code ←(stdio)→ this process ←(WebSocket :9876)→ Offscreen Doc ←(sendMessage)→ Service Worker → Chrome APIs
+ *   Claude Code ←(stdio)→ this process ←(WS :port)→ Offscreen Doc ←(sendMessage)→ Service Worker → Chrome APIs
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
-import { execSync } from 'child_process';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 const BASE_PORT = 9876;
-const MAX_PORT = 9885; // 10 concurrent sessions max
+const MAX_PORT = 9885;
 let extensionSocket = null;
 let activePort = null;
 let cmdId = 0;
-const pending = new Map(); // id → { resolve, reject, timer }
+const pending = new Map();
 
-// ── WebSocket Server (for Chrome Extension's offscreen document) ───────────
+// ── WebSocket Server ───────────────────────────────────────────────────────
 
 function createWSS(port = BASE_PORT) {
   const server = new WebSocketServer({ host: '127.0.0.1', port });
@@ -42,7 +42,7 @@ function createWSS(port = BASE_PORT) {
 
   server.on('connection', (ws) => {
     extensionSocket = ws;
-    process.stderr.write(`[MCP] Chrome extension connected\n`);
+    process.stderr.write(`[MCP] Chrome extension connected on port ${port}\n`);
 
     ws.on('message', (data) => {
       let msg;
@@ -69,14 +69,12 @@ function createWSS(port = BASE_PORT) {
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
   });
 
-  // Heartbeat — keep WebSocket alive
+  // Heartbeat
   setInterval(() => {
     if (extensionSocket && extensionSocket.readyState === 1) {
       extensionSocket.ping();
     }
   }, 20000);
-
-  return server;
 }
 
 createWSS();
@@ -86,7 +84,7 @@ createWSS();
 function sendToExtension(method, params = {}, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     if (!extensionSocket || extensionSocket.readyState !== 1) {
-      reject(new Error('Chrome extension not connected. Open Chrome and ensure Agent360 Browser MCP extension is installed and active.'));
+      reject(new Error('Chrome extension not connected. Open Chrome and ensure Agent360 Browser MCP extension is installed.'));
       return;
     }
     const id = ++cmdId;
@@ -102,7 +100,7 @@ function sendToExtension(method, params = {}, timeoutMs = 30000) {
 // ── MCP Server ──────────────────────────────────────────────────────────────
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.2.0' },
+  { name: 'agent360-browser', version: '1.3.0' },
   { capabilities: { tools: {} } },
 );
 
@@ -132,7 +130,6 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_switch_tab: 'switch_tab',
     };
 
-    // Special handler: browser_extract_token
     if (name === 'browser_extract_token') {
       return await handleExtractToken(args);
     }
@@ -142,11 +139,9 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
 
-    // ask_user needs longer timeout (waits for human)
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 : 30000;
     const result = await sendToExtension(method, args || {}, timeout);
 
-    // Screenshot returns base64 image (png or jpeg fallback)
     if (name === 'browser_screenshot' && result?.image) {
       const isJpeg = result.image.startsWith('data:image/jpeg');
       const prefix = isJpeg ? /^data:image\/jpeg;base64,/ : /^data:image\/png;base64,/;
@@ -166,8 +161,6 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// ── browser_extract_token handler ───────────────────────────────────────────
-
 async function handleExtractToken(args) {
   const { provider, store_in_vault } = args;
   const info = PROVIDER_PAGES[provider];
@@ -182,7 +175,6 @@ async function handleExtractToken(args) {
   }
 
   const nav = await sendToExtension('navigate', { url: info.url });
-
   const content = [
     { type: 'text', text: `Navigated to ${info.url} (${nav.title})\n\nInstructions: ${info.instructions}\n\nUse browser_get_page_content or browser_screenshot to find the token, then use browser_execute_script to extract it.` },
   ];
@@ -198,6 +190,13 @@ async function handleExtractToken(args) {
 }
 
 // ── Start ───────────────────────────────────────────────────────────────────
+
+// Clean shutdown — release port so next session can use it
+process.on('SIGTERM', () => process.exit(0));
+process.on('SIGINT', () => process.exit(0));
+process.on('exit', () => {
+  if (extensionSocket) extensionSocket.close();
+});
 
 const transport = new StdioServerTransport();
 await mcpServer.connect(transport);
