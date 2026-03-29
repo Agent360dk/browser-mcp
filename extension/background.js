@@ -116,16 +116,19 @@ function persistSessions() {
   chrome.storage.local.set({ sessions: data });
 }
 
-// Get the active tab for this session (last navigated), or create one
-async function getSessionTab(port) {
+// Get the active tab for this session (last navigated), or create one.
+// IMPORTANT: Also activates the tab so Chrome APIs (captureVisibleTab,
+// executeScript) operate on the correct tab, not whatever the user is viewing.
+async function getSessionTab(port, activate = true) {
   const session = getSession(port);
+  let target = null;
 
   // Prefer the active (last navigated) tab
   if (session.activeTabId) {
     try {
       const tab = await chrome.tabs.get(session.activeTabId);
       if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
-        return tab;
+        target = tab;
       }
     } catch {
       session.activeTabId = null;
@@ -134,22 +137,37 @@ async function getSessionTab(port) {
   }
 
   // Fallback: any usable session tab
-  for (const tabId of session.tabIds) {
-    try {
-      const tab = await chrome.tabs.get(tabId);
-      if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
-        session.activeTabId = tabId;
-        return tab;
+  if (!target) {
+    for (const tabId of session.tabIds) {
+      try {
+        const tab = await chrome.tabs.get(tabId);
+        if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
+          session.activeTabId = tabId;
+          target = tab;
+          break;
+        }
+      } catch {
+        session.tabIds.delete(tabId);
       }
-    } catch {
-      session.tabIds.delete(tabId);
     }
   }
 
   // No usable tab — create one
-  const tab = await chrome.tabs.create({ url: 'about:blank', active: false });
-  await addTabToSession(port, tab.id);
-  return tab;
+  if (!target) {
+    target = await chrome.tabs.create({ url: 'about:blank', active: false });
+    await addTabToSession(port, target.id);
+    return target;
+  }
+
+  // Activate the tab so Chrome APIs target it (not whatever user is viewing)
+  if (activate && !target.active) {
+    await chrome.tabs.update(target.id, { active: true });
+    // Brief wait for Chrome to render the tab
+    await new Promise(r => setTimeout(r, 150));
+    target = await chrome.tabs.get(target.id);
+  }
+
+  return target;
 }
 
 // ── Offscreen Document Setup ───────────────────────────────────────────────
@@ -307,11 +325,8 @@ async function dispatch(port, method, params) {
     }
 
     case 'screenshot': {
-      const tab = await getSessionTab(port);
+      const tab = await getSessionTab(port); // auto-activates
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot screenshot chrome:// pages');
-      // Activate tab briefly for screenshot
-      await chrome.tabs.update(tab.id, { active: true });
-      await new Promise(r => setTimeout(r, 200));
       try {
         const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
         return { image: dataUrl };
