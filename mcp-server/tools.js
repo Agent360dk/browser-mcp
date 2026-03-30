@@ -154,6 +154,20 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_fetch',
+    description: 'Make an HTTP request from the extension background (NOT subject to CORS). Use this when page-context fetch would be blocked by CORS or CSP. Useful for API calls to Google, Stripe, Slack APIs while on their pages.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'URL to fetch' },
+        method: { type: 'string', description: 'HTTP method (default: GET)' },
+        headers: { type: 'object', description: 'Request headers as key-value pairs' },
+        body: { type: 'string', description: 'Request body (for POST/PUT)' },
+      },
+      required: ['url'],
+    },
+  },
+  {
     name: 'browser_list_tabs',
     description: 'List all open browser tabs with their URLs and titles.',
     inputSchema: { type: 'object', properties: {} },

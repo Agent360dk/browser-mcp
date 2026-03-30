@@ -134,7 +134,7 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 
 ## Key behaviors
 - **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens.
-- **Close tabs when done** with browser_close_tab. Don't leave 10+ tabs open.
+- **ALWAYS close tabs when done** with browser_close_tab after completing each task. Don't leave tabs open — close them immediately after extracting the data you need. Use browser_list_tabs to find and close all session tabs when a task is complete.
 - **Check existing tabs first** with browser_list_tabs before navigating — reuse tabs instead of opening duplicates.
 - **One task per tab** — navigate to a URL, do your work, then close or move on.
 - **Tell the user what you're doing** in the browser. "I'm navigating to Stripe to find the API key" not just silently calling tools.
@@ -183,7 +183,7 @@ If the extension files were updated, ask the user to reload it:
 You cannot navigate to chrome:// pages — the user must do this manually.`;
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.9.0' },
+  { name: 'agent360-browser', version: '1.10.0' },
   { capabilities: { tools: {} } },
   { instructions: INSTRUCTIONS },
 );
@@ -207,6 +207,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_press_key: 'press_key',
       browser_scroll: 'scroll',
       browser_hover: 'hover',
+      browser_fetch: 'fetch',
       browser_select_option: 'select_option',
       browser_handle_dialog: 'handle_dialog',
       browser_wait_for_network: 'wait_for_network',

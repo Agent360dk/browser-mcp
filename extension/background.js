@@ -925,6 +925,24 @@ async function dispatch(port, method, params) {
       }
     }
 
+    case 'fetch': {
+      // HTTP requests from background — NOT subject to CORS
+      const options = {
+        method: params.method || 'GET',
+        headers: params.headers || {},
+      };
+      if (params.body) options.body = typeof params.body === 'string' ? params.body : JSON.stringify(params.body);
+      try {
+        const resp = await fetch(params.url, options);
+        const text = await resp.text();
+        let json = null;
+        try { json = JSON.parse(text); } catch {}
+        return { ok: resp.ok, status: resp.status, body: json || text };
+      } catch (e) {
+        return { ok: false, error: e.message };
+      }
+    }
+
     case 'list_tabs': {
       // Return only this session's tabs
       const session = getSession(port);
