@@ -90,9 +90,10 @@ async function releaseSession(port) {
   const session = sessions.get(port);
   if (!session) return;
 
-  // Close all session tabs when session disconnects
+  // Detach debugger + close all session tabs
   const tabIds = [...session.tabIds];
   for (const tabId of tabIds) {
+    debuggerForceDetach(tabId);
     try {
       await chrome.tabs.remove(tabId);
     } catch {} // tab may already be closed
@@ -172,20 +173,43 @@ async function getSessionTab(port, activate = true) {
 
 // ── Chrome Debugger API Helpers (CSP-bypass for Google, Stripe, Slack) ─────
 
+// Track which tabs have debugger attached to avoid repeated attach/detach
+const debuggerAttached = new Set();
+
 async function debuggerAttach(tabId) {
+  if (debuggerAttached.has(tabId)) return;
   try {
     await chrome.debugger.attach({ tabId }, '1.3');
+    debuggerAttached.add(tabId);
   } catch (e) {
-    // Already attached is fine
-    if (!e.message?.includes('Already attached')) throw e;
+    if (e.message?.includes('Already attached')) {
+      debuggerAttached.add(tabId);
+    } else {
+      throw e;
+    }
   }
 }
 
 async function debuggerDetach(tabId) {
-  try {
-    await chrome.debugger.detach({ tabId });
-  } catch {} // Ignore — may already be detached
+  // Don't detach immediately — keep attached for subsequent commands.
+  // Will be cleaned up when tab closes or session ends.
 }
+
+function debuggerForceDetach(tabId) {
+  if (!debuggerAttached.has(tabId)) return;
+  debuggerAttached.delete(tabId);
+  try {
+    chrome.debugger.detach({ tabId });
+  } catch {}
+}
+
+// Clean up debugger + session refs when tabs close
+chrome.tabs.onRemoved.addListener((tabId) => {
+  debuggerAttached.delete(tabId);
+  for (const [, session] of sessions) {
+    session.tabIds.delete(tabId);
+  }
+});
 
 async function debuggerType(tabId, text) {
   await debuggerAttach(tabId);
@@ -522,12 +546,7 @@ chrome.tabs.onCreated.addListener((tab) => {
   lastCreatedTabId = tab.id;
 });
 
-// Clean up closed tabs from sessions
-chrome.tabs.onRemoved.addListener((tabId) => {
-  for (const [, session] of sessions) {
-    session.tabIds.delete(tabId);
-  }
-});
+// Clean up closed tabs from sessions (debugger cleanup is in the debugger section above)
 
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
@@ -537,12 +556,13 @@ async function dispatch(port, method, params) {
       const session = getSession(port);
       let tab = await getSessionTab(port);
 
-      if (tab.url === 'about:blank' || tab.url.startsWith('chrome://')) {
-        await chrome.tabs.update(tab.id, { url: params.url });
-      } else {
-        // Create new tab for new URL
-        tab = await chrome.tabs.create({ url: params.url, active: false });
+      // Always reuse the active tab — navigate in place, don't create new tabs
+      // Only create new tab if explicitly requested via new_tab param
+      if (params.new_tab) {
+        tab = await chrome.tabs.create({ url: params.url, active: true });
         await addTabToSession(port, tab.id);
+      } else {
+        await chrome.tabs.update(tab.id, { url: params.url });
       }
 
       // Wait for load
@@ -559,19 +579,6 @@ async function dispatch(port, method, params) {
 
       // Set as active tab for this session
       session.activeTabId = tab.id;
-
-      // Auto-close about:blank placeholder tabs in this session
-      for (const tabId of session.tabIds) {
-        if (tabId === tab.id) continue;
-        try {
-          const t = await chrome.tabs.get(tabId);
-          if (t.url === 'about:blank') {
-            await chrome.tabs.remove(tabId);
-            session.tabIds.delete(tabId);
-          }
-        } catch { session.tabIds.delete(tabId); }
-      }
-
       persistSessions();
       const updated = await chrome.tabs.get(tab.id);
       return { title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };

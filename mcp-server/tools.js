@@ -7,11 +7,12 @@
 export const TOOLS = [
   {
     name: 'browser_navigate',
-    description: 'Navigate the active browser tab to a URL. Returns page title and final URL after load.',
+    description: 'Navigate the active browser tab to a URL. Reuses the current tab by default (no tab spam). Pass new_tab=true only when you need to keep the current page open.',
     inputSchema: {
       type: 'object',
       properties: {
         url: { type: 'string', description: 'URL to navigate to' },
+        new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false)' },
       },
       required: ['url'],
     },
