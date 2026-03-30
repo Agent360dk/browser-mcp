@@ -10,50 +10,69 @@ Claude Code Session 2 ←(stdio)→ MCP Server (:9877) ←(WS)→  Chrome Extens
 Claude Code Session N ←(stdio)→ MCP Server (:9878) ←(WS)→
 ```
 
-## Setup
+## Quick Start
 
-### 1. Installer MCP server dependencies
 ```bash
-cd agent360/chrome-extension-mcp/mcp-server
+# 1. Clone repo
+git clone https://github.com/Agent360dk/browser-mcp.git
+cd browser-mcp
+
+# 2. Install MCP server dependencies
+cd mcp-server && npm install && cd ..
+
+# 3. Add to Claude Code
+claude mcp add agent360-browser $(which node) $(pwd)/mcp-server/index.js
+
+# 4. Load Chrome Extension
+#    chrome://extensions → Developer mode ON → Load unpacked → select browser-mcp/extension/
+
+# 5. Restart Claude Code
+```
+
+## Detailed Setup
+
+### 1. Clone and install
+```bash
+git clone https://github.com/Agent360dk/browser-mcp.git
+cd browser-mcp/mcp-server
 npm install
 ```
 
 ### 2. Load Chrome Extension
-1. Åbn `chrome://extensions`
-2. Slå **Developer mode** til (toggle øverst til højre)
-3. Klik **Load unpacked**
-4. Vælg mappen: `agent360/chrome-extension-mcp/extension/`
-5. Extension "Agent360 Browser MCP" dukker op med Agent360 ikon
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (toggle top-right)
+3. Click **Load unpacked**
+4. Select the `browser-mcp/extension/` folder
+5. "Agent360 Browser MCP" appears with the Agent360 icon
 
-### 3. Tilføj til Claude Code
+### 3. Add to Claude Code
 ```bash
-claude mcp add agent360-browser node /path/to/agent360/chrome-extension-mcp/mcp-server/index.js
+claude mcp add agent360-browser $(which node) /path/to/browser-mcp/mcp-server/index.js
 ```
 
-Eller manuelt i `~/.claude/mcp.json`:
+Or manually in your project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
     "agent360-browser": {
       "command": "node",
-      "args": ["/path/to/agent360/chrome-extension-mcp/mcp-server/index.js"]
+      "args": ["/path/to/browser-mcp/mcp-server/index.js"]
     }
   }
 }
 ```
 
-### 4. Fjern andre browser MCP'er
+### 4. Remove other browser MCPs
 
-Agent360 Browser MCP erstatter Playwright MCP, BrowserMCP, og lignende. Kør med **kun én browser MCP** for bedst performance — flere browser MCP'er skaber konflikter (duplikerede tool-navne, tab-kamp, uforudsigelig routing).
+Agent360 Browser MCP replaces Playwright MCP, BrowserMCP, and similar tools. Run with **only one browser MCP** for best performance — multiple browser MCPs cause conflicts (duplicate tool names, tab fighting, unpredictable routing).
 
-Fjern fra `~/.claude/mcp.json`:
 ```bash
 claude mcp remove Playwright
 claude mcp remove browsermcp
 ```
 
-### 5. Genstart Claude Code
-Luk og åbn Claude Code. MCP serveren starter automatisk og finder en ledig port (9876-9885). Extension auto-connecter inden for 2 sekunder.
+### 5. Restart Claude Code
+Close and reopen Claude Code. The MCP server starts automatically and finds a free port (9876-9885). The extension auto-connects within 2 seconds.
 
 ---
 
