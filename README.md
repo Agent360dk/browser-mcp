@@ -76,6 +76,60 @@ Close and reopen Claude Code. The MCP server starts automatically and finds a fr
 
 ---
 
+## Usage
+
+Once set up, Claude Code can control your browser directly. Just ask naturally:
+
+### Navigation & Reading
+```
+"Open railway.com and show me what's there"
+"Go to my Stripe dashboard and take a screenshot"
+"Read the page content on forbrugeragenten.dk"
+```
+
+### Clicking & Forms
+```
+"Click the Deploy button"
+"Fill in the email field with test@example.com"
+"Wait for the loading spinner to disappear"
+```
+
+### Authentication & Tokens
+```
+"Log into Railway and extract my API token"
+"Get the cookies from this domain"
+"Read localStorage for the auth token"
+```
+
+### Human-in-the-Loop
+```
+"Ask me to solve the CAPTCHA"
+"Ask the user for their 2FA code"
+```
+
+### Multi-Tab Workflows
+```
+"Open Stripe in one tab and Railway in another, then compare the data"
+"List my open tabs"
+"Switch to the Railway tab"
+```
+
+### Example: Deploy a Service
+```
+You: "Go to Railway, find the langfuse service, and click Deploy"
+
+Claude Code:
+1. browser_navigate → railway.com/project/...
+2. browser_screenshot → sees the dashboard
+3. browser_click → clicks the langfuse service
+4. browser_click → clicks Deploy button
+5. browser_screenshot → confirms deployment started
+```
+
+All 16 tools are available automatically — Claude Code picks the right one based on your request.
+
+---
+
 ## Multi-Session Support
 
 Hver Claude Code conversation starter sin egen MCP server på en unik port. Extensionen scanner automatisk for alle aktive servere.
