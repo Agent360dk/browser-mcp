@@ -152,47 +152,55 @@ Claude 2 (port 9877) 🟢
 
 ---
 
-## Tools (16 stk)
+## Tools (23 tools)
 
 ### Navigation & Content
-| Tool | Beskrivelse |
+| Tool | Description |
 |------|-------------|
-| `browser_navigate` | Navigér til URL (opretter tab i sessionens gruppe) |
-| `browser_get_page_content` | Hent sidens tekst eller HTML |
-| `browser_screenshot` | Screenshot af synlig side (PNG, jpeg fallback) |
-| `browser_execute_script` | Kør JavaScript i page context |
+| `browser_navigate` | Navigate to URL (reuses current tab, `new_tab=true` for new) |
+| `browser_get_page_content` | Get page text or HTML |
+| `browser_screenshot` | Screenshot of visible area (PNG, jpeg fallback) |
+| `browser_execute_script` | Run JavaScript in page context |
+| `browser_scroll` | Scroll to element or by pixel amount |
 
-### Interaktion
-| Tool | Beskrivelse |
+### Interaction
+| Tool | Description |
 |------|-------------|
-| `browser_click` | Klik element via CSS selector |
-| `browser_fill` | Udfyld input-felt med værdi |
-| `browser_wait` | Vent på element (CSS selector, timeout) |
+| `browser_click` | Click via CSS selector or text (`"button:text(Submit)"`, `"text=Click me"`) |
+| `browser_fill` | Fill input field (auto-scrolls, works on CSP-strict sites) |
+| `browser_hover` | Hover to trigger tooltips, dropdowns, hover states |
+| `browser_press_key` | Press keyboard key (Enter, Tab, Escape, arrows, with modifiers) |
+| `browser_select_option` | Select from dropdown (native `<select>` and custom dropdowns) |
+| `browser_wait` | Wait for element to appear (CSS/text selector, timeout) |
+| `browser_handle_dialog` | Handle alert(), confirm(), prompt() dialogs |
+| `browser_wait_for_network` | Wait for API call to complete (monitors real network traffic) |
 
 ### Tabs & Frames
-| Tool | Beskrivelse |
+| Tool | Description |
 |------|-------------|
-| `browser_list_tabs` | Sessionens egne tabs |
-| `browser_switch_tab` | Skift til tab via ID (kun egne tabs) |
-| `browser_get_new_tab` | Hent senest åbnede tab (OAuth popups) |
-| `browser_list_frames` | Liste over iframes på siden |
-| `browser_select_frame` | Kør JS i specifik iframe |
+| `browser_list_tabs` | List session's tabs |
+| `browser_switch_tab` | Switch to tab by ID |
+| `browser_close_tab` | Close a tab by ID |
+| `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
+| `browser_list_frames` | List iframes on page |
+| `browser_select_frame` | Run JS in specific iframe |
 
-### Data
-| Tool | Beskrivelse |
+### Data & Auth
+| Tool | Description |
 |------|-------------|
-| `browser_get_cookies` | Hent cookies for domæne |
-| `browser_get_local_storage` | Læs localStorage fra aktiv side |
-| `browser_extract_token` | Navigér til provider dashboard + extract API token |
+| `browser_get_cookies` | Get cookies for domain |
+| `browser_get_local_storage` | Read localStorage |
+| `browser_extract_token` | Navigate to provider dashboard + extract API token |
+| `browser_fetch` | HTTP request from extension (no CORS restrictions) |
 
 ### Human-in-the-Loop
-| Tool | Beskrivelse |
+| Tool | Description |
 |------|-------------|
-| `browser_ask_user` | Vis overlay-dialog til brugeren — 2FA, CAPTCHA, credentials, input |
+| `browser_ask_user` | Overlay dialog — 2FA, CAPTCHA, credentials, any input |
 
-`browser_ask_user` kan vise:
-- **Simpel bekræftelse:** "Løs venligst CAPTCHA'en" → Done/Skip knapper
-- **Input fields:** Email, password, API key felter → returnerer brugerens svar
+`browser_ask_user` supports:
+- **Simple confirmation:** "Please solve the CAPTCHA" → Done/Skip buttons
+- **Input fields:** Email, password, API key fields → returns user responses
 
 ---
 
