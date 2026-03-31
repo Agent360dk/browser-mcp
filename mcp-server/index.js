@@ -171,10 +171,25 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - browser_press_key("ArrowDown") — navigate dropdowns
 - browser_press_key("a", ctrl=true) — select all
 
+## CAPTCHA handling
+- After navigate, check the response for captcha_detected field
+- If captcha_detected is set, use browser_ask_user: "A CAPTCHA was detected on this page. Please solve it in the browser, then click Done."
+- After user solves it, retry the navigation or continue with the page
+
+## OAuth popups
+- OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group
+- Use browser_get_new_tab to access them, or they'll become your active tab automatically
+
+## Shadow DOM (Shopify, Salesforce, etc.)
+- CSS selectors automatically search inside shadow DOM
+- If a standard selector fails, the extension recursively searches shadow roots
+- Text-based selectors ("text=Submit") also traverse shadow DOM
+
 ## When things fail
 - Element not found → try text-based selector instead of CSS
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
+- CAPTCHA blocks page → use browser_ask_user, let human solve it
 
 ## Extension updates
 The MCP server auto-pulls the latest code from git on every new session startup.
@@ -183,7 +198,7 @@ If the extension files were updated, ask the user to reload it:
 You cannot navigate to chrome:// pages — the user must do this manually.`;
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.11.0' },
+  { name: 'agent360-browser', version: '1.12.0' },
   { capabilities: { tools: {} } },
   { instructions: INSTRUCTIONS },
 );

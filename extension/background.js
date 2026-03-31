@@ -421,19 +421,41 @@ async function resolveElement(tabId, selectorStr) {
   const parsed = parseSelector(selectorStr);
 
   if (parsed.type === 'css') {
-    // Standard CSS — try executeScript first, debugger fallback
-    const scriptResult = await safeExecuteScript(tabId, (sel) => {
-      const el = document.querySelector(sel);
+    // Standard CSS with shadow DOM traversal — try executeScript first, debugger fallback
+    const deepQueryFn = (sel) => {
+      function queryDeep(root, s) {
+        const el = root.querySelector(s);
+        if (el) return el;
+        for (const node of root.querySelectorAll('*')) {
+          if (node.shadowRoot) {
+            const found = queryDeep(node.shadowRoot, s);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+      const el = queryDeep(document, sel);
       if (!el) return null;
       el.scrollIntoView({ block: 'center', behavior: 'instant' });
       const r = el.getBoundingClientRect();
       return { x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName, found: true };
-    }, [parsed.selector]);
+    };
+
+    const scriptResult = await safeExecuteScript(tabId, deepQueryFn, [parsed.selector]);
 
     if (scriptResult.cspBlocked) {
+      const sel = JSON.stringify(parsed.selector);
       const result = await debuggerEval(tabId, `
         (function() {
-          const el = document.querySelector(${JSON.stringify(parsed.selector)});
+          function queryDeep(root, s) {
+            const el = root.querySelector(s);
+            if (el) return el;
+            for (const node of root.querySelectorAll('*')) {
+              if (node.shadowRoot) { const f = queryDeep(node.shadowRoot, s); if (f) return f; }
+            }
+            return null;
+          }
+          const el = queryDeep(document, ${sel});
           if (!el) return null;
           el.scrollIntoView({ block: 'center', behavior: 'instant' });
           const r = el.getBoundingClientRect();
@@ -537,16 +559,67 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-// ── Popup tracking (for OAuth flows) ────────────────────────────────────────
+// ── OAuth Popup Interception ─────────────────────────────────────────────────
+
+const OAUTH_DOMAINS = ['accounts.google.com', 'login.microsoftonline.com', 'github.com/login/oauth', 'slack.com/oauth', 'app.hubspot.com/oauth'];
 
 let lastCreatedTabId = null;
-let lastCreatedTabPort = null;
 
-chrome.tabs.onCreated.addListener((tab) => {
+chrome.tabs.onCreated.addListener(async (tab) => {
   lastCreatedTabId = tab.id;
+
+  // Auto-claim OAuth popups for the session that opened them
+  if (tab.pendingUrl || tab.url) {
+    const url = tab.pendingUrl || tab.url;
+    const isOAuth = OAUTH_DOMAINS.some(d => url.includes(d));
+    if (isOAuth) {
+      for (const [port, session] of sessions) {
+        if (tab.openerTabId && session.tabIds.has(tab.openerTabId)) {
+          await addTabToSession(port, tab.id);
+          session.activeTabId = tab.id;
+          persistSessions();
+          break;
+        }
+      }
+    }
+  }
 });
 
-// Clean up closed tabs from sessions (debugger cleanup is in the debugger section above)
+// ── CAPTCHA Detection ────────────────────────────────────────────────────────
+
+async function detectCaptcha(tabId) {
+  try {
+    return await debuggerEval(tabId, `
+      (function() {
+        if (document.querySelector('iframe[src*="hcaptcha.com"]') || document.querySelector('.h-captcha')) return 'hcaptcha';
+        if (document.querySelector('iframe[src*="recaptcha"]') || document.querySelector('.g-recaptcha')) return 'recaptcha';
+        if (document.querySelector('iframe[src*="challenges.cloudflare.com"]') || document.querySelector('.cf-turnstile')) return 'turnstile';
+        if (document.documentElement.innerHTML.includes('challenge-platform')) return 'challenge';
+        return null;
+      })()
+    `);
+  } catch { return null; }
+}
+
+// ── Deep Shadow DOM Query ────────────────────────────────────────────────────
+// querySelectorDeep: finds elements inside shadow DOMs (Shopify, Salesforce, etc.)
+
+function buildDeepQueryJS(selector) {
+  return `(function() {
+    function queryDeep(root, sel) {
+      const el = root.querySelector(sel);
+      if (el) return el;
+      for (const node of root.querySelectorAll('*')) {
+        if (node.shadowRoot) {
+          const found = queryDeep(node.shadowRoot, sel);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    return queryDeep(document, ${JSON.stringify(selector)});
+  })()`;
+}
 
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
@@ -581,7 +654,15 @@ async function dispatch(port, method, params) {
       session.activeTabId = tab.id;
       persistSessions();
       const updated = await chrome.tabs.get(tab.id);
-      return { title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
+
+      // Check for CAPTCHA after navigation
+      const captcha = await detectCaptcha(tab.id);
+      const result = { title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
+      if (captcha) {
+        result.captcha_detected = captcha;
+        result.hint = `CAPTCHA (${captcha}) detected. Use browser_ask_user to ask the user to solve it, then retry.`;
+      }
+      return result;
     }
 
     case 'get_page_content': {
@@ -672,25 +753,23 @@ async function dispatch(port, method, params) {
         return { ok: true, method: 'debugger' };
       }
 
-      // CSS selector — try executeScript first (faster on non-CSP sites)
-      const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
-        const el = document.querySelector(sel);
-        if (!el) return { ok: false, error: 'Element not found: ' + sel };
-        el.scrollIntoView({ block: 'center', behavior: 'instant' });
-        el.focus();
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        return { ok: true };
-      }, [parsed.selector, params.value]);
-
-      if (!scriptResult.cspBlocked) return scriptResult.result;
-
-      // CSP blocked — use debugger
+      // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         await debuggerFill(tab.id, parsed.selector, params.value);
         return { ok: true, method: 'debugger' };
       } catch (e) {
+        // Fallback to executeScript if debugger fails
+        const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
+          const el = document.querySelector(sel);
+          if (!el) return { ok: false, error: 'Element not found: ' + sel };
+          el.scrollIntoView({ block: 'center', behavior: 'instant' });
+          el.focus();
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return { ok: true };
+        }, [parsed.selector, params.value]);
+        if (!scriptResult.cspBlocked) return scriptResult.result;
         return { ok: false, error: e.message, method: 'debugger' };
       }
     }
