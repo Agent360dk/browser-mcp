@@ -679,28 +679,26 @@ async function dispatch(port, method, params) {
     }
 
     case 'screenshot': {
-      const tab = await getSessionTab(port); // auto-activates
+      const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot screenshot chrome:// pages');
+      // Use debugger Page.captureScreenshot as PRIMARY method.
+      // captureVisibleTab requires active tab in active window — fails when
+      // user is in terminal. Debugger works regardless of tab focus.
       try {
-        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-        return { image: dataUrl };
+        await debuggerAttach(tab.id);
+        const { data } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', {
+          format: 'png',
+        });
+        return { image: 'data:image/png;base64,' + data };
       } catch {
+        // Debugger failed — fall back to captureVisibleTab (needs active tab)
         try {
-          const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 90 });
+          await chrome.tabs.update(tab.id, { active: true });
+          await new Promise(r => setTimeout(r, 150));
+          const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
           return { image: dataUrl };
-        } catch {
-          // captureVisibleTab failed — fall back to debugger Page.captureScreenshot
-          try {
-            await debuggerAttach(tab.id);
-            const { data } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', {
-              format: 'png',
-            });
-            await debuggerDetach(tab.id);
-            return { image: 'data:image/png;base64,' + data };
-          } catch (e) {
-            await debuggerDetach(tab.id).catch(() => {});
-            throw new Error('Screenshot failed: ' + e.message);
-          }
+        } catch (e) {
+          throw new Error('Screenshot failed: ' + e.message);
         }
       }
     }
