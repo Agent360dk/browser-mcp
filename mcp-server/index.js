@@ -50,13 +50,16 @@ const BASE_PORT = 9876;
 const MAX_PORT = 9885;
 let extensionSocket = null;
 let activePort = null;
+let wss = null; // Track WSS for graceful shutdown
 let cmdId = 0;
+let lastActivity = Date.now();
 const pending = new Map();
 
 // ── WebSocket Server ───────────────────────────────────────────────────────
 
 function createWSS(port = BASE_PORT) {
   const server = new WebSocketServer({ host: '127.0.0.1', port });
+  wss = server;
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -100,10 +103,14 @@ function createWSS(port = BASE_PORT) {
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
   });
 
-  // Heartbeat
+  // Heartbeat + idle timeout (4 hours)
   setInterval(() => {
     if (extensionSocket && extensionSocket.readyState === 1) {
       extensionSocket.ping();
+    }
+    if (Date.now() - lastActivity > 4 * 60 * 60 * 1000) {
+      process.stderr.write('[MCP] Idle timeout (4h) — shutting down\n');
+      process.exit(0);
     }
   }, 20000);
 }
@@ -209,6 +216,7 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
+  lastActivity = Date.now();
 
   try {
     const methodMap = {
@@ -313,7 +321,14 @@ async function handleExtractToken(args) {
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
 process.on('exit', () => {
-  if (extensionSocket) extensionSocket.close();
+  if (wss) try { wss.close(); } catch {}
+  if (extensionSocket) try { extensionSocket.close(); } catch {}
+});
+
+// Detect Claude Code exit (stdin closes when conversation ends)
+process.stdin.on('end', () => {
+  process.stderr.write('[MCP] stdin closed — shutting down\n');
+  process.exit(0);
 });
 
 const transport = new StdioServerTransport();

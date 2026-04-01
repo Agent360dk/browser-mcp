@@ -1,11 +1,39 @@
 {
-  "name": "agent360-browser-mcp",
-  "version": "1.0.0",
-  "description": "MCP server that bridges Claude Code to a real Chrome browser via WebSocket",
+  "name": "@agent360/browser-mcp",
+  "version": "1.13.0",
+  "description": "Browser MCP — control your real Chrome from Claude Code. Multi-session, human-in-the-loop, 21 tools.",
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "browser-mcp": "./bin/cli.js"
+  },
+  "files": [
+    "index.js",
+    "tools.js",
+    "bin/",
+    "extension/",
+    "README.md"
+  ],
   "scripts": {
     "start": "node index.js"
+  },
+  "keywords": [
+    "mcp",
+    "browser",
+    "chrome",
+    "claude",
+    "claude-code",
+    "automation",
+    "ai-agent",
+    "browser-automation",
+    "model-context-protocol"
+  ],
+  "author": "Agent360 <hello@agent360.dk>",
+  "license": "MIT",
+  "homepage": "https://github.com/Agent360dk/browser-mcp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Agent360dk/browser-mcp.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",
