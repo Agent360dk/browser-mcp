@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser MCP by Agent360 — Control your real Chrome from AI</title>
+  <meta name="description" content="The only browser MCP with CAPTCHA solving, multi-session support, and human-in-the-loop. 25 tools. Free and open source.">
+  <meta property="og:title" content="Browser MCP by Agent360">
+  <meta property="og:description" content="Control your real Chrome from Claude Code. CAPTCHA solving, 25 tools, multi-session.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://browsermcp.dev">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌐</text></svg>">
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --purple: #bc8cff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Hero */
+    .hero { max-width: 900px; margin: 0 auto; padding: 80px 24px 40px; text-align: center; }
+    .hero h1 { font-size: 48px; font-weight: 800; letter-spacing: -1px; margin-bottom: 16px; }
+    .hero h1 span { color: var(--accent); }
+    .hero .sub { font-size: 20px; color: var(--muted); max-width: 600px; margin: 0 auto 32px; }
+    .badge { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 16px; font-size: 14px; color: var(--green); margin-bottom: 24px; }
+
+    /* Install */
+    .install { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; max-width: 600px; margin: 0 auto 48px; padding: 20px 24px; font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace; font-size: 16px; display: flex; align-items: center; justify-content: space-between; }
+    .install code { color: var(--green); }
+    .install button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    .install button:hover { opacity: 0.9; }
+
+    /* Video */
+    .video-wrap { max-width: 800px; margin: 0 auto 64px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    .video-wrap video { width: 100%; display: block; }
+
+    /* Features */
+    .features { max-width: 900px; margin: 0 auto 64px; padding: 0 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px; }
+    .feature { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+    .feature .icon { font-size: 32px; margin-bottom: 12px; }
+    .feature h3 { font-size: 18px; margin-bottom: 8px; }
+    .feature p { font-size: 14px; color: var(--muted); }
+
+    /* Comparison */
+    .comparison { max-width: 900px; margin: 0 auto 64px; padding: 0 24px; }
+    .comparison h2 { text-align: center; font-size: 32px; margin-bottom: 32px; }
+    .comparison table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .comparison th { text-align: left; padding: 12px 16px; border-bottom: 2px solid var(--border); color: var(--muted); font-weight: 600; }
+    .comparison td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .comparison tr:hover td { background: var(--surface); }
+    .check { color: var(--green); }
+    .cross { color: #f85149; }
+
+    /* CTA */
+    .cta { text-align: center; padding: 64px 24px; }
+    .cta h2 { font-size: 32px; margin-bottom: 16px; }
+    .cta p { color: var(--muted); margin-bottom: 24px; }
+    .cta .buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .cta .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+    /* Footer */
+    footer { text-align: center; padding: 40px 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
+
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 32px; }
+      .install { font-size: 13px; flex-direction: column; gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="badge">Open Source &middot; MIT License &middot; Free</div>
+  <h1>Your AI can't use a browser.<br><span>Until now.</span></h1>
+  <p class="sub">Browser MCP controls your real Chrome from Claude Code &mdash; with your logins, cookies, and 2FA. The only browser MCP with CAPTCHA solving.</p>
+</section>
+
+<div class="install">
+  <code>npx @agent360/browser-mcp install</code>
+  <button onclick="navigator.clipboard.writeText('npx @agent360/browser-mcp install')">Copy</button>
+</div>
+
+<div class="video-wrap">
+  <video autoplay loop muted playsinline>
+    <source src="https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.mp4" type="video/mp4">
+  </video>
+</div>
+
+<section class="features">
+  <div class="feature">
+    <div class="icon">🧩</div>
+    <h3>CAPTCHA Solving</h3>
+    <p>Auto-detects reCAPTCHA, hCaptcha, Turnstile. Auto-clicks checkbox, AI vision for image grids, human fallback.</p>
+  </div>
+  <div class="feature">
+    <div class="icon">🔀</div>
+    <h3>10 Concurrent Sessions</h3>
+    <p>Each Claude Code conversation gets its own color-coded Chrome Tab Group. No conflicts.</p>
+  </div>
+  <div class="feature">
+    <div class="icon">🔐</div>
+    <h3>Human-in-the-Loop</h3>
+    <p>browser_ask_user shows an overlay for 2FA codes, CAPTCHA, credentials. Your AI asks, you answer.</p>
+  </div>
+  <div class="feature">
+    <div class="icon">🔗</div>
+    <h3>9 Provider Integrations</h3>
+    <p>Built-in token extraction for Stripe, HubSpot, Slack, Shopify, Google, LinkedIn, and more.</p>
+  </div>
+  <div class="feature">
+    <div class="icon">🛡️</div>
+    <h3>CSP Bypass via Debugger</h3>
+    <p>Chrome Debugger API for real mouse/keyboard events. Works on Google Cloud, Stripe, Angular Material.</p>
+  </div>
+  <div class="feature">
+    <div class="icon">📡</div>
+    <h3>25 Tools</h3>
+    <p>Navigate, click, fill, screenshot, scroll, hover, fetch, wait for network, solve CAPTCHA, and more.</p>
+  </div>
+</section>
+
+<section class="comparison">
+  <h2>Why Browser MCP?</h2>
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th>Browser MCP</th>
+        <th>Playwright MCP</th>
+        <th>BrowserMCP.io</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Browser</td>
+        <td>Your real Chrome</td>
+        <td>Headless (new session)</td>
+        <td>Your real Chrome</td>
+      </tr>
+      <tr>
+        <td>Already logged in</td>
+        <td><span class="check">Yes</span></td>
+        <td><span class="cross">No</span></td>
+        <td><span class="check">Yes</span></td>
+      </tr>
+      <tr>
+        <td>CAPTCHA solving</td>
+        <td><span class="check">AI + auto-click + human</span></td>
+        <td><span class="cross">None</span></td>
+        <td><span class="cross">None</span></td>
+      </tr>
+      <tr>
+        <td>Multi-session</td>
+        <td><span class="check">10 concurrent</span></td>
+        <td><span class="cross">Single</span></td>
+        <td><span class="cross">Single</span></td>
+      </tr>
+      <tr>
+        <td>Human-in-the-loop</td>
+        <td><span class="check">browser_ask_user</span></td>
+        <td><span class="cross">None</span></td>
+        <td><span class="cross">None</span></td>
+      </tr>
+      <tr>
+        <td>Provider integrations</td>
+        <td><span class="check">9 built-in</span></td>
+        <td><span class="cross">None</span></td>
+        <td><span class="cross">None</span></td>
+      </tr>
+      <tr>
+        <td>Install</td>
+        <td><code>npx @agent360/browser-mcp install</code></td>
+        <td><code>npx @anthropic-ai/mcp-playwright</code></td>
+        <td>Manual clone</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="cta">
+  <h2>Get started in 30 seconds</h2>
+  <p>One command. Your Chrome. Your AI's hands.</p>
+  <div class="buttons">
+    <a href="https://github.com/Agent360dk/browser-mcp" class="btn btn-primary">
+      <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+    <a href="https://www.npmjs.com/package/@agent360/browser-mcp" class="btn btn-secondary">npm</a>
+    <a href="https://agent360.dk" class="btn btn-secondary">by Agent360</a>
+  </div>
+</section>
+
+<footer>
+  Browser MCP by <a href="https://agent360.dk">Agent360</a> &middot; MIT License &middot; <a href="https://github.com/Agent360dk/browser-mcp">GitHub</a>
+</footer>
+
+</body>
+</html>
