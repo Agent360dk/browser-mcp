@@ -4,7 +4,7 @@
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 9 more).
+The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 24 tools total.
 
 ## Install
 
@@ -20,7 +20,7 @@ Then load the extension in Chrome:
 3. Click **Load unpacked** → select `~/.browser-mcp/extension/`
 4. Restart Claude Code
 
-That's it. 21 browser tools are now available in Claude Code.
+That's it. 24 browser tools are now available in Claude Code.
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
@@ -30,14 +30,14 @@ That's it. 21 browser tools are now available in Claude Code.
 | **Logins/cookies** | Already authenticated | Must log in every time | Already authenticated |
 | **Multi-session** | 10 concurrent sessions with color-coded tab groups | Single session | Single session |
 | **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
-| **Provider integrations** | 12 built-in (Stripe, HubSpot, Slack...) | None | None |
+| **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
 | **CSP-strict sites** | Chrome Debugger API throughout | Works (headless) | Limited |
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
 
-## 21 Tools
+## 24 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -112,8 +112,6 @@ Claude Session 3 ←(stdio)→ MCP :9878 ←(WS)→
 | Mailchimp | `...-us1` | admin.mailchimp.com |
 | Google | OAuth Client | console.cloud.google.com |
 | LinkedIn | Client ID/Secret | linkedin.com/developers |
-| Facebook | `EAA...` | developers.facebook.com |
-| Instagram | Via Facebook | developers.facebook.com |
 
 ## Architecture
 

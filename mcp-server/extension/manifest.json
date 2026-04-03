@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Agent360 Browser MCP",
   "version": "1.14.0",
-  "description": "Lader Claude Code styre din browser — forbind tjenester, hent tokens, automatisér workflows. Multi-session support.",
+  "description": "Control your real Chrome from Claude Code — navigate, click, fill, screenshot, solve CAPTCHAs. 24 tools, multi-session, human-in-the-loop.",
   "permissions": [
     "tabs",
     "tabGroups",

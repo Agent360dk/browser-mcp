@@ -1,7 +1,7 @@
 {
   "name": "@agent360/browser-mcp",
-  "version": "1.13.0",
-  "description": "Browser MCP — control your real Chrome from Claude Code. Multi-session, human-in-the-loop, 21 tools.",
+  "version": "1.14.0",
+  "description": "Browser MCP — control your real Chrome from Claude Code. Multi-session, human-in-the-loop, 24 tools.",
   "type": "module",
   "main": "index.js",
   "bin": {
