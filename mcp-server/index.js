@@ -260,7 +260,8 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
 
-    const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 : 30000;
+    const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
+                    method === 'solve_captcha' ? 60000 : 30000;
     const result = await sendToExtension(method, args || {}, timeout);
 
     if (name === 'browser_screenshot' && result?.image) {

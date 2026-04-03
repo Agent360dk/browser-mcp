@@ -1453,8 +1453,15 @@ async function clickCaptchaGridCells(tabId, cells) {
     const rows = cols;
     const cellSize = gridSize / cols;
 
+    const maxCell = cols * rows - 1;
+    const validCells = cells.filter(c => c >= 0 && c <= maxCell);
+    if (!validCells.length) {
+      await debuggerDetach(tabId);
+      return { clicked: false, error: `All cell indices out of bounds. Grid is ${cols}x${rows}, valid range: 0-${maxCell}` };
+    }
+
     const clicked = [];
-    for (const cell of cells) {
+    for (const cell of validCells) {
       const row = Math.floor(cell / cols);
       const col = cell % cols;
       const x = Math.round(gridLeft + col * cellSize + cellSize / 2);

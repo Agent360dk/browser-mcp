@@ -1,10 +1,16 @@
 # Browser MCP by Agent360
 
+[![npm version](https://img.shields.io/npm/v/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
+[![npm downloads](https://img.shields.io/npm/dw/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
+[![GitHub stars](https://img.shields.io/github/stars/Agent360dk/browser-mcp)](https://github.com/Agent360dk/browser-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
+
 **Control your real Chrome from Claude Code — with your logins, cookies, and 2FA.**
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 24 tools total.
+The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 25 tools total.
 
 ## Install
 
@@ -20,7 +26,7 @@ Then load the extension in Chrome:
 3. Click **Load unpacked** → select `~/.browser-mcp/extension/`
 4. Restart Claude Code
 
-That's it. 24 browser tools are now available in Claude Code.
+That's it. 25 browser tools are now available in Claude Code.
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
@@ -37,7 +43,7 @@ That's it. 24 browser tools are now available in Claude Code.
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
 
-## 24 Tools
+## 25 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -77,6 +83,11 @@ That's it. 24 browser tools are now available in Claude Code.
 | `browser_fetch` | HTTP request from extension (bypasses CORS) |
 | `browser_wait_for_network` | Wait for specific API call to complete |
 | `browser_extract_token` | Navigate to provider dashboard + extract API token |
+
+### CAPTCHA Solving
+| Tool | Description |
+|------|-------------|
+| `browser_solve_captcha` | Detect and solve CAPTCHAs. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (auto-click, ~80% pass with Google login), `click_grid` (AI vision guided), `ask_human` (fallback) |
 
 ### Human-in-the-Loop
 | Tool | Description |

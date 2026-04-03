@@ -1,7 +1,7 @@
 {
   "name": "@agent360/browser-mcp",
   "version": "1.14.0",
-  "description": "Browser MCP — control your real Chrome from Claude Code. Multi-session, human-in-the-loop, 24 tools.",
+  "description": "Browser MCP — control your real Chrome from Claude Code. 25 tools, CAPTCHA solving, multi-session, human-in-the-loop.",
   "type": "module",
   "main": "index.js",
   "bin": {
@@ -19,18 +19,29 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "browser",
+    "browser-mcp",
+    "browser-automation",
     "chrome",
+    "chrome-extension",
     "claude",
     "claude-code",
-    "automation",
     "ai-agent",
-    "browser-automation",
-    "model-context-protocol"
+    "captcha",
+    "captcha-solver",
+    "human-in-the-loop",
+    "web-automation",
+    "playwright-alternative",
+    "selenium-alternative"
   ],
+  "engines": {
+    "node": ">=18"
+  },
   "author": "Agent360 <hello@agent360.dk>",
   "license": "MIT",
-  "homepage": "https://github.com/Agent360dk/browser-mcp",
+  "homepage": "https://browsermcp.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/Agent360dk/browser-mcp.git"
