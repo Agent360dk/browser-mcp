@@ -1262,8 +1262,232 @@ async function dispatch(port, method, params) {
       return { ok: true, remaining: session.tabIds.size };
     }
 
+    case 'solve_captcha': {
+      const tab = await getSessionTab(port);
+      const action = params.action || 'detect';
+
+      // ── Detect CAPTCHA on page ──
+      if (action === 'detect') {
+        const detection = await detectCaptcha(tab.id);
+        return detection;
+      }
+
+      // ── Auto-click reCAPTCHA checkbox ──
+      if (action === 'click_checkbox') {
+        const result = await clickRecaptchaCheckbox(tab.id);
+        // Wait for challenge or pass
+        await new Promise(r => setTimeout(r, 2500));
+        // Re-detect to see if it passed or image challenge appeared
+        const after = await detectCaptcha(tab.id);
+        return { ...result, after };
+      }
+
+      // ── Click specific grid cells (AI vision guided) ──
+      if (action === 'click_grid') {
+        const cells = params.cells || [];
+        if (!cells.length) return { error: 'No cells specified' };
+        const result = await clickCaptchaGridCells(tab.id, cells);
+        return result;
+      }
+
+      // ── Human fallback ──
+      if (action === 'ask_human') {
+        return { method: 'human', instructions: 'Call browser_ask_user with message: "A CAPTCHA needs to be solved. Please solve it in the browser and click Done when finished."' };
+      }
+
+      return { error: 'Unknown action: ' + action };
+    }
+
     default:
       throw new Error('Unknown method: ' + method);
+  }
+}
+
+// ── CAPTCHA Detection & Solving Helpers ─────────────────────────────────────
+
+async function detectCaptcha(tabId) {
+  try {
+    await debuggerAttach(tabId);
+    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: `(() => {
+        const res = { found: false, types: [] };
+
+        // reCAPTCHA v2 — checkbox iframe
+        const recaptchaAnchor = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+        if (recaptchaAnchor) {
+          res.found = true;
+          res.types.push('recaptcha_v2_checkbox');
+          const container = document.querySelector('.g-recaptcha');
+          if (container) res.sitekey = container.getAttribute('data-sitekey');
+        }
+
+        // reCAPTCHA v2 — image challenge iframe
+        const recaptchaChallenge = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+        if (recaptchaChallenge) {
+          res.found = true;
+          if (!res.types.includes('recaptcha_v2_checkbox')) res.types.push('recaptcha_v2_image');
+          res.types.push('recaptcha_v2_challenge_visible');
+          // Get iframe dimensions for grid clicking
+          const rect = recaptchaChallenge.getBoundingClientRect();
+          res.challengeFrame = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }
+
+        // reCAPTCHA v3 — invisible badge
+        const recaptchaV3 = document.querySelector('.grecaptcha-badge');
+        if (recaptchaV3 && !recaptchaAnchor) {
+          res.found = true;
+          res.types.push('recaptcha_v3_invisible');
+          res.note = 'reCAPTCHA v3 is invisible and score-based. Real Chrome with Google login usually passes automatically. No action needed.';
+        }
+
+        // hCaptcha
+        const hcaptcha = document.querySelector('iframe[src*="hcaptcha.com"], .h-captcha');
+        if (hcaptcha) {
+          res.found = true;
+          res.types.push('hcaptcha');
+          const container = document.querySelector('.h-captcha');
+          if (container) res.sitekey = container.getAttribute('data-sitekey');
+        }
+
+        // Cloudflare Turnstile
+        const turnstile = document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile');
+        if (turnstile) {
+          res.found = true;
+          res.types.push('cloudflare_turnstile');
+          const container = document.querySelector('.cf-turnstile');
+          if (container) res.sitekey = container.getAttribute('data-sitekey');
+        }
+
+        // Cloudflare challenge page (5-second interstitial)
+        if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
+          res.found = true;
+          res.types.push('cloudflare_challenge_page');
+          res.note = 'Cloudflare challenge page. Wait 5-10 seconds — real Chrome usually passes automatically.';
+        }
+
+        // FunCaptcha / Arkose Labs
+        const funcaptcha = document.querySelector('#FunCaptcha, iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
+        if (funcaptcha) {
+          res.found = true;
+          res.types.push('funcaptcha');
+        }
+
+        if (!res.found) res.note = 'No CAPTCHA detected on this page.';
+        res.pageUrl = window.location.href;
+        return JSON.stringify(res);
+      })()`,
+      returnByValue: true,
+    });
+    await debuggerDetach(tabId);
+    return JSON.parse(result.value);
+  } catch (e) {
+    try { await debuggerDetach(tabId); } catch {}
+    return { found: false, error: e.message };
+  }
+}
+
+async function clickRecaptchaCheckbox(tabId) {
+  try {
+    await debuggerAttach(tabId);
+    // Find the reCAPTCHA anchor iframe position
+    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: `(() => {
+        const iframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+        if (!iframe) return JSON.stringify({ found: false });
+        const rect = iframe.getBoundingClientRect();
+        // Checkbox is roughly at 27,30 inside the iframe (standard reCAPTCHA layout)
+        return JSON.stringify({ found: true, x: rect.x + 27, y: rect.y + 30 });
+      })()`,
+      returnByValue: true,
+    });
+    const pos = JSON.parse(result.value);
+    if (!pos.found) {
+      await debuggerDetach(tabId);
+      return { clicked: false, reason: 'reCAPTCHA checkbox iframe not found' };
+    }
+
+    // Click the checkbox using real mouse events
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: pos.x, y: pos.y,
+    });
+    await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
+    });
+    await debuggerDetach(tabId);
+    return { clicked: true, position: pos, note: 'Checkbox clicked. Wait 2-3 seconds then re-detect to check if passed or image challenge appeared.' };
+  } catch (e) {
+    try { await debuggerDetach(tabId); } catch {}
+    return { clicked: false, error: e.message };
+  }
+}
+
+async function clickCaptchaGridCells(tabId, cells) {
+  try {
+    await debuggerAttach(tabId);
+    // Find the challenge iframe position and dimensions
+    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: `(() => {
+        const iframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
+        if (!iframe) return JSON.stringify({ found: false });
+        const rect = iframe.getBoundingClientRect();
+        return JSON.stringify({ found: true, x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+      })()`,
+      returnByValue: true,
+    });
+    const frame = JSON.parse(result.value);
+    if (!frame.found) {
+      await debuggerDetach(tabId);
+      return { clicked: false, reason: 'Challenge iframe not found. Take a screenshot to verify CAPTCHA state.' };
+    }
+
+    // Determine grid size — reCAPTCHA uses 3x3 or 4x4 grids
+    // The image grid starts ~100px from top of iframe, and is roughly square
+    const gridTop = frame.y + 100;
+    const gridLeft = frame.x + 14;
+    const gridSize = frame.width - 28; // padding on each side
+    const cols = cells.some(c => c >= 9) ? 4 : 3;
+    const rows = cols;
+    const cellSize = gridSize / cols;
+
+    const clicked = [];
+    for (const cell of cells) {
+      const row = Math.floor(cell / cols);
+      const col = cell % cols;
+      const x = Math.round(gridLeft + col * cellSize + cellSize / 2);
+      const y = Math.round(gridTop + row * cellSize + cellSize / 2);
+
+      // Human-like click with small random offset
+      const ox = x + Math.round((Math.random() - 0.5) * cellSize * 0.3);
+      const oy = y + Math.round((Math.random() - 0.5) * cellSize * 0.3);
+
+      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+        type: 'mouseMoved', x: ox, y: oy,
+      });
+      await new Promise(r => setTimeout(r, 150 + Math.random() * 300));
+      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+        type: 'mousePressed', x: ox, y: oy, button: 'left', clickCount: 1,
+      });
+      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x: ox, y: oy, button: 'left', clickCount: 1,
+      });
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 400));
+      clicked.push({ cell, row, col, x: ox, y: oy });
+    }
+
+    await debuggerDetach(tabId);
+    return {
+      clicked: true,
+      cells: clicked,
+      grid: `${cols}x${rows}`,
+      note: 'Cells clicked. Take a screenshot to verify, then click the "Verify" / "Skip" button if needed.',
+    };
+  } catch (e) {
+    try { await debuggerDetach(tabId); } catch {}
+    return { clicked: false, error: e.message };
   }
 }
 

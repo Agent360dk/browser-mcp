@@ -179,9 +179,14 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - browser_press_key("a", ctrl=true) — select all
 
 ## CAPTCHA handling
-- After navigate, check the response for captcha_detected field
-- If captcha_detected is set, use browser_ask_user: "A CAPTCHA was detected on this page. Please solve it in the browser, then click Done."
-- After user solves it, retry the navigation or continue with the page
+Use browser_solve_captcha to detect and solve CAPTCHAs automatically:
+1. Call browser_solve_captcha() — detects CAPTCHA type on page
+2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") — auto-clicks, passes ~80% with logged-in Google
+3. If image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
+4. If all else fails → call browser_solve_captcha(action="ask_human") to show overlay to user
+5. After solving, retry the action that was blocked
+
+For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15.
 
 ## OAuth popups
 - OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group
@@ -243,6 +248,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_get_new_tab: 'get_new_tab',
       browser_switch_tab: 'switch_tab',
       browser_close_tab: 'close_tab',
+      browser_solve_captcha: 'solve_captcha',
     };
 
     if (name === 'browser_extract_token') {
