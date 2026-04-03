@@ -118,9 +118,9 @@ function persistSessions() {
 }
 
 // Get the active tab for this session (last navigated), or create one.
-// IMPORTANT: Also activates the tab so Chrome APIs (captureVisibleTab,
-// executeScript) operate on the correct tab, not whatever the user is viewing.
-async function getSessionTab(port, activate = true) {
+// activate=false (default): runs in background — no focus stealing.
+// activate=true: only for commands that NEED visible tab (screenshot, ask_user, navigate, execute_script).
+async function getSessionTab(port, activate = false) {
   const session = getSession(port);
   let target = null;
 
@@ -627,12 +627,12 @@ async function dispatch(port, method, params) {
   switch (method) {
     case 'navigate': {
       const session = getSession(port);
-      let tab = await getSessionTab(port);
+      let tab = await getSessionTab(port, true);
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
       if (params.new_tab) {
-        tab = await chrome.tabs.create({ url: params.url, active: true });
+        tab = await chrome.tabs.create({ url: params.url, active: false });
         await addTabToSession(port, tab.id);
       } else {
         await chrome.tabs.update(tab.id, { url: params.url });
@@ -666,7 +666,7 @@ async function dispatch(port, method, params) {
     }
 
     case 'get_page_content': {
-      const tab = await getSessionTab(port);
+      const tab = await getSessionTab(port, true);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
       const format = params.format || 'text';
       const scriptResult = await safeExecuteScript(tab.id, (fmt) => fmt === 'html' ? document.documentElement.outerHTML : document.body.innerText, [format]);
@@ -679,7 +679,7 @@ async function dispatch(port, method, params) {
     }
 
     case 'screenshot': {
-      const tab = await getSessionTab(port);
+      const tab = await getSessionTab(port, true);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot screenshot chrome:// pages');
       // Use debugger Page.captureScreenshot as PRIMARY method.
       // captureVisibleTab requires active tab in active window — fails when
@@ -704,7 +704,7 @@ async function dispatch(port, method, params) {
     }
 
     case 'execute_script': {
-      const tab = await getSessionTab(port);
+      const tab = await getSessionTab(port, true);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot execute scripts on chrome:// pages');
       try {
         const [result] = await chrome.scripting.executeScript({
@@ -1062,7 +1062,7 @@ async function dispatch(port, method, params) {
     }
 
     case 'ask_user': {
-      const tab = await getSessionTab(port);
+      const tab = await getSessionTab(port, true);
       const timeout = params.timeout || 120000;
       const fields = params.fields || [];
       const hasFields = fields.length > 0;

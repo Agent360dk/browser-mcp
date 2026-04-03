@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Agent360 Browser MCP",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Lader Claude Code styre din browser — forbind tjenester, hent tokens, automatisér workflows. Multi-session support.",
   "permissions": [
     "tabs",
