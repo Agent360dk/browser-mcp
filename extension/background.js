@@ -255,9 +255,22 @@ async function debuggerClick(tabId, x, y) {
       type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
     });
     // 3. CDP doesn't synthesize 'click' event from mousePressed/mouseReleased.
-    //    React/Angular listen on 'click', not mouseup. Fire it via JS as backup.
+    //    Fire JS click + React fiber lookup as backup for React SPAs.
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-      expression: `document.elementFromPoint(${x}, ${y})?.click()`,
+      expression: `(() => {
+        const el = document.elementFromPoint(${x}, ${y});
+        if (!el) return;
+        el.click();
+        // React fiber fallback — find and call onClick handler directly
+        const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
+        if (fiberKey) {
+          let fiber = el[fiberKey];
+          for (let i = 0; i < 10 && fiber; i++) {
+            if (fiber.memoizedProps?.onClick) { fiber.memoizedProps.onClick(new MouseEvent('click', {bubbles:true})); break; }
+            fiber = fiber.return;
+          }
+        }
+      })()`,
     });
   } finally {
     await debuggerDetach(tabId);
@@ -762,7 +775,10 @@ async function dispatch(port, method, params) {
           if (!el) return { ok: false, error: 'Element not found: ' + sel };
           el.scrollIntoView({ block: 'center', behavior: 'instant' });
           el.focus();
-          el.value = val;
+          // Use nativeInputValueSetter to bypass React controlled input
+          const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(el, val); else el.value = val;
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
           return { ok: true };
@@ -827,16 +843,25 @@ async function dispatch(port, method, params) {
     case 'scroll': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      // Scroll to element or by pixels
+      // Scroll to element
       if (params.selector) {
         const el = await resolveElement(tab.id, params.selector);
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         return { ok: true, scrolled_to: params.selector };
       }
-      // Scroll by pixels
+      // Scroll by pixels using CDP mouseWheel — works in React containers with overflow:scroll
       const dx = params.x || 0;
       const dy = params.y || 0;
-      await debuggerEval(tab.id, `window.scrollBy(${dx}, ${dy})`);
+      try {
+        await debuggerAttach(tab.id);
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
+          type: 'mouseWheel', x: 400, y: 300, deltaX: dx, deltaY: dy,
+        });
+        await debuggerDetach(tab.id);
+      } catch {
+        // Fallback to window.scrollBy for simple pages
+        await debuggerEval(tab.id, `window.scrollBy(${dx}, ${dy})`);
+      }
       return { ok: true, scrolled: { x: dx, y: dy } };
     }
 
@@ -1059,6 +1084,89 @@ async function dispatch(port, method, params) {
         : `JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`;
       const value = await debuggerEval(tab.id, expr);
       return { value, method: 'debugger' };
+    }
+
+    case 'set_cookies': {
+      const results = [];
+      const cookieList = Array.isArray(params.cookies) ? params.cookies : [params];
+      for (const c of cookieList) {
+        try {
+          const cookie = await chrome.cookies.set({
+            url: c.url || `https://${c.domain}`,
+            name: c.name,
+            value: c.value,
+            domain: c.domain,
+            path: c.path || '/',
+            secure: c.secure !== false,
+            httpOnly: c.httpOnly || false,
+            sameSite: c.sameSite || 'lax',
+          });
+          results.push({ ok: true, name: c.name });
+        } catch (e) {
+          results.push({ ok: false, name: c.name, error: e.message });
+        }
+      }
+      return { results };
+    }
+
+    case 'set_local_storage': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
+      const key = params.key;
+      const val = params.value;
+      const expr = `localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(val)})`;
+      try {
+        const scriptResult = await safeExecuteScript(tab.id, (k, v) => { localStorage.setItem(k, v); return { ok: true }; }, [key, val]);
+        if (!scriptResult.cspBlocked) return scriptResult.result;
+      } catch {}
+      await debuggerEval(tab.id, expr);
+      return { ok: true, method: 'debugger' };
+    }
+
+    case 'console_logs': {
+      const tab = await getSessionTab(port);
+      const count = params.count || 50;
+      try {
+        await debuggerAttach(tab.id);
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.enable');
+        // Collect console messages for a brief period
+        const logs = [];
+        const handler = (source, method, eventParams) => {
+          if (source.tabId === tab.id && method === 'Runtime.consoleAPICalled') {
+            logs.push({
+              type: eventParams.type,
+              text: eventParams.args?.map(a => a.value || a.description || '').join(' '),
+              timestamp: eventParams.timestamp,
+            });
+          }
+        };
+        chrome.debugger.onEvent.addListener(handler);
+        // Also grab existing console via page JS
+        const { result } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.evaluate', {
+          expression: `(() => {
+            if (!window.__mcpConsoleLogs) {
+              window.__mcpConsoleLogs = [];
+              const orig = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+              for (const [type, fn] of Object.entries(orig)) {
+                console[type] = (...args) => {
+                  window.__mcpConsoleLogs.push({ type, text: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), ts: Date.now() });
+                  if (window.__mcpConsoleLogs.length > 200) window.__mcpConsoleLogs.shift();
+                  fn.apply(console, args);
+                };
+              }
+            }
+            return JSON.stringify(window.__mcpConsoleLogs.slice(-${count}));
+          })()`,
+          returnByValue: true,
+        });
+        chrome.debugger.onEvent.removeListener(handler);
+        await debuggerDetach(tab.id);
+        const existing = JSON.parse(result.value || '[]');
+        return { logs: [...existing, ...logs].slice(-count) };
+      } catch (e) {
+        try { await debuggerDetach(tab.id); } catch {}
+        return { logs: [], error: e.message };
+      }
     }
 
     case 'ask_user': {

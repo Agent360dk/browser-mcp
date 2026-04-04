@@ -210,7 +210,7 @@ If the extension files were updated, ask the user to reload it:
 You cannot navigate to chrome:// pages — the user must do this manually.`;
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.14.0' },
+  { name: 'agent360-browser', version: '1.15.0' },
   { capabilities: { tools: {} } },
   { instructions: INSTRUCTIONS },
 );
@@ -248,6 +248,9 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_get_new_tab: 'get_new_tab',
       browser_switch_tab: 'switch_tab',
       browser_close_tab: 'close_tab',
+      browser_set_cookies: 'set_cookies',
+      browser_set_local_storage: 'set_local_storage',
+      browser_console_logs: 'console_logs',
       browser_solve_captcha: 'solve_captcha',
     };
 

@@ -195,6 +195,47 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_set_cookies',
+    description: 'Set one or more cookies for a domain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Cookie name' },
+        value: { type: 'string', description: 'Cookie value' },
+        domain: { type: 'string', description: 'Cookie domain (e.g. ".example.com")' },
+        url: { type: 'string', description: 'URL for the cookie (alternative to domain)' },
+        path: { type: 'string', description: 'Cookie path (default: /)' },
+        secure: { type: 'boolean', description: 'Secure flag (default: true)' },
+        httpOnly: { type: 'boolean', description: 'HttpOnly flag (default: false)' },
+        sameSite: { type: 'string', enum: ['no_restriction', 'lax', 'strict'], description: 'SameSite attribute (default: lax)' },
+        cookies: { type: 'array', description: 'Array of cookie objects to set multiple at once', items: { type: 'object' } },
+      },
+      required: ['name', 'value'],
+    },
+  },
+  {
+    name: 'browser_set_local_storage',
+    description: 'Set a localStorage key-value pair on the current page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        key: { type: 'string', description: 'localStorage key to set' },
+        value: { type: 'string', description: 'Value to store (string)' },
+      },
+      required: ['key', 'value'],
+    },
+  },
+  {
+    name: 'browser_console_logs',
+    description: 'Get recent console.log/warn/error messages from the page. Installs a lightweight interceptor on first call. Returns the last N console messages.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        count: { type: 'number', description: 'Number of recent messages to return (default: 50)' },
+      },
+    },
+  },
+  {
     name: 'browser_ask_user',
     description: 'Show an overlay dialog asking the user to perform an action or provide information (credentials, 2FA, CAPTCHA, OAuth consent). Can include input fields for the user to fill in. Returns user responses.',
     inputSchema: {
