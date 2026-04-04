@@ -77,15 +77,21 @@ function install() {
 
   // 3. Print next steps
   console.log(`
-📋 Next steps:
-  1. Open Chrome → chrome://extensions
-  2. Enable "Developer mode" (top right toggle)
-  3. Click "Load unpacked"
-  4. Select: ${extensionDir}
-  5. Restart Claude Code — browser tools are now available
+📋 First-time setup (one time only):
+  1. Open Chrome
+  2. Go to chrome://extensions (type it in the address bar)
+  3. Enable "Developer mode" (toggle in top right corner)
+  4. Click "Load unpacked" button (top left)
+  5. Navigate to and select this folder:
+     ${extensionDir}
+  6. The extension "Agent360 Browser MCP" appears with a puzzle icon
+  7. Restart Claude Code — 28 browser tools are now available!
 
-🔄 Auto-updates: The MCP server always uses the latest npm version.
-   Extension updates: re-run "npx @agent360/browser-mcp install"
+🔄 Auto-updates (fully automatic):
+   - MCP server: always fetches latest from npm (npx @latest)
+   - Extension files: auto-copied when npm version is newer
+   - Extension reload: auto-triggered via WebSocket
+   - You don't need to do anything — updates happen on every Claude Code session start
 
 📖 Docs: https://browsermcp.dev
 `);
@@ -110,7 +116,9 @@ function autoUpdateExtension() {
     if (installed.version !== source.version) {
       cpSync(sourceExtension, extensionDir, { recursive: true });
       process.stderr.write(`[MCP] Extension auto-updated: ${installed.version} → ${source.version}\n`);
-      process.stderr.write('[MCP] Reload extension in chrome://extensions for changes to take effect\n');
+      process.stderr.write('[MCP] Extension will auto-reload when connected\n');
+      // Signal to index.js that extension needs reload
+      process.env.BROWSER_MCP_EXTENSION_UPDATED = '1';
     }
   } catch {}
 }

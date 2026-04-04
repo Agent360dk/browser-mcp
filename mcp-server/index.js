@@ -78,6 +78,15 @@ function createWSS(port = BASE_PORT) {
     extensionSocket = ws;
     process.stderr.write(`[MCP] Chrome extension connected on port ${port}\n`);
 
+    // If extension was auto-updated, trigger reload
+    if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1') {
+      process.env.BROWSER_MCP_EXTENSION_UPDATED = '';
+      process.stderr.write('[MCP] Extension files updated — triggering auto-reload\n');
+      setTimeout(() => {
+        sendToExtension('reload_extension', {}, 5000).catch(() => {});
+      }, 1000);
+    }
+
     ws.on('message', (data) => {
       let msg;
       try { msg = JSON.parse(data.toString()); } catch { return; }

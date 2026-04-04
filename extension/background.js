@@ -1406,6 +1406,13 @@ async function dispatch(port, method, params) {
       return { error: 'Unknown action: ' + action };
     }
 
+    case 'reload_extension': {
+      // MCP server signals that extension files were updated via npx
+      // Reload after a short delay to allow response to be sent
+      setTimeout(() => chrome.runtime.reload(), 500);
+      return { ok: true, message: 'Extension reloading in 500ms' };
+    }
+
     default:
       throw new Error('Unknown method: ' + method);
   }
