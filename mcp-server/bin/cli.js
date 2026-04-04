@@ -21,6 +21,8 @@ if (command === 'install') {
   install();
 } else if (!command) {
   // No subcommand = start MCP server (Claude Code calls this)
+  // Auto-update extension files if installed via npx
+  autoUpdateExtension();
   await import('../index.js');
 } else {
   console.log(`
@@ -85,6 +87,30 @@ function install() {
 🔄 Auto-updates: The MCP server always uses the latest npm version.
    Extension updates: re-run "npx @agent360/browser-mcp install"
 
-📖 Docs: https://github.com/Agent360dk/browser-mcp
+📖 Docs: https://browsermcp.dev
 `);
+}
+
+function autoUpdateExtension() {
+  const home = homedir();
+  const extensionDir = join(home, '.browser-mcp', 'extension');
+  const sourceExtension = join(pkgRoot, 'extension');
+
+  if (!existsSync(extensionDir) || !existsSync(sourceExtension)) return;
+
+  try {
+    // Compare manifest versions
+    const installedManifest = join(extensionDir, 'manifest.json');
+    const sourceManifest = join(sourceExtension, 'manifest.json');
+    if (!existsSync(installedManifest)) return;
+
+    const installed = JSON.parse(readFileSync(installedManifest, 'utf8'));
+    const source = JSON.parse(readFileSync(sourceManifest, 'utf8'));
+
+    if (installed.version !== source.version) {
+      cpSync(sourceExtension, extensionDir, { recursive: true });
+      process.stderr.write(`[MCP] Extension auto-updated: ${installed.version} → ${source.version}\n`);
+      process.stderr.write('[MCP] Reload extension in chrome://extensions for changes to take effect\n');
+    }
+  } catch {}
 }
