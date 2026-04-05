@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "browser-mcp": {
+      "command": "npx",
+      "args": ["@agent360/browser-mcp"]
+    }
+  }
+}

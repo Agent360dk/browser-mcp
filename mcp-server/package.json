@@ -2,6 +2,7 @@
   "name": "@agent360/browser-mcp",
   "version": "1.16.0",
   "description": "Browser MCP — control your real Chrome from Claude Code. 29 tools, CAPTCHA solving, file upload, multi-session, human-in-the-loop.",
+  "mcpName": "io.github.Agent360dk/browser-mcp",
   "type": "module",
   "main": "index.js",
   "bin": {

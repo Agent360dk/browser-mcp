@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Agent360dk/browser-mcp",
+  "description": "Control your real Chrome from Claude Code. 29 tools including CAPTCHA solving, file upload, multi-session, and human-in-the-loop. Uses Chrome Debugger API for React/Angular compatibility.",
+  "repository": {
+    "url": "https://github.com/Agent360dk/browser-mcp",
+    "source": "github"
+  },
+  "version": "1.16.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@agent360/browser-mcp",
+      "version": "1.16.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
