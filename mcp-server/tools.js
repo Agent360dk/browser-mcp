@@ -306,6 +306,19 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_upload_file',
+    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically — no dialog needed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the file input (default: input[type="file"])' },
+        files: { type: 'array', items: { type: 'string' }, description: 'Array of absolute file paths to upload. E.g. ["/Users/me/photo.jpg"]' },
+        file: { type: 'string', description: 'Single file path (alternative to files array)' },
+      },
+      required: ['files'],
+    },
+  },
+  {
     name: 'browser_extract_token',
     description: 'Navigate to a provider\'s API settings page and extract the API token. Optionally store it in Agent360 vault.',
     inputSchema: {

@@ -255,12 +255,13 @@ async function debuggerClick(tabId, x, y) {
       type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
     });
     // 3. CDP doesn't synthesize 'click' event from mousePressed/mouseReleased.
-    //    Fire JS click + React fiber lookup as backup for React SPAs.
+    //    Fire JS click + React/Angular framework fallbacks.
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
       expression: `(() => {
         const el = document.elementFromPoint(${x}, ${y});
         if (!el) return;
         el.click();
+
         // React fiber fallback — find and call onClick handler directly
         const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
         if (fiberKey) {
@@ -269,6 +270,18 @@ async function debuggerClick(tabId, x, y) {
             if (fiber.memoizedProps?.onClick) { fiber.memoizedProps.onClick(new MouseEvent('click', {bubbles:true})); break; }
             fiber = fiber.return;
           }
+        }
+
+        // Angular fallback — trigger via Zone.js patched events + ngClick
+        const ngKey = Object.keys(el).find(k => k.startsWith('__ng'));
+        if (ngKey || el.getAttribute('ng-click') || el.getAttribute('(click)')) {
+          // Angular uses Zone.js which patches addEventListener — dispatch real events through it
+          el.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, cancelable:true}));
+          el.dispatchEvent(new PointerEvent('pointerup', {bubbles:true, cancelable:true}));
+          el.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
+          // Angular Material components (mat-button, mat-checkbox, etc.) use ripple + internal handlers
+          const matRipple = el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
+          if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
         }
       })()`,
     });
@@ -671,9 +684,9 @@ async function dispatch(port, method, params) {
       // Check for CAPTCHA after navigation
       const captcha = await detectCaptcha(tab.id);
       const result = { title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
-      if (captcha) {
-        result.captcha_detected = captcha;
-        result.hint = `CAPTCHA (${captcha}) detected. Use browser_ask_user to ask the user to solve it, then retry.`;
+      if (captcha && captcha.found) {
+        result.captcha_detected = captcha.types.join(', ');
+        result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;
       }
       return result;
     }
@@ -1404,6 +1417,53 @@ async function dispatch(port, method, params) {
       }
 
       return { error: 'Unknown action: ' + action };
+    }
+
+    case 'upload_file': {
+      const tab = await getSessionTab(port);
+      const selector = params.selector || 'input[type="file"]';
+      try {
+        await debuggerAttach(tab.id);
+        // Find the file input element
+        const { result: nodeResult } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.evaluate', {
+          expression: `(() => {
+            const el = document.querySelector(${JSON.stringify(selector)});
+            if (!el) return JSON.stringify({ found: false, error: 'File input not found: ${selector}' });
+            return JSON.stringify({ found: true, tag: el.tagName, type: el.type, accept: el.accept, multiple: el.multiple });
+          })()`,
+          returnByValue: true,
+        });
+        const info = JSON.parse(nodeResult.value);
+        if (!info.found) {
+          await debuggerDetach(tab.id);
+          return info;
+        }
+
+        // Get the DOM node ID for the file input
+        const { result: docResult } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.getDocument', {});
+        const { nodeId } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.querySelector', {
+          nodeId: docResult.root.nodeId,
+          selector: selector,
+        });
+
+        if (!nodeId) {
+          await debuggerDetach(tab.id);
+          return { found: false, error: 'Could not get DOM node for file input' };
+        }
+
+        // Set files on the input using CDP
+        const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
+        await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.setFileInputFiles', {
+          nodeId: nodeId,
+          files: files,
+        });
+
+        await debuggerDetach(tab.id);
+        return { ok: true, files: files, input: info };
+      } catch (e) {
+        try { await debuggerDetach(tab.id); } catch {}
+        return { ok: false, error: e.message };
+      }
     }
 
     case 'reload_extension': {
