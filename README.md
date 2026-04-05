@@ -10,7 +10,7 @@
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 25 tools total.
+The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 29 tools total.
 
 ## Install
 
@@ -26,7 +26,7 @@ Then load the extension in Chrome:
 3. Click **Load unpacked** → select `~/.browser-mcp/extension/`
 4. Restart Claude Code
 
-That's it. 25 browser tools are now available in Claude Code.
+That's it. 29 browser tools are now available in Claude Code.
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
@@ -43,7 +43,7 @@ That's it. 25 browser tools are now available in Claude Code.
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
 
-## 25 Tools
+## 29 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -94,6 +94,16 @@ That's it. 25 browser tools are now available in Claude Code.
 |------|-------------|
 | `browser_ask_user` | Show overlay dialog for 2FA, CAPTCHA, credentials, or any user input |
 
+### Data
+| Tool | Description |
+|------|-------------|
+| `browser_get_cookies` | Get cookies for a domain |
+| `browser_set_cookies` | Set cookies for a domain |
+| `browser_get_local_storage` | Read localStorage from page |
+| `browser_set_local_storage` | Write localStorage values |
+| `browser_console_logs` | Capture console.log/warn/error messages from page |
+| `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog) |
+
 ## Multi-Session Support
 
 Each Claude Code conversation gets its own MCP server on a unique port (9876-9885). The Chrome extension connects to all active servers simultaneously.
@@ -135,7 +145,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 21 tool definitions
+  tools.js            # 29 tool definitions
   bin/cli.js          # Install CLI
 ```
 
