@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — Browser MCP by Agent360</title>
+  <style>
+    body { background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; max-width: 700px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    h2 { font-size: 20px; margin-top: 32px; color: #58a6ff; }
+    p, li { color: #8b949e; }
+    a { color: #58a6ff; }
+    .updated { color: #8b949e; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: April 6, 2026</p>
+
+  <p><strong>Browser MCP</strong> is an open source Chrome extension + MCP server by <a href="https://agent360.dk">Agent360</a>. We take your privacy seriously.</p>
+
+  <h2>Data Collection</h2>
+  <p>Browser MCP does <strong>not</strong> collect, store, or transmit any personal data. Specifically:</p>
+  <ul>
+    <li>No browsing history is collected or sent anywhere</li>
+    <li>No cookies or login credentials are read by our servers</li>
+    <li>No analytics, tracking, or telemetry is included</li>
+    <li>No data leaves your machine — all processing is local</li>
+  </ul>
+
+  <h2>How Browser MCP Works</h2>
+  <p>Browser MCP operates entirely on your local machine:</p>
+  <ul>
+    <li>The Chrome extension communicates with a local MCP server via WebSocket (localhost only)</li>
+    <li>The MCP server communicates with Claude Code (or other MCP clients) via stdio</li>
+    <li>No external servers are contacted. No data is sent to Agent360 or any third party</li>
+  </ul>
+
+  <h2>Permissions</h2>
+  <p>Browser MCP requests the following Chrome permissions. Each is required for browser automation functionality:</p>
+  <ul>
+    <li><strong>tabs, tabGroups</strong> — Navigate and manage browser tabs, create session tab groups</li>
+    <li><strong>cookies</strong> — Read/write cookies for domains (browser_get/set_cookies tools)</li>
+    <li><strong>scripting</strong> — Execute JavaScript in page context for content reading and interaction</li>
+    <li><strong>debugger</strong> — Chrome Debugger Protocol for reliable mouse/keyboard events on CSP-strict sites</li>
+    <li><strong>storage</strong> — Store extension preferences locally</li>
+    <li><strong>notifications</strong> — Alert user when human-in-the-loop action is needed</li>
+    <li><strong>&lt;all_urls&gt;</strong> — Browser automation requires access to any website the user navigates to</li>
+  </ul>
+
+  <h2>Open Source</h2>
+  <p>Browser MCP is fully open source under the MIT License. You can inspect all code at <a href="https://github.com/Agent360dk/browser-mcp">github.com/Agent360dk/browser-mcp</a>.</p>
+
+  <h2>Contact</h2>
+  <p>Questions? Email <a href="mailto:gustav@agent360.dk">gustav@agent360.dk</a> or open an issue on <a href="https://github.com/Agent360dk/browser-mcp/issues">GitHub</a>.</p>
+
+  <p style="margin-top: 48px;"><a href="/">← Back to browsermcp.dev</a></p>
+</body>
+</html>
