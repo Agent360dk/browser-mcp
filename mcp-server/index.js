@@ -128,12 +128,16 @@ createWSS();
 
 // ── Send command to extension ───────────────────────────────────────────────
 
-function sendToExtension(method, params = {}, timeoutMs = 30000) {
-  return new Promise((resolve, reject) => {
-    if (!extensionSocket || extensionSocket.readyState !== 1) {
-      reject(new Error('Chrome extension not connected. Open Chrome and ensure Agent360 Browser MCP extension is installed.'));
-      return;
+async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5) {
+  // Retry if extension is temporarily disconnected (reconnects every 2s)
+  if (!extensionSocket || extensionSocket.readyState !== 1) {
+    if (_retries > 0) {
+      await new Promise(r => setTimeout(r, 1500));
+      return sendToExtension(method, params, timeoutMs, _retries - 1);
     }
+    throw new Error('Chrome extension not connected after 5 retries. Open Chrome and ensure Agent360 Browser MCP extension is installed.');
+  }
+  return new Promise((resolve, reject) => {
     const id = ++cmdId;
     const timer = setTimeout(() => {
       pending.delete(id);
