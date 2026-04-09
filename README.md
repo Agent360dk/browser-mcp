@@ -12,37 +12,53 @@
 
 The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 29 tools total.
 
-## Install
+## Install — 2 steps (~60 seconds)
 
-### Option 1: One-command install (recommended)
+### Step 1: Configure the MCP server
 
 ```bash
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension to `~/.browser-mcp/extension/` and configures Claude Code automatically. Then load the extension in Chrome:
+This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds the MCP server to your Claude Code config. **You'll see the path to the extension folder printed in the terminal — copy it.**
 
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top right)
-3. Click **Load unpacked** → select `~/.browser-mcp/extension/`
-4. Restart Claude Code
+### Step 2: Load the extension in Chrome
 
-### Option 2: Chrome Web Store
+> Chrome won't let extensions install themselves from npm — you have to load it manually one time. After that, it auto-updates whenever you re-run the install command.
 
-[Install from Chrome Web Store →](https://chrome.google.com/webstore/category/extensions) *(coming soon — pending review)*
+1. **Open Chrome** and type `chrome://extensions` in the address bar
+2. **Toggle "Developer mode"** ON (top right corner)
+3. **Click "Load unpacked"** (top left, next to "Pack extension")
+4. **Navigate to `~/.browser-mcp/extension/`** and click "Select"
+   - On Mac: Press `Cmd+Shift+G` in the file picker, paste `~/.browser-mcp/extension/`, press Enter
+   - On Windows: Paste `%USERPROFILE%\.browser-mcp\extension\` in the address bar
+   - On Linux: Type `~/.browser-mcp/extension/` in the path field
+5. **Restart Claude Code** so it picks up the new MCP server
 
-Then run `npx @agent360/browser-mcp install --skip-extension` to configure the MCP server only.
+That's it. The Browser MCP icon will appear in your toolbar, and 29 browser tools are now available in Claude Code.
 
-### Option 3: Manual download (no npm)
+### Alternative: Manual zip download (no npm)
 
-1. Download the latest extension zip: [browser-mcp-latest.zip](https://github.com/Agent360dk/browser-mcp/releases/latest)
-2. Unzip to a folder (e.g. `~/browser-mcp-extension/`)
-3. Open `chrome://extensions`
-4. Enable **Developer mode** (top right)
-5. Click **Load unpacked** → select the unzipped folder
-6. Run `npx @agent360/browser-mcp install --skip-extension` to configure Claude Code
+If you don't want to use npm, download the extension directly:
 
-That's it. 29 browser tools are now available in Claude Code.
+1. [Download `browser-mcp-v1.16.1.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
+2. Unzip the file (anywhere — e.g. `~/Downloads/browser-mcp-extension/`)
+3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
+4. Configure Claude Code manually by adding this to your `~/.claude.json` (or run `npx @agent360/browser-mcp install --skip-extension`):
+   ```json
+   {
+     "mcpServers": {
+       "browser-mcp": {
+         "command": "npx",
+         "args": ["@agent360/browser-mcp"]
+       }
+     }
+   }
+   ```
+
+### Coming soon: Chrome Web Store
+
+We've submitted Browser MCP to the Chrome Web Store for review. Once approved, you'll be able to install with one click and skip the "Developer mode" step entirely. Watch for updates on [browsermcp.dev](https://browsermcp.dev).
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
