@@ -14,17 +14,33 @@ The only browser MCP with **multi-session support** (10 concurrent AI sessions),
 
 ## Install
 
+### Option 1: One-command install (recommended)
+
 ```bash
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension to `~/.browser-mcp/extension/` and configures Claude Code automatically.
+This copies the Chrome extension to `~/.browser-mcp/extension/` and configures Claude Code automatically. Then load the extension in Chrome:
 
-Then load the extension in Chrome:
 1. Open `chrome://extensions`
 2. Enable **Developer mode** (top right)
 3. Click **Load unpacked** → select `~/.browser-mcp/extension/`
 4. Restart Claude Code
+
+### Option 2: Chrome Web Store
+
+[Install from Chrome Web Store →](https://chrome.google.com/webstore/category/extensions) *(coming soon — pending review)*
+
+Then run `npx @agent360/browser-mcp install --skip-extension` to configure the MCP server only.
+
+### Option 3: Manual download (no npm)
+
+1. Download the latest extension zip: [browser-mcp-latest.zip](https://github.com/Agent360dk/browser-mcp/releases/latest)
+2. Unzip to a folder (e.g. `~/browser-mcp-extension/`)
+3. Open `chrome://extensions`
+4. Enable **Developer mode** (top right)
+5. Click **Load unpacked** → select the unzipped folder
+6. Run `npx @agent360/browser-mcp install --skip-extension` to configure Claude Code
 
 That's it. 29 browser tools are now available in Claude Code.
 
