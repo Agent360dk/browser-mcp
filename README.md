@@ -5,6 +5,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Agent360dk/browser-mcp)](https://github.com/Agent360dk/browser-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-live-green)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
 **Control your real Chrome from Claude Code — with your logins, cookies, and 2FA.**
 
@@ -56,9 +57,11 @@ If you don't want to use npm, download the extension directly:
    }
    ```
 
-### Coming soon: Chrome Web Store
+### Chrome Web Store (one-click install)
 
-We've submitted Browser MCP to the Chrome Web Store for review. Once approved, you'll be able to install with one click and skip the "Developer mode" step entirely. Watch for updates on [browsermcp.dev](https://browsermcp.dev).
+[**Install from Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
+
+No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-extension` to configure Claude Code.
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
