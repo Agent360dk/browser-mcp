@@ -9,7 +9,7 @@
  */
 
 const BASE_PORT = 9876;
-const MAX_PORT = 9885;
+const MAX_PORT = 9895;
 const connections = new Map(); // port → WebSocket
 
 function scanPorts() {

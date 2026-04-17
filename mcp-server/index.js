@@ -47,7 +47,7 @@ try {
 }
 
 const BASE_PORT = 9876;
-const MAX_PORT = 9885;
+const MAX_PORT = 9895; // 20 ports instead of 10 — zombies die within 5s via parent check
 let extensionSocket = null;
 let activePort = null;
 let wss = null; // Track WSS for graceful shutdown
@@ -349,7 +349,20 @@ process.on('exit', () => {
   if (extensionSocket) try { extensionSocket.close(); } catch {}
 });
 
-// Detect Claude Code exit (stdin closes when conversation ends)
+// Detect Claude Code exit — check if parent process is still alive
+// stdin.on('end') doesn't work because MCP SDK's StdioServerTransport owns stdin
+const parentPid = process.ppid;
+const parentCheck = setInterval(() => {
+  try {
+    process.kill(parentPid, 0); // signal 0 = check if process exists
+  } catch {
+    process.stderr.write(`[MCP] Parent process ${parentPid} died — shutting down\n`);
+    clearInterval(parentCheck);
+    process.exit(0);
+  }
+}, 5000); // check every 5 seconds
+
+// Also listen for stdin close as backup
 process.stdin.on('end', () => {
   process.stderr.write('[MCP] stdin closed — shutting down\n');
   process.exit(0);
