@@ -655,6 +655,411 @@ function buildDeepQueryJS(selector) {
   })()`;
 }
 
+// ── Date Input Helpers ──────────────────────────────────────────────────────
+
+const MONTHS_EN = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const MONTHS_DA = ['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
+const MONTHS_ABBR_EN = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+function parsePlaceholderFormat(placeholder) {
+  if (!placeholder) return null;
+  const upper = placeholder.toUpperCase();
+  let sep = null;
+  if (upper.includes('/')) sep = '/';
+  else if (upper.includes('-')) sep = '-';
+  else if (upper.includes('.')) sep = '.';
+  else return null;
+  const parts = upper.split(sep);
+  if (parts.length !== 3) return null;
+  const order = parts.map(p => p.includes('Y') ? 'Y' : p.includes('M') ? 'M' : p.includes('D') ? 'D' : null);
+  if (order.includes(null) || new Set(order).size !== 3) return null;
+  const padded = parts.map(p => p.length >= 2);
+  return { sep, order, padded };
+}
+
+function isoToFormat(iso, fmt) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error('Invalid ISO date: ' + iso);
+  const [, y, mo, d] = m;
+  return fmt.order.map((slot, i) => {
+    if (slot === 'Y') return y;
+    if (slot === 'M') return fmt.padded[i] ? mo : String(parseInt(mo, 10));
+    if (slot === 'D') return fmt.padded[i] ? d : String(parseInt(d, 10));
+  }).join(fmt.sep);
+}
+
+function parseMonthYearText(text) {
+  if (!text) return null;
+  const cleaned = text.toLowerCase().trim();
+  const tables = [MONTHS_EN, MONTHS_DA, MONTHS_ABBR_EN];
+  for (const table of tables) {
+    for (let i = 0; i < table.length; i++) {
+      if (cleaned.includes(table[i])) {
+        const ym = cleaned.match(/(\d{4})/);
+        if (ym) return { year: parseInt(ym[1], 10), month: i + 1 };
+      }
+    }
+  }
+  const num = cleaned.match(/(\d{1,2})[\/\-\s.](\d{4})/);
+  if (num) return { year: parseInt(num[2], 10), month: parseInt(num[1], 10) };
+  return null;
+}
+
+function valueLooksLikeIso(value, iso) {
+  if (!value || !iso) return false;
+  const [y, m, d] = iso.split('-');
+  const digits = value.replace(/\D/g, '');
+  if (digits.includes(y + m + d)) return true;
+  if (digits.includes(m + d + y)) return true;
+  if (digits.includes(d + m + y)) return true;
+  const hasYear = value.includes(y);
+  const hasMonth = value.includes(m) || value.includes(String(parseInt(m, 10)));
+  const hasDay = value.includes(d) || value.includes(String(parseInt(d, 10)));
+  return hasYear && hasMonth && hasDay;
+}
+
+async function getDateInputInfo(tabId, selector) {
+  const json = await debuggerEval(tabId, `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return JSON.stringify({ found: false });
+    return JSON.stringify({
+      found: true,
+      tag: el.tagName,
+      inputType: (el.type || '').toLowerCase(),
+      readOnly: !!el.readOnly,
+      disabled: !!el.disabled,
+      placeholder: el.placeholder || '',
+      ariaLabel: el.getAttribute('aria-label') || '',
+      value: el.value !== undefined ? el.value : (el.textContent || ''),
+    });
+  })()`);
+  return JSON.parse(json);
+}
+
+async function readBackValue(tabId, selector) {
+  const json = await debuggerEval(tabId, `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return JSON.stringify({ value: null });
+    return JSON.stringify({ value: el.value !== undefined ? el.value : (el.textContent || '') });
+  })()`);
+  return JSON.parse(json).value;
+}
+
+async function setDateNative(tabId, selector, iso) {
+  const r = await safeExecuteScript(tabId, (sel, val) => {
+    const el = document.querySelector(sel);
+    if (!el) return { ok: false, error: 'not-found' };
+    try {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      el.focus();
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) setter.call(el, val); else el.value = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      return { ok: true, value: el.value };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }, [selector, iso]);
+  if (r.cspBlocked) {
+    await debuggerEval(tabId, `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return;
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) setter.call(el, ${JSON.stringify(iso)}); else el.value = ${JSON.stringify(iso)};
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+    })()`);
+    return { ok: true, csp: true };
+  }
+  return r.result || { ok: false, error: 'no-result' };
+}
+
+async function setDateMaskedTyping(tabId, selector, iso, format) {
+  const formatted = isoToFormat(iso, format);
+  await debuggerFocus(tabId, selector);
+  await debuggerAttach(tabId);
+  try {
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'a', code: 'KeyA',
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Backspace', code: 'Backspace',
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Backspace', code: 'Backspace',
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.insertText', { text: formatted });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Tab', code: 'Tab',
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Tab', code: 'Tab',
+    });
+  } finally {
+    await debuggerDetach(tabId);
+  }
+  return { ok: true, formatted };
+}
+
+const PICKER_OPEN_SELECTORS = [
+  '[role="dialog"] [role="grid"]',
+  '[role="dialog"] [role="gridcell"]',
+  '.react-datepicker',
+  '.MuiPickersPopper-root',
+  '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)',
+  '[class*="DayPicker"]:not(input)',
+  '[class*="Calendar"][class*="open" i]',
+];
+
+async function isPickerOpen(tabId) {
+  return await debuggerEval(tabId, `(() => {
+    const sels = ${JSON.stringify(PICKER_OPEN_SELECTORS)};
+    for (const s of sels) {
+      try { if (document.querySelector(s)) return true; } catch {}
+    }
+    return false;
+  })()`);
+}
+
+async function getPickerRoot(tabId) {
+  return await debuggerEval(tabId, `(() => {
+    const sels = ${JSON.stringify(PICKER_OPEN_SELECTORS)};
+    for (const s of sels) {
+      try {
+        const el = document.querySelector(s);
+        if (el) {
+          const root = el.closest('[role="dialog"], .react-datepicker, .MuiPickersPopper-root, .ant-picker-dropdown') || el;
+          // Return a stable selector path — for runtime use we re-query each time
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  })()`);
+}
+
+async function setDatePicker(tabId, selector, iso) {
+  const [yStr, mStr, dStr] = iso.split('-');
+  const targetYear = parseInt(yStr, 10);
+  const targetMonth = parseInt(mStr, 10);
+  const targetDay = parseInt(dStr, 10);
+
+  const inputEl = await resolveElement(tabId, selector);
+  if (!inputEl) return { ok: false, error: 'input-not-found' };
+  await debuggerClick(tabId, inputEl.x, inputEl.y);
+
+  let opened = false;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (await isPickerOpen(tabId)) { opened = true; break; }
+  }
+
+  if (!opened) {
+    const triggerClicked = await safeExecuteScript(tabId, (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return false;
+      const candidates = [
+        ...(el.parentElement?.querySelectorAll('button, [role="button"], [aria-haspopup]') || []),
+        ...(el.parentElement?.parentElement?.querySelectorAll('button, [role="button"], [aria-haspopup]') || []),
+      ];
+      for (const c of candidates) {
+        const label = (c.getAttribute('aria-label') || '').toLowerCase();
+        if (label.includes('calendar') || label.includes('date') || label.includes('vælg dato') || label.includes('open') || label.includes('åbn')) {
+          c.click();
+          return true;
+        }
+      }
+      for (const c of candidates) {
+        if (c.querySelector('svg, [class*="calendar" i]')) {
+          c.click();
+          return true;
+        }
+      }
+      return false;
+    }, [selector]);
+    if (triggerClicked.result) {
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        if (await isPickerOpen(tabId)) { opened = true; break; }
+      }
+    }
+  }
+
+  if (!opened) return { ok: false, error: 'picker-did-not-open' };
+
+  const MAX_NAV = 36;
+  let navAttempts = 0;
+  let lastHeader = null;
+  let stuck = 0;
+  for (let i = 0; i < MAX_NAV; i++) {
+    const headerJson = await debuggerEval(tabId, `(() => {
+      const roots = [
+        document.querySelector('[role="dialog"]'),
+        document.querySelector('.react-datepicker'),
+        document.querySelector('.MuiPickersPopper-root'),
+        document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'),
+      ].filter(Boolean);
+      for (const root of roots) {
+        const candidates = [
+          root.querySelector('[role="heading"]'),
+          root.querySelector('[aria-live]'),
+          root.querySelector('.MuiPickersCalendarHeader-label'),
+          root.querySelector('.react-datepicker__current-month'),
+          root.querySelector('.ant-picker-header-view'),
+        ].filter(Boolean);
+        for (const el of candidates) {
+          const t = (el.textContent || '').trim();
+          if (t.length > 0 && t.length < 80) return JSON.stringify({ text: t });
+        }
+      }
+      return JSON.stringify({});
+    })()`);
+    const header = JSON.parse(headerJson);
+    const parsed = parseMonthYearText(header.text || '');
+    if (!parsed) break;
+
+    if (header.text === lastHeader) {
+      stuck++;
+      if (stuck >= 3) break;
+    } else {
+      stuck = 0;
+      lastHeader = header.text;
+    }
+
+    const delta = (targetYear * 12 + targetMonth) - (parsed.year * 12 + parsed.month);
+    if (delta === 0) break;
+
+    const dir = delta > 0 ? 'next' : 'prev';
+    const navClicked = await safeExecuteScript(tabId, (direction) => {
+      const roots = [
+        document.querySelector('[role="dialog"]'),
+        document.querySelector('.react-datepicker'),
+        document.querySelector('.MuiPickersPopper-root'),
+        document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'),
+      ].filter(Boolean);
+      const labels = direction === 'next'
+        ? ['next month', 'next', 'forward', 'næste']
+        : ['previous month', 'previous', 'prev', 'back', 'forrige'];
+      const classFallbacks = direction === 'next'
+        ? ['.react-datepicker__navigation--next', '.ant-picker-header-next-btn', '.ant-picker-header-super-next-btn']
+        : ['.react-datepicker__navigation--previous', '.ant-picker-header-prev-btn', '.ant-picker-header-super-prev-btn'];
+      for (const root of roots) {
+        const buttons = [...root.querySelectorAll('button, [role="button"]')];
+        for (const b of buttons) {
+          const label = (b.getAttribute('aria-label') || b.title || '').toLowerCase();
+          if (labels.some(l => label.includes(l))) { b.click(); return true; }
+        }
+        for (const cs of classFallbacks) {
+          const b = root.querySelector(cs);
+          if (b) { b.click(); return true; }
+        }
+      }
+      return false;
+    }, [dir]);
+
+    if (!navClicked.result) {
+      await debuggerAttach(tabId);
+      try {
+        const key = delta > 0 ? 'PageDown' : 'PageUp';
+        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+          type: 'keyDown', key, code: key,
+        });
+        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+          type: 'keyUp', key, code: key,
+        });
+      } finally {
+        await debuggerDetach(tabId);
+      }
+    }
+    navAttempts++;
+    await new Promise(r => setTimeout(r, 90));
+  }
+
+  const dayResult = await safeExecuteScript(tabId, (day, year, month, monthsEn, monthsDa, monthsAbbr) => {
+    const roots = [
+      document.querySelector('[role="dialog"]'),
+      document.querySelector('.react-datepicker'),
+      document.querySelector('.MuiPickersPopper-root'),
+      document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'),
+    ].filter(Boolean);
+    const monthEn = monthsEn[month - 1];
+    const monthDa = monthsDa[month - 1];
+    const monthAbbr = monthsAbbr[month - 1];
+
+    for (const root of roots) {
+      const cells = [...root.querySelectorAll('[role="gridcell"], .react-datepicker__day, .ant-picker-cell, [class*="PickersDay"]')];
+      const isDisabled = (c) => c.getAttribute('aria-disabled') === 'true' ||
+        c.classList.contains('disabled') ||
+        c.classList.contains('react-datepicker__day--disabled') ||
+        c.classList.contains('ant-picker-cell-disabled') ||
+        c.classList.contains('Mui-disabled');
+      const isOutside = (c) => {
+        const cls = c.className || '';
+        if (/outside|other-month|--prev|--next|adjacent/i.test(cls)) return true;
+        if (c.classList.contains('react-datepicker__day--outside-month')) return true;
+        if (c.classList.contains('ant-picker-cell') && !c.classList.contains('ant-picker-cell-in-view')) return true;
+        return false;
+      };
+
+      for (const c of cells) {
+        if (isDisabled(c) || isOutside(c)) continue;
+        const label = (c.getAttribute('aria-label') || '').toLowerCase();
+        if (!label) continue;
+        const matchesMonth = label.includes(monthEn) || label.includes(monthDa) || label.includes(monthAbbr);
+        const matchesYear = label.includes(String(year));
+        const dayPattern = new RegExp('\\b' + day + '(st|nd|rd|th)?\\b');
+        const dayPaddedPattern = new RegExp('\\b' + String(day).padStart(2, '0') + '\\b');
+        if (matchesMonth && matchesYear && (dayPattern.test(label) || dayPaddedPattern.test(label))) {
+          c.click();
+          return { ok: true, method: 'aria-label', label };
+        }
+      }
+
+      for (const c of cells) {
+        if (isDisabled(c) || isOutside(c)) continue;
+        const text = (c.textContent || '').trim();
+        if (text === String(day) || text === String(day).padStart(2, '0')) {
+          c.click();
+          return { ok: true, method: 'text-content' };
+        }
+      }
+    }
+    return { ok: false, error: 'day-not-found' };
+  }, [targetDay, targetYear, targetMonth, MONTHS_EN, MONTHS_DA, MONTHS_ABBR_EN]);
+
+  if (!dayResult.result || !dayResult.result.ok) {
+    return { ok: false, error: dayResult.result?.error || 'day-click-failed', navAttempts };
+  }
+
+  await new Promise(r => setTimeout(r, 350));
+  return { ok: true, method: dayResult.result.method, navAttempts };
+}
+
+async function collectVisibleErrors(tabId, selector) {
+  const json = await debuggerEval(tabId, `(() => {
+    const errs = [];
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (el?.getAttribute('aria-invalid') === 'true') errs.push('aria-invalid=true on input');
+    const candidates = [
+      ...document.querySelectorAll('[role="alert"], .error-text, [class*="error" i]:not(input):not(button)'),
+    ].slice(0, 8);
+    for (const c of candidates) {
+      const t = (c.textContent || '').trim();
+      if (t && t.length < 200 && c.offsetHeight > 0) errs.push(t);
+    }
+    return JSON.stringify(errs);
+  })()`);
+  try { return JSON.parse(json); } catch { return []; }
+}
+
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
 async function dispatch(port, method, params) {
@@ -807,6 +1212,65 @@ async function dispatch(port, method, params) {
         if (!scriptResult.cspBlocked) return scriptResult.result;
         return { ok: false, error: e.message, method: 'debugger' };
       }
+    }
+
+    case 'set_date': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
+        return { ok: false, error: 'date must be ISO format YYYY-MM-DD, got: ' + params.date };
+      }
+
+      const info = await getDateInputInfo(tab.id, params.selector);
+      if (!info.found) return { ok: false, error: 'Element not found: ' + params.selector };
+
+      const tried = [];
+      const iso = params.date;
+
+      // Path A: native <input type="date"> or <input type="datetime-local">
+      if (info.tag === 'INPUT' && (info.inputType === 'date' || info.inputType === 'datetime-local')) {
+        await setDateNative(tab.id, params.selector, iso);
+        await new Promise(r => setTimeout(r, 200));
+        const v = await readBackValue(tab.id, params.selector);
+        tried.push({ path: 'native', value: v });
+        if (v && v.startsWith(iso)) return { ok: true, method: 'native', value: v };
+      }
+
+      // Path B: masked text input — parse format and type via Input.insertText
+      if (info.tag === 'INPUT' && !info.readOnly && !info.disabled) {
+        const fmt = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
+        if (fmt) {
+          try {
+            await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
+            await new Promise(r => setTimeout(r, 250));
+            const v = await readBackValue(tab.id, params.selector);
+            tried.push({ path: 'masked', format: fmt.order.join(fmt.sep), value: v });
+            if (valueLooksLikeIso(v, iso)) return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep) };
+          } catch (e) {
+            tried.push({ path: 'masked', error: e.message });
+          }
+        }
+      }
+
+      // Path C: calendar-picker navigation
+      if (!params.skip_picker) {
+        const r = await setDatePicker(tab.id, params.selector, iso);
+        await new Promise(r2 => setTimeout(r2, 200));
+        const v = await readBackValue(tab.id, params.selector);
+        tried.push({ path: 'picker', ...r, value: v });
+        if (r.ok && valueLooksLikeIso(v, iso)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
+      }
+
+      const visibleErrors = await collectVisibleErrors(tab.id, params.selector);
+      const finalValue = await readBackValue(tab.id, params.selector);
+      return {
+        ok: false,
+        error: 'all-paths-failed',
+        tried,
+        current_value: finalValue,
+        visible_errors: visibleErrors,
+        input_info: info,
+      };
     }
 
     case 'wait': {

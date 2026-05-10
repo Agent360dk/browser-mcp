@@ -132,6 +132,19 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_set_date',
+    description: 'Robustly set a date input — handles native <input type="date">, masked text inputs (e.g. MM/DD/YYYY), and calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). Tries native value-set, format-aware typing via Input.insertText, and ARIA-based picker navigation in sequence with read-back verification. Use instead of browser_fill when fill fails or for any input that opens a calendar widget.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the date input element' },
+        date: { type: 'string', description: 'ISO date string (YYYY-MM-DD), e.g. "2026-05-15"' },
+        skip_picker: { type: 'boolean', description: 'If true, only try native + masked paths and skip calendar-picker navigation (default: false)' },
+      },
+      required: ['selector', 'date'],
+    },
+  },
+  {
     name: 'browser_handle_dialog',
     description: 'Handle JavaScript alert(), confirm(), or prompt() dialogs. Call this BEFORE triggering the action that causes the dialog. Waits for the dialog to appear, then accepts or dismisses it.',
     inputSchema: {
