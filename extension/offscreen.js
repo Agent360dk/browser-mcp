@@ -92,6 +92,20 @@ function updateStatus() {
   }).catch(() => {});
 }
 
+// Listen for terminate signals from background.js (sent when last tab in a session closes)
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type !== 'terminate_mcp_session' || typeof msg.port !== 'number') return;
+  const ws = connections.get(msg.port);
+  if (!ws) return;
+  try {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'terminate' }));
+    }
+  } catch {}
+  try { ws.close(); } catch {}
+  // ws.onclose handler removes from connections + notifies background
+});
+
 // Initial scan + frequent rescan for new servers
 scanPorts();
 setInterval(scanPorts, 2000);

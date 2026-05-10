@@ -206,8 +206,16 @@ function debuggerForceDetach(tabId) {
 // Clean up debugger + session refs when tabs close
 chrome.tabs.onRemoved.addListener((tabId) => {
   debuggerAttached.delete(tabId);
-  for (const [, session] of sessions) {
+  for (const [port, session] of sessions) {
+    if (!session.tabIds.has(tabId)) continue;
     session.tabIds.delete(tabId);
+    if (session.tabIds.size === 0) {
+      // Last tab closed — tell offscreen to terminate the MCP server.
+      // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+    } else {
+      persistSessions();
+    }
   }
 });
 

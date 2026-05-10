@@ -90,6 +90,12 @@ function createWSS(port = BASE_PORT) {
     ws.on('message', (data) => {
       let msg;
       try { msg = JSON.parse(data.toString()); } catch { return; }
+
+      if (msg.type === 'terminate') {
+        process.stderr.write('[MCP] Terminate signal received from extension (last tab closed) — exiting\n');
+        process.exit(0);
+      }
+
       const { id, result, error } = msg;
       const p = pending.get(id);
       if (!p) return;
