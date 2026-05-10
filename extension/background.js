@@ -213,11 +213,32 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   }
 });
 
-// CDP wrapper with auto-recovery: re-attaches and retries once on detach errors
+// Methods that are safe to retry without double-effect.
+// Side-effectful methods (Input.*, DOM.setFileInputFiles) must NEVER auto-retry:
+// Chrome may detach AFTER processing the input (e.g., keystroke triggered navigation),
+// and a blind retry would double-type or double-click.
+const RETRYABLE_CDP_METHODS = new Set([
+  'DOM.getDocument',
+  'DOM.querySelector',
+  'DOM.querySelectorAll',
+  'DOM.focus',
+  'DOM.describeNode',
+  'Runtime.evaluate',
+  'Runtime.enable',
+  'Page.captureScreenshot',
+  'Page.enable',
+  'Network.enable',
+  'Network.disable',
+  'Network.getResponseBody',
+]);
+
+// CDP wrapper with auto-recovery: re-attaches on detach errors.
+// For read-only methods (whitelist above), retries once after re-attach.
+// For side-effectful methods, only re-attaches and throws — caller must decide.
 async function cdpSend(tabId, method, params = {}) {
   await debuggerAttach(tabId);
   try {
-    return await cdpSend(tabId, method, params);
+    return await chrome.debugger.sendCommand({ tabId }, method, params);
   } catch (e) {
     const msg = e?.message || String(e);
     const isDetachError =
@@ -228,9 +249,14 @@ async function cdpSend(tabId, method, params = {}) {
       msg.includes('No tab with given id');
     if (!isDetachError) throw e;
     debuggerAttached.delete(tabId);
+    if (!RETRYABLE_CDP_METHODS.has(method)) {
+      // Re-attach for next caller, but don't auto-retry side-effectful command
+      try { await debuggerAttach(tabId); } catch {}
+      throw new Error(`Debugger detached during ${method} — not auto-retried (side-effect risk). Original: ${msg}`);
+    }
     await new Promise(r => setTimeout(r, 100));
     await debuggerAttach(tabId);
-    return await cdpSend(tabId, method, params);
+    return await chrome.debugger.sendCommand({ tabId }, method, params);
   }
 }
 
@@ -930,6 +956,8 @@ async function setDatePicker(tabId, selector, iso) {
   let navAttempts = 0;
   let lastHeader = null;
   let stuck = 0;
+  let navExitReason = 'reached-target';
+  let lastReachedMonthYear = null;
   for (let i = 0; i < MAX_NAV; i++) {
     const headerJson = await debuggerEval(tabId, `(() => {
       const roots = [
@@ -955,11 +983,15 @@ async function setDatePicker(tabId, selector, iso) {
     })()`);
     const header = JSON.parse(headerJson);
     const parsed = parseMonthYearText(header.text || '');
-    if (!parsed) break;
+    if (!parsed) {
+      navExitReason = header.text ? 'header-parse-failed' : 'no-header-found';
+      break;
+    }
+    lastReachedMonthYear = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
 
     if (header.text === lastHeader) {
       stuck++;
-      if (stuck >= 3) break;
+      if (stuck >= 3) { navExitReason = 'navigation-stuck'; break; }
     } else {
       stuck = 0;
       lastHeader = header.text;
@@ -967,6 +999,9 @@ async function setDatePicker(tabId, selector, iso) {
 
     const delta = (targetYear * 12 + targetMonth) - (parsed.year * 12 + parsed.month);
     if (delta === 0) break;
+    if (i === MAX_NAV - 1) {
+      navExitReason = 'max-nav-exceeded';
+    }
 
     const dir = delta > 0 ? 'next' : 'prev';
     const navClicked = await safeExecuteScript(tabId, (direction) => {
@@ -1067,7 +1102,14 @@ async function setDatePicker(tabId, selector, iso) {
   }, [targetDay, targetYear, targetMonth, MONTHS_EN, MONTHS_DA, MONTHS_ABBR_EN]);
 
   if (!dayResult.result || !dayResult.result.ok) {
-    return { ok: false, error: dayResult.result?.error || 'day-click-failed', navAttempts };
+    return {
+      ok: false,
+      error: dayResult.result?.error || 'day-click-failed',
+      navAttempts,
+      navExitReason,
+      lastReachedMonthYear,
+      targetMonthYear: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+    };
   }
 
   await new Promise(r => setTimeout(r, 350));
@@ -1094,16 +1136,27 @@ async function collectVisibleErrors(tabId, selector) {
 // ── Overlay Dismissal Helper ────────────────────────────────────────────────
 
 async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
+  // Clamp to sensible range; reject sloppy input
+  const passes = Math.max(1, Math.min(10, Number.isInteger(maxPasses) ? maxPasses : 3));
   const allDismissed = [];
-  for (let pass = 0; pass < maxPasses; pass++) {
+  const allSkipped = [];
+
+  for (let pass = 0; pass < passes; pass++) {
     const r = await safeExecuteScript(tabId, (s) => {
       const dismissed = [];
-      const dismissTexts = [
-        "ikke nu", "senere", "luk", "afvis", "spring over",
-        "skip", "cancel", "dismiss", "close", "got it", "ok",
-        "no thanks", "not now", "maybe later", "don't show",
-        "don't show again", "dont show again", "later",
-        "got it, thanks",
+      const skipped = [];
+
+      // "Safe" texts cannot revert form data — they're purely informational close affordances
+      const safeTexts = [
+        "luk", "dismiss", "close", "got it", "got it, thanks",
+        "not now", "ikke nu", "senere", "later",
+        "don't show", "don't show again", "dont show again", "dont show",
+        "no thanks", "maybe later", "ok", "ok!", "okay",
+      ];
+      // "Ambiguous" texts MAY revert partial form data ("Cancel" usually reverts state)
+      // — only used when overlay has no editable form fields, or in aggressive scope
+      const ambiguousTexts = [
+        "skip", "cancel", "afvis", "spring over",
       ];
       const xChars = ['×', '✕', '✖', '⨯'];
 
@@ -1113,38 +1166,43 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
         return rect.width > 0 && rect.height > 0;
       };
 
-      const findCloseAffordance = (overlay) => {
+      const findCloseAffordance = (overlay, allowAmbiguous) => {
         const all = [...overlay.querySelectorAll('button, [role="button"], a[href="#"], [aria-label]')];
+        const allTexts = allowAmbiguous ? [...safeTexts, ...ambiguousTexts] : safeTexts;
 
-        // Priority 1: aria-label match
+        // Priority 1: aria-label match (close/dismiss/luk/afvis are always safe)
         for (const c of all) {
           if (!isVisible(c)) continue;
           const label = (c.getAttribute('aria-label') || '').toLowerCase();
           if (!label) continue;
-          if (label.includes('close') || label.includes('dismiss') || label.includes('luk') || label.includes('afvis')) {
+          if (label.includes('close') || label.includes('dismiss') || label.includes('luk')) {
+            return { el: c, method: 'aria-label', label };
+          }
+          if (allowAmbiguous && label.includes('afvis')) {
             return { el: c, method: 'aria-label', label };
           }
         }
 
-        // Priority 2: button text match (exact or contains)
+        // Priority 2: button text exact match
         for (const c of all) {
           if (!isVisible(c)) continue;
           const text = (c.textContent || '').trim().toLowerCase();
           if (!text || text.length > 30) continue;
-          if (dismissTexts.some(t => text === t || text === t + '!' || text === t + '.')) {
+          if (allTexts.some(t => text === t || text === t + '!' || text === t + '.')) {
             return { el: c, method: 'text-exact', label: text };
           }
         }
+        // Priority 3: button text contains
         for (const c of all) {
           if (!isVisible(c)) continue;
           const text = (c.textContent || '').trim().toLowerCase();
           if (!text || text.length > 40) continue;
-          if (dismissTexts.some(t => text.includes(t))) {
+          if (allTexts.some(t => text.includes(t))) {
             return { el: c, method: 'text-contains', label: text };
           }
         }
 
-        // Priority 3: × character buttons
+        // Priority 4: × character buttons (always safe — these are universal close)
         for (const c of all) {
           if (!isVisible(c)) continue;
           const text = (c.textContent || '').trim();
@@ -1183,37 +1241,59 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
       for (const overlay of overlays) {
         const role = overlay.getAttribute('role') || (overlay.className || '').split(' ')[0] || 'unknown';
 
-        // Skip critical dialogs in non_critical mode (forms with editable inputs)
-        if (s === 'non_critical' && role !== 'tooltip' && role !== 'alert') {
-          const editableInputs = overlay.querySelectorAll('input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]');
-          if (editableInputs.length > 0) {
-            // But still try if it has obvious dismiss text — many "Don't show again" dialogs have one input (checkbox)
-            const onlyCheckbox = [...editableInputs].every(i => i.type === 'checkbox' || i.type === 'radio');
-            if (!onlyCheckbox) continue;
-          }
+        // Inspect for editable form fields
+        const editableTextInputs = overlay.querySelectorAll(
+          'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]'
+        );
+        const allEditableInputs = overlay.querySelectorAll(
+          'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]'
+        );
+        const hasTextFields = editableTextInputs.length > 0;
+        const hasOnlyCheckboxRadios = !hasTextFields && allEditableInputs.length > 0;
+
+        // Determine if ambiguous keywords (Skip/Cancel/Afvis) are allowed
+        let allowAmbiguous;
+        if (s === 'aggressive') {
+          allowAmbiguous = true;
+        } else if (role === 'tooltip' || role === 'alert') {
+          allowAmbiguous = true;  // tooltips never hold form data
+        } else if (hasTextFields) {
+          allowAmbiguous = false; // protect form data — only safe keywords
+        } else {
+          allowAmbiguous = true;  // checkbox-only or empty dialogs — fair game
         }
 
-        const found = findCloseAffordance(overlay);
+        const found = findCloseAffordance(overlay, allowAmbiguous);
         if (found) {
           try {
             found.el.click();
-            dismissed.push({ role, method: found.method, label: found.label });
+            dismissed.push({ role, method: found.method, label: found.label, scope: allowAmbiguous ? 'ambiguous-ok' : 'safe-only' });
           } catch (e) {
-            dismissed.push({ role, error: e.message });
+            skipped.push({ role, reason: 'click-error', error: e.message });
           }
+        } else {
+          skipped.push({
+            role,
+            reason: hasTextFields && !allowAmbiguous
+              ? 'no-safe-dismiss-affordance (text fields present)'
+              : 'no-dismiss-affordance-found',
+            hasTextFields,
+            hasOnlyCheckboxRadios,
+          });
         }
       }
 
-      return dismissed;
+      return { dismissed, skipped };
     }, [scope]);
 
-    const passDismissed = r.result || [];
-    if (passDismissed.length === 0) break;
-    allDismissed.push(...passDismissed);
+    const passResult = r.result || { dismissed: [], skipped: [] };
+    if (pass === 0) allSkipped.push(...passResult.skipped);
+    if (passResult.dismissed.length === 0) break;
+    allDismissed.push(...passResult.dismissed);
     await new Promise(r2 => setTimeout(r2, 250));
   }
 
-  return allDismissed;
+  return { dismissed: allDismissed, skipped: allSkipped };
 }
 
 // ── Combobox / Autocomplete Helper ──────────────────────────────────────────
@@ -1222,115 +1302,116 @@ async function setCombobox(tabId, selector, values, opts = {}) {
   const valueList = Array.isArray(values) ? values : [values];
   const multi = !!opts.multi;
   const queryPrefixLen = opts.query_chars || 4;
+  const waitMs = opts.wait_ms || 3000;
+  const waitIterations = Math.max(1, Math.ceil(waitMs / 100));
   const results = [];
 
   for (const val of valueList) {
-    const inputEl = await resolveElement(tabId, selector);
-    if (!inputEl) {
-      results.push({ value: val, ok: false, error: 'input-not-found' });
-      continue;
-    }
-    await debuggerClick(tabId, inputEl.x, inputEl.y);
-    await new Promise(r => setTimeout(r, 120));
-
-    // Clear (Ctrl+A → Backspace) — for multi-select with chips, this clears the search query, not the chips
-    await debuggerAttach(tabId);
     try {
-      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-        type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
-      });
-      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-        type: 'keyUp', key: 'a', code: 'KeyA',
-      });
-      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-        type: 'keyDown', key: 'Backspace', code: 'Backspace',
-      });
-      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-        type: 'keyUp', key: 'Backspace', code: 'Backspace',
-      });
-      // Type partial query (some autocompletes need 2-3 chars before showing options)
-      const query = val.slice(0, Math.max(queryPrefixLen, val.length));
+      const inputEl = await resolveElement(tabId, selector);
+      if (!inputEl) {
+        results.push({ value: val, ok: false, error: 'input-not-found' });
+        continue;
+      }
+      await debuggerClick(tabId, inputEl.x, inputEl.y);
+      await new Promise(r => setTimeout(r, 120));
+
+      // Clear input only if non-empty. Backspace on empty multi-select deletes the previous chip
+      // (react-select, MUI Autocomplete, Meta combobox all behave this way) — so we use native
+      // value-setter to clear cleanly without ever pressing Backspace on an empty field.
+      const currentValue = await readBackValue(tabId, selector);
+      if (currentValue) {
+        await safeExecuteScript(tabId, (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return;
+          const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(el, ''); else el.value = '';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }, [selector]);
+      }
+
+      // Type partial query via Input.insertText (bypasses per-keystroke validators)
+      const query = val.slice(0, Math.min(queryPrefixLen, val.length));
+      await debuggerAttach(tabId);
       await cdpSend(tabId, 'Input.insertText', { text: query });
-    } finally {
-      // sticky-attach: no detach
-    }
 
-    // Wait for listbox/options to appear
-    let ready = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 100));
-      const found = await debuggerEval(tabId, `(() => {
-        const lbs = document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i] [class*="option" i], [class*="menu" i][role]:not([aria-hidden="true"])');
+      // Wait for listbox/options to appear
+      let ready = false;
+      for (let i = 0; i < waitIterations; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        const found = await debuggerEval(tabId, `(() => {
+          const lbs = document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i] [class*="option" i], [class*="menu" i][role]:not([aria-hidden="true"])');
+          for (const lb of lbs) {
+            if (lb.offsetHeight === 0) continue;
+            const opts = lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index], [class*="option" i]:not([class*="optgroup" i])');
+            if (opts.length > 0) return true;
+          }
+          return false;
+        })()`);
+        if (found) { ready = true; break; }
+      }
+
+      if (!ready) {
+        results.push({ value: val, ok: false, error: 'no-options-rendered', query, waitMs });
+        continue;
+      }
+
+      // Find and click matching option
+      const click = await safeExecuteScript(tabId, (query) => {
+        const lbs = [...document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i], [class*="menu" i][role]:not([aria-hidden="true"])')]
+          .filter(lb => lb.offsetHeight > 0);
+
+        const queryLower = query.toLowerCase();
+        const allOptions = [];
         for (const lb of lbs) {
-          if (lb.offsetHeight === 0) continue;
-          const opts = lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index], [class*="option" i]:not([class*="optgroup" i])');
-          if (opts.length > 0) return true;
+          const opts = [...lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index]')];
+          if (opts.length === 0) {
+            opts.push(...lb.querySelectorAll('li, [class*="option" i]:not([class*="optgroup" i])'));
+          }
+          const enabled = opts.filter(o =>
+            o.getAttribute('aria-disabled') !== 'true' &&
+            !o.classList.contains('disabled') &&
+            o.offsetHeight > 0
+          );
+          allOptions.push(...enabled);
         }
-        return false;
-      })()`);
-      if (found) { ready = true; break; }
-    }
 
-    if (!ready) {
-      results.push({ value: val, ok: false, error: 'no-options-rendered', query: val.slice(0, queryPrefixLen) });
-      continue;
-    }
-
-    // Find and click matching option
-    const click = await safeExecuteScript(tabId, (query) => {
-      const lbs = [...document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i], [class*="menu" i][role]:not([aria-hidden="true"])')]
-        .filter(lb => lb.offsetHeight > 0);
-
-      const queryLower = query.toLowerCase();
-      const allOptions = [];
-      for (const lb of lbs) {
-        const opts = [...lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index]')];
-        if (opts.length === 0) {
-          // Fallback for non-ARIA-compliant
-          opts.push(...lb.querySelectorAll('li, [class*="option" i]:not([class*="optgroup" i])'));
+        for (const o of allOptions) {
+          const text = (o.textContent || '').trim().toLowerCase();
+          if (text === queryLower) {
+            o.click();
+            return { ok: true, method: 'exact', text: o.textContent.trim() };
+          }
         }
-        const enabled = opts.filter(o =>
-          o.getAttribute('aria-disabled') !== 'true' &&
-          !o.classList.contains('disabled') &&
-          o.offsetHeight > 0
-        );
-        allOptions.push(...enabled);
-      }
-
-      // Match priority: exact → starts-with → contains
-      for (const o of allOptions) {
-        const text = (o.textContent || '').trim().toLowerCase();
-        if (text === queryLower) {
-          o.click();
-          return { ok: true, method: 'exact', text: o.textContent.trim() };
+        for (const o of allOptions) {
+          const text = (o.textContent || '').trim().toLowerCase();
+          if (text.startsWith(queryLower)) {
+            o.click();
+            return { ok: true, method: 'startsWith', text: o.textContent.trim() };
+          }
         }
-      }
-      for (const o of allOptions) {
-        const text = (o.textContent || '').trim().toLowerCase();
-        if (text.startsWith(queryLower)) {
-          o.click();
-          return { ok: true, method: 'startsWith', text: o.textContent.trim() };
+        for (const o of allOptions) {
+          const text = (o.textContent || '').trim().toLowerCase();
+          if (text.includes(queryLower)) {
+            o.click();
+            return { ok: true, method: 'contains', text: o.textContent.trim() };
+          }
         }
-      }
-      for (const o of allOptions) {
-        const text = (o.textContent || '').trim().toLowerCase();
-        if (text.includes(queryLower)) {
-          o.click();
-          return { ok: true, method: 'contains', text: o.textContent.trim() };
+
+        return { ok: false, error: 'no-match-found', optionCount: allOptions.length };
+      }, [val]);
+
+      if (click.result?.ok) {
+        results.push({ value: val, ok: true, method: click.result.method, selected: click.result.text });
+        if (multi) {
+          await new Promise(r => setTimeout(r, 250));
         }
+      } else {
+        results.push({ value: val, ok: false, error: click.result?.error || 'click-failed' });
       }
-
-      return { ok: false, error: 'no-match-found', optionCount: allOptions.length };
-    }, [val]);
-
-    if (click.result?.ok) {
-      results.push({ value: val, ok: true, method: click.result.method, selected: click.result.text });
-      if (multi) {
-        // Wait for chip to render and input to clear
-        await new Promise(r => setTimeout(r, 250));
-      }
-    } else {
-      results.push({ value: val, ok: false, error: click.result?.error || 'click-failed' });
+    } catch (e) {
+      results.push({ value: val, ok: false, error: e?.message || String(e) });
     }
   }
 
@@ -1341,6 +1422,11 @@ async function setCombobox(tabId, selector, values, opts = {}) {
 
 async function dropFileOnTarget(tabId, selector, files) {
   const fileList = Array.isArray(files) ? files : [files];
+
+  // Sweep any stale tags from previous failed runs before tagging fresh
+  await debuggerEval(tabId, `(() => {
+    document.querySelectorAll('[data-bmcp-drop-tag]').forEach(el => el.removeAttribute('data-bmcp-drop-tag'));
+  })()`);
 
   // Strategy 1: search subtree (and 2 ancestor levels) for a file input — even if hidden
   const inputJson = await debuggerEval(tabId, `(() => {
@@ -1370,10 +1456,12 @@ async function dropFileOnTarget(tabId, selector, files) {
   const inputInfo = JSON.parse(inputJson);
 
   if (inputInfo.found) {
+    const taggedSel = `[data-bmcp-drop-tag="${inputInfo.tag}"]`;
+    let result;
+    let caughtError;
     try {
       await debuggerAttach(tabId);
       const docResult = await cdpSend(tabId, 'DOM.getDocument', {});
-      const taggedSel = `[data-bmcp-drop-tag="${inputInfo.tag}"]`;
       const queryResult = await cdpSend(tabId, 'DOM.querySelector', {
         nodeId: docResult.root.nodeId,
         selector: taggedSel,
@@ -1383,15 +1471,26 @@ async function dropFileOnTarget(tabId, selector, files) {
           nodeId: queryResult.nodeId,
           files: fileList,
         });
-        // Cleanup tag attribute
+        result = { ok: true, method: 'hidden-input', files: fileList, accept: inputInfo.accept };
+      }
+    } catch (e) {
+      caughtError = e?.message || String(e);
+    } finally {
+      // Always remove the tag attribute — success or failure
+      try {
         await debuggerEval(tabId, `(() => {
           const el = document.querySelector(${JSON.stringify(taggedSel)});
           if (el) el.removeAttribute('data-bmcp-drop-tag');
         })()`);
-        return { ok: true, method: 'hidden-input', files: fileList, accept: inputInfo.accept };
-      }
-    } catch (e) {
-      // Fall through to error response
+      } catch {}
+    }
+    if (result) return result;
+    if (caughtError) {
+      return {
+        ok: false,
+        error: 'setFileInputFiles-failed',
+        detail: caughtError,
+      };
     }
   }
 
@@ -1591,7 +1690,21 @@ async function dispatch(port, method, params) {
           } catch (e) {
             tried.push({ path: 'masked', error: e.message });
           }
+        } else {
+          tried.push({
+            path: 'masked',
+            skipped: true,
+            reason: 'no-parseable-format',
+            placeholder: info.placeholder,
+            ariaLabel: info.ariaLabel,
+          });
         }
+      } else {
+        tried.push({
+          path: 'masked',
+          skipped: true,
+          reason: info.tag !== 'INPUT' ? 'not-input-element' : (info.readOnly ? 'readonly' : 'disabled'),
+        });
       }
 
       // Path C: calendar-picker navigation
@@ -1619,8 +1732,9 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const scope = params.scope || 'non_critical';
-      const dismissed = await dismissOverlays(tab.id, scope, params.max_passes || 3);
-      return { ok: true, dismissed, count: dismissed.length };
+      const maxPasses = params.max_passes ?? 3;
+      const r = await dismissOverlays(tab.id, scope, maxPasses);
+      return { ok: true, dismissed: r.dismissed, skipped: r.skipped, count: r.dismissed.length };
     }
 
     case 'set_combobox': {

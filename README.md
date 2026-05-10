@@ -11,7 +11,7 @@
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 29 tools total.
+The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 33 tools total.
 
 ## Install — 2 steps (~60 seconds)
 
@@ -36,7 +36,7 @@ This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds t
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 29 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 33 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
@@ -78,7 +78,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
 
-## 29 Tools
+## 33 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -98,7 +98,10 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns |
 | `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select) |
-| `browser_handle_dialog` | Accept/dismiss alert/confirm/prompt dialogs |
+| `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
+| `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
+| `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
+| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
 
 ### Tabs & Frames
 | Tool | Description |
@@ -138,6 +141,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
 | `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog) |
+| `browser_drop_file` | Upload via drop-zones: finds hidden `<input type="file">` in target subtree/parent (up to 2 levels). Use when `browser_upload_file` fails because the zone has no visible input |
 
 ## Multi-Session Support
 

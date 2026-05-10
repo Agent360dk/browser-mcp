@@ -14,9 +14,15 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
 import { execSync } from 'child_process';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
+
+// Read version from package.json — single source of truth, never drifts
+const PKG_VERSION = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8')
+).version;
 
 // ── Auto-update on startup ─────────────────────────────────────────────────
 
@@ -216,11 +222,18 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - If a standard selector fails, the extension recursively searches shadow roots
 - Text-based selectors ("text=Submit") also traverse shadow DOM
 
+## Hard inputs — use the specialised tools first
+- **Date inputs** → use browser_set_date (NOT browser_fill). Handles native date inputs, masked text inputs (MM/DD/YYYY etc.), AND calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). 3-path fallback with read-back verification.
+- **Autocomplete / combobox** (Languages on Meta Ads, country selects, async dropdowns) → use browser_set_combobox (NOT browser_select_option). Types partial query, waits for filtered listbox, clicks option. Supports multi-value chips.
+- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). Finds hidden input in subtree/parent.
+- **Annoying popups blocking the flow** (cookie banners, "Don't show again", Advantage+ tooltips, draft-confirm prompts) → call browser_dismiss_overlays before each major step. It only clicks safe close affordances by default; preserves forms with editable text fields.
+
 ## When things fail
 - Element not found → try text-based selector instead of CSS
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
+- browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 
 ## Extension updates
 The MCP server auto-pulls the latest code from git on every new session startup.
@@ -229,7 +242,7 @@ If the extension files were updated, ask the user to reload it:
 You cannot navigate to chrome:// pages — the user must do this manually.`;
 
 const mcpServer = new Server(
-  { name: 'agent360-browser', version: '1.16.0' },
+  { name: 'agent360-browser', version: PKG_VERSION },
   { capabilities: { tools: {} } },
   { instructions: INSTRUCTIONS },
 );
@@ -272,6 +285,10 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_set_local_storage: 'set_local_storage',
       browser_console_logs: 'console_logs',
       browser_solve_captcha: 'solve_captcha',
+      browser_set_date: 'set_date',
+      browser_dismiss_overlays: 'dismiss_overlays',
+      browser_set_combobox: 'set_combobox',
+      browser_drop_file: 'drop_file',
     };
 
     if (name === 'browser_extract_token') {

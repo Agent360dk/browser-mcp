@@ -56,7 +56,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_fill',
-    description: 'Fill a form input field with a value. Supports CSS selectors AND text-based selectors. Auto-scrolls and focuses the element. Works on CSP-strict sites via Chrome Debugger API.',
+    description: 'Fill a form input field with a value. Supports CSS selectors AND text-based selectors. Auto-scrolls and focuses the element. Works on CSP-strict sites via Chrome Debugger API. For date inputs use browser_set_date, for autocomplete/combobox use browser_set_combobox.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -120,7 +120,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_option',
-    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text.',
+    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -153,6 +153,7 @@ export const TOOLS = [
         values: { type: 'array', items: { type: 'string' }, description: 'Array of values for multi-select. E.g. ["Danish", "English", "Swedish"]' },
         multi: { type: 'boolean', description: 'True if combobox accepts multiple values (chips). Default: auto-detected from presence of values array' },
         query_chars: { type: 'number', description: 'How many characters to type as filter query (default: 4 or full value length, whichever is smaller)' },
+        wait_ms: { type: 'number', description: 'Max ms to wait for options listbox to appear after typing (default: 3000)' },
       },
       required: ['selector'],
     },
@@ -167,6 +168,7 @@ export const TOOLS = [
         file: { type: 'string', description: 'Single absolute file path' },
         files: { type: 'array', items: { type: 'string' }, description: 'Array of absolute file paths' },
       },
+      required: ['selector'],
     },
   },
   {
@@ -358,7 +360,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_upload_file',
-    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically — no dialog needed.',
+    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically — no dialog needed. For drag-drop zones without visible file input use browser_drop_file.',
     inputSchema: {
       type: 'object',
       properties: {

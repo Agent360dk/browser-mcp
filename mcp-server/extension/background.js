@@ -203,11 +203,76 @@ function debuggerForceDetach(tabId) {
   } catch {}
 }
 
+// Sync local Set when Chrome auto-detaches (navigation, idle, devtools opened, etc.)
+chrome.debugger.onDetach.addListener((source, reason) => {
+  if (source.tabId) {
+    debuggerAttached.delete(source.tabId);
+    if (reason && reason !== 'target_closed') {
+      console.log(`[MCP] Debugger auto-detached from tab ${source.tabId} (reason: ${reason})`);
+    }
+  }
+});
+
+// Methods that are safe to retry without double-effect.
+// Side-effectful methods (Input.*, DOM.setFileInputFiles) must NEVER auto-retry:
+// Chrome may detach AFTER processing the input (e.g., keystroke triggered navigation),
+// and a blind retry would double-type or double-click.
+const RETRYABLE_CDP_METHODS = new Set([
+  'DOM.getDocument',
+  'DOM.querySelector',
+  'DOM.querySelectorAll',
+  'DOM.focus',
+  'DOM.describeNode',
+  'Runtime.evaluate',
+  'Runtime.enable',
+  'Page.captureScreenshot',
+  'Page.enable',
+  'Network.enable',
+  'Network.disable',
+  'Network.getResponseBody',
+]);
+
+// CDP wrapper with auto-recovery: re-attaches on detach errors.
+// For read-only methods (whitelist above), retries once after re-attach.
+// For side-effectful methods, only re-attaches and throws — caller must decide.
+async function cdpSend(tabId, method, params = {}) {
+  await debuggerAttach(tabId);
+  try {
+    return await chrome.debugger.sendCommand({ tabId }, method, params);
+  } catch (e) {
+    const msg = e?.message || String(e);
+    const isDetachError =
+      msg.includes('not attached') ||
+      msg.includes('Detached') ||
+      msg.includes('detached') ||
+      msg.includes('Debugger is gone') ||
+      msg.includes('No tab with given id');
+    if (!isDetachError) throw e;
+    debuggerAttached.delete(tabId);
+    if (!RETRYABLE_CDP_METHODS.has(method)) {
+      // Re-attach for next caller, but don't auto-retry side-effectful command
+      try { await debuggerAttach(tabId); } catch {}
+      throw new Error(`Debugger detached during ${method} — not auto-retried (side-effect risk). Original: ${msg}`);
+    }
+    await new Promise(r => setTimeout(r, 100));
+    await debuggerAttach(tabId);
+    return await chrome.debugger.sendCommand({ tabId }, method, params);
+  }
+}
+
 // Clean up debugger + session refs when tabs close
 chrome.tabs.onRemoved.addListener((tabId) => {
   debuggerAttached.delete(tabId);
-  for (const [, session] of sessions) {
+  for (const [port, session] of sessions) {
+    if (!session.tabIds.has(tabId)) continue;
     session.tabIds.delete(tabId);
+    if (session.tabIds.size === 0) {
+      // Last tab closed — tell offscreen to terminate the MCP server.
+      // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+    } else {
+      persistSessions();
+    }
   }
 });
 
@@ -216,14 +281,14 @@ async function debuggerType(tabId, text) {
   try {
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
         type: 'keyDown',
         text: char,
         key: char,
         code: `Key${char.toUpperCase()}`,
         unmodifiedText: char,
       });
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
         type: 'keyUp',
         key: char,
         code: `Key${char.toUpperCase()}`,
@@ -243,20 +308,20 @@ async function debuggerClick(tabId, x, y) {
   await debuggerAttach(tabId);
   try {
     // 1. mouseMoved first (triggers hover state, required by some frameworks)
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseMoved', x, y,
     });
     await new Promise(r => setTimeout(r, 30));
     // 2. mousePressed + mouseReleased (fires trusted mousedown/mouseup)
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mousePressed', x, y, button: 'left', clickCount: 1,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
     });
     // 3. CDP doesn't synthesize 'click' event from mousePressed/mouseReleased.
     //    Fire JS click + React/Angular framework fallbacks.
-    await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const el = document.elementFromPoint(${x}, ${y});
         if (!el) return;
@@ -293,12 +358,12 @@ async function debuggerClick(tabId, x, y) {
 async function debuggerFocus(tabId, selector) {
   await debuggerAttach(tabId);
   try {
-    const { root } = await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument', {});
-    const { nodeId } = await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelector', {
+    const { root } = await cdpSend(tabId, 'DOM.getDocument', {});
+    const { nodeId } = await cdpSend(tabId, 'DOM.querySelector', {
       nodeId: root.nodeId, selector,
     });
     if (!nodeId) throw new Error('Element not found: ' + selector);
-    await chrome.debugger.sendCommand({ tabId }, 'DOM.focus', { nodeId });
+    await cdpSend(tabId, 'DOM.focus', { nodeId });
     return nodeId;
   } catch (e) {
     await debuggerDetach(tabId);
@@ -338,16 +403,16 @@ async function debuggerFill(tabId, selector, value) {
   await debuggerAttach(tabId);
   try {
     // Ctrl+A to select all, then Backspace to clear
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'a', code: 'KeyA',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'Backspace', code: 'Backspace',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'Backspace', code: 'Backspace',
     });
   } finally {
@@ -359,7 +424,7 @@ async function debuggerFill(tabId, selector, value) {
 async function debuggerEval(tabId, expression) {
   await debuggerAttach(tabId);
   try {
-    const result = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const result = await cdpSend(tabId, 'Runtime.evaluate', {
       expression,
       returnByValue: true,
     });
@@ -647,6 +712,795 @@ function buildDeepQueryJS(selector) {
   })()`;
 }
 
+// ── Date Input Helpers ──────────────────────────────────────────────────────
+
+const MONTHS_EN = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const MONTHS_DA = ['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
+const MONTHS_ABBR_EN = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+
+function parsePlaceholderFormat(placeholder) {
+  if (!placeholder) return null;
+  const upper = placeholder.toUpperCase();
+  let sep = null;
+  if (upper.includes('/')) sep = '/';
+  else if (upper.includes('-')) sep = '-';
+  else if (upper.includes('.')) sep = '.';
+  else return null;
+  const parts = upper.split(sep);
+  if (parts.length !== 3) return null;
+  const order = parts.map(p => p.includes('Y') ? 'Y' : p.includes('M') ? 'M' : p.includes('D') ? 'D' : null);
+  if (order.includes(null) || new Set(order).size !== 3) return null;
+  const padded = parts.map(p => p.length >= 2);
+  return { sep, order, padded };
+}
+
+function isoToFormat(iso, fmt) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error('Invalid ISO date: ' + iso);
+  const [, y, mo, d] = m;
+  return fmt.order.map((slot, i) => {
+    if (slot === 'Y') return y;
+    if (slot === 'M') return fmt.padded[i] ? mo : String(parseInt(mo, 10));
+    if (slot === 'D') return fmt.padded[i] ? d : String(parseInt(d, 10));
+  }).join(fmt.sep);
+}
+
+function parseMonthYearText(text) {
+  if (!text) return null;
+  const cleaned = text.toLowerCase().trim();
+  const tables = [MONTHS_EN, MONTHS_DA, MONTHS_ABBR_EN];
+  for (const table of tables) {
+    for (let i = 0; i < table.length; i++) {
+      if (cleaned.includes(table[i])) {
+        const ym = cleaned.match(/(\d{4})/);
+        if (ym) return { year: parseInt(ym[1], 10), month: i + 1 };
+      }
+    }
+  }
+  const num = cleaned.match(/(\d{1,2})[\/\-\s.](\d{4})/);
+  if (num) return { year: parseInt(num[2], 10), month: parseInt(num[1], 10) };
+  return null;
+}
+
+function valueLooksLikeIso(value, iso) {
+  if (!value || !iso) return false;
+  const [y, m, d] = iso.split('-');
+  const digits = value.replace(/\D/g, '');
+  if (digits.includes(y + m + d)) return true;
+  if (digits.includes(m + d + y)) return true;
+  if (digits.includes(d + m + y)) return true;
+  const hasYear = value.includes(y);
+  const hasMonth = value.includes(m) || value.includes(String(parseInt(m, 10)));
+  const hasDay = value.includes(d) || value.includes(String(parseInt(d, 10)));
+  return hasYear && hasMonth && hasDay;
+}
+
+async function getDateInputInfo(tabId, selector) {
+  const json = await debuggerEval(tabId, `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return JSON.stringify({ found: false });
+    return JSON.stringify({
+      found: true,
+      tag: el.tagName,
+      inputType: (el.type || '').toLowerCase(),
+      readOnly: !!el.readOnly,
+      disabled: !!el.disabled,
+      placeholder: el.placeholder || '',
+      ariaLabel: el.getAttribute('aria-label') || '',
+      value: el.value !== undefined ? el.value : (el.textContent || ''),
+    });
+  })()`);
+  return JSON.parse(json);
+}
+
+async function readBackValue(tabId, selector) {
+  const json = await debuggerEval(tabId, `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return JSON.stringify({ value: null });
+    return JSON.stringify({ value: el.value !== undefined ? el.value : (el.textContent || '') });
+  })()`);
+  return JSON.parse(json).value;
+}
+
+async function setDateNative(tabId, selector, iso) {
+  const r = await safeExecuteScript(tabId, (sel, val) => {
+    const el = document.querySelector(sel);
+    if (!el) return { ok: false, error: 'not-found' };
+    try {
+      el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      el.focus();
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) setter.call(el, val); else el.value = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+      return { ok: true, value: el.value };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }, [selector, iso]);
+  if (r.cspBlocked) {
+    await debuggerEval(tabId, `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      if (!el) return;
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+      if (setter) setter.call(el, ${JSON.stringify(iso)}); else el.value = ${JSON.stringify(iso)};
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.blur();
+    })()`);
+    return { ok: true, csp: true };
+  }
+  return r.result || { ok: false, error: 'no-result' };
+}
+
+async function setDateMaskedTyping(tabId, selector, iso, format) {
+  const formatted = isoToFormat(iso, format);
+  await debuggerFocus(tabId, selector);
+  await debuggerAttach(tabId);
+  try {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
+    });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'a', code: 'KeyA',
+    });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Backspace', code: 'Backspace',
+    });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Backspace', code: 'Backspace',
+    });
+    await cdpSend(tabId, 'Input.insertText', { text: formatted });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyDown', key: 'Tab', code: 'Tab',
+    });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'Tab', code: 'Tab',
+    });
+  } finally {
+    await debuggerDetach(tabId);
+  }
+  return { ok: true, formatted };
+}
+
+const PICKER_OPEN_SELECTORS = [
+  '[role="dialog"] [role="grid"]',
+  '[role="dialog"] [role="gridcell"]',
+  '.react-datepicker',
+  '.MuiPickersPopper-root',
+  '.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)',
+  '[class*="DayPicker"]:not(input)',
+  '[class*="Calendar"][class*="open" i]',
+];
+
+async function isPickerOpen(tabId) {
+  return await debuggerEval(tabId, `(() => {
+    const sels = ${JSON.stringify(PICKER_OPEN_SELECTORS)};
+    for (const s of sels) {
+      try { if (document.querySelector(s)) return true; } catch {}
+    }
+    return false;
+  })()`);
+}
+
+async function getPickerRoot(tabId) {
+  return await debuggerEval(tabId, `(() => {
+    const sels = ${JSON.stringify(PICKER_OPEN_SELECTORS)};
+    for (const s of sels) {
+      try {
+        const el = document.querySelector(s);
+        if (el) {
+          const root = el.closest('[role="dialog"], .react-datepicker, .MuiPickersPopper-root, .ant-picker-dropdown') || el;
+          // Return a stable selector path — for runtime use we re-query each time
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  })()`);
+}
+
+async function setDatePicker(tabId, selector, iso) {
+  const [yStr, mStr, dStr] = iso.split('-');
+  const targetYear = parseInt(yStr, 10);
+  const targetMonth = parseInt(mStr, 10);
+  const targetDay = parseInt(dStr, 10);
+
+  const inputEl = await resolveElement(tabId, selector);
+  if (!inputEl) return { ok: false, error: 'input-not-found' };
+  await debuggerClick(tabId, inputEl.x, inputEl.y);
+
+  let opened = false;
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 100));
+    if (await isPickerOpen(tabId)) { opened = true; break; }
+  }
+
+  if (!opened) {
+    const triggerClicked = await safeExecuteScript(tabId, (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return false;
+      const candidates = [
+        ...(el.parentElement?.querySelectorAll('button, [role="button"], [aria-haspopup]') || []),
+        ...(el.parentElement?.parentElement?.querySelectorAll('button, [role="button"], [aria-haspopup]') || []),
+      ];
+      for (const c of candidates) {
+        const label = (c.getAttribute('aria-label') || '').toLowerCase();
+        if (label.includes('calendar') || label.includes('date') || label.includes('vælg dato') || label.includes('open') || label.includes('åbn')) {
+          c.click();
+          return true;
+        }
+      }
+      for (const c of candidates) {
+        if (c.querySelector('svg, [class*="calendar" i]')) {
+          c.click();
+          return true;
+        }
+      }
+      return false;
+    }, [selector]);
+    if (triggerClicked.result) {
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        if (await isPickerOpen(tabId)) { opened = true; break; }
+      }
+    }
+  }
+
+  if (!opened) return { ok: false, error: 'picker-did-not-open' };
+
+  const MAX_NAV = 36;
+  let navAttempts = 0;
+  let lastHeader = null;
+  let stuck = 0;
+  let navExitReason = 'reached-target';
+  let lastReachedMonthYear = null;
+  for (let i = 0; i < MAX_NAV; i++) {
+    const headerJson = await debuggerEval(tabId, `(() => {
+      const roots = [
+        document.querySelector('[role="dialog"]'),
+        document.querySelector('.react-datepicker'),
+        document.querySelector('.MuiPickersPopper-root'),
+        document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'),
+      ].filter(Boolean);
+      for (const root of roots) {
+        const candidates = [
+          root.querySelector('[role="heading"]'),
+          root.querySelector('[aria-live]'),
+          root.querySelector('.MuiPickersCalendarHeader-label'),
+          root.querySelector('.react-datepicker__current-month'),
+          root.querySelector('.ant-picker-header-view'),
+        ].filter(Boolean);
+        for (const el of candidates) {
+          const t = (el.textContent || '').trim();
+          if (t.length > 0 && t.length < 80) return JSON.stringify({ text: t });
+        }
+      }
+      return JSON.stringify({});
+    })()`);
+    const header = JSON.parse(headerJson);
+    const parsed = parseMonthYearText(header.text || '');
+    if (!parsed) {
+      navExitReason = header.text ? 'header-parse-failed' : 'no-header-found';
+      break;
+    }
+    lastReachedMonthYear = `${parsed.year}-${String(parsed.month).padStart(2, '0')}`;
+
+    if (header.text === lastHeader) {
+      stuck++;
+      if (stuck >= 3) { navExitReason = 'navigation-stuck'; break; }
+    } else {
+      stuck = 0;
+      lastHeader = header.text;
+    }
+
+    const delta = (targetYear * 12 + targetMonth) - (parsed.year * 12 + parsed.month);
+    if (delta === 0) break;
+    if (i === MAX_NAV - 1) {
+      navExitReason = 'max-nav-exceeded';
+    }
+
+    const dir = delta > 0 ? 'next' : 'prev';
+    const navClicked = await safeExecuteScript(tabId, (direction) => {
+      const roots = [
+        document.querySelector('[role="dialog"]'),
+        document.querySelector('.react-datepicker'),
+        document.querySelector('.MuiPickersPopper-root'),
+        document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'),
+      ].filter(Boolean);
+      const labels = direction === 'next'
+        ? ['next month', 'next', 'forward', 'næste']
+        : ['previous month', 'previous', 'prev', 'back', 'forrige'];
+      const classFallbacks = direction === 'next'
+        ? ['.react-datepicker__navigation--next', '.ant-picker-header-next-btn', '.ant-picker-header-super-next-btn']
+        : ['.react-datepicker__navigation--previous', '.ant-picker-header-prev-btn', '.ant-picker-header-super-prev-btn'];
+      for (const root of roots) {
+        const buttons = [...root.querySelectorAll('button, [role="button"]')];
+        for (const b of buttons) {
+          const label = (b.getAttribute('aria-label') || b.title || '').toLowerCase();
+          if (labels.some(l => label.includes(l))) { b.click(); return true; }
+        }
+        for (const cs of classFallbacks) {
+          const b = root.querySelector(cs);
+          if (b) { b.click(); return true; }
+        }
+      }
+      return false;
+    }, [dir]);
+
+    if (!navClicked.result) {
+      await debuggerAttach(tabId);
+      try {
+        const key = delta > 0 ? 'PageDown' : 'PageUp';
+        await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+          type: 'keyDown', key, code: key,
+        });
+        await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+          type: 'keyUp', key, code: key,
+        });
+      } finally {
+        await debuggerDetach(tabId);
+      }
+    }
+    navAttempts++;
+    await new Promise(r => setTimeout(r, 90));
+  }
+
+  const dayResult = await safeExecuteScript(tabId, (day, year, month, monthsEn, monthsDa, monthsAbbr) => {
+    const roots = [
+      document.querySelector('[role="dialog"]'),
+      document.querySelector('.react-datepicker'),
+      document.querySelector('.MuiPickersPopper-root'),
+      document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)'),
+    ].filter(Boolean);
+    const monthEn = monthsEn[month - 1];
+    const monthDa = monthsDa[month - 1];
+    const monthAbbr = monthsAbbr[month - 1];
+
+    for (const root of roots) {
+      const cells = [...root.querySelectorAll('[role="gridcell"], .react-datepicker__day, .ant-picker-cell, [class*="PickersDay"]')];
+      const isDisabled = (c) => c.getAttribute('aria-disabled') === 'true' ||
+        c.classList.contains('disabled') ||
+        c.classList.contains('react-datepicker__day--disabled') ||
+        c.classList.contains('ant-picker-cell-disabled') ||
+        c.classList.contains('Mui-disabled');
+      const isOutside = (c) => {
+        const cls = c.className || '';
+        if (/outside|other-month|--prev|--next|adjacent/i.test(cls)) return true;
+        if (c.classList.contains('react-datepicker__day--outside-month')) return true;
+        if (c.classList.contains('ant-picker-cell') && !c.classList.contains('ant-picker-cell-in-view')) return true;
+        return false;
+      };
+
+      for (const c of cells) {
+        if (isDisabled(c) || isOutside(c)) continue;
+        const label = (c.getAttribute('aria-label') || '').toLowerCase();
+        if (!label) continue;
+        const matchesMonth = label.includes(monthEn) || label.includes(monthDa) || label.includes(monthAbbr);
+        const matchesYear = label.includes(String(year));
+        const dayPattern = new RegExp('\\b' + day + '(st|nd|rd|th)?\\b');
+        const dayPaddedPattern = new RegExp('\\b' + String(day).padStart(2, '0') + '\\b');
+        if (matchesMonth && matchesYear && (dayPattern.test(label) || dayPaddedPattern.test(label))) {
+          c.click();
+          return { ok: true, method: 'aria-label', label };
+        }
+      }
+
+      for (const c of cells) {
+        if (isDisabled(c) || isOutside(c)) continue;
+        const text = (c.textContent || '').trim();
+        if (text === String(day) || text === String(day).padStart(2, '0')) {
+          c.click();
+          return { ok: true, method: 'text-content' };
+        }
+      }
+    }
+    return { ok: false, error: 'day-not-found' };
+  }, [targetDay, targetYear, targetMonth, MONTHS_EN, MONTHS_DA, MONTHS_ABBR_EN]);
+
+  if (!dayResult.result || !dayResult.result.ok) {
+    return {
+      ok: false,
+      error: dayResult.result?.error || 'day-click-failed',
+      navAttempts,
+      navExitReason,
+      lastReachedMonthYear,
+      targetMonthYear: `${targetYear}-${String(targetMonth).padStart(2, '0')}`,
+    };
+  }
+
+  await new Promise(r => setTimeout(r, 350));
+  return { ok: true, method: dayResult.result.method, navAttempts };
+}
+
+async function collectVisibleErrors(tabId, selector) {
+  const json = await debuggerEval(tabId, `(() => {
+    const errs = [];
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (el?.getAttribute('aria-invalid') === 'true') errs.push('aria-invalid=true on input');
+    const candidates = [
+      ...document.querySelectorAll('[role="alert"], .error-text, [class*="error" i]:not(input):not(button)'),
+    ].slice(0, 8);
+    for (const c of candidates) {
+      const t = (c.textContent || '').trim();
+      if (t && t.length < 200 && c.offsetHeight > 0) errs.push(t);
+    }
+    return JSON.stringify(errs);
+  })()`);
+  try { return JSON.parse(json); } catch { return []; }
+}
+
+// ── Overlay Dismissal Helper ────────────────────────────────────────────────
+
+async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
+  // Clamp to sensible range; reject sloppy input
+  const passes = Math.max(1, Math.min(10, Number.isInteger(maxPasses) ? maxPasses : 3));
+  const allDismissed = [];
+  const allSkipped = [];
+
+  for (let pass = 0; pass < passes; pass++) {
+    const r = await safeExecuteScript(tabId, (s) => {
+      const dismissed = [];
+      const skipped = [];
+
+      // "Safe" texts cannot revert form data — they're purely informational close affordances
+      const safeTexts = [
+        "luk", "dismiss", "close", "got it", "got it, thanks",
+        "not now", "ikke nu", "senere", "later",
+        "don't show", "don't show again", "dont show again", "dont show",
+        "no thanks", "maybe later", "ok", "ok!", "okay",
+      ];
+      // "Ambiguous" texts MAY revert partial form data ("Cancel" usually reverts state)
+      // — only used when overlay has no editable form fields, or in aggressive scope
+      const ambiguousTexts = [
+        "skip", "cancel", "afvis", "spring over",
+      ];
+      const xChars = ['×', '✕', '✖', '⨯'];
+
+      const isVisible = (el) => {
+        if (!el || !el.offsetParent && el.tagName !== 'BODY') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+
+      const findCloseAffordance = (overlay, allowAmbiguous) => {
+        const all = [...overlay.querySelectorAll('button, [role="button"], a[href="#"], [aria-label]')];
+        const allTexts = allowAmbiguous ? [...safeTexts, ...ambiguousTexts] : safeTexts;
+
+        // Priority 1: aria-label match (close/dismiss/luk/afvis are always safe)
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const label = (c.getAttribute('aria-label') || '').toLowerCase();
+          if (!label) continue;
+          if (label.includes('close') || label.includes('dismiss') || label.includes('luk')) {
+            return { el: c, method: 'aria-label', label };
+          }
+          if (allowAmbiguous && label.includes('afvis')) {
+            return { el: c, method: 'aria-label', label };
+          }
+        }
+
+        // Priority 2: button text exact match
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const text = (c.textContent || '').trim().toLowerCase();
+          if (!text || text.length > 30) continue;
+          if (allTexts.some(t => text === t || text === t + '!' || text === t + '.')) {
+            return { el: c, method: 'text-exact', label: text };
+          }
+        }
+        // Priority 3: button text contains
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const text = (c.textContent || '').trim().toLowerCase();
+          if (!text || text.length > 40) continue;
+          if (allTexts.some(t => text.includes(t))) {
+            return { el: c, method: 'text-contains', label: text };
+          }
+        }
+
+        // Priority 4: × character buttons (always safe — these are universal close)
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const text = (c.textContent || '').trim();
+          if (xChars.includes(text)) {
+            return { el: c, method: 'x-char', label: text };
+          }
+        }
+
+        return null;
+      };
+
+      const overlays = new Set();
+      const selectors = [
+        '[role="dialog"]:not([aria-hidden="true"])',
+        '[role="alertdialog"]:not([aria-hidden="true"])',
+        '[role="tooltip"]:not([aria-hidden="true"])',
+        '[role="alert"]',
+        '[class*="modal" i]:not([class*="-hidden"]):not([style*="display: none"])',
+        '[class*="tooltip" i]:not([class*="-hidden"])',
+        '[class*="popover" i]:not([class*="-hidden"])',
+        '[class*="overlay" i]:not([class*="-hidden"])',
+        '[class*="banner" i]:not([class*="-hidden"]):not(input):not(button)',
+        '[data-testid*="dialog" i]',
+        '[data-testid*="modal" i]',
+      ];
+      for (const sel of selectors) {
+        try {
+          for (const el of document.querySelectorAll(sel)) {
+            if (isVisible(el) && el.tagName !== 'INPUT' && el.tagName !== 'BUTTON') {
+              overlays.add(el);
+            }
+          }
+        } catch {}
+      }
+
+      for (const overlay of overlays) {
+        const role = overlay.getAttribute('role') || (overlay.className || '').split(' ')[0] || 'unknown';
+
+        // Inspect for editable form fields
+        const editableTextInputs = overlay.querySelectorAll(
+          'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]'
+        );
+        const allEditableInputs = overlay.querySelectorAll(
+          'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]'
+        );
+        const hasTextFields = editableTextInputs.length > 0;
+        const hasOnlyCheckboxRadios = !hasTextFields && allEditableInputs.length > 0;
+
+        // Determine if ambiguous keywords (Skip/Cancel/Afvis) are allowed
+        let allowAmbiguous;
+        if (s === 'aggressive') {
+          allowAmbiguous = true;
+        } else if (role === 'tooltip' || role === 'alert') {
+          allowAmbiguous = true;  // tooltips never hold form data
+        } else if (hasTextFields) {
+          allowAmbiguous = false; // protect form data — only safe keywords
+        } else {
+          allowAmbiguous = true;  // checkbox-only or empty dialogs — fair game
+        }
+
+        const found = findCloseAffordance(overlay, allowAmbiguous);
+        if (found) {
+          try {
+            found.el.click();
+            dismissed.push({ role, method: found.method, label: found.label, scope: allowAmbiguous ? 'ambiguous-ok' : 'safe-only' });
+          } catch (e) {
+            skipped.push({ role, reason: 'click-error', error: e.message });
+          }
+        } else {
+          skipped.push({
+            role,
+            reason: hasTextFields && !allowAmbiguous
+              ? 'no-safe-dismiss-affordance (text fields present)'
+              : 'no-dismiss-affordance-found',
+            hasTextFields,
+            hasOnlyCheckboxRadios,
+          });
+        }
+      }
+
+      return { dismissed, skipped };
+    }, [scope]);
+
+    const passResult = r.result || { dismissed: [], skipped: [] };
+    if (pass === 0) allSkipped.push(...passResult.skipped);
+    if (passResult.dismissed.length === 0) break;
+    allDismissed.push(...passResult.dismissed);
+    await new Promise(r2 => setTimeout(r2, 250));
+  }
+
+  return { dismissed: allDismissed, skipped: allSkipped };
+}
+
+// ── Combobox / Autocomplete Helper ──────────────────────────────────────────
+
+async function setCombobox(tabId, selector, values, opts = {}) {
+  const valueList = Array.isArray(values) ? values : [values];
+  const multi = !!opts.multi;
+  const queryPrefixLen = opts.query_chars || 4;
+  const waitMs = opts.wait_ms || 3000;
+  const waitIterations = Math.max(1, Math.ceil(waitMs / 100));
+  const results = [];
+
+  for (const val of valueList) {
+    try {
+      const inputEl = await resolveElement(tabId, selector);
+      if (!inputEl) {
+        results.push({ value: val, ok: false, error: 'input-not-found' });
+        continue;
+      }
+      await debuggerClick(tabId, inputEl.x, inputEl.y);
+      await new Promise(r => setTimeout(r, 120));
+
+      // Clear input only if non-empty. Backspace on empty multi-select deletes the previous chip
+      // (react-select, MUI Autocomplete, Meta combobox all behave this way) — so we use native
+      // value-setter to clear cleanly without ever pressing Backspace on an empty field.
+      const currentValue = await readBackValue(tabId, selector);
+      if (currentValue) {
+        await safeExecuteScript(tabId, (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return;
+          const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(el, ''); else el.value = '';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        }, [selector]);
+      }
+
+      // Type partial query via Input.insertText (bypasses per-keystroke validators)
+      const query = val.slice(0, Math.min(queryPrefixLen, val.length));
+      await debuggerAttach(tabId);
+      await cdpSend(tabId, 'Input.insertText', { text: query });
+
+      // Wait for listbox/options to appear
+      let ready = false;
+      for (let i = 0; i < waitIterations; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        const found = await debuggerEval(tabId, `(() => {
+          const lbs = document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i] [class*="option" i], [class*="menu" i][role]:not([aria-hidden="true"])');
+          for (const lb of lbs) {
+            if (lb.offsetHeight === 0) continue;
+            const opts = lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index], [class*="option" i]:not([class*="optgroup" i])');
+            if (opts.length > 0) return true;
+          }
+          return false;
+        })()`);
+        if (found) { ready = true; break; }
+      }
+
+      if (!ready) {
+        results.push({ value: val, ok: false, error: 'no-options-rendered', query, waitMs });
+        continue;
+      }
+
+      // Find and click matching option
+      const click = await safeExecuteScript(tabId, (query) => {
+        const lbs = [...document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i], [class*="menu" i][role]:not([aria-hidden="true"])')]
+          .filter(lb => lb.offsetHeight > 0);
+
+        const queryLower = query.toLowerCase();
+        const allOptions = [];
+        for (const lb of lbs) {
+          const opts = [...lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index]')];
+          if (opts.length === 0) {
+            opts.push(...lb.querySelectorAll('li, [class*="option" i]:not([class*="optgroup" i])'));
+          }
+          const enabled = opts.filter(o =>
+            o.getAttribute('aria-disabled') !== 'true' &&
+            !o.classList.contains('disabled') &&
+            o.offsetHeight > 0
+          );
+          allOptions.push(...enabled);
+        }
+
+        for (const o of allOptions) {
+          const text = (o.textContent || '').trim().toLowerCase();
+          if (text === queryLower) {
+            o.click();
+            return { ok: true, method: 'exact', text: o.textContent.trim() };
+          }
+        }
+        for (const o of allOptions) {
+          const text = (o.textContent || '').trim().toLowerCase();
+          if (text.startsWith(queryLower)) {
+            o.click();
+            return { ok: true, method: 'startsWith', text: o.textContent.trim() };
+          }
+        }
+        for (const o of allOptions) {
+          const text = (o.textContent || '').trim().toLowerCase();
+          if (text.includes(queryLower)) {
+            o.click();
+            return { ok: true, method: 'contains', text: o.textContent.trim() };
+          }
+        }
+
+        return { ok: false, error: 'no-match-found', optionCount: allOptions.length };
+      }, [val]);
+
+      if (click.result?.ok) {
+        results.push({ value: val, ok: true, method: click.result.method, selected: click.result.text });
+        if (multi) {
+          await new Promise(r => setTimeout(r, 250));
+        }
+      } else {
+        results.push({ value: val, ok: false, error: click.result?.error || 'click-failed' });
+      }
+    } catch (e) {
+      results.push({ value: val, ok: false, error: e?.message || String(e) });
+    }
+  }
+
+  return { ok: results.every(r => r.ok), results };
+}
+
+// ── File Drop Helper (for drop-zones without <input type="file">) ───────────
+
+async function dropFileOnTarget(tabId, selector, files) {
+  const fileList = Array.isArray(files) ? files : [files];
+
+  // Sweep any stale tags from previous failed runs before tagging fresh
+  await debuggerEval(tabId, `(() => {
+    document.querySelectorAll('[data-bmcp-drop-tag]').forEach(el => el.removeAttribute('data-bmcp-drop-tag'));
+  })()`);
+
+  // Strategy 1: search subtree (and 2 ancestor levels) for a file input — even if hidden
+  const inputJson = await debuggerEval(tabId, `(() => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!target) return JSON.stringify({ found: false, error: 'target-not-found' });
+
+    const candidates = [];
+    candidates.push(...target.querySelectorAll('input[type="file"]'));
+    if (candidates.length === 0 && target.parentElement) {
+      candidates.push(...target.parentElement.querySelectorAll('input[type="file"]'));
+    }
+    if (candidates.length === 0 && target.parentElement?.parentElement) {
+      candidates.push(...target.parentElement.parentElement.querySelectorAll('input[type="file"]'));
+    }
+    if (candidates.length === 0) {
+      // Last resort: any file input on the page
+      candidates.push(...document.querySelectorAll('input[type="file"]'));
+    }
+    if (candidates.length === 0) return JSON.stringify({ found: false });
+
+    // Tag the first viable input with a unique data-attribute so we can re-query reliably
+    const tag = '__bmcp_drop_target_' + Math.random().toString(36).slice(2, 10);
+    candidates[0].setAttribute('data-bmcp-drop-tag', tag);
+    return JSON.stringify({ found: true, tag, accept: candidates[0].accept || '', multiple: !!candidates[0].multiple });
+  })()`);
+
+  const inputInfo = JSON.parse(inputJson);
+
+  if (inputInfo.found) {
+    const taggedSel = `[data-bmcp-drop-tag="${inputInfo.tag}"]`;
+    let result;
+    let caughtError;
+    try {
+      await debuggerAttach(tabId);
+      const docResult = await cdpSend(tabId, 'DOM.getDocument', {});
+      const queryResult = await cdpSend(tabId, 'DOM.querySelector', {
+        nodeId: docResult.root.nodeId,
+        selector: taggedSel,
+      });
+      if (queryResult.nodeId) {
+        await cdpSend(tabId, 'DOM.setFileInputFiles', {
+          nodeId: queryResult.nodeId,
+          files: fileList,
+        });
+        result = { ok: true, method: 'hidden-input', files: fileList, accept: inputInfo.accept };
+      }
+    } catch (e) {
+      caughtError = e?.message || String(e);
+    } finally {
+      // Always remove the tag attribute — success or failure
+      try {
+        await debuggerEval(tabId, `(() => {
+          const el = document.querySelector(${JSON.stringify(taggedSel)});
+          if (el) el.removeAttribute('data-bmcp-drop-tag');
+        })()`);
+      } catch {}
+    }
+    if (result) return result;
+    if (caughtError) {
+      return {
+        ok: false,
+        error: 'setFileInputFiles-failed',
+        detail: caughtError,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    error: 'no-file-input-found',
+    hint: 'No <input type="file"> found in target subtree, parent, or page. Pure drag-drop zones (without backing input) require synthesizing File objects from disk content via mcp-server, which is not yet implemented. Try selecting a more specific selector, or fall back to manual upload via browser_ask_user.',
+  };
+}
+
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
 async function dispatch(port, method, params) {
@@ -712,7 +1566,7 @@ async function dispatch(port, method, params) {
       // user is in terminal. Debugger works regardless of tab focus.
       try {
         await debuggerAttach(tab.id);
-        const { data } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', {
+        const { data } = await cdpSend(tab.id, 'Page.captureScreenshot', {
           format: 'png',
         });
         return { image: 'data:image/png;base64,' + data };
@@ -801,6 +1655,110 @@ async function dispatch(port, method, params) {
       }
     }
 
+    case 'set_date': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
+        return { ok: false, error: 'date must be ISO format YYYY-MM-DD, got: ' + params.date };
+      }
+
+      const info = await getDateInputInfo(tab.id, params.selector);
+      if (!info.found) return { ok: false, error: 'Element not found: ' + params.selector };
+
+      const tried = [];
+      const iso = params.date;
+
+      // Path A: native <input type="date"> or <input type="datetime-local">
+      if (info.tag === 'INPUT' && (info.inputType === 'date' || info.inputType === 'datetime-local')) {
+        await setDateNative(tab.id, params.selector, iso);
+        await new Promise(r => setTimeout(r, 200));
+        const v = await readBackValue(tab.id, params.selector);
+        tried.push({ path: 'native', value: v });
+        if (v && v.startsWith(iso)) return { ok: true, method: 'native', value: v };
+      }
+
+      // Path B: masked text input — parse format and type via Input.insertText
+      if (info.tag === 'INPUT' && !info.readOnly && !info.disabled) {
+        const fmt = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
+        if (fmt) {
+          try {
+            await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
+            await new Promise(r => setTimeout(r, 250));
+            const v = await readBackValue(tab.id, params.selector);
+            tried.push({ path: 'masked', format: fmt.order.join(fmt.sep), value: v });
+            if (valueLooksLikeIso(v, iso)) return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep) };
+          } catch (e) {
+            tried.push({ path: 'masked', error: e.message });
+          }
+        } else {
+          tried.push({
+            path: 'masked',
+            skipped: true,
+            reason: 'no-parseable-format',
+            placeholder: info.placeholder,
+            ariaLabel: info.ariaLabel,
+          });
+        }
+      } else {
+        tried.push({
+          path: 'masked',
+          skipped: true,
+          reason: info.tag !== 'INPUT' ? 'not-input-element' : (info.readOnly ? 'readonly' : 'disabled'),
+        });
+      }
+
+      // Path C: calendar-picker navigation
+      if (!params.skip_picker) {
+        const r = await setDatePicker(tab.id, params.selector, iso);
+        await new Promise(r2 => setTimeout(r2, 200));
+        const v = await readBackValue(tab.id, params.selector);
+        tried.push({ path: 'picker', ...r, value: v });
+        if (r.ok && valueLooksLikeIso(v, iso)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
+      }
+
+      const visibleErrors = await collectVisibleErrors(tab.id, params.selector);
+      const finalValue = await readBackValue(tab.id, params.selector);
+      return {
+        ok: false,
+        error: 'all-paths-failed',
+        tried,
+        current_value: finalValue,
+        visible_errors: visibleErrors,
+        input_info: info,
+      };
+    }
+
+    case 'dismiss_overlays': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const scope = params.scope || 'non_critical';
+      const maxPasses = params.max_passes ?? 3;
+      const r = await dismissOverlays(tab.id, scope, maxPasses);
+      return { ok: true, dismissed: r.dismissed, skipped: r.skipped, count: r.dismissed.length };
+    }
+
+    case 'set_combobox': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      if (!params.selector) return { ok: false, error: 'selector required' };
+      if (!params.values && !params.value) return { ok: false, error: 'value or values required' };
+      const values = params.values || [params.value];
+      const r = await setCombobox(tab.id, params.selector, values, {
+        multi: !!params.multi,
+        query_chars: params.query_chars,
+      });
+      const visibleErrors = r.ok ? [] : await collectVisibleErrors(tab.id, params.selector);
+      return r.ok ? r : { ...r, visible_errors: visibleErrors };
+    }
+
+    case 'drop_file': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
+      if (!files[0]) return { ok: false, error: 'files or file required' };
+      return await dropFileOnTarget(tab.id, params.selector || 'body', files);
+    }
+
     case 'wait': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
@@ -834,14 +1792,14 @@ async function dispatch(port, method, params) {
 
       await debuggerAttach(tab.id);
       try {
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
+        await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
           type: 'keyDown',
           key,
           code: params.code || key,
           modifiers,
           text: key.length === 1 ? key : '',
         });
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
+        await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
           type: 'keyUp',
           key,
           code: params.code || key,
@@ -867,7 +1825,7 @@ async function dispatch(port, method, params) {
       const dy = params.y || 0;
       try {
         await debuggerAttach(tab.id);
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
+        await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseWheel', x: 400, y: 300, deltaX: dx, deltaY: dy,
         });
         await debuggerDetach(tab.id);
@@ -885,7 +1843,7 @@ async function dispatch(port, method, params) {
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       await debuggerAttach(tab.id);
       try {
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
+        await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseMoved', x: el.x, y: el.y,
         });
         // Hold hover for duration (default 500ms) so menus/tooltips appear
@@ -953,7 +1911,7 @@ async function dispatch(port, method, params) {
       await debuggerAttach(tab.id);
       try {
         // Enable page events to catch dialogs
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.enable', {});
+        await cdpSend(tab.id, 'Page.enable', {});
 
         // Wait for dialog to appear (or handle existing one)
         const result = await new Promise((resolve) => {
@@ -967,7 +1925,7 @@ async function dispatch(port, method, params) {
             chrome.debugger.onEvent.removeListener(listener);
             clearTimeout(timeout);
 
-            chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.handleJavaScriptDialog', {
+            cdpSend(tab.id, 'Page.handleJavaScriptDialog', {
               accept: action === 'accept',
               promptText: promptText,
             }).then(() => {
@@ -996,7 +1954,7 @@ async function dispatch(port, method, params) {
 
       await debuggerAttach(tab.id);
       try {
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.enable', {});
+        await cdpSend(tab.id, 'Network.enable', {});
 
         const result = await new Promise((resolve) => {
           const timer = setTimeout(() => {
@@ -1015,7 +1973,7 @@ async function dispatch(port, method, params) {
                 chrome.debugger.onEvent.removeListener(listener);
                 clearTimeout(timer);
                 // Try to get response body
-                chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.getResponseBody', {
+                cdpSend(tab.id, 'Network.getResponseBody', {
                   requestId: eventParams.requestId,
                 }).then(bodyResult => {
                   resolve({
@@ -1040,7 +1998,7 @@ async function dispatch(port, method, params) {
           chrome.debugger.onEvent.addListener(listener);
         });
 
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.disable', {});
+        await cdpSend(tab.id, 'Network.disable', {});
         return result;
       } finally {
         await debuggerDetach(tab.id);
@@ -1141,7 +2099,7 @@ async function dispatch(port, method, params) {
       const count = params.count || 50;
       try {
         await debuggerAttach(tab.id);
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.enable');
+        await cdpSend(tab.id, 'Runtime.enable');
         // Collect console messages for a brief period
         const logs = [];
         const handler = (source, method, eventParams) => {
@@ -1155,7 +2113,7 @@ async function dispatch(port, method, params) {
         };
         chrome.debugger.onEvent.addListener(handler);
         // Also grab existing console via page JS
-        const { result } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.evaluate', {
+        const { result } = await cdpSend(tab.id, 'Runtime.evaluate', {
           expression: `(() => {
             if (!window.__mcpConsoleLogs) {
               window.__mcpConsoleLogs = [];
@@ -1425,7 +2383,7 @@ async function dispatch(port, method, params) {
       try {
         await debuggerAttach(tab.id);
         // Find the file input element
-        const { result: nodeResult } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.evaluate', {
+        const { result: nodeResult } = await cdpSend(tab.id, 'Runtime.evaluate', {
           expression: `(() => {
             const el = document.querySelector(${JSON.stringify(selector)});
             if (!el) return JSON.stringify({ found: false, error: 'File input not found: ${selector}' });
@@ -1440,8 +2398,8 @@ async function dispatch(port, method, params) {
         }
 
         // Get the DOM node ID for the file input
-        const { result: docResult } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.getDocument', {});
-        const { nodeId } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.querySelector', {
+        const { result: docResult } = await cdpSend(tab.id, 'DOM.getDocument', {});
+        const { nodeId } = await cdpSend(tab.id, 'DOM.querySelector', {
           nodeId: docResult.root.nodeId,
           selector: selector,
         });
@@ -1453,7 +2411,7 @@ async function dispatch(port, method, params) {
 
         // Set files on the input using CDP
         const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.setFileInputFiles', {
+        await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,
           files: files,
         });
@@ -1483,7 +2441,7 @@ async function dispatch(port, method, params) {
 async function detectCaptcha(tabId) {
   try {
     await debuggerAttach(tabId);
-    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const res = { found: false, types: [] };
 
@@ -1565,7 +2523,7 @@ async function clickRecaptchaCheckbox(tabId) {
   try {
     await debuggerAttach(tabId);
     // Find the reCAPTCHA anchor iframe position
-    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const iframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
         if (!iframe) return JSON.stringify({ found: false });
@@ -1582,14 +2540,14 @@ async function clickRecaptchaCheckbox(tabId) {
     }
 
     // Click the checkbox using real mouse events
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseMoved', x: pos.x, y: pos.y,
     });
     await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
     });
     await debuggerDetach(tabId);
@@ -1604,7 +2562,7 @@ async function clickCaptchaGridCells(tabId, cells) {
   try {
     await debuggerAttach(tabId);
     // Find the challenge iframe position and dimensions
-    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const iframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
         if (!iframe) return JSON.stringify({ found: false });
@@ -1646,14 +2604,14 @@ async function clickCaptchaGridCells(tabId, cells) {
       const ox = x + Math.round((Math.random() - 0.5) * cellSize * 0.3);
       const oy = y + Math.round((Math.random() - 0.5) * cellSize * 0.3);
 
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
         type: 'mouseMoved', x: ox, y: oy,
       });
       await new Promise(r => setTimeout(r, 150 + Math.random() * 300));
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
         type: 'mousePressed', x: ox, y: oy, button: 'left', clickCount: 1,
       });
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
         type: 'mouseReleased', x: ox, y: oy, button: 'left', clickCount: 1,
       });
       await new Promise(r => setTimeout(r, 200 + Math.random() * 400));
