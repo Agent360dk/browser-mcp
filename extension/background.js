@@ -203,6 +203,37 @@ function debuggerForceDetach(tabId) {
   } catch {}
 }
 
+// Sync local Set when Chrome auto-detaches (navigation, idle, devtools opened, etc.)
+chrome.debugger.onDetach.addListener((source, reason) => {
+  if (source.tabId) {
+    debuggerAttached.delete(source.tabId);
+    if (reason && reason !== 'target_closed') {
+      console.log(`[MCP] Debugger auto-detached from tab ${source.tabId} (reason: ${reason})`);
+    }
+  }
+});
+
+// CDP wrapper with auto-recovery: re-attaches and retries once on detach errors
+async function cdpSend(tabId, method, params = {}) {
+  await debuggerAttach(tabId);
+  try {
+    return await cdpSend(tabId, method, params);
+  } catch (e) {
+    const msg = e?.message || String(e);
+    const isDetachError =
+      msg.includes('not attached') ||
+      msg.includes('Detached') ||
+      msg.includes('detached') ||
+      msg.includes('Debugger is gone') ||
+      msg.includes('No tab with given id');
+    if (!isDetachError) throw e;
+    debuggerAttached.delete(tabId);
+    await new Promise(r => setTimeout(r, 100));
+    await debuggerAttach(tabId);
+    return await cdpSend(tabId, method, params);
+  }
+}
+
 // Clean up debugger + session refs when tabs close
 chrome.tabs.onRemoved.addListener((tabId) => {
   debuggerAttached.delete(tabId);
@@ -224,14 +255,14 @@ async function debuggerType(tabId, text) {
   try {
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
         type: 'keyDown',
         text: char,
         key: char,
         code: `Key${char.toUpperCase()}`,
         unmodifiedText: char,
       });
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
         type: 'keyUp',
         key: char,
         code: `Key${char.toUpperCase()}`,
@@ -251,20 +282,20 @@ async function debuggerClick(tabId, x, y) {
   await debuggerAttach(tabId);
   try {
     // 1. mouseMoved first (triggers hover state, required by some frameworks)
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseMoved', x, y,
     });
     await new Promise(r => setTimeout(r, 30));
     // 2. mousePressed + mouseReleased (fires trusted mousedown/mouseup)
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mousePressed', x, y, button: 'left', clickCount: 1,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
     });
     // 3. CDP doesn't synthesize 'click' event from mousePressed/mouseReleased.
     //    Fire JS click + React/Angular framework fallbacks.
-    await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const el = document.elementFromPoint(${x}, ${y});
         if (!el) return;
@@ -301,12 +332,12 @@ async function debuggerClick(tabId, x, y) {
 async function debuggerFocus(tabId, selector) {
   await debuggerAttach(tabId);
   try {
-    const { root } = await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument', {});
-    const { nodeId } = await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelector', {
+    const { root } = await cdpSend(tabId, 'DOM.getDocument', {});
+    const { nodeId } = await cdpSend(tabId, 'DOM.querySelector', {
       nodeId: root.nodeId, selector,
     });
     if (!nodeId) throw new Error('Element not found: ' + selector);
-    await chrome.debugger.sendCommand({ tabId }, 'DOM.focus', { nodeId });
+    await cdpSend(tabId, 'DOM.focus', { nodeId });
     return nodeId;
   } catch (e) {
     await debuggerDetach(tabId);
@@ -346,16 +377,16 @@ async function debuggerFill(tabId, selector, value) {
   await debuggerAttach(tabId);
   try {
     // Ctrl+A to select all, then Backspace to clear
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'a', code: 'KeyA',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'Backspace', code: 'Backspace',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'Backspace', code: 'Backspace',
     });
   } finally {
@@ -367,7 +398,7 @@ async function debuggerFill(tabId, selector, value) {
 async function debuggerEval(tabId, expression) {
   await debuggerAttach(tabId);
   try {
-    const result = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const result = await cdpSend(tabId, 'Runtime.evaluate', {
       expression,
       returnByValue: true,
     });
@@ -784,23 +815,23 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'a', code: 'KeyA',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'Backspace', code: 'Backspace',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'Backspace', code: 'Backspace',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.insertText', { text: formatted });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.insertText', { text: formatted });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyDown', key: 'Tab', code: 'Tab',
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'Tab', code: 'Tab',
     });
   } finally {
@@ -969,10 +1000,10 @@ async function setDatePicker(tabId, selector, iso) {
       await debuggerAttach(tabId);
       try {
         const key = delta > 0 ? 'PageDown' : 'PageUp';
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+        await cdpSend(tabId, 'Input.dispatchKeyEvent', {
           type: 'keyDown', key, code: key,
         });
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+        await cdpSend(tabId, 'Input.dispatchKeyEvent', {
           type: 'keyUp', key, code: key,
         });
       } finally {
@@ -1060,6 +1091,317 @@ async function collectVisibleErrors(tabId, selector) {
   try { return JSON.parse(json); } catch { return []; }
 }
 
+// ── Overlay Dismissal Helper ────────────────────────────────────────────────
+
+async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
+  const allDismissed = [];
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const r = await safeExecuteScript(tabId, (s) => {
+      const dismissed = [];
+      const dismissTexts = [
+        "ikke nu", "senere", "luk", "afvis", "spring over",
+        "skip", "cancel", "dismiss", "close", "got it", "ok",
+        "no thanks", "not now", "maybe later", "don't show",
+        "don't show again", "dont show again", "later",
+        "got it, thanks",
+      ];
+      const xChars = ['×', '✕', '✖', '⨯'];
+
+      const isVisible = (el) => {
+        if (!el || !el.offsetParent && el.tagName !== 'BODY') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+
+      const findCloseAffordance = (overlay) => {
+        const all = [...overlay.querySelectorAll('button, [role="button"], a[href="#"], [aria-label]')];
+
+        // Priority 1: aria-label match
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const label = (c.getAttribute('aria-label') || '').toLowerCase();
+          if (!label) continue;
+          if (label.includes('close') || label.includes('dismiss') || label.includes('luk') || label.includes('afvis')) {
+            return { el: c, method: 'aria-label', label };
+          }
+        }
+
+        // Priority 2: button text match (exact or contains)
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const text = (c.textContent || '').trim().toLowerCase();
+          if (!text || text.length > 30) continue;
+          if (dismissTexts.some(t => text === t || text === t + '!' || text === t + '.')) {
+            return { el: c, method: 'text-exact', label: text };
+          }
+        }
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const text = (c.textContent || '').trim().toLowerCase();
+          if (!text || text.length > 40) continue;
+          if (dismissTexts.some(t => text.includes(t))) {
+            return { el: c, method: 'text-contains', label: text };
+          }
+        }
+
+        // Priority 3: × character buttons
+        for (const c of all) {
+          if (!isVisible(c)) continue;
+          const text = (c.textContent || '').trim();
+          if (xChars.includes(text)) {
+            return { el: c, method: 'x-char', label: text };
+          }
+        }
+
+        return null;
+      };
+
+      const overlays = new Set();
+      const selectors = [
+        '[role="dialog"]:not([aria-hidden="true"])',
+        '[role="alertdialog"]:not([aria-hidden="true"])',
+        '[role="tooltip"]:not([aria-hidden="true"])',
+        '[role="alert"]',
+        '[class*="modal" i]:not([class*="-hidden"]):not([style*="display: none"])',
+        '[class*="tooltip" i]:not([class*="-hidden"])',
+        '[class*="popover" i]:not([class*="-hidden"])',
+        '[class*="overlay" i]:not([class*="-hidden"])',
+        '[class*="banner" i]:not([class*="-hidden"]):not(input):not(button)',
+        '[data-testid*="dialog" i]',
+        '[data-testid*="modal" i]',
+      ];
+      for (const sel of selectors) {
+        try {
+          for (const el of document.querySelectorAll(sel)) {
+            if (isVisible(el) && el.tagName !== 'INPUT' && el.tagName !== 'BUTTON') {
+              overlays.add(el);
+            }
+          }
+        } catch {}
+      }
+
+      for (const overlay of overlays) {
+        const role = overlay.getAttribute('role') || (overlay.className || '').split(' ')[0] || 'unknown';
+
+        // Skip critical dialogs in non_critical mode (forms with editable inputs)
+        if (s === 'non_critical' && role !== 'tooltip' && role !== 'alert') {
+          const editableInputs = overlay.querySelectorAll('input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), [contenteditable="true"]');
+          if (editableInputs.length > 0) {
+            // But still try if it has obvious dismiss text — many "Don't show again" dialogs have one input (checkbox)
+            const onlyCheckbox = [...editableInputs].every(i => i.type === 'checkbox' || i.type === 'radio');
+            if (!onlyCheckbox) continue;
+          }
+        }
+
+        const found = findCloseAffordance(overlay);
+        if (found) {
+          try {
+            found.el.click();
+            dismissed.push({ role, method: found.method, label: found.label });
+          } catch (e) {
+            dismissed.push({ role, error: e.message });
+          }
+        }
+      }
+
+      return dismissed;
+    }, [scope]);
+
+    const passDismissed = r.result || [];
+    if (passDismissed.length === 0) break;
+    allDismissed.push(...passDismissed);
+    await new Promise(r2 => setTimeout(r2, 250));
+  }
+
+  return allDismissed;
+}
+
+// ── Combobox / Autocomplete Helper ──────────────────────────────────────────
+
+async function setCombobox(tabId, selector, values, opts = {}) {
+  const valueList = Array.isArray(values) ? values : [values];
+  const multi = !!opts.multi;
+  const queryPrefixLen = opts.query_chars || 4;
+  const results = [];
+
+  for (const val of valueList) {
+    const inputEl = await resolveElement(tabId, selector);
+    if (!inputEl) {
+      results.push({ value: val, ok: false, error: 'input-not-found' });
+      continue;
+    }
+    await debuggerClick(tabId, inputEl.x, inputEl.y);
+    await new Promise(r => setTimeout(r, 120));
+
+    // Clear (Ctrl+A → Backspace) — for multi-select with chips, this clears the search query, not the chips
+    await debuggerAttach(tabId);
+    try {
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+        type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
+      });
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+        type: 'keyUp', key: 'a', code: 'KeyA',
+      });
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+        type: 'keyDown', key: 'Backspace', code: 'Backspace',
+      });
+      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+        type: 'keyUp', key: 'Backspace', code: 'Backspace',
+      });
+      // Type partial query (some autocompletes need 2-3 chars before showing options)
+      const query = val.slice(0, Math.max(queryPrefixLen, val.length));
+      await cdpSend(tabId, 'Input.insertText', { text: query });
+    } finally {
+      // sticky-attach: no detach
+    }
+
+    // Wait for listbox/options to appear
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      const found = await debuggerEval(tabId, `(() => {
+        const lbs = document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i] [class*="option" i], [class*="menu" i][role]:not([aria-hidden="true"])');
+        for (const lb of lbs) {
+          if (lb.offsetHeight === 0) continue;
+          const opts = lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index], [class*="option" i]:not([class*="optgroup" i])');
+          if (opts.length > 0) return true;
+        }
+        return false;
+      })()`);
+      if (found) { ready = true; break; }
+    }
+
+    if (!ready) {
+      results.push({ value: val, ok: false, error: 'no-options-rendered', query: val.slice(0, queryPrefixLen) });
+      continue;
+    }
+
+    // Find and click matching option
+    const click = await safeExecuteScript(tabId, (query) => {
+      const lbs = [...document.querySelectorAll('[role="listbox"], [role="grid"][aria-label*="suggest" i], [class*="autocomplete" i], [class*="menu" i][role]:not([aria-hidden="true"])')]
+        .filter(lb => lb.offsetHeight > 0);
+
+      const queryLower = query.toLowerCase();
+      const allOptions = [];
+      for (const lb of lbs) {
+        const opts = [...lb.querySelectorAll('[role="option"], [role="menuitem"], [data-option-index]')];
+        if (opts.length === 0) {
+          // Fallback for non-ARIA-compliant
+          opts.push(...lb.querySelectorAll('li, [class*="option" i]:not([class*="optgroup" i])'));
+        }
+        const enabled = opts.filter(o =>
+          o.getAttribute('aria-disabled') !== 'true' &&
+          !o.classList.contains('disabled') &&
+          o.offsetHeight > 0
+        );
+        allOptions.push(...enabled);
+      }
+
+      // Match priority: exact → starts-with → contains
+      for (const o of allOptions) {
+        const text = (o.textContent || '').trim().toLowerCase();
+        if (text === queryLower) {
+          o.click();
+          return { ok: true, method: 'exact', text: o.textContent.trim() };
+        }
+      }
+      for (const o of allOptions) {
+        const text = (o.textContent || '').trim().toLowerCase();
+        if (text.startsWith(queryLower)) {
+          o.click();
+          return { ok: true, method: 'startsWith', text: o.textContent.trim() };
+        }
+      }
+      for (const o of allOptions) {
+        const text = (o.textContent || '').trim().toLowerCase();
+        if (text.includes(queryLower)) {
+          o.click();
+          return { ok: true, method: 'contains', text: o.textContent.trim() };
+        }
+      }
+
+      return { ok: false, error: 'no-match-found', optionCount: allOptions.length };
+    }, [val]);
+
+    if (click.result?.ok) {
+      results.push({ value: val, ok: true, method: click.result.method, selected: click.result.text });
+      if (multi) {
+        // Wait for chip to render and input to clear
+        await new Promise(r => setTimeout(r, 250));
+      }
+    } else {
+      results.push({ value: val, ok: false, error: click.result?.error || 'click-failed' });
+    }
+  }
+
+  return { ok: results.every(r => r.ok), results };
+}
+
+// ── File Drop Helper (for drop-zones without <input type="file">) ───────────
+
+async function dropFileOnTarget(tabId, selector, files) {
+  const fileList = Array.isArray(files) ? files : [files];
+
+  // Strategy 1: search subtree (and 2 ancestor levels) for a file input — even if hidden
+  const inputJson = await debuggerEval(tabId, `(() => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    if (!target) return JSON.stringify({ found: false, error: 'target-not-found' });
+
+    const candidates = [];
+    candidates.push(...target.querySelectorAll('input[type="file"]'));
+    if (candidates.length === 0 && target.parentElement) {
+      candidates.push(...target.parentElement.querySelectorAll('input[type="file"]'));
+    }
+    if (candidates.length === 0 && target.parentElement?.parentElement) {
+      candidates.push(...target.parentElement.parentElement.querySelectorAll('input[type="file"]'));
+    }
+    if (candidates.length === 0) {
+      // Last resort: any file input on the page
+      candidates.push(...document.querySelectorAll('input[type="file"]'));
+    }
+    if (candidates.length === 0) return JSON.stringify({ found: false });
+
+    // Tag the first viable input with a unique data-attribute so we can re-query reliably
+    const tag = '__bmcp_drop_target_' + Math.random().toString(36).slice(2, 10);
+    candidates[0].setAttribute('data-bmcp-drop-tag', tag);
+    return JSON.stringify({ found: true, tag, accept: candidates[0].accept || '', multiple: !!candidates[0].multiple });
+  })()`);
+
+  const inputInfo = JSON.parse(inputJson);
+
+  if (inputInfo.found) {
+    try {
+      await debuggerAttach(tabId);
+      const docResult = await cdpSend(tabId, 'DOM.getDocument', {});
+      const taggedSel = `[data-bmcp-drop-tag="${inputInfo.tag}"]`;
+      const queryResult = await cdpSend(tabId, 'DOM.querySelector', {
+        nodeId: docResult.root.nodeId,
+        selector: taggedSel,
+      });
+      if (queryResult.nodeId) {
+        await cdpSend(tabId, 'DOM.setFileInputFiles', {
+          nodeId: queryResult.nodeId,
+          files: fileList,
+        });
+        // Cleanup tag attribute
+        await debuggerEval(tabId, `(() => {
+          const el = document.querySelector(${JSON.stringify(taggedSel)});
+          if (el) el.removeAttribute('data-bmcp-drop-tag');
+        })()`);
+        return { ok: true, method: 'hidden-input', files: fileList, accept: inputInfo.accept };
+      }
+    } catch (e) {
+      // Fall through to error response
+    }
+  }
+
+  return {
+    ok: false,
+    error: 'no-file-input-found',
+    hint: 'No <input type="file"> found in target subtree, parent, or page. Pure drag-drop zones (without backing input) require synthesizing File objects from disk content via mcp-server, which is not yet implemented. Try selecting a more specific selector, or fall back to manual upload via browser_ask_user.',
+  };
+}
+
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
 async function dispatch(port, method, params) {
@@ -1125,7 +1467,7 @@ async function dispatch(port, method, params) {
       // user is in terminal. Debugger works regardless of tab focus.
       try {
         await debuggerAttach(tab.id);
-        const { data } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.captureScreenshot', {
+        const { data } = await cdpSend(tab.id, 'Page.captureScreenshot', {
           format: 'png',
         });
         return { image: 'data:image/png;base64,' + data };
@@ -1273,6 +1615,36 @@ async function dispatch(port, method, params) {
       };
     }
 
+    case 'dismiss_overlays': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const scope = params.scope || 'non_critical';
+      const dismissed = await dismissOverlays(tab.id, scope, params.max_passes || 3);
+      return { ok: true, dismissed, count: dismissed.length };
+    }
+
+    case 'set_combobox': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      if (!params.selector) return { ok: false, error: 'selector required' };
+      if (!params.values && !params.value) return { ok: false, error: 'value or values required' };
+      const values = params.values || [params.value];
+      const r = await setCombobox(tab.id, params.selector, values, {
+        multi: !!params.multi,
+        query_chars: params.query_chars,
+      });
+      const visibleErrors = r.ok ? [] : await collectVisibleErrors(tab.id, params.selector);
+      return r.ok ? r : { ...r, visible_errors: visibleErrors };
+    }
+
+    case 'drop_file': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
+      if (!files[0]) return { ok: false, error: 'files or file required' };
+      return await dropFileOnTarget(tab.id, params.selector || 'body', files);
+    }
+
     case 'wait': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
@@ -1306,14 +1678,14 @@ async function dispatch(port, method, params) {
 
       await debuggerAttach(tab.id);
       try {
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
+        await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
           type: 'keyDown',
           key,
           code: params.code || key,
           modifiers,
           text: key.length === 1 ? key : '',
         });
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchKeyEvent', {
+        await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
           type: 'keyUp',
           key,
           code: params.code || key,
@@ -1339,7 +1711,7 @@ async function dispatch(port, method, params) {
       const dy = params.y || 0;
       try {
         await debuggerAttach(tab.id);
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
+        await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseWheel', x: 400, y: 300, deltaX: dx, deltaY: dy,
         });
         await debuggerDetach(tab.id);
@@ -1357,7 +1729,7 @@ async function dispatch(port, method, params) {
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       await debuggerAttach(tab.id);
       try {
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Input.dispatchMouseEvent', {
+        await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseMoved', x: el.x, y: el.y,
         });
         // Hold hover for duration (default 500ms) so menus/tooltips appear
@@ -1425,7 +1797,7 @@ async function dispatch(port, method, params) {
       await debuggerAttach(tab.id);
       try {
         // Enable page events to catch dialogs
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.enable', {});
+        await cdpSend(tab.id, 'Page.enable', {});
 
         // Wait for dialog to appear (or handle existing one)
         const result = await new Promise((resolve) => {
@@ -1439,7 +1811,7 @@ async function dispatch(port, method, params) {
             chrome.debugger.onEvent.removeListener(listener);
             clearTimeout(timeout);
 
-            chrome.debugger.sendCommand({ tabId: tab.id }, 'Page.handleJavaScriptDialog', {
+            cdpSend(tab.id, 'Page.handleJavaScriptDialog', {
               accept: action === 'accept',
               promptText: promptText,
             }).then(() => {
@@ -1468,7 +1840,7 @@ async function dispatch(port, method, params) {
 
       await debuggerAttach(tab.id);
       try {
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.enable', {});
+        await cdpSend(tab.id, 'Network.enable', {});
 
         const result = await new Promise((resolve) => {
           const timer = setTimeout(() => {
@@ -1487,7 +1859,7 @@ async function dispatch(port, method, params) {
                 chrome.debugger.onEvent.removeListener(listener);
                 clearTimeout(timer);
                 // Try to get response body
-                chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.getResponseBody', {
+                cdpSend(tab.id, 'Network.getResponseBody', {
                   requestId: eventParams.requestId,
                 }).then(bodyResult => {
                   resolve({
@@ -1512,7 +1884,7 @@ async function dispatch(port, method, params) {
           chrome.debugger.onEvent.addListener(listener);
         });
 
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Network.disable', {});
+        await cdpSend(tab.id, 'Network.disable', {});
         return result;
       } finally {
         await debuggerDetach(tab.id);
@@ -1613,7 +1985,7 @@ async function dispatch(port, method, params) {
       const count = params.count || 50;
       try {
         await debuggerAttach(tab.id);
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.enable');
+        await cdpSend(tab.id, 'Runtime.enable');
         // Collect console messages for a brief period
         const logs = [];
         const handler = (source, method, eventParams) => {
@@ -1627,7 +1999,7 @@ async function dispatch(port, method, params) {
         };
         chrome.debugger.onEvent.addListener(handler);
         // Also grab existing console via page JS
-        const { result } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.evaluate', {
+        const { result } = await cdpSend(tab.id, 'Runtime.evaluate', {
           expression: `(() => {
             if (!window.__mcpConsoleLogs) {
               window.__mcpConsoleLogs = [];
@@ -1897,7 +2269,7 @@ async function dispatch(port, method, params) {
       try {
         await debuggerAttach(tab.id);
         // Find the file input element
-        const { result: nodeResult } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'Runtime.evaluate', {
+        const { result: nodeResult } = await cdpSend(tab.id, 'Runtime.evaluate', {
           expression: `(() => {
             const el = document.querySelector(${JSON.stringify(selector)});
             if (!el) return JSON.stringify({ found: false, error: 'File input not found: ${selector}' });
@@ -1912,8 +2284,8 @@ async function dispatch(port, method, params) {
         }
 
         // Get the DOM node ID for the file input
-        const { result: docResult } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.getDocument', {});
-        const { nodeId } = await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.querySelector', {
+        const { result: docResult } = await cdpSend(tab.id, 'DOM.getDocument', {});
+        const { nodeId } = await cdpSend(tab.id, 'DOM.querySelector', {
           nodeId: docResult.root.nodeId,
           selector: selector,
         });
@@ -1925,7 +2297,7 @@ async function dispatch(port, method, params) {
 
         // Set files on the input using CDP
         const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
-        await chrome.debugger.sendCommand({ tabId: tab.id }, 'DOM.setFileInputFiles', {
+        await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,
           files: files,
         });
@@ -1955,7 +2327,7 @@ async function dispatch(port, method, params) {
 async function detectCaptcha(tabId) {
   try {
     await debuggerAttach(tabId);
-    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const res = { found: false, types: [] };
 
@@ -2037,7 +2409,7 @@ async function clickRecaptchaCheckbox(tabId) {
   try {
     await debuggerAttach(tabId);
     // Find the reCAPTCHA anchor iframe position
-    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const iframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
         if (!iframe) return JSON.stringify({ found: false });
@@ -2054,14 +2426,14 @@ async function clickRecaptchaCheckbox(tabId) {
     }
 
     // Click the checkbox using real mouse events
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseMoved', x: pos.x, y: pos.y,
     });
     await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
     });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
     });
     await debuggerDetach(tabId);
@@ -2076,7 +2448,7 @@ async function clickCaptchaGridCells(tabId, cells) {
   try {
     await debuggerAttach(tabId);
     // Find the challenge iframe position and dimensions
-    const { result } = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const iframe = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
         if (!iframe) return JSON.stringify({ found: false });
@@ -2118,14 +2490,14 @@ async function clickCaptchaGridCells(tabId, cells) {
       const ox = x + Math.round((Math.random() - 0.5) * cellSize * 0.3);
       const oy = y + Math.round((Math.random() - 0.5) * cellSize * 0.3);
 
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
         type: 'mouseMoved', x: ox, y: oy,
       });
       await new Promise(r => setTimeout(r, 150 + Math.random() * 300));
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
         type: 'mousePressed', x: ox, y: oy, button: 'left', clickCount: 1,
       });
-      await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
         type: 'mouseReleased', x: ox, y: oy, button: 'left', clickCount: 1,
       });
       await new Promise(r => setTimeout(r, 200 + Math.random() * 400));

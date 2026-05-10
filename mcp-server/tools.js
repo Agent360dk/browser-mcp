@@ -132,6 +132,44 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_dismiss_overlays',
+    description: 'Dismiss visible popups, modals, tooltips, banners, and "Are you sure?"-style overlays in one call. Heuristic-based: finds close affordance via aria-label, text content (Skip/Cancel/Ikke nu/Don\'t show/Got it/Close), or × character button. Use when a flow is interrupted by unexpected dialogs (cookie banners, onboarding tooltips, draft-confirm prompts on Meta Ads, etc.). Returns list of what was dismissed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        scope: { type: 'string', enum: ['non_critical', 'aggressive'], description: 'non_critical (default): skip dialogs containing editable form inputs (preserves user data). aggressive: dismiss everything.' },
+        max_passes: { type: 'number', description: 'Number of dismissal passes (some overlays reveal others when closed). Default: 3' },
+      },
+    },
+  },
+  {
+    name: 'browser_set_combobox',
+    description: 'Set value(s) on an autocomplete/combobox input. Handles the click → type query → wait for filtered listbox → click option flow as one MCP call. Supports multi-select (e.g., Languages on Meta Ads). Use when browser_select_option fails because options render lazily after typing.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the combobox/autocomplete input' },
+        value: { type: 'string', description: 'Single value to select (use this OR values)' },
+        values: { type: 'array', items: { type: 'string' }, description: 'Array of values for multi-select. E.g. ["Danish", "English", "Swedish"]' },
+        multi: { type: 'boolean', description: 'True if combobox accepts multiple values (chips). Default: auto-detected from presence of values array' },
+        query_chars: { type: 'number', description: 'How many characters to type as filter query (default: 4 or full value length, whichever is smaller)' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'browser_drop_file',
+    description: 'Upload a file by finding a hidden <input type="file"> within a drag-drop zone\'s subtree (or parent up to 2 levels). Use when browser_upload_file fails because the dropzone has no visible file input. Returns clear error if no input is found anywhere — pure drop-zones without backing inputs require manual handling.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector for the drop-zone target element (e.g. ".upload-area")' },
+        file: { type: 'string', description: 'Single absolute file path' },
+        files: { type: 'array', items: { type: 'string' }, description: 'Array of absolute file paths' },
+      },
+    },
+  },
+  {
     name: 'browser_set_date',
     description: 'Robustly set a date input — handles native <input type="date">, masked text inputs (e.g. MM/DD/YYYY), and calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). Tries native value-set, format-aware typing via Input.insertText, and ARIA-based picker navigation in sequence with read-back verification. Use instead of browser_fill when fill fails or for any input that opens a calendar widget.',
     inputSchema: {
