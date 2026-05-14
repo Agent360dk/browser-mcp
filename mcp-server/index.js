@@ -61,6 +61,10 @@ let cmdId = 0;
 let lastActivity = Date.now();
 const pending = new Map();
 
+// Timers hoisted to module scope so gracefulShutdown can clear them deterministically.
+let heartbeat = null;
+let parentCheck = null;
+
 // ── WebSocket Server ───────────────────────────────────────────────────────
 
 function createWSS(port = BASE_PORT) {
@@ -98,8 +102,8 @@ function createWSS(port = BASE_PORT) {
       try { msg = JSON.parse(data.toString()); } catch { return; }
 
       if (msg.type === 'terminate') {
-        process.stderr.write('[MCP] Terminate signal received from extension (last tab closed) — exiting\n');
-        process.exit(0);
+        gracefulShutdown('Terminate signal from extension (last tab closed)');
+        return;
       }
 
       const { id, result, error } = msg;
@@ -124,14 +128,13 @@ function createWSS(port = BASE_PORT) {
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
   });
 
-  // Heartbeat + idle timeout (4 hours)
-  setInterval(() => {
+  // Heartbeat + idle timeout (4 hours) — hoisted to module scope so gracefulShutdown can clear it
+  heartbeat = setInterval(() => {
     if (extensionSocket && extensionSocket.readyState === 1) {
       extensionSocket.ping();
     }
     if (Date.now() - lastActivity > 4 * 60 * 60 * 1000) {
-      process.stderr.write('[MCP] Idle timeout (4h) — shutting down\n');
-      process.exit(0);
+      gracefulShutdown('Idle timeout (4h)');
     }
   }, 20000);
 }
@@ -362,12 +365,35 @@ async function handleExtractToken(args) {
   return { content };
 }
 
-// ── Start ───────────────────────────────────────────────────────────────────
+// ── Graceful shutdown ──────────────────────────────────────────────────────
+// All shutdown paths funnel through gracefulShutdown so the cleanup chain runs
+// deterministically — even on abrupt parent-exit. Without this, process.exit(0)
+// was racing against WS close-handshake, leaving zombie tabs in Chrome.
 
-// Clean shutdown — release port so next session can use it
-process.on('SIGTERM', () => process.exit(0));
-process.on('SIGINT', () => process.exit(0));
+let shuttingDown = false;
+function gracefulShutdown(reason, code = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  process.stderr.write(`[MCP] ${reason} — shutting down\n`);
+
+  // Stop timers so they can't re-enter gracefulShutdown
+  if (parentCheck) clearInterval(parentCheck);
+  if (heartbeat) clearInterval(heartbeat);
+
+  // Close WS with explicit close-frame so extension's onclose handler fires
+  if (extensionSocket && extensionSocket.readyState === 1) {
+    try { extensionSocket.close(1000, 'mcp-shutdown'); } catch {}
+  }
+  if (wss) try { wss.close(); } catch {}
+
+  // 300ms grace for FIN-flush + extension session_disconnect cleanup
+  setTimeout(() => process.exit(code), 300);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('exit', () => {
+  // Safety net for direct process.exit calls that bypass gracefulShutdown
   if (wss) try { wss.close(); } catch {}
   if (extensionSocket) try { extensionSocket.close(); } catch {}
 });
@@ -375,21 +401,16 @@ process.on('exit', () => {
 // Detect Claude Code exit — check if parent process is still alive
 // stdin.on('end') doesn't work because MCP SDK's StdioServerTransport owns stdin
 const parentPid = process.ppid;
-const parentCheck = setInterval(() => {
+parentCheck = setInterval(() => {
   try {
     process.kill(parentPid, 0); // signal 0 = check if process exists
   } catch {
-    process.stderr.write(`[MCP] Parent process ${parentPid} died — shutting down\n`);
-    clearInterval(parentCheck);
-    process.exit(0);
+    gracefulShutdown(`Parent process ${parentPid} died`);
   }
 }, 5000); // check every 5 seconds
 
 // Also listen for stdin close as backup
-process.stdin.on('end', () => {
-  process.stderr.write('[MCP] stdin closed — shutting down\n');
-  process.exit(0);
-});
+process.stdin.on('end', () => gracefulShutdown('stdin closed'));
 
 const transport = new StdioServerTransport();
 await mcpServer.connect(transport);
