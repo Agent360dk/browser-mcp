@@ -16,7 +16,9 @@
     "README.md"
   ],
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "publish:cws": "../scripts/publish-cws.sh",
+    "publish:cws:draft": "../scripts/publish-cws.sh --draft"
   },
   "keywords": [
     "mcp",
