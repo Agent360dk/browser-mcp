@@ -237,27 +237,39 @@ const RETRYABLE_CDP_METHODS = new Set([
 // For side-effectful methods, only re-attaches and throws — caller must decide.
 async function cdpSend(tabId, method, params = {}) {
   await debuggerAttach(tabId);
-  try {
-    return await chrome.debugger.sendCommand({ tabId }, method, params);
-  } catch (e) {
-    const msg = e?.message || String(e);
-    const isDetachError =
-      msg.includes('not attached') ||
-      msg.includes('Detached') ||
-      msg.includes('detached') ||
-      msg.includes('Debugger is gone') ||
-      msg.includes('No tab with given id');
-    if (!isDetachError) throw e;
-    debuggerAttached.delete(tabId);
-    if (!RETRYABLE_CDP_METHODS.has(method)) {
-      // Re-attach for next caller, but don't auto-retry side-effectful command
-      try { await debuggerAttach(tabId); } catch {}
-      throw new Error(`Debugger detached during ${method} — not auto-retried (side-effect risk). Original: ${msg}`);
+  let lastMsg = '';
+  // 4 total attempts (initial + 3 retries) for read-only methods; backoff 100/300/500ms.
+  // Handles aggressive auto-detach on anti-automation sites (Apple ASC, Salesforce, etc.)
+  // where Chrome re-detaches between attach and command execution.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await chrome.debugger.sendCommand({ tabId }, method, params);
+    } catch (e) {
+      const msg = e?.message || String(e);
+      const isDetachError =
+        msg.includes('not attached') ||
+        msg.includes('Detached') ||
+        msg.includes('detached') ||
+        msg.includes('Debugger is gone') ||
+        msg.includes('No tab with given id');
+      if (!isDetachError) throw e;
+      lastMsg = msg;
+      debuggerAttached.delete(tabId);
+      if (!RETRYABLE_CDP_METHODS.has(method)) {
+        // Side-effectful methods (Input.*) — re-attach for next caller but signal
+        // to handler so it can fall back to chrome.scripting (e.g., synthetic click).
+        try { await debuggerAttach(tabId); } catch {}
+        throw new Error(`Debugger detached during ${method} — not auto-retried (side-effect risk). Original: ${msg}`);
+      }
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 100 + attempt * 200));
+        try { await debuggerAttach(tabId); } catch (attachErr) {
+          throw new Error(`Re-attach failed during ${method}: ${attachErr.message}`);
+        }
+      }
     }
-    await new Promise(r => setTimeout(r, 100));
-    await debuggerAttach(tabId);
-    return await chrome.debugger.sendCommand({ tabId }, method, params);
   }
+  throw new Error(`Debugger detached repeatedly during ${method} (4 attempts). Last: ${lastMsg}`);
 }
 
 // Clean up debugger + session refs when tabs close
@@ -434,6 +446,46 @@ async function debuggerEval(tabId, expression) {
     return result.result?.value;
   } finally {
     await debuggerDetach(tabId);
+  }
+}
+
+// Synthetic click via chrome.scripting — fallback when debugger detaches on
+// anti-automation sites (Apple ASC, etc.). Loses isTrusted=true but works for
+// the ~95% of sites that don't check it. Handles text= and :text() selectors.
+async function scriptingClick(tabId, selector) {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: (sel) => {
+        let el;
+        if (sel.startsWith('text=')) {
+          const text = sel.slice(5).trim();
+          el = Array.from(document.querySelectorAll('button, a, [role="button"], [role="menuitem"], [role="tab"], [role="option"], input, label, span, div, p, li, td'))
+            .find(e => (e.textContent || '').trim() === text);
+        } else {
+          const m = sel.match(/^([\w-]+):text\(([^)]+)\)$/);
+          if (m) {
+            const needle = m[2].trim();
+            el = Array.from(document.querySelectorAll(m[1]))
+              .find(e => (e.textContent || '').trim().includes(needle));
+          } else {
+            el = document.querySelector(sel);
+          }
+        }
+        if (!el) return { ok: false, reason: 'not_found' };
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        const opts = { bubbles: true, cancelable: true, view: window };
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.click();
+        return { ok: true, tag: el.tagName };
+      },
+      args: [selector],
+    });
+    return result?.result || { ok: false, reason: 'no_result' };
+  } catch (e) {
+    return { ok: false, reason: 'exception', error: e.message };
   }
 }
 
@@ -1611,9 +1663,19 @@ async function dispatch(port, method, params) {
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
 
-      // Always use debugger mouse events — works on all sites including SPAs
-      await debuggerClick(tab.id, el.x, el.y);
-      return { ok: true, method: el.method || 'debugger', tag: el.tag, text: el.text };
+      // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
+      try {
+        await debuggerClick(tab.id, el.x, el.y);
+        return { ok: true, method: el.method || 'debugger', tag: el.tag, text: el.text };
+      } catch (e) {
+        // Fallback: synthetic click via chrome.scripting for anti-automation sites
+        // (Apple ASC etc.) where Chrome auto-detaches debugger on every interaction.
+        if (/Debugger detached/.test(e?.message || '')) {
+          const r = await scriptingClick(tab.id, params.selector);
+          if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag, text: el.text };
+        }
+        throw e;
+      }
     }
 
     case 'fill': {
