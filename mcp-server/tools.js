@@ -29,8 +29,13 @@ export const TOOLS = [
   },
   {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG.',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path to save the screenshot to (e.g. /path/to/screenshot.png)' },
+      },
+    },
   },
   {
     name: 'browser_execute_script',
