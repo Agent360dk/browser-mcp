@@ -554,6 +554,44 @@ Click og fill har scripting-fallback, execute_script har ingen. Tilføj samme pa
 - **MIDDEL** at patch fixer Scenarie B (afhænger af om Chrome consistently returnerer no-op vs throw på cancelled-state)
 - **LAVT** at Scenarie B genvinder uden Chrome-restart selv med patch (Chrome's persistent permission-deny er sandsynligvis ikke recovery-able fra extension-niveau)
 
-### Real-world test result
+### Real-world test result — CONFIRMED 2026-05-20 13:45
 
-(Pending Gustav reload + test efter 2026-05-20 12:50)
+Efter installering af v1.21.1 + test:
+
+```
+Error: DEBUGGER_BLOCKED_BY_USER: Cannot attach debugger to tab 338877645.
+Chrome blocks debugger attach — user likely clicked "Cancel" on debugger banner
+earlier this session.
+Fix: chrome://extensions/ → Browser MCP → reload (↻) icon. Or restart Chrome.
+Original error: DEBUGGER_GHOST_ATTACH: chrome.debugger.attach returned success
+but Chrome state shows tab 338877645 not attached.
+```
+
+**Patch FUNGERER:** verify-with-Chrome fanger silent-no-op-state, eksplicit
+fejl-besked giver præcis recovery-instruktion. Scenarie B (user-canceled-banner)
+**BEKRÆFTET** som faktisk root cause for denne session.
+
+**Recovery requirement:** Extension-reload er IKKE tilstrækkeligt — Chrome husker
+"Cancel"-beslutningen for hele browser-sessionen. **Krav til recovery:**
+
+1. Quit Chrome helt (⌘+Q på macOS)
+2. Genåbn Chrome
+3. Browser-MCP banner vises igen ved første action — IGNORER, klik ikke Cancel
+
+Dette er en Chrome-side limitation der ikke kan løses fra extension. Den eneste
+forbedring fra extension-niveau er det vi har gjort: **eksplicit fejl-besked så
+brugeren ved hvad de skal gøre** (i stedet for cryptic "Debugger is not attached").
+
+### Implications for upgrade-roadmap
+
+Nu hvor Scenarie B er bekræftet som hyppigste root cause, er disse follow-ups
+højere prioritet:
+
+1. **README warning** om debugger-banner: "IKKE klik Cancel på Chrome's gule banner — det breaker extension for hele Chrome session"
+2. **First-time-install onboarding popup** der eksplicit advarer
+3. **Status-indicator i extension popup** der viser hvis debugger er user-blocked
+4. **Auto-detect på install:** ved første attach, check om Chrome har user-blocked-state → vis instruktioner straight up
+
+Scenarie A (SW death) og C (anti-automation eviction) eksisterer stadig men
+forekommer sjældnere end Scenarie B. Keep-alive + execute_script-fallback bør
+stadig laves, men efter README-fix.

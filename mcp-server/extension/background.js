@@ -176,17 +176,55 @@ async function getSessionTab(port, activate = false) {
 // Track which tabs have debugger attached to avoid repeated attach/detach
 const debuggerAttached = new Set();
 
+// Verify Chrome's actual debugger-truth before trusting local cache.
+// Fixes "ghost-attached" state where Set says attached but Chrome side is gone
+// (happens on SW lifecycle events, user-canceled banners, anti-automation evictions).
+async function verifyAttachedWithChrome(tabId) {
+  try {
+    const targets = await chrome.debugger.getTargets();
+    const t = targets.find(x => x.tabId === tabId);
+    return !!t?.attached;
+  } catch {
+    return false; // assume not-attached on API error
+  }
+}
+
 async function debuggerAttach(tabId) {
-  if (debuggerAttached.has(tabId)) return;
+  // First check local cache — fast path
+  if (debuggerAttached.has(tabId)) {
+    // Verify with Chrome before trusting cache (cheap, ~1ms)
+    if (await verifyAttachedWithChrome(tabId)) return;
+    // Cache was stale — Chrome doesn't actually have us attached
+    debuggerAttached.delete(tabId);
+  }
+
   try {
     await chrome.debugger.attach({ tabId }, '1.3');
-    debuggerAttached.add(tabId);
+    // Verify attach actually took effect (Chrome can silently no-op after user-cancel)
+    if (await verifyAttachedWithChrome(tabId)) {
+      debuggerAttached.add(tabId);
+      return;
+    }
+    throw new Error(
+      `Debugger detached (GHOST_ATTACH): chrome.debugger.attach returned success but Chrome state shows tab ${tabId} not attached. ` +
+      `This typically means the user clicked "Cancel" on Chrome's debugger banner. ` +
+      `Fix: reload Browser MCP extension (chrome://extensions/ → ↻) or restart Chrome.`
+    );
   } catch (e) {
     if (e.message?.includes('Already attached')) {
+      // Chrome side has session — sync local cache
       debuggerAttached.add(tabId);
-    } else {
-      throw e;
+      return;
     }
+    if (e.message?.includes('Cannot attach') || e.message?.includes('canceled') || e.message?.includes('GHOST_ATTACH') || e.message?.includes('Debugger detached')) {
+      throw new Error(
+        `Debugger detached (BLOCKED_BY_USER): Cannot attach debugger to tab ${tabId}. ` +
+        `Chrome blocks debugger attach — user likely clicked "Cancel" on debugger banner earlier this session. ` +
+        `Fix: chrome://extensions/ → Browser MCP → reload (↻) icon. Or restart Chrome. ` +
+        `Original error: ${e.message}`
+      );
+    }
+    throw e;
   }
 }
 
@@ -1659,20 +1697,23 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
 
-      // Resolve element (supports CSS + text selectors, auto-scrolls)
-      const el = await resolveElement(tab.id, params.selector);
-      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-
-      // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
+      // Wrap full click flow (incl. resolveElement) so debugger failures in EITHER
+      // resolveElement (text-selectors use debuggerEval) OR debuggerClick trigger
+      // the scripting-fallback. v1.21.2: previously only debuggerClick was wrapped,
+      // leaving text-selector clicks unrecoverable when debugger was user-blocked.
       try {
+        const el = await resolveElement(tab.id, params.selector);
+        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+
+        // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
         await debuggerClick(tab.id, el.x, el.y);
         return { ok: true, method: el.method || 'debugger', tag: el.tag, text: el.text };
       } catch (e) {
         // Fallback: synthetic click via chrome.scripting for anti-automation sites
-        // (Apple ASC etc.) where Chrome auto-detaches debugger on every interaction.
+        // (Apple ASC etc.) OR user-blocked-debugger scenarios.
         if (/Debugger detached/.test(e?.message || '')) {
           const r = await scriptingClick(tab.id, params.selector);
-          if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag, text: el.text };
+          if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag };
         }
         throw e;
       }
