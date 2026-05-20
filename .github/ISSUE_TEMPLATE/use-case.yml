@@ -1,0 +1,59 @@
+name: 🎯 Share a Use-Case
+description: Tell the community what you built with Browser MCP
+title: "[Use-case] "
+labels: ["use-case"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing! Your use-case inspires others and helps us understand how Browser MCP is being used in the wild.
+
+        Approved use-cases get added to [USE_CASES.md](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md).
+
+  - type: input
+    id: name
+    attributes:
+      label: What did you build?
+      description: One short sentence.
+      placeholder: e.g. "LinkedIn ICP scraping → HeyReach outreach pipeline"
+    validations:
+      required: true
+
+  - type: textarea
+    id: how
+    attributes:
+      label: How did you do it?
+      description: Rough steps + which browser_* tools you used.
+      placeholder: |
+        1. browser_navigate to LinkedIn search results
+        2. browser_get_page_content to extract profiles
+        3. browser_execute_script to parse + filter ICP matches (title/company/industry)
+        4. browser_fetch to send qualified leads into HeyReach API
+    validations:
+      required: true
+
+  - type: textarea
+    id: why_browser_mcp
+    attributes:
+      label: Why Browser MCP (vs alternatives)?
+      description: Optional, but interesting to others.
+      placeholder: e.g. "Real Chrome session avoided LinkedIn anti-bot detection. Multi-session let me run this in parallel with other work."
+    validations:
+      required: false
+
+  - type: input
+    id: handle
+    attributes:
+      label: Your GitHub / Twitter / LinkedIn handle (optional)
+      description: For attribution. Leave blank to stay anonymous.
+      placeholder: "@yourhandle"
+    validations:
+      required: false
+
+  - type: input
+    id: link
+    attributes:
+      label: Link to demo / blog post / screenshot (optional)
+      placeholder: "https://..."
+    validations:
+      required: false

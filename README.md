@@ -11,7 +11,7 @@
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 33 tools total.
+The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 34 tools total.
 
 ## Install — 2 steps (~60 seconds)
 
@@ -78,7 +78,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
 
-## 33 Tools
+## 34 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -184,7 +184,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 29 tool definitions
+  tools.js            # 34 tool definitions
   bin/cli.js          # Install CLI
 ```
 
@@ -221,6 +221,21 @@ To update the extension: `npx @agent360/browser-mcp install` (re-copies files), 
 - Processes auto-exit when Claude Code closes (stdin detection)
 - Idle timeout: 4 hours without commands → auto-exit
 - Manual cleanup: `lsof -i :9876-9885 | grep LISTEN`
+
+## 💡 Help Shape Browser MCP
+
+Browser MCP is built in the open and shaped by the people using it.
+
+### Browse what others want / built
+- 💡 **[Wishlist →](WISHLIST.md)** — features people are asking for
+- 🎯 **[Use-cases →](USE_CASES.md)** — what others have built (LinkedIn ICP scraping, vendor research, daily ops, …)
+
+### Contribute in 30 seconds
+- 💡 [Wish for a feature](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
+- 🎯 [Share a use-case](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml)
+- 🐛 [Report a bug](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml)
+
+Or just **ask Claude** — it knows about the `browser_about` tool and will draft + submit on your behalf when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
 
 ## License
 

@@ -1,0 +1,49 @@
+name: 💡 Feature Wish
+description: Suggest a feature you'd like in Browser MCP
+title: "[Wish] "
+labels: ["wish"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing what you'd like Browser MCP to do! Your wish helps shape the roadmap.
+
+        Tip: you can also ask Claude in your session to draft and submit this for you — just say *"submit a wish for browser-mcp to do X"*.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What should Browser MCP do?
+      description: One or two sentences is fine.
+      placeholder: e.g. "Detect and solve hCaptcha v3 invisible challenges in browser_solve_captcha."
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why? (Your use case)
+      description: What are you trying to do that this would unblock?
+      placeholder: e.g. "I'm automating partner onboarding flows where hCaptcha v3 silently blocks me from continuing past the form."
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example call / pseudocode (optional)
+      description: How would you ideally call it? URL, code snippet, or rough sketch is fine.
+      placeholder: |
+        browser_solve_captcha({ type: "hcaptcha_v3", action: "auto" })
+        // → returns { passed: true, score: 0.87 }
+      render: javascript
+    validations:
+      required: false
+
+  - type: input
+    id: alternatives
+    attributes:
+      label: Workaround you've tried (optional)
+      placeholder: e.g. "Tried browser_ask_user → too slow for batched runs"
+    validations:
+      required: false

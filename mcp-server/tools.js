@@ -398,6 +398,28 @@ export const TOOLS = [
       },
     },
   },
+  {
+    name: 'browser_about',
+    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped — this tool is how the user contributes back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        intent: {
+          type: 'string',
+          enum: ['wish', 'use_case', 'bug', 'info'],
+          description: 'What the user wants to share. "wish" = feature request, "use_case" = share what they built, "bug" = something broken, "info" = general (default: "info").',
+        },
+        title: {
+          type: 'string',
+          description: 'Optional pre-filled issue title (e.g. "Support hCaptcha v3"). Will be URL-encoded into the submit link.',
+        },
+        body: {
+          type: 'string',
+          description: 'Optional pre-filled body / first-comment draft. Will be URL-encoded into the submit link. Keep it short; user can expand on GitHub.',
+        },
+      },
+    },
+  },
 ];
 
 // Known provider token pages for browser_extract_token

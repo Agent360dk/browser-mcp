@@ -36,7 +36,7 @@ extension/           # Chrome extension (Manifest V3)
 
 mcp-server/          # MCP server (Node.js)
   index.js           # MCP server + WebSocket client
-  tools.js           # 29 tool definitions
+  tools.js           # 34 tool definitions
   bin/cli.js         # CLI installer
   package.json       # npm config
 
@@ -47,17 +47,17 @@ assets/              # Demo video + GIF
 ## How to Contribute
 
 ### Bug Reports
-Open an issue with:
-- What you expected to happen
-- What actually happened
-- Steps to reproduce
-- Browser MCP version (`manifest.json` version field)
+Open a [🐛 Bug Report](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml) — the template guides you through expected/actual/repro/version/OS.
+
+Or, in any Claude Code session with browser-mcp installed, say *"report a browser-mcp bug: …"* and Claude will draft + offer the submit link via the `browser_about` tool.
 
 ### Feature Requests
-Open an issue describing:
-- The use case (what are you trying to do?)
-- Proposed solution
-- Alternatives you considered
+Open a [💡 Feature Wish](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml) — describe what you want it to do, why (your use case), and an optional example call. Wishes are curated into [WISHLIST.md](WISHLIST.md) and move to **✅ Shipped** when implemented.
+
+Or, in any Claude Code session, say *"I wish browser-mcp could …"* and Claude will draft + offer the submit link.
+
+### Share a Use-Case
+Built something cool with Browser MCP? [🎯 Share it](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml) — fill in what you built, how, and (optionally) why Browser MCP was the right tool. Approved use-cases land in [USE_CASES.md](USE_CASES.md).
 
 ### Code Contributions
 

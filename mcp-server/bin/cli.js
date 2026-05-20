@@ -85,13 +85,18 @@ function install() {
   5. Navigate to and select this folder:
      ${extensionDir}
   6. The extension "Agent360 Browser MCP" appears with a puzzle icon
-  7. Restart Claude Code — 28 browser tools are now available!
+  7. Restart Claude Code — 34 browser tools are now available!
 
 🔄 Auto-updates (fully automatic):
    - MCP server: always fetches latest from npm (npx @latest)
    - Extension files: auto-copied when npm version is newer
    - Extension reload: auto-triggered via WebSocket
    - You don't need to do anything — updates happen on every Claude Code session start
+
+💡 Help shape Browser MCP:
+   - Public wishlist:  https://github.com/Agent360dk/browser-mcp/blob/main/WISHLIST.md
+   - Use-case gallery: https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md
+   - Got an idea, bug, or cool thing you built? Just ask Claude — it can draft + submit for you.
 
 📖 Docs: https://browsermcp.dev
 `);

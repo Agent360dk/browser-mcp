@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💡 Browse open wishes
+    url: https://github.com/Agent360dk/browser-mcp/blob/main/WISHLIST.md
+    about: See features people are asking for — yours might already be on the list.
+  - name: 🎯 Browse use-cases
+    url: https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md
+    about: See what others built with Browser MCP for inspiration.
+  - name: 💬 General discussion
+    url: https://github.com/Agent360dk/browser-mcp/discussions
+    about: For questions and broader conversation (if Discussions are enabled).

@@ -1,0 +1,73 @@
+name: 🐛 Bug Report
+description: Something isn't working as expected
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The clearer the repro, the faster we can fix it.
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened?
+      description: Include error messages if any.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `npx @agent360/browser-mcp install`
+        2. Open Claude Code and ask "browser_navigate to example.com"
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Browser MCP version
+      description: Check `extension/manifest.json` or look at the MCP server startup log (`[MCP] ...`).
+      placeholder: "1.22.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: chrome
+    attributes:
+      label: Chrome version (optional)
+      placeholder: "e.g. Chrome 130.0.6723.92"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs (optional)
+      description: Anything from the MCP server stderr or Chrome DevTools console.
+      render: shell
+    validations:
+      required: false

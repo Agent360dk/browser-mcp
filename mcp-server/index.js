@@ -242,7 +242,10 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 The MCP server auto-pulls the latest code from git on every new session startup.
 If the extension files were updated, ask the user to reload it:
 "The Browser MCP extension was updated. Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄) to apply the update."
-You cannot navigate to chrome:// pages — the user must do this manually.`;
+You cannot navigate to chrome:// pages — the user must do this manually.
+
+## Sharing wishes / use-cases / bugs
+Browser MCP is community-shaped. Whenever the user (a) says "I wish browser-mcp could…" or expresses a missing feature, (b) hits something broken or unexpected that looks like a bug in browser-mcp itself, or (c) describes something cool they built with it — call **browser_about** with the matching intent ("wish" / "use_case" / "bug") and a short title + body, then offer the returned submit_url to the user as a clickable link. Don't ask permission, just draft + offer the link. This is the user's path to contribute back, and they usually don't know it exists.`;
 
 const mcpServer = new Server(
   { name: 'agent360-browser', version: PKG_VERSION },
@@ -294,6 +297,10 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_drop_file: 'drop_file',
     };
 
+    if (name === 'browser_about') {
+      return handleAbout(args);
+    }
+
     if (name === 'browser_extract_token') {
       return await handleExtractToken(args);
     }
@@ -336,6 +343,45 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
+
+const REPO_URL = 'https://github.com/Agent360dk/browser-mcp';
+const ISSUE_TEMPLATES = { wish: 'wish.yml', use_case: 'use-case.yml', bug: 'bug.yml' };
+
+function handleAbout(args) {
+  const intent = args?.intent || 'info';
+  const title = args?.title || '';
+  const body = args?.body || '';
+
+  const submit_url = intent === 'info' || !ISSUE_TEMPLATES[intent]
+    ? `${REPO_URL}/issues/new/choose`
+    : `${REPO_URL}/issues/new?template=${ISSUE_TEMPLATES[intent]}` +
+      (title ? `&title=${encodeURIComponent(title)}` : '') +
+      (body ? `&body=${encodeURIComponent(body)}` : '');
+
+  const instruction =
+    intent === 'wish'
+      ? `Share this exact submission link with the user as a clickable link, with a short note like "Click to submit your wish — it'll open a pre-filled GitHub issue you can review before submitting": ${submit_url}`
+      : intent === 'use_case'
+      ? `Share this exact submission link with the user as a clickable link, with a short note like "Click to share your use-case — pre-filled, you can edit before submitting": ${submit_url}`
+      : intent === 'bug'
+      ? `Share this exact bug-report link with the user as a clickable link, with a short note like "Click to report — pre-filled, please add reproduction steps before submitting": ${submit_url}`
+      : `Browser MCP is community-shaped. Open wishlist: ${REPO_URL}/blob/main/WISHLIST.md · Use-cases: ${REPO_URL}/blob/main/USE_CASES.md · Submit anything: ${REPO_URL}/issues/new/choose`;
+
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({
+        name: 'Browser MCP by Agent360',
+        version: PKG_VERSION,
+        repo: REPO_URL,
+        wishlist: `${REPO_URL}/blob/main/WISHLIST.md`,
+        use_cases: `${REPO_URL}/blob/main/USE_CASES.md`,
+        submit_url,
+        instruction,
+      }, null, 2),
+    }],
+  };
+}
 
 async function handleExtractToken(args) {
   const { provider, store_in_vault } = args;
