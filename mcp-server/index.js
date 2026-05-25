@@ -14,9 +14,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
 import { execSync } from 'child_process';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 // Read version from package.json — single source of truth, never drifts
@@ -319,6 +319,19 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const prefix = isJpeg ? /^data:image\/jpeg;base64,/ : /^data:image\/png;base64,/;
       const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
       const base64 = result.image.replace(prefix, '');
+
+      if (args && args.path) {
+        const targetPath = resolve(process.cwd(), args.path);
+        mkdirSync(dirname(targetPath), { recursive: true });
+        writeFileSync(targetPath, Buffer.from(base64, 'base64'));
+        return {
+          content: [
+            { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
+            { type: 'image', data: base64, mimeType }
+          ]
+        };
+      }
+
       return { content: [{ type: 'image', data: base64, mimeType }] };
     }
 
