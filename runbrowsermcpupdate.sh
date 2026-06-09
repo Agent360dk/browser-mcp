@@ -272,10 +272,13 @@ else
   if git rev-parse "v${NEW_VERSION}" >/dev/null 2>&1; then
     warn "tag v${NEW_VERSION} already exists — skipping tag"
   else
-    run git tag "v${NEW_VERSION}"
+    run git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"   # annotated, so it pushes
   fi
-  # push branch + tag together; --follow-tags is idempotent (up-to-date → exit 0).
-  run git push origin main --follow-tags
+  # push branch, then the tag EXPLICITLY. (--follow-tags silently skips lightweight
+  # tags and even annotated ones can be missed on resume; explicit push is robust
+  # and idempotent — an already-pushed tag just reports up-to-date.)
+  run git push origin main
+  run git push origin "v${NEW_VERSION}"
 
   ZIP="/tmp/agent360-browser-mcp-${NEW_VERSION}.zip"
   say "build release zip for GitHub asset: $ZIP"
