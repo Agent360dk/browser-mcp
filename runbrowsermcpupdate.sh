@@ -103,13 +103,16 @@ CUR_PKG="$(node -p "require('./mcp-server/package.json').version")"
 NPM_LATEST="$(npm view @agent360/browser-mcp version 2>/dev/null || echo '0.0.0')"
 say "current → extension:${CUR_EXT}  npm-package:${CUR_PKG}  npm-latest:${NPM_LATEST}"
 
-# new must be strictly greater than the highest known published/local version
-PRIOR_MAX="$(printf '%s\n%s\n%s\n' "$CUR_EXT" "$CUR_PKG" "$NPM_LATEST" | sort -V | tail -1)"
+# Monotonic check compares against PUBLISHED state (npm-latest + newest git tag),
+# NOT the local working-tree — a partial/resumed run may have already bumped the
+# files to NEW_VERSION, and that must not block re-running to finish the release.
+LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+PRIOR_MAX="$(printf '%s\n%s\n' "$NPM_LATEST" "${LATEST_TAG:-0.0.0}" | sort -V | tail -1)"
 HIGHEST="$(printf '%s\n%s\n' "$PRIOR_MAX" "$NEW_VERSION" | sort -V | tail -1)"
 { [[ "$HIGHEST" == "$NEW_VERSION" && "$NEW_VERSION" != "$PRIOR_MAX" ]]; } \
-  || die "new version $NEW_VERSION must be greater than current max ($PRIOR_MAX)"
+  || die "new version $NEW_VERSION must be greater than published max ($PRIOR_MAX = npm:$NPM_LATEST tag:${LATEST_TAG:-none})"
 [[ "$NEW_VERSION" != "$NPM_LATEST" ]] || die "version $NEW_VERSION already published to npm"
-ok "version $NEW_VERSION > prior max $PRIOR_MAX"
+ok "version $NEW_VERSION > published max $PRIOR_MAX (npm:$NPM_LATEST tag:${LATEST_TAG:-none})"
 
 # Every path this release touches/stages. Anything dirty OUTSIDE this set is a
 # stray (likely another chat's WIP) and must not be swept into the release commit.
