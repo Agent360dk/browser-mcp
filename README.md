@@ -25,7 +25,7 @@ This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds t
 
 ### Step 2: Load the extension in Chrome
 
-> Chrome won't let extensions install themselves from npm — you have to load it manually one time. After that, it auto-updates whenever you re-run the install command.
+> Chrome won't let extensions install themselves from npm — you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-one-click-install) install if you'd rather have the extension auto-update.
 
 1. **Open Chrome** and type `chrome://extensions` in the address bar
 2. **Toggle "Developer mode"** ON (top right corner)
@@ -36,13 +36,13 @@ This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds t
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 33 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 34 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
 If you don't want to use npm, download the extension directly:
 
-1. [Download `browser-mcp-v1.16.1.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
+1. [Download `browser-mcp-v1.23.0.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
 2. Unzip the file (anywhere — e.g. `~/Downloads/browser-mcp-extension/`)
 3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
 4. Configure Claude Code manually by adding this to your `~/.claude.json` (or run `npx @agent360/browser-mcp install --skip-extension`):
@@ -196,11 +196,19 @@ mcp-server/
 5. Commands flow: Claude Code → MCP → Extension → Chrome APIs
 6. Process auto-exits when Claude Code closes (stdin detection)
 
-## Auto-Updates
+## Keeping it updated
 
-The MCP server runs via `npx @agent360/browser-mcp@latest` — always the latest version from npm. No manual git pulls needed.
+Browser MCP has two parts, and they update independently — how the **extension** updates depends on how you installed it:
 
-To update the extension: `npx @agent360/browser-mcp install` (re-copies files), then reload in `chrome://extensions`.
+| Part | Install method | How it updates |
+|------|----------------|----------------|
+| **MCP server** | any | **Automatic.** Runs via `npx @agent360/browser-mcp@latest`, so every Claude Code session pulls the newest from npm. Nothing to do. |
+| **Extension** | **Chrome Web Store** | **Automatic.** Chrome updates it in the background (usually within a few hours). Nothing to do. |
+| **Extension** | **Unpacked** (`npx … install` or manual zip) | **Manual.** Chrome never auto-updates a load-unpacked extension. Re-run `npx @agent360/browser-mcp install`, then open `chrome://extensions` → Browser MCP → **↻ reload**. |
+
+**Not sure which you have?** Open `chrome://extensions` and find Browser MCP. If it shows a **"Loaded from /path/…"** line, it's unpacked (manual updates). If there's no such line, it came from the Chrome Web Store (auto-updates).
+
+**Want zero-maintenance updates?** Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl), then run `npx @agent360/browser-mcp install --skip-extension` to wire up just the MCP server. After that, both parts stay current on their own.
 
 ## Troubleshooting
 

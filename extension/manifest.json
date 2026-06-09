@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Agent360 Browser MCP",
-  "version": "1.21.3",
-  "description": "Control your real Chrome from Claude Code — navigate, click, fill, screenshot, solve CAPTCHAs. 33 tools, multi-session.",
+  "version": "1.23.0",
+  "description": "Control your real Chrome from Claude Code — navigate, click, fill, screenshot, solve CAPTCHAs. 34 tools, multi-session.",
   "permissions": [
     "tabs",
     "tabGroups",

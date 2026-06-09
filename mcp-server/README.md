@@ -5,28 +5,63 @@
 [![GitHub stars](https://img.shields.io/github/stars/Agent360dk/browser-mcp)](https://github.com/Agent360dk/browser-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
+[![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-live-green)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
 **Control your real Chrome from Claude Code — with your logins, cookies, and 2FA.**
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 29 tools total.
+The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 34 tools total.
 
-## Install
+## Install — 2 steps (~60 seconds)
+
+### Step 1: Configure the MCP server
 
 ```bash
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension to `~/.browser-mcp/extension/` and configures Claude Code automatically.
+This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds the MCP server to your Claude Code config. **You'll see the path to the extension folder printed in the terminal — copy it.**
 
-Then load the extension in Chrome:
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top right)
-3. Click **Load unpacked** → select `~/.browser-mcp/extension/`
-4. Restart Claude Code
+### Step 2: Load the extension in Chrome
 
-That's it. 29 browser tools are now available in Claude Code.
+> Chrome won't let extensions install themselves from npm — you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-one-click-install) install if you'd rather have the extension auto-update.
+
+1. **Open Chrome** and type `chrome://extensions` in the address bar
+2. **Toggle "Developer mode"** ON (top right corner)
+3. **Click "Load unpacked"** (top left, next to "Pack extension")
+4. **Navigate to `~/.browser-mcp/extension/`** and click "Select"
+   - On Mac: Press `Cmd+Shift+G` in the file picker, paste `~/.browser-mcp/extension/`, press Enter
+   - On Windows: Paste `%USERPROFILE%\.browser-mcp\extension\` in the address bar
+   - On Linux: Type `~/.browser-mcp/extension/` in the path field
+5. **Restart Claude Code** so it picks up the new MCP server
+
+That's it. The Browser MCP icon will appear in your toolbar, and 34 browser tools are now available in Claude Code.
+
+### Alternative: Manual zip download (no npm)
+
+If you don't want to use npm, download the extension directly:
+
+1. [Download `browser-mcp-v1.23.0.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
+2. Unzip the file (anywhere — e.g. `~/Downloads/browser-mcp-extension/`)
+3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
+4. Configure Claude Code manually by adding this to your `~/.claude.json` (or run `npx @agent360/browser-mcp install --skip-extension`):
+   ```json
+   {
+     "mcpServers": {
+       "browser-mcp": {
+         "command": "npx",
+         "args": ["@agent360/browser-mcp"]
+       }
+     }
+   }
+   ```
+
+### Chrome Web Store (one-click install)
+
+[**Install from Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
+
+No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-extension` to configure Claude Code.
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
@@ -43,7 +78,7 @@ That's it. 29 browser tools are now available in Claude Code.
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
 
-## 29 Tools
+## 34 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -63,7 +98,10 @@ That's it. 29 browser tools are now available in Claude Code.
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns |
 | `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select) |
-| `browser_handle_dialog` | Accept/dismiss alert/confirm/prompt dialogs |
+| `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
+| `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
+| `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
+| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
 
 ### Tabs & Frames
 | Tool | Description |
@@ -103,6 +141,7 @@ That's it. 29 browser tools are now available in Claude Code.
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
 | `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog) |
+| `browser_drop_file` | Upload via drop-zones: finds hidden `<input type="file">` in target subtree/parent (up to 2 levels). Use when `browser_upload_file` fails because the zone has no visible input |
 
 ## Multi-Session Support
 
@@ -145,7 +184,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 29 tool definitions
+  tools.js            # 34 tool definitions
   bin/cli.js          # Install CLI
 ```
 
@@ -157,11 +196,19 @@ mcp-server/
 5. Commands flow: Claude Code → MCP → Extension → Chrome APIs
 6. Process auto-exits when Claude Code closes (stdin detection)
 
-## Auto-Updates
+## Keeping it updated
 
-The MCP server runs via `npx @agent360/browser-mcp@latest` — always the latest version from npm. No manual git pulls needed.
+Browser MCP has two parts, and they update independently — how the **extension** updates depends on how you installed it:
 
-To update the extension: `npx @agent360/browser-mcp install` (re-copies files), then reload in `chrome://extensions`.
+| Part | Install method | How it updates |
+|------|----------------|----------------|
+| **MCP server** | any | **Automatic.** Runs via `npx @agent360/browser-mcp@latest`, so every Claude Code session pulls the newest from npm. Nothing to do. |
+| **Extension** | **Chrome Web Store** | **Automatic.** Chrome updates it in the background (usually within a few hours). Nothing to do. |
+| **Extension** | **Unpacked** (`npx … install` or manual zip) | **Manual.** Chrome never auto-updates a load-unpacked extension. Re-run `npx @agent360/browser-mcp install`, then open `chrome://extensions` → Browser MCP → **↻ reload**. |
+
+**Not sure which you have?** Open `chrome://extensions` and find Browser MCP. If it shows a **"Loaded from /path/…"** line, it's unpacked (manual updates). If there's no such line, it came from the Chrome Web Store (auto-updates).
+
+**Want zero-maintenance updates?** Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl), then run `npx @agent360/browser-mcp install --skip-extension` to wire up just the MCP server. After that, both parts stay current on their own.
 
 ## Troubleshooting
 
@@ -182,6 +229,21 @@ To update the extension: `npx @agent360/browser-mcp install` (re-copies files), 
 - Processes auto-exit when Claude Code closes (stdin detection)
 - Idle timeout: 4 hours without commands → auto-exit
 - Manual cleanup: `lsof -i :9876-9885 | grep LISTEN`
+
+## 💡 Help Shape Browser MCP
+
+Browser MCP is built in the open and shaped by the people using it.
+
+### Browse what others want / built
+- 💡 **[Wishlist →](WISHLIST.md)** — features people are asking for
+- 🎯 **[Use-cases →](USE_CASES.md)** — what others have built (LinkedIn ICP scraping, vendor research, daily ops, …)
+
+### Contribute in 30 seconds
+- 💡 [Wish for a feature](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
+- 🎯 [Share a use-case](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml)
+- 🐛 [Report a bug](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml)
+
+Or just **ask Claude** — it knows about the `browser_about` tool and will draft + submit on your behalf when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
 
 ## License
 

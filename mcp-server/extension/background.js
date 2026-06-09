@@ -53,9 +53,44 @@ function getSession(port) {
   return sessions.get(port);
 }
 
+// LRU eviction cap: hver session må højst have N åbne tabs samtidigt.
+// Når en ny tab tilføjes ud over cap'en, lukkes den ÆLDSTE tab i sessionen
+// (insertion-order via Set) — bortset fra session.activeTabId (current tab).
+// Begrundelse: Claude Code-flows kan åbne 20+ navigate(new_tab=true) per session
+// over en længere conversation. Uden eviction akkumulerer disse i Chrome som
+// orphan-tabs der spiser RAM + giver "extension localhost 19+" tab-noise.
+const MAX_TABS_PER_SESSION = 10;
+
+async function evictOldestTabs(session, justAddedTabId) {
+  // Drop dead tab-ids først (user manually closed dem)
+  for (const id of [...session.tabIds]) {
+    try {
+      await chrome.tabs.get(id);
+    } catch {
+      session.tabIds.delete(id);
+    }
+  }
+  // Evict oldest indtil ≤ cap. Skip activeTabId og just-added tab.
+  const ordered = [...session.tabIds];
+  for (const oldId of ordered) {
+    if (session.tabIds.size <= MAX_TABS_PER_SESSION) break;
+    if (oldId === session.activeTabId) continue;
+    if (oldId === justAddedTabId) continue;
+    try {
+      await chrome.tabs.remove(oldId);
+    } catch {} // tab may already be closed
+    session.tabIds.delete(oldId);
+  }
+}
+
 async function addTabToSession(port, tabId) {
   const session = getSession(port);
   session.tabIds.add(tabId);
+
+  // LRU eviction: når sessionen overstiger cap, luk de ældste tabs.
+  if (session.tabIds.size > MAX_TABS_PER_SESSION) {
+    await evictOldestTabs(session, tabId);
+  }
 
   try {
     if (session.groupId !== null) {
@@ -357,25 +392,58 @@ async function debuggerType(tabId, text) {
 async function debuggerClick(tabId, x, y) {
   await debuggerAttach(tabId);
   try {
+    // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
+    //    Web-components (Google Ads <button-panel>, Material Web) keep their real
+    //    <button> inside an (open) shadow root, so we pierce shadow roots to reach
+    //    it. We stash it on window so the framework fallback (step 3) can verify it
+    //    is still connected — if the trusted click already navigated/re-rendered,
+    //    the ref is detached and we must NOT re-fire (avoids mis-clicks on the new
+    //    view / double-submits).
+    await cdpSend(tabId, 'Runtime.evaluate', {
+      expression: `(() => {
+        let el = document.elementFromPoint(${x}, ${y});
+        let host = el;
+        for (let i = 0; i < 20 && host && host.shadowRoot; i++) {
+          const inner = host.shadowRoot.elementFromPoint(${x}, ${y});
+          if (!inner || inner === host) break;
+          el = inner; host = inner;
+        }
+        window.__bmcpClickTarget = el || null;
+      })()`,
+    });
     // 1. mouseMoved first (triggers hover state, required by some frameworks)
     await cdpSend(tabId, 'Input.dispatchMouseEvent', {
       type: 'mouseMoved', x, y,
     });
     await new Promise(r => setTimeout(r, 30));
-    // 2. mousePressed + mouseReleased (fires trusted mousedown/mouseup)
+    // 2. mousePressed + mouseReleased. The `buttons` bitmask (1 while pressed,
+    //    0 on release) plus a small press→release gap are REQUIRED for Chrome to
+    //    synthesize a *trusted* 'click' from the pair. Without them, web-components
+    //    that gate on the trusted click event (Google Ads, Material Web) never fire.
     await cdpSend(tabId, 'Input.dispatchMouseEvent', {
-      type: 'mousePressed', x, y, button: 'left', clickCount: 1,
+      type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
     });
+    await new Promise(r => setTimeout(r, 30));
     await cdpSend(tabId, 'Input.dispatchMouseEvent', {
-      type: 'mouseReleased', x, y, button: 'left', clickCount: 1,
+      type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
     });
-    // 3. CDP doesn't synthesize 'click' event from mousePressed/mouseReleased.
-    //    Fire JS click + React/Angular framework fallbacks.
+    // 3. Framework fallback — only if the captured target is STILL connected (i.e.
+    //    the trusted click in step 2 did not already handle it). Settle delay lets
+    //    SPA re-renders (Google Ads) detach the element first. Fires a full pointer
+    //    + mouse sequence on the shadow-pierced target, then React/Angular handlers.
+    await new Promise(r => setTimeout(r, 120));
     await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
-        const el = document.elementFromPoint(${x}, ${y});
-        if (!el) return;
-        el.click();
+        const el = window.__bmcpClickTarget;
+        try { delete window.__bmcpClickTarget; } catch (e) {}
+        if (!el || !el.isConnected) return;   // already navigated/handled — don't double-fire
+        const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
+        try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
+        el.dispatchEvent(new MouseEvent('mousedown', opts));
+        try { el.dispatchEvent(new PointerEvent('pointerup', opts)); } catch (e) {}
+        el.dispatchEvent(new MouseEvent('mouseup', opts));
+        el.dispatchEvent(new MouseEvent('click', opts));
+        if (typeof el.click === 'function') el.click();
 
         // React fiber fallback — find and call onClick handler directly
         const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
@@ -387,16 +455,11 @@ async function debuggerClick(tabId, x, y) {
           }
         }
 
-        // Angular fallback — trigger via Zone.js patched events + ngClick
+        // Angular Material fallback — ripple + internal handlers
         const ngKey = Object.keys(el).find(k => k.startsWith('__ng'));
         if (ngKey || el.getAttribute('ng-click') || el.getAttribute('(click)')) {
-          // Angular uses Zone.js which patches addEventListener — dispatch real events through it
-          el.dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, cancelable:true}));
-          el.dispatchEvent(new PointerEvent('pointerup', {bubbles:true, cancelable:true}));
-          el.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
-          // Angular Material components (mat-button, mat-checkbox, etc.) use ripple + internal handlers
-          const matRipple = el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
-          if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, view:window}));
+          const matRipple = el.closest && el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
+          if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', opts));
         }
       })()`,
     });
@@ -1674,23 +1737,73 @@ async function dispatch(port, method, params) {
     }
 
     case 'execute_script': {
+      // v1.22.2 (DIAGNOSTIC): Try scripting paths but log all errors so we can see WHY they fail
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot execute scripts on chrome:// pages');
+
+      const diag = { tried: [] };
+
+      // Step 1: try ISOLATED world
       try {
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          func: new Function('return (' + params.code + ')'),
-          world: 'MAIN',
+          world: 'ISOLATED',
+          args: [params.code],
+          func: (codeStr) => {
+            try {
+              const fn = new Function('return (' + codeStr + ')');
+              return { __ok: true, value: fn() };
+            } catch (e) {
+              return { __scriptingError: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' };
+            }
+          },
         });
-        return { result: result.result };
-      } catch (e) {
-        if (e.message?.includes('Content Security Policy') || e.message?.includes('unsafe-eval')) {
-          // CSP blocked — fall back to debugger Runtime.evaluate
-          const value = await debuggerEval(tab.id, params.code);
-          return { result: value, method: 'debugger' };
+        const r = result?.result;
+        diag.tried.push({ world: 'ISOLATED', result_keys: r ? Object.keys(r) : null, r_type: typeof r });
+        if (r && typeof r === 'object' && r.__ok) {
+          return { result: r.value, method: 'scripting-isolated' };
         }
-        throw e;
+        if (r && typeof r === 'object' && r.__scriptingError) {
+          diag.isolated_error = r.message;
+        }
+      } catch (e) {
+        diag.isolated_throw = String(e?.message || e);
       }
+
+      // Step 2: try MAIN world
+      try {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          args: [params.code],
+          func: (codeStr) => {
+            try {
+              const fn = new Function('return (' + codeStr + ')');
+              return { __ok: true, value: fn() };
+            } catch (e) {
+              return { __scriptingError: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' };
+            }
+          },
+        });
+        const r = result?.result;
+        diag.tried.push({ world: 'MAIN', result_keys: r ? Object.keys(r) : null, r_type: typeof r });
+        if (r && typeof r === 'object' && r.__ok) {
+          return { result: r.value, method: 'scripting-main' };
+        }
+        if (r && typeof r === 'object' && r.__scriptingError) {
+          diag.main_error = r.message;
+        }
+      } catch (e) {
+        diag.main_throw = String(e?.message || e);
+      }
+
+      // Step 3: DIAG MODE — don't fallback to debugger, return scripting-state info instead
+      return {
+        result: '__SCRIPTING_FAILED__',
+        method: 'scripting-failed',
+        diag,
+        note: 'Both ISOLATED + MAIN scripting paths returned null/error. See diag for details.',
+      };
     }
 
     case 'click': {
@@ -1888,10 +2001,23 @@ async function dispatch(port, method, params) {
     }
 
     case 'press_key': {
-      const tab = await getSessionTab(port);
+      // v1.22: activate tab so key-event lands in foreground (otherwise Chrome routes to active tab)
+      const tab = await getSessionTab(port, true);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
       const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
+
+      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger
+      // scroll/form-submit behavior. Without these, key-event is dispatched but page doesn't react.
+      const VK_CODES = {
+        'Backspace': 8, 'Tab': 9, 'Enter': 13, 'Shift': 16, 'Control': 17, 'Alt': 18,
+        'Escape': 27, 'Space': 32, ' ': 32,
+        'PageUp': 33, 'PageDown': 34, 'End': 35, 'Home': 36,
+        'ArrowLeft': 37, 'ArrowUp': 38, 'ArrowRight': 39, 'ArrowDown': 40,
+        'Delete': 46,
+      };
+      const vkCode = VK_CODES[key];
+      const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
 
       await debuggerAttach(tab.id);
       try {
@@ -1901,12 +2027,14 @@ async function dispatch(port, method, params) {
           code: params.code || key,
           modifiers,
           text: key.length === 1 ? key : '',
+          ...vkParams,
         });
         await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
           type: 'keyUp',
           key,
           code: params.code || key,
           modifiers,
+          ...vkParams,
         });
       } finally {
         await debuggerDetach(tab.id);
@@ -1915,6 +2043,8 @@ async function dispatch(port, method, params) {
     }
 
     case 'scroll': {
+      // v1.22: NO activate — CDP Input.dispatchMouseEvent goes via debugger directly to target,
+      // doesn't need active tab. Re-activating on every scroll-call destabilizes debugger.
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       // Scroll to element
@@ -1923,20 +2053,32 @@ async function dispatch(port, method, params) {
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         return { ok: true, scrolled_to: params.selector };
       }
-      // Scroll by pixels using CDP mouseWheel — works in React containers with overflow:scroll
+      // Scroll by pixels using CDP mouseWheel — split into smaller steps so IntersectionObservers fire.
+      // FB/Twitter/IG only trigger lazy-load on continuous wheel events, not a single large delta.
       const dx = params.x || 0;
       const dy = params.y || 0;
       try {
         await debuggerAttach(tab.id);
-        await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
-          type: 'mouseWheel', x: 400, y: 300, deltaX: dx, deltaY: dy,
-        });
-        await debuggerDetach(tab.id);
-      } catch {
-        // Fallback to window.scrollBy for simple pages
+        const STEP_SIZE = 300; // pixels per wheel-event (matches a typical mouse-wheel notch)
+        const totalSteps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / STEP_SIZE));
+        const stepX = dx / totalSteps;
+        const stepY = dy / totalSteps;
+        for (let i = 0; i < totalSteps; i++) {
+          await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
+            type: 'mouseWheel', x: 400, y: 300, deltaX: stepX, deltaY: stepY,
+          });
+          // Small delay between wheel-events so IntersectionObserver + lazy-load XHRs can fire
+          if (i < totalSteps - 1) await new Promise(r => setTimeout(r, 80));
+        }
+        // After last wheel-event, give FB/Twitter/IG ~600ms to start lazy-load XHRs
+        // before any subsequent commands run (caller often scrapes immediately after)
+        await new Promise(r => setTimeout(r, 600));
+      } catch (e) {
+        // Fallback to window.scrollBy for simple pages (synthetic but works on non-anti-scrape sites)
         await debuggerEval(tab.id, `window.scrollBy(${dx}, ${dy})`);
+        return { ok: true, scrolled: { x: dx, y: dy }, method: 'fallback', fallback_reason: e.message };
       }
-      return { ok: true, scrolled: { x: dx, y: dy } };
+      return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };
     }
 
     case 'hover': {
