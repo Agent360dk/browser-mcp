@@ -71,6 +71,11 @@ done
 [[ -n "$NEW_VERSION" ]] || die "Usage: ./runbrowsermcpupdate.sh <X.Y.Z> [--ship]  (see --help)"
 [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version '$NEW_VERSION' is not semver X.Y.Z"
 
+# Load secrets ONCE, early + exported, so both the npm pre-flight and `npm publish`
+# see NPM_TOKEN (.npmrc references ${NPM_TOKEN}) and the CWS step sees CWS_*. Both
+# live in .env (gitignored). This is the single source of truth for publish auth.
+if [[ -f .env ]]; then set -a; source .env; set +a; fi
+
 MODE_LABEL="${Y}DRY-RUN${Z} (nothing will change — add --ship to execute)"
 [[ "$SHIP" == 1 ]] && MODE_LABEL="${R}${B}SHIP${Z} (this WILL publish)"
 
@@ -151,8 +156,7 @@ fi
 if [[ "$SKIP_CWS" == 0 ]]; then
   if [[ ! -f .env ]]; then gate ".env missing (CWS secrets) — see docs/CWS_PUBLISH_SETUP.md, or --skip-cws"
   else
-    # shellcheck disable=SC1091
-    set -a; source .env; set +a
+    # .env already sourced early (top of file); just verify the required vars.
     CWS_MISSING=""
     for v in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_EXTENSION_ID; do
       [[ -n "${!v:-}" ]] || CWS_MISSING="$CWS_MISSING $v"
