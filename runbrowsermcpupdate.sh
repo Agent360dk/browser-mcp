@@ -240,7 +240,9 @@ else
     # ${NPM_TOKEN} — so without this it silently uses the stale ~/.npmrc token
     # and 404s. Requires NPM_TOKEN from .env (sourced at top).
     [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env — needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
-    run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=${NPM_TOKEN}'"
+    # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
+    # not the secret) and is expanded by the inner bash -c from the exported env.
+    run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"
   fi
 fi
 
