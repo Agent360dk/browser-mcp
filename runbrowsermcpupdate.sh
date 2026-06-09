@@ -103,16 +103,16 @@ CUR_PKG="$(node -p "require('./mcp-server/package.json').version")"
 NPM_LATEST="$(npm view @agent360/browser-mcp version 2>/dev/null || echo '0.0.0')"
 say "current → extension:${CUR_EXT}  npm-package:${CUR_PKG}  npm-latest:${NPM_LATEST}"
 
-# Monotonic check compares against PUBLISHED state (npm-latest + newest git tag),
-# NOT the local working-tree — a partial/resumed run may have already bumped the
-# files to NEW_VERSION, and that must not block re-running to finish the release.
+# Monotonic check guards ONLY against npm-latest — the one irreversible channel.
+# NOT the working-tree (a partial run may have bumped files) and NOT the git tag
+# (a cross-channel resume legitimately re-runs a version whose tag/release already
+# shipped but whose npm publish failed). The per-channel guards below (npm view,
+# tag rev-parse, commit-diff, gh release view) make every other channel idempotent.
 LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
-PRIOR_MAX="$(printf '%s\n%s\n' "$NPM_LATEST" "${LATEST_TAG:-0.0.0}" | sort -V | tail -1)"
-HIGHEST="$(printf '%s\n%s\n' "$PRIOR_MAX" "$NEW_VERSION" | sort -V | tail -1)"
-{ [[ "$HIGHEST" == "$NEW_VERSION" && "$NEW_VERSION" != "$PRIOR_MAX" ]]; } \
-  || die "new version $NEW_VERSION must be greater than published max ($PRIOR_MAX = npm:$NPM_LATEST tag:${LATEST_TAG:-none})"
-[[ "$NEW_VERSION" != "$NPM_LATEST" ]] || die "version $NEW_VERSION already published to npm"
-ok "version $NEW_VERSION > published max $PRIOR_MAX (npm:$NPM_LATEST tag:${LATEST_TAG:-none})"
+HIGHEST="$(printf '%s\n%s\n' "$NPM_LATEST" "$NEW_VERSION" | sort -V | tail -1)"
+{ [[ "$HIGHEST" == "$NEW_VERSION" && "$NEW_VERSION" != "$NPM_LATEST" ]]; } \
+  || die "new version $NEW_VERSION must be greater than npm-latest ($NPM_LATEST)"
+ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
 
 # Every path this release touches/stages. Anything dirty OUTSIDE this set is a
 # stray (likely another chat's WIP) and must not be swept into the release commit.
@@ -235,7 +235,12 @@ else
     warn "v$NEW_VERSION already on npm — skipping (resumable re-run)"
   else
     say "publishing @agent360/browser-mcp@$NEW_VERSION"
-    run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public"
+    # Pass the token EXPLICITLY on the CLI. npm run from mcp-server/ reads only
+    # mcp-server/.npmrc + ~/.npmrc — NOT the repo-root .npmrc that references
+    # ${NPM_TOKEN} — so without this it silently uses the stale ~/.npmrc token
+    # and 404s. Requires NPM_TOKEN from .env (sourced at top).
+    [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env — needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
+    run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=${NPM_TOKEN}'"
   fi
 fi
 
