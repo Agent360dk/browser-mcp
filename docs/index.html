@@ -47,6 +47,9 @@
     .nav-links a:hover { color: var(--text); text-decoration: none; }
     .nav-badges { display: flex; gap: 8px; align-items: center; }
     .nav-badges img { height: 20px; }
+    .star-badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); color: var(--accent); font-size: 12px; font-weight: 600; line-height: 1; }
+    .star-badge:hover { text-decoration: none; border-color: var(--accent); }
+    .star-badge svg { width: 12px; height: 12px; fill: currentColor; }
 
     /* Hero */
     .hero { max-width: 900px; margin: 0 auto; padding: 40px 24px 40px; text-align: center; }
@@ -176,7 +179,10 @@
     <a href="https://github.com/Agent360dk/browser-mcp">GitHub</a>
   </div>
   <div class="nav-badges">
-    <a href="https://github.com/Agent360dk/browser-mcp/stargazers"><img src="https://img.shields.io/github/stars/Agent360dk/browser-mcp?style=flat&label=&color=58a6ff&labelColor=161b22" alt="GitHub stars"></a>
+    <a href="https://github.com/Agent360dk/browser-mcp/stargazers" class="star-badge" id="starBadge" hidden aria-label="GitHub stars">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
+      <span id="starCount"></span>
+    </a>
   </div>
 </nav>
 
@@ -396,6 +402,20 @@
   </div>
   <div>by <a href="https://agent360.dk">Agent360</a> · MIT License · <a href="https://github.com/Agent360dk/browser-mcp">GitHub</a> · <a href="https://x.com/browsermcp">@browsermcp</a> · <a href="/privacy.html">Privacy</a></div>
 </footer>
+
+<script>
+  // Self-hosted GitHub stars badge — no shields.io dependency.
+  // On any failure the badge stays hidden; we never render an error.
+  fetch('https://api.github.com/repos/Agent360dk/browser-mcp')
+    .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+    .then(function (d) {
+      if (d && typeof d.stargazers_count === 'number') {
+        document.getElementById('starCount').textContent = d.stargazers_count;
+        document.getElementById('starBadge').hidden = false;
+      }
+    })
+    .catch(function () { /* leave badge hidden */ });
+</script>
 
 </body>
 </html>
