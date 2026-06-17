@@ -47,9 +47,14 @@
     .nav-links a:hover { color: var(--text); text-decoration: none; }
     .nav-badges { display: flex; gap: 8px; align-items: center; }
     .nav-badges img { height: 20px; }
-    .star-badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border); color: var(--accent); font-size: 12px; font-weight: 600; line-height: 1; }
-    .star-badge:hover { text-decoration: none; border-color: var(--accent); }
-    .star-badge svg { width: 12px; height: 12px; fill: currentColor; }
+    .gh-star { display: inline-flex; align-items: stretch; height: 22px; font-size: 12px; font-weight: 600; line-height: 1; }
+    .gh-star:hover { text-decoration: none; }
+    .gh-star svg { width: 14px; height: 14px; fill: currentColor; }
+    .gh-star-btn { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--text); }
+    .gh-star-btn:hover { background: var(--surface-2); border-color: var(--muted); }
+    .gh-star-count { position: relative; display: inline-flex; align-items: center; margin-left: 6px; padding: 0 9px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px; color: var(--text); }
+    .gh-star-count::before { content: ""; position: absolute; left: -6px; top: 50%; transform: translateY(-50%); border: 6px solid transparent; border-right-color: var(--border); }
+    .gh-star-count::after { content: ""; position: absolute; left: -5px; top: 50%; transform: translateY(-50%); border: 5px solid transparent; border-right-color: var(--surface); }
 
     /* Hero */
     .hero { max-width: 900px; margin: 0 auto; padding: 40px 24px 40px; text-align: center; }
@@ -179,9 +184,12 @@
     <a href="https://github.com/Agent360dk/browser-mcp">GitHub</a>
   </div>
   <div class="nav-badges">
-    <a href="https://github.com/Agent360dk/browser-mcp/stargazers" class="star-badge" id="starBadge" hidden aria-label="GitHub stars">
-      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
-      <span id="starCount"></span>
+    <a href="https://github.com/Agent360dk/browser-mcp/stargazers" class="gh-star" id="starBadge" hidden aria-label="Star Browser MCP on GitHub">
+      <span class="gh-star-btn">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
+        Star
+      </span>
+      <span class="gh-star-count" id="starCount"></span>
     </a>
   </div>
 </nav>
