@@ -144,7 +144,7 @@ const Scene2ClickFill: React.FC = () => {
               { text: 'fill("[name=app_name]", "Agent360")', type: "command", delay: 40 },
               { text: "✓ Typed via real keystrokes", type: "success", delay: 55 },
               { text: "", type: "output", delay: 60 },
-              { text: 'fill("[type=email]", "gustav@agent360.dk")', type: "command", delay: 65 },
+              { text: 'fill("[type=email]", "hello@agent360.dk")', type: "command", delay: 65 },
               { text: "✓ Filled", type: "success", delay: 90 },
               { text: "", type: "output", delay: 95 },
               { text: 'select_option("[name=audience]", "External")', type: "command", delay: 98 },
@@ -160,7 +160,7 @@ const Scene2ClickFill: React.FC = () => {
             <GoogleOAuthForm
               fields={[
                 { label: "App name *", value: field1Filled ? "Agent360" : "", filled: field1Filled },
-                { label: "User support email *", value: field2Filled ? "gustav@agent360.dk" : "", filled: field2Filled },
+                { label: "User support email *", value: field2Filled ? "hello@agent360.dk" : "", filled: field2Filled },
                 { label: "Audience", value: field3Filled ? "External" : "", filled: field3Filled },
               ]}
               highlightIndex={highlightIdx}
