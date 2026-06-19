@@ -9,7 +9,9 @@
 
 **Your AI agent drives your real, logged-in Chrome — and works where headless tools die.**
 
-![Browser MCP Demo](assets/demo.gif)
+[![Browser MCP Demo](assets/demo.gif)](https://browsermcp.dev)
+
+▶ **[Watch the 37-second demo with sound →](https://browsermcp.dev)**
 
 Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked — because it's *you* browsing.
 

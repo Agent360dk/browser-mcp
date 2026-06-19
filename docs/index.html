@@ -213,10 +213,11 @@
   </div>
 </div>
 
-<div class="video-wrap">
-  <video autoplay loop muted playsinline poster="/screenshots/multi-session.png">
+<div class="video-wrap" style="position:relative">
+  <video id="heroVideo" autoplay loop muted playsinline poster="/screenshots/multi-session.png">
     <source src="/demo.mp4" type="video/mp4">
   </video>
+  <button onclick="var v=document.getElementById('heroVideo'); v.muted=!v.muted; if(!v.muted){v.currentTime=0; v.play();} this.textContent=v.muted?'🔇 Tap for sound':'🔊 Sound on';" style="position:absolute; bottom:16px; right:16px; padding:9px 16px; border:none; border-radius:24px; background:rgba(13,17,23,0.85); color:#fff; font:600 14px/1 system-ui,sans-serif; cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,0.4);">🔇 Tap for sound</button>
 </div>
 
 <div class="section-head" id="features">
