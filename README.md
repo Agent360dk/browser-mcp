@@ -7,11 +7,15 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-live-green)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
-**Control your real Chrome from Claude Code — with your logins, cookies, and 2FA.**
+**Your AI agent drives your real, logged-in Chrome — and works where headless tools die.**
 
 ![Browser MCP Demo](assets/demo.gif)
 
-The only browser MCP with **multi-session support** (10 concurrent AI sessions), **human-in-the-loop** (2FA, CAPTCHA, credentials), and **built-in provider integrations** (Stripe, HubSpot, Slack, and 6 more). 34 tools total.
+Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked — because it's *you* browsing.
+
+The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace — with you approving the sensitive steps.
+
+34 tools. ~80% reCAPTCHA-checkbox solve with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
 
 ## Install — 2 steps (~60 seconds)
 
