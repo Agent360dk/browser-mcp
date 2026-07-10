@@ -1837,37 +1837,81 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const parsed = parseSelector(params.selector);
 
-      // For text-based selectors, click the element first then type
+      // ── Text-based selectors: native JS first, CDP fallback ──
       if (parsed.type === 'text') {
+        const textFill = await safeExecuteScript(tab.id, (sel, val, findText, findTag) => {
+          function collectAll(root, results) {
+            for (const el of root.querySelectorAll('*')) {
+              results.push(el);
+              if (el.shadowRoot) collectAll(el.shadowRoot, results);
+            }
+            return results;
+          }
+          const all = collectAll(document, []);
+          let target = null;
+          for (const el of all) {
+            if (findTag && el.tagName !== findTag.toUpperCase()) continue;
+            const t = (el.textContent || '').trim();
+            if (t === findText) { target = el; break; }
+          }
+          if (!target) {
+            for (const el of all) {
+              if (findTag && el.tagName !== findTag.toUpperCase()) continue;
+              const t = (el.textContent || '').trim();
+              if (t.includes(findText) || findText.includes(t)) { target = el; break; }
+            }
+          }
+          if (!target) return { ok: false, error: 'Element not found via text: ' + findText };
+          target.scrollIntoView({ block: 'center', behavior: 'instant' });
+          target.focus();
+          if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+            const proto = target.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(target, val); else target.value = val;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+            target.dispatchEvent(new Event('change', { bubbles: true }));
+          } else if (target.isContentEditable) {
+            target.textContent = val;
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            return { ok: false, error: 'Element not fillable: ' + target.tagName };
+          }
+          return { ok: true };
+        }, [params.selector, params.value, parsed.text, parsed.tag]);
+
+        if (!textFill.cspBlocked) return textFill.result;
+
+        // CSP blocked — CDP fallback
         const el = await resolveElement(tab.id, params.selector);
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         await debuggerClick(tab.id, el.x, el.y);
         await new Promise(r => setTimeout(r, 100));
         await debuggerType(tab.id, params.value);
-        return { ok: true, method: 'debugger' };
+        return { ok: true, method: 'debugger-fallback' };
       }
 
-      // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
+      // ── CSS selectors: native JS input setter first, CDP fallback ──
+      const nativeFill = await safeExecuteScript(tab.id, (sel, val) => {
+        const el = document.querySelector(sel);
+        if (!el) return { ok: false, error: 'Element not found: ' + sel };
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        el.focus();
+        const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(el, val); else el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { ok: true };
+      }, [parsed.selector, params.value]);
+
+      if (!nativeFill.cspBlocked) return nativeFill.result;
+
+      // CSP blocked — CDP fallback
       try {
         await debuggerFill(tab.id, parsed.selector, params.value);
-        return { ok: true, method: 'debugger' };
+        return { ok: true, method: 'debugger-fallback' };
       } catch (e) {
-        // Fallback to executeScript if debugger fails
-        const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
-          const el = document.querySelector(sel);
-          if (!el) return { ok: false, error: 'Element not found: ' + sel };
-          el.scrollIntoView({ block: 'center', behavior: 'instant' });
-          el.focus();
-          // Use nativeInputValueSetter to bypass React controlled input
-          const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-          if (setter) setter.call(el, val); else el.value = val;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-          return { ok: true };
-        }, [parsed.selector, params.value]);
-        if (!scriptResult.cspBlocked) return scriptResult.result;
-        return { ok: false, error: e.message, method: 'debugger' };
+        return { ok: false, error: e.message, method: 'debugger-fallback' };
       }
     }
 
@@ -2001,14 +2045,26 @@ async function dispatch(port, method, params) {
     }
 
     case 'press_key': {
-      // v1.22: activate tab so key-event lands in foreground (otherwise Chrome routes to active tab)
       const tab = await getSessionTab(port, true);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
-      const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
+      const key = params.key;
 
-      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger
-      // scroll/form-submit behavior. Without these, key-event is dispatched but page doesn't react.
+      // Primary: native KeyboardEvent dispatch via safeExecuteScript
+      const pressResult = await safeExecuteScript(tab.id, (k, code, ctrl, alt, shift, meta) => {
+        const el = document.activeElement;
+        if (!el) return { ok: false, error: 'No focused element' };
+        const opts = {
+          key: k, code: code || k, bubbles: true, cancelable: true, composed: true,
+          ctrlKey: ctrl, altKey: alt, shiftKey: shift, metaKey: meta,
+        };
+        el.dispatchEvent(new KeyboardEvent('keydown', opts));
+        el.dispatchEvent(new KeyboardEvent('keyup', opts));
+        return { ok: true };
+      }, [key, params.code || null, !!params.ctrl, !!params.alt, !!params.shift, !!params.meta]);
+
+      if (!pressResult.cspBlocked) return pressResult.result;
+
+      // CSP blocked — CDP fallback with virtual key codes for system keys
       const VK_CODES = {
         'Backspace': 8, 'Tab': 9, 'Enter': 13, 'Shift': 16, 'Control': 17, 'Alt': 18,
         'Escape': 27, 'Space': 32, ' ': 32,
@@ -2018,23 +2074,17 @@ async function dispatch(port, method, params) {
       };
       const vkCode = VK_CODES[key];
       const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
+      const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
 
       await debuggerAttach(tab.id);
       try {
         await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
-          type: 'keyDown',
-          key,
-          code: params.code || key,
-          modifiers,
-          text: key.length === 1 ? key : '',
-          ...vkParams,
+          type: 'keyDown', key, code: params.code || key,
+          modifiers, text: key.length === 1 ? key : '', ...vkParams,
         });
         await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key,
-          code: params.code || key,
-          modifiers,
-          ...vkParams,
+          type: 'keyUp', key, code: params.code || key,
+          modifiers, ...vkParams,
         });
       } finally {
         await debuggerDetach(tab.id);
