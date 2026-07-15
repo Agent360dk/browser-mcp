@@ -1,0 +1,61 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Add Browser MCP to Claude Code &middot; Browser MCP</title><link rel="canonical" href="https://browsermcp.dev/docs/install-claude-code"><link rel="stylesheet" href="/assets/docs.css"></head><body><div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><span class="star">&#9733; 22</span></div></div><div class="shell"><nav class="side"><div class="grp">Install</div><a href="/docs/install-claude-code" class="active">Claude Code</a><a href="/docs/install-codex">Codex</a><a href="/docs/install-cursor">Cursor</a><a href="/docs/install-vscode">VS Code</a><a href="/docs/install-zcode">ZCode</a><div class="grp">Learn</div><a href="/docs/what-is-browser-mcp">What is Browser MCP</a><div class="grp">Reference</div><a href="/docs/tools">Tools</a><div class="grp">Compare</div><a href="/compare/browsermcp-io">vs browsermcp.io</a></nav><main class="content"><h1>Add Browser MCP to Claude Code</h1>
+<p><b>Give Claude Code control of your real, already-logged-in Chrome — install takes about 60 seconds.</b></p>
+<div class="code"><pre>npx @agent360/browser-mcp install</pre><button class="copy">Copy</button></div>
+<p>Run that, load the extension once in Chrome, restart Claude Code — done. 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.</p>
+<p>If you want the full walkthrough, keep reading. If you just needed the command, that's it above.</p>
+<hr>
+<h2>Step-by-step install (Claude Code)</h2>
+<h3>Step 1 — Configure the MCP server</h3>
+<div class="code"><pre>npx @agent360/browser-mcp install</pre><button class="copy">Copy</button></div>
+<p>This does two things: copies the Chrome extension files to <code>~/.browser-mcp/extension/</code>, and adds <code>browser-mcp</code> to your Claude Code MCP config automatically. The terminal prints the extension folder path — copy it, you'll need it in Step 2.</p>
+<h3>Step 2 — Load the extension in Chrome</h3>
+<p>Chrome doesn't let extensions install themselves from npm, so this one step is manual:</p>
+<ol><li>Open Chrome and go to <code>chrome://extensions</code></li><li>Toggle <b>Developer mode</b> ON (top right)</li><li>Click <b>Load unpacked</b> (top left, next to "Pack extension")</li><li>Navigate to <code>~/.browser-mcp/extension/</code> and select it</li><li><b>Mac:</b> in the file picker, press <code>Cmd+Shift+G</code>, paste <code>~/.browser-mcp/extension/</code>, hit Enter</li><li><b>Windows:</b> paste <code>%USERPROFILE%\.browser-mcp\extension\</code> into the address bar</li><li><b>Linux:</b> type <code>~/.browser-mcp/extension/</code> into the path field</li></ol>
+<p>Don't want Developer mode on? Use the <a href="#no-developer-mode-chrome-web-store">Chrome Web Store install</a> instead — see below.</p>
+<h3>Step 3 — Restart Claude Code</h3>
+<p>Restart Claude Code so it picks up the new MCP server. You'll see the Browser MCP icon appear in your Chrome toolbar — that's the extension connected. 34 browser tools are now available in any Claude Code conversation.</p>
+<h3>Verify it's working</h3>
+<p>Ask Claude Code to navigate to a URL or take a screenshot of the current tab. If it acts instead of saying it has no browser access, you're connected.</p>
+<hr>
+<h2>Alternative installs</h2>
+<h3>No npm? Manual zip download</h3>
+<ol><li>Download the extension zip from the <a href="https://github.com/Agent360dk/browser-mcp/releases/latest">latest GitHub release</a></li><li>Unzip it anywhere (e.g. <code>~/Downloads/browser-mcp-extension/</code>)</li><li>Follow Step 2 above, but select the unzipped folder instead of <code>~/.browser-mcp/extension/</code></li><li>Wire up Claude Code manually — add this to <code>~/.claude.json</code>:</li></ol>
+<div class="code"><pre>{
+  &quot;mcpServers&quot;: {
+    &quot;browser-mcp&quot;: {
+      &quot;command&quot;: &quot;npx&quot;,
+      &quot;args&quot;: [&quot;@agent360/browser-mcp&quot;]
+    }
+  }
+}</pre><button class="copy">Copy</button></div>
+<p>Or skip the manual JSON and run <code>npx @agent360/browser-mcp install --skip-extension</code> to have the CLI do it for you.</p>
+<h3>No Developer mode — Chrome Web Store</h3>
+<p><a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Install from the Chrome Web Store →</a></p>
+<p>No Developer mode toggle needed, and Chrome updates the extension automatically in the background. Then run:</p>
+<div class="code"><pre>npx @agent360/browser-mcp install --skip-extension</pre><button class="copy">Copy</button></div>
+<p>to register the MCP server with Claude Code without touching the extension.</p>
+<hr>
+<h2>What your agent can do</h2>
+<h3>The 2FA killer move</h3>
+<p>This is the reason people install Browser MCP: Claude Code hits a login wall, needs a verification code, and — because it's driving your actual logged-in Chrome rather than a fresh headless session — it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.</p>
+<p>The same real-session advantage is why it clears CAPTCHA and anti-bot checks that block Playwright and Puppeteer outright — the traffic genuinely is coming from a human-operated Chrome, because it is one.</p>
+<h3>34 tools</h3>
+<div class="scroll"><table><tr><th>Category</th><th>Tools</th></tr><tr><td><b>Navigation &amp; content</b></td><td><code>browser_navigate</code>, <code>browser_get_page_content</code>, <code>browser_screenshot</code>, <code>browser_execute_script</code></td></tr><tr><td><b>Interaction</b></td><td><code>browser_click</code>, <code>browser_fill</code>, <code>browser_press_key</code>, <code>browser_scroll</code>, <code>browser_wait</code>, <code>browser_hover</code>, <code>browser_select_option</code>, <code>browser_set_combobox</code>, <code>browser_set_date</code>, <code>browser_dismiss_overlays</code>, <code>browser_handle_dialog</code></td></tr><tr><td><b>Tabs &amp; frames</b></td><td><code>browser_list_tabs</code>, <code>browser_switch_tab</code>, <code>browser_close_tab</code>, <code>browser_get_new_tab</code>, <code>browser_list_frames</code>, <code>browser_select_frame</code></td></tr><tr><td><b>Data &amp; network</b></td><td><code>browser_get_cookies</code>, <code>browser_set_cookies</code>, <code>browser_get_local_storage</code>, <code>browser_set_local_storage</code>, <code>browser_fetch</code>, <code>browser_wait_for_network</code>, <code>browser_extract_token</code>, <code>browser_console_logs</code>, <code>browser_upload_file</code>, <code>browser_drop_file</code></td></tr><tr><td><b>CAPTCHA solving</b></td><td><code>browser_solve_captcha</code> — auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha; ~80% pass rate on the checkbox variant, human fallback for the rest</td></tr><tr><td><b>Human-in-the-loop</b></td><td><code>browser_ask_user</code> — overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page</td></tr><tr><td><b>Meta</b></td><td><code>browser_about</code> — session/extension info</td></tr></table></div>
+<p>Full source: <a href="https://github.com/Agent360dk/browser-mcp">github.com/Agent360dk/browser-mcp</a>.</p>
+<h3>Why this over Playwright MCP</h3>
+<div class="scroll"><table><tr><th></th><th>Browser MCP</th><th>Playwright MCP</th></tr><tr><td>Browser</td><td>Your real Chrome</td><td>Headless (fresh session)</td></tr><tr><td>Logins/cookies</td><td>Already authenticated</td><td>Must log in every time</td></tr><tr><td>2FA / CAPTCHA / anti-bot sites</td><td>Works — it's your session</td><td>Frequently blocked</td></tr><tr><td>Human-in-the-loop</td><td><code>browser_ask_user</code></td><td>None</td></tr><tr><td>Multi-session</td><td>10 concurrent sessions, color-coded tab groups</td><td>Single session</td></tr><tr><td>Provider integrations</td><td>9 built-in (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn)</td><td>None</td></tr><tr><td>Install</td><td><code>npx @agent360/browser-mcp install</code></td><td><code>npx @anthropic-ai/mcp-playwright</code></td></tr></table></div>
+<h3>Running more than one Claude Code conversation at once</h3>
+<p>Each conversation gets its own MCP server on its own port (9876–9885), and the extension keeps every session's tabs in a separate color-coded Chrome tab group — one conversation can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.</p>
+<hr>
+<h2>FAQ</h2>
+<p><b>How do I add an MCP server to Claude Code?</b> Run <code>npx @agent360/browser-mcp install</code>. It edits your Claude Code MCP configuration for you — no manual JSON required unless you're doing the <a href="#no-npm-manual-zip-download">manual zip install</a>. Restart Claude Code afterward so it picks up the new server.</p>
+<p><b>What is Browser MCP?</b> An MCP (Model Context Protocol) server that gives Claude Code — or any MCP client, including Cursor and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 34 tools, MIT-licensed, 100% local.</p>
+<p><b>Is it free?</b> Yes. MIT license, no account, no paid tier.</p>
+<p><b>Does it only work with Claude Code, or also Cursor / VS Code?</b> Any MCP-compatible client. The install command wires up Claude Code specifically. For Cursor or VS Code agent mode, add the same block to that client's MCP config instead:</p>
+<div class="code"><pre>{&quot;mcpServers&quot;: {&quot;browser-mcp&quot;: {&quot;command&quot;: &quot;npx&quot;, &quot;args&quot;: [&quot;@agent360/browser-mcp&quot;]}}}</pre><button class="copy">Copy</button></div>
+<p><b>Why do I have to load the extension manually instead of it just installing?</b> Chrome blocks extensions from self-installing from npm or any script — that's a Chrome security boundary, not a Browser MCP limitation. Loading unpacked once, or installing from the Chrome Web Store, are the only two ways in.</p>
+<p><b>Does my browsing data leave my machine?</b> No. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. Nothing is sent to a remote server.</p>
+<p><b>How do I update it?</b> The MCP server updates itself — every Claude Code session runs <code>npx @agent360/browser-mcp@latest</code>, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run <code>npx @agent360/browser-mcp install</code> and click <b>↻ reload</b> on <code>chrome://extensions</code>.</p>
+<p><b>Chrome extension says "not connected" — what do I check?</b> Confirm it's loaded under <code>chrome://extensions</code>, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9885 for the running MCP server.</p>
+<p><b>Is this the same as browsermcp.io?</b> No — different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is <code>@agent360/browser-mcp</code> on npm, <code>github.com/Agent360dk/browser-mcp</code> on GitHub.</p>
+<p><b>Can I run it across multiple Claude Code conversations at once?</b> Yes — up to 10 concurrent sessions, each on its own port with its own color-coded Chrome tab group, so sessions can't see or control each other's tabs.</p></main></div><script src="/assets/docs.js"></script></body></html>

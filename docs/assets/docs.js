@@ -1,0 +1,1 @@
+document.querySelectorAll('.copy').forEach(function(b){b.onclick=async function(){var t=b.parentElement.querySelector('pre').textContent;try{await navigator.clipboard.writeText(t);}catch(e){}b.textContent='Copied';b.classList.add('done');setTimeout(function(){b.textContent='Copy';b.classList.remove('done');},1300);};});
