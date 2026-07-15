@@ -6,12 +6,12 @@
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
-  <url><loc>https://browsermcp.dev/docs/install-claude-code</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/docs/install-codex</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/docs/install-cursor</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/docs/install-vscode</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/docs/install-zcode</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/docs/what-is-browser-mcp</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/docs/tools</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/compare/browsermcp-io</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/install-claude-code/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/install-codex/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/install-cursor/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/install-vscode/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/install-zcode/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/what-is-browser-mcp/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/docs/tools/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/compare/browsermcp-io/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
 </urlset>
