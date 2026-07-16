@@ -14,4 +14,5 @@
   <url><loc>https://browsermcp.dev/docs/what-is-browser-mcp/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/docs/tools/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/compare/browsermcp-io/</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/privacy.html</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>
