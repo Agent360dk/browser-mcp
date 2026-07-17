@@ -42,7 +42,7 @@
     }
   }
 }</pre><button class="copy">Copy</button></div>
-<p>⚠ VERIFICÉR: ZCode also advertises auto-detection of MCP servers you've already configured for Claude Code, Codex CLI, or OpenCode. If you ran Step 1 previously for one of those, check the "Configured MCP servers" list first — <code>browser-mcp</code> may already show up as a one-click import instead of something you need to type in. We couldn't pin down the exact detection path from ZCode's public docs, so treat this as a shortcut worth checking, not a guaranteed step.</p>
+<p>ZCode also advertises auto-detection of MCP servers you've already configured for Claude Code, Codex CLI, or OpenCode. If you ran Step 1 previously for one of those, check the "Configured MCP servers" list first — <code>browser-mcp</code> may already show up as a one-click import instead of something you need to type in. We couldn't pin down the exact detection path from ZCode's public docs, so treat this as a shortcut worth checking, not a guaranteed step.</p>
 <h3>Step 3 — Load the extension in Chrome</h3>
 <p>Chrome doesn't let extensions install themselves from npm, so this one step is manual:</p>
 <ol><li>Open Chrome and go to <code>chrome://extensions</code></li><li>Toggle <b>Developer mode</b> ON (top right)</li><li>Click <b>Load unpacked</b> (top left, next to "Pack extension")</li><li>Navigate to <code>~/.browser-mcp/extension/</code> and select it</li><li><b>Mac:</b> in the file picker, press <code>Cmd+Shift+G</code>, paste <code>~/.browser-mcp/extension/</code>, hit Enter</li><li><b>Windows:</b> paste <code>%USERPROFILE%\.browser-mcp\extension\</code> into the address bar</li><li><b>Linux:</b> type <code>~/.browser-mcp/extension/</code> into the path field</li></ol>
