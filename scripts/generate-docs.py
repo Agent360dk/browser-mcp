@@ -17,6 +17,7 @@ PAGES=[
  ('browsermcp-docs-install-zcode.md','Docs','ZCode','/docs/install-zcode'),
  ('browsermcp-docs-what-is-browser-mcp.md','Docs','What is Browser MCP','/docs/what-is-browser-mcp'),
  ('browsermcp-docs-tools.md','Docs','Tools','/docs/tools'),
+ ('browsermcp-docs-uninstall.md','Docs','Uninstall & data','/docs/uninstall'),
  ('browsermcp-docs-when-not-to-use.md','Docs','When NOT to use','/docs/when-not-to-use'),
  ('browsermcp-docs-troubleshooting.md','Docs','Troubleshooting','/docs/troubleshooting'),
  ('browsermcp-compare-browsermcp-io.md','Compare','vs browsermcp.io','/compare/browsermcp-io'),
@@ -31,7 +32,7 @@ CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
  '/docs/install-claude-code':'Add Browser MCP to Claude Code','/docs/install-codex':'Add Browser MCP to OpenAI Codex',
  '/docs/install-cursor':'Add Browser MCP to Cursor','/docs/install-vscode':'Add Browser MCP to VS Code agent mode',
  '/docs/install-zcode':'Add Browser MCP to z.ai ZCode',
- '/docs/when-not-to-use':'When another tool is the right choice','/docs/troubleshooting':'Real bugs, causes and fixes',
+ '/docs/uninstall':'Full removal + every permission explained','/docs/when-not-to-use':'When another tool is the right choice','/docs/troubleshooting':'Real bugs, causes and fixes',
  '/compare/playwright-mcp':'Real logged-in Chrome vs managed profiles','/compare/browser-automation-mcp-servers':'The full field, compared and dated'}
 def front_matter(md):
     # optional leading '---' block of 'key: value' lines; a future publish_date holds a page back until that date
@@ -57,6 +58,7 @@ LABELS={url:label for _,_,label,url in LIVE}
 TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which is maintained? (2026)',
  '/compare/browser-automation-mcp-servers':'Browser Automation MCP Servers Compared (2026): Playwright, Chrome DevTools, Browser Use, Browser MCP',
  '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Real Logged-In Chrome vs Managed Profiles',
+ '/docs/uninstall':'Uninstall Browser MCP + Exactly What Data It Touches (2026)',
  '/docs/when-not-to-use':'When NOT to Use Browser MCP (Honest Guide, 2026)',
  '/docs/troubleshooting':'Browser MCP Troubleshooting: Real Bugs, Real Fixes (2026)'}
 def related(url):
@@ -206,7 +208,7 @@ for fn,grp,label,url in LIVE:
     title=title_of(lines); desc=meta_desc(lines); faq=extract_faq(lines); nfaq+=1 if faq else 0
     body=md_to_html(lines)
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq)+'\n</head><body>'
-    page+='<div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><span class="star">&#9733; 22</span></div></div>'
+    page+='<div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><a class="star" href="https://github.com/Agent360dk/browser-mcp" style="color:inherit;text-decoration:none">GitHub &#8599;</a></div></div>'
     page+='<div class="shell"><nav class="side">'+sidebar(url)+'</nav><main class="content">'+body+related(url)+'</main></div>'
     page+='<script src="/assets/docs.js"></script></body></html>'
     disk=REPO+url.strip('/')+'/index.html'
