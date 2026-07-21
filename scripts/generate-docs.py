@@ -17,7 +17,11 @@ PAGES=[
  ('browsermcp-docs-install-zcode.md','Docs','ZCode','/docs/install-zcode'),
  ('browsermcp-docs-what-is-browser-mcp.md','Docs','What is Browser MCP','/docs/what-is-browser-mcp'),
  ('browsermcp-docs-tools.md','Docs','Tools','/docs/tools'),
+ ('browsermcp-docs-when-not-to-use.md','Docs','When NOT to use','/docs/when-not-to-use'),
+ ('browsermcp-docs-troubleshooting.md','Docs','Troubleshooting','/docs/troubleshooting'),
  ('browsermcp-compare-browsermcp-io.md','Compare','vs browsermcp.io','/compare/browsermcp-io'),
+ ('browsermcp-compare-playwright-mcp.md','Compare','vs Playwright MCP','/compare/playwright-mcp'),
+ ('browsermcp-compare-mcp-servers.md','Compare','All servers compared','/compare/browser-automation-mcp-servers'),
 ]
 
 INSTALL=['/docs/install-claude-code','/docs/install-codex','/docs/install-cursor','/docs/install-vscode','/docs/install-zcode']
@@ -26,7 +30,9 @@ CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
  '/compare/browsermcp-io':'How it differs from the similarly-named browsermcp.io',
  '/docs/install-claude-code':'Add Browser MCP to Claude Code','/docs/install-codex':'Add Browser MCP to OpenAI Codex',
  '/docs/install-cursor':'Add Browser MCP to Cursor','/docs/install-vscode':'Add Browser MCP to VS Code agent mode',
- '/docs/install-zcode':'Add Browser MCP to z.ai ZCode'}
+ '/docs/install-zcode':'Add Browser MCP to z.ai ZCode',
+ '/docs/when-not-to-use':'When another tool is the right choice','/docs/troubleshooting':'Real bugs, causes and fixes',
+ '/compare/playwright-mcp':'Real logged-in Chrome vs managed profiles','/compare/browser-automation-mcp-servers':'The full field, compared and dated'}
 def front_matter(md):
     # optional leading '---' block of 'key: value' lines; a future publish_date holds a page back until that date
     if md.startswith('---\n'):
@@ -48,7 +54,11 @@ for _fn,_grp,_label,_url in PAGES:
     SOURCES[_url]=_body; LIVE.append((_fn,_grp,_label,_url))
 LABELS={url:label for _,_,label,url in LIVE}
 # <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form)
-TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which is maintained? (2026)'}
+TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which is maintained? (2026)',
+ '/compare/browser-automation-mcp-servers':'Browser Automation MCP Servers Compared (2026): Playwright, Chrome DevTools, Browser Use, Browser MCP',
+ '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Real Logged-In Chrome vs Managed Profiles',
+ '/docs/when-not-to-use':'When NOT to Use Browser MCP (Honest Guide, 2026)',
+ '/docs/troubleshooting':'Browser MCP Troubleshooting: Real Bugs, Real Fixes (2026)'}
 def related(url):
     if url=='/docs/what-is-browser-mcp': links=INSTALL+['/docs/tools','/compare/browsermcp-io']
     elif url in INSTALL: links=['/docs/what-is-browser-mcp','/docs/tools','/compare/browsermcp-io']+[u for u in INSTALL if u!=url][:2]
