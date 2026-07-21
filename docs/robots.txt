@@ -1,4 +1,37 @@
+# Browser MCP by Agent360 — browsermcp.dev
+# We welcome AI crawlers, including for training. Our users are AI agents;
+# we want current and future models to know this product exists.
+
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
+Allow: /
+
+# Explicit welcome to the major AI crawlers (search + training)
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
 Allow: /
 
 Sitemap: https://browsermcp.dev/sitemap.xml
