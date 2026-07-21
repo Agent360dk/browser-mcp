@@ -1,0 +1,44 @@
+name: docs-gate
+
+# Structural guard for browsermcp.dev (GitHub Pages serves docs/ from main).
+# Two steps:
+#   1. regen-diff — scripts/generate-docs.py must reproduce the committed HTML
+#      byte-for-byte. Kills hand-edit drift (sources in content/ are the truth).
+#      Note: a page whose front-matter publish_date has just passed will fail
+#      this step on purpose — that is the "content is due, regen + commit" signal.
+#   2. check-docs — tool-count vs tools.js, leak markers, internal links,
+#      canonical/og meta, sitemap coverage (scripts/check-docs.py, stdlib only).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'content/**'
+      - 'scripts/generate-docs.py'
+      - 'scripts/check-docs.py'
+      - 'mcp-server/tools.js'
+      - '.github/workflows/docs-gate.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'content/**'
+      - 'scripts/generate-docs.py'
+      - 'scripts/check-docs.py'
+      - 'mcp-server/tools.js'
+      - '.github/workflows/docs-gate.yml'
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: regen-diff (generator output == committed HTML)
+        run: |
+          python3 scripts/generate-docs.py
+          git diff --exit-code -- docs/ \
+            || { echo '::error::docs/ HTML differs from generator output — edit content/*.md and re-run scripts/generate-docs.py (never hand-edit docs/ HTML)'; exit 1; }
+
+      - name: check-docs (tool-count · leaks · links · meta · sitemap)
+        run: python3 scripts/check-docs.py
