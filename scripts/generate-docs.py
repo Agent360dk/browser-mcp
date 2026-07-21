@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # generate-docs.py — regenerates the /docs and /compare HTML pages on browsermcp.dev
-# from their markdown sources. The committed HTML under docs/ is BUILD OUTPUT:
+# from their markdown sources in content/. The committed HTML under docs/ is BUILD OUTPUT:
 # never hand-edit it — edit the markdown source (or this generator) and re-run:
 #   python3 scripts/generate-docs.py
 # Output is deterministic; a clean run leaves `git status` unchanged.
-import re, html, os, json
+import re, html, os, json, datetime
 
 REPO=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','docs')+os.sep  # site root (build output)
-DRAFTS='/Users/gl/.claude/plans/SEO/drafts/'
+DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources
 OG='https://browsermcp.dev/og-image.jpg'
 PAGES=[
  ('browsermcp-docs-install-claude-code.md','Docs','Claude Code','/docs/install-claude-code'),
@@ -27,7 +27,26 @@ CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
  '/docs/install-claude-code':'Add Browser MCP to Claude Code','/docs/install-codex':'Add Browser MCP to OpenAI Codex',
  '/docs/install-cursor':'Add Browser MCP to Cursor','/docs/install-vscode':'Add Browser MCP to VS Code agent mode',
  '/docs/install-zcode':'Add Browser MCP to z.ai ZCode'}
-LABELS={url:label for _,_,label,url in PAGES}
+def front_matter(md):
+    # optional leading '---' block of 'key: value' lines; a future publish_date holds a page back until that date
+    if md.startswith('---\n'):
+        end=md.find('\n---',4)
+        if end!=-1:
+            fm={}
+            for ln in md[4:end].split('\n'):
+                if ':' in ln: k,v=ln.split(':',1); fm[k.strip()]=v.strip()
+            return fm, md[end+4:].lstrip('\n')
+    return {}, md
+
+TODAY=datetime.date.today().isoformat()
+SOURCES={}; LIVE=[]
+for _fn,_grp,_label,_url in PAGES:
+    _fm,_body=front_matter(open(DRAFTS+_fn).read())
+    if _fm.get('publish_date','')>TODAY:
+        print('  %-32s scheduled %s — held back' % (_url,_fm['publish_date']))
+        continue
+    SOURCES[_url]=_body; LIVE.append((_fn,_grp,_label,_url))
+LABELS={url:label for _,_,label,url in LIVE}
 # <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form)
 TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which is maintained? (2026)'}
 def related(url):
@@ -35,6 +54,7 @@ def related(url):
     elif url in INSTALL: links=['/docs/what-is-browser-mcp','/docs/tools','/compare/browsermcp-io']+[u for u in INSTALL if u!=url][:2]
     elif url=='/docs/tools': links=['/docs/install-claude-code','/docs/what-is-browser-mcp','/compare/browsermcp-io']
     else: links=['/docs/install-claude-code','/docs/what-is-browser-mcp','/docs/tools']
+    links=[u for u in links if u in LABELS]
     lis=''.join('<li><a href="%s/">%s</a><span>%s</span></li>'%(u,html.escape(LABELS.get(u,u)),html.escape(CTX.get(u,''))) for u in links)
     return '<div class="related"><h2>Related</h2><ul>'+lis+'</ul></div>'
 
@@ -161,7 +181,7 @@ def jsonld(title, desc, url, section, faq):
 
 def sidebar(active):
     groups={}
-    for fn,grp,label,url in PAGES: groups.setdefault(grp,[]).append((label,url))
+    for fn,grp,label,url in LIVE: groups.setdefault(grp,[]).append((label,url))
     h=''
     for grp,items in groups.items():
         h+='<div class="grp">%s</div>'%grp
@@ -171,8 +191,8 @@ def sidebar(active):
     return h
 
 nfaq=0
-for fn,grp,label,url in PAGES:
-    lines=clean_lines(open(DRAFTS+fn).read())
+for fn,grp,label,url in LIVE:
+    lines=clean_lines(SOURCES[url])
     title=title_of(lines); desc=meta_desc(lines); faq=extract_faq(lines); nfaq+=1 if faq else 0
     body=md_to_html(lines)
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq)+'\n</head><body>'
@@ -183,5 +203,5 @@ for fn,grp,label,url in PAGES:
     os.makedirs(os.path.dirname(disk),exist_ok=True)
     open(disk,'w').write(page)
     print('  %-32s desc=%dch faq=%d' % (url, len(desc), len(faq)))
-print('Regenereret 8 sider · FAQPage-schema på %d sider' % nfaq)
+print('Regenerated %d pages · FAQPage schema on %d' % (len(LIVE), nfaq))
 

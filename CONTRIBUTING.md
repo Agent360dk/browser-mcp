@@ -40,7 +40,9 @@ mcp-server/          # MCP server (Node.js)
   bin/cli.js         # CLI installer
   package.json       # npm config
 
-docs/                # Landing page (browsermcp.dev)
+docs/                # browsermcp.dev site — BUILD OUTPUT, never hand-edit page HTML
+content/             # Markdown sources for /docs + /compare pages (source of truth)
+scripts/             # generate-docs.py (content/ → docs/ HTML) + release tooling
 assets/              # Demo video + GIF
 ```
 
@@ -98,6 +100,31 @@ browser_my_tool: 'my_tool',
 ```
 
 4. Update README tool count and table.
+
+### Editing the docs site (browsermcp.dev)
+
+The HTML under `docs/docs/` and `docs/compare/` is **generated** — never edit it
+directly. Edit the markdown source in `content/`, then regenerate and commit both:
+
+```bash
+python3 scripts/generate-docs.py   # deterministic; unchanged sources → clean git status
+```
+
+To schedule a page for a future date, add front matter at the very top of its
+markdown file — the generator skips the page (and drops it from sidebars/related
+links) until that date, then a regen run on/after the date publishes it. No
+database, no scheduler — a date in a file is the whole mechanism:
+
+```markdown
+---
+publish_date: 2026-08-01
+---
+```
+
+Leading `// ...` lines and `*Suggested URL/title/meta … Last verified …*` lines in
+the sources are editorial provenance — the generator strips them from rendered HTML.
+The page registry (filename → section/label/URL) is `PAGES` in `scripts/generate-docs.py`;
+new pages must be added there.
 
 ### Non-Code Contributions
 
