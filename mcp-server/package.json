@@ -42,7 +42,11 @@
   "engines": {
     "node": ">=18"
   },
-  "author": "Agent360 <hello@agent360.dk>",
+  "author": {
+    "name": "Agent360",
+    "email": "hello@agent360.dk",
+    "url": "https://agent360.dk"
+  },
   "license": "MIT",
   "homepage": "https://browsermcp.dev",
   "repository": {

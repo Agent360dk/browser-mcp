@@ -1,4 +1,4 @@
-# Browser MCP by Agent360
+# Browser MCP by [Agent360](https://agent360.dk)
 
 [![npm version](https://img.shields.io/npm/v/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
 [![npm downloads](https://img.shields.io/npm/dw/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
