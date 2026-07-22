@@ -25,6 +25,10 @@ PAGES=[
  ('browsermcp-compare-mcp-servers.md','Compare','All servers compared','/compare/browser-automation-mcp-servers'),
  ('browsermcp-usecase-2fa-gmail.md','Use cases','Read a 2FA code from Gmail','/use-cases/read-2fa-from-gmail'),
  ('browsermcp-usecase-concurrent-sessions.md','Use cases','Concurrent sessions','/use-cases/concurrent-sessions'),
+ ('browsermcp-learn-model-context-protocol.md','Learn','Model Context Protocol','/learn/model-context-protocol'),
+ ('browsermcp-learn-what-is-an-mcp-server.md','Learn','What is an MCP server','/learn/what-is-an-mcp-server'),
+ ('browsermcp-learn-check-ai-mentions-brand.md','Learn','Check if AI mentions you','/learn/check-if-ai-mentions-your-brand'),
+ ('browsermcp-learn-react-controlled-forms.md','Learn','Automating React forms','/learn/browser-automation-react-forms'),
 ]
 
 INSTALL=['/docs/install-claude-code','/docs/install-codex','/docs/install-cursor','/docs/install-vscode','/docs/install-zcode']
@@ -36,7 +40,9 @@ CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
  '/docs/install-zcode':'Add Browser MCP to z.ai ZCode',
  '/docs/uninstall':'Full removal + every permission explained','/docs/when-not-to-use':'When another tool is the right choice','/docs/troubleshooting':'Real bugs, causes and fixes',
  '/compare/playwright-mcp':'Real logged-in Chrome vs managed profiles','/compare/browser-automation-mcp-servers':'The full field, compared and dated',
- '/use-cases/read-2fa-from-gmail':'The move headless browsers can\'t make','/use-cases/concurrent-sessions':'Several agents in one Chrome, isolated'}
+ '/use-cases/read-2fa-from-gmail':'The move headless browsers can\'t make','/use-cases/concurrent-sessions':'Several agents in one Chrome, isolated',
+ '/learn/model-context-protocol':'The standard, explained plainly','/learn/what-is-an-mcp-server':'What a server is and how to pick one',
+ '/learn/check-if-ai-mentions-your-brand':'Measure your visibility in AI answers','/learn/browser-automation-react-forms':'Why value-setting fails, and the fix'}
 def front_matter(md):
     # optional leading '---' block of 'key: value' lines; a future publish_date holds a page back until that date
     if md.startswith('---\n'):
@@ -65,7 +71,11 @@ TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which 
  '/docs/when-not-to-use':'When NOT to Use Browser MCP (Honest Guide, 2026)',
  '/docs/troubleshooting':'Browser MCP Troubleshooting: Real Bugs, Real Fixes (2026)',
  '/use-cases/read-2fa-from-gmail':'How an AI Agent Reads a 2FA Code From Gmail Mid-Login (Browser MCP)',
- '/use-cases/concurrent-sessions':'Run Multiple AI Agent Sessions in One Chrome (Browser MCP)'}
+ '/use-cases/concurrent-sessions':'Run Multiple AI Agent Sessions in One Chrome (Browser MCP)',
+ '/learn/model-context-protocol':'Model Context Protocol (MCP), Explained Simply (2026)',
+ '/learn/what-is-an-mcp-server':'What Is an MCP Server? A Practical Explanation (2026)',
+ '/learn/check-if-ai-mentions-your-brand':'How to Check if ChatGPT & Perplexity Mention Your Brand (2026)',
+ '/learn/browser-automation-react-forms':'Why Browser Automation Fails on React Forms (And How to Fix It)'}
 def related(url):
     if url=='/docs/what-is-browser-mcp': links=INSTALL+['/docs/tools','/compare/browsermcp-io']
     elif url in INSTALL: links=['/docs/what-is-browser-mcp','/docs/tools','/compare/browsermcp-io']+[u for u in INSTALL if u!=url][:2]

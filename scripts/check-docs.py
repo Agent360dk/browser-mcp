@@ -22,7 +22,7 @@ def fail(msg): fails.append(msg)
 
 # Generated pages = the PAGES registry in generate-docs.py (parse it, single source of truth)
 gen_src = open(os.path.join(ROOT, 'scripts', 'generate-docs.py')).read()
-GEN_URLS = re.findall(r"'(/(?:docs|compare|use-cases)/[a-z0-9-]+)'\)", gen_src)
+GEN_URLS = re.findall(r"'(/(?:docs|compare|use-cases|learn)/[a-z0-9-]+)'\)", gen_src)
 if len(GEN_URLS) < 5:
     fail('could not parse PAGES registry from generate-docs.py (found %d urls)' % len(GEN_URLS))
 

@@ -22,4 +22,8 @@
   <url><loc>https://browsermcp.dev/use-cases/read-2fa-from-gmail/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/concurrent-sessions/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
   <url><loc>https://browsermcp.dev/privacy.html</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://browsermcp.dev/learn/model-context-protocol/</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://browsermcp.dev/learn/what-is-an-mcp-server/</loc><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://browsermcp.dev/learn/check-if-ai-mentions-your-brand/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://browsermcp.dev/learn/browser-automation-react-forms/</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
 </urlset>

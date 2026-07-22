@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Why Browser Automation Fails on React Forms (And How to Fix It)</title>
+<meta name="description" content="You automate a form. The value appears in the field. You submit — and the app behaves as if the field were empty, or reverts it the moment anything…">
+<link rel="canonical" href="https://browsermcp.dev/learn/browser-automation-react-forms/">
+<link rel="icon" type="image/svg+xml" href="/logo.svg"><link rel="icon" type="image/x-icon" href="/favicon.ico">
+<meta property="og:type" content="article"><meta property="og:site_name" content="Browser MCP">
+<meta property="og:title" content="Why browser automation fails on React forms — and the fix that works">
+<meta property="og:description" content="You automate a form. The value appears in the field. You submit — and the app behaves as if the field were empty, or reverts it the moment anything…">
+<meta property="og:url" content="https://browsermcp.dev/learn/browser-automation-react-forms/">
+<meta property="og:image" content="https://browsermcp.dev/og-image.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Why browser automation fails on React forms — and the fix that works">
+<meta name="twitter:description" content="You automate a form. The value appears in the field. You submit — and the app behaves as if the field were empty, or reverts it the moment anything…">
+<meta name="twitter:image" content="https://browsermcp.dev/og-image.jpg">
+<link rel="stylesheet" href="/assets/docs.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://browsermcp.dev/"}, {"@type": "ListItem", "position": 2, "name": "Learn", "item": "https://browsermcp.dev/compare/browsermcp-io/"}, {"@type": "ListItem", "position": 3, "name": "Why browser automation fails on React forms — and the fix that works", "item": "https://browsermcp.dev/learn/browser-automation-react-forms/"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Why browser automation fails on React forms — and the fix that works", "description": "You automate a form. The value appears in the field. You submit — and the app behaves as if the field were empty, or reverts it the moment anything…", "url": "https://browsermcp.dev/learn/browser-automation-react-forms/", "author": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "publisher": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "about": {"@type": "SoftwareApplication", "name": "Browser MCP", "applicationCategory": "DeveloperApplication", "operatingSystem": "Chrome", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does this affect Vue and Angular too?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — any framework holding its own copy of input state. The native-setter + bubbling-event pattern is the general fix."}}, {"@type": "Question", "name": "Why does it work in the console but not in my script?", "acceptedAnswer": {"@type": "Answer", "text": "Typing in the console fires real trusted events. Your script doesn't, unless you dispatch them."}}, {"@type": "Question", "name": "Do I need both input and change?", "acceptedAnswer": {"@type": "Answer", "text": "React primarily needs input; change helps with libraries that listen for it. Firing both is safe."}}]}</script>
+</head><body><div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><a class="star" href="https://github.com/Agent360dk/browser-mcp" style="color:inherit;text-decoration:none">GitHub &#8599;</a></div></div><div class="shell"><nav class="side"><div class="grp">Docs</div><a href="/docs/install-claude-code/">Claude Code</a><a href="/docs/install-codex/">Codex</a><a href="/docs/install-cursor/">Cursor</a><a href="/docs/install-vscode/">VS Code</a><a href="/docs/install-zcode/">ZCode</a><a href="/docs/what-is-browser-mcp/">What is Browser MCP</a><a href="/docs/tools/">Tools</a><a href="/docs/uninstall/">Uninstall & data</a><a href="/docs/when-not-to-use/">When NOT to use</a><a href="/docs/troubleshooting/">Troubleshooting</a><div class="grp">Compare</div><a href="/compare/browsermcp-io/">vs browsermcp.io</a><a href="/compare/playwright-mcp/">vs Playwright MCP</a><a href="/compare/browser-automation-mcp-servers/">All servers compared</a><div class="grp">Use cases</div><a href="/use-cases/read-2fa-from-gmail/">Read a 2FA code from Gmail</a><a href="/use-cases/concurrent-sessions/">Concurrent sessions</a><div class="grp">Learn</div><a href="/learn/model-context-protocol/">Model Context Protocol</a><a href="/learn/what-is-an-mcp-server/">What is an MCP server</a><a href="/learn/check-if-ai-mentions-your-brand/">Check if AI mentions you</a><a href="/learn/browser-automation-react-forms/" class="active">Automating React forms</a></nav><main class="content"><h1>Why browser automation fails on React forms — and the fix that works</h1>
+<hr>
+<p><b>Short answer:</b> setting <code>input.value</code> on a React-controlled field updates the DOM but not React's internal state — so the framework either ignores your text or wipes it on the next render, and the form submits empty. The fix is to write through the <b>native value setter</b> and then dispatch a bubbling <code>input</code> event, which is what React actually listens for. Same class of bug affects Angular, Vue and Google's Closure-based apps.</p>
+<h2>The symptom</h2>
+<p>You automate a form. The value appears in the field. You submit — and the app behaves as if the field were empty, or reverts it the moment anything else re-renders. Nothing errors. That's the tell: <b>the DOM and the framework disagree about what's in the box.</b></p>
+<h2>The root cause</h2>
+<p>React doesn't read <code>input.value</code> when you submit. It keeps its own copy of the state and re-renders the input from that copy. It updates its copy only in response to the events its synthetic event system observes.</p>
+<p>So when a script assigns <code>el.value = "text"</code> directly:</p>
+<ul><li>The DOM node updates → the field <i>looks</i> correct</li><li>React's state does not → the app still believes the field is empty</li><li>The next render writes React's state back over your text → it visibly disappears</li></ul>
+<p>Assigning the property also doesn't fire an <code>input</code> event, so nothing tells React to catch up.</p>
+<h2>The fix</h2>
+<p>Write through the prototype's native setter, then dispatch the events React is listening for:</p>
+<div class="code"><pre>const setter = Object.getOwnPropertyDescriptor(
+  window.HTMLInputElement.prototype, &#x27;value&#x27;
+).set;
+
+setter.call(el, &#x27;text&#x27;);
+el.dispatchEvent(new Event(&#x27;input&#x27;,  { bubbles: true }));
+el.dispatchEvent(new Event(&#x27;change&#x27;, { bubbles: true }));</pre><button class="copy">Copy</button></div>
+<p>For a <code>&lt;textarea&gt;</code>, use <code>HTMLTextAreaElement.prototype</code>. Bubbling matters — React attaches its listener high up, so a non-bubbling event never reaches it.</p>
+<h2>Three related traps</h2>
+<p><b>1. Per-character typing detaches.</b> Sending a key event per character means two debugger round-trips per character. On a long value that's enough to drop the connection mid-word, leaving a half-filled field. Insert the text in one operation instead of simulating a hundred keystrokes.</p>
+<p><b>2. Select-all is <code>Cmd+A</code> on macOS, not <code>Ctrl+A</code>.</b> A clear step that sends Ctrl+A on a Mac selects nothing — so backspace deletes one character and your new text <b>appends</b> to the old. If you're seeing <code>oldtextnewtext</code>, this is why.</p>
+<p><b>3. Multi-box code inputs need real key events.</b> Six single-character boxes (2FA codes) are usually controlled <i>and</i> auto-advance. The native-setter approach works; typing into the first box often doesn't, because focus moves on a real <code>keydown</code> the script never produces.</p>
+<h2>When even that fails: check CSP</h2>
+<p>If you're injecting via an extension and nothing runs at all, the page's Content-Security-Policy may block evaluated script — common on hardened sites. Symptoms are an outright evaluation error rather than a silently-empty field. Purpose-built tooling that drives the input through the browser's debugger protocol avoids the eval path entirely.</p>
+<p>This is the approach <a href="/docs/what-is-browser-mcp/">Browser MCP</a> takes: form interaction runs through trusted browser-level events rather than injected scripts, which is why it works on CSP-strict and framework-controlled pages where naive automation goes quiet. We hit every trap above while automating our own dashboards — the fixes here are the ones we ended up using.</p>
+<h2>FAQ</h2>
+<p><b>Does this affect Vue and Angular too?</b> Yes — any framework holding its own copy of input state. The native-setter + bubbling-event pattern is the general fix.</p>
+<p><b>Why does it work in the console but not in my script?</b> Typing in the console fires real trusted events. Your script doesn't, unless you dispatch them.</p>
+<p><b>Do I need both <code>input</code> and <code>change</code>?</b> React primarily needs <code>input</code>; <code>change</code> helps with libraries that listen for it. Firing both is safe.</p>
+<p><b>My value sticks but the submit button stays disabled.</b> The form's validation state is separate. Make sure the events bubble, and that any blur/touched logic gets its event too.</p><div class="related"><h2>Related</h2><ul><li><a href="/docs/install-claude-code/">Claude Code</a><span>Add Browser MCP to Claude Code</span></li><li><a href="/docs/what-is-browser-mcp/">What is Browser MCP</a><span>The concept, architecture, and how it works</span></li><li><a href="/docs/tools/">Tools</a><span>Full reference for all 34 browser tools</span></li></ul></div></main></div><script src="/assets/docs.js"></script></body></html>
