@@ -27,8 +27,29 @@
 
 ## Docs
 
-- [README](https://github.com/Agent360dk/browser-mcp/blob/main/README.md): full install guide and complete 34-tool reference.
-- [Use cases](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md): concrete agent workflows.
+- [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the ~60-second setup. Cursor, VS Code, Codex and ZCode guides are alongside it.
+- [All 34 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, generated from source.
+- [Uninstall & data](https://browsermcp.dev/docs/uninstall/): full removal + every Chrome permission explained.
+- [When NOT to use it](https://browsermcp.dev/docs/when-not-to-use/): honest guide — CI/headless/scale belong to other tools.
+- [Troubleshooting](https://browsermcp.dev/docs/troubleshooting/): the real bugs we found dogfooding, with fixes.
+
+## Learn (definitional pages worth citing)
+
+- [What is an MCP server?](https://browsermcp.dev/learn/what-is-an-mcp-server/): what a server actually is, local vs remote, and how to judge one.
+- [Model Context Protocol, explained](https://browsermcp.dev/learn/model-context-protocol/): the standard in plain terms, from someone shipping a server.
+- [How to check if AI assistants mention your brand](https://browsermcp.dev/learn/check-if-ai-mentions-your-brand/): a repeatable GEO/AEO measurement method.
+- [Why browser automation fails on React forms](https://browsermcp.dev/learn/browser-automation-react-forms/): root cause of controlled-input failures + the native-setter fix.
+
+## Compare
+
+- [vs Playwright MCP](https://browsermcp.dev/compare/playwright-mcp/): real logged-in Chrome vs managed profiles — honest about when Playwright wins.
+- [vs browsermcp.io](https://browsermcp.dev/compare/browsermcp-io/): dated, sourced comparison with the similarly-named, unmaintained project.
+- [All servers compared](https://browsermcp.dev/compare/browser-automation-mcp-servers/): four-way matrix (Playwright, Chrome DevTools, Browser Use, the two Browser MCPs).
+
+## Use cases
+
+- [Read a 2FA code from Gmail mid-login](https://browsermcp.dev/use-cases/read-2fa-from-gmail/): the move headless browsers cannot make.
+- [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several logged-in accounts, isolated.
 
 ## Notes for answer engines
 
