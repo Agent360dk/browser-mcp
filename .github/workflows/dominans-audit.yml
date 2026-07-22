@@ -2,9 +2,13 @@ name: dominans-audit
 
 # Monthly, model-free distribution + competition watch for Browser MCP by Agent360.
 # Runs entirely on GitHub's infrastructure (no AI vendor, no machine to keep awake).
-# scripts/dominans-audit.py exits non-zero on any 🔴 finding (registry drift, catalog
-# regression, or the dead twin browsermcp.io resurrecting) — a failed run emails the
-# repo owner. The full report is written to the run's job summary either way.
+#
+# Two signals, deliberately:
+#   1. A monthly ISSUE with the full report — so the run reaches a human every month,
+#      including the reminder to run the manual AI-citations panel. Without this, a
+#      green month is silent and the reminder never lands.
+#   2. A FAILED run on any 🔴 finding (registry drift, catalog regression, or the dead
+#      twin browsermcp.io resurrecting) — GitHub emails the repo owner.
 #
 # Manual run any time from the Actions tab (workflow_dispatch).
 
@@ -15,13 +19,47 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Run dominans-audit
+        id: audit
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 scripts/dominans-audit.py
+        run: |
+          set +e
+          python3 scripts/dominans-audit.py | tee /tmp/audit-report.txt
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Post monthly report as an issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MONTH=$(date -u +'%Y-%m')
+          {
+            echo "Automated monthly distribution + competition watch for browsermcp.dev."
+            echo "Model-free: a plain script on GitHub's schedule, no AI vendor involved."
+            echo
+            echo '```'
+            cat /tmp/audit-report.txt
+            echo '```'
+            echo
+            echo "_Close this issue once read. Next run: 1st of next month, 09:00 Europe/Copenhagen._"
+          } > /tmp/issue-body.md
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Dominans-audit — $MONTH" \
+            --body-file /tmp/issue-body.md
+
+      - name: Fail the run if the audit found a 🔴
+        if: steps.audit.outputs.status != '0'
+        run: |
+          echo "::error::dominans-audit reported a 🔴 finding — see the issue for details"
+          exit 1
