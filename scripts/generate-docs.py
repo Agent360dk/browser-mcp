@@ -23,6 +23,8 @@ PAGES=[
  ('browsermcp-compare-browsermcp-io.md','Compare','vs browsermcp.io','/compare/browsermcp-io'),
  ('browsermcp-compare-playwright-mcp.md','Compare','vs Playwright MCP','/compare/playwright-mcp'),
  ('browsermcp-compare-mcp-servers.md','Compare','All servers compared','/compare/browser-automation-mcp-servers'),
+ ('browsermcp-usecase-2fa-gmail.md','Use cases','Read a 2FA code from Gmail','/use-cases/read-2fa-from-gmail'),
+ ('browsermcp-usecase-concurrent-sessions.md','Use cases','Concurrent sessions','/use-cases/concurrent-sessions'),
 ]
 
 INSTALL=['/docs/install-claude-code','/docs/install-codex','/docs/install-cursor','/docs/install-vscode','/docs/install-zcode']
@@ -33,7 +35,8 @@ CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
  '/docs/install-cursor':'Add Browser MCP to Cursor','/docs/install-vscode':'Add Browser MCP to VS Code agent mode',
  '/docs/install-zcode':'Add Browser MCP to z.ai ZCode',
  '/docs/uninstall':'Full removal + every permission explained','/docs/when-not-to-use':'When another tool is the right choice','/docs/troubleshooting':'Real bugs, causes and fixes',
- '/compare/playwright-mcp':'Real logged-in Chrome vs managed profiles','/compare/browser-automation-mcp-servers':'The full field, compared and dated'}
+ '/compare/playwright-mcp':'Real logged-in Chrome vs managed profiles','/compare/browser-automation-mcp-servers':'The full field, compared and dated',
+ '/use-cases/read-2fa-from-gmail':'The move headless browsers can\'t make','/use-cases/concurrent-sessions':'Several agents in one Chrome, isolated'}
 def front_matter(md):
     # optional leading '---' block of 'key: value' lines; a future publish_date holds a page back until that date
     if md.startswith('---\n'):
@@ -60,7 +63,9 @@ TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which 
  '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Real Logged-In Chrome vs Managed Profiles',
  '/docs/uninstall':'Uninstall Browser MCP + Exactly What Data It Touches (2026)',
  '/docs/when-not-to-use':'When NOT to Use Browser MCP (Honest Guide, 2026)',
- '/docs/troubleshooting':'Browser MCP Troubleshooting: Real Bugs, Real Fixes (2026)'}
+ '/docs/troubleshooting':'Browser MCP Troubleshooting: Real Bugs, Real Fixes (2026)',
+ '/use-cases/read-2fa-from-gmail':'How an AI Agent Reads a 2FA Code From Gmail Mid-Login (Browser MCP)',
+ '/use-cases/concurrent-sessions':'Run Multiple AI Agent Sessions in One Chrome (Browser MCP)'}
 def related(url):
     if url=='/docs/what-is-browser-mcp': links=INSTALL+['/docs/tools','/compare/browsermcp-io']
     elif url in INSTALL: links=['/docs/what-is-browser-mcp','/docs/tools','/compare/browsermcp-io']+[u for u in INSTALL if u!=url][:2]
