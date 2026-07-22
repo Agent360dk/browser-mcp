@@ -37,7 +37,7 @@ Headless frameworks like Playwright and Puppeteer are excellent at what they wer
 | **Browser instance** | Your actual Chrome — the one you already use | A new, disposable browser context |
 | **Logins & cookies** | Inherited from your real session | None — must authenticate every run |
 | **2FA / OTP mid-flow** | Can switch to another open tab (e.g. Gmail) to read the code, then return and continue — with `browser_ask_user` available to hand off to you if the step genuinely needs a human | Not supported — typically blocks or requires a stored/bypassed credential |
-| **CAPTCHA / anti-bot walls** | Dedicated `browser_solve_captcha` tool; ~80% auto-solve on the reCAPTCHA v2 checkbox challenge with a logged-in Google account (Browser MCP's own measured estimate on that specific challenge type, not an independent benchmark), with human-in-the-loop fallback | Frequently detected and blocked outright — these tools identify as automation by default |
+| **CAPTCHA / anti-bot walls** | Dedicated `browser_solve_captcha` tool; Attempts the checkbox challenge, then shows it to you to finish (human-in-the-loop). We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one. | Frequently detected and blocked outright — these tools identify as automation by default |
 | **Best fit** | Operating real accounts on sites with no API: dashboards, LinkedIn, internal tools, your own app as a logged-in user | Fast, repeatable CI/E2E test suites against your own app in a clean, reproducible state |
 | **Session persistence** | Native — it's your live browser | Requires manually saving/restoring storage state |
 | **Where it runs** | Locally, via a Chrome extension you load yourself | Locally or in CI, via a downloaded browser binary |

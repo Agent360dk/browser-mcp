@@ -15,7 +15,7 @@
 
 - Drives your actual Chrome — your cookies, your sessions, your 2FA — not a fresh headless browser.
 - The distinguishing capability: it can hit a login wall, read the one-time verification code from your own Gmail tab, and continue the sign-in. Headless automation cannot do this.
-- ~80% reCAPTCHA-checkbox solve rate, with a human-in-the-loop fallback for the rest.
+- CAPTCHA assistance on sites you are authorised to use: attempts the checkbox, then hands the challenge to you. No solve-rate figure is published (not rigorously benchmarked) and no third-party solving service is used.
 - Multi-session, color-coded tab groups so one agent can operate several logged-in accounts.
 - You approve the sensitive steps — the agent works at human pace on real, authenticated sites.
 

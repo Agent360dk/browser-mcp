@@ -69,7 +69,7 @@ This is the thing headless tools can't do: Codex hits a login wall, reads the on
 | **Interaction** | `browser_click`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_get_new_tab` (for OAuth popups), `browser_list_frames` / `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_get_local_storage`, `browser_fetch` (bypasses CORS from the extension), `browser_wait_for_network`, `browser_extract_token` |
-| **CAPTCHA** | `browser_solve_captcha` — auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha; ~80% checkbox-solve rate, human fallback for the rest |
+| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` — overlay dialog for 2FA codes, CAPTCHA grids, or any credential Codex shouldn't guess at |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) — but it isn't limited to those. Point it at any provider's API-settings page and it'll navigate there and walk you through pulling the token the same way; the 9 are just shortcuts, not a whitelist.
@@ -92,7 +92,7 @@ No. `codex mcp add` writes straight to Codex's own `~/.codex/config.toml` — no
 Everything stays local. The extension talks to an MCP server on `127.0.0.1` on your own machine — nothing is sent to any external server, no telemetry, no analytics. Cookies and tokens are only pulled when your agent explicitly asks for them, one call at a time. Source is [open and auditable on GitHub](https://github.com/Agent360dk/browser-mcp).
 
 **How does CAPTCHA solving actually work?**
-Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes automatically (~80% pass rate), (2) AI-vision-guided grid solving for image challenges, (3) `browser_ask_user` shows you the challenge to solve by hand if the first two miss — then the agent continues. Nothing is routed through a third-party CAPTCHA-solving service.
+Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes, (2) AI-vision-guided grid solving for image challenges, (3) `browser_ask_user` shows you the challenge to solve by hand if the first two miss — then the agent continues. Nothing is routed through a third-party CAPTCHA-solving service. We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one.
 
 **Is it really free?**
 Yes — MIT-licensed, open source, no paywall, no account, no API key. Built by [Agent360](https://agent360.dk) as part of its developer-tools work.
