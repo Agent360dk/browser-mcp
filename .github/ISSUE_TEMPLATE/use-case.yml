@@ -6,16 +6,18 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for sharing! Your use-case inspires others and helps us understand how Browser MCP is being used in the wild.
+        Thanks for sharing! Real use-cases inspire others and help the whole community.
 
-        Approved use-cases get added to [USE_CASES.md](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md).
+        **What happens next:** approved use-cases land in [USE_CASES.md](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md), and the strongest ones get written up as a full page on **browsermcp.dev** — crediting you, with a link to your site or company if you'd like one.
+
+        One rule: we publish legitimate automation on accounts and sites you're authorized to use. We don't showcase defeating bot-detection or accessing things that aren't yours.
 
   - type: input
     id: name
     attributes:
       label: What did you build?
       description: One short sentence.
-      placeholder: e.g. "LinkedIn ICP scraping → HeyReach outreach pipeline"
+      placeholder: e.g. "Pulled my own LinkedIn connections into a CRM outreach list"
     validations:
       required: true
 
@@ -25,10 +27,10 @@ body:
       label: How did you do it?
       description: Rough steps + which browser_* tools you used.
       placeholder: |
-        1. browser_navigate to LinkedIn search results
-        2. browser_get_page_content to extract profiles
-        3. browser_execute_script to parse + filter ICP matches (title/company/industry)
-        4. browser_fetch to send qualified leads into HeyReach API
+        1. browser_navigate to the logged-in page
+        2. browser_get_page_content to read what's on screen
+        3. browser_execute_script to parse + filter
+        4. browser_fetch to push the result into another tool's API
     validations:
       required: true
 
@@ -37,16 +39,25 @@ body:
     attributes:
       label: Why Browser MCP (vs alternatives)?
       description: Optional, but interesting to others.
-      placeholder: e.g. "Real Chrome session avoided LinkedIn anti-bot detection. Multi-session let me run this in parallel with other work."
+      placeholder: e.g. "It ran in my real, logged-in Chrome, so there was nothing to re-authenticate — an API or headless browser couldn't reach what I was already signed into."
     validations:
       required: false
 
   - type: input
     id: handle
     attributes:
-      label: Your GitHub / Twitter / LinkedIn handle (optional)
-      description: For attribution. Leave blank to stay anonymous.
-      placeholder: "@yourhandle"
+      label: Your name / GitHub / Twitter / LinkedIn handle (optional)
+      description: For attribution on your page. Leave blank to stay anonymous.
+      placeholder: "@yourhandle or Your Name"
+    validations:
+      required: false
+
+  - type: input
+    id: company
+    attributes:
+      label: Company / site to credit + link (optional)
+      description: If you'd like your company named and linked on the published page. Links are marked rel="nofollow ugc" as standard — you still get the referral traffic, the brand mention, and a page that ranks on your name.
+      placeholder: "Acme Inc — https://acme.com"
     validations:
       required: false
 
