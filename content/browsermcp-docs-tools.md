@@ -71,7 +71,7 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 
 | Tool | Description |
 |---|---|
-| `browser_solve_captcha` | Detect and solve reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, or FunCaptcha — auto-click checkbox, then AI-vision-guided grid click, then human fallback for the rest. |
+| `browser_solve_captcha` | Detect and attempt reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, or FunCaptcha — auto-click checkbox, then AI-vision-guided grid click, then human fallback for the rest. |
 
 ## Human-in-the-Loop — 1 tool
 

@@ -37,7 +37,7 @@ Headless frameworks like Playwright and Puppeteer are excellent at what they wer
 | **Browser instance** | Your actual Chrome — the one you already use | A new, disposable browser context |
 | **Logins & cookies** | Inherited from your real session | None — must authenticate every run |
 | **2FA / OTP mid-flow** | Can switch to another open tab (e.g. Gmail) to read the code, then return and continue — with `browser_ask_user` available to hand off to you if the step genuinely needs a human | Not supported — typically blocks or requires a stored/bypassed credential |
-| **CAPTCHA / anti-bot walls** | Dedicated `browser_solve_captcha` tool; Attempts the checkbox challenge, then shows it to you to finish (human-in-the-loop). We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one. | Frequently detected and blocked outright — these tools identify as automation by default |
+| **CAPTCHA-gated walls** | Dedicated `browser_solve_captcha` tool; Attempts the checkbox challenge, then shows it to you to finish (human-in-the-loop). We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one. | Frequently detected and blocked outright — these tools identify as automation by default |
 | **Best fit** | Operating real accounts on sites with no API: dashboards, LinkedIn, internal tools, your own app as a logged-in user | Fast, repeatable CI/E2E test suites against your own app in a clean, reproducible state |
 | **Session persistence** | Native — it's your live browser | Requires manually saving/restoring storage state |
 | **Where it runs** | Locally, via a Chrome extension you load yourself | Locally or in CI, via a downloaded browser binary |
@@ -79,4 +79,4 @@ Not for testing your own app in a clean environment — that's still Playwright'
 Any MCP-compatible client: Claude Code, Cursor, VS Code in agent mode, and others that implement the [Model Context Protocol](https://modelcontextprotocol.io) client side.
 
 **How many tools does it expose?**
-34, spanning navigation, page content, interaction (click/fill/select/date-pickers), tabs and iframes, cookies and storage, network waiting, CAPTCHA solving, and human-in-the-loop handoff. Full reference: [/docs/tools](/docs/tools).
+34, spanning navigation, page content, interaction (click/fill/select/date-pickers), tabs and iframes, cookies and storage, network waiting, CAPTCHA assistance, and human-in-the-loop handoff. Full reference: [/docs/tools](/docs/tools).

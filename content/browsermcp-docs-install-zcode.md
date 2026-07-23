@@ -103,7 +103,7 @@ No Developer mode toggle needed, and Chrome updates the extension automatically 
 
 This is the reason people install Browser MCP: your ZCode agent hits a login wall, needs a verification code, and — because it's driving your actual logged-in Chrome rather than a fresh headless session — it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
 
-The same real-session advantage is why it clears CAPTCHA and anti-bot checks that block Playwright and Puppeteer outright — the traffic genuinely is coming from a human-operated Chrome, because it is one.
+The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer — it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
 ### 34 tools
 
@@ -127,11 +127,11 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 |---|---|---|
 | Browser | Your real Chrome | Headless (fresh session) |
 | Logins/cookies | Already authenticated | Must log in every time |
-| 2FA / CAPTCHA / anti-bot sites | Works — it's your session | Frequently blocked |
+| 2FA / CAPTCHA-gated sites | Works — it's your session | Frequently blocked |
 | Human-in-the-loop | `browser_ask_user` | None |
 | Multi-session | 10 concurrent sessions, color-coded tab groups | Single session |
 | Provider dashboards | Zero-config shortcuts for 9 common ones, works with any | None |
-| Install | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` |
+| Install | `npx @agent360/browser-mcp install` | `npx @playwright/mcp` |
 
 ### Works with any MCP client
 

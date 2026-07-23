@@ -91,7 +91,7 @@ No. `codex mcp add` writes straight to Codex's own `~/.codex/config.toml` — no
 **Is my browsing data safe? What does the extension see?**
 Everything stays local. The extension talks to an MCP server on `127.0.0.1` on your own machine — nothing is sent to any external server, no telemetry, no analytics. Cookies and tokens are only pulled when your agent explicitly asks for them, one call at a time. Source is [open and auditable on GitHub](https://github.com/Agent360dk/browser-mcp).
 
-**How does CAPTCHA solving actually work?**
+**How does CAPTCHA assistance actually work?**
 Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes, (2) AI-vision-guided grid solving for image challenges, (3) `browser_ask_user` shows you the challenge to solve by hand if the first two miss — then the agent continues. Nothing is routed through a third-party CAPTCHA-solving service. We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one.
 
 **Is it really free?**

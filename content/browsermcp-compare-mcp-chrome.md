@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** these two are the closest thing to direct equivalents in the MCP world — both are a Chrome extension plus a local MCP server that let an AI agent drive your **real, already-logged-in browser** rather than a headless one. [mcp-chrome](https://github.com/hangwin/mcp-chrome) is by far the bigger project (12,187 stars to our 23). The difference that decides it for most people is activity: mcp-chrome's last commit was **6 January 2026** — a little over six months ago — while this project ships regularly. If you want the larger community, take mcp-chrome. If you want something being maintained right now with English-language support, that is the gap we fill.
+**Short answer:** these two are the closest direct equivalents in the MCP world — both are a Chrome extension plus a local MCP server that let an AI agent drive your **real, already-logged-in browser** rather than a headless one. [mcp-chrome](https://github.com/hangwin/mcp-chrome) is by far the bigger project (12,187 stars to our 23). The difference that decides it for most people is activity: mcp-chrome's last commit was **6 January 2026** — a little over six months ago — while this project ships regularly. If you want the larger community, take mcp-chrome. If you want something being maintained right now with English-language support, that is the gap we fill.
 
 ## The numbers, dated
 
