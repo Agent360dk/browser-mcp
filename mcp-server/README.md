@@ -48,7 +48,7 @@ That's it. The Browser MCP icon will appear in your toolbar, and 34 browser tool
 
 If you don't want to use npm, download the extension directly:
 
-1. [Download `browser-mcp-v1.23.0.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
+1. [Download `browser-mcp-v1.24.0.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
 2. Unzip the file (anywhere — e.g. `~/Downloads/browser-mcp-extension/`)
 3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
 4. Configure Claude Code manually by adding this to your `~/.claude.json` (or run `npx @agent360/browser-mcp install --skip-extension`):

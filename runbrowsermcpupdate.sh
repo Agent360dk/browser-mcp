@@ -220,11 +220,15 @@ for f in $TOOLCOUNT_FILES; do
 done
 
 # 1e. README download-zip link → new version, then verify the replace actually hit.
-say "README: download-zip link → browser-mcp-v${NEW_VERSION}.zip"
-run perl -0pi -e "s/browser-mcp-v[0-9]+\.[0-9]+\.[0-9]+\.zip/browser-mcp-v${NEW_VERSION}.zip/g" README.md
+#     Must hit BOTH READMEs — mcp-server/README.md is the npm landing page, and it was
+#     cp'd from README.md above BEFORE this bump, so it needs the bump too or it ships stale.
+say "README: download-zip link → browser-mcp-v${NEW_VERSION}.zip (both copies)"
+run perl -0pi -e "s/browser-mcp-v[0-9]+\.[0-9]+\.[0-9]+\.zip/browser-mcp-v${NEW_VERSION}.zip/g" README.md mcp-server/README.md
 if [[ "$SHIP" == 1 ]]; then
-  grep -q "browser-mcp-v${NEW_VERSION}.zip" README.md \
-    || die "README zip-link did not update to v${NEW_VERSION} — link format changed; fix the regex"
+  for f in README.md mcp-server/README.md; do
+    grep -q "browser-mcp-v${NEW_VERSION}.zip" "$f" \
+      || die "$f zip-link did not update to v${NEW_VERSION} — link format changed; fix the regex"
+  done
 fi
 
 # ── 2. npm ────────────────────────────────────────────────────────────────────
