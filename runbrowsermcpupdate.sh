@@ -310,6 +310,44 @@ if [[ "$SKIP_LOCAL" == 1 ]]; then warn "skipped (--skip-local)"
 else
   say "copy extension/ → ~/.browser-mcp/extension/"
   run rsync -a --delete --exclude='.DS_Store' extension/ "$HOME/.browser-mcp/extension/"
+
+  # Chrome may load the extension from a DIFFERENT unpacked folder than ~/.browser-mcp/extension
+  # — e.g. a ~/Downloads copy someone once picked with "Load unpacked". Refreshing only the
+  # canonical path then silently leaves the running browser on the OLD build. That is exactly how
+  # v1.24.0 went live on npm while the local Chrome kept running v1.23.0 without the macOS fix.
+  # So: ask the browser itself which unpacked copies it has registered, and refresh those too.
+  if command -v python3 >/dev/null 2>&1; then
+    LOADED_COPIES="$(python3 - <<'PY' 2>/dev/null
+import json, glob, os
+seen = set()
+for root in ("~/Library/Application Support/Google/Chrome",
+             "~/Library/Application Support/Google/Chrome Canary",
+             "~/Library/Application Support/BraveSoftware/Brave-Browser",
+             "~/Library/Application Support/Microsoft Edge",
+             "~/Library/Application Support/Arc/User Data",
+             "~/.config/google-chrome", "~/.config/chromium"):
+    for prefs in glob.glob(os.path.expanduser(root) + "/*/Secure Preferences"):
+        try:
+            d = json.load(open(prefs))
+        except Exception:
+            continue
+        for v in d.get("extensions", {}).get("settings", {}).values():
+            p = v.get("path") or ""
+            if v.get("location") in (4, 10) and p.startswith("/") and "browser-mcp" in p.lower():
+                if p not in seen:
+                    seen.add(p)
+                    print(p)
+PY
+)"
+    while IFS= read -r loaded; do
+      [[ -z "$loaded" || ! -d "$loaded" ]] && continue
+      [[ "$loaded" == "$HOME/.browser-mcp/extension" ]] && continue
+      warn "Chrome also loads an unpacked copy here — refreshing it too:"
+      say  "  $loaded"
+      run rsync -a --delete --exclude='.DS_Store' extension/ "$loaded/"
+    done <<< "$LOADED_COPIES"
+  fi
+
   warn "reload it: open chrome://extensions → Agent360 Browser MCP → ↻ reload"
 fi
 
