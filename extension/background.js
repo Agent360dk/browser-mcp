@@ -10,33 +10,40 @@
 
 const SESSION_COLORS = ['blue', 'green', 'yellow', 'red', 'pink', 'purple', 'cyan', 'orange'];
 const sessions = new Map(); // port → { tabIds: Set, groupId: number|null, color: string, label: string }
-let sessionsLoaded = false;
+// FIX-2: promise-cache latch (not a boolean). The old `if(sessionsLoaded) return`
+// flipped the flag BEFORE awaiting storage, so a second concurrent caller on a freshly
+// woken service worker proceeded against an EMPTY sessions Map. Caching the promise makes
+// every concurrent caller await the SAME populated completion. Resets to null on SW
+// eviction (module re-init) and on error, so the next wake retries.
+let restorePromise = null;
 
 // Restore sessions from storage (service workers lose in-memory state on suspend)
-async function restoreSessions() {
-  if (sessionsLoaded) return;
-  sessionsLoaded = true;
-  const { sessions: saved } = await chrome.storage.local.get({ sessions: {} });
-  for (const [port, data] of Object.entries(saved)) {
-    // Verify tabs still exist
-    const validTabIds = new Set();
-    for (const tabId of (data.tabIds || [])) {
-      try {
-        await chrome.tabs.get(tabId);
-        validTabIds.add(tabId);
-      } catch {} // tab no longer exists
+function restoreSessions() {
+  if (restorePromise) return restorePromise;
+  restorePromise = (async () => {
+    const { sessions: saved } = await chrome.storage.local.get({ sessions: {} });
+    for (const [port, data] of Object.entries(saved)) {
+      // Verify tabs still exist
+      const validTabIds = new Set();
+      for (const tabId of (data.tabIds || [])) {
+        try {
+          await chrome.tabs.get(tabId);
+          validTabIds.add(tabId);
+        } catch {} // tab no longer exists
+      }
+      if (validTabIds.size > 0) {
+        const activeTabId = data.activeTabId && validTabIds.has(data.activeTabId) ? data.activeTabId : null;
+        sessions.set(Number(port), {
+          tabIds: validTabIds,
+          activeTabId,
+          groupId: data.groupId || null,
+          color: data.color || SESSION_COLORS[sessions.size % SESSION_COLORS.length],
+          label: data.label || `Claude ${sessions.size + 1}`,
+        });
+      }
     }
-    if (validTabIds.size > 0) {
-      const activeTabId = data.activeTabId && validTabIds.has(data.activeTabId) ? data.activeTabId : null;
-      sessions.set(Number(port), {
-        tabIds: validTabIds,
-        activeTabId,
-        groupId: data.groupId || null,
-        color: data.color || SESSION_COLORS[sessions.size % SESSION_COLORS.length],
-        label: data.label || `Claude ${sessions.size + 1}`,
-      });
-    }
-  }
+  })().catch(err => { restorePromise = null; throw err; });
+  return restorePromise;
 }
 
 function getSession(port) {
@@ -158,17 +165,25 @@ function persistSessions() {
 async function getSessionTab(port, activate = false) {
   const session = getSession(port);
   let target = null;
+  // Remember our OWN about:blank placeholder so we reuse it instead of spawning another
+  // on every read-only call before the first navigate (FIX-4: about:blank proliferation).
+  let blankFallback = null;
+  const consider = (tab) => {
+    if (!tab) return false;
+    if (tab.url.startsWith('chrome://')) return false;
+    if (tab.url.startsWith('about:')) { if (!blankFallback) blankFallback = tab; return false; }
+    return true;
+  };
 
   // Prefer the active (last navigated) tab
   if (session.activeTabId) {
     try {
       const tab = await chrome.tabs.get(session.activeTabId);
-      if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
-        target = tab;
-      }
+      if (consider(tab)) target = tab;
     } catch {
+      const dead = session.activeTabId;   // FIX-17: capture id BEFORE nulling (was deleting null)
       session.activeTabId = null;
-      session.tabIds.delete(session.activeTabId);
+      session.tabIds.delete(dead);
     }
   }
 
@@ -177,30 +192,48 @@ async function getSessionTab(port, activate = false) {
     for (const tabId of session.tabIds) {
       try {
         const tab = await chrome.tabs.get(tabId);
-        if (tab && !tab.url.startsWith('chrome://') && !tab.url.startsWith('about:')) {
-          session.activeTabId = tabId;
-          target = tab;
-          break;
-        }
+        if (consider(tab)) { session.activeTabId = tabId; target = tab; break; }
       } catch {
         session.tabIds.delete(tabId);
       }
     }
   }
 
-  // No usable tab — create one
+  // Reuse our own blank placeholder rather than spawning yet another one (FIX-4).
+  if (!target && blankFallback) {
+    target = blankFallback;
+    session.activeTabId = target.id;
+    persistSessions();
+  }
+
+  // No usable tab at all — create ONE placeholder and pin it as the active tab so the
+  // NEXT call reuses it (FIX-4) instead of creating a fresh about:blank every time.
   if (!target) {
     target = await chrome.tabs.create({ url: 'about:blank', active: false });
     await addTabToSession(port, target.id);
-    return target;
+    session.activeTabId = target.id;
+    persistSessions();
+    // fall through to the activate branch (SC-3: previously returned early, skipping it)
   }
 
-  // Activate the tab so Chrome APIs target it (not whatever user is viewing)
-  if (activate && !target.active) {
-    await chrome.tabs.update(target.id, { active: true });
-    // Brief wait for Chrome to render the tab
-    await new Promise(r => setTimeout(r, 150));
-    target = await chrome.tabs.get(target.id);
+  // Activate the tab WITHOUT stealing the user's focus (FIX-1). This is a BACKGROUND tool:
+  // screenshot/press_key run constantly, so we must NOT chrome.windows.update({focused:true})
+  // here — that yanked Chrome to the foreground on every action. We only (a) un-minimize a
+  // minimized window (needed so it can composite) and (b) make the tab active within its
+  // window. The truly-occluded (covered) case is handled as a bounded last-resort
+  // raise-and-restore inside the screenshot handler only.
+  if (activate) {
+    try {
+      if (target.windowId != null) {
+        const win = await chrome.windows.get(target.windowId).catch(() => null);
+        if (win && win.state === 'minimized') {
+          await chrome.windows.update(target.windowId, { state: 'normal' }); // no focused:true
+        }
+      }
+      if (!target.active) await chrome.tabs.update(target.id, { active: true });
+      await new Promise(r => setTimeout(r, 150));
+      target = await chrome.tabs.get(target.id);
+    } catch { /* best-effort; capture path surfaces the real error */ }
   }
 
   return target;
@@ -233,34 +266,39 @@ async function debuggerAttach(tabId) {
     debuggerAttached.delete(tabId);
   }
 
-  try {
-    await chrome.debugger.attach({ tabId }, '1.3');
-    // Verify attach actually took effect (Chrome can silently no-op after user-cancel)
-    if (await verifyAttachedWithChrome(tabId)) {
-      debuggerAttached.add(tabId);
-      return;
+  // Up to 3 attempts. A "ghost attach" (attach resolves but getTargets shows the tab
+  // NOT attached) is usually TRANSIENT: the page is mid-navigation/reload — e.g. the
+  // Metro dev-server rebuilding localhost:8081 auto-detaches the debugger. Retrying
+  // after a short delay lets the reload settle. Only a ghost that survives all retries
+  // is a real user-canceled banner. (Previously we threw on the first ghost, which made
+  // dev-server URLs unusable during their initial bundle.)
+  let lastMsg = '';
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await chrome.debugger.attach({ tabId }, '1.3');
+      if (await verifyAttachedWithChrome(tabId)) {
+        debuggerAttached.add(tabId);
+        return;
+      }
+      // Ghost — detach cleanly so the next attempt starts fresh, then retry.
+      lastMsg = 'attach resolved but Chrome shows tab not attached (ghost — page likely mid-reload)';
+      try { await chrome.debugger.detach({ tabId }); } catch {}
+    } catch (e) {
+      if (e.message?.includes('Already attached')) {
+        // Chrome side has session — sync local cache
+        debuggerAttached.add(tabId);
+        return;
+      }
+      // "Cannot attach"/"canceled" can also be transient during navigation — retry too.
+      lastMsg = e.message || String(e);
     }
-    throw new Error(
-      `Debugger detached (GHOST_ATTACH): chrome.debugger.attach returned success but Chrome state shows tab ${tabId} not attached. ` +
-      `This typically means the user clicked "Cancel" on Chrome's debugger banner. ` +
-      `Fix: reload Browser MCP extension (chrome://extensions/ → ↻) or restart Chrome.`
-    );
-  } catch (e) {
-    if (e.message?.includes('Already attached')) {
-      // Chrome side has session — sync local cache
-      debuggerAttached.add(tabId);
-      return;
-    }
-    if (e.message?.includes('Cannot attach') || e.message?.includes('canceled') || e.message?.includes('GHOST_ATTACH') || e.message?.includes('Debugger detached')) {
-      throw new Error(
-        `Debugger detached (BLOCKED_BY_USER): Cannot attach debugger to tab ${tabId}. ` +
-        `Chrome blocks debugger attach — user likely clicked "Cancel" on debugger banner earlier this session. ` +
-        `Fix: chrome://extensions/ → Browser MCP → reload (↻) icon. Or restart Chrome. ` +
-        `Original error: ${e.message}`
-      );
-    }
-    throw e;
+    if (attempt < 2) await new Promise(r => setTimeout(r, 250 + attempt * 250));
   }
+  throw new Error(
+    `Debugger attach failed after 3 attempts (tab ${tabId}). Last: ${lastMsg}. ` +
+    `If persistent: the page may be continuously reloading (dev-server mid-build — wait, then retry), ` +
+    `or the user canceled Chrome's debugger banner — reload Browser MCP (chrome://extensions/ → ↻) or restart Chrome.`
+  );
 }
 
 async function debuggerDetach(tabId) {
@@ -409,6 +447,20 @@ async function debuggerClick(tabId, x, y) {
           el = inner; host = inner;
         }
         window.__bmcpClickTarget = el || null;
+        // FIX-13: watch whether the trusted click (step 2) actually lands on the target,
+        // so step 3's framework-fallback does NOT double-fire on elements that stay
+        // connected (toggles, checkboxes, add-to-cart, form fields).
+        window.__bmcpClicked = false;
+        try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
+        window.__bmcpClickListener = (ev) => {
+          try {
+            const t = ev.target;
+            if (el && (t === el || el.contains(t) || (ev.composedPath && ev.composedPath().includes(el)))) {
+              window.__bmcpClicked = true;
+            }
+          } catch (e) {}
+        };
+        document.addEventListener('click', window.__bmcpClickListener, true);
       })()`,
     });
     // 1. mouseMoved first (triggers hover state, required by some frameworks)
@@ -435,7 +487,10 @@ async function debuggerClick(tabId, x, y) {
     await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
         const el = window.__bmcpClickTarget;
-        try { delete window.__bmcpClickTarget; } catch (e) {}
+        const landed = window.__bmcpClicked === true;
+        try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
+        try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
+        if (landed) return;                   // FIX-13: trusted click already landed — do NOT double-fire
         if (!el || !el.isConnected) return;   // already navigated/handled — don't double-fire
         const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
         try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
@@ -617,10 +672,20 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 
 function buildTextFinderJS(textPattern, tagFilter) {
   const escaped = JSON.stringify(textPattern);
-  const tagCheck = tagFilter ? `&& el.tagName === ${JSON.stringify(tagFilter.toUpperCase())}` : '';
+  const wantTag = tagFilter ? JSON.stringify(tagFilter.toUpperCase()) : 'null';
   return `(function() {
     const text = ${escaped};
-    // Collect all elements including inside shadow DOM
+    const wantTag = ${wantTag};
+    // Interactive controls we prefer to actually click. Fixes the class of bug where a
+    // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
+    // toolbar, list-item) whose center is NOT over the real <button> — so the trusted
+    // click misses and menus/dropdowns never open.
+    const CLICKABLE = 'a,button,summary,label,[role="button"],[role="menuitem"],' +
+      '[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],' +
+      '[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[onclick],' +
+      '[mat-button],[mat-raised-button],[mat-stroked-button],[mat-flat-button],' +
+      '[mat-icon-button],[mat-fab],[mat-mini-fab],[mat-menu-item],[mat-list-item],' +
+      'mat-checkbox,mat-slide-toggle,mat-radio-button';
     function collectAll(root, results) {
       for (const el of root.querySelectorAll('*')) {
         results.push(el);
@@ -629,23 +694,34 @@ function buildTextFinderJS(textPattern, tagFilter) {
       return results;
     }
     const all = collectAll(document, []);
-    // Exact match first (prefer leaf nodes)
-    for (const el of all) {
-      if (el.children.length > 3) continue;
-      const t = el.textContent?.trim();
-      if (t === text ${tagCheck}) {
-        return el;
-      }
+    const tagOk = (el) => !wantTag || el.tagName === wantTag;
+    // Map a matched element to the ACTIONABLE control: itself if clickable, else the
+    // nearest clickable ancestor (only if its own text isn't much larger than the match,
+    // so we don't grab a whole toolbar), else a clickable descendant.
+    function toClickable(el) {
+      if (el.matches && el.matches(CLICKABLE)) return el;
+      const anc = el.closest && el.closest(CLICKABLE);
+      if (anc && (anc.textContent || '').trim().length <= text.length + 40) return anc;
+      const desc = el.querySelector && el.querySelector(CLICKABLE);
+      if (desc) return desc;
+      return el;
     }
-    // Partial match fallback
-    for (const el of all) {
-      if (el.children.length > 3) continue;
-      const t = el.textContent?.trim();
-      if (t && t.includes(text) ${tagCheck}) {
-        return el;
+    function pick(test) {
+      const matches = all.filter(el => tagOk(el) && test((el.textContent || '').trim()));
+      if (!matches.length) return null;
+      // Prefer the INNERMOST matches (an element that is not an ancestor of another
+      // match) — this is what "prefer leaf nodes" was supposed to do.
+      const inner = matches.filter(el => !matches.some(o => o !== el && el.contains && el.contains(o)));
+      const pool = inner.length ? inner : matches;
+      // Prefer a match that resolves to a real interactive control.
+      for (const el of pool) {
+        const c = toClickable(el);
+        if (c && c.matches && c.matches(CLICKABLE)) return c;
       }
+      return toClickable(pool[0]);
     }
-    return null;
+    // Exact match first, then partial fallback.
+    return pick(t => t === text) || pick(t => t && t.includes(text));
   })()`;
 }
 
@@ -1712,26 +1788,61 @@ async function dispatch(port, method, params) {
     }
 
     case 'screenshot': {
-      const tab = await getSessionTab(port);
-      if (tab.url.startsWith('chrome://')) throw new Error('Cannot screenshot chrome:// pages');
-      // Use debugger Page.captureScreenshot as PRIMARY method.
-      // captureVisibleTab requires active tab in active window — fails when
-      // user is in terminal. Debugger works regardless of tab focus.
-      try {
-        await debuggerAttach(tab.id);
-        const { data } = await cdpSend(tab.id, 'Page.captureScreenshot', {
-          format: 'png',
-        });
-        return { image: 'data:image/png;base64,' + data };
-      } catch {
-        // Debugger failed — fall back to captureVisibleTab (needs active tab)
+      // getSessionTab(…, true) is focus-NEUTRAL now: it un-minimizes + activates the tab
+      // but does NOT steal window focus (FIX-1). Screenshots run constantly, so the common
+      // path must never yank Chrome to the foreground.
+      const tab = await getSessionTab(port, true);
+      if (tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) {
+        throw new Error(`Cannot screenshot ${tab.url.split(':')[0]}: pages — navigate to a real page first`);
+      }
+      // Capture without stealing focus: CDP Page.captureScreenshot (default → fromSurface:false
+      // retry) works for background/visible tabs; captureVisibleTab is the secondary.
+      const tryCapture = async () => {
         try {
-          await chrome.tabs.update(tab.id, { active: true });
-          await new Promise(r => setTimeout(r, 150));
-          const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+          await debuggerAttach(tab.id);
+          try {
+            const shot = await cdpSend(tab.id, 'Page.captureScreenshot', { format: 'png' });
+            return { image: 'data:image/png;base64,' + shot.data };
+          } catch {
+            const shot = await cdpSend(tab.id, 'Page.captureScreenshot', {
+              format: 'png', fromSurface: false, captureBeyondViewport: false,
+            });
+            return { image: 'data:image/png;base64,' + shot.data };
+          }
+        } catch {
+          // CDP failed entirely — native tabs API (needs the tab visible in its window).
+          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
           return { image: dataUrl };
-        } catch (e) {
-          throw new Error('Screenshot failed: ' + e.message);
+        }
+      };
+
+      // Attempt 1 — focus-neutral. Handles the vast majority (background-but-visible window).
+      try {
+        return await tryCapture();
+      } catch (firstErr) {
+        // Both methods failed → the window is genuinely OCCLUDED (covered by other windows),
+        // so Chrome's compositor produced no frames. LAST RESORT ONLY: raise the window to
+        // de-occlude it, capture, then RESTORE the user's previously-focused window. This
+        // focus-steal happens ONLY in the rare covered case — never on a normal screenshot.
+        const prev = await chrome.windows.getLastFocused().catch(() => null);
+        try {
+          await chrome.windows.update(tab.windowId, { focused: true, state: 'normal' });
+          await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+          await new Promise(r => setTimeout(r, 250)); // let it composite
+          return await tryCapture();
+        } catch (secondErr) {
+          throw new Error(
+            `Screenshot failed after focus-neutral AND raised attempts. ` +
+            `First: ${firstErr?.message || firstErr}. Raised: ${secondErr?.message || secondErr}. ` +
+            `If both say "image readback failed" the GPU compositor is not producing frames — ` +
+            `disable Chrome hardware acceleration (chrome://settings/system) as a last resort.`
+          );
+        } finally {
+          // Give focus back to the user's previous Chrome window (best-effort; getLastFocused
+          // only sees Chrome windows, so a non-Chrome IDE can't be re-focused programmatically).
+          if (prev && prev.id != null && prev.id !== tab.windowId) {
+            await chrome.windows.update(prev.id, { focused: true }).catch(() => {});
+          }
         }
       }
     }
@@ -1797,13 +1908,50 @@ async function dispatch(port, method, params) {
         diag.main_throw = String(e?.message || e);
       }
 
-      // Step 3: DIAG MODE — don't fallback to debugger, return scripting-state info instead
-      return {
-        result: '__SCRIPTING_FAILED__',
-        method: 'scripting-failed',
-        diag,
-        note: 'Both ISOLATED + MAIN scripting paths returned null/error. See diag for details.',
-      };
+      // Step 3: debugger fallback — the ONLY universal path for arbitrary STRING code
+      // (both scripting worlds block `new Function`: ISOLATED via MV3 extension-CSP,
+      // MAIN via the page's own unsafe-eval CSP). CDP Runtime.evaluate bypasses CSP.
+      // FIX (2026-07-16): retry on an EMPTY/undefined CDP response. On some pages the
+      // debugger auto-detaches mid-command and `chrome.debugger.sendCommand` RESOLVES
+      // with `undefined` instead of rejecting, so cdpSend's throw-based retry never
+      // fires and debuggerEval silently returned undefined → the caller saw a bare
+      // `{method:"debugger"}` with no result. Also surface script exceptions + raw
+      // diagnostics so a genuine failure is never mistaken for an empty success.
+      let rawDbg, dbgErr = '';
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          await debuggerAttach(tab.id);
+          rawDbg = await cdpSend(tab.id, 'Runtime.evaluate', {
+            expression: '(' + params.code + '\n)',
+            returnByValue: true,
+            awaitPromise: true,
+          });
+          if (rawDbg && rawDbg.exceptionDetails) {
+            const ex = rawDbg.exceptionDetails;
+            await debuggerDetach(tab.id).catch(() => {});
+            throw new Error('__SCRIPT_EX__' + (ex.exception?.description || ex.text || 'Script exception'));
+          }
+          if (rawDbg && rawDbg.result && rawDbg.result.type !== 'undefined') {
+            await debuggerDetach(tab.id).catch(() => {});
+            return { result: rawDbg.result.value, method: 'debugger' };
+          }
+          dbgErr = 'empty/undefined CDP response: ' + JSON.stringify(rawDbg);
+        } catch (e) {
+          const m = String(e?.message || e);
+          if (m.startsWith('__SCRIPT_EX__')) {
+            throw new Error(m.slice('__SCRIPT_EX__'.length) + ' | scripting-diag: ' + JSON.stringify(diag));
+          }
+          dbgErr = m;
+          if (!/detach|attach|empty|gone|given id|not attached/i.test(m)) break;
+        }
+        await debuggerDetach(tab.id).catch(() => {});
+        await new Promise(r => setTimeout(r, 200 + attempt * 200));
+      }
+      throw new Error(
+        'execute_script failed on all paths. debugger: ' + dbgErr +
+        ' | raw: ' + JSON.stringify(rawDbg) +
+        ' | scripting-diag: ' + JSON.stringify(diag)
+      );
     }
 
     case 'click': {

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Agent360dk/browser-mcp",
+  "title": "Agent360 Browser MCP",
+  "description": "Give AI agents control of your real, logged-in Chrome. Chrome extension + MCP server, 34 tools.",
+  "websiteUrl": "https://browsermcp.dev",
+  "repository": {
+    "url": "https://github.com/Agent360dk/browser-mcp",
+    "source": "github"
+  },
+  "version": "1.23.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@agent360/browser-mcp",
+      "version": "1.23.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
