@@ -66,9 +66,9 @@ for _fn,_grp,_label,_url in PAGES:
 LABELS={url:label for _,_,label,url in LIVE}
 # <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form)
 TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which is maintained? (2026)',
- '/compare/browser-automation-mcp-servers':'Best Browser Automation MCP Servers (2026): Playwright vs Chrome DevTools vs Browser Use vs Browser MCP',
+ '/compare/browser-automation-mcp-servers':'Best Browser Automation MCP Servers (2026) — Compared',
  '/docs/install-claude-code':'Browser MCP for Claude Code — Give Claude Your Real, Logged-In Chrome',
- '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Real Logged-In Chrome vs Managed Profiles',
+ '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Logged-In vs Headless',
  '/compare/mcp-chrome':'Browser MCP vs mcp-chrome (2026): Is mcp-chrome Still Maintained?',
  '/docs/uninstall':'Uninstall Browser MCP + Exactly What Data It Touches (2026)',
  '/docs/when-not-to-use':'When NOT to Use Browser MCP (Honest Guide, 2026)',
