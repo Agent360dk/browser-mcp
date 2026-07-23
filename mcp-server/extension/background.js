@@ -9,6 +9,9 @@
 // ── Session Tab Management ─────────────────────────────────────────────────
 
 const SESSION_COLORS = ['blue', 'green', 'yellow', 'red', 'pink', 'purple', 'cyan', 'orange'];
+// Select-all modifier is platform-dependent: Cmd (meta=4) on macOS, Ctrl (2) elsewhere.
+// Get this wrong and the field isn't selected — Backspace no-ops and new text concatenates onto the old.
+const SELECT_ALL_MODS = /Mac/i.test(navigator.userAgent) ? 4 : 2;
 const sessions = new Map(); // port → { tabIds: Set, groupId: number|null, color: string, label: string }
 // FIX-2: promise-cache latch (not a boolean). The old `if(sessionsLoaded) return`
 // flipped the flag BEFORE awaiting storage, so a second concurrent caller on a freshly
@@ -110,10 +113,7 @@ async function addTabToSession(port, tabId) {
     }
 
     if (session.groupId === null) {
-      const validTabIds = [...session.tabIds].filter(id => {
-        try { return id; } catch { return false; }
-      });
-      const groupId = await chrome.tabs.group({ tabIds: validTabIds });
+      const groupId = await chrome.tabs.group({ tabIds: [...session.tabIds] });
       session.groupId = groupId;
       await chrome.tabGroups.update(groupId, {
         title: session.label,
@@ -570,9 +570,9 @@ async function debuggerFill(tabId, selector, value) {
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    // Ctrl+A to select all, then Backspace to clear
+    // Select-all (Cmd+A on macOS, Ctrl+A elsewhere), then Backspace to clear
     await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
+      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS,
     });
     await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'a', code: 'KeyA',
@@ -847,7 +847,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       dispatch(port, msg.method, msg.params)
         .then(result => sendResponse(result))
         .catch(err => sendResponse({ __error: err.message || String(err) }));
-    });
+    }).catch(err => sendResponse({ __error: err.message || String(err) })); // else a storage-restore reject hangs the caller
     return true; // async response
   }
 
@@ -904,22 +904,6 @@ chrome.tabs.onCreated.addListener(async (tab) => {
     }
   }
 });
-
-// ── CAPTCHA Detection ────────────────────────────────────────────────────────
-
-async function detectCaptcha(tabId) {
-  try {
-    return await debuggerEval(tabId, `
-      (function() {
-        if (document.querySelector('iframe[src*="hcaptcha.com"]') || document.querySelector('.h-captcha')) return 'hcaptcha';
-        if (document.querySelector('iframe[src*="recaptcha"]') || document.querySelector('.g-recaptcha')) return 'recaptcha';
-        if (document.querySelector('iframe[src*="challenges.cloudflare.com"]') || document.querySelector('.cf-turnstile')) return 'turnstile';
-        if (document.documentElement.innerHTML.includes('challenge-platform')) return 'challenge';
-        return null;
-      })()
-    `);
-  } catch { return null; }
-}
 
 // ── Deep Shadow DOM Query ────────────────────────────────────────────────────
 // querySelectorDeep: finds elements inside shadow DOMs (Shopify, Salesforce, etc.)
@@ -1071,7 +1055,7 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   await debuggerAttach(tabId);
   try {
     await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: 2,
+      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS,
     });
     await cdpSend(tabId, 'Input.dispatchKeyEvent', {
       type: 'keyUp', key: 'a', code: 'KeyA',
@@ -1110,23 +1094,6 @@ async function isPickerOpen(tabId) {
     const sels = ${JSON.stringify(PICKER_OPEN_SELECTORS)};
     for (const s of sels) {
       try { if (document.querySelector(s)) return true; } catch {}
-    }
-    return false;
-  })()`);
-}
-
-async function getPickerRoot(tabId) {
-  return await debuggerEval(tabId, `(() => {
-    const sels = ${JSON.stringify(PICKER_OPEN_SELECTORS)};
-    for (const s of sels) {
-      try {
-        const el = document.querySelector(s);
-        if (el) {
-          const root = el.closest('[role="dialog"], .react-datepicker, .MuiPickersPopper-root, .ant-picker-dropdown') || el;
-          // Return a stable selector path — for runtime use we re-query each time
-          return true;
-        }
-      } catch {}
     }
     return false;
   })()`);

@@ -44,7 +44,7 @@
 
 - [vs Playwright MCP](https://browsermcp.dev/compare/playwright-mcp/): real logged-in Chrome vs managed profiles — honest about when Playwright wins.
 - [vs browsermcp.io](https://browsermcp.dev/compare/browsermcp-io/): dated, sourced comparison with the similarly-named, unmaintained project.
-- [All servers compared](https://browsermcp.dev/compare/browser-automation-mcp-servers/): four-way matrix (Playwright, Chrome DevTools, Browser Use, the two Browser MCPs).
+- [All servers compared](https://browsermcp.dev/compare/browser-automation-mcp-servers/): five-way matrix (Playwright, Chrome DevTools, Browser Use, the two Browser MCPs).
 
 ## Use cases
 

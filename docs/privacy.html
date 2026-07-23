@@ -39,16 +39,19 @@
     <li>No external servers are contacted. No data is sent to Agent360 or any third party</li>
   </ul>
 
+  <p>The localhost WebSocket bridge is not password-protected — it trusts connections from your own machine. That means the extension is only as private as your computer: any software already running on it could, in principle, connect to the same local port. Browser MCP never exposes this bridge beyond <code>localhost</code>, and nothing is transmitted off your machine. If you share your computer with untrusted software, disable or remove the extension when you are not using it.</p>
+
   <h2>Permissions</h2>
   <p>Browser MCP requests the following Chrome permissions. Each is required for browser automation functionality:</p>
   <ul>
-    <li><strong>tabs, tabGroups</strong> — Navigate and manage browser tabs, create session tab groups</li>
-    <li><strong>cookies</strong> — Read/write cookies for domains (browser_get/set_cookies tools)</li>
+    <li><strong>tabs, tabGroups, activeTab</strong> — See and switch between tabs, and group each session's tabs by color</li>
+    <li><strong>cookies</strong> — Read/write cookies for the browser_get_cookies / browser_set_cookies tools</li>
     <li><strong>scripting</strong> — Execute JavaScript in page context for content reading and interaction</li>
-    <li><strong>debugger</strong> — Chrome Debugger Protocol for reliable mouse/keyboard events on CSP-strict sites</li>
-    <li><strong>storage</strong> — Store extension preferences locally</li>
-    <li><strong>notifications</strong> — Alert user when human-in-the-loop action is needed</li>
-    <li><strong>&lt;all_urls&gt;</strong> — Browser automation requires access to any website the user navigates to</li>
+    <li><strong>debugger</strong> — Chrome DevTools Protocol for reliable mouse/keyboard events on CSP-strict sites</li>
+    <li><strong>webNavigation</strong> — Detect when a page has finished loading before acting on it</li>
+    <li><strong>storage, alarms, offscreen</strong> — Local extension state, the keep-alive timer, and the offscreen document that hosts the WebSocket bridge</li>
+    <li><strong>notifications</strong> — Alert you when a human-in-the-loop action is needed</li>
+    <li><strong>&lt;all_urls&gt; (host permission)</strong> — Browser automation requires access to whatever website you navigate to</li>
   </ul>
 
   <h2>Open Source</h2>

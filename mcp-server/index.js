@@ -209,7 +209,7 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 ## CAPTCHA handling
 Use browser_solve_captcha to detect and solve CAPTCHAs automatically:
 1. Call browser_solve_captcha() — detects CAPTCHA type on page
-2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") — auto-clicks, passes ~80% with logged-in Google
+2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") — auto-clicks; often passes when signed into Google
 3. If image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
 4. If all else fails → call browser_solve_captcha(action="ask_human") to show overlay to user
 5. After solving, retry the action that was blocked
@@ -397,7 +397,7 @@ function handleAbout(args) {
 }
 
 async function handleExtractToken(args) {
-  const { provider, store_in_vault } = args;
+  const { provider } = args;
   const info = PROVIDER_PAGES[provider];
 
   if (!info) {
@@ -410,18 +410,11 @@ async function handleExtractToken(args) {
   }
 
   const nav = await sendToExtension('navigate', { url: info.url });
-  const content = [
-    { type: 'text', text: `Navigated to ${info.url} (${nav.title})\n\nInstructions: ${info.instructions}\n\nUse browser_get_page_content or browser_screenshot to find the token, then use browser_execute_script to extract it.` },
-  ];
-
-  if (store_in_vault) {
-    content.push({
-      type: 'text',
-      text: `\nWhen you have the token, POST it to the vault:\ncurl -X POST http://localhost:8000/v1/vault/connect -H "Authorization: Bearer {jwt}" -d '{"provider":"${provider}","token":"{extracted_token}"}'`,
-    });
-  }
-
-  return { content };
+  return {
+    content: [
+      { type: 'text', text: `Navigated to ${info.url} (${nav.title})\n\nInstructions: ${info.instructions}\n\nUse browser_get_page_content or browser_screenshot to find the token, then use browser_execute_script to extract it.` },
+    ],
+  };
 }
 
 // ── Graceful shutdown ──────────────────────────────────────────────────────

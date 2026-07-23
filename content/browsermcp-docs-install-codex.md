@@ -66,11 +66,12 @@ This is the thing headless tools can't do: Codex hits a login wall, reads the on
 | Category | What it gives your agent |
 |---|---|
 | **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script` |
-| **Interaction** | `browser_click`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key` |
-| **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_get_new_tab` (for OAuth popups), `browser_list_frames` / `browser_select_frame` |
-| **Data & network** | `browser_get_cookies`, `browser_get_local_storage`, `browser_fetch` (bypasses CORS from the extension), `browser_wait_for_network`, `browser_extract_token` |
+| **Interaction** | `browser_click`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key`, `browser_wait`, `browser_handle_dialog` |
+| **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab` (for OAuth popups), `browser_list_frames` / `browser_select_frame` |
+| **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch` (bypasses CORS from the extension), `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` — overlay dialog for 2FA codes, CAPTCHA grids, or any credential Codex shouldn't guess at |
+| **Meta** | `browser_about` — session/extension info |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) — but it isn't limited to those. Point it at any provider's API-settings page and it'll navigate there and walk you through pulling the token the same way; the 9 are just shortcuts, not a whitelist.
 

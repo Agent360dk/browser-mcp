@@ -37,8 +37,13 @@ jobs:
       - name: regen-diff (generator output == committed HTML)
         run: |
           python3 scripts/generate-docs.py
-          git diff --exit-code -- docs/ \
-            || { echo '::error::docs/ HTML differs from generator output — edit content/*.md and re-run scripts/generate-docs.py (never hand-edit docs/ HTML)'; exit 1; }
+          # --porcelain catches BOTH modified tracked files AND untracked new pages;
+          # `git diff --exit-code` silently ignores untracked files (a new page 404s in prod but passes CI).
+          if [ -n "$(git status --porcelain -- docs/)" ]; then
+            echo '::error::docs/ HTML differs from generator output — edit content/*.md and re-run scripts/generate-docs.py (never hand-edit docs/ HTML)'
+            git status --porcelain -- docs/
+            exit 1
+          fi
 
       - name: check-docs (tool-count · leaks · links · meta · sitemap)
         run: python3 scripts/check-docs.py

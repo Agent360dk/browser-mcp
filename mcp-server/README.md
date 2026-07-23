@@ -17,7 +17,7 @@ Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode
 
 The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace — with you approving the sensitive steps.
 
-34 tools. ~80% reCAPTCHA-checkbox solve with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
+34 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
 
 ## Install — 2 steps (~60 seconds)
 
@@ -131,7 +131,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 ### CAPTCHA Solving
 | Tool | Description |
 |------|-------------|
-| `browser_solve_captcha` | Detect and solve CAPTCHAs. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (auto-click, ~80% pass with Google login), `click_grid` (AI vision guided), `ask_human` (fallback) |
+| `browser_solve_captcha` | Detect and solve CAPTCHAs. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (auto-click, often passes when signed into Google), `click_grid` (AI vision guided), `ask_human` (fallback) |
 
 ### Human-in-the-Loop
 | Tool | Description |

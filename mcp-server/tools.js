@@ -378,19 +378,18 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_token',
-    description: 'Navigate to a provider\'s API settings page and extract the API token. Optionally store it in Agent360 vault.',
+    description: 'Navigate to a provider\'s API settings page so you can read its API token from the page.',
     inputSchema: {
       type: 'object',
       properties: {
         provider: { type: 'string', description: 'Provider slug (stripe, hubspot, slack, etc.)' },
-        store_in_vault: { type: 'boolean', description: 'If true, POST token to Agent360 vault API' },
       },
       required: ['provider'],
     },
   },
   {
     name: 'browser_solve_captcha',
-    description: 'Detect and solve CAPTCHAs on the current page. Auto-detects reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, and FunCaptcha. Tries auto-click first (works ~80% with logged-in Google), then returns a screenshot for AI vision analysis, then falls back to asking the user. Returns detection info and solving status.',
+    description: 'Detect and solve CAPTCHAs on the current page. Auto-detects reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, and FunCaptcha. Tries auto-click first (often clears reCAPTCHA v2 when signed into Google), then returns a screenshot for AI vision analysis, then falls back to asking the user. Returns detection info and solving status.',
     inputSchema: {
       type: 'object',
       properties: {

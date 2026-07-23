@@ -27,7 +27,7 @@ if len(GEN_URLS) < 5:
     fail('could not parse PAGES registry from generate-docs.py (found %d urls)' % len(GEN_URLS))
 
 # ---- 1. tool count ----------------------------------------------------------
-TOOLCOUNT = len(re.findall(r"name: 'browser_", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
+TOOLCOUNT = len(re.findall(r"""name: ['\"]browser_""", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
 claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \
               glob.glob(os.path.join(ROOT, 'content', '*.md')) + [os.path.join(ROOT, 'README.md')]
 claim_files = [f for f in claim_files if os.path.isfile(f)]
@@ -39,7 +39,7 @@ for f in claim_files:
 # ---- 1b. tools reference page lists exactly the tools.js tool set ----------
 tools_page = os.path.join(DOCS, 'docs', 'tools', 'index.html')
 if os.path.isfile(tools_page):
-    defined = set(re.findall(r"name: '(browser_[a-z_]+)'", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
+    defined = set(re.findall(r"""name: ['\"](browser_[a-z_]+)['\"]""", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
     documented = set(re.findall(r'\b(browser_[a-z_]+)\b', open(tools_page, encoding='utf-8').read()))
     for miss in sorted(defined - documented):
         fail('tools page does not document %s (defined in tools.js)' % miss)

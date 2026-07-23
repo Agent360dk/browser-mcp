@@ -13,23 +13,33 @@ Baseline captured 2026-07-21:
   registry v1.23.0 · npm 1.23.0 · 34 tools · mcpservers.org live · punkpeye PR #10565 open
   browsermcp.io (the dead twin) last commit 2025-04-24 — if it moves, our compare pages lie.
 """
-import json, os, re, sys, urllib.request, urllib.error
+import json, os, re, sys, time, urllib.request, urllib.error
 
 BASE_HEADERS = {"User-Agent": "browsermcp-dominans-audit"}
 GH_TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 
-def fetch(url, as_json=False, timeout=25):
+def fetch(url, as_json=False, timeout=25, retries=2):
+    # Retries on transient failures (timeout, connection reset, 429/5xx) so one flaky
+    # response from a third-party listing site does not become a false 🔴 regression.
     headers = dict(BASE_HEADERS)
     if GH_TOKEN and "api.github.com" in url:
         headers["Authorization"] = "Bearer " + GH_TOKEN
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as r:
-            body = r.read().decode("utf-8", "replace")
-            return (json.loads(body) if as_json else body), r.status
-    except urllib.error.HTTPError as e:
-        return None, e.code
-    except Exception as e:
-        return None, "ERR:%s" % e
+    last = (None, None)
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as r:
+                body = r.read().decode("utf-8", "replace")
+                return (json.loads(body) if as_json else body), r.status
+        except urllib.error.HTTPError as e:
+            last = (None, e.code)
+            if e.code in (429, 500, 502, 503, 504) and attempt < retries:
+                time.sleep(2 * (attempt + 1)); continue
+            return None, e.code
+        except Exception as e:
+            last = (None, "ERR:%s" % e)
+            if attempt < retries:
+                time.sleep(2 * (attempt + 1)); continue
+    return last
 
 red, green, rows = [], [], []
 
@@ -50,7 +60,7 @@ if reg and reg.get("servers"):
     reg_desc = srv.get("description", "")
 
 tjs, _ = fetch("https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/mcp-server/tools.js")
-tools = len(re.findall(r"name: 'browser_", tjs)) if tjs else "?"
+tools = len(re.findall(r"""name: ['\"]browser_""", tjs)) if tjs else "?"
 
 if npm_latest != "?" and reg_ver not in ("?", npm_latest):
     red.append("DRIFT: MCP-registry viser %s, npm er %s (registry hang 3 mdr sidst — republish)" % (reg_ver, npm_latest))
@@ -68,7 +78,7 @@ else:
 def listed(url, needles=("agent360", "browser-mcp")):
     body, code = fetch(url)
     if not body:
-        return False, "HTTP %s" % code
+        return None, "HTTP %s" % code  # couldn't fetch after retries — UNKNOWN, not a delisting
     low = body.lower()
     ok = any(n in low for n in needles) and "404:" not in body and "not found or removed" not in low
     return ok, "HTTP %s" % code
@@ -79,7 +89,10 @@ for name, url, was_live in [
     ("Smithery",       "https://smithery.ai/server/@Agent360dk/browser-mcp",     False),
 ]:
     is_listed, detail = listed(url)
-    if was_live and not is_listed:
+    if is_listed is None:
+        # transient fetch failure — report but do NOT escalate to a 🔴 regression
+        rows.append((name, "⚠", detail + " — kunne ikke tjekke (transient)"))
+    elif was_live and not is_listed:
         red.append("%s-listing VÆK (var live 21/7) — regression" % name)
         rows.append((name, "🔴", detail + " — regression"))
     elif not was_live and is_listed:
