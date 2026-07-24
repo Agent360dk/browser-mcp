@@ -399,29 +399,62 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   }
 });
 
+// Physical-key `code` for a character, US layout. We used to build this as
+// `Key${char.toUpperCase()}`, which is only correct for letters: "1" became "Key1",
+// "@" became "Key@", " " became "Key ". Frameworks that branch on event.code —
+// masked inputs, shortcut handlers, several React form libraries — see an unknown
+// code and drop the keystroke, so typing an email or URL misbehaved on strict SPAs.
+// Shifted symbols report the code of the physical key they sit on ("@" is Digit2).
+const CDP_CHAR_CODES = {
+  ' ': 'Space', '\n': 'Enter', '\t': 'Tab',
+  '-': 'Minus', '_': 'Minus', '=': 'Equal', '+': 'Equal',
+  '[': 'BracketLeft', '{': 'BracketLeft', ']': 'BracketRight', '}': 'BracketRight',
+  '\\': 'Backslash', '|': 'Backslash', ';': 'Semicolon', ':': 'Semicolon',
+  "'": 'Quote', '"': 'Quote', ',': 'Comma', '<': 'Comma',
+  '.': 'Period', '>': 'Period', '/': 'Slash', '?': 'Slash',
+  '`': 'Backquote', '~': 'Backquote',
+  '!': 'Digit1', '@': 'Digit2', '#': 'Digit3', '$': 'Digit4', '%': 'Digit5',
+  '^': 'Digit6', '&': 'Digit7', '*': 'Digit8', '(': 'Digit9', ')': 'Digit0',
+};
+function cdpCodeForChar(ch) {
+  if (ch >= 'a' && ch <= 'z') return `Key${ch.toUpperCase()}`;
+  if (ch >= 'A' && ch <= 'Z') return `Key${ch}`;
+  if (ch >= '0' && ch <= '9') return `Digit${ch}`;
+  // Unknown (accented letters, CJK, emoji): omit it. CDP accepts a missing code,
+  // and an omitted code is honest where a fabricated one is actively misleading.
+  return CDP_CHAR_CODES[ch] || '';
+}
+
+// Types text as individual key events. Assumes the debugger is already attached —
+// debuggerType() is the public wrapper that manages attach/detach.
+async function typeCharsAttached(tabId, text) {
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const code = cdpCodeForChar(char);
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      text: char,
+      key: char,
+      ...(code ? { code } : {}),
+      unmodifiedText: char,
+    });
+    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: char,
+      ...(code ? { code } : {}),
+    });
+    // Human-like typing: random 30-120ms, occasional longer pause
+    const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
+      ? 150 + Math.random() * 200  // thinking pause every ~10 chars
+      : 30 + Math.random() * 90;   // normal keystroke
+    await new Promise(r => setTimeout(r, pause));
+  }
+}
+
 async function debuggerType(tabId, text) {
   await debuggerAttach(tabId);
   try {
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-        type: 'keyDown',
-        text: char,
-        key: char,
-        code: `Key${char.toUpperCase()}`,
-        unmodifiedText: char,
-      });
-      await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-        type: 'keyUp',
-        key: char,
-        code: `Key${char.toUpperCase()}`,
-      });
-      // Human-like typing: random 30-120ms, occasional longer pause
-      const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
-        ? 150 + Math.random() * 200  // thinking pause every ~10 chars
-        : 30 + Math.random() * 90;   // normal keystroke
-      await new Promise(r => setTimeout(r, pause));
-    }
+    await typeCharsAttached(tabId, text);
   } finally {
     await debuggerDetach(tabId);
   }
@@ -539,6 +572,32 @@ async function debuggerFocus(tabId, selector) {
   }
 }
 
+// Runtime.evaluate that leaves attach state alone. debuggerEval() detaches in its
+// finally, which would pull the debugger out from under a fill that is mid-flight.
+async function evalAttached(tabId, expression) {
+  const result = await cdpSend(tabId, 'Runtime.evaluate', { expression, returnByValue: true });
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.text || 'Script execution failed');
+  }
+  return result.result?.value;
+}
+
+// Select-all + Backspace. Assumes the debugger is already attached.
+async function clearFieldAttached(tabId) {
+  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+    type: 'keyDown', key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS,
+  });
+  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+    type: 'keyUp', key: 'a', code: 'KeyA',
+  });
+  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+    type: 'keyDown', key: 'Backspace', code: 'Backspace',
+  });
+  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
+    type: 'keyUp', key: 'Backspace', code: 'Backspace',
+  });
+}
+
 async function debuggerFill(tabId, selector, value) {
   // Check if element is contenteditable (rich text editors: LinkedIn, Slack)
   const isContentEditable = await debuggerEval(tabId, `
@@ -566,27 +625,39 @@ async function debuggerFill(tabId, selector, value) {
     return;
   }
 
-  // Standard input/textarea — focus, clear, type
+  // Standard input/textarea — focus, clear, fill
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    // Select-all (Cmd+A on macOS, Ctrl+A elsewhere), then Backspace to clear
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS,
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'a', code: 'KeyA',
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'Backspace', code: 'Backspace',
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'Backspace', code: 'Backspace',
-    });
+    await clearFieldAttached(tabId);
+
+    // Fast path: one trusted InputEvent instead of N key events. This is the same
+    // primitive set_combobox and set_date already rely on, it avoids per-key `code`
+    // mapping entirely, and it turns a 40-character value from ~3 seconds of
+    // keystrokes into a single call — which also shrinks the window in which the
+    // debugger can detach mid-fill.
+    await cdpSend(tabId, 'Input.insertText', { text: value });
+
+    // Verify something actually landed. Masked inputs, maxlength enforcement and
+    // autocompletes that filter per keydown can swallow an inserted string, and
+    // until now that failed silently: the caller got "ok" and the field stayed
+    // empty. Only an EMPTY field triggers the fallback — a field that transformed
+    // the text (phone/date masks reformatting it) did accept the input, and
+    // retyping it per character would produce the same transform for no gain.
+    const landed = await evalAttached(tabId, `
+      (function() {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return null;
+        return ('value' in el) ? el.value : el.textContent;
+      })()
+    `);
+    if (!landed) {
+      await clearFieldAttached(tabId);
+      await typeCharsAttached(tabId, value);
+    }
   } finally {
     await debuggerDetach(tabId);
   }
-  await debuggerType(tabId, value);
 }
 
 async function debuggerEval(tabId, expression) {
