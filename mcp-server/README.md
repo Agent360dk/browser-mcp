@@ -74,6 +74,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome | Headless (new session) | Your real Chrome |
+| **Maintained** | Actively — v1.25.0 this week | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Already authenticated | Must log in every time | Already authenticated |
 | **Multi-session** | 10 concurrent sessions with color-coded tab groups | Single session | Single session |
 | **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
@@ -82,7 +83,9 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
 | **CSP-strict sites** | Chrome Debugger API throughout | Works (headless) | Limited |
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
-| **Install** | `npx @agent360/browser-mcp install` | `npx @anthropic-ai/mcp-playwright` | Manual clone |
+| **Install** | `npx @agent360/browser-mcp install` | `npx @playwright/mcp` | Manual clone |
+
+> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
 ## 34 Tools
 

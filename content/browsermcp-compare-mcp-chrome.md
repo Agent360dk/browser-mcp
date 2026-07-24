@@ -1,4 +1,4 @@
-// KILDE: alle tal selv-verificeret via GitHub API + npm downloads API 2026-07-22 (IKKE fra subagent): mcp-chrome 12.187★/223 åbne issues/sidste push 2026-01-06 · mcp-chrome-bridge 1.037 dl/uge · vores 204 dl/uge · 23★. Bevidst fair: mcp-chrome er større end os og det siges rent ud. Ingen feature-påstande om deres projekt jeg ikke har verificeret.
+// KILDE: alle tal selv-verificeret via GitHub API + npm downloads API 2026-07-22 (IKKE fra subagent): mcp-chrome 12.197★/223 åbne issues/sidste push 2026-01-06 · mcp-chrome-bridge 1.037 dl/uge · vores 204 dl/uge · 23★. Bevidst fair: mcp-chrome er større end os og det siges rent ud. Ingen feature-påstande om deres projekt jeg ikke har verificeret.
 
 # Browser MCP vs mcp-chrome: two extensions, one difference that matters
 
@@ -6,18 +6,18 @@
 
 ---
 
-**Short answer:** these two are the closest direct equivalents in the MCP world — both are a Chrome extension plus a local MCP server that let an AI agent drive your **real, already-logged-in browser** rather than a headless one. [mcp-chrome](https://github.com/hangwin/mcp-chrome) is by far the bigger project (12,187 stars to our 23). The difference that decides it for most people is activity: mcp-chrome's last commit was **6 January 2026** — a little over six months ago — while this project ships regularly. If you want the larger community, take mcp-chrome. If you want something being maintained right now with English-language support, that is the gap we fill.
+**Short answer:** these two are the closest direct equivalents in the MCP world — both are a Chrome extension plus a local MCP server that let an AI agent drive your **real, already-logged-in browser** rather than a headless one. [mcp-chrome](https://github.com/hangwin/mcp-chrome) is by far the bigger project (12,197 stars to our 24). The difference that decides it for most people is activity: mcp-chrome's last commit was **6 January 2026** — a little over six months ago — while this project ships regularly. If you want the larger community, take mcp-chrome. If you want something being maintained right now with English-language support, that is the gap we fill.
 
 ## The numbers, dated
 
-All figures pulled from the GitHub and npm APIs on **2026-07-22**. They move; the dates are what matter.
+All figures pulled from the GitHub and npm APIs on **2026-07-25**. They move; the dates are what matter.
 
 | | mcp-chrome | Browser MCP by Agent360 |
 |---|---|---|
-| GitHub stars | **12,187** | 23 |
-| Last commit | **2026-01-06** (~6.5 months ago) | 2026-07-22 (today) |
+| GitHub stars | **12,197** | 24 |
+| Last commit | **2026-01-06** (~6.5 months ago) | 2026-07-25 (today) |
 | Open issues | 223 | 3 |
-| npm downloads/week | **1,037** (`mcp-chrome-bridge`) | 204 (`@agent360/browser-mcp`) |
+| npm downloads/week | **1,037** (`mcp-chrome-bridge`) | 387 (`@agent360/browser-mcp`) |
 | Primary support language | Chinese | English |
 | License | MIT | MIT |
 | Runs locally | Yes | Yes |
@@ -36,7 +36,7 @@ One practical note that has nothing to do with quality: mcp-chrome's issue track
 
 We would rather you choose correctly than choose us:
 
-- **You want the larger, more proven user base.** 12,187 stars and 1,037 weekly downloads represent a lot more real-world usage than we have.
+- **You want the larger, more proven user base.** 12,197 stars and 1,037 weekly downloads represent a lot more real-world usage than we have.
 - **You already run it and it works.** A quiet repo is not a broken one. If mcp-chrome does what you need today, switching costs you time for no gain.
 - **You read Chinese** — in which case the support-language gap disappears entirely.
 
