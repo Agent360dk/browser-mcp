@@ -1,15 +1,18 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Agent360dk/browser-mcp",
-  "description": "Control your real Chrome from Claude Code. 34 tools including date pickers, autocomplete combobox, overlay dismissal, file upload, CAPTCHA solving, multi-session, and human-in-the-loop. Uses Chrome Debugger API for React/Angular compatibility.",
+  "description": "Give AI agents control of your real, logged-in Chrome. Chrome extension + MCP server, 34 tools.",
+  "title": "Agent360 Browser MCP",
   "repository": {
     "url": "https://github.com/Agent360dk/browser-mcp",
     "source": "github"
   },
   "version": "1.24.0",
+  "websiteUrl": "https://browsermcp.dev",
   "packages": [
     {
       "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@agent360/browser-mcp",
       "version": "1.24.0",
       "transport": {

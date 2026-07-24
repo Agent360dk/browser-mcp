@@ -8,6 +8,7 @@
 #   2. Sync          → extension/  →  mcp-server/extension/  (the npm-bundled copy)
 #   3. README        → bump the download-zip link to the new version
 #   4. npm           → npm publish (server + bundled extension)
+#   4b. MCP registry → mcp-publisher publish (what MCP clients/directories discover)
 #   5. Chrome Web Store → scripts/publish-cws.sh (review queue, 1-3 days)
 #   6. GitHub        → commit, tag vX.Y.Z, push, gh release create + zip asset
 #   7. Local install → refresh ~/.browser-mcp/extension/ (then reload chrome://extensions)
@@ -21,6 +22,7 @@
 # Flags:
 #   --ship            Actually do it (default is dry-run)
 #   --skip-npm        Don't publish to npm (e.g. token expired — fix with `npm login`)
+#   --skip-registry   Don't publish to the MCP registry (needs mcp-publisher + gh read:org)
 #   --skip-cws        Don't publish to Chrome Web Store
 #   --skip-github     Don't commit/tag/push/release on GitHub
 #   --skip-local      Don't refresh ~/.browser-mcp/extension/
@@ -49,12 +51,13 @@ step() { echo; echo "${B}━━ $* ━━${Z}"; }
 # ── arg parse ────────────────────────────────────────────────────────────────
 NEW_VERSION=""
 SHIP=0
-SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0
+SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
   case "$arg" in
     --ship)        SHIP=1 ;;
     --skip-npm)    SKIP_NPM=1 ;;
+    --skip-registry) SKIP_REGISTRY=1 ;;
     --skip-cws)    SKIP_CWS=1 ;;
     --skip-github) SKIP_GITHUB=1 ;;
     --skip-local)  SKIP_LOCAL=1 ;;
@@ -173,6 +176,15 @@ if [[ "$SKIP_GITHUB" == 0 ]]; then
   elif ! gh auth status >/dev/null 2>&1; then gate "gh not authenticated — run 'gh auth login', or --skip-github"
   else ok "gh authenticated"; fi
 fi
+if [[ "$SKIP_REGISTRY" == 0 ]]; then
+  # The registry rejects description > 100 chars with a 422. Catch it HERE — failing at the
+  # registry step means npm is already published and the release is half-done, which is how
+  # server.json sat un-publishable while the registry silently fell behind.
+  SJ_DESC_LEN="$(python3 -c "import json;print(len(json.load(open('mcp-server/server.json')).get('description','')))" 2>/dev/null || echo 0)"
+  if [[ "$SJ_DESC_LEN" == 0 ]]; then gate "mcp-server/server.json unreadable or has no description"
+  elif (( SJ_DESC_LEN > 100 )); then gate "server.json description is ${SJ_DESC_LEN} chars — registry rejects >100; shorten it, or --skip-registry"
+  else ok "server.json description ${SJ_DESC_LEN}/100 chars"; fi
+fi
 
 # tool-count: single source of truth = tools.js (don't hardcode — derive it)
 TOOL_COUNT="$(grep -oE "name: ['\"]browser_[a-z_]+" mcp-server/tools.js | sort -u | wc -l | tr -d ' ')"
@@ -247,6 +259,52 @@ else
     # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
     # not the secret) and is expanded by the inner bash -c from the exported env.
     run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"
+  fi
+fi
+
+# ── 2b. MCP registry ──────────────────────────────────────────────────────────
+# The MCP registry is what clients and directories read to discover the server. It was NOT
+# wired into this script, so every release left it behind — it sat 3 months on v1.16.1 once,
+# and v1.24.0 shipped to npm while the registry still advertised v1.23.0. Runs after npm
+# because the registry entry points at the published npm package.
+step "2b. MCP registry publish"
+if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
+elif ! command -v mcp-publisher >/dev/null 2>&1; then
+  warn "mcp-publisher not installed (brew install mcp-publisher) — registry NOT updated"
+elif ! command -v gh >/dev/null 2>&1; then
+  warn "gh not installed — cannot mint a registry token; registry NOT updated"
+else
+  REG_LIVE="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
+    | python3 -c "import json,sys;print(next((e['server']['version'] for e in json.load(sys.stdin).get('servers',[]) if e.get('_meta',{}).get('io.modelcontextprotocol.registry/official',{}).get('isLatest')),''))" 2>/dev/null || true)"
+  if [[ "$REG_LIVE" == "$NEW_VERSION" ]]; then
+    warn "registry already at v$NEW_VERSION — skipping (resumable re-run)"
+  elif [[ "$SHIP" != 1 ]]; then
+    say "would: gh auth token → exchange for registry JWT → mcp-publisher publish mcp-server/server.json"
+    say "       (registry currently advertises '${REG_LIVE:-unknown}')"
+  else
+    say "registry advertises '${REG_LIVE:-unknown}' → publishing $NEW_VERSION"
+    # The registry JWT lives ~5 min, so mint it immediately before publishing.
+    # `gh auth token` carries read:org, which the exchange requires — a mcp-publisher
+    # device-flow login does NOT get an effective read:org and yields a token scoped to
+    # io.github.<user>/* only, which cannot publish under the org namespace.
+    GH_TOK="$(gh auth token 2>/dev/null || true)"
+    [[ -n "$GH_TOK" ]] || die "gh auth token empty — run 'gh auth login' (scope must include read:org)"
+    REG_TOK="$(curl -s -X POST https://registry.modelcontextprotocol.io/v0/auth/github-at \
+      -H 'Content-Type: application/json' -d "{\"github_token\":\"$GH_TOK\"}" 2>/dev/null \
+      | python3 -c "import json,sys;print(json.load(sys.stdin).get('registry_token',''))" 2>/dev/null || true)"
+    [[ -n "$REG_TOK" ]] || die "registry token exchange failed — the gh token needs read:org AND you must be an active Owner of the org"
+    mkdir -p "$HOME/.config/mcp-publisher"
+    REG_TOK="$REG_TOK" python3 - <<'PY'
+import json, os
+p = os.path.expanduser("~/.config/mcp-publisher/token.json")
+d = json.load(open(p)) if os.path.exists(p) else {"method": "github", "registry": "https://registry.modelcontextprotocol.io"}
+d["token"] = os.environ["REG_TOK"]
+json.dump(d, open(p, "w"))
+os.chmod(p, 0o600)
+PY
+    ( cd "$REPO_ROOT/mcp-server" && mcp-publisher publish server.json ) \
+      || die "registry publish failed — see the error above (description must be <=100 chars)"
+    ok "registry now advertises v$NEW_VERSION"
   fi
 fi
 
