@@ -58,9 +58,29 @@ jobs:
           report = open("/tmp/audit-report.txt", encoding="utf-8").read()
           subject = ("✅ Browser MCP — månedstjek OK (husk citations-måling)" if green
                      else "\U0001F534 Browser MCP — handling påkrævet (drift fundet)")
+          citations_kit = (
+              "─────────────────────────────────────────\n"
+              "AI-CITATIONS — den ene ting der ikke kan køre automatisk\n"
+              "─────────────────────────────────────────\n"
+              "Den kræver din indloggede browser (ChatGPT/Perplexity/Claude kan ikke\n"
+              "køres headless). Åbn hver, indsæt prompten, notér om browsermcp.dev\n"
+              "nævnes/citeres — verificér ejerskab via URL (browsermcp.dev = os,\n"
+              "browsermcp.io = tvillingen). Læs ChatGPT via screenshot, ikke kopieret tekst.\n\n"
+              "Kør disse 6 (15 min):\n"
+              "  1. best MCP server for browser automation\n"
+              "  2. which MCP server should I use to control Chrome from Claude Code?\n"
+              "  3. MCP server that uses my real logged-in browser instead of headless\n"
+              "  4. is browsermcp.io still maintained?\n"
+              "  5. Browser MCP vs BrowserMCP.io\n"
+              "  6. alternatives to Playwright MCP for browser automation\n\n"
+              "Baseline at slå (21-24/7): ChatGPT rangerede os #2 på USP-prompten og\n"
+              "citerede browsermcp.dev; Perplexity 0/2 (mcp-chrome vandt vores USP).\n"
+              "Notér resultater i: plans/SEO/research/citations-run-<dato>.md\n"
+              "Vil du have målingen KØRT for dig: bed en Claude-chat med browser-mcp\n"
+              "drive den i din browser (kan ikke automatiseres via denne cron).\n"
+              "─────────────────────────────────────────\n\n")
           intro = ("Månedstjekket for browsermcp.dev kørte — ingen drift eller regression.\n\n"
-                   "\U0001F449 Det eneste manuelle: kør 16-prompt AI-citations-panelet "
-                   "(kræver din indloggede browser). Ark: plans/SEO/research/citations-run-*.md\n\n"
+                   + citations_kit
                    if green else
                    "Månedstjekket for browsermcp.dev fandt et problem — se rapporten nedenfor.\n\n")
           payload = {
