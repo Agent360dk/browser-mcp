@@ -24,6 +24,12 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    # If these secrets are set, the monthly report is emailed and no issue is created.
+    # If they are not, the workflow falls back to posting the issue (see steps below),
+    # so it keeps working whether or not SendGrid is wired up yet.
+    env:
+      SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+      SENDGRID_FROM_EMAIL: ${{ secrets.SENDGRID_FROM_EMAIL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,8 +43,46 @@ jobs:
           echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           set -e
 
-      - name: Post monthly report as an issue
-        if: always()
+      # Preferred delivery: email via SendGrid. Runs only when the key is configured,
+      # so the report reaches a human every month (green nudge or red alarm) without
+      # creating a GitHub issue to close.
+      - name: Email monthly report (SendGrid)
+        if: always() && env.SENDGRID_API_KEY != ''
+        env:
+          AUDIT_STATUS: ${{ steps.audit.outputs.status }}
+          MAIL_TO: gustav@agent360.dk
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request
+          green = os.environ.get("AUDIT_STATUS", "0") == "0"
+          report = open("/tmp/audit-report.txt", encoding="utf-8").read()
+          subject = ("✅ Browser MCP — månedstjek OK (husk citations-måling)" if green
+                     else "\U0001F534 Browser MCP — handling påkrævet (drift fundet)")
+          intro = ("Månedstjekket for browsermcp.dev kørte — ingen drift eller regression.\n\n"
+                   "\U0001F449 Det eneste manuelle: kør 16-prompt AI-citations-panelet "
+                   "(kræver din indloggede browser). Ark: plans/SEO/research/citations-run-*.md\n\n"
+                   if green else
+                   "Månedstjekket for browsermcp.dev fandt et problem — se rapporten nedenfor.\n\n")
+          payload = {
+              "personalizations": [{"to": [{"email": os.environ["MAIL_TO"]}]}],
+              "from": {"email": os.environ["SENDGRID_FROM_EMAIL"]},
+              "subject": subject,
+              "content": [{"type": "text/plain", "value": intro + report}],
+          }
+          req = urllib.request.Request(
+              "https://api.sendgrid.com/v3/mail/send",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Authorization": "Bearer " + os.environ["SENDGRID_API_KEY"],
+                       "Content-Type": "application/json"},
+              method="POST")
+          with urllib.request.urlopen(req) as r:
+              print("SendGrid accepted:", r.status)
+          PY
+
+      # Fallback delivery: post an issue, but ONLY when SendGrid is not configured,
+      # so we never double-notify once email is wired up.
+      - name: Post monthly report as an issue (fallback)
+        if: always() && env.SENDGRID_API_KEY == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -61,5 +105,5 @@ jobs:
       - name: Fail the run if the audit found a 🔴
         if: steps.audit.outputs.status != '0'
         run: |
-          echo "::error::dominans-audit reported a 🔴 finding — see the issue for details"
+          echo "::error::dominans-audit reported a 🔴 finding — see the report (email or issue)"
           exit 1
