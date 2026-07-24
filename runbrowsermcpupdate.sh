@@ -410,6 +410,12 @@ PY
     while IFS= read -r loaded; do
       [[ -z "$loaded" || ! -d "$loaded" ]] && continue
       [[ "$loaded" == "$HOME/.browser-mcp/extension" ]] && continue
+      # Never overwrite a rollback copy. Chrome can still have an old backup folder
+      # registered as unpacked; refreshing it would destroy the very version you
+      # would roll back TO.
+      case "$loaded" in
+        *.bak*|*backup*|*-old|*.old) warn "skipping backup copy: $loaded"; continue ;;
+      esac
       warn "Chrome also loads an unpacked copy here — refreshing it too:"
       say  "  $loaded"
       run rsync -a --delete --exclude='.DS_Store' extension/ "$loaded/"
