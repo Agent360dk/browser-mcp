@@ -231,6 +231,16 @@ for f in $TOOLCOUNT_FILES; do
   run perl -0pi -e "s/\b[0-9]+ browser tools\b/${TOOL_COUNT} browser tools/g; s/\b[0-9]+ tools\b/${TOOL_COUNT} tools/g" "$f"
 done
 
+# 1d-2. Homepage JSON-LD softwareVersion. This is the machine-readable version claim that
+#       search engines and AI crawlers read — it is NOT covered by the tool-count sweep above,
+#       so it silently advertised 1.23.0 while 1.24.0 was live on every other channel.
+say "docs/index.html: JSON-LD softwareVersion → ${NEW_VERSION}"
+run perl -0pi -e "s/(\"softwareVersion\":\s*\")[0-9]+\.[0-9]+\.[0-9]+(\")/\${1}${NEW_VERSION}\${2}/g" docs/index.html
+if [[ "$SHIP" == 1 ]]; then
+  grep -q "\"softwareVersion\": \"${NEW_VERSION}\"" docs/index.html \
+    || die "docs/index.html softwareVersion did not update to ${NEW_VERSION} — JSON-LD format changed; fix the regex"
+fi
+
 # 1e. README download-zip link → new version, then verify the replace actually hit.
 #     Must hit BOTH READMEs — mcp-server/README.md is the npm landing page, and it was
 #     cp'd from README.md above BEFORE this bump, so it needs the bump too or it ships stale.

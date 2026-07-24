@@ -22,8 +22,8 @@
 | Parallel instances | Yes | One (your browser; multi-tab sessions supported) |
 | Tools | 69 documented (incl. opt-in vision/pdf/devtools) | 34 |
 | Install | `npx @playwright/mcp` | `npx @agent360/browser-mcp install` + Chrome extension |
-| Scale signal | 6,361,565 npm dl/week (2026-07-21) | 181 npm dl/week (2026-07-21) |
-| Maintenance | Last commit 2026-07-15 · v0.0.78 2026-07-09 | Last commit 2026-07-21 · v1.23.0 2026-06-09 |
+| Scale signal | 6,369,865 npm dl/week (2026-07-24) | 387 npm dl/week (2026-07-24) |
+| Maintenance | Last commit 2026-07-24 · v0.0.78 2026-07-09 | Last commit 2026-07-24 · v1.24.0 2026-07-24 |
 | License · cost | Apache-2.0 · free, local | MIT · free, local |
 
 *(We publish the download gap on purpose. Playwright MCP is the bigger project by three orders of magnitude; this page is about when that is not the deciding axis.)*

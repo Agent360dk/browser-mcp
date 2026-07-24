@@ -1,4 +1,4 @@
-// KILDE: egne dogfooding-fund — reliability-audit 2026-07-02 (FIX-1/2/4/5/13/17, staged til næste release), controlled-form-audit 2026-07-08 (R1-R4, rapport-fase), debugger-detach-quirk (kendt siden maj, memory + NOTES 2026-06-29), "extension not connected"-recovery = live-oplevet 2026-07-21 i denne chat. Gustav-godkendt at buggene offentliggøres (21/7). Versions-status: alt beskrevet gælder v1.23.0.
+// KILDE: egne dogfooding-fund — reliability-audit 2026-07-02 (FIX-1/2/4/5/13/17, staged til næste release), controlled-form-audit 2026-07-08 (R1-R4, rapport-fase), debugger-detach-quirk (kendt siden maj, memory + NOTES 2026-06-29), "extension not connected"-recovery = live-oplevet 2026-07-21 i denne chat. Gustav-godkendt at buggene offentliggøres (21/7). Versions-status: opdateret til v1.24.0 (24/7) — macOS Cmd+A-clear FIKSET, reliability-batch SHIPPET; per-tegn-vs-Input.insertText stadig åben (review-team verificerede at den aldrig blev implementeret trods commit-påstand).
 
 # Browser MCP troubleshooting: the real bugs we found dogfooding it
 
@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** the four issues you are most likely to hit in v1.23.0, with the fastest fix for each: **(1)** "Chrome extension not connected" → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → clear the field first (known select-all bug); **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below — we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
+**Short answer:** the four issues you are most likely to hit, with the fastest fix for each: **(1)** "Chrome extension not connected" → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.24.0** — upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below — we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
 
 ## "Chrome extension not connected after 5 retries"
 
@@ -25,15 +25,17 @@
 
 **Cause:** a Chrome Debugger API attach/detach lifecycle issue in the extension — the attach state can drop after a few debugger-driven actions on one tab. This is our oldest known quirk and the top item on the reliability roadmap.
 
-**Workarounds today:** batch actions per tab and continue in a new tab when actions stop landing; `navigate`/`screenshot`/`get_page_content` are unaffected. **Fix status:** a reliability batch (self-recovering attach state, ghost-attach retry, several session-stability fixes) passed review on 2026-07-02 and is staged for the next release after v1.23.0.
+**Workarounds today:** batch actions per tab and continue in a new tab when actions stop landing; `navigate`/`screenshot`/`get_page_content` are unaffected. **Fix status:** a reliability batch (self-recovering attach state, ghost-attach retry, several session-stability fixes) **shipped in v1.24.0**. It reduces the failure rate but we are not claiming the underlying attach/detach lifecycle is solved — if you still hit it on v1.24.0, please open an issue with the tab and action sequence.
 
 ## React/Angular forms: filled text appends instead of replacing (macOS)
 
 **Symptom:** on framework-controlled inputs, `browser_fill` on a non-empty field produces old-text + new-text.
 
-**Cause (we published the audit internally on 2026-07-08 and the diagnosis is embarrassingly specific):** the field-clear step sends select-all as **Ctrl+A — but on macOS select-all is Cmd+A**, so nothing gets selected and the new text lands after the old. A second, related gap: `fill` types per-character instead of using the `Input.insertText` primitive that our own `set_date` and `set_combobox` tools already use, which strict frameworks handle better.
+**Cause (we published the audit internally on 2026-07-08 and the diagnosis is embarrassingly specific):** the field-clear step sent select-all as **Ctrl+A — but on macOS select-all is Cmd+A**, so nothing got selected and the new text landed after the old. A second, related gap: `fill` types per-character instead of using the `Input.insertText` primitive that our own `set_date` and `set_combobox` tools already use, which strict frameworks handle better.
 
-**Workarounds today:** for comboboxes/autocompletes use `browser_set_combobox` (unaffected); otherwise clear the field explicitly before filling. **Fix status:** root-caused with file-and-line precision; the fill-rewrite ("make `fill` do what `set_combobox` already does") is queued behind the reliability batch above.
+**Fix status:** the Cmd+A half is **fixed in v1.24.0** — the clear step now picks the modifier by platform, so `fill` replaces instead of appending on macOS. The second half is **still open**: `fill` continues to type per-character rather than using `Input.insertText`, so a strict framework can still mis-handle the input. An earlier release note claimed that rewrite had shipped; it had not, and we would rather correct the record than leave it standing.
+
+**Workarounds today (for the remaining per-character gap):** for comboboxes/autocompletes use `browser_set_combobox` (unaffected, already uses `Input.insertText`); for stubborn controlled inputs, fill then verify the field value before continuing.
 
 ## `execute_script` fails on strict-CSP sites
 

@@ -12,28 +12,28 @@ We are **Browser MCP by Agent360** (`@agent360/browser-mcp`, [browsermcp.dev](ht
 
 | | **browsermcp.io** (`BrowserMCP/mcp`) | **Browser MCP by Agent360** (`@agent360/browser-mcp`) |
 |---|---|---|
-| GitHub stars | **6,824** | 21 |
+| GitHub stars | **6,868** | 24 |
 | Repo created | 2025-03-28 | 2026-03-29 |
-| **Last commit pushed** | **2025-04-24** | **2026-07-15 (today)** |
-| Published GitHub releases | 0 | 2 (latest `v1.23.0`, 2026-06-09) |
-| Latest npm version | `0.1.3` — published 2025-04-11, unchanged since | `1.23.0` — published 2026-06-09 |
-| npm downloads, last 7 days | 9,873 (`@browsermcp/mcp`) | 191 (`@agent360/browser-mcp`) |
+| **Last commit pushed** | **2025-04-24** | **2026-07-24 (today)** |
+| Published GitHub releases | 0 | 3 (latest `v1.24.0`, 2026-07-24) |
+| Latest npm version | `0.1.3` — published 2025-04-11, unchanged since | `1.24.0` — published 2026-07-24 |
+| npm downloads, last 7 days | 10,326 (`@browsermcp/mcp`) | 387 (`@agent360/browser-mcp`) |
 | Chrome Web Store users | **100,000** | 186 |
 | Chrome Web Store rating | 4.8 / 5 | 0 / 5 (no ratings yet) |
-| Open GitHub issues | 142 | 2 |
+| Open GitHub issues | 141 | 4 |
 | License | Apache-2.0 | MIT |
 | Tools exposed | Not publicly documented (not audited here) | 34, auto-listed at [`/docs/tools`](/docs/tools) |
 | Install | `npx @browsermcp/mcp` (npm) or Chrome Web Store | `npx @agent360/browser-mcp install` or Chrome Web Store |
 
-*Every number above was pulled live on 2026-07-15 via the GitHub REST API, the public npm registry API, and the Chrome Web Store listing pages for both extensions (`bjfgambnhccakkhmkepdoekmckoijdlc` and `jdehgalffmffhfhmmhaokfbfnafnmgcl`). See "How we verified this" below.*
+*GitHub and npm figures above were re-pulled live on 2026-07-24; the Chrome Web Store figures (installs, rating) are from the 2026-07-15 pass and were not re-extracted. Originally pulled via the GitHub REST API, the public npm registry API, and the Chrome Web Store listing pages for both extensions (`bjfgambnhccakkhmkepdoekmckoijdlc` and `jdehgalffmffhfhmmhaokfbfnafnmgcl`). See "How we verified this" below.*
 
 ## The one thing that actually matters here: maintenance
 
 Scale metrics aside, there's one number in that table that decides whether a tool is safe to build a workflow on: **when did the code last change.**
 
-> **browsermcp.io's repository has not had a commit since April 24, 2025.** Not a bug fix, not a dependency bump, not a README typo fix — nothing, for over 14 months as of this writing. Its npm package has been on version `0.1.3` since April 11, 2025, and it has zero published GitHub releases. Its 142 open issues have had no code response in that window, because there hasn't been a commit to respond with.
+> **browsermcp.io's repository has not had a commit since April 24, 2025.** Not a bug fix, not a dependency bump, not a README typo fix — nothing, for over 14 months as of this writing. Its npm package has been on version `0.1.3` since April 11, 2025, and it has zero published GitHub releases. Its 141 open issues have had no code response in that window, because there hasn't been a commit to respond with.
 >
-> **Browser MCP by Agent360 pushed a commit today** (2026-07-15) and has shipped two GitHub releases in the last three months (`v1.16.1` in April, `v1.23.0` in June).
+> **Browser MCP by Agent360 pushed a commit today** (2026-07-24) and has shipped three GitHub releases (`v1.16.1` in April, `v1.23.0` in June, `v1.24.0` today).
 
 That's the entire pitch of this page, stated as plainly as we can: **actively maintained, this week — not since April 2025.** We're not implying anything about *why* browsermcp.io went quiet — we don't know who runs it or what happened, and we haven't tried to find out. We're only reporting what the commit history, release history, and npm registry actually show, with the dates attached, so you can weigh it yourself.
 
@@ -43,14 +43,14 @@ Being honest about the maintenance gap doesn't mean pretending the rest of the t
 
 - **100,000 Chrome Web Store users vs. our 186.** It has a real, large, established user base. We don't.
 - **4.8/5 stars.** People who installed it and stuck around like it.
-- **6,824 GitHub stars vs. our 21.** It's the far more visible project if you're browsing GitHub or an "awesome MCP servers" list.
+- **6,868 GitHub stars vs. our 24.** It's the far more visible project if you're browsing GitHub or an "awesome MCP servers" list.
 - **It has a real npm package and a one-click Chrome Web Store listing** — for the record, this corrects an old claim in our own README, which described it as "manual clone only." That hasn't been accurate for a while; it installs about as easily as ours does.
 
 If you install it and it does what you need, **there is no reason to switch.** A tool that already works for you, with 100k other people behind it, is a perfectly reasonable choice — we're not going to manufacture a reason to distrust something that's genuinely serving people well. The only thing we'd flag is: if you hit a bug, a Chrome API change, or a Manifest V3 deprecation that needs a code fix, there's no evidence anyone is currently shipping fixes for it.
 
 ## Where the maintenance gap shows up in practice
 
-Chrome ships changes to extension APIs, debugger protocols, and Manifest V3 behavior regularly. A project frozen since April 2025 will, over time, accumulate the kind of breakage that only a live commit history fixes — new Chrome versions changing debugger-attach behavior, CAPTCHA providers updating their challenge markup, sites adding new anti-automation detection. We can't tell you which of `browsermcp.io`'s 142 open issues are that kind of drift versus something else, because we haven't audited them — but the count is public and the "zero commits since April 2025" fact means none of them have been closed by a code change in that time.
+Chrome ships changes to extension APIs, debugger protocols, and Manifest V3 behavior regularly. A project frozen since April 2025 will, over time, accumulate the kind of breakage that only a live commit history fixes — new Chrome versions changing debugger-attach behavior, CAPTCHA providers updating their challenge markup, sites adding new anti-automation detection. We can't tell you which of `browsermcp.io`'s 141 open issues are that kind of drift versus something else, because we haven't audited them — but the count is public and the "zero commits since April 2025" fact means none of them have been closed by a code change in that time.
 
 ## Quick answers
 
@@ -61,7 +61,7 @@ No. Two separate teams, two separate GitHub orgs (`BrowserMCP` vs. `Agent360dk`)
 browsermcp.io, by a wide margin — 100,000 Chrome Web Store users vs. our 186, as of 2026-07-15.
 
 **Which one is actively maintained?**
-Browser MCP by Agent360. Last commit today (2026-07-15) vs. browsermcp.io's last commit on 2025-04-24.
+Browser MCP by Agent360. Last commit today (2026-07-24) vs. browsermcp.io's last commit on 2025-04-24.
 
 **Should I uninstall browsermcp.io and switch?**
 Not automatically. If it's working for your workflow, keep using it. Consider trying ours if you specifically need multi-session support (10 concurrent, color-coded tab groups), a human-in-the-loop tool for 2FA/CAPTCHA/credential prompts (`browser_ask_user`), or you want a project that's currently shipping fixes.

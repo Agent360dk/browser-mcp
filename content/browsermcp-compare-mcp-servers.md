@@ -12,11 +12,11 @@
 
 | Project | GitHub stars | Last commit | npm downloads/week | Latest release | Drives which browser? |
 |---|---|---|---|---|---|
-| [Playwright MCP](https://github.com/microsoft/playwright-mcp) | 35,325 | 2026-07-15 | 6,361,565 | 0.0.78 (2026-07-09) | Own managed profile (isolated or persistent); real Chrome only via opt-in `--extension` |
-| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 47,285 | 2026-07-20 | 2,721,730 | 1.6.0 (2026-07-14) | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
-| [Browser Use](https://github.com/browser-use/browser-use) | 105,795 | 2026-07-20 | n/a (Python/PyPI) | 0.13.6 (2026-07-17) | Own launched instance; real-profile reuse is an opt-in example |
-| [browsermcp.io](https://github.com/BrowserMCP/mcp) | 6,849 | **2025-04-24** | 10,393 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
-| [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 23 | 2026-07-21 | 181 | 1.23.0 (2026-06-09) | **Your real Chrome** (extension) — only mode |
+| [Playwright MCP](https://github.com/microsoft/playwright-mcp) | 35,458 | 2026-07-24 | 6,369,865 | 0.0.78 (2026-07-09) | Own managed profile (isolated or persistent); real Chrome only via opt-in `--extension` |
+| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 47,510 | 2026-07-24 | 1,758,530 | 1.6.0 (2026-07-14) | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
+| [Browser Use](https://github.com/browser-use/browser-use) | 106,521 | 2026-07-24 | n/a (Python/PyPI) | 0.13.6 (2026-07-17) | Own launched instance; real-profile reuse is an opt-in example |
+| [browsermcp.io](https://github.com/BrowserMCP/mcp) | 6,868 | **2025-04-24** | 10,326 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
+| [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 24 | 2026-07-24 | 387 | 1.24.0 (2026-07-24) | **Your real Chrome** (extension) — only mode |
 
 *(All figures fetched 2026-07-21 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
 
@@ -31,7 +31,7 @@ Honest note: Playwright MCP does offer an opt-in `--extension` mode to connect t
 
 ## What about the two projects both called "Browser MCP"?
 
-An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way — a Chrome extension plus a local stdio MCP server. The practical difference in 2026 is maintenance: browsermcp.io's repository has had no code change since 2025-04-24 and has never shipped a GitHub release (checked 2026-07-21), while this project ships regularly (34 tools as of v1.23.0). We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
+An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way — a Chrome extension plus a local stdio MCP server. The practical difference in 2026 is maintenance: browsermcp.io's repository has had no code change since 2025-04-24 and has never shipped a GitHub release (checked 2026-07-21), while this project ships regularly (34 tools as of v1.24.0). We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
 
 ## Which is most actively maintained?
 
