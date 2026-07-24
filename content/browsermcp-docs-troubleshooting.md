@@ -1,4 +1,4 @@
-// KILDE: egne dogfooding-fund — reliability-audit 2026-07-02 (FIX-1/2/4/5/13/17, staged til næste release), controlled-form-audit 2026-07-08 (R1-R4, rapport-fase), debugger-detach-quirk (kendt siden maj, memory + NOTES 2026-06-29), "extension not connected"-recovery = live-oplevet 2026-07-21 i denne chat. Gustav-godkendt at buggene offentliggøres (21/7). Versions-status: opdateret til v1.24.0 (24/7) — macOS Cmd+A-clear FIKSET, reliability-batch SHIPPET; per-tegn-vs-Input.insertText stadig åben (review-team verificerede at den aldrig blev implementeret trods commit-påstand).
+// KILDE: egne dogfooding-fund — reliability-audit 2026-07-02 (FIX-1/2/4/5/13/17, staged til næste release), controlled-form-audit 2026-07-08 (R1-R4, rapport-fase), debugger-detach-quirk (kendt siden maj, memory + NOTES 2026-06-29), "extension not connected"-recovery = live-oplevet 2026-07-21 i denne chat. Gustav-godkendt at buggene offentliggøres (21/7). Versions-status: opdateret til v1.25.0 (24/7) — BEGGE halvdele af controlled-input-problemet nu fikset og live-verificeret på MUI (3/3 tests). Bonus-fund undervejs: opdigtede CDP key-codes (Key@ / Key.) var formentlig den største årsag, ikke per-tegn-skrivningen i sig selv.
 
 # Browser MCP troubleshooting: the real bugs we found dogfooding it
 
@@ -33,9 +33,13 @@
 
 **Cause (we published the audit internally on 2026-07-08 and the diagnosis is embarrassingly specific):** the field-clear step sent select-all as **Ctrl+A — but on macOS select-all is Cmd+A**, so nothing got selected and the new text landed after the old. A second, related gap: `fill` types per-character instead of using the `Input.insertText` primitive that our own `set_date` and `set_combobox` tools already use, which strict frameworks handle better.
 
-**Fix status:** the Cmd+A half is **fixed in v1.24.0** — the clear step now picks the modifier by platform, so `fill` replaces instead of appending on macOS. The second half is **still open**: `fill` continues to type per-character rather than using `Input.insertText`, so a strict framework can still mis-handle the input. An earlier release note claimed that rewrite had shipped; it had not, and we would rather correct the record than leave it standing.
+**Fix status: both halves are now fixed** — the Cmd+A clear in **v1.24.0**, the typing itself in **v1.25.0**. (An earlier release note claimed the typing rewrite had already shipped when it had not; we corrected the record rather than let it stand, and then actually shipped it.)
 
-**Workarounds today (for the remaining per-character gap):** for comboboxes/autocompletes use `browser_set_combobox` (unaffected, already uses `Input.insertText`); for stubborn controlled inputs, fill then verify the field value before continuing.
+**What v1.25.0 changed, and the part we did not expect.** The plan was simply to send `Input.insertText` instead of typing character by character. While doing it we found a second, unrelated defect that was probably the larger cause: the per-character path built the CDP `code` field as `"Key" + character`, which is only correct for letters. `"1"` became `Key1`, `"@"` became `Key@`, a space became `Key `. Frameworks that branch on `event.code` — masked inputs, shortcut handlers, several React form libraries — see an unknown code and drop the keystroke. Typing `user@example.com` was sending two invalid codes, on precisely the characters that make it an email address.
+
+So v1.25.0 does both: `fill` now sends one `Input.insertText`, verifies the field is non-empty, and only falls back to character-by-character typing if nothing landed — and that fallback now emits real US-layout key codes (`@` reports `Digit2`, the physical key it sits on). Characters with no sensible mapping (accented, CJK, emoji) omit the field rather than invent one. This also closes a silent failure: a swallowed insert used to return success with an empty field.
+
+**Verified on MUI (React-controlled inputs):** an email with `@` and `.` lands exactly and floats the Material label — which only happens when React's own state registers the input, not merely the DOM value; a pre-filled field is replaced cleanly with no leftover text; and a 55-character value now produces **one** `input` event instead of 55.
 
 ## `execute_script` fails on strict-CSP sites
 
