@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.Agent360dk/browser-mcp",
-  "description": "Give AI agents control of your real, logged-in Chrome. Chrome extension + MCP server, 34 tools.",
+  "description": "Your AI agent drives a real, logged-in Chrome — test authenticated apps, 2FA flows, scrape logins",
   "title": "Agent360 Browser MCP",
   "repository": {
     "url": "https://github.com/Agent360dk/browser-mcp",
