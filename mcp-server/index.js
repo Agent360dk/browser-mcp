@@ -295,6 +295,13 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_dismiss_overlays: 'dismiss_overlays',
       browser_set_combobox: 'set_combobox',
       browser_drop_file: 'drop_file',
+      browser_copy_to_clipboard: 'copy_to_clipboard',
+      browser_paste_from_clipboard: 'paste_from_clipboard',
+      browser_clipboard_stats: 'clipboard_stats',
+      browser_double_click: 'double_click',
+      browser_right_click: 'right_click',
+      browser_click_xy: 'click_xy',
+      browser_reattach_debugger: 'reattach_debugger',
     };
 
     if (name === 'browser_about') {

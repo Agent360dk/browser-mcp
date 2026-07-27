@@ -92,6 +92,41 @@ function updateStatus() {
   }).catch(() => {});
 }
 
+// Clipboard bridge (v1.26): background.js has no DOM, so system-clipboard read/write
+// happens here via the hidden textarea + execCommand (the MV3-offscreen-sanctioned path).
+// Secret-hygiene contract: background NEVER forwards clipboard content to the MCP server
+// for copy/stats ops — only lengths/shape booleans leave the extension.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'bmcp_clipboard') return;
+  try {
+    const ta = document.getElementById('bmcp-clip') || (() => {
+      const t = document.createElement('textarea');
+      t.id = 'bmcp-clip';
+      document.body.appendChild(t);
+      return t;
+    })();
+    if (msg.op === 'write') {
+      ta.value = msg.text ?? '';
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.value = '';
+      sendResponse({ ok, chars: (msg.text ?? '').length });
+    } else if (msg.op === 'read') {
+      ta.value = '';
+      ta.focus();
+      const ok = document.execCommand('paste');
+      const text = ta.value;
+      ta.value = '';
+      sendResponse({ ok, text });
+    } else {
+      sendResponse({ ok: false, error: 'unknown clipboard op: ' + msg.op });
+    }
+  } catch (e) {
+    sendResponse({ ok: false, error: e.message });
+  }
+  return true;
+});
+
 // Listen for terminate signals from background.js (sent when last tab in a session closes)
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'terminate_mcp_session' || typeof msg.port !== 'number') return;

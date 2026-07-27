@@ -39,14 +39,82 @@ export const TOOLS = [
   },
   {
     name: 'browser_execute_script',
-    description: 'Execute JavaScript code in the context of the current page. Returns the result.',
+    description: 'Execute JavaScript in the current page. IMPORTANT: the parameter is `code` (NOT `script` — though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
     inputSchema: {
       type: 'object',
       properties: {
-        code: { type: 'string', description: 'JavaScript expression to evaluate (runs in page context)' },
+        code: { type: 'string', description: 'JavaScript EXPRESSION to evaluate in page context. For multi-statement logic use an IIFE: (() => { ...; return result; })()' },
       },
       required: ['code'],
     },
+  },
+  {
+    name: 'browser_copy_to_clipboard',
+    description: 'SECRET-SAFE: Copy an element\'s value/text (or an attribute) to the system clipboard WITHOUT returning the content — only the character count comes back. Use for credentials/tokens that must move from a page (e.g. Azure "new client secret" value) to a field or CLI (`pbpaste`) without ever entering the conversation. CSS selectors only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector of the element whose value/text to copy' },
+        attribute: { type: 'string', description: 'Optional: copy this attribute instead of value/textContent' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'browser_paste_from_clipboard',
+    description: 'SECRET-SAFE: Paste the system clipboard into a form field WITHOUT the content ever being returned — only the character count comes back. Pairs with browser_copy_to_clipboard for credential moves between pages/apps. Trims whitespace by default (trim:false to keep).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS or text selector for the target input field' },
+        trim: { type: 'boolean', description: 'Trim surrounding whitespace before pasting (default: true)' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'browser_clipboard_stats',
+    description: 'SECRET-SAFE: Inspect the system clipboard\'s SHAPE without exposing content: length, trimmed length, has_whitespace, looks_like_uuid, looks_like_url. Use to verify a copy landed (e.g. "is this a ~40-char secret or a UUID from the wrong button?") before pasting.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'browser_double_click',
+    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS or text selector' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'browser_right_click',
+    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP — only in-page menus.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS or text selector' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'browser_click_xy',
+    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Combine with browser_screenshot for coordinates.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        x: { type: 'number', description: 'X coordinate (CSS pixels, from left of viewport)' },
+        y: { type: 'number', description: 'Y coordinate (CSS pixels, from top of viewport)' },
+      },
+      required: ['x', 'y'],
+    },
+  },
+  {
+    name: 'browser_reattach_debugger',
+    description: 'RECOVERY: Force-detach and re-attach the Chrome debugger on the current tab. Use when interactive tools (click/fill/press_key) start timing out or reporting ghost-attach ("Debugger attach failed ... ghost") while list_tabs still works — faster than reloading the extension.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'browser_click',

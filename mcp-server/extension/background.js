@@ -1887,6 +1887,12 @@ async function dispatch(port, method, params) {
 
     case 'execute_script': {
       // v1.22.2 (DIAGNOSTIC): Try scripting paths but log all errors so we can see WHY they fail
+      // v1.26: accept `script` as alias for `code` — the historic param-name mismatch caused
+      // silent "unserializable"/undefined failures that read as "execute_script is broken".
+      if (params.code == null && typeof params.script === 'string') params.code = params.script;
+      if (typeof params.code !== 'string' || !params.code.trim()) {
+        return { ok: false, error: 'Missing code. Pass a JavaScript EXPRESSION in `code` (e.g. an IIFE: (() => {...; return x;})()). `return ...` at top level is invalid — the handler wraps code in parentheses.' };
+      }
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot execute scripts on chrome:// pages');
 
@@ -2265,6 +2271,128 @@ async function dispatch(port, method, params) {
         return { ok: true, scrolled: { x: dx, y: dy }, method: 'fallback', fallback_reason: e.message };
       }
       return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };
+    }
+
+    // ── v1.26 "superior" tools ──────────────────────────────────────────────
+    // Secret-hygiene contract: copy/stats NEVER return clipboard/element content
+    // to the MCP server — only lengths and shape booleans. Born from the 2026-07-27
+    // Azure-secret night: the agent must be able to move a credential from page to
+    // field without the value ever entering the LLM context or transcript.
+
+    case 'copy_to_clipboard': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const parsed = parseSelector(params.selector);
+      if (parsed.type === 'text') {
+        return { ok: false, error: 'copy_to_clipboard requires a CSS selector (text= selectors not supported for value extraction)' };
+      }
+      const attr = params.attribute || null;
+      const evalRes = await cdpSend(tab.id, 'Runtime.evaluate', {
+        expression: `(() => {
+          const el = document.querySelector(${JSON.stringify(parsed.selector)});
+          if (!el) return null;
+          ${attr ? `return el.getAttribute(${JSON.stringify(attr)});`
+                 : `return ('value' in el && el.value) ? el.value : (el.textContent || '').trim();`}
+        })()`,
+        returnByValue: true,
+      });
+      const value = evalRes?.result?.value;
+      if (value == null) return { ok: false, error: 'Element not found or empty: ' + params.selector };
+      const clip = await chrome.runtime.sendMessage({ type: 'bmcp_clipboard', op: 'write', text: String(value) });
+      if (!clip?.ok) return { ok: false, error: 'clipboard write failed: ' + (clip?.error || 'unknown') };
+      // NEVER return the value itself.
+      return { ok: true, copied_chars: String(value).length, source: attr ? `attribute:${attr}` : 'value/text' };
+    }
+
+    case 'paste_from_clipboard': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const clip = await chrome.runtime.sendMessage({ type: 'bmcp_clipboard', op: 'read' });
+      if (!clip?.ok) return { ok: false, error: 'clipboard read failed: ' + (clip?.error || 'unknown') };
+      const text = params.trim === false ? clip.text : (clip.text || '').trim();
+      if (!text) return { ok: false, error: 'clipboard is empty' };
+      const parsed = parseSelector(params.selector);
+      if (parsed.type === 'text') {
+        const el = await resolveElement(tab.id, params.selector);
+        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+        await debuggerClick(tab.id, el.x, el.y);
+        await new Promise(r => setTimeout(r, 100));
+        await debuggerType(tab.id, text);
+      } else {
+        await debuggerFill(tab.id, parsed.selector, text);
+      }
+      // NEVER return the pasted content.
+      return { ok: true, pasted_chars: text.length };
+    }
+
+    case 'clipboard_stats': {
+      const clip = await chrome.runtime.sendMessage({ type: 'bmcp_clipboard', op: 'read' });
+      if (!clip?.ok) return { ok: false, error: 'clipboard read failed: ' + (clip?.error || 'unknown') };
+      const t = clip.text || '';
+      const trimmed = t.trim();
+      return {
+        ok: true,
+        length: t.length,
+        trimmed_length: trimmed.length,
+        has_whitespace: /\s/.test(trimmed),
+        looks_like_uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed),
+        looks_like_url: /^https?:\/\//i.test(trimmed),
+        // NEVER the content itself.
+      };
+    }
+
+    case 'double_click': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const el = await resolveElement(tab.id, params.selector);
+      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      await debuggerAttach(tab.id);
+      const { x, y } = el;
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await new Promise(r => setTimeout(r, 30));
+      // Proper dblclick: two press/release pairs with escalating clickCount.
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      await new Promise(r => setTimeout(r, 40));
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
+      return { ok: true, double_clicked: true, tag: el.tag, text: el.text };
+    }
+
+    case 'right_click': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      const el = await resolveElement(tab.id, params.selector);
+      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      await debuggerAttach(tab.id);
+      const { x, y } = el;
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await new Promise(r => setTimeout(r, 30));
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
+      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
+      return { ok: true, right_clicked: true, tag: el.tag, text: el.text, note: 'contextmenu event fired; native Chrome menu does not open via CDP — page-level menus (OWA, web apps) do' };
+    }
+
+    case 'click_xy': {
+      // Raw coordinate click — the escape hatch for custom widgets whose buttons
+      // resist every selector strategy (Azure portal dialogs, KO-bound divs).
+      // Coordinates come from the caller's own screenshot analysis.
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
+      if (typeof params.x !== 'number' || typeof params.y !== 'number') {
+        return { ok: false, error: 'x and y (numbers, CSS pixels in viewport) are required' };
+      }
+      await debuggerClick(tab.id, params.x, params.y);
+      return { ok: true, clicked_at: { x: params.x, y: params.y } };
+    }
+
+    case 'reattach_debugger': {
+      // Ghost-attach recovery without full extension reload: force detach + fresh attach.
+      const tab = await getSessionTab(port);
+      try { await chrome.debugger.detach({ tabId: tab.id }); } catch {}
+      await new Promise(r => setTimeout(r, 150));
+      await debuggerAttach(tab.id);
+      return { ok: true, reattached: true, tab_id: tab.id };
     }
 
     case 'hover': {

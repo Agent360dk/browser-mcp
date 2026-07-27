@@ -22,9 +22,13 @@ _Nothing on the public list yet — be the first._
 
 ## ✅ Shipped
 
-_Recently shipped features will be moved here from "Wanted" with version + date._
-
-- _Coming soon — we'll start logging shipped wishes here once the first public wish lands._
+- **v1.26.0 (2026-07-27) — The "superior" batch** (born from a real all-night Azure/Railway/OWA session):
+  - `browser_copy_to_clipboard` / `browser_paste_from_clipboard` / `browser_clipboard_stats` — SECRET-SAFE clipboard bridge: move credentials from page to field/CLI without the value ever entering the LLM conversation
+  - `browser_double_click` — true dblclick (OWA month-view opened inline-rename on two single clicks)
+  - `browser_right_click` — page-level context menus
+  - `browser_click_xy` — raw-coordinate escape hatch for unselectable custom widgets (Azure portal dialogs)
+  - `browser_reattach_debugger` — ghost-attach recovery without extension reload
+  - `browser_execute_script` now accepts `script` as alias for `code` + fails loudly with guidance instead of silent undefined
 
 ---
 
