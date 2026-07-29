@@ -2016,7 +2016,22 @@ async function dispatch(port, method, params) {
       } catch (e) {
         // Fallback: synthetic click via chrome.scripting for anti-automation sites
         // (Apple ASC etc.) OR user-blocked-debugger scenarios.
-        if (/Debugger detached/.test(e?.message || '')) {
+        //
+        // MÅLT 29/7: betingelsen var kun /Debugger detached/, men den HYPPIGSTE fejl hedder
+        // "Debugger attach failed after 3 attempts" (kastes l.298) — altså når Chrome nægter
+        // at koble debuggeren på overhovedet. De to strenge ligner hinanden og betyder næsten
+        // det samme, men regexet ramte kun den ene, så fallbacken fyrede aldrig i det tilfælde
+        // den var skrevet til: "user-blocked-debugger scenarios" står ordret i kommentaren
+        // ovenfor, og det var netop dét den ikke dækkede.
+        //
+        // Konsekvens i praksis: klikker brugeren Cancel på Chromes debugger-banner ÉN gang,
+        // husker Chrome det på tværs af extension-reloads, og hvert eneste klik fejler
+        // permanent — selvom scriptingClick ville have virket hele tiden. Den bruger `func:`
+        // og ikke en kode-streng, så den rammes ikke af sidens CSP.
+        //
+        // Prisen ved fallbacken er at klikket mister isTrusted=true. Det tjekker de færreste
+        // sider, og et klik der virker på 95% af nettet slår et klik der aldrig virker.
+        if (/Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
           const r = await scriptingClick(tab.id, params.selector);
           if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag };
         }
