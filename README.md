@@ -42,7 +42,7 @@ This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds t
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 34 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 42 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
@@ -193,7 +193,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 34 tool definitions
+  tools.js            # 42 tool definitions
   bin/cli.js          # Install CLI
 ```
 
