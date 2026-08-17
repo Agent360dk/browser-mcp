@@ -87,7 +87,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
-## 34 Tools
+## 42 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -96,6 +96,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |
+| `browser_extract_list` | Read every row of a long/virtualised list by scrolling its container until no new rows appear |
 
 ### Interaction
 | Tool | Description |
@@ -111,6 +112,10 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
 | `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
+| `browser_double_click` | True double-click (two trusted press/release pairs) |
+| `browser_right_click` | Right-click to open page-level context menus |
+| `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
+| `browser_reattach_debugger` | Recovery: force-detach and re-attach the Chrome debugger on the current tab |
 
 ### Tabs & Frames
 | Tool | Description |
@@ -151,6 +156,13 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
 | `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog) |
 | `browser_drop_file` | Upload via drop-zones: finds hidden `<input type="file">` in target subtree/parent (up to 2 levels). Use when `browser_upload_file` fails because the zone has no visible input |
+
+### Clipboard (secret-safe)
+| Tool | Description |
+|------|-------------|
+| `browser_copy_to_clipboard` | Copy an element's value/text to the clipboard without returning the content |
+| `browser_paste_from_clipboard` | Paste the system clipboard into a form field without exposing the content |
+| `browser_clipboard_stats` | Inspect the clipboard's shape (length, trimmed length) without exposing content |
 
 ## Multi-Session Support
 
