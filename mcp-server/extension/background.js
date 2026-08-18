@@ -63,6 +63,54 @@ function getSession(port) {
   return sessions.get(port);
 }
 
+// Adopt tabs from a session whose MCP connection is gone (FIX-18: reconnect orphaning).
+//
+// Sessions are keyed on the MCP port. A clean shutdown sends session_disconnect and the
+// tabs are closed. But an UNCLEAN drop (server restart, network blip, laptop sleep) leaves
+// the session in storage while the client reconnects on a NEW port — so getSession() hands
+// back an empty session. Observed damage: navigate() returns tab X while click() fails on
+// tab Y, list_tabs() comes back empty, a fresh about:blank spawns per call, and the session
+// label walks Claude 1 → 2 → 3 → 4. Every navigate→click pair breaks.
+//
+// Fix: before serving an unknown port, hand over the tabs of the largest session whose port
+// is no longer in mcpPorts (the live-connection list the offscreen bridge keeps in storage).
+// Keeps label/color so the user sees continuity instead of a renumbered session.
+async function adoptOrphanedSession(port) {
+  // Only ever fires for a session that owns NOTHING — a session with tabs is left alone,
+  // so genuinely parallel chats keep their own windows once each has navigated.
+  if (sessions.has(port) && sessions.get(port).tabIds.size) return null;
+
+  // Deliberately NOT gated on the old port being dead. Observed in the field: Claude Code
+  // holds SEVERAL concurrent connections and spreads calls across them, so navigate() lands
+  // on port A while the follow-up click() arrives on port B — both live, B empty. Requiring
+  // the donor to be disconnected missed exactly that case and left the pair broken.
+  let best = null;
+  for (const [p, session] of sessions) {
+    if (p === port || !session.tabIds.size) continue;
+    if (!best || session.tabIds.size > best.session.tabIds.size) best = { port: p, session };
+  }
+  if (!best) return null;
+
+  // Verify at least one tab survives — an orphan whose tabs the user already closed is
+  // worthless, and adopting it would mask a genuinely fresh start.
+  const alive = new Set();
+  for (const tabId of best.session.tabIds) {
+    try { await chrome.tabs.get(tabId); alive.add(tabId); } catch {}
+  }
+  if (!alive.size) {
+    sessions.delete(best.port);
+    persistSessions();
+    return null;
+  }
+
+  best.session.tabIds = alive;
+  if (!alive.has(best.session.activeTabId)) best.session.activeTabId = null;
+  sessions.delete(best.port);
+  sessions.set(port, best.session);
+  persistSessions();
+  return best.session;
+}
+
 // LRU eviction cap: hver session må højst have N åbne tabs samtidigt.
 // Når en ny tab tilføjes ud over cap'en, lukkes den ÆLDSTE tab i sessionen
 // (insertion-order via Set) — bortset fra session.activeTabId (current tab).
@@ -913,12 +961,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'mcp_command') {
     const port = msg.port;
     logAction(port, msg.method, msg.params);
-    // Restore sessions from storage (service worker may have restarted)
-    restoreSessions().then(() => {
-      dispatch(port, msg.method, msg.params)
-        .then(result => sendResponse(result))
-        .catch(err => sendResponse({ __error: err.message || String(err) }));
-    }).catch(err => sendResponse({ __error: err.message || String(err) })); // else a storage-restore reject hangs the caller
+    // Restore sessions from storage (service worker may have restarted), then take over any
+    // session orphaned by an unclean disconnect so navigate→click keeps hitting the same tab.
+    restoreSessions()
+      .then(() => adoptOrphanedSession(port).catch(() => null)) // adoption is best-effort, never fatal
+      .then(() => {
+        dispatch(port, msg.method, msg.params)
+          .then(result => sendResponse(result))
+          .catch(err => sendResponse({ __error: err.message || String(err) }));
+      })
+      .catch(err => sendResponse({ __error: err.message || String(err) })); // else a storage-restore reject hangs the caller
     return true; // async response
   }
 
@@ -1761,11 +1813,84 @@ async function dropFileOnTarget(tabId, selector, files) {
     }
   }
 
+  // Strategy 2 (v1.27): intercept the NATIVE OS file chooser.
+  //
+  // Sites like Google Ads never put an <input type="file"> in the DOM — clicking
+  // their "choose a file" control opens the OS dialog directly, which no browser
+  // automation can reach. Page.setInterceptFileChooserDialog makes Chrome fire
+  // Page.fileChooserOpened instead of showing that dialog, and the event carries
+  // the backendNodeId of the element that requested it. DOM.setFileInputFiles
+  // accepts a backendNodeId, so we can satisfy the request programmatically.
+  //
+  // Order matters: interception must be armed BEFORE the click that opens the
+  // chooser, otherwise the OS dialog is already up and the event never fires.
+  const chooserResult = await interceptFileChooser(tabId, selector, fileList);
+  if (chooserResult) return chooserResult;
+
   return {
     ok: false,
     error: 'no-file-input-found',
-    hint: 'No <input type="file"> found in target subtree, parent, or page. Pure drag-drop zones (without backing input) require synthesizing File objects from disk content via mcp-server, which is not yet implemented. Try selecting a more specific selector, or fall back to manual upload via browser_ask_user.',
+    hint: 'No <input type="file"> found, and the native file-chooser interception did not fire. The trigger element may not open a file dialog at all — check the selector.',
   };
+}
+
+// Arms Page.fileChooserOpened, clicks the trigger, and fulfils the chooser with
+// the given files. Returns null if no chooser opened (so the caller can fall
+// through to its own error), or a result object on success/explicit failure.
+async function interceptFileChooser(tabId, selector, fileList) {
+  try {
+    await debuggerAttach(tabId);
+    await cdpSend(tabId, 'Page.enable', {});
+    await cdpSend(tabId, 'DOM.enable', {});
+    await cdpSend(tabId, 'Page.setInterceptFileChooserDialog', { enabled: true });
+  } catch (e) {
+    return null; // interception unavailable — let caller report the original error
+  }
+
+  try {
+    return await new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        chrome.debugger.onEvent.removeListener(listener);
+        clearTimeout(timer);
+        resolve(value);
+      };
+
+      const listener = (source, method, eventParams) => {
+        if (source.tabId !== tabId || method !== 'Page.fileChooserOpened') return;
+        const backendNodeId = eventParams?.backendNodeId;
+        if (!backendNodeId) {
+          finish({ ok: false, error: 'file-chooser-without-node', detail: 'Chrome fired fileChooserOpened but supplied no backendNodeId.' });
+          return;
+        }
+        cdpSend(tabId, 'DOM.setFileInputFiles', { backendNodeId, files: fileList })
+          .then(() => finish({
+            ok: true,
+            method: 'native-chooser-intercepted',
+            files: fileList,
+            mode: eventParams.mode,
+          }))
+          .catch(e => finish({ ok: false, error: 'setFileInputFiles-failed', detail: e?.message || String(e) }));
+      };
+      chrome.debugger.onEvent.addListener(listener);
+
+      // 8s: the click is local, so the chooser opens within a frame or two.
+      // A longer wait would just stall the caller when the element opens no dialog.
+      const timer = setTimeout(() => finish(null), 8000);
+
+      // Click the trigger so the page asks for the chooser. Real mouse events —
+      // a synthetic .click() does not always reach the file-picker code path.
+      (async () => {
+        const el = await resolveElement(tabId, selector);
+        if (!el) { finish({ ok: false, error: 'trigger-not-found', detail: selector }); return; }
+        await debuggerClick(tabId, el.x, el.y);
+      })().catch(e => finish({ ok: false, error: 'trigger-click-failed', detail: e?.message || String(e) }));
+    });
+  } finally {
+    try { await cdpSend(tabId, 'Page.setInterceptFileChooserDialog', { enabled: false }); } catch {}
+  }
 }
 
 // ── Command Dispatcher ──────────────────────────────────────────────────────
@@ -1823,6 +1948,72 @@ async function dispatch(port, method, params) {
       // CSP fallback
       const content = await debuggerEval(tab.id, format === 'html' ? 'document.documentElement.outerHTML' : 'document.body.innerText');
       return { content, url: tab.url, title: tab.title, method: 'debugger' };
+    }
+
+    // Read EVERY row of a virtualised list by scrolling its container until the set stops
+    // growing. Outlook, Gmail and most mail/table UIs keep only ~7 rows in the DOM, so a
+    // single get_page_content sees a sliver — this walks the whole list instead.
+    case 'extract_list': {
+      const tab = await getSessionTab(port);
+      if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
+      const rowSel = params.selector;
+      if (!rowSel) throw new Error('extract_list requires `selector` (the repeating row element)');
+      const containerSel = params.container || null;
+      const maxRows = Math.min(params.max_rows || 500, 5000);
+      const stableNeeded = params.stable_rounds || 3;
+      const waitMs = params.wait_ms || 350;
+
+      const seen = new Set();
+      let stable = 0, rounds = 0, atEnd = false;
+      const MAX_ROUNDS = 300; // backstop: a list that never stabilises must not spin forever
+
+      while (seen.size < maxRows && stable < stableNeeded && rounds < MAX_ROUNDS) {
+        rounds++;
+        const r = await safeExecuteScript(tab.id, (rs, cs, keep) => {
+          const rows = Array.from(document.querySelectorAll(rs));
+          const texts = rows
+            .map(el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())
+            .filter(t => t.length > 0);
+
+          // Scroll the row's own scrollable ancestor — scrolling window does nothing when the
+          // list lives in an inner overflow container (the normal case in webmail).
+          let c = cs ? document.querySelector(cs) : null;
+          if (!c && rows.length) {
+            let p = rows[0].parentElement;
+            while (p && p !== document.documentElement) {
+              const s = getComputedStyle(p);
+              if (/(auto|scroll)/.test(s.overflowY) && p.scrollHeight > p.clientHeight + 20) { c = p; break; }
+              p = p.parentElement;
+            }
+          }
+          const step = keep || (c ? c.clientHeight : window.innerHeight) * 0.85;
+          const before = c ? c.scrollTop : window.scrollY;
+          if (c) c.scrollTop = before + step; else window.scrollBy(0, step);
+          const after = c ? c.scrollTop : window.scrollY;
+          const done = c
+            ? c.scrollTop + c.clientHeight >= c.scrollHeight - 4
+            : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
+          return { texts, moved: after - before, done, container: !!c };
+        }, [rowSel, containerSel, params.scroll_step || 0]);
+
+        if (r.cspBlocked) throw new Error('extract_list: this page blocks script injection — use screenshots instead');
+        const data = r.result || { texts: [] };
+        const before = seen.size;
+        for (const t of data.texts) seen.add(t);
+        // Two independent stop signals: nothing new appeared, or the container hit its end.
+        if (seen.size === before) stable++; else stable = 0;
+        if (data.done) { atEnd = true; stable++; }
+        if (!data.texts.length && rounds > 2) break; // selector matches nothing — fail fast
+        await new Promise(res => setTimeout(res, waitMs));
+      }
+
+      return {
+        rows: [...seen],
+        count: seen.size,
+        rounds,
+        reached_end: atEnd,
+        truncated: seen.size >= maxRows,
+      };
     }
 
     case 'screenshot': {
@@ -2016,7 +2207,22 @@ async function dispatch(port, method, params) {
       } catch (e) {
         // Fallback: synthetic click via chrome.scripting for anti-automation sites
         // (Apple ASC etc.) OR user-blocked-debugger scenarios.
-        if (/Debugger detached/.test(e?.message || '')) {
+        //
+        // MÅLT 29/7: betingelsen var kun /Debugger detached/, men den HYPPIGSTE fejl hedder
+        // "Debugger attach failed after 3 attempts" (kastes l.298) — altså når Chrome nægter
+        // at koble debuggeren på overhovedet. De to strenge ligner hinanden og betyder næsten
+        // det samme, men regexet ramte kun den ene, så fallbacken fyrede aldrig i det tilfælde
+        // den var skrevet til: "user-blocked-debugger scenarios" står ordret i kommentaren
+        // ovenfor, og det var netop dét den ikke dækkede.
+        //
+        // Konsekvens i praksis: klikker brugeren Cancel på Chromes debugger-banner ÉN gang,
+        // husker Chrome det på tværs af extension-reloads, og hvert eneste klik fejler
+        // permanent — selvom scriptingClick ville have virket hele tiden. Den bruger `func:`
+        // og ikke en kode-streng, så den rammes ikke af sidens CSP.
+        //
+        // Prisen ved fallbacken er at klikket mister isTrusted=true. Det tjekker de færreste
+        // sider, og et klik der virker på 95% af nettet slår et klik der aldrig virker.
+        if (/Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
           const r = await scriptingClick(tab.id, params.selector);
           if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag };
         }

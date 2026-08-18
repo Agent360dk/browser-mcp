@@ -28,6 +28,22 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_extract_list',
+    description: 'Read EVERY row of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport — mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. Returns deduplicated row text plus reached_end so you know whether you saw the whole list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: { type: 'string', description: 'CSS selector matching ONE repeating row (e.g. \'[role="option"]\' in Outlook, \'tr\' in a table)' },
+        container: { type: 'string', description: 'Optional CSS selector for the scrollable container. Omit to auto-detect the row\'s nearest scrollable ancestor.' },
+        max_rows: { type: 'number', description: 'Stop after this many unique rows (default 500, max 5000)' },
+        stable_rounds: { type: 'number', description: 'Consecutive scrolls with no new rows before stopping (default 3)' },
+        scroll_step: { type: 'number', description: 'Pixels per scroll. Omit for 85% of the container height.' },
+        wait_ms: { type: 'number', description: 'Wait after each scroll so new rows can render (default 350)' },
+      },
+      required: ['selector'],
+    },
+  },
+  {
     name: 'browser_screenshot',
     description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided.',
     inputSchema: {
@@ -233,7 +249,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_drop_file',
-    description: 'Upload a file by finding a hidden <input type="file"> within a drag-drop zone\'s subtree (or parent up to 2 levels). Use when browser_upload_file fails because the dropzone has no visible file input. Returns clear error if no input is found anywhere — pure drop-zones without backing inputs require manual handling.',
+    description: 'Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree or up to 2 ancestor levels; (2) if there is no input at all, intercepts the NATIVE OS file-chooser — pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 handles sites like Google Ads that never put a file input in the DOM.',
     inputSchema: {
       type: 'object',
       properties: {

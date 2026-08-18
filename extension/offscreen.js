@@ -44,13 +44,14 @@ function tryConnect(port) {
   ws.onmessage = async (event) => {
     let cmd;
     try { cmd = JSON.parse(event.data); } catch { return; }
-    const { id, method, params } = cmd;
+    const { id, method, params, pid } = cmd;
 
     try {
       // Include port so background.js knows which session owns this command
       const result = await chrome.runtime.sendMessage({
         type: 'mcp_command',
         port,
+        pid,
         method,
         params: params || {},
       });

@@ -159,7 +159,9 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       reject(new Error(`Command timed out after ${timeoutMs}ms: ${method}`));
     }, timeoutMs);
     pending.set(id, { resolve, reject, timer });
-    extensionSocket.send(JSON.stringify({ id, method, params }));
+    // pid = Claude Code-processen der ejer denne server. Udvidelsen bruger den til at
+    // skelne 'samme chat, ny forbindelse' fra 'en anden chat' naar den adopterer sessioner.
+    extensionSocket.send(JSON.stringify({ id, method, params, pid: process.ppid }));
   });
 }
 
@@ -302,6 +304,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_right_click: 'right_click',
       browser_click_xy: 'click_xy',
       browser_reattach_debugger: 'reattach_debugger',
+      browser_extract_list: 'extract_list',
     };
 
     if (name === 'browser_about') {
@@ -317,8 +320,11 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
 
+    // extract_list scrolls a container in a loop (up to 300 rounds × wait_ms), so the 30 s
+    // default would kill a long mail list mid-walk and report a partial set as complete.
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
-                    method === 'solve_captcha' ? 60000 : 30000;
+                    method === 'solve_captcha' ? 60000 :
+                    method === 'extract_list' ? 180000 : 30000;
     const result = await sendToExtension(method, args || {}, timeout);
 
     if (name === 'browser_screenshot' && result?.image) {

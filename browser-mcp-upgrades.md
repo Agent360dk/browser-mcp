@@ -595,3 +595,83 @@ højere prioritet:
 Scenarie A (SW death) og C (anti-automation eviction) eksisterer stadig men
 forekommer sjældnere end Scenarie B. Keep-alive + execute_script-fallback bør
 stadig laves, men efter README-fix.
+
+---
+
+# Session 2026-08-10 — Microsoft 365 admin-flader (ny evidens)
+
+**Kontekst:** ~2 døgns arbejde med Exchange admin center, Microsoft Bookings, Azure-portalen,
+OWA og Namecheap. Opgave: flytte et domænes mail til Office 365.
+**Udfald:** Læsning virkede stort set overalt. **Skrivning fejlede konsistent på Microsofts flader.**
+Arbejdet måtte gennemføres med PowerShell + device-code i stedet — ~10 manuelle kodeindtastninger
+af brugeren, hvor 0 var nødvendige hvis klik havde virket.
+
+## 🆕 Fund 1 — session-id roterer mellem kald (ikke dokumenteret før)
+
+Hvert `browser_navigate` kunne lande i en **anden session** end det foregående kald:
+
+```
+navigate → {tab_id: 338942079, session: "Claude 1"}
+navigate → {tab_id: 338942180, session: "Claude 3"}   ← samme opgave, ny session
+click    → "Debugger attach failed ... tab not attached"
+```
+
+`browser_list_tabs` viste flere faner hvor **ingen var `active: true`**. At lukke overskydende
+faner + `browser_switch_tab` hjalp ikke konsistent.
+
+**Hypotese:** tab-ejerskab bindes til session-id ved oprettelse; når en efterfølgende kommando
+kommer fra en anden session, nægtes attach. Det forklarer hvorfor read-værktøjer (der ikke
+kræver debugger) virker mens klik fejler i samme sekvens.
+
+**Foreslået fix:** enten sticky session pr. opgave, eller lad attach acceptere ethvert
+session-id der allerede ejer fanen.
+
+## 🆕 Fund 2 — `label.click()` virker hvor alt andet fejler
+
+På Namecheaps auto-renew-toggle fejlede i rækkefølge:
+
+| Forsøg | Resultat |
+|---|---|
+| `browser_click` (rigtige museklik) | debugger attach failed |
+| `element.click()` på den stylede `div.toggle` | ingen effekt — tilstand uændret efter reload |
+| Fuld `MouseEvent`-sekvens (pointerdown/mousedown/pointerup/mouseup/click) | ingen effekt |
+| **`row.querySelector('label').click()`** | **virkede — persisterede efter reload** |
+
+Samme mønster i Microsoft Bookings: markering af elementet via `data-`-attribut og derefter
+`element.click()` virkede, hvor `browser_click` på tekstselector fejlede.
+
+**Anbefaling:** udvid klik-fallback-kæden med et trin der leder efter en tilknyttet `<label>`
+(eller `aria-labelledby`-mål) og klikker den i stedet. Det er billigt og løser en hel klasse
+af Fluent-UI/Bootstrap-toggles hvor den synlige kontrol er et `div` og den funktionelle er
+en skjult `input`.
+
+## 🆕 Fund 3 — Azure-portalen kan ikke læses
+
+`get_page_content` returnerer kun skallen. Indholdet renderes i en sandkasset ramme:
+
+```
+iframe src = https://sandbox-1.reactblade.portal.azure.net/React/Index?reactView=true...
+```
+
+`document.title` opdateres korrekt (viste app-navnet), men `body.innerText` indeholdt
+fortsat forsidens tekst. **Uden frame-traversal er Azure-portalen effektivt utilgængelig.**
+
+`browser_screenshot` fejlede samtidig med `image readback failed` (begge forsøg), så heller
+ikke visuel aflæsning var mulig.
+
+## Bekræfter Scenarie B
+
+Extension-reload gav **midlertidig** bedring (klik virkede i Bookings i ~10 minutter), hvorefter
+samme fejl vendte tilbage. Det matcher jeres egen konklusion: reload er utilstrækkeligt, kun
+fuld Chrome-genstart rydder tilstanden.
+
+**Forslag til README/onboarding:** gør recovery-trinnet til én linje øverst i fejlbeskeden —
+*"Quit Chrome helt (⌘Q) og åbn igen. Extension-reload er ikke nok."* Fejlbeskeden nævner
+i dag reload før Chrome-genstart, hvilket sender folk på den forkerte kur først.
+
+## Prioritering fra denne session
+
+1. **Session-sticky tab-ejerskab** (Fund 1) — den enkeltfejl der kostede mest
+2. **`label`-fallback i klik-kæden** (Fund 2) — lille ændring, hel klasse af UI'er løses
+3. **Frame-traversal i `get_page_content`** (Fund 3) — åbner Azure og lignende portaler
+4. **Ombyt rækkefølgen i recovery-beskeden** — Chrome-quit før extension-reload
