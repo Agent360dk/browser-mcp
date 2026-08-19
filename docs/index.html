@@ -103,6 +103,17 @@
     .feature p { font-size: 14px; color: var(--muted); }
 
     /* Screenshots */
+    /* "Now what?" — the step nobody documents: what to actually say once it's installed */
+    .try-list { max-width: 760px; margin: 0 auto 80px; padding: 0 24px; display: flex; flex-direction: column; gap: 12px; }
+    .try-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .try-item .say { display: block; font-size: 16px; color: var(--fg); line-height: 1.5; }
+    .try-item .say::before { content: '"'; } .try-item .say::after { content: '"'; }
+    .try-item .why { display: block; margin-top: 8px; font-size: 14px; color: var(--muted); }
+    .try-first { border-color: var(--green); }
+    .try-first .tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--green); margin-bottom: 8px; }
+    .try-foot { max-width: 760px; margin: -60px auto 80px; padding: 0 24px; text-align: center; color: var(--muted); font-size: 15px; line-height: 1.6; }
+    .try-foot a { color: var(--accent-2); }
+
     .shots { max-width: 1100px; margin: 0 auto 80px; padding: 0 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
     .shot { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
     .shot img { width: 100%; height: 220px; object-fit: cover; object-position: top; border-bottom: 1px solid var(--border); }
@@ -169,6 +180,10 @@
       .feature { padding: 20px; }
       .feature .icon { font-size: 24px; margin-bottom: 8px; }
       .feature h3 { font-size: 16px; }
+      .try-list { padding: 0 16px; margin-bottom: 48px; gap: 10px; }
+      .try-item { padding: 16px; }
+      .try-item .say { font-size: 15px; }
+      .try-foot { padding: 0 16px; margin: -36px auto 48px; font-size: 14px; }
       .shots { grid-template-columns: 1fr; padding: 0 16px; margin-bottom: 48px; }
       .shot img { height: 180px; }
       .comparison { padding: 0 16px; margin-bottom: 48px; }
@@ -200,6 +215,7 @@
     <a href="#compare">Compare</a>
     <a href="#faq">FAQ</a>
     <a href="/learn/what-is-an-mcp-server/">Guides</a>
+    <a href="#try">Try it</a>
     <a href="/docs/install-claude-code/">Docs</a>
     <a href="https://github.com/Agent360dk/browser-mcp">GitHub</a>
   </div>
@@ -312,6 +328,41 @@
     </div>
   </div>
 </section>
+
+<div class="section-head" id="try">
+  <h2>Installed. Now what?</h2>
+  <p>Nothing happens until you ask. Here is what to say — copy one and paste it to your agent.</p>
+</div>
+
+<section class="try-list">
+  <div class="try-item try-first">
+    <span class="tag">Start here — does it work?</span>
+    <span class="say">Take a screenshot of my current Chrome tab.</span>
+    <span class="why">If you get an image back instead of "I don't have browser access", both halves are talking to each other. That is the whole install test.</span>
+  </div>
+  <div class="try-item">
+    <span class="say">Open my Gmail tab and tell me who sent my last 3 emails.</span>
+    <span class="why">This is the one that shows the difference. It works because it is <i>your</i> browser, already signed in — a headless tool would hit a login wall here.</span>
+  </div>
+  <div class="try-item">
+    <span class="say">Go to my analytics dashboard, pull this month's numbers, and put them in a table.</span>
+    <span class="why">Any dashboard you are already logged into. No API key, no export, no integration to build first.</span>
+  </div>
+  <div class="try-item">
+    <span class="say">Fill in this signup form with my details. Stop and ask me before anything sensitive.</span>
+    <span class="why">The agent works the page while you stay in the loop — it hands control back for passwords, payment details, or anything it should not decide alone.</span>
+  </div>
+  <div class="try-item">
+    <span class="say">Log me in here. If it emails a code, read it from my Gmail tab and continue.</span>
+    <span class="why">The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.</span>
+  </div>
+  <div class="try-item">
+    <span class="say">Walk through my app's signup flow as a real user and tell me where it breaks.</span>
+    <span class="why">End-to-end QA of your own product, in the same browser your users have — cookies, extensions, session and all.</span>
+  </div>
+</section>
+
+<p class="try-foot">The pattern: anything you would do yourself in a browser, on a site you are already signed into. It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn.<br>Built something good? <a href="https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md">Add it to the gallery</a>.</p>
 
 <section class="comparison" id="compare">
   <div class="section-head" style="margin-bottom: 24px;">

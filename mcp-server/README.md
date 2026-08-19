@@ -87,6 +87,21 @@ If you don't want to use npm, download the extension directly:
 
 Skip step 2 and the extension icon will sit on **"Not connected"** forever — that is the symptom of a missing MCP server, not a broken extension.
 
+## You're in. Now what?
+
+Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Paste one of these to your agent:
+
+| Say this | What it shows |
+|---|---|
+| *"Take a screenshot of my current Chrome tab."* | **Start here.** An image back instead of *"I don't have browser access"* means both halves are talking. That is the whole install test. |
+| *"Open my Gmail tab and tell me who sent my last 3 emails."* | The one that shows the difference — it works because it is *your* browser, already signed in. A headless tool hits a login wall here. |
+| *"Go to my analytics dashboard, pull this month's numbers, and put them in a table."* | Any dashboard you are already logged into. No API key, no export, no integration to build first. |
+| *"Fill in this signup form with my details. Stop and ask me before anything sensitive."* | You stay in the loop — it hands control back for passwords, payment details, or anything it should not decide alone. |
+| *"Log me in here. If it emails a code, read it from my Gmail tab and continue."* | The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in. |
+| *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
+
+The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md).
+
 ## Why This Over Playwright MCP / BrowserMCP?
 
 | | Browser MCP | Playwright MCP | BrowserMCP.io |

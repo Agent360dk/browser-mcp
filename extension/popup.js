@@ -1,18 +1,26 @@
 // ── Status ──────────────────────────────────────────────────────────────────
 
-function paintStatus(connected, count) {
+// mcpCount = agent clients on the socket. `sessions` = agents that have actually claimed a
+// tab. They differ, and showing "Connected — 1 session" above "No active sessions" read as a
+// contradiction at exactly the moment a new user checks whether the install worked.
+function paintStatus(connected, count, sessionCount) {
   document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
-  document.getElementById('label').textContent = connected
-    ? `Connected — ${count} session${count === 1 ? '' : 's'}`
-    : 'Not connected — no MCP server found';
+  document.getElementById('label').textContent = !connected
+    ? 'Not connected — no MCP server found'
+    : sessionCount > 0
+      ? `Connected — ${sessionCount} active session${sessionCount === 1 ? '' : 's'}`
+      : `Connected — ready (${count} agent${count === 1 ? '' : 's'} listening)`;
   // The Chrome Web Store can only install the extension. If nothing is listening on
   // ports 9876-9885, the user almost certainly never ran the npx install — say so.
   document.getElementById('setup').classList.toggle('show', !connected);
+  // Connected but idle: they got it working and now need to know what to say.
+  document.getElementById('try').classList.toggle('show', connected && sessionCount === 0);
 }
 
 function refreshStatus() {
-  chrome.storage.local.get(['mcpConnected', 'mcpCount'], (result) => {
-    paintStatus(result.mcpConnected === true, result.mcpCount || 0);
+  chrome.storage.local.get({ mcpConnected: false, mcpCount: 0, sessions: {} }, (result) => {
+    paintStatus(result.mcpConnected === true, result.mcpCount || 0,
+                Object.keys(result.sessions || {}).length);
   });
 }
 
@@ -26,7 +34,7 @@ function renderSessions() {
     const entries = Object.entries(sessions);
 
     if (!entries.length) {
-      container.innerHTML = '<div class="empty">No active sessions</div>';
+      container.innerHTML = '<div class="empty">No tabs claimed yet</div>';
       return;
     }
 

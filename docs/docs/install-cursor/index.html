@@ -48,7 +48,22 @@
 <h3>Step 4 — Reload Cursor</h3>
 <p>Reload the window (<code>Cmd/Ctrl+Shift+P</code> → "Reload Window") or fully quit and reopen Cursor — it reads <code>mcp.json</code> on startup and launches the server process automatically. Open <b>Cursor Settings → Tools &amp; MCP</b> and confirm <code>browser-mcp</code> shows as loaded with an active status dot.</p>
 <h3>Verify it's working</h3>
-<p>Ask Cursor's agent to navigate to a URL or take a screenshot of the current tab. If it acts instead of saying it has no browser access, you're connected.</p>
+<p>Paste this to Cursor's agent:</p>
+<blockquote>Take a screenshot of my current Chrome tab.</blockquote>
+<p>If you get an image back instead of <i>"I don't have browser access"</i>, both halves are talking to each other. That is the whole test.</p>
+<h3>Now what — things to actually say</h3>
+<p>Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start with these:</p>
+<blockquote>Open my Gmail tab and tell me who sent my last 3 emails.</blockquote>
+<p>The one that shows the difference — it works because it is <i>your</i> browser, already signed in. A headless tool hits a login wall here.</p>
+<blockquote>Go to my analytics dashboard, pull this month's numbers, and put them in a table.</blockquote>
+<p>Any dashboard you are already logged into. No API key, no export, no integration to build first.</p>
+<blockquote>Fill in this signup form with my details. Stop and ask me before anything sensitive.</blockquote>
+<p>You stay in the loop — the agent hands control back for passwords, payment details, or anything it should not decide alone.</p>
+<blockquote>Log me in here. If it emails a code, read it from my Gmail tab and continue.</blockquote>
+<p>The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.</p>
+<blockquote>Walk through my app's signup flow as a real user and tell me where it breaks.</blockquote>
+<p>End-to-end QA of your own product, in the same browser your users have.</p>
+<p>The pattern: <b>anything you would do yourself in a browser, on a site you are already signed into.</b> It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. <a href="https://browsermcp.dev/#try">More examples</a>.</p>
 <hr>
 <h2>Alternative installs</h2>
 <h3>No npm? Manual zip download</h3>

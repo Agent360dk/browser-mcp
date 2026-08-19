@@ -60,6 +60,35 @@ npm cannot install a Chrome extension. Neither half can install the other, so yo
 install each once.
 
 Stuck on "Not connected"? https://browsermcp.dev/docs/troubleshooting/
+
+═══ WHAT TO SAY ONCE IT WORKS ═══
+
+Nothing happens until you ask. Paste one of these to your agent:
+
+  "Take a screenshot of my current Chrome tab."
+     Start here — an image back means both halves are talking.
+
+  "Open my Gmail tab and tell me who sent my last 3 emails."
+     The one that shows the difference: it works because it is YOUR
+     browser, already signed in. A headless tool hits a login wall here.
+
+  "Go to my analytics dashboard, pull this month's numbers, and put
+   them in a table."
+     Any dashboard you are already logged into — no API key, no export.
+
+  "Fill in this signup form with my details. Stop and ask me before
+   anything sensitive."
+     You stay in the loop for passwords and payment details.
+
+  "Log me in here. If it emails a code, read it from my Gmail tab and
+   continue."
+     The move no API can make.
+
+The pattern: anything you would do yourself in a browser, on a site you
+are already signed into. Strongest where there is no API — internal
+dashboards, admin panels, portals.
+
+More: https://browsermcp.dev/#try
 ```
 
 ---

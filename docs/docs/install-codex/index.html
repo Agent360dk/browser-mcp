@@ -40,6 +40,17 @@ args = [&quot;@agent360/browser-mcp@latest&quot;]</pre><button class="copy">Copy
 <p>Restart your Codex CLI session so it picks up the new server, then in the composer type:</p>
 <div class="code"><pre>/mcp</pre><button class="copy">Copy</button></div>
 <p><code>browser-mcp</code> should show up connected, with its tools listed. That's it — no API keys, no cloud account, nothing leaves your machine.</p>
+<h3>Now what — things to actually say</h3>
+<p>Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start here:</p>
+<blockquote>Take a screenshot of my current Chrome tab.</blockquote>
+<p>If you get an image back instead of <i>"I don't have browser access"</i>, both halves are talking. Then:</p>
+<blockquote>Open my Gmail tab and tell me who sent my last 3 emails.</blockquote>
+<p>The one that shows the difference — it works because it is <i>your</i> browser, already signed in.</p>
+<blockquote>Go to my analytics dashboard, pull this month's numbers, and put them in a table.</blockquote>
+<p>Any dashboard you are already logged into. No API key, no export, no integration to build first.</p>
+<blockquote>Fill in this signup form with my details. Stop and ask me before anything sensitive.</blockquote>
+<p>You stay in the loop — the agent hands control back for anything it should not decide alone.</p>
+<p>The pattern: <b>anything you would do yourself in a browser, on a site you are already signed into.</b> Strongest where there is no API. <a href="https://browsermcp.dev/#try">More examples</a>.</p>
 <h2>What your Codex agent can do</h2>
 <h3>The 2FA-killer move</h3>
 <p>This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail tab, and continues the sign-in — because it's driving <i>your</i> browser, not a fresh anonymous one. No API can do that. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.</p>

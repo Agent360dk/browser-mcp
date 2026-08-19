@@ -55,6 +55,28 @@ Restart your Codex CLI session so it picks up the new server, then in the compos
 
 `browser-mcp` should show up connected, with its tools listed. That's it — no API keys, no cloud account, nothing leaves your machine.
 
+### Now what — things to actually say
+
+Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start here:
+
+> Take a screenshot of my current Chrome tab.
+
+If you get an image back instead of *"I don't have browser access"*, both halves are talking. Then:
+
+> Open my Gmail tab and tell me who sent my last 3 emails.
+
+The one that shows the difference — it works because it is *your* browser, already signed in.
+
+> Go to my analytics dashboard, pull this month's numbers, and put them in a table.
+
+Any dashboard you are already logged into. No API key, no export, no integration to build first.
+
+> Fill in this signup form with my details. Stop and ask me before anything sensitive.
+
+You stay in the loop — the agent hands control back for anything it should not decide alone.
+
+The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** Strongest where there is no API. [More examples](https://browsermcp.dev/#try).
+
 ## What your Codex agent can do
 
 ### The 2FA-killer move

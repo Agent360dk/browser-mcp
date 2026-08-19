@@ -46,6 +46,15 @@
     .setup .row { display: flex; gap: 6px; }
     .setup .row button, .setup .row a { flex: 1; margin: 0; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-align: center; text-decoration: none; border: none; cursor: pointer; }
     .setup .row a:hover, .setup .row button:hover { background: #475569; }
+    /* Shown once both halves are up but the agent has not touched a tab yet — the
+       moment a new user checks "did it work?" and needs to know what to say next. */
+    .try { display: none; background: #1e293b; border: 1px solid #334155; border-left: 3px solid #22c55e; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+    .try.show { display: block; }
+    .try p { font-size: 11px; line-height: 1.5; color: #94a3b8; margin-bottom: 8px; }
+    .try p b { color: #e2e8f0; }
+    .try .prompt { display: block; background: #0f172a; border-radius: 6px; padding: 8px; font-size: 11px; color: #e2e8f0; margin-bottom: 6px; font-style: italic; }
+    .try a { display: block; text-align: center; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-decoration: none; }
+    .try a:hover { background: #475569; }
   </style>
 </head>
 <body>
@@ -65,9 +74,16 @@
     </div>
   </div>
 
+  <div class="try" id="try">
+    <p><b>Connected — you're ready.</b> Nothing happens until you ask your agent for something. Try saying:</p>
+    <span class="prompt">"Take a screenshot of my current Chrome tab."</span>
+    <span class="prompt">"Open my Gmail tab and tell me who sent my last 3 emails."</span>
+    <a href="https://browsermcp.dev/#try" target="_blank" rel="noopener">More things to try</a>
+  </div>
+
   <div class="section-title">Sessions</div>
   <div id="sessions" class="sessions">
-    <div class="empty">No active sessions</div>
+    <div class="empty">No tabs claimed yet</div>
   </div>
 
   <div class="section-title">Action Log</div>

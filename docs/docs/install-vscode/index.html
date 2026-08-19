@@ -60,7 +60,22 @@ code --add-mcp &quot;{\&quot;name\&quot;:\&quot;browser-mcp\&quot;,\&quot;comman
 <h3>Step 4 — Start the server and switch to Agent mode</h3>
 <ul><li>After you save the config (Step 2), start the server: run <b>MCP: List Servers</b> from the Command Palette and choose <b>Start</b>/<b>Enable</b> (VS Code may also show an inline Start action directly above the server entry when you open the config file — check for it, but <code>MCP: List Servers</code> always works). A trust prompt appears the first time; approve it.</li><li>Open Copilot Chat and switch the mode dropdown to <b>Agent</b>.</li><li>The Browser MCP icon appears in your Chrome toolbar once the extension connects. 34 browser tools are now available in Agent mode.</li></ul>
 <h3>Verify it's working</h3>
-<p>Ask Copilot Chat (in Agent mode) to navigate to a URL or screenshot the current tab. If it acts instead of saying it has no browser access, you're connected.</p>
+<p>Paste this to Copilot Chat in Agent mode:</p>
+<blockquote>Take a screenshot of my current Chrome tab.</blockquote>
+<p>If you get an image back instead of <i>"I don't have browser access"</i>, both halves are talking to each other. That is the whole test.</p>
+<h3>Now what — things to actually say</h3>
+<p>Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start with these:</p>
+<blockquote>Open my Gmail tab and tell me who sent my last 3 emails.</blockquote>
+<p>The one that shows the difference — it works because it is <i>your</i> browser, already signed in. A headless tool hits a login wall here.</p>
+<blockquote>Go to my analytics dashboard, pull this month's numbers, and put them in a table.</blockquote>
+<p>Any dashboard you are already logged into. No API key, no export, no integration to build first.</p>
+<blockquote>Fill in this signup form with my details. Stop and ask me before anything sensitive.</blockquote>
+<p>You stay in the loop — the agent hands control back for passwords, payment details, or anything it should not decide alone.</p>
+<blockquote>Log me in here. If it emails a code, read it from my Gmail tab and continue.</blockquote>
+<p>The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.</p>
+<blockquote>Walk through my app's signup flow as a real user and tell me where it breaks.</blockquote>
+<p>End-to-end QA of your own product, in the same browser your users have.</p>
+<p>The pattern: <b>anything you would do yourself in a browser, on a site you are already signed into.</b> It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. <a href="https://browsermcp.dev/#try">More examples</a>.</p>
 <hr>
 <h2>Alternative installs</h2>
 <h3>No npm? Manual zip download</h3>
