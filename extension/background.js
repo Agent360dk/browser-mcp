@@ -1000,10 +1000,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'reconnect') {
-    chrome.offscreen.hasDocument().then(exists => {
-      if (exists) chrome.offscreen.closeDocument().then(() => ensureOffscreen());
-      else ensureOffscreen();
-    });
+    // FEJL RETTET 19/8: der var ingen fangst her. Lykkedes closeDocument()
+    // men fejlede ensureOffscreen() — fx fordi dokumentet stadig var ved at
+    // lukke — blev afvisningen slugt, og extensionen stod tilbage UDEN
+    // offscreen-dokument. Ingen WebSocket, ingen genopretning, og kun en
+    // manuel genindlaesning kunne redde den.
+    (async () => {
+      try {
+        if (await chrome.offscreen.hasDocument()) {
+          await chrome.offscreen.closeDocument();
+        }
+      } catch (e) {
+        console.warn('[BG] kunne ikke lukke offscreen:', e?.message || e);
+      }
+      // Proev at genskabe. Fejler det, tager hjerteslags-alarmen den
+      // inden for et minut — men kun fordi vi IKKE lader fejlen forsvinde.
+      try {
+        await ensureOffscreen();
+      } catch (e) {
+        console.error('[BG] kunne ikke genskabe offscreen:', e?.message || e);
+        setTimeout(() => ensureOffscreen().catch(console.error), 2000);
+      }
+    })();
     return;
   }
 
@@ -3422,7 +3440,27 @@ ensureOffscreen().catch(console.error);
 chrome.runtime.onStartup.addListener(() => ensureOffscreen().catch(console.error));
 chrome.runtime.onInstalled.addListener(() => ensureOffscreen().catch(console.error));
 
-chrome.alarms.create('ensure-offscreen', { periodInMinutes: 1 });
+// Hjerteslag der genskaber offscreen-dokumentet hvis Chrome har ryddet det.
+//
+// FEJL RETTET 19/8: alarmen blev oprettet paa oeverste niveau ved HVER
+// service-worker-opstart. chrome.alarms.create() med et navn der allerede
+// findes NULSTILLER nedtaellingen — saa hvis workeren vaagnede oftere end
+// hvert minut (hvilket den goer ved tab-events, beskeder, navigation),
+// naaede alarmen aldrig at fyre. Resultat: offscreen-dokumentet doede, intet
+// genskabte det, og forbindelsen til MCP-serveren kom aldrig tilbage foer
+// nogen genindlaeste extensionen i haanden.
+//
+// Nu oprettes den kun hvis den ikke findes, saa nedtaellingen faar lov at
+// loebe faerdig.
+chrome.alarms.get('ensure-offscreen', (eksisterende) => {
+  if (!eksisterende) {
+    chrome.alarms.create('ensure-offscreen', {
+      periodInMinutes: 1,
+      delayInMinutes: 1,
+    });
+  }
+});
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'ensure-offscreen') {
     ensureOffscreen().catch(console.error);
