@@ -4,15 +4,23 @@
 
 **Give your ZCode agent control of your real, already-logged-in Chrome — install takes about 90 seconds.**
 
-```bash
-npx @agent360/browser-mcp install
-```
+**Give your ZCode agent control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
 
-Then in ZCode: **Settings → MCP Servers → New MCP Server**, set type `stdio`, command `npx`, argument `@agent360/browser-mcp` (full form fields and a paste-in JSON block below).
+## The whole thing, in four steps
 
-Load the extension once in Chrome, and you're driving your actual cookies and sessions — including sites gated by 2FA and CAPTCHA that block headless tools like Playwright and Puppeteer outright. 34 browser tools, MIT-licensed, free, and 100% local — nothing leaves your machine.
+**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
 
-If you want the full walkthrough, keep reading. If you just needed the command, that's it above.
+**2 — Add the MCP server in ZCode.** **Settings → MCP Servers → New MCP Server** — scope `User`, name `browser-mcp`, type `stdio`, command `npx`, argument `@agent360/browser-mcp@latest`. Required — the extension does nothing on its own.
+
+**3 — Restart ZCode.** That is what starts the server. The extension icon turns green.
+
+**4 — Say this, to check it worked.** Paste it to your ZCode agent:
+
+> Take a screenshot of my current Chrome tab.
+
+You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#now-what-things-to-actually-say)
+
+Everything below is the long version.
 
 ---
 
@@ -38,7 +46,7 @@ Open ZCode → **Settings → MCP Servers → New MCP Server** (top-right corner
 | Name | `browser-mcp` |
 | Type | `stdio` (leave HTTP/SSE alone — Browser MCP runs locally over stdio, it's not a remote service) |
 | Command | `npx` |
-| Arguments | `@agent360/browser-mcp` |
+| Arguments | `@agent360/browser-mcp@latest` |
 | Environment variables | none — leave empty, no API key required |
 
 **Or Full configuration mode** — paste this JSON directly instead of filling the form:

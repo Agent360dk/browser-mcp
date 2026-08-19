@@ -74,8 +74,10 @@
     /* Install (dual: npm + Chrome Web Store) */
     .install-row { max-width: 720px; margin: 0 auto 48px; padding: 0 24px; display: grid; grid-template-columns: 1fr; gap: 12px; }
     .install { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace; font-size: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .install code { color: var(--green); }
-    .install button { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: 600; }
+    /* The register-command is long and now lives inside a list item, so the box is narrower
+       than the text. Let it wrap instead of overflowing the page. */
+    .install code { color: var(--green); min-width: 0; overflow-wrap: anywhere; line-height: 1.5; }
+    .install button { flex: 0 0 auto; background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: 600; }
     .install button:hover { opacity: 0.9; }
     .install-cws { background: linear-gradient(135deg, var(--accent-2), var(--accent)); border: none; padding: 14px 20px; border-radius: 12px; color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 10px; transition: transform 0.15s; }
     .install-cws:hover { transform: translateY(-1px); text-decoration: none; color: #fff; }

@@ -2,7 +2,34 @@
 
 # Add Browser MCP to Cursor
 
-**Give Cursor's agent control of your real, already-logged-in Chrome — install takes about 60 seconds.**
+**Give Cursor's agent control of your real, already-logged-in Chrome — about 60 seconds, four steps.**
+
+## The whole thing, in four steps
+
+**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
+
+**2 — Point Cursor at the MCP server.** Cursor does not read other clients' configs, so add this to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` in one project. Required — the extension does nothing on its own:
+
+```json
+{
+  "mcpServers": {
+    "browser-mcp": {
+      "command": "npx",
+      "args": ["@agent360/browser-mcp@latest"]
+    }
+  }
+}
+```
+
+**3 — Reload the Cursor window.** That is what starts the server. The extension icon turns green.
+
+**4 — Say this, to check it worked.** Paste it to Cursor's agent:
+
+> Take a screenshot of my current Chrome tab.
+
+You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#now-what-things-to-actually-say)
+
+Everything below is the long version.
 
 ```json
 {

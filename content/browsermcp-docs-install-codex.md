@@ -2,18 +2,34 @@
 
 # Install Browser MCP for OpenAI Codex
 
+**Give Codex control of your real, already-logged-in Chrome — about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank headless browser that gets blocked on every login wall.
+
+## The whole thing, in four steps
+
+**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
+
+**2 — Add the MCP server to Codex.** Paste this in a terminal. Required — the extension does nothing on its own:
+
 ```bash
-codex mcp add browser-mcp -- npx @agent360/browser-mcp
+codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-Run that in your terminal, load the Chrome extension once (Step 2 below), and Codex can drive your real, logged-in Chrome — your cookies, your sessions, your 2FA — instead of a blank headless browser that gets blocked on every login wall.
+**3 — Restart your Codex session.** That is what starts the server. The extension icon turns green.
+
+**4 — Say this, to check it worked.** Paste it to Codex:
+
+> Take a screenshot of my current Chrome tab.
+
+You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#now-what-things-to-actually-say)
+
+Everything below is the long version.
 
 ## Install — 3 steps (~90 seconds)
 
 ### Step 1: Add the MCP server to Codex
 
 ```bash
-codex mcp add browser-mcp -- npx @agent360/browser-mcp
+codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
 This writes a `[mcp_servers.browser-mcp]` entry to `~/.codex/config.toml` (Codex's own config command does the writing — you don't touch the file by hand). If you'd rather edit it yourself, the entry looks like this:

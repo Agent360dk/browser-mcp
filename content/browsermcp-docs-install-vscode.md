@@ -4,17 +4,27 @@
 
 **Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome — install takes about 90 seconds.**
 
-```bash
-# 1. One-time: installs the Chrome extension files
-npx @agent360/browser-mcp install
+**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
 
-# 2. Registers the server with VS Code (user profile, works in every window)
+## The whole thing, in four steps
+
+**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
+
+**2 — Register the MCP server with VS Code.** Paste this in a terminal. Required — the extension does nothing on its own:
+
+```bash
 code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp@latest\"]}"
 ```
 
-Run those two, load the extension once in Chrome, switch Copilot Chat to **Agent** mode — done. 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+**3 — Start the server, then switch Copilot Chat to Agent mode.** Command Palette → **MCP: List Servers** → **Start**, then set the chat mode dropdown to **Agent** (MCP tools only run there). The extension icon turns green.
 
-If you want the full walkthrough, keep reading. If you just needed the commands, that's it above.
+**4 — Say this, to check it worked.** Paste it to Copilot Chat:
+
+> Take a screenshot of my current Chrome tab.
+
+You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#now-what-things-to-actually-say)
+
+Everything below is the long version.
 
 ---
 
