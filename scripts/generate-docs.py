@@ -120,7 +120,13 @@ def md_to_html(lines):
             for r in rows: t+='<tr>'+''.join('<td>%s</td>'%inline(c) for c in r)+'</tr>'
             out.append(t+'</table></div>');continue
         m=re.match(r'^(#{1,4})\s+(.*)$',line)
-        if m: out.append('<h%d>%s</h%d>'%(len(m.group(1)),inline(m.group(2)),len(m.group(1))));i+=1;continue
+        if m:
+            # GitHub-style slug so in-page links like [x](#some-heading) resolve. Sources
+            # already used such links; without ids they silently did nothing.
+            lvl=len(m.group(1)); txt=m.group(2)
+            slug=re.sub(r'[^a-z0-9 -]','',strip_md(txt).lower()).strip().replace(' ','-')
+            slug=re.sub(r'-+','-',slug).strip('-')  # collapse runs left by dashes in the title
+            out.append('<h%d id="%s">%s</h%d>'%(lvl,slug,inline(txt),lvl));i+=1;continue
         if re.match(r'^\s*---+\s*$',line): out.append('<hr>');i+=1;continue
         if line.strip().startswith('>'):
             bq=[]

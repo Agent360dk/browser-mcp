@@ -19,7 +19,27 @@ The killer move: it hits a login wall, reads the verification code from your own
 
 42 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
 
-## Install — 2 steps (~60 seconds)
+## The whole thing, in four steps
+
+**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? See the unpacked install below.
+
+**2 — Add the MCP server.** Paste this in a terminal. Required — the extension does nothing on its own:
+
+```bash
+claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
+```
+
+**3 — Restart Claude Code.** That is what starts the server. The extension icon turns green.
+
+**4 — Say this, to check it worked.** Paste it to Claude Code:
+
+> Take a screenshot of my current Chrome tab.
+
+You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#youre-in-now-what)
+
+Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config — see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Everything below is the long version.
+
+## The long version — install, step by step
 
 > **Browser MCP is two halves and you need both:** a **Chrome extension** (drives the browser) and a **local MCP server** (what your agent actually talks to). Installing only the extension — e.g. straight from the Chrome Web Store — leaves it stuck on *"Not connected"*, because there is no server for it to reach. Chrome cannot install the server, and npm cannot install the extension. Hence two steps.
 

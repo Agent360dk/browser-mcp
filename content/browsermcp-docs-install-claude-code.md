@@ -1,16 +1,27 @@
 # Add Browser MCP to Claude Code
 
-**Give Claude Code control of your real, already-logged-in Chrome — install takes about 60 seconds.**
+**Give Claude Code control of your real, already-logged-in Chrome — about a minute, four steps.** 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+
+## The whole thing, in four steps
+
+**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
+
+**2 — Add the MCP server.** Paste this in a terminal. Required — the extension does nothing on its own:
 
 ```bash
-# 1. register the MCP server with Claude Code
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
-# 2. get the Chrome extension (Chrome Web Store link in Step 2 below)
 ```
 
-Run that, install the extension, restart Claude Code — done. 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+**3 — Restart Claude Code.** That is what starts the server. The extension icon turns green.
 
-If you want the full walkthrough, keep reading. If you just needed the command, that's it above.
+**4 — Say this, to check it worked.** Paste it to Claude Code:
+
+> Take a screenshot of my current Chrome tab.
+
+You get an image back instead of *"I don't have browser access"*. **That's it — you're running.**
+
+Using Cursor, VS Code, Codex or Windsurf instead? Same server, that client's own config — [guides here](/docs/install-cursor). The rest of this page is the long version, plus [what to say next](#now-what-things-to-actually-say).
+
 
 ---
 

@@ -81,8 +81,15 @@
     .install-cws:hover { transform: translateY(-1px); text-decoration: none; color: #fff; }
     .install-lead { text-align: center; font-size: 15px; color: var(--muted); margin-bottom: 4px; }
     .install-lead b { color: var(--fg); }
-    .install-step { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 8px 0 -4px; }
-    .install-step span { color: var(--accent-2); }
+    /* Four numbered steps in one block — the whole path from nothing to working */
+    .steps { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; }
+    .steps > li { counter-increment: step; position: relative; padding-left: 46px; }
+    .steps > li::before { content: counter(step); position: absolute; left: 0; top: 2px; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; }
+    .steps .what { display: block; font-size: 17px; font-weight: 600; color: var(--fg); margin-bottom: 3px; }
+    .steps .sub { display: block; font-size: 14px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+    .steps .sub:last-child { margin-bottom: 0; }
+    .steps .sub a { color: var(--accent-2); }
+    .steps .done { color: var(--green); font-weight: 600; }
     .install-note { font-size: 14px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.6; }
     .install-note a { color: var(--accent-2); }
 
@@ -172,6 +179,9 @@
       .hero .sub { font-size: 16px; margin-bottom: 22px; }
       .badge { font-size: 12px; padding: 4px 12px; }
       .install-row { padding: 0 16px; gap: 10px; margin-bottom: 32px; }
+      .steps > li { padding-left: 38px; }
+      .steps > li::before { width: 26px; height: 26px; font-size: 13px; }
+      .steps .what { font-size: 16px; }
       .install { font-size: 13px; flex-direction: column; gap: 10px; padding: 14px; }
       .install code { word-break: break-all; }
       .video-wrap { margin: 0 16px 40px; border-radius: 8px; }
@@ -238,21 +248,41 @@
 </section>
 
 <div class="install-row">
-  <p class="install-lead">Browser MCP has <b>two halves, and you need both</b>: the Chrome&nbsp;extension, plus a local MCP server that your agent talks to.</p>
+  <p class="install-lead">Browser MCP is <b>two halves</b> &mdash; a Chrome&nbsp;extension and a local MCP server. <b>Four steps, about a minute.</b></p>
 
-  <div class="install-step">Step 1 — <span>the Chrome extension</span></div>
-  <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" class="install-cws">
-    <svg width="22" height="22" viewBox="0 0 48 48" fill="currentColor"><path d="M24 4c-7.7 0-14.3 4.4-17.6 10.8L17.7 32c1.4-3.5 4.8-6 8.8-6h17.1C39.7 13.7 32.6 4 24 4zm0 40c8.6 0 15.7-9.7 19.6-20H30.7c-1 4.5-5 8-9.7 8-3.5 0-6.6-1.9-8.4-4.7L3.6 11.5C1.4 15.1 0 19.4 0 24c0 13.3 10.7 24 24 24z"/></svg>
-    Install from Chrome Web Store
-  </a>
+  <ol class="steps">
+    <li>
+      <span class="what">Install the Chrome extension</span>
+      <span class="sub">One click. Chrome keeps it updated for you.</span>
+      <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" class="install-cws">
+        <svg width="22" height="22" viewBox="0 0 48 48" fill="currentColor"><path d="M24 4c-7.7 0-14.3 4.4-17.6 10.8L17.7 32c1.4-3.5 4.8-6 8.8-6h17.1C39.7 13.7 32.6 4 24 4zm0 40c8.6 0 15.7-9.7 19.6-20H30.7c-1 4.5-5 8-9.7 8-3.5 0-6.6-1.9-8.4-4.7L3.6 11.5C1.4 15.1 0 19.4 0 24c0 13.3 10.7 24 24 24z"/></svg>
+        Install from Chrome Web Store
+      </a>
+    </li>
+    <li>
+      <span class="what">Add the MCP server</span>
+      <span class="sub">Paste this in a terminal. Required &mdash; the extension does nothing on its own.</span>
+      <div class="install">
+        <code>claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
+        <button onclick="navigator.clipboard.writeText('claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 1500);">Copy</button>
+      </div>
+    </li>
+    <li>
+      <span class="what">Restart Claude Code</span>
+      <span class="sub">That is what starts the server. The extension icon turns green.</span>
+    </li>
+    <li>
+      <span class="what">Say this, to check it worked</span>
+      <span class="sub">Paste it to Claude Code:</span>
+      <div class="install">
+        <code>Take a screenshot of my current Chrome tab.</code>
+        <button onclick="navigator.clipboard.writeText('Take a screenshot of my current Chrome tab.'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 1500);">Copy</button>
+      </div>
+      <span class="sub">You get an image back instead of <i>&ldquo;I don&rsquo;t have browser access&rdquo;</i>. <span class="done">That&rsquo;s it &mdash; you&rsquo;re running.</span> <a href="#try">What else to try &rarr;</a></span>
+    </li>
+  </ol>
 
-  <div class="install-step">Step 2 — <span>the MCP server</span> — required; the extension does nothing on its own</div>
-  <div class="install">
-    <code>claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
-    <button onclick="navigator.clipboard.writeText('claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 1500);">Copy</button>
-  </div>
-
-  <p class="install-note">Then restart Claude Code — done.<br>Using Cursor, VS Code, Codex or Windsurf instead? Same server, that client's own config: <a href="/docs/install-claude-code/">per-client guides</a>. No Chrome Web Store? The guides cover the unpacked install too.</p>
+  <p class="install-note">Using Cursor, VS Code, Codex or Windsurf? Same server, that client&rsquo;s own config: <a href="/docs/install-claude-code/">per-client guides</a>. No Chrome Web Store? The guides cover the unpacked install too.</p>
 </div>
 
 <div class="video-wrap" style="position:relative">
