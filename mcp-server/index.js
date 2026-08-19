@@ -150,7 +150,20 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       await new Promise(r => setTimeout(r, 1500));
       return sendToExtension(method, params, timeoutMs, _retries - 1);
     }
-    throw new Error('Chrome extension not connected after 5 retries. Open Chrome and ensure Agent360 Browser MCP extension is installed.');
+    // This is the other half of the two-part setup: the server is clearly running (it is
+    // throwing this), so what is missing is the extension, Chrome itself, or the connection
+    // between them. Say which, and where to get it — the agent relays this text to the user.
+    throw new Error(
+      'Chrome extension not connected after 5 retries.\n' +
+      'Browser MCP needs BOTH halves: this MCP server (running) and the Agent360 Browser MCP ' +
+      'Chrome extension (apparently not reachable).\n' +
+      'Check, in order:\n' +
+      '  1. Chrome is actually open and running.\n' +
+      '  2. The extension is installed and enabled at chrome://extensions — install it from\n' +
+      '     https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n' +
+      '  3. Click the extension icon -> Reconnect, and wait 2-3 seconds.\n' +
+      'Still stuck: https://browsermcp.dev/docs/troubleshooting/'
+    );
   }
   return new Promise((resolve, reject) => {
     const id = ++cmdId;
