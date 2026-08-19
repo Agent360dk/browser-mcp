@@ -184,6 +184,9 @@
       .steps > li { padding-left: 38px; }
       .steps > li::before { width: 26px; height: 26px; font-size: 13px; }
       .steps .what { font-size: 16px; }
+      /* Store-knappen lander ~2px fra kanten paa 390px efter at trinnene fik
+         indrykning — lad teksten krympe i stedet for at risikere overflow. */
+      .install-cws { font-size: 14px; padding: 14px 12px; max-width: 100%; }
       .install { font-size: 13px; flex-direction: column; gap: 10px; padding: 14px; }
       .install code { word-break: break-all; }
       .video-wrap { margin: 0 16px 40px; border-radius: 8px; }
