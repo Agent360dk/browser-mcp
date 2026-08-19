@@ -21,7 +21,7 @@ This writes a `[mcp_servers.browser-mcp]` entry to `~/.codex/config.toml` (Codex
 ```toml
 [mcp_servers.browser-mcp]
 command = "npx"
-args = ["@agent360/browser-mcp"]
+args = ["@agent360/browser-mcp@latest"]
 ```
 
 Default location: `~/.codex/config.toml` on Mac/Linux (`%USERPROFILE%\.codex\config.toml` on Windows). You can also scope it to one project with a `.codex/config.toml` in that repo, if it's a trusted project.

@@ -9,7 +9,7 @@
   "mcpServers": {
     "browser-mcp": {
       "command": "npx",
-      "args": ["@agent360/browser-mcp"]
+      "args": ["@agent360/browser-mcp@latest"]
     }
   }
 }
@@ -29,7 +29,7 @@ If you want the full walkthrough, keep reading. If you just needed the config bl
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension files to `~/.browser-mcp/extension/` — the terminal prints the path, copy it, you'll need it in Step 3. As a side effect it also writes a `browser-mcp` entry into Claude Code's config; harmless to leave in place even if you don't use Claude Code.
+This copies the Chrome extension files to `~/.browser-mcp/extension/` — the terminal prints the path, copy it, you'll need it in Step 3. It also tries to register the server with Claude Code if you have it installed; harmless to leave in place if you don't use Claude Code — Cursor is configured separately in Step 2.
 
 ### Step 2 — Point Cursor at the MCP server
 
@@ -144,7 +144,7 @@ An MCP (Model Context Protocol) server that gives Cursor — or any MCP client, 
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with Cursor, or also Claude Code / VS Code?**
-Any MCP-compatible client. It's the exact same server and the exact same config block — `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp"]}}}` — only the file you paste it into changes per client.
+Any MCP-compatible client. It's the exact same server and the exact same config block — `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` — only the file you paste it into changes per client.
 
 **Should I use the global or project config?**
 Global (`~/.cursor/mcp.json`) if you want Browser MCP available in every Cursor project, which is what most people want. Project-scoped (`.cursor/mcp.json` inside one repo) if you only want it active there — useful if you're on a team and don't want it turning up in a shared repo's config for everyone else.
@@ -159,7 +159,7 @@ No. The MCP server runs locally over stdio, talks to the extension over a local 
 The MCP server updates itself — every run uses `npx @agent360/browser-mcp`, so there's nothing to pin or bump. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" — what do I check?**
-Confirm it's loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9885 for the running MCP server.
+First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to your `mcp.json`, that is the whole problem — the extension has nothing to connect to. Add the config block from Step 2 above and restart Cursor. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9885 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
 
 **I already run several other MCP servers in Cursor — will Browser MCP's 34 tools be a problem?**
 Cursor limits how many tools can be active across all your MCP servers combined, so if you're already close to that ceiling, disable tools you don't need from **Settings → Tools & MCP** (you can toggle individual tools per server, not just whole servers).

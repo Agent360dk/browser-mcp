@@ -16,27 +16,35 @@ Browser MCP has **two parts** that must both be present:
 The server will start and list its 34 tools without the extension, but the tools only *do*
 anything once the extension is loaded **and Chrome is running**. Tell the user this plainly.
 
-## Step 1 — configure the MCP server
+## Step 1 — register the MCP server with the client
 
-Run:
+Use the client's own MCP-registration command. **Do not use `npx @agent360/browser-mcp install`
+for this** — that command copies extension files and writes `~/.claude/mcp.json`, which Claude
+Code does not read. Registering must go through the client.
+
+Claude Code:
 
 ```bash
-npx @agent360/browser-mcp install --skip-extension
+claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-This adds the `browser-mcp` server to the MCP client config (stdio, command `npx
-@agent360/browser-mcp`). `--skip-extension` is correct here because the extension is handled
-in Step 2 by the human.
+OpenAI Codex:
 
-If the client needs a manual config entry instead, use:
+```bash
+codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
+```
+
+Any other client (Cursor, VS Code, Windsurf, Cline…) — write this into that client's MCP config:
 
 ```json
 {
   "mcpServers": {
-    "browser-mcp": { "command": "npx", "args": ["@agent360/browser-mcp"] }
+    "browser-mcp": { "command": "npx", "args": ["@agent360/browser-mcp@latest"] }
   }
 }
 ```
+
+Keep the `@latest`: it is what makes the server self-update on each run.
 
 ## Step 2 — the Chrome extension (HUMAN action required)
 
@@ -49,8 +57,9 @@ path; recommend it.
 2. That's it — the extension auto-updates and needs no Developer mode.
 
 **Option B — load unpacked (no Chrome Web Store):**
-1. Run `npx @agent360/browser-mcp install` (without `--skip-extension`) to copy the extension
-   files to `~/.browser-mcp/extension/`.
+1. Run `npx @agent360/browser-mcp install` to copy the extension files to
+   `~/.browser-mcp/extension/`. (Ignore its "Claude Code configured" line — Step 1 already
+   handled registration, correctly.)
 2. Open `chrome://extensions`, toggle **Developer mode** ON (top right).
 3. Click **Load unpacked** and select `~/.browser-mcp/extension/`.
 

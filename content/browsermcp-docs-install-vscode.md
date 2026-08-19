@@ -9,7 +9,7 @@
 npx @agent360/browser-mcp install
 
 # 2. Registers the server with VS Code (user profile, works in every window)
-code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp\"]}"
+code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp@latest\"]}"
 ```
 
 Run those two, load the extension once in Chrome, switch Copilot Chat to **Agent** mode — done. 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
@@ -39,7 +39,7 @@ Pick whichever of these three is easiest — they all end up in the same place.
 **A. One-line CLI (fastest)**
 
 ```bash
-code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp\"]}"
+code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp@latest\"]}"
 ```
 
 Writes the server into your VS Code **user profile** config, so it's available in every window, not just one project. Requires the `code` CLI on your `PATH` — if it's not recognized, run `Shell Command: Install 'code' command in PATH` from the Command Palette first.
@@ -60,7 +60,7 @@ Workspace-level — create or edit `.vscode/mcp.json` at your project root:
     "browser-mcp": {
       "type": "stdio",
       "command": "npx",
-      "args": ["@agent360/browser-mcp"]
+      "args": ["@agent360/browser-mcp@latest"]
     }
   }
 }
@@ -101,7 +101,7 @@ Ask Copilot Chat (in Agent mode) to navigate to a URL or screenshot the current 
 1. Download the extension zip from the [latest GitHub release](https://github.com/Agent360dk/browser-mcp/releases/latest)
 2. Unzip it anywhere (e.g. `~/Downloads/browser-mcp-extension/`)
 3. Follow Step 3 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
-4. Register the server with VS Code — `code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp\"]}"`, or add the `.vscode/mcp.json` block from Step 2C by hand
+4. Register the server with VS Code — `code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp@latest\"]}"`, or add the `.vscode/mcp.json` block from Step 2C by hand
 
 ### No Developer mode — Chrome Web Store
 
@@ -145,7 +145,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | Human-in-the-loop | `browser_ask_user` | None |
 | Multi-session | 10 concurrent sessions, color-coded tab groups | Single session |
 | Provider shortcuts | 9 zero-config (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) — works for any provider via fallback | None |
-| Install | `npx @agent360/browser-mcp install` + `code --add-mcp` | `npx @playwright/mcp` |
+| Install | Chrome extension + `code --add-mcp` | `npx @playwright/mcp` |
 
 ### Multi-session support
 
@@ -162,7 +162,7 @@ Browser MCP is a standard MCP server over stdio — nothing about it is VS Code-
 ## FAQ
 
 **How do I add an MCP server to VS Code?**
-Run `code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp\"]}"` from a terminal, or open the Command Palette (`Cmd/Ctrl+Shift+P`) → **MCP: Add Server** → choose Workspace or Global → **stdio** → command `npx`, argument `@agent360/browser-mcp`. Start the server afterward via **MCP: List Servers** from the Command Palette.
+Run `code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp@latest\"]}"` from a terminal, or open the Command Palette (`Cmd/Ctrl+Shift+P`) → **MCP: Add Server** → choose Workspace or Global → **stdio** → command `npx`, argument `@agent360/browser-mcp@latest`. Start the server afterward via **MCP: List Servers** from the Command Palette.
 
 **Do I need GitHub Copilot?**
 Yes. Browser MCP's tools surface through Copilot Chat's Agent mode, so you need the GitHub Copilot Chat extension installed and signed in (the free tier is enough) with the chat mode dropdown set to **Agent** — not Ask or Edit.
@@ -186,7 +186,7 @@ No. The MCP server runs locally over stdio, talks to the extension over a local 
 The MCP server updates itself — every session runs `npx @agent360/browser-mcp@latest`, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" — what do I check?**
-Confirm it's loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9885 for the running MCP server.
+First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to VS Code's MCP config, that is the whole problem — the extension has nothing to connect to. Add the config block from Step 2 above and restart VS Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9885 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
 
 **Is this the same as browsermcp.io?**
 No — different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.

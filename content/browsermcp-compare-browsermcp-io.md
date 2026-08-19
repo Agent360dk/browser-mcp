@@ -14,7 +14,7 @@ We are **Browser MCP by Agent360** (`@agent360/browser-mcp`, [browsermcp.dev](ht
 |---|---|---|
 | GitHub stars | **6,868** | 24 |
 | Repo created | 2025-03-28 | 2026-03-29 |
-| **Last commit pushed** | **2025-04-24** | **2026-07-24 (today)** |
+| **Last commit pushed** | **2025-04-24** | **2026-07-24** |
 | Published GitHub releases | 0 | 3 (latest `v1.24.0`, 2026-07-24) |
 | Latest npm version | `0.1.3` — published 2025-04-11, unchanged since | `1.24.0` — published 2026-07-24 |
 | npm downloads, last 7 days | 10,326 (`@browsermcp/mcp`) | 387 (`@agent360/browser-mcp`) |
@@ -23,7 +23,7 @@ We are **Browser MCP by Agent360** (`@agent360/browser-mcp`, [browsermcp.dev](ht
 | Open GitHub issues | 141 | 4 |
 | License | Apache-2.0 | MIT |
 | Tools exposed | Not publicly documented (not audited here) | 34, auto-listed at [`/docs/tools`](/docs/tools) |
-| Install | `npx @browsermcp/mcp` (npm) or Chrome Web Store | `npx @agent360/browser-mcp install` or Chrome Web Store |
+| Install | `npx @browsermcp/mcp` (npm) or Chrome Web Store | Chrome Web Store extension + `claude mcp add` |
 
 *GitHub and npm figures above were re-pulled live on 2026-07-24; the Chrome Web Store figures (installs, rating) are from the 2026-07-15 pass and were not re-extracted. Originally pulled via the GitHub REST API, the public npm registry API, and the Chrome Web Store listing pages for both extensions (`bjfgambnhccakkhmkepdoekmckoijdlc` and `jdehgalffmffhfhmmhaokfbfnafnmgcl`). See "How we verified this" below.*
 
@@ -33,7 +33,7 @@ Scale metrics aside, there's one number in that table that decides whether a too
 
 > **browsermcp.io's repository has not had a commit since April 24, 2025.** Not a bug fix, not a dependency bump, not a README typo fix — nothing, for over 14 months as of this writing. Its npm package has been on version `0.1.3` since April 11, 2025, and it has zero published GitHub releases. Its 141 open issues have had no code response in that window, because there hasn't been a commit to respond with.
 >
-> **Browser MCP by Agent360 pushed a commit today** (2026-07-24) and has shipped three GitHub releases (`v1.16.1` in April, `v1.23.0` in June, `v1.24.0` today).
+> **Browser MCP by Agent360 was pushed to on 2026-07-24** and has shipped three GitHub releases (`v1.16.1` in April, `v1.23.0` in June, `v1.24.0` today).
 
 That's the entire pitch of this page, stated as plainly as we can: **actively maintained, this week — not since April 2025.** We're not implying anything about *why* browsermcp.io went quiet — we don't know who runs it or what happened, and we haven't tried to find out. We're only reporting what the commit history, release history, and npm registry actually show, with the dates attached, so you can weigh it yourself.
 
@@ -61,7 +61,7 @@ No. Two separate teams, two separate GitHub orgs (`BrowserMCP` vs. `Agent360dk`)
 browsermcp.io, by a wide margin — 100,000 Chrome Web Store users vs. our 186, as of 2026-07-15.
 
 **Which one is actively maintained?**
-Browser MCP by Agent360. Last commit today (2026-07-24) vs. browsermcp.io's last commit on 2025-04-24.
+Browser MCP by Agent360. Last commit 2026-07-24 vs. browsermcp.io's last commit on 2025-04-24.
 
 **Should I uninstall browsermcp.io and switch?**
 Not automatically. If it's working for your workflow, keep using it. Consider trying ours if you specifically need multi-session support (10 concurrent, color-coded tab groups), a human-in-the-loop tool for 2FA/CAPTCHA/credential prompts (`browser_ask_user`), or you want a project that's currently shipping fixes.
@@ -75,10 +75,12 @@ No — read the "Where browsermcp.io genuinely wins" section above. The scale nu
 ## Try it yourself
 
 ```bash
-npx @agent360/browser-mcp install
+# 1. the Chrome extension: chromewebstore.google.com — search "Agent360 Browser MCP"
+# 2. the MCP server (Claude Code):
+claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-60-second install, MIT licensed, 34 tools, runs 100% locally. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that's the right call for you](https://browsermcp.io) — we mean that.
+Two parts, both required — about a minute. MIT licensed, 34 tools, runs 100% locally. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that's the right call for you](https://browsermcp.io) — we mean that.
 
 ---
 

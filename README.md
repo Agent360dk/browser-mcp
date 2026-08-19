@@ -17,17 +17,27 @@ Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode
 
 The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace — with you approving the sensitive steps.
 
-41 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
+42 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
 
 ## Install — 2 steps (~60 seconds)
 
-### Step 1: Configure the MCP server
+> **Browser MCP is two halves and you need both:** a **Chrome extension** (drives the browser) and a **local MCP server** (what your agent actually talks to). Installing only the extension — e.g. straight from the Chrome Web Store — leaves it stuck on *"Not connected"*, because there is no server for it to reach. Chrome cannot install the server, and npm cannot install the extension. Hence two steps.
+
+### Step 1: Register the MCP server with Claude Code
+
+```bash
+claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
+```
+
+That is Claude Code's own MCP command, so the entry lands in the config Claude Code actually reads. `--scope user` makes it available in every project.
+
+Want the extension files on disk for the unpacked install in Step 2? Also run:
 
 ```bash
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension files to `~/.browser-mcp/extension/` and adds the MCP server to your Claude Code config. **You'll see the path to the extension folder printed in the terminal — copy it.**
+It copies the extension to `~/.browser-mcp/extension/` and **prints that path in the terminal — copy it.** (Use it for the extension files only; register the server with `claude mcp add` above.)
 
 ### Step 2: Load the extension in Chrome
 
@@ -48,33 +58,41 @@ That's it. The Browser MCP icon will appear in your toolbar, and 42 browser tool
 
 If you don't want to use npm, download the extension directly:
 
-1. [Download `browser-mcp-v1.25.0.zip`](https://github.com/Agent360dk/browser-mcp/releases/latest) from the latest GitHub release
+1. [Download the extension zip](https://github.com/Agent360dk/browser-mcp/releases/latest) (`agent360-browser-mcp-<version>.zip`) from the latest GitHub release
 2. Unzip the file (anywhere — e.g. `~/Downloads/browser-mcp-extension/`)
 3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
-4. Configure Claude Code manually by adding this to your `~/.claude.json` (or run `npx @agent360/browser-mcp install --skip-extension`):
+4. Register the server — run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`, or add this to `~/.claude.json` by hand:
    ```json
    {
      "mcpServers": {
        "browser-mcp": {
          "command": "npx",
-         "args": ["@agent360/browser-mcp"]
+         "args": ["@agent360/browser-mcp@latest"]
        }
      }
    }
    ```
 
-### Chrome Web Store (one-click install)
+### Chrome Web Store (no Developer mode, auto-updating extension)
 
-[**Install from Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
+**This replaces Step 2 only — you still need Step 1.**
 
-No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-extension` to configure Claude Code.
+1. [**Install the extension from the Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl) — no Developer mode toggle, and Chrome keeps it updated for you.
+2. Register the MCP server:
+   ```bash
+   claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
+   ```
+   (For Cursor / VS Code / Codex, use that client's own MCP config instead — see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-claude-code/).)
+3. Restart Claude Code.
+
+Skip step 2 and the extension icon will sit on **"Not connected"** forever — that is the symptom of a missing MCP server, not a broken extension.
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome | Headless (new session) | Your real Chrome |
-| **Maintained** | Actively — v1.25.0 this week | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively — latest release v1.25.0 (2026-07-24) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Already authenticated | Must log in every time | Already authenticated |
 | **Multi-session** | 10 concurrent sessions with color-coded tab groups | Single session | Single session |
 | **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
@@ -83,7 +101,7 @@ No Developer mode needed. Then run `npx @agent360/browser-mcp install --skip-ext
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
 | **CSP-strict sites** | Chrome Debugger API throughout | Works (headless) | Limited |
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
-| **Install** | `npx @agent360/browser-mcp install` | `npx @playwright/mcp` | Manual clone |
+| **Install** | `claude mcp add` + extension from the Chrome Web Store | `npx @playwright/mcp` | Manual clone |
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
@@ -229,7 +247,7 @@ Browser MCP has two parts, and they update independently — how the **extension
 
 **Not sure which you have?** Open `chrome://extensions` and find Browser MCP. If it shows a **"Loaded from /path/…"** line, it's unpacked (manual updates). If there's no such line, it came from the Chrome Web Store (auto-updates).
 
-**Want zero-maintenance updates?** Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl), then run `npx @agent360/browser-mcp install --skip-extension` to wire up just the MCP server. After that, both parts stay current on their own.
+**Want zero-maintenance updates?** Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl), then run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` to register the server. After that, both parts stay current on their own — as long as your config uses `@agent360/browser-mcp@latest`.
 
 ## Troubleshooting
 

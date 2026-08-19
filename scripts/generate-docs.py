@@ -141,7 +141,17 @@ def title_of(lines):
         m=re.match(r'^#\s+(.*)$',l)
         if m: return strip_md(m.group(1))
     return 'Browser MCP'
-def meta_desc(lines):
+def meta_desc(lines, raw=''):
+    # A source may state its own meta description in the front-matter line
+    # (*Suggested ... meta description: "..."*). Honour it — it is hand-written for
+    # search snippets, and clean_lines() has already dropped that line from `lines`,
+    # so it must be read from the raw source. Otherwise fall back to the first real
+    # paragraph after the H1 (which is whatever the page happens to open with).
+    m = re.search(r'meta description:\s*"(.*?)"', raw, re.S)
+    if m:
+        d = ' '.join(m.group(1).split())
+        if len(d) > 60:
+            return (d[:152].rsplit(' ', 1)[0] + '…') if len(d) > 155 else d
     started=False; in_code=False
     for l in lines:
         s=l.strip()
@@ -223,7 +233,7 @@ def sidebar(active):
 nfaq=0
 for fn,grp,label,url in LIVE:
     lines=clean_lines(SOURCES[url])
-    title=title_of(lines); desc=meta_desc(lines); faq=extract_faq(lines); nfaq+=1 if faq else 0
+    title=title_of(lines); desc=meta_desc(lines, SOURCES[url]); faq=extract_faq(lines); nfaq+=1 if faq else 0
     body=md_to_html(lines)
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq)+'\n</head><body>'
     page+='<div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><a class="star" href="https://github.com/Agent360dk/browser-mcp" style="color:inherit;text-decoration:none">GitHub &#8599;</a></div></div>'

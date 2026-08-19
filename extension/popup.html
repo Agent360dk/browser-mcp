@@ -37,6 +37,15 @@
     .color-purple { border-color: #a855f7; } .color-purple .session-header { color: #a855f7; }
     .color-cyan { border-color: #06b6d4; } .color-cyan .session-header { color: #06b6d4; }
     .color-orange { border-color: #f97316; } .color-orange .session-header { color: #f97316; }
+    /* Shown only while the MCP server is missing — the store can't install it for you */
+    .setup { display: none; background: #1e293b; border: 1px solid #334155; border-left: 3px solid #f59e0b; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+    .setup.show { display: block; }
+    .setup p { font-size: 11px; line-height: 1.5; color: #94a3b8; margin-bottom: 8px; }
+    .setup p b { color: #e2e8f0; }
+    .setup code { display: block; background: #0f172a; border-radius: 6px; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #22c55e; word-break: break-all; margin-bottom: 6px; }
+    .setup .row { display: flex; gap: 6px; }
+    .setup .row button, .setup .row a { flex: 1; margin: 0; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-align: center; text-decoration: none; border: none; cursor: pointer; }
+    .setup .row a:hover, .setup .row button:hover { background: #475569; }
   </style>
 </head>
 <body>
@@ -44,7 +53,16 @@
 
   <div class="status">
     <div class="dot off" id="dot"></div>
-    <span class="label" id="label">Checking...</span>
+    <span class="label" id="label">Checking…</span>
+  </div>
+
+  <div class="setup" id="setup">
+    <p><b>This extension is only half of Browser MCP.</b> It needs a local MCP server to talk to — the Chrome Web Store cannot install that part. Register it once, then restart your agent. Claude Code:</p>
+    <code id="setupCmd">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
+    <div class="row">
+      <button id="copyCmd">Copy command</button>
+      <a href="https://browsermcp.dev/docs/install-claude-code/" target="_blank" rel="noopener">Setup guide</a>
+    </div>
   </div>
 
   <div class="section-title">Sessions</div>

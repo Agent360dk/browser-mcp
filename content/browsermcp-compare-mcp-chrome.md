@@ -15,7 +15,7 @@ All figures pulled from the GitHub and npm APIs on **2026-07-25**. They move; th
 | | mcp-chrome | Browser MCP by Agent360 |
 |---|---|---|
 | GitHub stars | **12,197** | 24 |
-| Last commit | **2026-01-06** (~6.5 months ago) | 2026-07-25 (today) |
+| Last commit | **2026-01-06** (~6.5 months ago) | 2026-07-25 |
 | Open issues | 223 | 3 |
 | npm downloads/week | **1,037** (`mcp-chrome-bridge`) | 387 (`@agent360/browser-mcp`) |
 | Primary support language | Chinese | English |

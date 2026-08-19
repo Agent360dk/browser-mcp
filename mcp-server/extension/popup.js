@@ -1,13 +1,22 @@
 // ── Status ──────────────────────────────────────────────────────────────────
 
-chrome.storage.local.get(['mcpConnected', 'mcpCount', 'mcpPorts'], (result) => {
-  const connected = result.mcpConnected === true;
-  const count = result.mcpCount || 0;
+function paintStatus(connected, count) {
   document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
   document.getElementById('label').textContent = connected
-    ? `Forbundet til ${count} session${count > 1 ? 's' : ''}`
-    : 'Ikke forbundet';
-});
+    ? `Connected — ${count} session${count === 1 ? '' : 's'}`
+    : 'Not connected — no MCP server found';
+  // The Chrome Web Store can only install the extension. If nothing is listening on
+  // ports 9876-9885, the user almost certainly never ran the npx install — say so.
+  document.getElementById('setup').classList.toggle('show', !connected);
+}
+
+function refreshStatus() {
+  chrome.storage.local.get(['mcpConnected', 'mcpCount'], (result) => {
+    paintStatus(result.mcpConnected === true, result.mcpCount || 0);
+  });
+}
+
+refreshStatus();
 
 // ── Sessions with tabs ─────────────────────────────────────────────────────
 
@@ -17,7 +26,7 @@ function renderSessions() {
     const entries = Object.entries(sessions);
 
     if (!entries.length) {
-      container.innerHTML = '<div class="empty">Ingen aktive sessions</div>';
+      container.innerHTML = '<div class="empty">No active sessions</div>';
       return;
     }
 
@@ -40,7 +49,7 @@ function renderSessions() {
         const color = session.color || 'blue';
         const tabHtml = tabInfos.length
           ? tabInfos.map(u => `<div>• ${u}</div>`).join('')
-          : '<div>Ingen tabs</div>';
+          : '<div>No tabs</div>';
         return `
           <div class="session-card color-${color}">
             <div class="session-header">${session.label} <span style="font-weight:normal;font-size:10px;color:#64748b">port ${port}</span></div>
@@ -59,11 +68,11 @@ function renderLog() {
   chrome.storage.local.get({ actionLog: [] }, ({ actionLog }) => {
     const container = document.getElementById('log');
     if (!actionLog.length) {
-      container.innerHTML = '<div class="empty">Ingen actions endnu</div>';
+      container.innerHTML = '<div class="empty">No actions yet</div>';
       return;
     }
     container.innerHTML = actionLog.slice(0, 30).map(entry => {
-      const time = new Date(entry.time).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const time = new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const cat = entry.category || 'safe';
       const cls = cat === 'sensitive' ? 'log-sensitive' : 'log-safe';
       return `<div class="log-entry"><span class="log-time">${time}</span><span class="log-method ${cls}">${entry.method}</span><span class="log-session">${entry.session || ''}</span></div>`;
@@ -77,18 +86,17 @@ renderLog();
 
 document.getElementById('reconnect').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'reconnect' });
-  document.getElementById('label').textContent = 'Reconnecting...';
+  document.getElementById('label').textContent = 'Reconnecting…';
   setTimeout(() => {
-    chrome.storage.local.get(['mcpConnected', 'mcpCount'], (result) => {
-      const connected = result.mcpConnected === true;
-      const count = result.mcpCount || 0;
-      document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
-      document.getElementById('label').textContent = connected
-        ? `Forbundet til ${count} session${count > 1 ? 's' : ''}`
-        : 'Ikke forbundet';
-      renderSessions();
-    });
+    refreshStatus();
+    renderSessions();
   }, 3000);
+});
+
+document.getElementById('copyCmd').addEventListener('click', (e) => {
+  navigator.clipboard.writeText(document.getElementById('setupCmd').textContent.trim());
+  e.target.textContent = 'Copied!';
+  setTimeout(() => { e.target.textContent = 'Copy command'; }, 1500);
 });
 
 document.getElementById('clearLog').addEventListener('click', () => {

@@ -48,7 +48,7 @@ Open ZCode → **Settings → MCP Servers → New MCP Server** (top-right corner
   "mcpServers": {
     "browser-mcp": {
       "command": "npx",
-      "args": ["@agent360/browser-mcp"]
+      "args": ["@agent360/browser-mcp@latest"]
     }
   }
 }
@@ -131,7 +131,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | Human-in-the-loop | `browser_ask_user` | None |
 | Multi-session | 10 concurrent sessions, color-coded tab groups | Single session |
 | Provider dashboards | Zero-config shortcuts for 9 common ones, works with any | None |
-| Install | `npx @agent360/browser-mcp install` | `npx @playwright/mcp` |
+| Install | Chrome extension + one `mcp.json` entry | `npx @playwright/mcp` |
 
 ### Works with any MCP client
 
@@ -155,7 +155,7 @@ An MCP (Model Context Protocol) server that gives ZCode — or any MCP client, i
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with ZCode?**
-No. It's a standard MCP server, so it works with any MCP-compatible client. Only Step 2 — how you register the server — differs between clients; Cursor and VS Code agent mode both take the same `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp"]}}}` block.
+No. It's a standard MCP server, so it works with any MCP-compatible client. Only Step 2 — how you register the server — differs between clients; Cursor and VS Code agent mode both take the same `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` block.
 
 **Why do I have to load the extension manually instead of it just installing?**
 Chrome blocks extensions from self-installing from npm or any script — that's a Chrome security boundary, not a Browser MCP limitation. Loading unpacked once, or installing from the Chrome Web Store, are the only two ways in.

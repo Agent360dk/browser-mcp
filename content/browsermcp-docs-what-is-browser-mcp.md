@@ -41,7 +41,7 @@ Headless frameworks like Playwright and Puppeteer are excellent at what they wer
 | **Best fit** | Operating real accounts on sites with no API: dashboards, LinkedIn, internal tools, your own app as a logged-in user | Fast, repeatable CI/E2E test suites against your own app in a clean, reproducible state |
 | **Session persistence** | Native — it's your live browser | Requires manually saving/restoring storage state |
 | **Where it runs** | Locally, via a Chrome extension you load yourself | Locally or in CI, via a downloaded browser binary |
-| **Install** | `npx @agent360/browser-mcp install`, load the extension once | Framework install + browser binary download |
+| **Install** | Chrome extension once + register the server with your client | Framework install + browser binary download |
 
 If your task is "verify my checkout flow still works in a clean environment," reach for Playwright. If your task is "log into the tool I already use and do something in it," that's the gap Browser MCP fills.
 
@@ -57,11 +57,17 @@ Browser MCP is MIT-licensed, free, and 100% local. There is no cloud relay, no h
 
 ## How do I install it?
 
+In two parts, because it *is* two parts.
+
+**1. The Chrome extension** — one click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl) (auto-updating, no Developer mode). Or run `npx @agent360/browser-mcp install` to drop the files in `~/.browser-mcp/extension/` and load them via `chrome://extensions` → Developer mode → Load unpacked.
+
+**2. The MCP server** — registered with your client. Claude Code:
+
 ```bash
-npx @agent360/browser-mcp install
+claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-That configures the local MCP server and copies the extension files to `~/.browser-mcp/extension/`, which you then load once via `chrome://extensions` → Developer mode → Load unpacked (or install the packaged version from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)). Client-specific walkthroughs:
+Neither half can install the other, so both steps are required — the extension on its own sits on "Not connected". Client-specific walkthroughs:
 
 - [Install in Claude Code](/docs/install-claude-code)
 - [Install in Cursor](/docs/install-cursor)
