@@ -188,7 +188,8 @@
          indrykning — lad teksten krympe i stedet for at risikere overflow. */
       .install-cws { font-size: 14px; padding: 14px 12px; max-width: 100%; }
       .install { font-size: 13px; flex-direction: column; gap: 10px; padding: 14px; }
-      .install code { word-break: break-all; }
+      /* overflow-wrap: anywhere (ovenfor) braekker allerede — break-all ville tvinge
+         brud midt i ord selv naar der er et mellemrum eller en bindestreg lige ved siden af. */
       .video-wrap { margin: 0 16px 40px; border-radius: 8px; }
       .section-head h2 { font-size: 24px; }
       .features { grid-template-columns: 1fr; gap: 14px; padding: 0 16px; margin-bottom: 48px; }

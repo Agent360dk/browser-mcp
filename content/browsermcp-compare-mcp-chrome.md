@@ -10,14 +10,14 @@
 
 ## The numbers, dated
 
-All figures pulled from the GitHub and npm APIs on **2026-07-25**. They move; the dates are what matter.
+All figures pulled from the GitHub and npm APIs on **2026-08-19**. They move; the dates are what matter.
 
 | | mcp-chrome | Browser MCP by Agent360 |
 |---|---|---|
-| GitHub stars | **12,197** | 24 |
-| Last commit | **2026-01-06** (~6.5 months ago) | 2026-07-25 |
-| Open issues | 223 | 3 |
-| npm downloads/week | **1,037** (`mcp-chrome-bridge`) | 387 (`@agent360/browser-mcp`) |
+| GitHub stars | **12,324** | 35 |
+| Last commit | **2026-01-06** (~7.5 months ago) | 2026-08-19 |
+| Open issues | 224 | 4 |
+| npm downloads/week | **754** (`mcp-chrome-bridge`) | 469 (`@agent360/browser-mcp`) |
 | Primary support language | Chinese | English |
 | License | MIT | MIT |
 | Runs locally | Yes | Yes |

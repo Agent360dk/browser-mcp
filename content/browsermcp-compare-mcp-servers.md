@@ -13,12 +13,12 @@
 | Project | GitHub stars | Last commit | npm downloads/week | Latest release | Drives which browser? |
 |---|---|---|---|---|---|
 | [Playwright MCP](https://github.com/microsoft/playwright-mcp) | 35,458 | 2026-07-24 | 6,369,865 | 0.0.78 (2026-07-09) | Own managed profile (isolated or persistent); real Chrome only via opt-in `--extension` |
-| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 47,510 | 2026-07-24 | 1,758,530 | 1.6.0 (2026-07-14) | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
-| [Browser Use](https://github.com/browser-use/browser-use) | 106,521 | 2026-07-24 | n/a (Python/PyPI) | 0.13.6 (2026-07-17) | Own launched instance; real-profile reuse is an opt-in example |
-| [browsermcp.io](https://github.com/BrowserMCP/mcp) | 6,868 | **2025-04-24** | 10,326 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
-| [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 24 | 2026-07-24 | 387 | 1.24.0 (2026-07-24) | **Your real Chrome** (extension) — only mode |
+| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 49,398 | 2026-08-19 | 2,211,104 | 1.7.0 | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
+| [Browser Use](https://github.com/browser-use/browser-use) | 109,731 | 2026-08-18 | n/a (Python/PyPI) | 0.13.6 | Own launched instance; real-profile reuse is an opt-in example |
+| [browsermcp.io](https://github.com/BrowserMCP/mcp) | 6,991 | **2025-04-24** | 8,585 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
+| [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 35 | 2026-08-19 | 469 | 1.25.0 (2026-07-24) | **Your real Chrome** (extension) — only mode |
 
-*(All figures fetched 2026-07-21 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
+*(All figures fetched 2026-08-19 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
 
 ## Which browser does each one actually drive?
 
