@@ -17,7 +17,7 @@ Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode
 
 The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace — with you approving the sensitive steps.
 
-42 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
+43 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
 
 ## The whole thing, in four steps
 
@@ -72,7 +72,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 42 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 43 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
@@ -129,7 +129,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | **Browser** | Your real Chrome | Headless (new session) | Your real Chrome |
 | **Maintained** | Actively — latest release v1.25.0 (2026-07-24) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Already authenticated | Must log in every time | Already authenticated |
-| **Multi-session** | 10 concurrent sessions with color-coded tab groups | Single session | Single session |
+| **Multi-session** | 20 concurrent sessions with color-coded tab groups | Single session | Single session |
 | **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
 | **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
@@ -140,7 +140,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
-## 42 Tools
+## 43 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -183,8 +183,6 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 ### Data & Network
 | Tool | Description |
 |------|-------------|
-| `browser_get_cookies` | Get cookies for domain |
-| `browser_get_local_storage` | Read localStorage |
 | `browser_fetch` | HTTP request from extension (bypasses CORS) |
 | `browser_wait_for_network` | Wait for specific API call to complete |
 | `browser_extract_token` | Navigate to provider dashboard + extract API token |
@@ -217,9 +215,15 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | `browser_paste_from_clipboard` | Paste the system clipboard into a form field without exposing the content |
 | `browser_clipboard_stats` | Inspect the clipboard's shape (length, trimmed length) without exposing content |
 
+### Diagnostics & feedback
+| Tool | Description |
+|------|-------------|
+| `browser_provide_feedback` | Self-check + report in one call. Compares this server against the latest on npm, the connected extension against this server, and detects **more than one Browser MCP extension connected at once** — the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
+| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
+
 ## Multi-Session Support
 
-Each Claude Code conversation gets its own MCP server on a unique port (9876-9885). The Chrome extension connects to all active servers simultaneously.
+Each Claude Code conversation gets its own MCP server on a unique port (9876-9895). The Chrome extension connects to all active servers simultaneously.
 
 ```
 Claude Session 1 ←(stdio)→ MCP :9876 ←(WS)→
@@ -258,13 +262,13 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 42 tool definitions
+  tools.js            # 43 tool definitions
   bin/cli.js          # Install CLI
 ```
 
 ### How It Works
 1. Claude Code starts → spawns MCP server via stdio
-2. MCP server binds to first available port (9876-9885)
+2. MCP server binds to first available port (9876-9895)
 3. Extension's offscreen document scans ports every 2s
 4. WebSocket connection established
 5. Commands flow: Claude Code → MCP → Extension → Chrome APIs
@@ -302,7 +306,7 @@ Browser MCP has two parts, and they update independently — how the **extension
 **Stale processes**
 - Processes auto-exit when Claude Code closes (stdin detection)
 - Idle timeout: 4 hours without commands → auto-exit
-- Manual cleanup: `lsof -i :9876-9885 | grep LISTEN`
+- Manual cleanup: `lsof -i :9876-9895 | grep LISTEN`
 
 ## 💡 Help Shape Browser MCP
 

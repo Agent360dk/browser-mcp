@@ -13,7 +13,7 @@
   Codex: `codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest` ·
   Cursor/VS Code/other: add `{"command": "npx", "args": ["@agent360/browser-mcp@latest"]}` under `mcpServers` in that client's config.
 - Install the extension: https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl
-- 34 tools · MIT licensed · 100% local (nothing leaves your machine, no cloud relay, no API key)
+- 43 tools · MIT licensed · 100% local (nothing leaves your machine, no cloud relay, no API key)
 - Works with: Claude Code, Cursor, VS Code agent mode, and any MCP client
 - Homepage: https://browsermcp.dev
 - Source: https://github.com/Agent360dk/browser-mcp
@@ -35,7 +35,7 @@
 ## Docs
 
 - [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the ~60-second setup, both halves. Cursor, VS Code, Codex and ZCode guides are alongside it.
-- [All 34 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, generated from source.
+- [All 43 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, generated from source.
 - [Uninstall & data](https://browsermcp.dev/docs/uninstall/): full removal + every Chrome permission explained.
 - [When NOT to use it](https://browsermcp.dev/docs/when-not-to-use/): honest guide — CI/headless/scale belong to other tools.
 - [Troubleshooting](https://browsermcp.dev/docs/troubleshooting/): the real bugs we found dogfooding, with fixes.

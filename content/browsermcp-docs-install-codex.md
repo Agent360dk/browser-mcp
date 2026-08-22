@@ -99,7 +99,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail tab, and continues the sign-in — because it's driving *your* browser, not a fresh anonymous one. No API can do that. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
-### 34 tools, no server-side moving parts
+### 43 tools, no server-side moving parts
 
 | Category | What it gives your agent |
 |---|---|
@@ -113,7 +113,7 @@ This is the thing headless tools can't do: Codex hits a login wall, reads the on
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) — but it isn't limited to those. Point it at any provider's API-settings page and it'll navigate there and walk you through pulling the token the same way; the 9 are just shortcuts, not a whitelist.
 
-Runs up to 10 concurrent browser sessions with color-coded Chrome tab groups, so parallel Codex tasks don't step on each other's tabs.
+Runs up to 20 concurrent browser sessions with color-coded Chrome tab groups, so parallel Codex tasks don't step on each other's tabs.
 
 ## Works with any MCP client
 

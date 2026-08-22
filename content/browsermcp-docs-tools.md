@@ -1,12 +1,12 @@
 # Tools
 
-Browser MCP exposes **34 tools** to the connected agent. Every tool acts on the active Chrome tab (or a tab/frame you target explicitly) via the Browser MCP extension — no headless browser, no Playwright binary.
+Browser MCP exposes **43 tools** to the connected agent. Every tool acts on the active Chrome tab (or a tab/frame you target explicitly) via the Browser MCP extension — no headless browser, no Playwright binary.
 
 Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page from that file if tool names, params, or descriptions change.
 
 ---
 
-## Navigation & Content — 4 tools
+## Navigation & Content — 5 tools
 
 | Tool | Description |
 |---|---|
@@ -14,12 +14,16 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
+| `browser_extract_list` | Read every row of a long or virtualised list by scrolling its container until nothing new appears — mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. |
 
-## Interaction — 11 tools
+## Interaction — 14 tools
 
 | Tool | Description |
 |---|---|
 | `browser_click` | Click an element via CSS or text selector (`text=Submit`, `button:text(Next)`); auto-scrolls into view, uses real mouse events. |
+| `browser_double_click` | Double-click an element — for editors and grids that open on double-click rather than single. |
+| `browser_right_click` | Right-click an element to open its context menu. |
+| `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
 | `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. |
 | `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. |
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
@@ -79,12 +83,24 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 |---|---|
 | `browser_ask_user` | Show an overlay asking the user to perform an action or provide input (credentials, 2FA, CAPTCHA, OAuth consent); returns their response. |
 
-## Meta — 1 tool
+## Clipboard — 3 tools
+
+Secret-safe by contract: the clipboard's *content* never leaves the extension for copy and stats operations — only lengths and shape booleans.
 
 | Tool | Description |
 |---|---|
+| `browser_copy_to_clipboard` | Copy an element's value or text to the system clipboard without returning the content to the agent. |
+| `browser_paste_from_clipboard` | Paste the system clipboard into a form field without exposing the content to the agent. |
+| `browser_clipboard_stats` | Report the clipboard's shape — length, trimmed length — without exposing what it holds. |
+
+## Meta & Recovery — 3 tools
+
+| Tool | Description |
+|---|---|
+| `browser_provide_feedback` | Self-check plus report in one call. Compares this server against the latest published on npm, the connected extension against this server, and detects more than one Browser MCP extension connected at once — the three things that explain most "it just stopped working" moments. Returns a verdict, concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. The agent calls it on its own whenever a tool blocks it. |
 | `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. |
+| `browser_reattach_debugger` | Force-detach and re-attach the Chrome debugger on the current tab. Use when click/fill/press_key start timing out or report a ghost attach while `browser_list_tabs` still works — faster than reloading the extension. |
 
 ---
 
-**Total: 34 tools** (4 + 11 + 6 + 5 + 2 + 3 + 1 + 1 + 1 = 34), verified against `mcp-server/tools.js` line-by-line — no invented tools.
+**Total: 43 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3 + 3 = 43), verified against `mcp-server/tools.js` line-by-line — no invented tools.

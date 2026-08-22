@@ -4,7 +4,7 @@
 
 **Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome — install takes about 90 seconds.**
 
-**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 43 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
 
 ## The whole thing, in four steps
 
@@ -96,7 +96,7 @@ Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-m
 
 - After you save the config (Step 2), start the server: run **MCP: List Servers** from the Command Palette and choose **Start**/**Enable** (VS Code may also show an inline Start action directly above the server entry when you open the config file — check for it, but `MCP: List Servers` always works). A trust prompt appears the first time; approve it.
 - Open Copilot Chat and switch the mode dropdown to **Agent**.
-- The Browser MCP icon appears in your Chrome toolbar once the extension connects. 34 browser tools are now available in Agent mode.
+- The Browser MCP icon appears in your Chrome toolbar once the extension connects. 43 browser tools are now available in Agent mode.
 
 ### Verify it's working
 
@@ -159,7 +159,7 @@ This is the reason people install Browser MCP: Copilot Chat (Agent mode) hits a 
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer — it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 34 tools
+### 43 tools
 
 | Category | Tools |
 |---|---|
@@ -183,13 +183,13 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | Logins/cookies | Already authenticated | Must log in every time |
 | 2FA / CAPTCHA-gated sites | Works — it's your session | Frequently blocked |
 | Human-in-the-loop | `browser_ask_user` | None |
-| Multi-session | 10 concurrent sessions, color-coded tab groups | Single session |
+| Multi-session | 20 concurrent sessions, color-coded tab groups | Single session |
 | Provider shortcuts | 9 zero-config (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) — works for any provider via fallback | None |
 | Install | Chrome extension + `code --add-mcp` | `npx @playwright/mcp` |
 
 ### Multi-session support
 
-Each running MCP server — whether spawned by VS Code, Claude Code, or Cursor — binds to its own port in the 9876–9885 range, and the Chrome extension keeps every session's tabs in a separate, color-coded tab group, so one session can't see or click another's tabs. Up to 10 concurrent sessions are supported; idle ones auto-exit after 4 hours without commands. That means a VS Code window and a Claude Code conversation can drive Chrome side by side without colliding.
+Each running MCP server — whether spawned by VS Code, Claude Code, or Cursor — binds to its own port in the 9876–9895 range, and the Chrome extension keeps every session's tabs in a separate, color-coded tab group, so one session can't see or click another's tabs. Up to 20 concurrent sessions are supported; idle ones auto-exit after 4 hours without commands. That means a VS Code window and a Claude Code conversation can drive Chrome side by side without colliding.
 
 ---
 
@@ -214,7 +214,7 @@ Workspace (`.vscode/mcp.json`) if you want the server scoped to one project and 
 That's VS Code's own convention — Claude Code and Cursor use `mcpServers` as the root key, VS Code uses `servers`. Same server, same package (`@agent360/browser-mcp`), different config wrapper. Don't copy a Claude Code config block into `.vscode/mcp.json` verbatim — swap the root key.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives VS Code's Copilot agent mode — or any MCP client, including Claude Code and Cursor — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 34 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives VS Code's Copilot agent mode — or any MCP client, including Claude Code and Cursor — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 43 tools, MIT-licensed, 100% local.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier. (GitHub Copilot's free tier is enough to use Agent mode.)
@@ -226,10 +226,10 @@ No. The MCP server runs locally over stdio, talks to the extension over a local 
 The MCP server updates itself — every session runs `npx @agent360/browser-mcp@latest`, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" — what do I check?**
-First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to VS Code's MCP config, that is the whole problem — the extension has nothing to connect to. Add the config block from Step 2 above and restart VS Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9885 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
+First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to VS Code's MCP config, that is the whole problem — the extension has nothing to connect to. Add the config block from Step 2 above and restart VS Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds — it scans ports 9876–9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
 
 **Is this the same as browsermcp.io?**
 No — different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.
 
 **Can I run it in more than one VS Code window at once?**
-Yes — each running server instance gets its own port (9876–9885) and its own color-coded Chrome tab group, so concurrent windows or clients don't see or control each other's tabs.
+Yes — each running server instance gets its own port (9876–9895) and its own color-coded Chrome tab group, so concurrent windows or clients don't see or control each other's tabs.

@@ -31,10 +31,32 @@ TOOLCOUNT = len(re.findall(r"""name: ['\"]browser_""", open(os.path.join(ROOT, '
 claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \
               glob.glob(os.path.join(ROOT, 'content', '*.md')) + [os.path.join(ROOT, 'README.md')]
 claim_files = [f for f in claim_files if os.path.isfile(f)]
+# MAALT 21/8: moenstret var kun "N browser tools". Formen "N tools" — som er den
+# der bruges paa naesten hver side — slap forbi, saa 45 paastande om "34 tools"
+# stod paa sitet mens gaten meldte alt groent. Baade "N tools" og "N tool
+# definitions" taelles nu med.
+TOOL_CLAIM = re.compile(r'(\d+)\s+(?:browser\s+)?tools?\b')
+# Overskrifter undtages. Vaerktoejssiden grupperer efter kategori — "Interaction — 14
+# tools" er et AFSNITS-tal og skal ikke vaere lig totalen. Alt andet er en paastand om
+# hvor mange vaerktoejer produktet har, og den skal passe.
+HEADING = re.compile(r'^\s{0,3}#{1,6}\s|<h[1-6][^>]*>', re.I)
+# Sammenlignings-sider naevner ANDRE produkters tal — Playwright MCP har 69
+# vaerktoejer, Chrome DevTools MCP har 52. De tal er rigtige og skal ikke rettes til
+# vores. En paastand springes over hvis linjen ELLER den naermeste overskrift over den
+# naevner et andet produkt. Kommer der en ny konkurrent til, fejler gaten én gang og
+# navnet tilfoejes her — stoejende frem for tavst forkert.
+ANDRE = re.compile(r'playwright|chrome devtools mcp|mcp-chrome|browsermcp\.io|puppeteer|selenium', re.I)
 for f in claim_files:
-    for n in re.findall(r'(\d+)\s+browser\s+tools', open(f, encoding='utf-8').read()):
-        if int(n) != TOOLCOUNT:
-            fail('%s claims "%s browser tools" but tools.js defines %d' % (os.path.relpath(f, ROOT), n, TOOLCOUNT))
+    naermeste_overskrift = ''
+    for linje in open(f, encoding='utf-8').read().split('\n'):
+        if HEADING.search(linje):
+            naermeste_overskrift = linje
+            continue
+        if ANDRE.search(linje) or ANDRE.search(naermeste_overskrift):
+            continue
+        for m in TOOL_CLAIM.finditer(linje):
+            if int(m.group(1)) != TOOLCOUNT:
+                fail('%s claims "%s" but tools.js defines %d' % (os.path.relpath(f, ROOT), m.group(0), TOOLCOUNT))
 
 # ---- 1b. tools reference page lists exactly the tools.js tool set ----------
 tools_page = os.path.join(DOCS, 'docs', 'tools', 'index.html')

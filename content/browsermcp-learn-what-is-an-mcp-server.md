@@ -46,7 +46,7 @@ Since a local server runs with your permissions, this matters more than feature 
 
 ## An example: the browser
 
-[Browser MCP](/docs/what-is-browser-mcp/) is a local stdio server plus a Chrome extension. Its single job is to let an agent operate the real, already-logged-in Chrome you use — 34 tools for navigating, reading, clicking, filling and screenshotting. It has to be local, because the whole point is your own browser session, and nothing it reads leaves your machine. It's a fair example of the pattern: narrow job, local by necessity, source you can read.
+[Browser MCP](/docs/what-is-browser-mcp/) is a local stdio server plus a Chrome extension. Its single job is to let an agent operate the real, already-logged-in Chrome you use — 43 tools for navigating, reading, clicking, filling and screenshotting. It has to be local, because the whole point is your own browser session, and nothing it reads leaves your machine. It's a fair example of the pattern: narrow job, local by necessity, source you can read.
 
 ## FAQ
 

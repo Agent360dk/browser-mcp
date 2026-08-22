@@ -4,7 +4,7 @@
 
 **Give your ZCode agent control of your real, already-logged-in Chrome — install takes about 90 seconds.**
 
-**Give your ZCode agent control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 34 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+**Give your ZCode agent control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 43 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
 
 ## The whole thing, in four steps
 
@@ -143,7 +143,7 @@ This is the reason people install Browser MCP: your ZCode agent hits a login wal
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer — it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 34 tools
+### 43 tools
 
 | Category | Tools |
 |---|---|
@@ -167,17 +167,17 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | Logins/cookies | Already authenticated | Must log in every time |
 | 2FA / CAPTCHA-gated sites | Works — it's your session | Frequently blocked |
 | Human-in-the-loop | `browser_ask_user` | None |
-| Multi-session | 10 concurrent sessions, color-coded tab groups | Single session |
+| Multi-session | 20 concurrent sessions, color-coded tab groups | Single session |
 | Provider dashboards | Zero-config shortcuts for 9 common ones, works with any | None |
 | Install | Chrome extension + one `mcp.json` entry | `npx @playwright/mcp` |
 
 ### Works with any MCP client
 
-Browser MCP is a standard stdio MCP server — it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 34 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 — how each client's UI registers a stdio server.
+Browser MCP is a standard stdio MCP server — it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 43 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 — how each client's UI registers a stdio server.
 
 ### Running more than one agent session at once
 
-Each session gets its own MCP server on its own port (9876–9885), and the extension keeps every session's tabs in a separate color-coded Chrome tab group — one session can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
+Each session gets its own MCP server on its own port (9876–9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group — one session can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
 
 ---
 
@@ -187,7 +187,7 @@ Each session gets its own MCP server on its own port (9876–9885), and the exte
 Run `npx @agent360/browser-mcp install` to fetch the extension files, then in ZCode go to Settings → MCP Servers → New MCP Server, set type `stdio`, command `npx`, argument `@agent360/browser-mcp`. Load the Chrome extension once (Step 3), confirm `browser-mcp` shows Enabled, and restart ZCode if the tools don't appear immediately.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives ZCode — or any MCP client, including Claude Code, Cursor, and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 34 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives ZCode — or any MCP client, including Claude Code, Cursor, and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 43 tools, MIT-licensed, 100% local.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.
@@ -205,10 +205,10 @@ No. The MCP server runs locally over stdio, talks to the extension over a local 
 The MCP server updates itself — `npx @agent360/browser-mcp` always resolves to latest on npm, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **ZCode isn't picking up the browser tools — what do I check?**
-First, confirm `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list (adding it isn't always the same as it being active). Then confirm the Chrome extension is loaded under `chrome://extensions` — click the extension icon → "Reconnect" and give it 2–3 seconds, it scans ports 9876–9885 for the running MCP server. If both check out and it's still not showing, restart ZCode.
+First, confirm `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list (adding it isn't always the same as it being active). Then confirm the Chrome extension is loaded under `chrome://extensions` — click the extension icon → "Reconnect" and give it 2–3 seconds, it scans ports 9876–9895 for the running MCP server. If both check out and it's still not showing, restart ZCode.
 
 **Is this the same as browsermcp.io?**
 No — different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.
 
 **Can I run it across multiple ZCode sessions at once?**
-Yes — up to 10 concurrent sessions, each on its own port with its own color-coded Chrome tab group, so sessions can't see or control each other's tabs.
+Yes — up to 20 concurrent sessions, each on its own port with its own color-coded Chrome tab group, so sessions can't see or control each other's tabs.

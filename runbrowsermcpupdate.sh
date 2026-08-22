@@ -3,6 +3,7 @@
 # runbrowsermcpupdate.sh — one-command release for Agent360 Browser MCP
 #
 # Ships a single version across EVERY channel, in sync:
+#   0. Test-gate     → node --test test/*.test.mjs (ingen Chrome noedvendig)
 #   1. Version-bump  → extension/manifest.json, mcp-server/extension/manifest.json,
 #                      mcp-server/package.json, mcp-server/server.json (×2 fields)
 #   2. Sync          → extension/  →  mcp-server/extension/  (the npm-bundled copy)
@@ -122,6 +123,10 @@ ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
 MANAGED=(
   extension
   mcp-server/extension
+  mcp-server/index.js
+  mcp-server/tools.js
+  mcp-server/bin
+  server.json
   mcp-server/package.json
   mcp-server/package-lock.json
   mcp-server/server.json
@@ -151,9 +156,25 @@ if [[ "$ALLOW_DIRTY" == 0 ]]; then
 fi
 ok "working tree clean (or only release-managed files dirty)"
 
+# gate(): defineret HER, foer foerste kald. MAALT 22/8: test-gaten nedenfor kaldte
+# gate paa linje 163, mens definitionen laa paa 168 — med `set -euo pipefail` gav et
+# roedt testresultat derfor "gate: command not found" og exit 127 i stedet for den
+# tilsigtede besked. Gaten HOLDT, men dry-run-adfaerden ("advar og fortsaet") fandtes ikke.
+gate() { if [[ "$SHIP" == 1 ]]; then die "$1"; else warn "$1 ${Y}(dry-run: continuing)${Z}"; fi; }
+
+# ── test-gate ────────────────────────────────────────────────────────────────
+# Der var INGEN test-gate her. Udgivelsen kunne — og gjorde det — sende en kopi af
+# udvidelsen af sted som var 88 linjer bagud for kilden, uden at noget sagde fra.
+# Testene er rene node:test-filer uden Chrome-afhaengighed, saa de koster to sekunder.
+if TEST_OUT="$(node --test "$REPO_ROOT"/test/*.test.mjs 2>&1)"; then
+  ok "tests groenne ($(printf '%s' "$TEST_OUT" | grep -m1 '^# pass' | tr -dc '0-9') bestaaet)"
+else
+  printf '%s\n' "$TEST_OUT" | tail -40
+  gate "tests fejler — ret dem foer udgivelse"
+fi
+
 # channel auth pre-flight. In SHIP mode a broken channel aborts the whole run;
 # in dry-run it's only a warning so you can still preview the full plan.
-gate() { if [[ "$SHIP" == 1 ]]; then die "$1"; else warn "$1 ${Y}(dry-run: continuing)${Z}"; fi; }
 
 if [[ "$SKIP_NPM" == 0 ]]; then
   if npm whoami >/dev/null 2>&1; then ok "npm authenticated as $(npm whoami)"
@@ -208,7 +229,7 @@ run cp README.md mcp-server/README.md
 #     channel is deferred. TODO: wire `mcp-publisher` (OIDC) as a 4th channel when
 #     registry traffic justifies it; until then the bumped server.json just keeps
 #     the repo coherent so the eventual first registry-publish is at the right ver.
-JSON_FILES="extension/manifest.json mcp-server/extension/manifest.json mcp-server/package.json mcp-server/package-lock.json mcp-server/server.json"
+JSON_FILES="server.json extension/manifest.json mcp-server/extension/manifest.json mcp-server/package.json mcp-server/package-lock.json mcp-server/server.json"
 say "bump .version → $NEW_VERSION in: $JSON_FILES"
 run node -e "
   const fs=require('fs');
@@ -228,7 +249,9 @@ TOOLCOUNT_FILES="README.md mcp-server/README.md extension/manifest.json mcp-serv
 say "sweep tool-count → '${TOOL_COUNT} tools' across: $TOOLCOUNT_FILES"
 for f in $TOOLCOUNT_FILES; do
   [[ -f "$f" ]] || continue
-  run perl -0pi -e "s/\b[0-9]+ browser tools\b/${TOOL_COUNT} browser tools/g; s/\b[0-9]+ tools\b/${TOOL_COUNT} tools/g" "$f"
+  # Bemaerk 'Tools' med stort T: overskriften "## 42 Tools" blev ikke ramt af det
+  # smaa-bogstavs-moenster, saa mcp-server/README.md stod med "## 34 Tools" i otte udgaver.
+  run perl -0pi -e "s/\b[0-9]+ browser tools\b/${TOOL_COUNT} browser tools/g; s/\b[0-9]+ tools\b/${TOOL_COUNT} tools/g; s/\\b[0-9]+ Tools\\b/${TOOL_COUNT} Tools/g" "$f"
 done
 
 # 1d-2. Homepage JSON-LD softwareVersion. This is the machine-readable version claim that
@@ -241,17 +264,12 @@ if [[ "$SHIP" == 1 ]]; then
     || die "docs/index.html softwareVersion did not update to ${NEW_VERSION} — JSON-LD format changed; fix the regex"
 fi
 
-# 1e. README download-zip link → new version, then verify the replace actually hit.
-#     Must hit BOTH READMEs — mcp-server/README.md is the npm landing page, and it was
-#     cp'd from README.md above BEFORE this bump, so it needs the bump too or it ships stale.
-say "README: download-zip link → browser-mcp-v${NEW_VERSION}.zip (both copies)"
-run perl -0pi -e "s/browser-mcp-v[0-9]+\.[0-9]+\.[0-9]+\.zip/browser-mcp-v${NEW_VERSION}.zip/g" README.md mcp-server/README.md
-if [[ "$SHIP" == 1 ]]; then
-  for f in README.md mcp-server/README.md; do
-    grep -q "browser-mcp-v${NEW_VERSION}.zip" "$f" \
-      || die "$f zip-link did not update to v${NEW_VERSION} — link format changed; fix the regex"
-  done
-fi
+# 1e. FJERNET 22/8: her stod en perl-erstatning + en grep-gate paa `browser-mcp-vX.Y.Z.zip`.
+#     Den streng findes ikke laengere i nogen README — begge linker nu til
+#     `releases/latest` med pladsholderen `agent360-browser-mcp-<version>.zip`. Perl'en
+#     ramte derfor nul, og grep-gaten `die`de. Og fordi gaten laa inde i `if SHIP == 1`,
+#     meldte toerkoerslen GROENT mens den rigtige koersel doede — efter at 5 JSON-filer
+#     allerede var bumpet. Trinnet var overfloedigt: README peger ikke paa en versioneret fil.
 
 # ── 2. npm ────────────────────────────────────────────────────────────────────
 step "2. npm publish"
@@ -333,8 +351,11 @@ if [[ "$SKIP_GITHUB" == 1 ]]; then warn "skipped (--skip-github)"
 else
   say "reset index, then stage release-managed files only (no git add -A; drops any stray pre-staged files)"
   run git reset -q
-  run git add extension mcp-server/extension mcp-server/package.json mcp-server/package-lock.json \
-              mcp-server/server.json mcp-server/README.md README.md docs/index.html
+  # MAALT 22/8: index.js, tools.js og bin/ manglede her — praecis den kode npm udgiver
+  # ("files" i package.json). npm kunne faa en version der ikke fandtes i noget commit.
+  run git add extension mcp-server/extension mcp-server/index.js mcp-server/tools.js mcp-server/bin \
+              mcp-server/package.json mcp-server/package-lock.json \
+              mcp-server/server.json server.json mcp-server/README.md README.md docs/index.html
 
   # commit only if something is staged — a resumed run (already committed) must
   # NOT abort here under set -e and strand the tag/push/release that follow.

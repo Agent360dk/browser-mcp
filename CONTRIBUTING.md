@@ -22,8 +22,24 @@ cd mcp-server && npm install && cd ..
 claude mcp add browser-mcp node mcp-server/index.js
 
 # Test it
+npm --prefix mcp-server test     # 79 tests, no Chrome needed — runs in CI and before every release
+npm --prefix mcp-server run flow # 43-tool flow-test against a REAL Chrome (needs the extension loaded)
+
+# Or by hand
 # Open Claude Code and try: browser_navigate("https://example.com")
 ```
+
+### The two test layers
+
+`npm test` reads the source and runs the real functions against stubs: tool-surface coverage
+(every tool wired through tools.js → methodMap → background.js dispatch → README), session
+isolation, the tab cap, the extension-conflict logic, release coherence. Fast, no browser,
+safe in CI. The release script gates on it.
+
+`npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 43 tools
+for real, reporting OK / FEJL / SPRUNGET per tool. It cannot run in CI. Run it before a release
+and whenever you touch `extension/background.js` — it is the only layer that catches a tool that
+answers `ok: true` while the page did nothing.
 
 ## Project Structure
 

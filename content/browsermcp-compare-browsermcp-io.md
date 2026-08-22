@@ -64,7 +64,7 @@ browsermcp.io, by a wide margin — 100,000 Chrome Web Store users vs. our 186, 
 Browser MCP by Agent360. Last commit 2026-08-19 vs. browsermcp.io's last commit on 2025-04-24.
 
 **Should I uninstall browsermcp.io and switch?**
-Not automatically. If it's working for your workflow, keep using it. Consider trying ours if you specifically need multi-session support (10 concurrent, color-coded tab groups), a human-in-the-loop tool for 2FA/CAPTCHA/credential prompts (`browser_ask_user`), or you want a project that's currently shipping fixes.
+Not automatically. If it's working for your workflow, keep using it. Consider trying ours if you specifically need multi-session support (20 concurrent, color-coded tab groups), a human-in-the-loop tool for 2FA/CAPTCHA/credential prompts (`browser_ask_user`), or you want a project that's currently shipping fixes.
 
 **Is one of them free and the other paid?**
 Both are free. browsermcp.io is Apache-2.0 licensed; Browser MCP by Agent360 is MIT licensed. Both permit commercial use.
@@ -80,7 +80,7 @@ No — read the "Where browsermcp.io genuinely wins" section above. The scale nu
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-Two parts, both required — about a minute. MIT licensed, 34 tools, runs 100% locally. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that's the right call for you](https://browsermcp.io) — we mean that.
+Two parts, both required — about a minute. MIT licensed, 43 tools, runs 100% locally. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that's the right call for you](https://browsermcp.io) — we mean that.
 
 ---
 

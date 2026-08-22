@@ -4,7 +4,7 @@
 # never hand-edit it — edit the markdown source (or this generator) and re-run:
 #   python3 scripts/generate-docs.py
 # Output is deterministic; a clean run leaves `git status` unchanged.
-import re, html, os, json, datetime
+import re, html, os, json, datetime, pathlib
 
 REPO=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','docs')+os.sep  # site root (build output)
 DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources
@@ -32,9 +32,15 @@ PAGES=[
  ('browsermcp-learn-react-controlled-forms.md','Learn','Automating React forms','/learn/browser-automation-react-forms'),
 ]
 
+# Antallet af vaerktoejer udledes af kilden. Stod det haardkodet her, paastod hver
+# eneste genererede side "34 browser tools" laenge efter at der var 43 — og
+# check-docs.py faldt paa det ved hver eneste koersel.
+TOOL_COUNT=len(set(re.findall(r"name:\s*['\"](browser_[a-z0-9_]+)['\"]",
+    (pathlib.Path(__file__).resolve().parent.parent/'mcp-server'/'tools.js').read_text(encoding='utf-8'))))
+
 INSTALL=['/docs/install-claude-code','/docs/install-codex','/docs/install-cursor','/docs/install-vscode','/docs/install-zcode']
 CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
- '/docs/tools':'Full reference for all 34 browser tools',
+ '/docs/tools':f'Full reference for all {TOOL_COUNT} browser tools',
  '/compare/browsermcp-io':'How it differs from the similarly-named browsermcp.io',
  '/docs/install-claude-code':'Add Browser MCP to Claude Code','/docs/install-codex':'Add Browser MCP to OpenAI Codex',
  '/docs/install-cursor':'Add Browser MCP to Cursor','/docs/install-vscode':'Add Browser MCP to VS Code agent mode',

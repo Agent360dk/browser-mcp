@@ -39,7 +39,7 @@ Then **restart your agent** so it launches the server, and click the extension i
 **How to tell this apart from a real fault:** if you have never run an `npx @agent360/browser-mcp …` command on this machine, this is your problem — not the sections below. A quick check that a server is running at all:
 
 ```bash
-lsof -iTCP:9876-9885 -sTCP:LISTEN    # macOS/Linux — expect one line per active agent session
+lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux — expect one line per active agent session
 ```
 
 Nothing listed means no server, which means nothing for the extension to find. (The server is not a daemon: it starts when your agent starts and exits when it disconnects, so an empty list while no agent is running is also normal.)

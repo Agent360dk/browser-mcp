@@ -31,7 +31,7 @@ Headless tools solve parallelism by spawning many isolated browsers — clean, b
 ## FAQ
 
 **How many sessions can run at once?**
-Up to 10 concurrent sessions, each in its own color-coded tab group (as documented in the project README).
+Up to 20 concurrent sessions, each in its own color-coded tab group (as documented in the project README).
 
 **Can one session see another session's tabs?**
 No — that's the point of the isolation. Each session's tab operations are scoped to its own group.
