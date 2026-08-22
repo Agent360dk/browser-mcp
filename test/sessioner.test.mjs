@@ -228,3 +228,49 @@ test('hver ny port faar sit eget navn og sin egen farve', () => {
     'det var netop symptomet: "alt hedder Claude 1"');
   assert.deepEqual(navne, ['Claude 1', 'Claude 2', 'Claude 3']);
 });
+
+// ── TO CHATS MAA ALDRIG HEDDE DET SAMME ───────────────────────────────────────
+// MAALT 22/8, og det er en TREDJE mekanisme bag "alt hedder Claude 1" — uafhaengig
+// af de to andre (to udvidelser om samme socket, og adoption uden live-port-gate).
+// Navnet blev sat til `Claude ${sessions.size + 1}`. Lukker en chat, falder taellingen,
+// og den naeste chat genbruger et nummer der allerede er i brug:
+//     chat 1, 2, 3 aabner  →  chat 1 lukker  →  size = 2  →  ny chat faar "Claude 3"
+// To chats deler saa baade navn og farve, og brugeren kan ikke se hvilken fanegruppe
+// der hoerer til hvad. Den her rammer ogsaa naar alt andet er rigtigt.
+
+// ── Mutations-verificeret: `while (brugte.has(nummer)) nummer++` fjernet gav roed.
+test('en lukket chats plads genbruges — men aldrig et navn der er i brug', () => {
+  const { getSession, sessions } = rejsGetSession();
+  [9877, 9878, 9879].forEach((p) => getSession(p, 1));
+  sessions.delete(9877);                       // chat 1 lukker
+
+  const ny = getSession(9880, 1);
+  assert.equal(ny.label, 'Claude 1', 'den frigivne plads skal genbruges, ikke et nyt hoejt tal');
+
+  const navne = [...sessions.values()].map((s) => s.label);
+  assert.equal(new Set(navne).size, navne.length,
+    `to chats deler navn: ${navne.join(', ')} — brugeren kan ikke se hvilken fanegruppe der er hvis`);
+});
+
+// ── Mutations-verificeret: farven sat tilbage til sessions.size gav roed.
+test('to samtidige sessioner kan heller ikke faa samme farve', () => {
+  const { getSession, sessions } = rejsGetSession();
+  [9877, 9878, 9879, 9880].forEach((p) => getSession(p, 1));
+  sessions.delete(9878);
+  getSession(9881, 1);
+
+  const farver = [...sessions.values()].map((s) => s.color);
+  assert.equal(new Set(farver).size, farver.length,
+    `to fanegrupper har samme farve: ${farver.join(', ')}`);
+});
+
+test('numrene bliver smaa og laesbare, ogsaa efter mange aabninger og lukninger', () => {
+  const { getSession, sessions } = rejsGetSession();
+  for (let i = 0; i < 12; i++) {
+    getSession(9876 + i, 1);
+    if (i % 2 === 1) sessions.delete(9876 + i - 1);
+  }
+  const numre = [...sessions.values()].map((s) => s.nummer);
+  assert.ok(Math.max(...numre) <= 12, `hoejeste nummer er ${Math.max(...numre)} — pladser genbruges ikke`);
+  assert.equal(new Set(numre).size, numre.length, 'og ingen dubletter');
+});

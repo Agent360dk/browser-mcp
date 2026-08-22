@@ -36,12 +36,19 @@ function restoreSessions() {
       }
       if (validTabIds.size > 0) {
         const activeTabId = data.activeTabId && validTabIds.has(data.activeTabId) ? data.activeTabId : null;
+        // Samme kollisionsfejl som i getSession, og derfor samme rettelse: `size + 1`
+        // genbruger et nummer der allerede er i brug. Her betyder det at to gendannede
+        // sessioner kan komme op med samme navn efter en genstart af service-workeren.
+        const brugte = new Set([...sessions.values()].map((x) => x.nummer).filter((n) => typeof n === 'number'));
+        let nummer = typeof data.nummer === 'number' ? data.nummer : 1;
+        while (brugte.has(nummer)) nummer++;
         sessions.set(Number(port), {
           tabIds: validTabIds,
           activeTabId,
           groupId: data.groupId || null,
-          color: data.color || SESSION_COLORS[sessions.size % SESSION_COLORS.length],
-          label: data.label || `Claude ${sessions.size + 1}`,
+          nummer,
+          color: data.color || SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
+          label: data.label || `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
         });
       }
@@ -52,13 +59,30 @@ function restoreSessions() {
 
 function getSession(port, pid) {
   if (!sessions.has(port)) {
-    const idx = sessions.size % SESSION_COLORS.length;
+    // ── Hvorfor det laveste LEDIGE nummer, og ikke sessions.size + 1 (MAALT 22/8) ──
+    // Med `size + 1` genbruges et nummer der allerede er i brug, saa snart en chat
+    // lukker: tre chats hedder 1, 2, 3 · chat 1 lukker · size er nu 2 · naeste chat
+    // faar "Claude 3" — som chat 3 stadig hedder. To chats deler navn OG farve, og
+    // brugeren kan ikke se hvilken fanegruppe der hoerer til hvad.
+    //
+    // Det er en TREDJE mekanisme bag "alt hedder Claude 1", uafhaengig af de to andre
+    // (to udvidelser om samme socket, og adoption uden live-port-gate). Den her
+    // rammer ogsaa naar alt andet er rigtigt — man skal bare lukke en chat.
+    //
+    // Laveste ledige nummer genbruger frigivne pladser uden at kollidere, saa numrene
+    // bliver ved med at vaere smaa og laesbare. Farven foelger nummeret, saa to
+    // samtidige sessioner heller ikke kan faa samme farve.
+    const brugte = new Set([...sessions.values()].map((s) => s.nummer).filter((n) => typeof n === 'number'));
+    let nummer = 1;
+    while (brugte.has(nummer)) nummer++;
+
     sessions.set(port, {
       tabIds: new Set(),
       activeTabId: null,
       groupId: null,
-      color: SESSION_COLORS[idx],
-      label: `Claude ${sessions.size + 1}`,
+      nummer,
+      color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
+      label: `Claude ${nummer}`,
       pid: typeof pid === 'number' ? pid : null,
     });
   }
@@ -240,6 +264,7 @@ function persistSessions() {
       groupId: session.groupId,
       color: session.color,
       label: session.label,
+      nummer: session.nummer ?? null,   // uden denne mister en gendannet session sin plads og kan kollidere
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
     };
   }
