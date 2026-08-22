@@ -314,11 +314,12 @@ try {
     const r = await kald('browser_copy_to_clipboard', { selector: '#tekstfelt' });
     skalVaere(!r.tekst.includes('flowtest'), 'HEMMELIGHEDS-BRUD: indholdet kom med i svaret');
   });
-  await proev('browser_clipboard_stats', 'oplyser form uden indhold', async () => {
-    const r = await kald('browser_clipboard_stats', {});
-    skalVaere(!r.tekst.includes('flowtest'), 'HEMMELIGHEDS-BRUD: indholdet kom med i svaret');
-  });
-  await proev('browser_paste_from_clipboard', 'indsaetter i et felt', () => kald('browser_paste_from_clipboard', { selector: '#tekstfelt' }));
+  // browser_clipboard_stats og browser_paste_from_clipboard er fjernet i 1.27.1.
+  // De kraever `clipboardRead`, som udloeser Chrome-advarslen "Read data you copy and
+  // paste" — og en opdatering der TILFOEJER en advarsels-tilladelse slukker udvidelsen
+  // hos hele den installerede base indtil hver bruger selv klikker acceptér. De to
+  // vaerktoejer har aldrig vaeret udgivet, saa ingen mister noget. copy_to_clipboard
+  // bliver, fordi clipboardWrite ikke udloeser en advarsel.
   await proev('browser_reattach_debugger', 'kobler debuggeren om', () => kald('browser_reattach_debugger', {}));
   await proev('browser_about', 'giver projektinfo og indsendelseslink', async () => {
     const r = await kald('browser_about', { intent: 'info' });

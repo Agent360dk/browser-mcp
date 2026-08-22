@@ -240,7 +240,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // doedt dokument aldrig erstattet.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== 'bmcp_ping') return;
-  sendResponse({ ok: true, ports: [...connections.keys()] });
+  // MAALT 22/8: svaret var bare { ok: true }. Det fortalte om broen var I LIVE, ikke
+  // om den var OPDATERET — og det er to forskellige spoergsmaal. En bro fra en aeldre
+  // udgave svarer lige saa villigt paa ping, saa ensureOffscreen regnede den for rask
+  // og udskiftede den aldrig. Resultatet: kode-aendringer slog aldrig igennem uden en
+  // fuld genstart af Chrome, heller ikke efter "Genindlaes" paa chrome://extensions.
+  // Versionen med i svaret goer forskellen synlig.
+  let version = null;
+  try { version = chrome.runtime.getManifest().version; } catch {}
+  sendResponse({ ok: true, version });
   return true;
 });
 

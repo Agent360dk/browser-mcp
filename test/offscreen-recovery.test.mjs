@@ -38,7 +38,7 @@ function udklip(navn, erFunktion = true) {
  * Rejser den aegte ensureOffscreen med en stubbet chrome, og rapporterer hvad
  * funktionen faktisk gjorde.
  */
-async function koer({ findes = true, pingSvarer = false, lager = {} } = {}) {
+async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion = '9.9.9', vores = '9.9.9' } = {}) {
   const log = { lukket: 0, oprettet: 0, advarsler: [] };
   const gemt = { ...lager };
 
@@ -49,7 +49,10 @@ async function koer({ findes = true, pingSvarer = false, lager = {} } = {}) {
       createDocument: async () => { log.oprettet++; findes = true; },
     },
     runtime: {
-      sendMessage: async () => (pingSvarer ? { ok: true } : Promise.reject(new Error('ingen modtager'))),
+      sendMessage: async () => (pingSvarer
+        ? { ok: true, ...(broVersion === null ? {} : { version: broVersion }) }
+        : Promise.reject(new Error('ingen modtager'))),
+      getManifest: () => ({ version: vores }),
     },
     storage: {
       local: {
@@ -146,4 +149,43 @@ test('hjerteslags-alarmen nulstilles ikke ved hver opvaagning', () => {
   assert.ok(iGet < iCreate, 'create skal ligge INDE i get-tilbagekaldet — ellers ' +
     'nulstilles nedtaellingen hver gang service-workeren vaagner, og alarmen fyrer aldrig');
   assert.equal((kilde.match(/chrome\.alarms\.create\('ensure-offscreen'/g) || []).length, 1);
+});
+
+// ── I LIVE ER IKKE DET SAMME SOM OPDATERET ────────────────────────────────────
+// MAALT 22/8 mod en aegte Chrome, og det kostede en halv dag: broen svarede villigt
+// paa ping, saa ensureOffscreen regnede den for rask og udskiftede den ALDRIG — selv
+// om dens kode var flere udgaver gammel. Hverken "Genindlaes" paa chrome://extensions
+// eller skydeknappen rev den ned. Mine kode-aendringer slog derfor slet ikke igennem
+// uden en fuld genstart af Chrome, og jeg maalte i timevis paa gammel kode uden at
+// vide det. For en almindelig bruger er samme fejl: opdateringen henter ny kode, men
+// broen fortsaetter uaendret indtil browseren genstartes.
+
+// ── Mutations-verificeret: versions-sammenligningen fjernet gav roed.
+test('en bro der svarer, men er en gammel udgave, bliver udskiftet', async () => {
+  const r = await koer({ findes: true, pingSvarer: true, broVersion: '1.26.0', vores: '1.27.1' });
+  assert.equal(r.lukket, 1, 'en forældet bro skal rives ned, ogsaa naar den svarer');
+  assert.equal(r.oprettet, 1);
+});
+
+// ── Mutations-verificeret: `svar.version === vores` -> `true` gav roed.
+test('en bro der slet ikke oplyser sin version er fra foer 1.27.1 og udskiftes', async () => {
+  const r = await koer({ findes: true, pingSvarer: true, broVersion: null, vores: '1.27.1' });
+  assert.equal(r.lukket, 1, 'ingen version betyder gammel kode');
+});
+
+test('en bro med samme version faar fred', async () => {
+  const r = await koer({ findes: true, pingSvarer: true, broVersion: '1.27.1', vores: '1.27.1' });
+  assert.equal(r.lukket, 0, 'en frisk bro maa ikke rives ned — det var hele grunden til graensen');
+  assert.equal(r.oprettet, 0);
+});
+
+// ── Mutations-verificeret: tvangs-lukningen fjernet gav roed.
+test('en genindlaesning tvinger altid en frisk bro', () => {
+  const i = kilde.indexOf('chrome.runtime.onInstalled.addListener');
+  assert.ok(i > -1, 'onInstalled skal haandteres');
+  const blok = kilde.slice(i, i + 700);
+  assert.match(blok, /closeDocument\(\)/,
+    'onInstalled fyrer ved installation, opdatering OG "Genindlaes" — i alle tre er koden ' +
+    'aendret, saa en overlevende bro er per definition forældet, uanset hvad den svarer');
+  assert.match(blok, /offscreenGenskabt: 0/, 'og taelleren skal nulstilles, ellers arver den nye bro en gammel pause');
 });

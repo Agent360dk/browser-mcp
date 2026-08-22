@@ -475,7 +475,30 @@ async function cdpSend(tabId, method, params = {}) {
 // hvis det var BRUGEREN der lukkede den sidste fane.
 const agentLukkedeFaner = new Set();
 
+// ── Armerede dialog-haandterere, pr. fane ──────────────────────────────────────
+// MAALT 22/8 af flowtesten: handle_dialog var ubrugelig som den var skrevet. Den
+// BLOKEREDE i op til 10 sekunder mens den ventede paa en dialog — men en alert(),
+// confirm() eller prompt() dukker foerst op naar man klikker paa noget, og klikket
+// kan ikke ske mens kaldet blokerer. Man kunne altsaa hverken arme den foerst eller
+// kalde den bagefter: naar dialogen foerst staar der, er hele fanen laast, og
+// klik-vaerktoejet naar ikke frem. Vaerktoejet kunne kun lykkes hvis en ANDEN aabnede
+// dialogen paa praecis det rigtige tidspunkt.
+//
+// Nu armerer den og vender tilbage med det samme. Lytteren bliver siddende og tager
+// den naeste dialog paa fanen. `wait: true` giver den gamle blokerende adfaerd for
+// de tilfaelde hvor dialogen allerede er undervejs.
+const armeredeDialoger = new Map();   // tabId → { listener, timer, action }
+
+function afvaebnDialog(tabId) {
+  const a = armeredeDialoger.get(tabId);
+  if (!a) return;
+  try { chrome.debugger.onEvent.removeListener(a.listener); } catch {}
+  clearTimeout(a.timer);
+  armeredeDialoger.delete(tabId);
+}
+
 chrome.tabs.onRemoved.addListener((tabId) => {
+  afvaebnDialog(tabId);   // en armering paa en lukket fane er kun en laekage
   const lukketAfAgenten = agentLukkedeFaner.delete(tabId);
   debuggerAttached.delete(tabId);
   for (const [port, session] of sessions) {
@@ -997,7 +1020,14 @@ async function offscreenSvarer() {
       chrome.runtime.sendMessage({ type: 'bmcp_ping' }),
       new Promise((_, afvis) => setTimeout(() => afvis(new Error('intet svar')), 1500)),
     ]);
-    return svar?.ok === true;
+    if (svar?.ok !== true) return false;
+    // "Svarer den?" er ikke nok — den skal ogsaa vaere den udgave vi koerer nu.
+    // En bro fra en aeldre udgave svarer lige saa villigt, og saa blev den aldrig
+    // udskiftet. Oplyser den ingen version, er den fra foer 1.27.1 og altsaa gammel.
+    let vores = null;
+    try { vores = chrome.runtime.getManifest().version; } catch {}
+    if (!vores) return true;                       // kan vi ikke sammenligne, saa lad den vaere
+    return svar.version === vores;
   } catch {
     return false;   // ingen modtager, eller den svarede ikke i tide
   }
@@ -1731,6 +1761,21 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
         '[class*="banner" i]:not([class*="-hidden"]):not(input):not(button)',
         '[data-testid*="dialog" i]',
         '[data-testid*="modal" i]',
+        // MAALT 22/8 af flowtesten: listen matchede kun paa class, aldrig paa id. Et
+        // helt almindeligt <div id="banner"> blev derfor ALDRIG set som et overlay —
+        // og cookie-bannere skrives lige saa ofte med id som med class. Hullet var
+        // skjult indtil i dag, fordi det strukturelle fixed/sticky-spor fangede dem
+        // alligevel; det spor blev skaaret efter sikkerhedsreview, og saa stod hullet
+        // bart. De samme fem ord, samme regler — bare paa id.
+        //
+        // Det her er IKKE det skaarne spor i ny form: her har sideforfatteren selv
+        // kaldt elementet en dialog/modal/banner. Det er en eksplicit erklaering, ikke
+        // et gaet ud fra placering, saa faren ved delstrengs-matchning gaelder ikke.
+        '[id*="modal" i]:not(input):not(button)',
+        '[id*="overlay" i]:not(input):not(button)',
+        '[id*="popover" i]:not(input):not(button)',
+        '[id*="banner" i]:not(input):not(button)',
+        '[id*="dialog" i]:not(input):not(button)',
       ];
       for (const sel of selectors) {
         try {
@@ -2929,49 +2974,49 @@ async function dispatch(port, method, params) {
     }
 
     case 'handle_dialog': {
-      // Auto-handle JS alert/confirm/prompt dialogs
-      // Must be set up BEFORE the dialog appears
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const action = params.action || 'accept'; // accept, dismiss
+      const action = params.action === 'dismiss' ? 'dismiss' : 'accept';
       const promptText = params.text || '';
+      const vent = params.wait === true;              // gammel, blokerende adfaerd
+      const levetid = params.timeout || 60000;
 
       await debuggerAttach(tab.id);
-      try {
-        // Enable page events to catch dialogs
-        await cdpSend(tab.id, 'Page.enable', {});
+      await cdpSend(tab.id, 'Page.enable', {});
+      afvaebnDialog(tab.id);                          // kun én armering ad gangen pr. fane
 
-        // Wait for dialog to appear (or handle existing one)
-        const result = await new Promise((resolve) => {
-          const timeout = setTimeout(() => {
-            chrome.debugger.onEvent.removeListener(listener);
-            resolve({ ok: false, error: 'No dialog appeared within timeout' });
-          }, params.timeout || 10000);
+      let opfyld;
+      const svar = new Promise((resolve) => { opfyld = resolve; });
 
-          const listener = (source, method, eventParams) => {
-            if (source.tabId !== tab.id || method !== 'Page.javascriptDialogOpening') return;
-            chrome.debugger.onEvent.removeListener(listener);
-            clearTimeout(timeout);
+      const listener = (source, method, eventParams) => {
+        if (source.tabId !== tab.id || method !== 'Page.javascriptDialogOpening') return;
+        afvaebnDialog(tab.id);
+        cdpSend(tab.id, 'Page.handleJavaScriptDialog', {
+          accept: action === 'accept',
+          promptText,
+        })
+          .then(() => opfyld({ ok: true, dialog_type: eventParams.type, message: eventParams.message, action }))
+          .catch((e) => opfyld({ ok: false, error: e.message }));
+      };
 
-            cdpSend(tab.id, 'Page.handleJavaScriptDialog', {
-              accept: action === 'accept',
-              promptText: promptText,
-            }).then(() => {
-              resolve({
-                ok: true,
-                dialog_type: eventParams.type,
-                message: eventParams.message,
-                action,
-              });
-            }).catch(e => resolve({ ok: false, error: e.message }));
-          };
-          chrome.debugger.onEvent.addListener(listener);
-        });
+      const timer = setTimeout(() => {
+        afvaebnDialog(tab.id);
+        opfyld({ ok: false, error: `Ingen dialog dukkede op inden for ${levetid} ms` });
+      }, levetid);
 
-        return result;
-      } finally {
-        await debuggerDetach(tab.id);
-      }
+      armeredeDialoger.set(tab.id, { listener, timer, action });
+      chrome.debugger.onEvent.addListener(listener);
+
+      if (vent) return await svar;
+
+      // Armeret. Debuggeren bliver siddende — frakobler vi her, doer lytteren med den.
+      return {
+        ok: true,
+        armed: true,
+        action,
+        expires_in_ms: levetid,
+        note: 'Naeste dialog paa denne fane haandteres automatisk. Klik nu paa det der aabner den.',
+      };
     }
 
     case 'wait_for_network': {
@@ -3724,7 +3769,20 @@ async function clickCaptchaGridCells(tabId, cells) {
 ensureOffscreen().catch(console.error);
 
 chrome.runtime.onStartup.addListener(() => ensureOffscreen().catch(console.error));
-chrome.runtime.onInstalled.addListener(() => ensureOffscreen().catch(console.error));
+// onInstalled fyrer ved installation, opdatering OG ved "Genindlaes" paa
+// chrome://extensions. I alle tre tilfaelde er koden aendret pr. definition, saa en
+// overlevende bro er per definition forældet — uanset hvor villigt den svarer paa ping.
+// MAALT 22/8: uden tvangen slog en genindlaesning aldrig igennem til broen, og
+// udvikling krævede en fuld genstart af Chrome hver gang.
+chrome.runtime.onInstalled.addListener(async () => {
+  try {
+    if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+  } catch (e) {
+    console.warn('[BG] kunne ikke lukke broen ved genindlaesning:', e?.message || e);
+  }
+  await chrome.storage.local.set({ offscreenGenskabt: 0, offscreenPauseTil: 0 });
+  ensureOffscreen().catch(console.error);
+});
 
 // Hjerteslag der genskaber offscreen-dokumentet hvis Chrome har ryddet det.
 //

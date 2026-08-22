@@ -258,13 +258,14 @@ export const TOOLS = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Handle JavaScript alert(), confirm(), or prompt() dialogs. Call this BEFORE triggering the action that causes the dialog. Waits for the dialog to appear, then accepts or dismisses it.',
+    description: 'Arm automatic handling of the next JavaScript alert/confirm/prompt on the active tab, then return immediately. Call this BEFORE the click that opens the dialog — a dialog freezes the tab, so nothing can be clicked once it is on screen. Pass wait=true only when the dialog is already opening.',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['accept', 'dismiss'], description: 'Accept or dismiss the dialog (default: accept)' },
         text: { type: 'string', description: 'Text to enter for prompt() dialogs' },
-        timeout: { type: 'number', description: 'Max wait for dialog in ms (default: 10000)' },
+        timeout: { type: 'number', description: 'How long the arming stays active in ms (default: 60000)' },
+        wait: { type: 'boolean', description: 'Block until a dialog appears instead of arming and returning (default: false). Only use when the dialog is already on its way.' },
       },
     },
   },
