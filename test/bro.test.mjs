@@ -134,6 +134,18 @@ test('identitets-haandtrykket sendes naar forbindelsen aabner', () => {
   assert.match(blok, /type: 'hello'/, 'uden hello kan serveren ikke se at to udvidelser slaas om den');
   assert.match(blok, /extensionId/);
   assert.match(blok, /version/);
+  // At beskeden BYGGES er ikke nok — den skal sendes. Foerste udgave af denne test
+  // greppede kun efter objektet, saa en mutation der droppede selve ws.send() slap
+  // igennem. MAALT 22/8 i en mutations-gennemgang.
+  assert.match(blok, /ws\.send\(JSON\.stringify\(hilsen\)\)/,
+    'haandtrykket skal faktisk sendes over forbindelsen');
+  // Og det maa ikke ligge i en tom fangst — det var praecis derfor det forsvandt
+  // usynligt i en aegte Chrome, mens fetch-probet i samme fil virkede.
+  // Kommentarer strippes foerst — ellers matcher tjekket den kommentar der FORKLARER
+  // fejlen, i stedet for fejlen selv. (Det gjorde det, foerste gang jeg skrev den.)
+  const udenKommentar = blok.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.ok(!/catch\s*\{\s*\}/.test(udenKommentar),
+    'en tom catch her sluger aarsagen og goer fejlen usynlig for baade server og udvikler');
 });
 
 // ── Mutations-verificeret: flyttet connections.set ned i onopen gav roed.
