@@ -99,3 +99,48 @@ test('en lukket forbindelse frigiver sessionens faner', () => {
   assert.match(bg.slice(i, i + 200), /releaseSession\(/,
     'uden frigivelsen hober faner sig op som ingen session ejer');
 });
+
+// ── HVORNAAR LUKKER EN SERVER SIN PORT? ───────────────────────────────────────
+// MAALT 22/8. Symptomet Gustav har set flere gange: tyve porte optaget, ingen chats
+// i live bag dem. Aarsagen var at vagten kiggede paa den forkerte proces.
+//
+// Kaeden er fire led, ikke to:  Claude Code → wrapper → npm exec → serveren
+//
+// `process.ppid` er `npm exec`. Doer chatten, kan `npm exec` blive haengende som
+// foraeldreloes, og saa ser tjekket en levende foraelder for evigt. Porten blev
+// holdt indtil idle-graensen paa fire timer — og med flere forladte chats loeb hele
+// spaendet fuldt.
+test('hele foraeldre-kaeden vogtes, ikke kun naermeste led', () => {
+  assert.match(srv, /function forfaedreKaede/,
+    'kaeden skal kunne slaas op — ellers vogtes kun naermeste led, som er npm exec og ikke chatten');
+  assert.match(srv, /for \(const pid of vagtKaede\)/,
+    'hvert led skal tjekkes; doer et vilkaarligt led, er forbindelsen til chatten brudt');
+  const i = srv.indexOf('parentCheck = setInterval');
+  const blok = srv.slice(i, i + 500);
+  assert.match(blok, /process\.kill\(pid, 0\)/, 'signal 0 = findes processen');
+  assert.match(blok, /gracefulShutdown\(/, 'et doedt led skal lukke serveren ned');
+  assert.match(blok, /\}, 5000\)/, 'hvert 5. sekund');
+});
+
+// ── Faldet tilbage skal vaere sikkert: kan kaeden ikke laeses (Windows, ps mangler),
+//    skal vagten stadig virke som foer — daarligere, men aldrig vaerre end foer.
+test('kan kaeden ikke laeses, falder vagten tilbage til naermeste led', () => {
+  assert.match(srv, /let vagtKaede = \[parentPid\];/,
+    'udgangspunktet skal vaere det gamle enkelt-tjek');
+  const i = srv.indexOf('let vagtKaede');
+  const blok = srv.slice(i, i + 300);
+  assert.match(blok, /try \{/, 'opslaget skal vaere i en fangst');
+  assert.match(blok, /if \(k\.length\)/, 'og kun overtage naar det faktisk gav noget');
+});
+
+// ── Idle-graensen er bagstopperen. Den maa vaere lang: en chat der er aaben men ikke
+//    bruger browseren i en halv time er HELT almindelig, og lukker serveren der, er
+//    vaerktoejerne vaek resten af chatten — Claude Code starter dem ikke igen.
+test('idle-graensen er en bagstopper, ikke den primaere vagt', () => {
+  const m = srv.match(/lastActivity > (\d+) \* 60 \* 60 \* 1000/);
+  assert.ok(m, 'der skal findes en idle-graense');
+  assert.ok(Number(m[1]) >= 2,
+    `idle-graensen er ${m[1]} timer — for kort. En aaben chat der ikke bruger browseren ` +
+    'i et stykke tid ville miste vaerktoejerne permanent, og det er en vaerre fejl end ' +
+    'en port der staar optaget lidt for laenge. Den aegte vagt er foraeldre-kaeden.');
+});

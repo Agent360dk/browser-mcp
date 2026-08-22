@@ -870,16 +870,61 @@ process.on('exit', () => {
   for (const c of connections) try { c.ws.close(); } catch {}
 });
 
-// Detect Claude Code exit — check if parent process is still alive
-// stdin.on('end') doesn't work because MCP SDK's StdioServerTransport owns stdin
-const parentPid = process.ppid;
-parentCheck = setInterval(() => {
-  try {
-    process.kill(parentPid, 0); // signal 0 = check if process exists
-  } catch {
-    gracefulShutdown(`Parent process ${parentPid} died`);
+// ── Naar lukker serveren sin port? (MAALT 22/8) ──────────────────────────────
+//
+// Symptomet: tyve porte optaget, og ingen chats i live bag dem. Aarsagen var at
+// tjekket kiggede paa den FORKERTE proces. Kaeden er nemlig ikke to led, men fire:
+//
+//     Claude Code  →  wrapper  →  npm exec  →  denne server
+//
+// `process.ppid` er `npm exec`, ikke Claude Code. Doer chatten, kan `npm exec`
+// blive haengende som foraeldreloes — og saa ser tjekket en levende foraelder for
+// evigt. Porten blev holdt i op til fire timer (idle-graensen), og med flere
+// forladte chats loeb spaendet fuldt.
+//
+// Rettelsen er at tjekke HELE kaeden op til roden, ikke kun naermeste led. Doer et
+// vilkaarligt led, er forbindelsen til den chat der ejer os brudt, og saa er vi
+// foraeldreloese uanset om vores naermeste foraelder stadig aander.
+//
+// Kaeden hentes én gang ved opstart (én ps-kommando), og derefter koster tjekket
+// kun et signal 0 pr. led hvert 5. sekund. Kan kaeden ikke laeses (Windows, eller
+// ps mangler), falder vi tilbage til det gamle enkelt-tjek — daarligere, men aldrig
+// vaerre end foer.
+function forfaedreKaede(start) {
+  const kaede = [];
+  let p = start;
+  for (let i = 0; i < 12 && p > 1; i++) {
+    kaede.push(p);
+    try {
+      const ud = execSync(`ps -o ppid= -p ${p}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const naeste = Number(String(ud).trim());
+      if (!Number.isFinite(naeste) || naeste <= 1 || naeste === p) break;
+      p = naeste;
+    } catch {
+      break;
+    }
   }
-}, 5000); // check every 5 seconds
+  return kaede;
+}
+
+const parentPid = process.ppid;
+let vagtKaede = [parentPid];
+try {
+  const k = forfaedreKaede(parentPid);
+  if (k.length) vagtKaede = k;
+} catch {}
+process.stderr.write(`[MCP] vagt-kaede: ${vagtKaede.join(' → ')}\n`);
+
+parentCheck = setInterval(() => {
+  for (const pid of vagtKaede) {
+    try {
+      process.kill(pid, 0); // signal 0 = findes processen?
+    } catch {
+      gracefulShutdown(`Proces ${pid} i kaeden doede — chatten bag denne server er vaek`);
+      return;
+    }
+  }
+}, 5000); // hvert 5. sekund
 
 // Also listen for stdin close as backup
 process.stdin.on('end', () => gracefulShutdown('stdin closed'));
