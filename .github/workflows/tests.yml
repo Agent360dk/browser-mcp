@@ -1,0 +1,26 @@
+name: tests
+
+# MAALT 22/8: 108 tests laa i repoet, og INGEN workflow koerte dem. De blev kun koert
+# i haanden og af release-scriptet — altsaa foerst naar udgivelsen allerede var i gang.
+# Tests der aldrig koerer paa en PR er dokumentation, ikke en gate.
+#
+# Kun det statiske lag koerer her. De to Chrome-harnesser (npm run flow / run sessions)
+# kraever en rigtig browser med udvidelsen indlaest og hoerer hjemme i haanden.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install
+        run: npm install --prefix mcp-server --no-audit --no-fund
+      - name: node --test
+        run: npm --prefix mcp-server test

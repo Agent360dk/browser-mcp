@@ -37,7 +37,7 @@ function udtraek(navn) {
   return kilde.slice(start, i + 1);
 }
 
-let sessions, levendeFaner, gemtKald;
+let sessions, levendeFaner, gemtKald, levendePorte;
 
 function byg() {
   const src = udtraek('adoptOrphanedSession');
@@ -47,7 +47,13 @@ function byg() {
   );
   return fabrik(
     sessions,
-    { tabs: { get: async (id) => { if (!levendeFaner.has(id)) throw new Error('vaek'); return { id }; } } },
+    {
+      tabs: { get: async (id) => { if (!levendeFaner.has(id)) throw new Error('vaek'); return { id }; } },
+      // mcpPorts = de porte broen har forbindelse til lige nu. Den liste er anden
+      // halvdel af gaten: er donorens port stadig i live, er det en ANDEN chat der
+      // arbejder — ikke en genstartet server.
+      storage: { local: { get: async (d) => ({ ...d, mcpPorts: [...levendePorte] }) } },
+    },
     () => { gemtKald++; },
   );
 }
@@ -55,6 +61,7 @@ function byg() {
 function nulstil() {
   sessions = new Map();
   levendeFaner = new Set();
+  levendePorte = new Set();
   gemtKald = 0;
 }
 
@@ -145,6 +152,61 @@ await test('tre chats: kun den med matchende pid roeres', async () => {
   const r = await adopter(9880, 4242);
   skalVaere([...r.tabIds], [201], 'stoerrelse slaar ikke ejerskab');
   skalVaere(sessions.has(9876), true, 'den fremmede chat er uroert');
+});
+
+
+// ── ANDEN HALVDEL AF GATEN: donorens port skal vaere doed ────────────────────
+//
+// MAALT 21/8 med seks samtidige sessioner: foraelder-processen er IKKE en unik
+// identitet. Starter en klient flere MCP-servere fra den samme proces, deler de
+// pid — og saa adopterede de hinandens faner paa stribe. Alle fik navnet
+// "Claude 3", de aeldste mistede deres fane, og en session kunne skifte til en
+// andens. Altsaa "alt hedder Claude 1", med kun én udvidelse indlaest.
+//
+// Pid'en siger "samme klient". Den doede port siger "og den gamle er faktisk vaek".
+// Der skal to ting til.
+
+await test('en donor hvis port stadig er forbundet roeres ikke', async () => {
+  sessions.set(9876, session([1, 2], 4242, 'Claude 1'));
+  levendePorte.add(9876);                     // den gamle chat arbejder lige nu
+  const r = await byg()(9877, 4242);          // samme pid, ny port
+  skalVaere(r, null, 'adoptionen burde vaere afvist');
+  skalVaere(sessions.has(9876), true, 'donoren skal stadig findes');
+  skalVaere([...sessions.get(9876).tabIds], [1, 2], 'donoren skal beholde sine faner');
+});
+
+await test('er donorens port vaek, adopteres der som foer', async () => {
+  sessions.set(9876, session([1, 2], 4242, 'Claude 1'));
+  levendePorte.add(9877);                     // kun den NYE port er forbundet
+  const r = await byg()(9877, 4242);
+  skalVaere(r !== null, true, 'en genstartet server skal genfinde sine faner');
+  skalVaere([...sessions.get(9877).tabIds], [1, 2], 'fanerne skal foelge med');
+  skalVaere(sessions.has(9876), false, 'den gamle port skal vaere ryddet');
+});
+
+await test('flere levende sessioner med samme pid roerer ikke hinanden', async () => {
+  // Praecis situationen fra maalingen: seks servere, samme foraelder, alle i live.
+  for (let i = 0; i < 6; i++) {
+    sessions.set(9876 + i, session([10 + i], 4242, `Claude ${i + 1}`));
+    levendePorte.add(9876 + i);
+  }
+  const r = await byg()(9890, 4242);          // en syvende starter op
+  skalVaere(r, null, 'den syvende maa ikke stjaele fra nogen af de seks');
+  for (let i = 0; i < 6; i++) {
+    skalVaere([...sessions.get(9876 + i).tabIds], [10 + i], `session ${i} skal beholde sin fane`);
+  }
+});
+
+await test('en doed donor blandt levende soeskende er den eneste der adopteres fra', async () => {
+  sessions.set(9876, session([1], 4242, 'Claude 1'));
+  sessions.set(9877, session([2], 4242, 'Claude 2'));
+  sessions.set(9878, session([3], 4242, 'Claude 3'));
+  levendePorte.add(9876);
+  levendePorte.add(9878);                     // 9877 er den doede
+  const r = await byg()(9890, 4242);
+  skalVaere(r !== null, true, 'den doede donor skulle vaere adopteret');
+  skalVaere([...sessions.get(9890).tabIds], [2], 'kun den doede donors fane maa foelge med');
+  skalVaere(sessions.has(9876) && sessions.has(9878), true, 'de levende skal vaere uroerte');
 });
 
 console.log(`\n${bestaaet} bestaaet, ${fejlet} fejlet\n`);

@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Browser MCP — haard fixture</title>
+<!--
+  Denne side serveres MED en stram Content-Security-Policy (script-src 'self').
+  Det betyder at extensionens saedvanlige vej — chrome.scripting med en funktion
+  bygget af en streng — afvises af siden. Koden har en hel fallback til det
+  (cspBlocked → debuggerEval, 8 kaldesteder), og den blev aldrig afproevet.
+  Derfor ligger sidens eget script i en ekstern fil: saa virker SIDEN under CSP,
+  og det er alene extensionens vej der bliver sat paa proeve.
+-->
+<h1 id="titel">Haard fixture</h1>
+<p id="tekst">Tekst bag en stram CSP.</p>
+
+<button id="klik">Tryk</button>
+<div id="status">tom</div>
+
+<!-- React-agtigt styret felt: ruller vaerdien tilbage medmindre den saettes via
+     den native setter. Det er den dokumenterede "fill lykkes, men vaerdien
+     forsvinder"-fejlmode, som browser_fill paastaar at haandtere. -->
+<input id="styret" value="laast">
+
+<!-- liste til extract_list under CSP -->
+<div id="liste" style="height:100px;overflow-y:auto"></div>
+
+<!-- iframe paa en ANDEN oprindelse (anden port) -->
+<iframe id="fremmed" src="__FREMMED_URL__" style="width:220px;height:70px"></iframe>
+
+<script src="fixture-hard.js"></script>

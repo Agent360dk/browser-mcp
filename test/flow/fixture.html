@@ -1,0 +1,87 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Browser MCP flow-fixture</title>
+<style>
+  body { font: 15px system-ui; margin: 24px; }
+  #liste { height: 120px; overflow-y: auto; border: 1px solid #ccc; width: 260px; }
+  #liste div { padding: 6px; }
+  #banner { position: fixed; inset: auto 12px 12px auto; background: #222; color: #fff; padding: 12px; }
+  #skjult { display: none; }
+  #langt { height: 1600px; }
+</style>
+
+<h1 id="titel">Flow-fixture</h1>
+<p id="tekst">Fast tekst der kan laeses.</p>
+
+<!-- interaktion -->
+<button id="klik" onclick="document.getElementById('status').textContent='klikket'">Tryk her</button>
+<button id="dbl" ondblclick="document.getElementById('status').textContent='dobbeltklikket'">Dobbelt</button>
+<div id="hoejre" oncontextmenu="document.getElementById('status').textContent='hoejreklikket';return false;">Hoejreklik-mig</div>
+<div id="xy" style="width:120px;height:60px;background:#eef" onclick="document.getElementById('status').textContent='xy-klikket'">XY-felt</div>
+<div id="hover" onmouseover="document.getElementById('status').textContent='hoveret'">Hover-mig</div>
+<div id="status">tom</div>
+
+<!-- formular -->
+<input id="tekstfelt" placeholder="skriv her">
+<input id="datofelt" type="date">
+<select id="vaelger"><option value="a">Alfa</option><option value="b">Beta</option></select>
+<input id="fil" type="file">
+<div id="dropzone" style="border:2px dashed #999;padding:16px">Slip fil her<input type="file" style="display:none"></div>
+<!-- aegte autocomplete til set_combobox: listen tegnes foerst naar der skrives -->
+<div>
+  <input id="combo" role="combobox" aria-expanded="false" aria-controls="comboliste" autocomplete="off" placeholder="land">
+  <ul id="comboliste" role="listbox" hidden></ul>
+</div>
+
+<input id="tast" onkeydown="if(event.key==='Enter')document.getElementById('status').textContent='enter-trykket'">
+
+<!-- dialog -->
+<button id="dialogknap" onclick="window.__svar = confirm('Er du sikker?')">Vis dialog</button>
+
+<!-- lang liste til extract_list -->
+<div id="liste"></div>
+
+<!-- iframe -->
+<iframe id="ramme" srcdoc="<p id='iramme'>inde i rammen</p>" style="width:200px;height:60px"></iframe>
+
+<!-- shadow DOM -->
+<div id="vaert"></div>
+
+<!-- overlay til dismiss_overlays -->
+<div id="banner">Cookies?<button aria-label="Close" onclick="this.parentElement.remove()">x</button></div>
+
+<!-- element uden udstraekning: skal AFVISES af click, ikke klikkes i (0,0) -->
+<div id="skjult"><button id="usynlig">usynlig</button></div>
+
+<div id="langt">scroll-plads</div>
+<div id="bund">bunden naaet</div>
+
+<script>
+  for (let i = 1; i <= 60; i++) {
+    const d = document.createElement('div');
+    d.className = 'raekke'; d.textContent = 'raekke ' + i;
+    document.getElementById('liste').appendChild(d);
+  }
+  document.getElementById('vaert').attachShadow({ mode: 'open' })
+    .innerHTML = '<button id="ishadow">i skyggen</button>';
+  console.log('fixture-log-linje');
+  console.warn('fixture-advarsel');
+  var LANDE = ['Danmark', 'Sverige', 'Norge', 'Finland', 'Island'];
+  var combo = document.getElementById('combo');
+  var comboliste = document.getElementById('comboliste');
+  combo.addEventListener('input', function () {
+    var q = combo.value.trim().toLowerCase();
+    comboliste.innerHTML = '';
+    var traef = q ? LANDE.filter(function (l) { return l.toLowerCase().startsWith(q); }) : [];
+    traef.forEach(function (l) {
+      var li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.textContent = l;
+      li.onclick = function () { combo.value = l; comboliste.hidden = true; combo.setAttribute('aria-expanded', 'false'); };
+      comboliste.appendChild(li);
+    });
+    comboliste.hidden = traef.length === 0;
+    combo.setAttribute('aria-expanded', String(traef.length > 0));
+  });
+  window.__fixtureKlar = true;
+</script>
