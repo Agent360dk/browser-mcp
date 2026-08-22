@@ -125,15 +125,24 @@ function tryConnect(port) {
     // anden fortsatte med sit eget sessions-kort og sine egne fane-grupper.
     // Haandtrykket giver serveren det den mangler for at kunne se at der er to,
     // vaelge den nyeste, og sige det hoejt i stedet for at gaette i tavshed.
+    // MAALT 22/8 mod en aegte Chrome: haandtrykket ankom ALDRIG, selv om fetch-probet
+    // — som ligger i samme fil og samme dokument — virkede fint. Den tomme `catch {}`
+    // slugte aarsagen i tavshed, saa fejlen var usynlig baade for serveren og for os.
+    // To rettelser: haandtrykket sendes nu UANSET om manifest-opslaget lykkes (det er
+    // selve beskeden serveren har brug for, ikke felterne i den), og en fejl bliver
+    // logget i stedet for at forsvinde.
+    let hilsen = { type: 'hello', extensionId: null, version: null, name: null };
     try {
       const m = chrome.runtime.getManifest();
-      ws.send(JSON.stringify({
-        type: 'hello',
-        extensionId: chrome.runtime.id,
-        version: m.version,
-        name: m.name,
-      }));
-    } catch {}
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: m.version, name: m.name };
+    } catch (e) {
+      console.warn('[Offscreen] kunne ikke laese manifestet til haandtrykket:', e?.message || e);
+    }
+    try {
+      ws.send(JSON.stringify(hilsen));
+    } catch (e) {
+      console.warn('[Offscreen] kunne ikke sende haandtrykket:', e?.message || e);
+    }
 
     console.log(`[Offscreen] Connected to MCP server on port ${port} (${connections.size} total)`);
     updateStatus();
