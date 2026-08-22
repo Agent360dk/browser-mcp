@@ -1,6 +1,6 @@
 # Tools
 
-Browser MCP exposes **41 tools** to the connected agent. Every tool acts on the active Chrome tab (or a tab/frame you target explicitly) via the Browser MCP extension — no headless browser, no Playwright binary.
+Browser MCP exposes **40 tools** to the connected agent. Every tool acts on the active Chrome tab (or a tab/frame you target explicitly) via the Browser MCP extension — no headless browser, no Playwright binary.
 
 Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page from that file if tool names, params, or descriptions change.
 
@@ -83,14 +83,6 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 |---|---|
 | `browser_ask_user` | Show an overlay asking the user to perform an action or provide input (credentials, 2FA, CAPTCHA, OAuth consent); returns their response. |
 
-## Clipboard — 1 tool
-
-Secret-safe by contract: the clipboard's *content* never leaves the extension for copy and stats operations — only lengths and shape booleans.
-
-| Tool | Description |
-|---|---|
-| `browser_copy_to_clipboard` | Copy an element's value or text to the system clipboard without returning the content to the agent. |
-
 ## Meta & Recovery — 3 tools
 
 | Tool | Description |
@@ -101,4 +93,4 @@ Secret-safe by contract: the clipboard's *content* never leaves the extension fo
 
 ---
 
-**Total: 41 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3 + 3 = 43), verified against `mcp-server/tools.js` line-by-line — no invented tools.
+**Total: 40 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3 + 3 = 43), verified against `mcp-server/tools.js` line-by-line — no invented tools.

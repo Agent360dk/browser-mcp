@@ -8,7 +8,7 @@ commit. Paste the two blocks below at
 
 | Field | Live today | Problem |
 |---|---|---|
-| Summary (the only text visible without expanding) | "Control your real Chrome from Claude Code — navigate, click, fill, screenshot, solve CAPTCHAs. 41 tools, multi-session." | Never mentions that a local MCP server is required. A store-only installer lands on "Not connected" with no idea why. |
+| Summary (the only text visible without expanding) | "Control your real Chrome from Claude Code — navigate, click, fill, screenshot, solve CAPTCHAs. 40 tools, multi-session." | Never mentions that a local MCP server is required. A store-only installer lands on "Not connected" with no idea why. |
 | "HOW IT WORKS" in the long description | "1. Install this extension 2. Run: npx @agent360/browser-mcp install 3. Restart Claude Code — **29** browser tools" | Buried under ~40 lines of features, the tool count is two generations stale, and the command **does not register the server with Claude Code** — `npx … install` writes `~/.claude/mcp.json`, which Claude Code does not read (verified 2026-08-19). It also tells a store user to load an unpacked extension they do not need. |
 
 ---

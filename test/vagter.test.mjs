@@ -101,41 +101,33 @@ test('en lukket forbindelse frigiver sessionens faner', () => {
 });
 
 // ── HVORNAAR LUKKER EN SERVER SIN PORT? ───────────────────────────────────────
-// MAALT 22/8. Symptomet Gustav har set flere gange: tyve porte optaget, ingen chats
-// i live bag dem. Aarsagen var at vagten kiggede paa den forkerte proces.
+// Symptomet Gustav har set flere gange: tyve porte optaget, ingen chats i live bag
+// dem. Kaeden er fire led — Claude Code → wrapper → npm exec → serveren — og vagten
+// kiggede kun paa naermeste led, altsaa npm exec.
 //
-// Kaeden er fire led, ikke to:  Claude Code → wrapper → npm exec → serveren
-//
-// `process.ppid` er `npm exec`. Doer chatten, kan `npm exec` blive haengende som
-// foraeldreloes, og saa ser tjekket en levende foraelder for evigt. Porten blev
-// holdt indtil idle-graensen paa fire timer — og med flere forladte chats loeb hele
-// spaendet fuldt.
-test('hele foraeldre-kaeden vogtes, ikke kun naermeste led', () => {
-  assert.match(srv, /function forfaedreKaede/,
-    'kaeden skal kunne slaas op — ellers vogtes kun naermeste led, som er npm exec og ikke chatten');
-  assert.match(srv, /for \(const pid of vagtKaede\)/,
-    'hvert led skal tjekkes; doer et vilkaarligt led, er forbindelsen til chatten brudt');
-  const i = srv.indexOf('parentCheck = setInterval');
+// Selve logikken testes i test/vagt-kaede.test.mjs, hvor den KOERES mod stubbede
+// fejl og procestraeer. Den her fil tjekker kun at index.js faktisk bruger den:
+// en tidligere udgave greppede efter `process.kill(pid, 0)` og `for (const pid of
+// vagtKaede)`, og begge mutationer der betoed noget — EPERM-fortolkningen og et
+// kaede-loft klippet til ét led — slap igennem, fordi teksten stod der uaendret.
+test('index.js bruger den testede vagt i stedet for sin egen kopi', () => {
+  assert.match(srv, /import \{[^}]*ledErDoedt[^}]*\} from '\.\/vagt\.js'/,
+    'doeds-dommen skal komme fra vagt.js, som kan koeres i en test — ' +
+    'ikke fra en indlejret try/catch der kun kan grepped efter');
+  assert.match(srv, /if \(ledErDoedt\(pid\)\)/, 'og den skal faktisk kaldes i vagten');
+  assert.match(srv, /forfaedreKaede\(parentPid, laesPpid\)/, 'kaeden ogsaa');
+  assert.ok(!/process\.kill\(pid, 0\)/.test(srv),
+    'ingen indlejret kopi tilbage i index.js — to udgaver af samme dom driver fra hinanden');
+});
+
+test('ps-opslaget har en frist', () => {
+  const i = srv.indexOf('function laesPpid');
   const blok = srv.slice(i, i + 500);
-  assert.match(blok, /process\.kill\(pid, 0\)/, 'signal 0 = findes processen');
-  assert.match(blok, /gracefulShutdown\(/, 'et doedt led skal lukke serveren ned');
-  assert.match(blok, /\}, 5000\)/, 'hvert 5. sekund');
+  assert.match(blok, /timeout: \d+/,
+    'et haengende ps ville blokere hele opstarten synkront — serveren naaede aldrig ' +
+    'at printe noget, heller ikke MCP-haandtrykket. Maalt 22/8.');
 });
 
-// ── Faldet tilbage skal vaere sikkert: kan kaeden ikke laeses (Windows, ps mangler),
-//    skal vagten stadig virke som foer — daarligere, men aldrig vaerre end foer.
-test('kan kaeden ikke laeses, falder vagten tilbage til naermeste led', () => {
-  assert.match(srv, /let vagtKaede = \[parentPid\];/,
-    'udgangspunktet skal vaere det gamle enkelt-tjek');
-  const i = srv.indexOf('let vagtKaede');
-  const blok = srv.slice(i, i + 300);
-  assert.match(blok, /try \{/, 'opslaget skal vaere i en fangst');
-  assert.match(blok, /if \(k\.length\)/, 'og kun overtage naar det faktisk gav noget');
-});
-
-// ── Idle-graensen er bagstopperen. Den maa vaere lang: en chat der er aaben men ikke
-//    bruger browseren i en halv time er HELT almindelig, og lukker serveren der, er
-//    vaerktoejerne vaek resten af chatten — Claude Code starter dem ikke igen.
 test('idle-graensen er en bagstopper, ikke den primaere vagt', () => {
   const m = srv.match(/lastActivity > (\d+) \* 60 \* 60 \* 1000/);
   assert.ok(m, 'der skal findes en idle-graense');
@@ -143,4 +135,43 @@ test('idle-graensen er en bagstopper, ikke den primaere vagt', () => {
     `idle-graensen er ${m[1]} timer — for kort. En aaben chat der ikke bruger browseren ` +
     'i et stykke tid ville miste vaerktoejerne permanent, og det er en vaerre fejl end ' +
     'en port der staar optaget lidt for laenge. Den aegte vagt er foraeldre-kaeden.');
+});
+
+// ── Et skema der lover en parameter handleren kasserer, er en tavs loegn ────────
+// MAALT 22/8: browser_set_combobox annoncerede `wait_ms`, setCombobox laeste
+// opts.wait_ms — men handleren videregav kun multi og query_chars. En agent der bad
+// om laengere ventetid til en langsom liste fik standarden 3000 ms og ingen besked.
+test('set_combobox videregiver hver parameter den annoncerer', async () => {
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const t = TOOLS.find((x) => x.name === 'browser_set_combobox');
+  assert.ok(t, 'vaerktoejet skal findes');
+
+  const i = bg.indexOf("case 'set_combobox'");
+  const blok = bg.slice(i, bg.indexOf("case '", i + 20));
+
+  // value/values haandteres saerskilt (samles til en liste), resten skal videregives.
+  const skalVidere = Object.keys(t.inputSchema.properties)
+    .filter((k) => !['selector', 'value', 'values'].includes(k));
+
+  for (const p of skalVidere) {
+    assert.match(blok, new RegExp(p),
+      `skemaet lover "${p}", men handleren naevner den ikke — parameteren kasseres tavst`);
+  }
+});
+
+// ── En armering der forsvinder skal SVARE, ikke bare forsvinde ────────────────
+// MAALT 22/8: afvaebnDialog fjernede lytteren og ryddede timeren — men opfyldte
+// aldrig loeftet. En kalder med `wait: true` haengte derfor for evigt ad to helt
+// almindelige veje: fanen blev lukket, eller et andet handle_dialog armerede paa
+// samme fane. Ingen fejl, intet svar, bare stilhed.
+test('en afvaebnet dialog-armering giver kalderen et svar', () => {
+  const i = bg.indexOf('function afvaebnDialog');
+  const blok = bg.slice(i, bg.indexOf('\n}', i));
+  assert.match(blok, /opfyld\(/,
+    'uden opfyld haenger en wait:true-kalder for evigt — ingen fejl, bare stilhed');
+  assert.match(blok, /grund/, 'og den skal kunne fortaelle HVORFOR armeringen forsvandt');
+
+  // Begge veje skal give en grund med.
+  assert.match(bg, /afvaebnDialog\(tabId, '[^']+'\)/, 'fanen lukkes → svar med grund');
+  assert.match(bg, /afvaebnDialog\(tab\.id, '[^']+'\)/, 'ny armering overtager → svar med grund');
 });

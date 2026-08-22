@@ -10,7 +10,7 @@ Exits non-zero on any 🔴 finding (drift / regression / twin-resurrection) so t
 workflow fails and GitHub emails the repo owner. Full report goes to the job summary.
 
 Baseline captured 2026-07-21:
-  registry v1.23.0 · npm 1.23.0 · 34 tools · mcpservers.org live · punkpeye PR #10565 open
+  registry v1.23.0 · npm 1.23.0 · 40 tools · mcpservers.org live · punkpeye PR #10565 open
   browsermcp.io (the dead twin) last commit 2025-04-24 — if it moves, our compare pages lie.
 """
 import json, os, re, sys, time, urllib.request, urllib.error
@@ -72,7 +72,10 @@ if tools != "?" and str(tools) not in (reg_desc or ""):
     red.append("Registry-beskrivelsen nævner ikke %s tools" % tools)
     rows.append(("Tool-count i registry", "🔴", "%s tools, ikke nævnt i desc" % tools))
 else:
-    rows.append(("Tool-count", "🟢" if tools == 34 else "⚪", "%s tools" % tools))
+    # Tallet laeses allerede af tools.js paa linje 63 — sammenlign ikke med en
+    # haardkodet konstant. MAALT 22/8: den stod paa 34, saa dashboardet viste ⚪
+    # for evigt uanset hvad der faktisk stod i registryet.
+    rows.append(("Tool-count", "🟢" if tools != "?" else "⚪", "%s tools" % tools))
 
 # ---- DEL 2 — KATALOG-TILSTEDEVÆRELSE (content-based, ikke bare HTTP-status) ----
 def listed(url, needles=("agent360", "browser-mcp")):

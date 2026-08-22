@@ -11,6 +11,7 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { ledErDoedt, forfaedreKaede } from './vagt.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
 import { execSync, execFile } from 'child_process';
@@ -56,6 +57,7 @@ const MAX_PORT = 9895; // 20 ports instead of 10 — zombies die within 5s via p
 const connections = new Set(); // { ws, seq, extensionId, version, name, since }
 let connSeq = 0;
 let activePort = null;
+let alleePorteOptaget = false;   // hele spaendet i brug — se createWSS
 
 function cmpVersion(a, b) {
   const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
@@ -158,6 +160,13 @@ function createWSS(port = BASE_PORT) {
         process.stderr.write(`[MCP] Port ${port} in use, trying ${port + 1}...\n`);
         createWSS(port + 1);
       } else {
+          // MAALT 22/8: her stod KUN denne stderr-linje. Ingen laeser stderr fra en
+          // MCP-server, saa udtoemte porte var en helt tavs fejl. Hvert vaerktoejskald
+          // fejlede bagefter med "extension not connected" — en tekst der oven i koebet
+          // siger at serveren koerer og sender brugeren til Chrome Web Store. Begge dele
+          // er forkerte naar sandheden er at vi aldrig fik en port. Flaget laeses i
+          // sendToExtension, saa agenten kan give brugeren den rigtige forklaring.
+          alleePorteOptaget = true;
         process.stderr.write(`[MCP] All ports ${BASE_PORT}-${MAX_PORT} in use. Cannot start.\n`);
       }
     } else {
@@ -269,6 +278,15 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // This is the other half of the two-part setup: the server is clearly running (it is
     // throwing this), so what is missing is the extension, Chrome itself, or the connection
     // between them. Say which, and where to get it — the agent relays this text to the user.
+    if (alleePorteOptaget) {
+      throw new Error(
+        `Alle porte ${BASE_PORT}-${MAX_PORT} er optaget, saa denne server fik aldrig en port. ` +
+        'Det er IKKE et problem med Chrome eller udvidelsen — de virker fint.\n' +
+        `Du har ${MAX_PORT - BASE_PORT + 1} chats i gang der bruger browseren samtidig. ` +
+        'Luk en af dem — pladsen frigives inden for faa sekunder — og genstart saa denne chat.\n' +
+        'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
+      );
+    }
     throw new Error(
       'Chrome extension not connected after 5 retries.\n' +
       'Browser MCP needs BOTH halves: this MCP server (running) and the Agent360 Browser MCP ' +
@@ -440,9 +458,6 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       browser_dismiss_overlays: 'dismiss_overlays',
       browser_set_combobox: 'set_combobox',
       browser_drop_file: 'drop_file',
-      browser_copy_to_clipboard: 'copy_to_clipboard',
-      browser_paste_from_clipboard: 'paste_from_clipboard',
-      browser_clipboard_stats: 'clipboard_stats',
       browser_double_click: 'double_click',
       browser_right_click: 'right_click',
       browser_click_xy: 'click_xy',
@@ -532,9 +547,6 @@ const ERSTATNINGER = {
   click_xy: 'brug `browser_click` med en selector',
   extract_list: 'brug `browser_get_page_content` og scroll med `browser_scroll`',
   reattach_debugger: 'genindlaes udvidelsen paa chrome://extensions',
-  copy_to_clipboard: 'laes vaerdien med `browser_execute_script`',
-  paste_from_clipboard: 'skriv vaerdien med `browser_fill`',
-  clipboard_stats: 'ingen erstatning — vent paa opdateringen',
 };
 
 function forklarSkaevhed(besked) {
@@ -890,36 +902,49 @@ process.on('exit', () => {
 // kun et signal 0 pr. led hvert 5. sekund. Kan kaeden ikke laeses (Windows, eller
 // ps mangler), falder vi tilbage til det gamle enkelt-tjek — daarligere, men aldrig
 // vaerre end foer.
-function forfaedreKaede(start) {
-  const kaede = [];
-  let p = start;
-  for (let i = 0; i < 12 && p > 1; i++) {
-    kaede.push(p);
-    try {
-      const ud = execSync(`ps -o ppid= -p ${p}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-      const naeste = Number(String(ud).trim());
-      if (!Number.isFinite(naeste) || naeste <= 1 || naeste === p) break;
-      p = naeste;
-    } catch {
-      break;
-    }
+
+// ps-opslaget bor her (det er en sideeffekt); selve kaede-logikken og doeds-dommen
+// ligger i vagt.js, saa de kan koeres i en test uden at starte en server.
+function laesPpid(pid) {
+  try {
+    const ud = execSync(`ps -o ppid= -p ${pid}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,   // et haengende ps ville ellers blokere hele opstarten synkront
+    });
+    return Number(String(ud).trim());
+  } catch {
+    return null;
   }
-  return kaede;
 }
 
 const parentPid = process.ppid;
-let vagtKaede = [parentPid];
+
+// MAALT 22/8: doer den naermeste foraelder FOER serveren er bootet (~2 sek node+SDK),
+// laeser process.ppid vaerdien 1 — altsaa launchd. Kaeden blev saa [1], og pid 1 er
+// baade udoedelig og ejet af root, saa vagten var enten inert eller draebte os selv
+// paa EPERM. En kaede der kun bestaar af pid 1 vogter ingenting og skal ikke bruges.
+let vagtKaede = parentPid > 1 ? [parentPid] : [];
 try {
-  const k = forfaedreKaede(parentPid);
+  const k = forfaedreKaede(parentPid, laesPpid).filter((x) => x > 1);
   if (k.length) vagtKaede = k;
 } catch {}
+if (!vagtKaede.length) {
+  process.stderr.write('[MCP] ingen brugbar foraelder-kaede (ppid=' + parentPid +
+    ') — falder tilbage paa idle-graensen alene\n');
+}
 process.stderr.write(`[MCP] vagt-kaede: ${vagtKaede.join(' → ')}\n`);
 
 parentCheck = setInterval(() => {
   for (const pid of vagtKaede) {
-    try {
-      process.kill(pid, 0); // signal 0 = findes processen?
-    } catch {
+    if (ledErDoedt(pid)) {
+      // MAALT 22/8 — og det var en fejl JEG indfoerte samme aften: enhver exception
+      // blev tolket som "processen doede". Men `kill(0)` kaster EPERM naar processen
+      // LEVER og bare ejes af en anden bruger. Er ét led i kaeden ejet af root — og
+      // pid 1 er launchd, som altid er det — lukkede serveren sig selv ned efter fem
+      // sekunder med teksten "chatten bag denne server er vaek", mens chatten koerte
+      // fint. Vagten der skulle frigive porte draebte i stedet levende chats.
+      // Kun ESRCH ("no such process") betyder faktisk doed.
       gracefulShutdown(`Proces ${pid} i kaeden doede — chatten bag denne server er vaek`);
       return;
     }

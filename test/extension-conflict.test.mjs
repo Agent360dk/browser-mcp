@@ -328,7 +328,7 @@ test('gammel udvidelse: ukendt metode forklares, ikke bare rapporteres', () => {
 test('alle otte metoder fra v1.26.0 har en erstatning', () => {
   const f = bygForklaring(null);
   for (const m of ['double_click', 'right_click', 'click_xy', 'extract_list',
-                   'reattach_debugger', 'copy_to_clipboard', 'paste_from_clipboard']) {
+                   'reattach_debugger']) {
     assert.match(f(`Unknown method: ${m}`), /Indtil da: /, `${m} mangler en erstatning`);
   }
 });

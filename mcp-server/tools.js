@@ -64,18 +64,6 @@ export const TOOLS = [
       required: ['code'],
     },
   },
-  {
-    name: 'browser_copy_to_clipboard',
-    description: 'SECRET-SAFE: Copy an element\'s value/text (or an attribute) to the system clipboard WITHOUT returning the content — only the character count comes back. Use for credentials/tokens that must move from a page (e.g. Azure "new client secret" value) to a field or CLI (`pbpaste`) without ever entering the conversation. CSS selectors only.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: { type: 'string', description: 'CSS selector of the element whose value/text to copy' },
-        attribute: { type: 'string', description: 'Optional: copy this attribute instead of value/textContent' },
-      },
-      required: ['selector'],
-    },
-  },
 {
     name: 'browser_double_click',
     description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view).',

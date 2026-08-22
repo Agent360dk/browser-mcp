@@ -17,7 +17,7 @@ Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode
 
 The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace — with you approving the sensitive steps.
 
-41 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
+40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
 
 ## The whole thing, in four steps
 
@@ -72,7 +72,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 41 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 40 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
@@ -120,7 +120,7 @@ Nothing happens until you ask, and the hardest part of a new tool is knowing wha
 | *"Log me in here. If it emails a code, read it from my Gmail tab and continue."* | The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in. |
 | *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md).
+The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
@@ -140,7 +140,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
-## 41 Tools
+## 40 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -149,6 +149,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |
+| `browser_extract_list` | Read every row of a long/virtualised list by scrolling its container until no new rows appear |
 
 ### Interaction
 | Tool | Description |
@@ -164,6 +165,10 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
 | `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
+| `browser_double_click` | True double-click (two trusted press/release pairs) |
+| `browser_right_click` | Right-click to open page-level context menus |
+| `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
+| `browser_reattach_debugger` | Recovery: force-detach and re-attach the Chrome debugger on the current tab |
 
 ### Tabs & Frames
 | Tool | Description |
@@ -250,7 +255,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 41 tool definitions
+  tools.js            # 40 tool definitions
   bin/cli.js          # Install CLI
 ```
 

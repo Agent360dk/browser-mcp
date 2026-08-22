@@ -76,7 +76,11 @@ test('hvert vaerktoej naar frem til en handler — methodMap eller server-lokal'
 
 test('hver methodMap-metode har en dispatch-case i background.js', () => {
   const par = [...indexSrc.matchAll(/^\s{6}(browser_[a-z_]+): '([a-z_]+)',$/gm)];
-  assert.ok(par.length >= 40, `fandt kun ${par.length} methodMap-linjer — parseren er nok braekket`);
+  // Vagten skal foelge vaerktoejerne, ikke et magisk tal. MAALT 22/8: den stod paa
+  // ">= 40" og blev roed da tre udklipsholder-vaerktoejer blev fjernet — en test der
+  // fejler paa en KORREKT aendring er et daarligt instrument. Nu udledes den.
+  assert.ok(par.length >= TOOLS.length - 5,
+    `fandt kun ${par.length} methodMap-linjer mod ${TOOLS.length} vaerktoejer — parseren er nok braekket`);
   const cases = new Set([...bgSrc.matchAll(/case '([a-z_]+)'/g)].map(m => m[1]));
   for (const [, vaerktoej, metode] of par) {
     assert.ok(cases.has(metode), `${vaerktoej} → '${metode}': ingen case '${metode}' i extension/background.js`);

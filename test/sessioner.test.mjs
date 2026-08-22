@@ -274,3 +274,19 @@ test('numrene bliver smaa og laesbare, ogsaa efter mange aabninger og lukninger'
   assert.ok(Math.max(...numre) <= 12, `hoejeste nummer er ${Math.max(...numre)} — pladser genbruges ikke`);
   assert.equal(new Set(numre).size, numre.length, 'og ingen dubletter');
 });
+
+// ── Navnet er dét brugeren ser ────────────────────────────────────────────────
+// MAALT 22/8: gendannelses-stien satte `data.label || \`Claude ${nummer}\``. Bumpede
+// kollisionsloekken nummeret, fulgte navnet IKKE med — det blev gendannet ordret fra
+// lageret. To sessioner kunne saa have hvert sit nummer og stadig begge hedde
+// "Claude 1" i samme farve. Nummeret var unikt; navnet var ikke.
+test('navn og farve foelger nummeret, ogsaa naar det bumpes ved gendannelse', () => {
+  const i = kilde.indexOf('sessions.set(Number(port), {');
+  const blok = kilde.slice(i, i + 700);
+  assert.ok(!/label: data\.label/.test(blok),
+    'navnet maa ikke gendannes ordret — bumpes nummeret, skal navnet med');
+  assert.ok(!/color: data\.color/.test(blok),
+    'samme for farven: to fanegrupper i samme farve er lige saa forvirrende');
+  assert.match(blok, /label: `Claude \$\{nummer\}`/, 'navnet skal udledes af nummeret');
+  assert.match(blok, /color: SESSION_COLORS\[\(nummer - 1\)/, 'farven ogsaa');
+});

@@ -47,8 +47,13 @@ function restoreSessions() {
           activeTabId,
           groupId: data.groupId || null,
           nummer,
-          color: data.color || SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
-          label: data.label || `Claude ${nummer}`,
+          // MAALT 22/8: her stod `data.color || …` og `data.label || …`. Bumpede
+          // kollisionsloekken nummeret, fulgte navn og farve IKKE med — de blev
+          // gendannet ordret fra lageret. To sessioner kunne saa have hvert sit
+          // nummer og stadig begge hedde "Claude 1" i samme farve. Og navnet er
+          // praecis dét brugeren ser paa fanegruppen.
+          color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
+          label: `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
         });
       }
@@ -514,16 +519,21 @@ const agentLukkedeFaner = new Set();
 // de tilfaelde hvor dialogen allerede er undervejs.
 const armeredeDialoger = new Map();   // tabId → { listener, timer, action }
 
-function afvaebnDialog(tabId) {
+function afvaebnDialog(tabId, grund) {
   const a = armeredeDialoger.get(tabId);
   if (!a) return;
   try { chrome.debugger.onEvent.removeListener(a.listener); } catch {}
   clearTimeout(a.timer);
   armeredeDialoger.delete(tabId);
+  // MAALT 22/8: her stoppede funktionen. Loeftet blev ALDRIG opfyldt, saa en kalder
+  // med `wait: true` haengte for evigt ad to helt almindelige veje — fanen blev
+  // lukket, eller et andet handle_dialog armerede paa samme fane. Ingen fejl, intet
+  // svar, bare stilhed. Nu faar kalderen altid et svar.
+  if (grund && a.opfyld) a.opfyld({ ok: false, error: grund });
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  afvaebnDialog(tabId);   // en armering paa en lukket fane er kun en laekage
+  afvaebnDialog(tabId, 'fanen blev lukket foer der kom en dialog');
   const lukketAfAgenten = agentLukkedeFaner.delete(tabId);
   debuggerAttached.delete(tabId);
   for (const [port, session] of sessions) {
@@ -2650,6 +2660,11 @@ async function dispatch(port, method, params) {
       const r = await setCombobox(tab.id, params.selector, values, {
         multi: !!params.multi,
         query_chars: params.query_chars,
+        // MAALT 22/8: wait_ms blev tavst kasseret her. Skemaet lover parameteren, og
+        // setCombobox laeser opts.wait_ms — men handleren videregav den ikke, saa
+        // ventetiden stod altid paa standarden 3000 ms. En agent der bad om laengere
+        // tid til en langsom liste fik den ikke, og fik ingen besked om det.
+        wait_ms: params.wait_ms,
       });
       const visibleErrors = r.ok ? [] : await collectVisibleErrors(tab.id, params.selector);
       return r.ok ? r : { ...r, visible_errors: visibleErrors };
@@ -2772,72 +2787,9 @@ async function dispatch(port, method, params) {
     }
 
     // ── v1.26 "superior" tools ──────────────────────────────────────────────
-    // Secret-hygiene contract: copy/stats NEVER return clipboard/element content
     // to the MCP server — only lengths and shape booleans. Born from the 2026-07-27
     // Azure-secret night: the agent must be able to move a credential from page to
     // field without the value ever entering the LLM context or transcript.
-
-    case 'copy_to_clipboard': {
-      const tab = await getSessionTab(port);
-      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const parsed = parseSelector(params.selector);
-      if (parsed.type === 'text') {
-        return { ok: false, error: 'copy_to_clipboard requires a CSS selector (text= selectors not supported for value extraction)' };
-      }
-      const attr = params.attribute || null;
-      const evalRes = await cdpSend(tab.id, 'Runtime.evaluate', {
-        expression: `(() => {
-          const el = document.querySelector(${JSON.stringify(parsed.selector)});
-          if (!el) return null;
-          ${attr ? `return el.getAttribute(${JSON.stringify(attr)});`
-                 : `return ('value' in el && el.value) ? el.value : (el.textContent || '').trim();`}
-        })()`,
-        returnByValue: true,
-      });
-      const value = evalRes?.result?.value;
-      if (value == null) return { ok: false, error: 'Element not found or empty: ' + params.selector };
-      const clip = await chrome.runtime.sendMessage({ type: 'bmcp_clipboard', op: 'write', text: String(value) });
-      if (!clip?.ok) return { ok: false, error: 'clipboard write failed: ' + (clip?.error || 'unknown') };
-      // NEVER return the value itself.
-      return { ok: true, copied_chars: String(value).length, source: attr ? `attribute:${attr}` : 'value/text' };
-    }
-
-    case 'paste_from_clipboard': {
-      const tab = await getSessionTab(port);
-      if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const clip = await chrome.runtime.sendMessage({ type: 'bmcp_clipboard', op: 'read' });
-      if (!clip?.ok) return { ok: false, error: 'clipboard read failed: ' + (clip?.error || 'unknown') };
-      const text = params.trim === false ? clip.text : (clip.text || '').trim();
-      if (!text) return { ok: false, error: 'clipboard is empty' };
-      const parsed = parseSelector(params.selector);
-      if (parsed.type === 'text') {
-        const el = await resolveElement(tab.id, params.selector);
-        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-        await debuggerClick(tab.id, el.x, el.y);
-        await new Promise(r => setTimeout(r, 100));
-        await debuggerType(tab.id, text);
-      } else {
-        await debuggerFill(tab.id, parsed.selector, text);
-      }
-      // NEVER return the pasted content.
-      return { ok: true, pasted_chars: text.length };
-    }
-
-    case 'clipboard_stats': {
-      const clip = await chrome.runtime.sendMessage({ type: 'bmcp_clipboard', op: 'read' });
-      if (!clip?.ok) return { ok: false, error: 'clipboard read failed: ' + (clip?.error || 'unknown') };
-      const t = clip.text || '';
-      const trimmed = t.trim();
-      return {
-        ok: true,
-        length: t.length,
-        trimmed_length: trimmed.length,
-        has_whitespace: /\s/.test(trimmed),
-        looks_like_uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed),
-        looks_like_url: /^https?:\/\//i.test(trimmed),
-        // NEVER the content itself.
-      };
-    }
 
     case 'double_click': {
       const tab = await getSessionTab(port);
@@ -3008,14 +2960,14 @@ async function dispatch(port, method, params) {
 
       await debuggerAttach(tab.id);
       await cdpSend(tab.id, 'Page.enable', {});
-      afvaebnDialog(tab.id);                          // kun én armering ad gangen pr. fane
+      afvaebnDialog(tab.id, 'en ny armering overtog denne fane');   // kun én ad gangen
 
       let opfyld;
       const svar = new Promise((resolve) => { opfyld = resolve; });
 
       const listener = (source, method, eventParams) => {
         if (source.tabId !== tab.id || method !== 'Page.javascriptDialogOpening') return;
-        afvaebnDialog(tab.id);
+        afvaebnDialog(tab.id);   // uden grund: vi svarer selv lige nedenfor
         cdpSend(tab.id, 'Page.handleJavaScriptDialog', {
           accept: action === 'accept',
           promptText,
@@ -3029,7 +2981,7 @@ async function dispatch(port, method, params) {
         opfyld({ ok: false, error: `Ingen dialog dukkede op inden for ${levetid} ms` });
       }, levetid);
 
-      armeredeDialoger.set(tab.id, { listener, timer, action });
+      armeredeDialoger.set(tab.id, { listener, timer, action, opfyld });
       chrome.debugger.onEvent.addListener(listener);
 
       if (vent) return await svar;

@@ -13,7 +13,7 @@ Browser MCP has **two parts** that must both be present:
 2. **A Chrome extension** — this is what actually drives the user's real, logged-in Chrome.
    Chrome does not allow an extension to install itself from npm, so **a human loads it once.**
 
-The server will start and list its 34 tools without the extension, but the tools only *do*
+The server will start and list its 40 tools without the extension, but the tools only *do*
 anything once the extension is loaded **and Chrome is running**. Tell the user this plainly.
 
 ## Step 1 — register the MCP server with the client

@@ -32,7 +32,7 @@ claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \
               glob.glob(os.path.join(ROOT, 'content', '*.md')) + [os.path.join(ROOT, 'README.md')]
 claim_files = [f for f in claim_files if os.path.isfile(f)]
 # MAALT 21/8: moenstret var kun "N browser tools". Formen "N tools" — som er den
-# der bruges paa naesten hver side — slap forbi, saa 45 paastande om "34 tools"
+# der bruges paa naesten hver side — slap forbi, saa 45 paastande om "40 tools"
 # stod paa sitet mens gaten meldte alt groent. Baade "N tools" og "N tool
 # definitions" taelles nu med.
 TOOL_CLAIM = re.compile(r'(\d+)\s+(?:browser\s+)?tools?\b')

@@ -36,7 +36,7 @@ npm --prefix mcp-server run flow # 43-tool flow-test against a REAL Chrome (need
 isolation, the tab cap, the extension-conflict logic, release coherence. Fast, no browser,
 safe in CI. The release script gates on it.
 
-`npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 41 tools
+`npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 40 tools
 for real, reporting OK / FEJL / SPRUNGET per tool. It cannot run in CI. Run it before a release
 and whenever you touch `extension/background.js` — it is the only layer that catches a tool that
 answers `ok: true` while the page did nothing.

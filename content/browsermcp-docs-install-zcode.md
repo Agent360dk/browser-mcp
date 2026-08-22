@@ -143,7 +143,7 @@ This is the reason people install Browser MCP: your ZCode agent hits a login wal
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer — it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 41 tools
+### 40 tools
 
 | Category | Tools |
 |---|---|
@@ -173,7 +173,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 
 ### Works with any MCP client
 
-Browser MCP is a standard stdio MCP server — it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 41 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 — how each client's UI registers a stdio server.
+Browser MCP is a standard stdio MCP server — it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 40 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 — how each client's UI registers a stdio server.
 
 ### Running more than one agent session at once
 
@@ -187,7 +187,7 @@ Each session gets its own MCP server on its own port (9876–9895), and the exte
 Run `npx @agent360/browser-mcp install` to fetch the extension files, then in ZCode go to Settings → MCP Servers → New MCP Server, set type `stdio`, command `npx`, argument `@agent360/browser-mcp`. Load the Chrome extension once (Step 3), confirm `browser-mcp` shows Enabled, and restart ZCode if the tools don't appear immediately.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives ZCode — or any MCP client, including Claude Code, Cursor, and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 41 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives ZCode — or any MCP client, including Claude Code, Cursor, and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, 100% local.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.

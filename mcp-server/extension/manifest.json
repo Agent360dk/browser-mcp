@@ -4,7 +4,6 @@
   "version": "1.27.1",
   "description": "Give Claude Code your real logged-in Chrome. Two parts: this extension + one npx command. Multi-session, local, MIT.",
   "permissions": [
-    "clipboardWrite",
     "tabs",
     "tabGroups",
     "cookies",

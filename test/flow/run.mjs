@@ -310,16 +310,15 @@ try {
     const r = await kald('browser_solve_captcha', { action: 'detect' }, 70000);
     skalVaere(!/error/i.test(r.tekst), 'detect fejlede paa en side uden CAPTCHA');
   });
-  await proev('browser_copy_to_clipboard', 'kopierer uden at afsloere indholdet', async () => {
-    const r = await kald('browser_copy_to_clipboard', { selector: '#tekstfelt' });
-    skalVaere(!r.tekst.includes('flowtest'), 'HEMMELIGHEDS-BRUD: indholdet kom med i svaret');
-  });
-  // browser_clipboard_stats og browser_paste_from_clipboard er fjernet i 1.27.1.
-  // De kraever `clipboardRead`, som udloeser Chrome-advarslen "Read data you copy and
-  // paste" — og en opdatering der TILFOEJER en advarsels-tilladelse slukker udvidelsen
-  // hos hele den installerede base indtil hver bruger selv klikker acceptér. De to
-  // vaerktoejer har aldrig vaeret udgivet, saa ingen mister noget. copy_to_clipboard
-  // bliver, fordi clipboardWrite ikke udloeser en advarsel.
+  // MAALT 22/8: ALLE tre udklipsholder-vaerktoejer er fjernet i denne udgivelse.
+  // clipboardRead udloeser Chrome-advarslen "Read data you copy and paste" — og
+  // clipboardWrite udloeser "Modify data you copy and paste". Begge er advarsler, og
+  // en opdatering der tilfoejer EN advarsels-tilladelse SLUKKER udvidelsen hos hele
+  // den installerede base indtil hver bruger selv klikker acceptér. Kilde: Chromes
+  // egen permissions-liste. Jeg troede foerst kun clipboardRead udloeste en advarsel;
+  // det var forkert, og en agent fangede det. Ingen udgivet version har nogensinde
+  // haft nogen af dem, saa ingen mister noget — og rettighedslisten er nu byte-for-byte
+  // identisk med v1.25.0, altsaa nul risiko for at slukke nogen.
   await proev('browser_reattach_debugger', 'kobler debuggeren om', () => kald('browser_reattach_debugger', {}));
   await proev('browser_about', 'giver projektinfo og indsendelseslink', async () => {
     const r = await kald('browser_about', { intent: 'info' });
