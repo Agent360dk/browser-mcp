@@ -140,6 +140,17 @@ function install({ skipExtension = false } = {}) {
 `);
 }
 
+// Tal, ikke tekst: en ren tekstsammenligning ville sige at 1.9.0 er nyere end 1.10.0.
+function cmpSemver(a, b) {
+  const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
 function autoUpdateExtension() {
   const home = homedir();
   const extensionDir = join(home, '.browser-mcp', 'extension');
@@ -156,12 +167,21 @@ function autoUpdateExtension() {
     const installed = JSON.parse(readFileSync(installedManifest, 'utf8'));
     const source = JSON.parse(readFileSync(sourceManifest, 'utf8'));
 
-    if (installed.version !== source.version) {
+    // MAALT 21/8: her stod `if (installed.version !== source.version)`. Den kopierede
+    // naar versionerne var FORSKELLIGE — ikke naar pakkens var NYERE. En installation
+    // paa 1.27.1 blev derfor overskrevet af npm-pakkens 1.25.0, og linjen nedenfor
+    // meldte det som "auto-updated: 1.27.1 → 1.25.0". Det skete ved hver eneste
+    // serveropstart, saa en lokal nyere udgave kunne ikke blive liggende. Det er
+    // ogsaa forklaringen paa at ~/.browser-mcp/extension stod paa juli-kode i ugevis.
+    if (cmpSemver(source.version, installed.version) > 0) {
       cpSync(sourceExtension, extensionDir, { recursive: true });
       process.stderr.write(`[MCP] Extension auto-updated: ${installed.version} → ${source.version}\n`);
       process.stderr.write('[MCP] Extension will auto-reload when connected\n');
       // Signal to index.js that extension needs reload
       process.env.BROWSER_MCP_EXTENSION_UPDATED = '1';
+    } else if (installed.version !== source.version) {
+      // Den lokale er nyere end pakkens — typisk under udvikling. Sig det, men roer den ikke.
+      process.stderr.write(`[MCP] Extension paa disken (${installed.version}) er nyere end pakkens (${source.version}) — lader den vaere\n`);
     }
   } catch {}
 }

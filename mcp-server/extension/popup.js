@@ -11,7 +11,7 @@ function paintStatus(connected, count, sessionCount) {
       ? `Connected — ${sessionCount} active session${sessionCount === 1 ? '' : 's'}`
       : `Connected — ready (${count} agent${count === 1 ? '' : 's'} listening)`;
   // The Chrome Web Store can only install the extension. If nothing is listening on
-  // ports 9876-9885, the user almost certainly never ran the npx install — say so.
+  // ports 9876-9895, the user almost certainly never ran the npx install — say so.
   document.getElementById('setup').classList.toggle('show', !connected);
   // Connected but idle: they got it working and now need to know what to say.
   document.getElementById('try').classList.toggle('show', connected && sessionCount === 0);

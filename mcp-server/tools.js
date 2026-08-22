@@ -214,7 +214,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS or text selector for the dropdown trigger / <select> element' },
-        option: { type: 'string', description: 'Text of the option to select (partial match supported)' },
+        option: { type: 'string', description: 'Text OR value of the option to select. Exact value match wins, then exact text, then partial text. Aliases: `value`, `label`. Fails loudly with the available options if nothing matches — it never reports success without the field actually changing.' },
         wait: { type: 'number', description: 'Ms to wait after clicking trigger for options to appear (default: 300)' },
       },
       required: ['selector', 'option'],
@@ -254,7 +254,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector for the drop-zone target element (e.g. ".upload-area")' },
-        file: { type: 'string', description: 'Single absolute file path' },
+        file: { type: 'string', description: 'Single absolute file path. Alias: `file_path`.' },
         files: { type: 'array', items: { type: 'string' }, description: 'Array of absolute file paths' },
       },
       required: ['selector'],
@@ -455,7 +455,7 @@ export const TOOLS = [
       properties: {
         selector: { type: 'string', description: 'CSS selector for the file input (default: input[type="file"])' },
         files: { type: 'array', items: { type: 'string' }, description: 'Array of absolute file paths to upload. E.g. ["/Users/me/photo.jpg"]' },
-        file: { type: 'string', description: 'Single file path (alternative to files array)' },
+        file: { type: 'string', description: 'Single file path (alternative to files array). Alias: `file_path`.' },
       },
       required: ['files'],
     },
@@ -506,6 +506,37 @@ export const TOOLS = [
           description: 'Optional pre-filled body / first-comment draft. Will be URL-encoded into the submit link. Keep it short; user can expand on GitHub.',
         },
       },
+    },
+  },
+  {
+    name: 'browser_provide_feedback',
+    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL — this server\'s version against the latest published on npm, the connected Chrome extension\'s version against this server, and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) — so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap, read-only, and safe to call speculatively — never sends anything anywhere by itself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        what_happened: {
+          type: 'string',
+          description: 'Required. What you tried and what actually happened, in one or two plain sentences. Include the exact error text if there was one.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['blocked', 'broken', 'missing', 'wish', 'use_case'],
+          description: '"blocked" = you could not complete the task (default). "broken" = a tool misbehaved or lied about its result. "missing" = the capability does not exist. "wish" = a feature idea. "use_case" = something worth sharing that you built.',
+        },
+        tool: {
+          type: 'string',
+          description: 'The browser_* tool involved, e.g. "browser_click". Omit if none in particular.',
+        },
+        url: {
+          type: 'string',
+          description: 'The page it happened on, if relevant. Strip query strings that contain tokens.',
+        },
+        attempted: {
+          type: 'string',
+          description: 'What you already tried (other selectors, other tools, retries) so the report does not suggest what you have ruled out.',
+        },
+      },
+      required: ['what_happened'],
     },
   },
 ];

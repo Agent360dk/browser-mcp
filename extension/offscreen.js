@@ -1,7 +1,7 @@
 /**
  * Offscreen Document — Persistent WebSocket bridge (multi-session)
  *
- * Scans port range 9876-9885 and maintains connections to ALL active
+ * Scans port range 9876-9895 and maintains connections to ALL active
  * MCP servers. Each Claude Code session gets its own port automatically.
  * Passes port ID with every command so background.js can track tab ownership.
  *
@@ -30,13 +30,42 @@ function tryConnect(port) {
     return;
   }
 
+  // MAALT 21/8: en og samme udvidelse stod med TO aabne forbindelser til den samme
+  // server. Aarsagen laa her: forbindelsen blev foerst skrevet i kortet i onopen.
+  // scanPorts koerer hvert 2. sekund og springer kun over hvis kortet allerede har
+  // en forbindelse der er OPEN eller CONNECTING — men i vinduet mellem `new WebSocket`
+  // og onopen stod der intet i kortet. Naeste scan lavede derfor endnu en. Den foerste
+  // blev forældreloes: aldrig lukket, aldrig i kortet, men fuldt aaben.
+  // Registrering med det samme lukker vinduet.
+  connections.set(port, ws);
+
   const connectTimeout = setTimeout(() => {
     if (ws.readyState !== WebSocket.OPEN) ws.close();
   }, 2000);
 
   ws.onopen = () => {
     clearTimeout(connectTimeout);
-    connections.set(port, ws);
+    connections.set(port, ws);   // stadig vores? scanPorts har ikke lavet en nyere
+
+    // ── Identitets-haandtryk (MAALT 21/8) ──────────────────────────────────
+    // To udgaver af udvidelsen kan vaere indlaest i den samme Chrome samtidig —
+    // fx en "load unpacked"-kopi ved siden af en anden. Begge scanner de samme
+    // porte, saa BEGGE forbinder til hver eneste MCP-server. Serveren havde kun
+    // én socket-variabel, som hver ny forbindelse overskrev, saa kommandoerne
+    // landede hos den der forbandt sidst — vilkaarligt hvilken af de to. Den
+    // anden fortsatte med sit eget sessions-kort og sine egne fane-grupper.
+    // Haandtrykket giver serveren det den mangler for at kunne se at der er to,
+    // vaelge den nyeste, og sige det hoejt i stedet for at gaette i tavshed.
+    try {
+      const m = chrome.runtime.getManifest();
+      ws.send(JSON.stringify({
+        type: 'hello',
+        extensionId: chrome.runtime.id,
+        version: m.version,
+        name: m.name,
+      }));
+    } catch {}
+
     console.log(`[Offscreen] Connected to MCP server on port ${port} (${connections.size} total)`);
     updateStatus();
   };
@@ -125,6 +154,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   } catch (e) {
     sendResponse({ ok: false, error: e.message });
   }
+  return true;
+});
+
+// Svar paa hjerteslaget. Uden dette svar kan background.js ikke skelne et levende
+// dokument fra et der findes men aldrig fik sit script indlaest — og saa bliver et
+// doedt dokument aldrig erstattet.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'bmcp_ping') return;
+  sendResponse({ ok: true, ports: [...connections.keys()] });
   return true;
 });
 

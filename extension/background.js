@@ -99,10 +99,26 @@ async function adoptOrphanedSession(port, pid) {
   // slet ikke — hellere en frisk session end en stjaalet.
   if (typeof pid !== 'number') return null;
 
+  // ── Anden halvdel af gaten (MAALT 21/8) ─────────────────────────────────────
+  // Pid'en alene raekker ikke. Foraelder-processen er IKKE en unik identitet: starter
+  // en klient flere MCP-servere fra den samme proces, har de alle samme pid — og saa
+  // adopterede de hinandens faner paa stribe. Maalt med fire samtidige sessioner:
+  // alle fik navnet "Claude 3", de tre aeldste mistede deres fane, og en session
+  // kunne skifte til en andens. Altsaa "alt hedder Claude 1", i sin rene form, med
+  // kun én udvidelse indlaest.
+  //
+  // Det manglende tjek staar allerede beskrevet oeverst i denne funktion: adoptér kun
+  // fra en session hvis port IKKE laengere er forbundet. Er donorens port stadig i
+  // live, er det en anden chat der arbejder lige nu — ikke en genstartet server.
+  // Listen vedligeholdes af broen (ws_status → mcpPorts) ved hver til- og frakobling.
+  const { mcpPorts = [] } = await chrome.storage.local.get({ mcpPorts: [] });
+  const levendePorte = new Set(mcpPorts.map(Number));
+
   let best = null;
   for (const [p, session] of sessions) {
     if (p === port || !session.tabIds.size) continue;
-    if (session.pid !== pid) continue;   // en anden chat — lad den vaere
+    if (session.pid !== pid) continue;        // en anden chat — lad den vaere
+    if (levendePorte.has(Number(p))) continue; // donoren arbejder stadig — hænderne væk
     if (!best || session.tabIds.size > best.session.tabIds.size) best = { port: p, session };
   }
   if (!best) return null;
@@ -133,7 +149,13 @@ async function adoptOrphanedSession(port, pid) {
 // Begrundelse: Claude Code-flows kan åbne 20+ navigate(new_tab=true) per session
 // over en længere conversation. Uden eviction akkumulerer disse i Chrome som
 // orphan-tabs der spiser RAM + giver "extension localhost 19+" tab-noise.
-const MAX_TABS_PER_SESSION = 10;
+//
+// Hævet 10 → 20 (21/8). Ti var for lavt til reelle flows: en jagt der åbner en
+// fane pr. udbyder ramte loftet midtvejs, og evictionen lukkede de faner arbejdet
+// stadig byggede på — tavst, for eviction rapporterer ikke noget. Tyve matcher
+// portspændet (9876-9895), så en session kan holde lige så mange faner som der
+// kan køre samtidige sessioner.
+const MAX_TABS_PER_SESSION = 20;
 
 async function evictOldestTabs(session, justAddedTabId) {
   // Drop dead tab-ids først (user manually closed dem)
@@ -449,12 +471,17 @@ async function cdpSend(tabId, method, params = {}) {
 }
 
 // Clean up debugger + session refs when tabs close
+// Faner agenten selv lukkede via close_tab. En tom session betyder kun "arbejdet er slut"
+// hvis det var BRUGEREN der lukkede den sidste fane.
+const agentLukkedeFaner = new Set();
+
 chrome.tabs.onRemoved.addListener((tabId) => {
+  const lukketAfAgenten = agentLukkedeFaner.delete(tabId);
   debuggerAttached.delete(tabId);
   for (const [port, session] of sessions) {
     if (!session.tabIds.has(tabId)) continue;
     session.tabIds.delete(tabId);
-    if (session.tabIds.size === 0) {
+    if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
       chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
@@ -582,14 +609,15 @@ async function debuggerClick(tabId, x, y) {
     //    SPA re-renders (Google Ads) detach the element first. Fires a full pointer
     //    + mouse sequence on the shadow-pierced target, then React/Angular handlers.
     await new Promise(r => setTimeout(r, 120));
-    await cdpSend(tabId, 'Runtime.evaluate', {
+    const settle = await cdpSend(tabId, 'Runtime.evaluate', {
+      returnByValue: true,
       expression: `(() => {
         const el = window.__bmcpClickTarget;
         const landed = window.__bmcpClicked === true;
         try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
         try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
-        if (landed) return;                   // FIX-13: trusted click already landed — do NOT double-fire
-        if (!el || !el.isConnected) return;   // already navigated/handled — don't double-fire
+        if (landed) return { landed: true, fallbackFired: false };   // FIX-13: trusted click already landed — do NOT double-fire
+        if (!el || !el.isConnected) return { landed: false, fallbackFired: false, detached: true };   // already navigated/handled — don't double-fire
         const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
         try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mousedown', opts));
@@ -614,8 +642,10 @@ async function debuggerClick(tabId, x, y) {
           const matRipple = el.closest && el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
           if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', opts));
         }
+        return { landed: false, fallbackFired: true };
       })()`,
     });
+    return settle?.result?.value ?? null;
   } finally {
     await debuggerDetach(tabId);
   }
@@ -894,6 +924,13 @@ async function resolveElement(tabId, selectorStr) {
       if (!el) return null;
       el.scrollIntoView({ block: 'center', behavior: 'instant' });
       const r = el.getBoundingClientRect();
+      // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
+      // og debuggerClick sendte et AEGTE museklik i sidens oeverste venstre hjoerne —
+      // paa hvad der nu laa der (logo, menu, link) — og svarede ok:true. Det er ikke en
+      // rapporteringsfejl men en handlingsfejl: vi klikker et andet sted end der blev bedt om.
+      if (r.width <= 0 || r.height <= 0) {
+        return { found: false, hidden: true, tag: el.tagName, rect: { w: r.width, h: r.height } };
+      }
       return { x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName, found: true };
     };
 
@@ -915,6 +952,9 @@ async function resolveElement(tabId, selectorStr) {
           if (!el) return null;
           el.scrollIntoView({ block: 'center', behavior: 'instant' });
           const r = el.getBoundingClientRect();
+          if (r.width <= 0 || r.height <= 0) {
+            return { found: false, hidden: true, tag: el.tagName, rect: { w: r.width, h: r.height } };
+          }
           return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, found: true };
         })()
       `);
@@ -931,6 +971,9 @@ async function resolveElement(tabId, selectorStr) {
       if (!el) return null;
       el.scrollIntoView({ block: 'center', behavior: 'instant' });
       const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) {
+        return { found: false, hidden: true, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), rect: { w: r.width, h: r.height } };
+      }
       return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), found: true };
     })()
   `);
@@ -939,15 +982,71 @@ async function resolveElement(tabId, selectorStr) {
 
 // ── Offscreen Document Setup ───────────────────────────────────────────────
 
-async function ensureOffscreen() {
-  const existing = await chrome.offscreen.hasDocument();
-  if (!existing) {
-    await chrome.offscreen.createDocument({
-      url: 'offscreen.html',
-      reasons: ['WORKERS'],
-      justification: 'Maintain persistent WebSocket connection to local MCP server',
-    });
+// MAALT 21/8: her stod kun `if (!await chrome.offscreen.hasDocument()) createDocument()`.
+// Den spurgte om dokumentet FANDTES — aldrig om det SVAREDE. Et dokument hvis script
+// aldrig blev indlaest (en CSP-afvisning raekker) taeller stadig som eksisterende, saa
+// hjerteslaget hvert minut gjorde ingenting, for evigt. Udvidelsen saa levende ud i
+// chrome://extensions, men havde ingen WebSocket og kunne ikke naas af noget — heller
+// ikke af reload_extension, som netop kraever den forbindelse den mangler. Eneste vej
+// ud var ↻ i haanden.
+//
+// Nu spoerges dokumentet om det er der. Svarer det ikke, erstattes det.
+async function offscreenSvarer() {
+  try {
+    const svar = await Promise.race([
+      chrome.runtime.sendMessage({ type: 'bmcp_ping' }),
+      new Promise((_, afvis) => setTimeout(() => afvis(new Error('intet svar')), 1500)),
+    ]);
+    return svar?.ok === true;
+  } catch {
+    return false;   // ingen modtager, eller den svarede ikke i tide
   }
+}
+
+// Genskabelsen er BEGRAENSET, og det er ikke pynt.
+//
+// "Svarer ikke" betyder ikke altid "doed". En AELDRE offscreen.js — fra foer
+// ping-lytteren fandtes — svarer heller ikke, og Chrome kan servere den fra cache
+// hen over en genindlaesning (maalt 21/8). Uden en graense ville hjerteslaget saa
+// lukke og genskabe en fuldt fungerende bro hvert minut, for evigt, og rive
+// WebSocket-forbindelsen ned hver gang. Kuren ville vaere vaerre end sygdommen.
+//
+// Derfor: hoejst tre forsoeg. Er dokumentet aegte doedt, er ét nok. Er det bare
+// gammelt, koster det tre korte afbrydelser og saa faar det fred. Taelleren
+// nulstilles i det oejeblik en ping lykkes — altsaa naar den nye bro er oppe.
+const MAX_OFFSCREEN_GENSKAB = 3;
+
+async function ensureOffscreen() {
+  const findes = await chrome.offscreen.hasDocument();
+
+  if (findes) {
+    if (await offscreenSvarer()) {
+      await chrome.storage.local.set({ offscreenGenskabt: 0 });   // levende — nulstil
+      return;
+    }
+    // Taelleren skal ligge i storage, ikke i en modul-variabel: service-workeren
+    // genstartes hele tiden, og en variabel ville nulstilles ved hver genstart —
+    // altsaa ingen graense i praksis.
+    const { offscreenGenskabt = 0 } = await chrome.storage.local.get({ offscreenGenskabt: 0 });
+    if (offscreenGenskabt >= MAX_OFFSCREEN_GENSKAB) {
+      console.warn('[BG] offscreen-dokumentet svarer stadig ikke efter ' +
+        `${MAX_OFFSCREEN_GENSKAB} forsoeg — lader det vaere. Virker forbindelsen ikke, ` +
+        'saa genindlaes udvidelsen i haanden (chrome://extensions → ↻).');
+      return;
+    }
+    console.warn(`[BG] offscreen-dokumentet svarer ikke — erstatter det (forsoeg ${offscreenGenskabt + 1}/${MAX_OFFSCREEN_GENSKAB})`);
+    await chrome.storage.local.set({ offscreenGenskabt: offscreenGenskabt + 1 });
+    try { await chrome.offscreen.closeDocument(); } catch (e) {
+      console.warn('[BG] kunne ikke lukke det doede dokument:', e?.message || e);
+      return;                                      // proev igen ved naeste hjerteslag
+    }
+  }
+
+  await chrome.offscreen.createDocument({
+    url: 'offscreen.html',
+    reasons: ['WORKERS'],
+    justification: 'Maintain persistent WebSocket connection to local MCP server',
+  });
 }
 
 // ── Action Logging ─────────────────────────────────────────────────────────
@@ -1517,10 +1616,22 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
       ];
       const xChars = ['×', '✕', '✖', '⨯'];
 
+      // MAALT 21/8: her stod `if (!el || !el.offsetParent && el.tagName !== 'BODY') return false`.
+      // offsetParent er ALTID null for et position:fixed-element — det er ikke en fejl i
+      // browseren, det er definitionen. Saa hele overlay-fjerneren var blind for praecis
+      // den slags elementer som cookie-bannere, samtykke-bjaelker og modaler ER. Et
+      // synligt fixed-banner med <button aria-label="Close"> blev hverken fundet som
+      // overlay eller som luk-knap: dismissed:[], skipped:[], count:0 — tavst intet.
+      //
+      // Rigtig synlighed laeses af layout og stil, ikke af offsetParent.
       const isVisible = (el) => {
-        if (!el || !el.offsetParent && el.tagName !== 'BODY') return false;
+        if (!el) return false;
         const rect = el.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        const st = getComputedStyle(el);
+        if (st.display === 'none' || st.visibility === 'hidden' || st.visibility === 'collapse') return false;
+        if (parseFloat(st.opacity) === 0) return false;
+        return true;
       };
 
       const findCloseAffordance = (overlay, allowAmbiguous) => {
@@ -1554,7 +1665,10 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
           if (!isVisible(c)) continue;
           const text = (c.textContent || '').trim().toLowerCase();
           if (!text || text.length > 40) continue;
-          if (allTexts.some(t => text.includes(t))) {
+          // MAALT 22/8: contains-passet gjorde "ok" til en delstreng-traeffer, saa
+          // "Book a demo", "Unlock account" og "Cookie settings" blev klikbare — i
+          // DEFAULT-scope. Korte ord maa kun matche eksakt (prioritet 2 ovenfor).
+          if (allTexts.filter(t => t.length >= 5).some(t => text.includes(t))) {
             return { el: c, method: 'text-contains', label: text };
           }
         }
@@ -1594,6 +1708,15 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
           }
         } catch {}
       }
+
+      // Et strukturelt spor (alt fixed/sticky over 40x20px som overlay-kandidat) blev
+      // proevet 21/8 og SKAARET 22/8 efter sikkerhedsreview: findCloseAffordance matcher
+      // paa delstrenge, saa "Cancel subscription", "Close account" og "Book now" (via "ok")
+      // alle blev klikkbare — paa hver eneste side, og instruktionerne beder agenten kalde
+      // dismiss_overlays foer hvert stoerre skridt. Den maalte fejl var offsetParent-
+      // blindheden i isVisible ovenfor; den er rettet. Sporet var ny adfaerd uden bevist
+      // behov. Genindfoeres kun med eksakt tekstmatch og et krav om luk-affordance som
+      // direkte barn.
 
       for (const overlay of overlays) {
         const role = overlay.getAttribute('role') || (overlay.className || '').split(' ')[0] || 'unknown';
@@ -2055,10 +2178,17 @@ async function dispatch(port, method, params) {
     }
 
     case 'screenshot': {
-      // getSessionTab(…, true) is focus-NEUTRAL now: it un-minimizes + activates the tab
-      // but does NOT steal window focus (FIX-1). Screenshots run constantly, so the common
-      // path must never yank Chrome to the foreground.
-      const tab = await getSessionTab(port, true);
+      // EKSPERIMENT 21/8: fanen aktiveres IKKE laengere.
+      //
+      // getSessionTab(…, true) stjal ikke VINDUES-fokus (FIX-1), men den kaldte stadig
+      // chrome.tabs.update({active:true}) — altsaa et fane-skift INDE i vinduet. Sidder
+      // brugeren i det samme Chrome-vindue paa sin egen fane, bliver den revet vaek hver
+      // eneste gang agenten tager et billede. Og billeder tages konstant.
+      //
+      // Aktiveringen er formentlig unoedvendig: CDP Page.captureScreenshot nedenfor
+      // fotograferer en fane der ikke er forrest. Den okkluderede sidste-udvej loefter
+      // stadig vinduet hvis CDP virkelig ikke kan producere en frame.
+      const tab = await getSessionTab(port, false);
       if (tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) {
         throw new Error(`Cannot screenshot ${tab.url.split(':')[0]}: pages — navigate to a real page first`);
       }
@@ -2238,10 +2368,29 @@ async function dispatch(port, method, params) {
       try {
         const el = await resolveElement(tab.id, params.selector);
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+        // Elementet findes, men har ingen udstraekning — at klikke ville ramme (0,0),
+        // altsaa et HELT andet element end det der blev bedt om. Sig det i stedet.
+        if (el.hidden) {
+          return {
+            ok: false,
+            error: 'Element fundet men ikke synligt (0x0) — klik ville ramme sidens hjoerne: ' + params.selector,
+            hidden: true,
+            tag: el.tag,
+          };
+        }
 
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
-        await debuggerClick(tab.id, el.x, el.y);
-        return { ok: true, method: el.method || 'debugger', tag: el.tag, text: el.text };
+        const clickResult = await debuggerClick(tab.id, el.x, el.y);
+        return {
+          ok: true,
+          method: el.method || 'debugger',
+          tag: el.tag,
+          text: el.text,
+          // MAALT 21/8: `landed` blev allerede beregnet inde i debuggerClick og smidt vaek,
+          // saa `click` svarede ok:true selv naar siden slet ikke reagerede. Nu foelger den med:
+          // landed=false betyder "eventet blev sendt, men intet handler tog imod det".
+          ...(clickResult || {}),
+        };
       } catch (e) {
         // Fallback: synthetic click via chrome.scripting for anti-automation sites
         // (Apple ASC etc.) OR user-blocked-debugger scenarios.
@@ -2406,7 +2555,8 @@ async function dispatch(port, method, params) {
     case 'drop_file': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
+      const files = Array.isArray(params.files) ? params.files
+                  : [params.files || params.file || params.file_path].filter(Boolean);
       if (!files[0]) return { ok: false, error: 'files or file required' };
       return await dropFileOnTarget(tab.id, params.selector || 'body', files);
     }
@@ -2437,8 +2587,9 @@ async function dispatch(port, method, params) {
     }
 
     case 'press_key': {
-      // v1.22: activate tab so key-event lands in foreground (otherwise Chrome routes to active tab)
-      const tab = await getSessionTab(port, true);
+      // EKSPERIMENT 21/8: aktiverer IKKE fanen. Kommentaren her sagde at Chrome ellers
+      // sender tastetrykket til den aktive fane — det maales nu i stedet for at antages.
+      const tab = await getSessionTab(port, false);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
       const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
@@ -2669,21 +2820,45 @@ async function dispatch(port, method, params) {
         })()
       `);
 
+      // `value` og `label` accepteres som alias for `option`. Uden dem gav et forkert
+      // navn "undefined" som soegetekst — og vaerktoejet svarede alligevel ok:true.
+      const oensket = params.option ?? params.value ?? params.label;
+      if (typeof oensket !== 'string' || !oensket) {
+        return { ok: false, error: 'Manglende `option` (teksten eller vaerdien paa den mulighed der skal vaelges).' };
+      }
+
       if (isNativeSelect) {
-        // Native <select> — set value directly
-        await debuggerEval(tab.id, `
+        // MAALT 21/8: her blev resultatet af evalueringen — `return !!opt` — kastet vaek,
+        // og handleren svarede ubetinget ok:true. Blev muligheden ikke fundet, skete der
+        // INTET, og svaret sagde stadig at det var lykkedes. Samme fejlklasse som klikket
+        // der svarede ok:true uden at siden reagerede. Nu laeses svaret, og der laeses
+        // TILBAGE fra feltet bagefter, saa "valgt" betyder at vaerdien faktisk staar der.
+        const valg = await debuggerEval(tab.id, `
           (function() {
             const sel = document.querySelector(${JSON.stringify(params.selector)});
-            const opt = Array.from(sel.options).find(o => o.text.includes(${JSON.stringify(params.option)}) || o.value === ${JSON.stringify(params.option)});
-            if (opt) {
-              sel.value = opt.value;
-              sel.dispatchEvent(new Event('change', { bubbles: true }));
-              sel.dispatchEvent(new Event('input', { bubbles: true }));
+            if (!sel) return JSON.stringify({ found: false, error: 'select ikke fundet' });
+            const oensket = ${JSON.stringify(oensket)};
+            const opt = Array.from(sel.options).find(o => o.value === oensket)
+                     || Array.from(sel.options).find(o => o.text.trim() === oensket)
+                     || Array.from(sel.options).find(o => o.text.includes(oensket));
+            if (!opt) {
+              return JSON.stringify({ found: false, error: 'Ingen mulighed matchede: ' + oensket,
+                available: Array.from(sel.options).map(o => o.text.trim()).slice(0, 25) });
             }
-            return !!opt;
+            sel.value = opt.value;
+            sel.dispatchEvent(new Event('input', { bubbles: true }));
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            return JSON.stringify({ found: true, wanted: opt.value, actual: sel.value, text: opt.text.trim() });
           })()
         `);
-        return { ok: true, type: 'native_select' };
+        let r; try { r = JSON.parse(valg); } catch { r = null; }
+        if (!r) return { ok: false, type: 'native_select', error: 'Kunne ikke laese resultatet af valget' };
+        if (!r.found) return { ok: false, type: 'native_select', error: r.error, available: r.available };
+        if (r.actual !== r.wanted) {
+          // Reagerede siden ved at rulle valget tilbage (React-styret select), skal det siges.
+          return { ok: false, type: 'native_select', error: `Valget blev rullet tilbage: satte "${r.wanted}", feltet staar paa "${r.actual}"` };
+        }
+        return { ok: true, type: 'native_select', selected: r.text, value: r.actual };
       }
 
       // Custom dropdown (Angular Material, React Select, etc.)
@@ -2696,11 +2871,28 @@ async function dispatch(port, method, params) {
       await new Promise(r => setTimeout(r, params.wait || 300));
 
       // Step 3: Find and click the option by text
-      const option = await resolveElement(tab.id, `text=${params.option}`);
-      if (!option) return { ok: false, error: 'Option not found: ' + params.option };
-      await debuggerClick(tab.id, option.x, option.y);
+      const option = await resolveElement(tab.id, `text=${oensket}`);
+      if (!option) return { ok: false, error: 'Option not found: ' + oensket };
+      const valgKlik = await debuggerClick(tab.id, option.x, option.y);
 
-      return { ok: true, type: 'custom_dropdown', selected: params.option };
+      // MAALT 22/8 ved review: aerlighedsfixet blev kun anvendt paa native-grenen
+      // ovenfor. Her stod stadig `return { ok: true }` ubetinget, selv om resultatet
+      // af klikket var beregnet og smidt vaek — praecis den fejl der blev lukket to
+      // gange andre steder samme dag. En brugerdefineret dropdown hvor klikket ikke
+      // blev taget imod, meldte altsaa stadig succes.
+      // MAALT 22/8 (tredje gang samme fejlklasse): `ok: true` stod hardkodet, og `landed`
+      // blev blot spredt ind ved siden af. En dropdown hvor klikket ikke blev taget imod
+      // svarede altsaa {ok:true, landed:false} — og agenten laeser ok. Beskrivelsen lover
+      // ordret "it never reports success without the field actually changing".
+      return {
+        ...(valgKlik || {}),
+        ok: valgKlik?.landed !== false,
+        type: 'custom_dropdown',
+        selected: oensket,
+        ...(valgKlik?.landed === false
+          ? { error: 'Klikket paa muligheden blev ikke taget imod af siden: ' + oensket }
+          : {}),
+      };
     }
 
     case 'handle_dialog': {
@@ -3072,7 +3264,24 @@ async function dispatch(port, method, params) {
             setTimeout(() => { if (document.getElementById('a360-overlay')) { overlay.remove(); resolve({ acknowledged: false, action: 'timeout', values: {} }); } }, timeout);
           });
         },
-        args: [params.message, params.title, fields, hasFields, timeout, session.label],
+        // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
+        // med standarden "Agent360 — Action Required", men udelades den, er vaerdien
+        // undefined — og chrome.scripting.executeScript afviser hele kaldet med
+        // "Error at property 'args': Error at index 1: Value is unserializable".
+        // Altsaa styrtede human-in-the-loop-vaerktoejet hver gang en agent fulgte sit
+        // eget skema. Det blev aldrig fanget, fordi ask_user stod som "springes over"
+        // i flowtesten — den eneste der kunne have set det.
+        //
+        // Alle argumenter tvinges nu til serialiserbare vaerdier, og standarden
+        // anvendes der hvor den er lovet.
+        args: [
+          String(params.message ?? ''),
+          String(params.title ?? 'Agent360 — Action Required'),
+          Array.isArray(fields) ? fields : [],
+          Boolean(hasFields),
+          Number(timeout) || 120000,
+          String(session.label ?? 'Claude'),
+        ],
         world: 'MAIN',
       });
 
@@ -3093,13 +3302,35 @@ async function dispatch(port, method, params) {
         return { error: `Frame ${frameIndex} not found. Available: ${frames?.length || 0} frames`, frames: frames?.map((f, i) => ({ index: i, url: f.url })) };
       }
       const frameId = frames[frameIndex].frameId;
+      // MAALT 21/8: her stod `func: new Function('return (' + code + ')')`. Den byggede
+      // funktionen i SERVICE-WORKEREN, hvor udvidelsens egen CSP forbyder eval — saa
+      // vaerktoejet fejlede paa hver eneste side, ogsaa med koden '1+1':
+      //   "Evaluating a string as JavaScript violates ... 'unsafe-eval' is not allowed".
+      // execute_script loeser det samme problem korrekt: send koden med som ARGUMENT og
+      // byg funktionen INDE i den injicerede func, hvor sidens egen CSP gaelder. Samme
+      // vej her.
+      //
+      // Og som i execute_script (v1.26): accepter `script` som alias for `code`. Samme
+      // navne-uoverensstemmelse har foer faaet vaerktoejer til at se brudte ud i tavshed.
+      if (params.code == null && typeof params.script === 'string') params.code = params.script;
       const code = params.code || 'document.body.innerText.slice(0, 5000)';
       const [result] = await chrome.scripting.executeScript({
         target: { tabId: tab.id, frameIds: [frameId] },
-        func: new Function('return (' + code + ')'),
         world: 'MAIN',
+        args: [code],
+        func: (codeStr) => {
+          try {
+            return { __ok: true, value: new Function('return (' + codeStr + ')')() };
+          } catch (e) {
+            return { __scriptingError: true, message: String(e?.message || e) };
+          }
+        },
       });
-      return { result: result.result, frame_url: frames[frameIndex].url };
+      const r = result?.result;
+      if (r && r.__scriptingError) {
+        return { ok: false, error: r.message, frame_url: frames[frameIndex].url };
+      }
+      return { result: r?.value, frame_url: frames[frameIndex].url };
     }
 
     case 'list_frames': {
@@ -3137,6 +3368,9 @@ async function dispatch(port, method, params) {
       if (!session.tabIds.has(tabId)) {
         throw new Error(`Tab ${tabId} does not belong to this session (${session.label})`);
       }
+      // Maerk lukningen som agentens egen. Ellers laeser onRemoved den tomme session som
+      // "brugeren er faerdig" og lukker serveren ned midt i samtalen (MAALT 22/8).
+      agentLukkedeFaner.add(tabId);
       await chrome.tabs.remove(tabId);
       session.tabIds.delete(tabId);
       if (session.activeTabId === tabId) session.activeTabId = null;
@@ -3200,8 +3434,19 @@ async function dispatch(port, method, params) {
           return info;
         }
 
-        // Get the DOM node ID for the file input
-        const { result: docResult } = await cdpSend(tab.id, 'DOM.getDocument', {});
+        // Get the DOM node ID for the file input.
+        //
+        // MAALT 21/8: her stod `const { result: docResult } = await cdpSend(...)`.
+        // Runtime.evaluate ovenfor svarer {result:{...}}, men DOM.getDocument svarer
+        // {root:{...}} — moenstret var kopieret fra det ene kald til det andet. Saa
+        // docResult var undefined, og vaerktoejet doede paa
+        // "Cannot read properties of undefined (reading 'root')" ved HVERT eneste kald.
+        // browser_upload_file kunne ikke uploade en fil paa nogen side overhovedet.
+        const docResult = await cdpSend(tab.id, 'DOM.getDocument', {});
+        if (!docResult?.root?.nodeId) {
+          await debuggerDetach(tab.id);
+          return { ok: false, error: 'DOM.getDocument gav intet rod-element' };
+        }
         const { nodeId } = await cdpSend(tab.id, 'DOM.querySelector', {
           nodeId: docResult.root.nodeId,
           selector: selector,
@@ -3212,8 +3457,16 @@ async function dispatch(port, method, params) {
           return { found: false, error: 'Could not get DOM node for file input' };
         }
 
-        // Set files on the input using CDP
-        const files = Array.isArray(params.files) ? params.files : [params.files || params.file];
+        // Set files on the input using CDP.
+        // `file_path` accepteres som alias for `file`/`files` — praecis samme navne-faelde
+        // som execute_script fik lukket i v1.26. Et forkert navn gav [undefined] og en
+        // upload der saa ud til at lykkes.
+        const files = Array.isArray(params.files) ? params.files
+                    : [params.files || params.file || params.file_path].filter(Boolean);
+        if (!files.length) {
+          await debuggerDetach(tab.id);
+          return { ok: false, error: 'Ingen fil angivet. Brug `files` (array) eller `file` (enkelt sti).' };
+        }
         await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,
           files: files,

@@ -1,7 +1,7 @@
 {
   "name": "@agent360/browser-mcp",
-  "version": "1.26.0",
-  "description": "Browser MCP \u2014 give your AI agent a real, logged-in Chrome: test authenticated apps, read 2FA codes from Gmail, scrape behind logins, solve CAPTCHAs. 34 tools, multi-session, human-in-the-loop.",
+  "version": "1.27.1",
+  "description": "Browser MCP — give your AI agent a real, logged-in Chrome: test authenticated apps, read 2FA codes from Gmail, scrape behind logins, solve CAPTCHAs. 43 tools, multi-session, human-in-the-loop.",
   "mcpName": "io.github.Agent360dk/browser-mcp",
   "type": "module",
   "main": "index.js",
@@ -16,9 +16,14 @@
     "README.md"
   ],
   "scripts": {
+    "test": "node --test ../test/*.test.mjs",
+    "flow": "node ../test/flow/run.mjs",
+    "sessions": "node ../test/flow/sessions.mjs",
+    "feedback": "node ../scripts/feedback-report.mjs",
     "start": "node index.js",
     "publish:cws": "../scripts/publish-cws.sh",
-    "publish:cws:draft": "../scripts/publish-cws.sh --draft"
+    "publish:cws:draft": "../scripts/publish-cws.sh --draft",
+    "samtidighed": "node ../test/flow/samtidighed.mjs"
   },
   "keywords": [
     "mcp",
