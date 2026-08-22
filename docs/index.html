@@ -81,6 +81,11 @@
     .install button:hover { opacity: 0.9; }
     .install-cws { background: linear-gradient(135deg, var(--accent-2), var(--accent)); border: none; padding: 14px 20px; border-radius: 12px; color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 10px; transition: transform 0.15s; }
     .install-cws:hover { transform: translateY(-1px); text-decoration: none; color: #fff; }
+    /* Hvid skive under Chrome-maerket: knappen er selv en farvet gradient, og de fire
+       Chrome-farver drukner i den uden en neutral baggrund. Skiven er lige stor nok til
+       at maerket kan aande — 4px luft hele vejen rundt. */
+    .install-cws .cws-mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #fff; flex: 0 0 auto; }
+    .install-cws .cws-mark svg { width: 18px; height: 18px; display: block; }
     .install-lead { text-align: center; font-size: 15px; color: var(--muted); margin-bottom: 4px; }
     .install-lead b { color: var(--fg); }
     /* Four numbered steps in one block — the whole path from nothing to working */
@@ -261,13 +266,11 @@
       <span class="what">Install the Chrome extension</span>
       <span class="sub">One click. Chrome keeps it updated for you.</span>
       <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" class="install-cws">
-        <!-- Her sad et haandtegnet "Chrome-logo": én monokrom path i currentColor.
-             Chrome-maerket er fire farver, saa formen lignede ikke noget, og den kunne
-             ikke goeres til at ligne uden at gentegne den. Et forkert logo er daarligere
-             end intet logo — baade visuelt og varemaerkemaessigt.
-             Vil du have et maerke paa knappen, saa brug Googles OFFICIELLE
-             "Available in the Chrome Web Store"-badge og host det selv; det er den
-             eneste udgave der er baade korrekt og tilladt. -->
+        <!-- Det officielle Chrome-maerke (2022-udgaven), ikke en haandtegnet tilnaermelse.
+             Gradient-id'erne er praefikset cws- saa de ikke kolliderer med andet paa siden.
+             Maerket staar paa en hvid skive, fordi knappen selv er en farvet gradient og
+             de fire Chrome-farver ellers ville drukne i den. -->
+        <span class="cws-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><defs><linearGradient id="cws-a" x1="3.2173" y1="15" x2="44.7812" y2="15" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d93025"/><stop offset="1" stop-color="#ea4335"/></linearGradient><linearGradient id="cws-b" x1="20.7219" y1="47.6791" x2="41.5039" y2="11.6837" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fcc934"/><stop offset="1" stop-color="#fbbc04"/></linearGradient><linearGradient id="cws-c" x1="26.5981" y1="46.5015" x2="5.8161" y2="10.506" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#1e8e3e"/><stop offset="1" stop-color="#34a853"/></linearGradient></defs><circle cx="24" cy="23.9947" r="12" fill="#fff"/><path d="M24,12H44.7812a23.9939,23.9939,0,0,0-41.5639.0029L13.6079,30l.0093-.0024A11.9852,11.9852,0,0,1,24,12Z" fill="url(#cws-a)"/><circle cx="24" cy="24" r="9.5" fill="#1a73e8"/><path d="M34.3913,30.0029,24.0007,48A23.994,23.994,0,0,0,44.78,12.0031H23.9989l-.0025.0093A11.985,11.985,0,0,1,34.3913,30.0029Z" fill="url(#cws-b)"/><path d="M13.6086,30.0031,3.218,12.006A23.994,23.994,0,0,0,24.0025,48L34.3931,30.0029l-.0067-.0068a11.9852,11.9852,0,0,1-20.7778.007Z" fill="url(#cws-c)"/></svg></span>
         Install from Chrome Web Store
       </a>
     </li>
