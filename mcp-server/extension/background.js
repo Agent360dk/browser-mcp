@@ -1011,10 +1011,22 @@ async function offscreenSvarer() {
 // lukke og genskabe en fuldt fungerende bro hvert minut, for evigt, og rive
 // WebSocket-forbindelsen ned hver gang. Kuren ville vaere vaerre end sygdommen.
 //
-// Derfor: hoejst tre forsoeg. Er dokumentet aegte doedt, er ét nok. Er det bare
-// gammelt, koster det tre korte afbrydelser og saa faar det fred. Taelleren
-// nulstilles i det oejeblik en ping lykkes — altsaa naar den nye bro er oppe.
+// Derfor: hoejst tre forsoeg i traek. Er dokumentet aegte doedt, er ét nok. Er det
+// bare gammelt, koster det tre korte afbrydelser og saa faar det fred et stykke tid.
+//
+// MAALT 22/8 — og det var en fejl i denne blok: graensen var PERMANENT. Naaede
+// taelleren tre, blev der aldrig forsoegt igen, og taelleren nulstilles kun naar en
+// ping lykkes — hvilket en doed bro pr. definition aldrig goer. Resultatet var en
+// doed bro der laa doed for evigt, hvor symptomet for brugeren er "browser-mcp
+// virker ikke", og hvor den eneste udvej var at genindlaese udvidelsen i haanden.
+// Praecis den tilstand vaernet skulle forhindre.
+//
+// Rettelsen: graensen er nu tidsbestemt, ikke endelig. Efter tre forsoeg holder vi
+// pause — og naar pausen er ovre, proever vi igen. En gammel-men-fungerende bro
+// faar altsaa ro i pausen i stedet for at blive revet ned hvert minut, og en aegte
+// doed bro er hoejst én pause fra at blive erstattet. Begge hensyn er i behold.
 const MAX_OFFSCREEN_GENSKAB = 3;
+const OFFSCREEN_PAUSE_MS = 10 * 60 * 1000;
 
 async function ensureOffscreen() {
   const findes = await chrome.offscreen.hasDocument();
@@ -1027,11 +1039,32 @@ async function ensureOffscreen() {
     // Taelleren skal ligge i storage, ikke i en modul-variabel: service-workeren
     // genstartes hele tiden, og en variabel ville nulstilles ved hver genstart —
     // altsaa ingen graense i praksis.
-    const { offscreenGenskabt = 0 } = await chrome.storage.local.get({ offscreenGenskabt: 0 });
+    let { offscreenGenskabt = 0 } =
+      await chrome.storage.local.get({ offscreenGenskabt: 0, offscreenPauseTil: 0 });
+    const { offscreenPauseTil = 0 } =
+      await chrome.storage.local.get({ offscreenPauseTil: 0 });
+
+    const nu = Date.now();
+    if (offscreenPauseTil > nu) return;            // midt i pausen — lad broen vaere
+
+    if (offscreenPauseTil > 0) {
+      // Pausen er udloebet. Taelleren SKAL nulstilles her, foer graensen tjekkes —
+      // ellers rammer vi graensen igen med det samme, saetter endnu en pause, og
+      // graensen er i praksis permanent alligevel, bare med et ekstra skridt.
+      // (Maalt 22/8: det var praecis den fejl den foerste udgave af rettelsen havde.
+      // Testen "naar pausen er ovre, proeves der igen" fangede den.)
+      offscreenGenskabt = 0;
+      await chrome.storage.local.set({ offscreenGenskabt: 0, offscreenPauseTil: 0 });
+    }
+
     if (offscreenGenskabt >= MAX_OFFSCREEN_GENSKAB) {
-      console.warn('[BG] offscreen-dokumentet svarer stadig ikke efter ' +
-        `${MAX_OFFSCREEN_GENSKAB} forsoeg — lader det vaere. Virker forbindelsen ikke, ` +
-        'saa genindlaes udvidelsen i haanden (chrome://extensions → ↻).');
+      // Pause i stedet for at give op. Taelleren nulstilles samtidig, saa naeste
+      // runde faar sine egne tre forsoeg — ellers ville graensen vaere permanent
+      // alligevel, bare med et ekstra skridt.
+      console.warn(`[BG] offscreen-dokumentet svarer stadig ikke efter ${MAX_OFFSCREEN_GENSKAB} ` +
+        `forsoeg — holder pause i ${OFFSCREEN_PAUSE_MS / 60000} min og proever saa igen. ` +
+        'Haster det: chrome://extensions → slaa udvidelsen fra og til.');
+      await chrome.storage.local.set({ offscreenGenskabt: 0, offscreenPauseTil: nu + OFFSCREEN_PAUSE_MS });
       return;
     }
     console.warn(`[BG] offscreen-dokumentet svarer ikke — erstatter det (forsoeg ${offscreenGenskabt + 1}/${MAX_OFFSCREEN_GENSKAB})`);

@@ -12,13 +12,78 @@ const BASE_PORT = 9876;
 const MAX_PORT = 9895;
 const connections = new Map(); // port → WebSocket
 
-function scanPorts() {
-  for (let port = BASE_PORT; port <= MAX_PORT; port++) {
-    const existing = connections.get(port);
-    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
-      continue;
+// ── Hvorfor porte foerst PROBES med fetch, og ikke bare aabnes (MAALT 22/8) ──────
+//
+// Chrome bremser nye WebSocket-haandtryk. Formlen staar i Chromiums egen kilde
+// (services/network/websocket_throttler.cc):
+//
+//     forsinkelse = rand(1000..5000) ms × 2^min(p + f/(s+1), 16) / 65536
+//
+// p = haandtryk i luften lige nu · f = mislykkede · s = lykkedes. Bremsen er
+// PER RENDERER-PROCES, ikke per adresse — at sprede sig over 20 porte hjaelper
+// altsaa ingenting. Og den her funktion aabnede foer 20 WebSockets i ét smaek
+// hvert 2. sekund, hvoraf de fleste var mod doede porte. Det satte baade p og f
+// i vejret og laaste eksponenten paa loftet, saa HVER forbindelse betalte den
+// maksimale straf paa op til 5 sekunder.
+//
+// Dertil kom vores egen faelde: connectTimeout stod paa 2000 ms — UNDER bremsens
+// maksimum. Vi draebte altsaa systematisk forbindelser der bare stod og ventede,
+// og Chromiums header siger det rent ud: at destruere en PendingConnection uden
+// at haandtrykket er fuldfoert TAELLER SOM EN FEJL. Hvert drab gjorde bremsen
+// haardere, hvilket draebte flere. En spiral vi selv drev.
+//
+// Maalt effekt: den 10. chat var 15,5 sekunder om at komme op, og 5 af 19 kom
+// aldrig inden for 22 sekunder.
+//
+// Rettelsen er to ting:
+//   1. Find levende porte med et almindeligt HTTP-kald. En ws-server svarer
+//      "426 Upgrade Required" paa et GET; en doed port afviser. HTTP-kald taeller
+//      IKKE med i WebSocket-bremsen — maalt: 100 fejlede HTTP-probes kostede nul,
+//      400 fejlede WS-forsoeg kostede 14 sekunder. Vi aabner nu kun WebSockets
+//      mod porte vi VED der sidder en server paa, saa f falder til ~0.
+//   2. connectTimeout haevet over bremsens 5-sekunders loft, saa vi ikke laengere
+//      draeber vores egne ventende forbindelser.
+//
+// Sidegevinst: det er sikrere. Foer aabnede udvidelsen blindt en WebSocket mod
+// hvad der nu maatte lytte paa 9876-9895.
+const PROBE_TIMEOUT_MS = 400;
+let skanner = false;
+
+async function harServer(port) {
+  try {
+    const svar = await fetch(`http://127.0.0.1:${port}/`, {
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      cache: 'no-store',
+    });
+    return svar.status === 426;   // ws-serverens svar paa et almindeligt GET
+  } catch {
+    return false;                 // afvist, timeout eller ingen der lytter
+  }
+}
+
+async function scanPorts() {
+  if (skanner) return;            // skanningen er nu asynkron; undgaa overlap
+  skanner = true;
+  try {
+    const kandidater = [];
+    for (let port = BASE_PORT; port <= MAX_PORT; port++) {
+      const existing = connections.get(port);
+      if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+        continue;
+      }
+      kandidater.push(port);
     }
-    tryConnect(port);
+    if (!kandidater.length) return;
+
+    // Probes koeres parallelt — de er gratis i bremsens regnskab.
+    const levende = await Promise.all(
+      kandidater.map(async (port) => (await harServer(port)) ? port : null),
+    );
+    for (const port of levende) {
+      if (port !== null) tryConnect(port);
+    }
+  } finally {
+    skanner = false;
   }
 }
 
@@ -39,9 +104,13 @@ function tryConnect(port) {
   // Registrering med det samme lukker vinduet.
   connections.set(port, ws);
 
+  // 8000, ikke 2000: Chromes bremse kan lovligt holde et haandtryk i op til 5000 ms,
+  // og at lukke ned foer det taeller som en fejl der goer bremsen haardere. Se blokken
+  // over scanPorts. En haengende port koster nu en plads i 8 sekunder — scanPorts
+  // springer allerede CONNECTING over, saa det blokerer intet.
   const connectTimeout = setTimeout(() => {
     if (ws.readyState !== WebSocket.OPEN) ws.close();
-  }, 2000);
+  }, 8000);
 
   ws.onopen = () => {
     clearTimeout(connectTimeout);

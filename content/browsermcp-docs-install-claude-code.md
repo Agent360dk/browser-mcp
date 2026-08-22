@@ -1,6 +1,6 @@
 # Add Browser MCP to Claude Code
 
-**Give Claude Code control of your real, already-logged-in Chrome — about a minute, four steps.** 43 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+**Give Claude Code control of your real, already-logged-in Chrome — about a minute, four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
 
 ## The whole thing, in four steps
 
@@ -76,7 +76,7 @@ Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-m
 
 ### Step 3 — Restart Claude Code
 
-Restart Claude Code so it picks up the new MCP server. You'll see the Browser MCP icon appear in your Chrome toolbar — that's the extension connected. 43 browser tools are now available in any Claude Code conversation.
+Restart Claude Code so it picks up the new MCP server. You'll see the Browser MCP icon appear in your Chrome toolbar — that's the extension connected. 41 browser tools are now available in any Claude Code conversation.
 
 ### Verify it's working
 
@@ -164,7 +164,7 @@ This is the reason people install Browser MCP: Claude Code hits a login wall, ne
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer — it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 43 tools
+### 41 tools
 
 | Category | Tools |
 |---|---|
@@ -202,7 +202,7 @@ Each conversation gets its own MCP server on its own port (9876–9895), and the
 Run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`. That is Claude Code's built-in command for registering an MCP server, so no manual JSON is required. Restart Claude Code afterward so it picks up the new server.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives Claude Code — or any MCP client, including Cursor and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 43 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives Claude Code — or any MCP client, including Cursor and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 41 tools, MIT-licensed, 100% local.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.

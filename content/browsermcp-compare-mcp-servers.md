@@ -31,7 +31,7 @@ Honest note: Playwright MCP does offer an opt-in `--extension` mode to connect t
 
 ## What about the two projects both called "Browser MCP"?
 
-An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way — a Chrome extension plus a local stdio MCP server. The practical difference in 2026 is maintenance: browsermcp.io's repository has had no code change since 2025-04-24 and has never shipped a GitHub release (checked 2026-07-21), while this project ships regularly (43 tools as of v1.24.0). We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
+An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way — a Chrome extension plus a local stdio MCP server. The practical difference in 2026 is maintenance: browsermcp.io's repository has had no code change since 2025-04-24 and has never shipped a GitHub release (checked 2026-07-21), while this project ships regularly (41 tools as of v1.24.0). We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
 
 ## Which is most actively maintained?
 

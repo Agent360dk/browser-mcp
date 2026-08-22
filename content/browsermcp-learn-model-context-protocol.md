@@ -1,4 +1,4 @@
-// KILDE: MCP-protokol-fakta holdt til det verificerbare (åben standard fra Anthropic, JSON-RPC, stdio/HTTP-transport, tools/resources/prompts, officielt registry). Ingen version-specifikke påstande. Vores information-gain = vi shipper selv en server (43 tools) og skriver fra den vinkel. Pillar targeting "model context protocol"-klyngen (~19.250/md).
+// KILDE: MCP-protokol-fakta holdt til det verificerbare (åben standard fra Anthropic, JSON-RPC, stdio/HTTP-transport, tools/resources/prompts, officielt registry). Ingen version-specifikke påstande. Vores information-gain = vi shipper selv en server (41 tools) og skriver fra den vinkel. Pillar targeting "model context protocol"-klyngen (~19.250/md).
 
 # Model Context Protocol (MCP), explained — by someone who ships a server
 

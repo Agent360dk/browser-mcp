@@ -1,12 +1,17 @@
 /**
- * Beviser de to fejl der gjorde at forbindelsen aldrig kom tilbage af sig selv.
+ * Beviser at broen ALTID kommer tilbage af sig selv.
  *
- * Fejl 1: chrome.alarms.create() paa oeverste niveau NULSTILLER nedtaellingen.
- *         Vaagner service workeren oftere end perioden, fyrer alarmen aldrig.
- * Fejl 2: 'reconnect' lukkede offscreen-dokumentet og genskabte det UDEN fangst.
- *         Fejlede genskabelsen, stod extensionen uden dokument for evigt.
+ * Testene her koerer den AEGTE `ensureOffscreen` fra extension/background.js mod
+ * en stubbet chrome-API og maaler HVAD DER SKER — de matcher ikke paa kildetekst.
  *
- * Testene koerer den AEGTE kildekode mod en stubbet chrome-API.
+ * MAALT 22/8, og det er grunden til omskrivningen: den tidligere udgave af denne
+ * fil bestod af regex mod kildeteksten plus to tests der skrev deres EGEN kopi af
+ * rettelsen og testede kopien. De ville have bestaaet hvis background.js var
+ * slettet. Ti mutationer af produktionskoden forblev groenne i den gamle suite —
+ * blandt andet at fjerne hjerteslags-alarmen og at goere broen fuldstaendig stum.
+ *
+ * Hver test her er mutations-verificeret: produktionskoden er braekket, testen er
+ * set blive roed, og koden er sat tilbage. Det staar noteret ved hver enkelt.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,153 +19,131 @@ import { readFileSync } from 'node:fs';
 
 const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
 
-test('alarmen oprettes kun hvis den ikke findes', () => {
-  assert.match(kilde, /chrome\.alarms\.get\(\s*'ensure-offscreen'/,
-    'skal spoerge om alarmen findes foer den oprettes');
-  const create = kilde.match(/chrome\.alarms\.create\('ensure-offscreen'/g) || [];
-  assert.equal(create.length, 1, 'kun ét create-kald');
-  const iGet = kilde.indexOf("chrome.alarms.get('ensure-offscreen'");
-  const iCreate = kilde.indexOf("chrome.alarms.create('ensure-offscreen'");
-  assert.ok(iGet < iCreate, 'create skal ligge INDE i get-tilbagekaldet');
-});
+/** Klipper en funktion (eller const) ud af kilden ved at matche tuborgklammer. */
+function udklip(navn, erFunktion = true) {
+  const start = erFunktion
+    ? kilde.search(new RegExp(`(async )?function ${navn}\\s*\\(`))
+    : kilde.search(new RegExp(`const ${navn}\\s*=`));
+  assert.ok(start > -1, `${navn} findes ikke i background.js`);
+  if (!erFunktion) return kilde.slice(start, kilde.indexOf('\n', start) + 1);
+  let i = kilde.indexOf('{', start), dybde = 0;
+  for (let j = i; j < kilde.length; j++) {
+    if (kilde[j] === '{') dybde++;
+    else if (kilde[j] === '}' && --dybde === 0) return kilde.slice(start, j + 1);
+  }
+  throw new Error(`kunne ikke afgraense ${navn}`);
+}
 
-test('alarm-nulstillingen simuleret: create maa ikke kaldes naar alarmen findes', async () => {
-  let creates = 0;
-  const chrome = {
-    alarms: {
-      get: (navn, cb) => cb({ name: navn }),          // alarmen findes allerede
-      create: () => { creates++; },
-      onAlarm: { addListener() {} },
-    },
-  };
-  // efterlign den rettede blok
-  chrome.alarms.get('ensure-offscreen', (e) => {
-    if (!e) chrome.alarms.create('ensure-offscreen', { periodInMinutes: 1 });
-  });
-  assert.equal(creates, 0, 'alarmen maa ikke nulstilles naar den allerede findes');
-});
+/**
+ * Rejser den aegte ensureOffscreen med en stubbet chrome, og rapporterer hvad
+ * funktionen faktisk gjorde.
+ */
+async function koer({ findes = true, pingSvarer = false, lager = {} } = {}) {
+  const log = { lukket: 0, oprettet: 0, advarsler: [] };
+  const gemt = { ...lager };
 
-test('alarmen oprettes naar den mangler', () => {
-  let creates = 0;
-  const chrome = {
-    alarms: { get: (_n, cb) => cb(undefined), create: () => { creates++; } },
-  };
-  chrome.alarms.get('ensure-offscreen', (e) => {
-    if (!e) chrome.alarms.create('ensure-offscreen', { periodInMinutes: 1 });
-  });
-  assert.equal(creates, 1, 'skal oprettes naar den ikke findes');
-});
-
-test('reconnect-stien har fangst omkring genskabelsen', () => {
-  const i = kilde.indexOf("msg.type === 'reconnect'");
-  assert.ok(i > 0, 'reconnect-handleren skal findes');
-  const blok = kilde.slice(i, i + 1400);
-  assert.match(blok, /try\s*\{/, 'skal have try omkring lukning/genskabelse');
-  assert.match(blok, /catch/, 'skal fange fejl');
-  assert.match(blok, /setTimeout\(/, 'skal genforsoege hvis genskabelsen fejler');
-});
-
-test('genskabelse efter fejlet close efterlader ikke extensionen uden dokument', async () => {
-  let findes = true, genskabt = 0;
   const chrome = {
     offscreen: {
       hasDocument: async () => findes,
-      closeDocument: async () => { findes = false; throw new Error('race'); },
-      createDocument: async () => { findes = true; genskabt++; },
+      closeDocument: async () => { log.lukket++; findes = false; },
+      createDocument: async () => { log.oprettet++; findes = true; },
+    },
+    runtime: {
+      sendMessage: async () => (pingSvarer ? { ok: true } : Promise.reject(new Error('ingen modtager'))),
+    },
+    storage: {
+      local: {
+        get: async (spec) => {
+          const ud = {};
+          for (const [k, v] of Object.entries(spec)) ud[k] = k in gemt ? gemt[k] : v;
+          return ud;
+        },
+        set: async (o) => Object.assign(gemt, o),
+      },
     },
   };
-  const ensureOffscreen = async () => {
-    if (!(await chrome.offscreen.hasDocument())) await chrome.offscreen.createDocument();
-  };
-  // den rettede sti
-  try { if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument(); }
-  catch {}
-  try { await ensureOffscreen(); } catch {}
-  assert.equal(genskabt, 1, 'dokumentet skal vaere genskabt trods fejl i close');
-  assert.equal(findes, true, 'extensionen maa ikke staa uden offscreen-dokument');
+
+  const src = [
+    udklip('MAX_OFFSCREEN_GENSKAB', false),
+    udklip('OFFSCREEN_PAUSE_MS', false),
+    udklip('offscreenSvarer'),
+    udklip('ensureOffscreen'),
+    'return ensureOffscreen();',
+  ].join('\n');
+
+  const fn = new Function('chrome', 'console', 'Date', `return (async () => { ${src} })()`);
+  await fn(chrome, { warn: (m) => log.advarsler.push(String(m)), log() {} }, Date);
+  return { ...log, gemt };
+}
+
+// ── Mutations-verificeret: `if (await offscreenSvarer())` -> `if (true)` gav roed.
+test('en levende bro roeres ikke', async () => {
+  const r = await koer({ findes: true, pingSvarer: true });
+  assert.equal(r.lukket, 0, 'en bro der svarer maa aldrig rives ned');
+  assert.equal(r.oprettet, 0);
+  assert.equal(r.gemt.offscreenGenskabt, 0, 'taelleren skal nulstilles naar broen svarer');
 });
 
-// ── Et dokument der FINDES er ikke det samme som et der SVARER ──────────────
-//
-// MAALT 21/8, ved selv at braekke det: ensureOffscreen() spurgte kun
-// chrome.offscreen.hasDocument(). Et dokument hvis script aldrig blev indlaest —
-// en enkelt CSP-afvisning i offscreen.html raekker — taeller stadig som
-// eksisterende. Saa hjerteslaget hvert minut gjorde ingenting, for evigt.
-//
-// Udvidelsen saa levende ud i chrome://extensions, men havde ingen WebSocket. Og
-// den kunne ikke naas: reload_extension gaar netop gennem den forbindelse der
-// manglede. Eneste vej ud var ↻ i haanden. Selvhelbredelsen helbredte ikke den
-// tilstand den var bygget til at helbrede.
-
-import { test as t2 } from 'node:test';
-import assert2 from 'node:assert/strict';
-import { readFileSync as laes2 } from 'node:fs';
-import { fileURLToPath as url2 } from 'node:url';
-import { dirname as dir2, join as join2 } from 'node:path';
-
-const rod2 = dir2(dir2(url2(import.meta.url)));
-const bg2 = laes2(join2(rod2, 'extension/background.js'), 'utf8');
-const off2 = laes2(join2(rod2, 'extension/offscreen.js'), 'utf8');
-
-t2('ensureOffscreen noejes ikke med at spoerge om dokumentet findes', () => {
-  const i = bg2.indexOf('async function ensureOffscreen(');
-  const blok = bg2.slice(i, i + 1200);
-  assert2.match(blok, /await offscreenSvarer\(\)/,
-    'kun hasDocument() — et doedt dokument bliver aldrig erstattet');
-  assert2.match(blok, /closeDocument\(\)/, 'det doede dokument skal lukkes foer et nyt kan oprettes');
+// ── Mutations-verificeret: fjernet closeDocument-kaldet gav roed.
+test('en doed bro lukkes og erstattes', async () => {
+  const r = await koer({ findes: true, pingSvarer: false });
+  assert.equal(r.lukket, 1, 'det doede dokument skal lukkes');
+  assert.equal(r.oprettet, 1, 'et nyt skal oprettes');
+  assert.equal(r.gemt.offscreenGenskabt, 1, 'forsoeget skal taelles');
 });
 
-t2('liveness-tjekket kan ikke haenge', () => {
-  const i = bg2.indexOf('async function offscreenSvarer(');
-  const blok = bg2.slice(i, i + 800);
-  assert2.match(blok, /setTimeout\(\(\) => afvis\(new Error\('intet svar'\)\), \d+\)/,
-    'uden en frist ville et halvdoedt dokument kunne blokere hjerteslaget');
-  assert2.match(blok, /catch \{\s*\n?\s*return false;/,
-    '"ingen modtager" skal betyde doed, ikke en kastet fejl');
+// ── Mutations-verificeret: fjernet hele hasDocument-grenen gav roed.
+test('mangler dokumentet helt, oprettes det', async () => {
+  const r = await koer({ findes: false });
+  assert.equal(r.lukket, 0);
+  assert.equal(r.oprettet, 1);
 });
 
-t2('offscreen-dokumentet svarer paa hjerteslaget', () => {
-  assert2.match(off2, /msg\?\.type !== 'bmcp_ping'/, 'ping-lytteren mangler — saa svarer den aldrig');
-  assert2.match(off2, /sendResponse\(\{ ok: true/, 'svaret skal sige ok:true, det er hele tjekket');
+// ── Mutations-verificeret: taelleren flyttet til en modul-variabel gav roed.
+test('taelleren ligger i storage — ikke i en variabel der doer med service-workeren', async () => {
+  const r = await koer({ findes: true, pingSvarer: false, lager: { offscreenGenskabt: 2 } });
+  assert.equal(r.gemt.offscreenGenskabt, 3, 'skal taelle videre fra den gemte vaerdi, ikke fra 0');
 });
 
-t2('offscreen.html holder sig fri af inline-script', () => {
-  // Det var praecis her det gik galt: et inline <script> i en MV3-udvidelsesside
-  // afvises af CSP, saa broen aldrig blev indlaest — og dokumentet fandtes stadig.
-  const html = laes2(join2(rod2, 'extension/offscreen.html'), 'utf8');
-  const uden = html.replace(/<!--[\s\S]*?-->/g, '');
-  assert2.ok(!/<script(?![^>]*\bsrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/.test(uden),
-    'inline <script> i en MV3-udvidelsesside blokeres af CSP — broen indlaeses aldrig');
-  assert2.match(uden, /<script src="offscreen\.js"><\/script>/, 'broen skal indlaeses fra en fil');
+// ── Mutations-verificeret: graensen fjernet gav roed.
+test('efter graensen rives broen ikke ned igen med det samme', async () => {
+  const r = await koer({ findes: true, pingSvarer: false, lager: { offscreenGenskabt: 3 } });
+  assert.equal(r.lukket, 0, 'en gammel-men-fungerende bro skal have ro efter tre forsoeg');
+  assert.equal(r.oprettet, 0);
+  assert.ok(r.gemt.offscreenPauseTil > Date.now(), 'der skal saettes en pause');
 });
 
-t2('en forbindelse registreres straks — ikke foerst naar den aabner', () => {
-  // MAALT 21/8: den samme udvidelse holdt TO aabne forbindelser til den samme
-  // server. Forbindelsen blev foerst skrevet i kortet i onopen, mens scanPorts
-  // koerer hvert 2. sekund og kun springer over hvis kortet HAR en. I vinduet
-  // mellem `new WebSocket` og onopen stod kortet tomt, saa naeste scan lavede
-  // endnu en. Den foerste blev foraeldreloes: aldrig lukket, aldrig i kortet.
-  const i = off2.indexOf('function tryConnect(');
-  const blok = off2.slice(i, i + 1400);
-  const nyIdx = blok.indexOf('new WebSocket(');
-  const setIdx = blok.indexOf('connections.set(port, ws);');
-  const onopenIdx = blok.indexOf('ws.onopen');
-  assert2.ok(setIdx > nyIdx && setIdx < onopenIdx,
-    'registreringen skal ske mellem oprettelsen og onopen — ellers aabner scanPorts en dublet');
+// ── DEN VIGTIGE. Mutations-verificeret: `return` i stedet for pause-nulstillingen
+//    (altsaa den gamle, permanente graense) gjorde denne test roed.
+//    MAALT 22/8: graensen VAR permanent, og en aegte doed bro laa doed for evigt.
+test('naar pausen er ovre, proeves der igen — graensen maa ALDRIG vaere endelig', async () => {
+  const r = await koer({
+    findes: true,
+    pingSvarer: false,
+    lager: { offscreenGenskabt: 3, offscreenPauseTil: Date.now() - 1000 },   // pausen udloebet
+  });
+  assert.equal(r.lukket, 1, 'efter pausen SKAL den doede bro erstattes');
+  assert.equal(r.oprettet, 1, 'ellers ligger brugeren med en doed forbindelse for evigt');
 });
 
-t2('genskabelsen er begraenset — ellers bliver kuren vaerre end sygdommen', () => {
-  // Fundet ved gennemlaesning 21/8, foer det naaede at goere skade: "svarer ikke"
-  // betyder ikke altid "doed". En AELDRE offscreen.js uden ping-lytter svarer heller
-  // ikke — og Chrome kan servere den fra cache hen over en genindlaesning (maalt
-  // samme dag). Uden graense ville hjerteslaget lukke og genskabe en fuldt
-  // fungerende bro hvert minut, for evigt, og rive WebSocket'en ned hver gang.
-  const i = bg2.indexOf('async function ensureOffscreen(');
-  const blok = bg2.slice(i, i + 2200);
-  assert2.match(blok, /offscreenGenskabt >= MAX_OFFSCREEN_GENSKAB/,
-    'ingen graense paa genskabelsen — en gammel bro ville blive revet ned hvert minut');
-  assert2.match(blok, /chrome\.storage\.local\.set\(\{ offscreenGenskabt: 0 \}\)/,
-    'taelleren nulstilles ikke naar broen svarer — saa laases den ude efter tre gamle forsoeg');
-  assert2.match(blok, /chrome\.storage\.local\.get\(\{ offscreenGenskabt: 0 \}\)/,
-    'taelleren skal ligge i storage — en modul-variabel nulstilles ved hver service-worker-genstart');
+// ── Mutations-verificeret: pause-tjekket fjernet gav roed.
+test('midt i en pause roeres broen ikke', async () => {
+  const r = await koer({
+    findes: true,
+    pingSvarer: false,
+    lager: { offscreenGenskabt: 0, offscreenPauseTil: Date.now() + 60_000 },
+  });
+  assert.equal(r.lukket, 0, 'pausen skal respekteres');
+  assert.equal(r.oprettet, 0);
+});
+
+// ── Alarmen: her er kilde-tjek det rigtige, fordi fejlen ER en opstartssekvens.
+//    Mutations-verificeret: create flyttet ud af get-tilbagekaldet gav roed.
+test('hjerteslags-alarmen nulstilles ikke ved hver opvaagning', () => {
+  const iGet = kilde.indexOf("chrome.alarms.get('ensure-offscreen'");
+  const iCreate = kilde.indexOf("chrome.alarms.create('ensure-offscreen'");
+  assert.ok(iGet > -1 && iCreate > -1, 'baade get og create skal findes');
+  assert.ok(iGet < iCreate, 'create skal ligge INDE i get-tilbagekaldet — ellers ' +
+    'nulstilles nedtaellingen hver gang service-workeren vaagner, og alarmen fyrer aldrig');
+  assert.equal((kilde.match(/chrome\.alarms\.create\('ensure-offscreen'/g) || []).length, 1);
 });

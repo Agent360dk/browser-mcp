@@ -1,7 +1,7 @@
 {
   "name": "@agent360/browser-mcp",
   "version": "1.27.1",
-  "description": "Browser MCP — give your AI agent a real, logged-in Chrome: test authenticated apps, read 2FA codes from Gmail, scrape behind logins, solve CAPTCHAs. 43 tools, multi-session, human-in-the-loop.",
+  "description": "Browser MCP — give your AI agent a real, logged-in Chrome: test authenticated apps, read 2FA codes from Gmail, scrape behind logins, solve CAPTCHAs. 41 tools, multi-session, human-in-the-loop.",
   "mcpName": "io.github.Agent360dk/browser-mcp",
   "type": "module",
   "main": "index.js",

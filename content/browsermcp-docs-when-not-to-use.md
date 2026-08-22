@@ -22,7 +22,7 @@ Reproducible tests, signed-out UX checks, "what does a first-time visitor see" �
 
 ## Don't use it for performance auditing
 
-Chrome DevTools MCP (47,285 stars, v1.6.0 2026-07-14) exposes DevTools-grade tracing, network and memory tooling — 52 tools of it. Browser MCP's 43 tools are interaction-focused (click, fill, navigate, extract, upload); it has no performance-trace surface. One factual note for the privacy-minded: Chrome DevTools MCP sends performance-trace URLs to Google's CrUX API and collects usage statistics by default — both are documented and can be disabled with flags (its README, checked 2026-07-21).
+Chrome DevTools MCP (47,285 stars, v1.6.0 2026-07-14) exposes DevTools-grade tracing, network and memory tooling — 52 tools of it. Browser MCP's 41 tools are interaction-focused (click, fill, navigate, extract, upload); it has no performance-trace surface. One factual note for the privacy-minded: Chrome DevTools MCP sends performance-trace URLs to Google's CrUX API and collects usage statistics by default — both are documented and can be disabled with flags (its README, checked 2026-07-21).
 
 ## Don't use it to evade bot detection
 

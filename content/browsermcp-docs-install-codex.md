@@ -99,7 +99,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail tab, and continues the sign-in — because it's driving *your* browser, not a fresh anonymous one. No API can do that. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
-### 43 tools, no server-side moving parts
+### 41 tools, no server-side moving parts
 
 | Category | What it gives your agent |
 |---|---|

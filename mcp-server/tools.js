@@ -76,24 +76,7 @@ export const TOOLS = [
       required: ['selector'],
     },
   },
-  {
-    name: 'browser_paste_from_clipboard',
-    description: 'SECRET-SAFE: Paste the system clipboard into a form field WITHOUT the content ever being returned — only the character count comes back. Pairs with browser_copy_to_clipboard for credential moves between pages/apps. Trims whitespace by default (trim:false to keep).',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        selector: { type: 'string', description: 'CSS or text selector for the target input field' },
-        trim: { type: 'boolean', description: 'Trim surrounding whitespace before pasting (default: true)' },
-      },
-      required: ['selector'],
-    },
-  },
-  {
-    name: 'browser_clipboard_stats',
-    description: 'SECRET-SAFE: Inspect the system clipboard\'s SHAPE without exposing content: length, trimmed length, has_whitespace, looks_like_uuid, looks_like_url. Use to verify a copy landed (e.g. "is this a ~40-char secret or a UUID from the wrong button?") before pasting.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
+{
     name: 'browser_double_click',
     description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view).',
     inputSchema: {
