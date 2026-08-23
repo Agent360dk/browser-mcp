@@ -15,7 +15,7 @@ import { ledErDoedt, forfaedreKaede } from './vagt.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
 import { execSync, execFile } from 'child_process';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';
@@ -399,6 +399,7 @@ Before you tell the user "browser-mcp can't do X", or give up on a tool that err
 - **outdated** or **disconnected** → relay fix_steps to the user, then retry the action. An outdated install explains most failures, so try the fix first — but if the behaviour still looks wrong after that, report it anyway. A release window is not a reason to stay silent about a real bug.
 - **conflict** → more than one extension is loaded; tabs and sessions will keep behaving randomly until the user disables the extras at chrome://extensions. Say so plainly.
 - **current** → the install is fine, so this is a genuine gap. Offer the returned submit_url as a clickable link.
+- **unknown** → nothing local looks wrong, but the npm comparison was skipped (it is opt-in via BROWSER_MCP_CHECK_NPM=1). Treat it like **current**.
 Call it once per distinct obstacle, not once per retry.
 
 ## Sharing wishes / use-cases / bugs
@@ -496,7 +497,18 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const base64 = result.image.replace(prefix, '');
 
       if (args && args.path) {
-        const targetPath = resolve(process.cwd(), args.path);
+        // MAALT 23/8: ingen indeslutning. En sti med ../../.. skrev til
+        // /private/tmp/a360-udenfor/x.png. Argumenterne kommer fra en model der laeser
+        // FREMMEDE websider, saa en prompt-injektion paa en vilkaarlig side kunne
+        // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
+        const rod = resolve(process.cwd());
+        const targetPath = resolve(rod, args.path);
+        if (targetPath !== rod && !targetPath.startsWith(rod + sep)) {
+          throw new Error(
+            `path skal ligge inden for arbejdsmappen (${rod}). ` +
+            `"${args.path}" peger udenfor. Brug en relativ sti uden ../.`,
+          );
+        }
         mkdirSync(dirname(targetPath), { recursive: true });
         writeFileSync(targetPath, Buffer.from(base64, 'base64'));
         return {
