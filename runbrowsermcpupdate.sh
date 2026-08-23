@@ -280,8 +280,8 @@ fi
 # Derfor pakkes tarballen nu og startes som en rigtig bruger ville goere det, FOER
 # noget som helst udgives. Det er det eneste trin der beviser at pakken virker.
 step "2. Pakke-tjek (pack → udpak → start)"
-if [[ "$DRY" == 1 ]]; then
-  say "ville pakke tarballen ud og starte den"
+if [[ "$SHIP" != 1 ]]; then
+  say "ville pakke tarballen ud og starte den (koeres kun med --ship)"
 else
   SMOKE_DIR="$(mktemp -d)"
   ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
