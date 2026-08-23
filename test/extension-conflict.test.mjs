@@ -167,7 +167,7 @@ test('serveren holder ikke laengere én enkelt socket-variabel', () => {
 test('terminate fra en inaktiv forbindelse lukker ikke serveren', () => {
   const i = kilde.indexOf("msg.type === 'terminate'");
   assert.ok(i > -1, 'terminate-haandteringen findes');
-  const blok = kilde.slice(i, i + 700);
+  const blok = kilde.slice(i, i + 1600);
   assert.match(blok, /activeConnection\(\) !== conn/,
     'uden denne gate kan en sidelaebende gammel udvidelse rive serveren ned');
   const gateIdx = blok.indexOf('activeConnection() !== conn');
@@ -189,7 +189,7 @@ test('haandtrykket sendes rent faktisk fra udvidelsen', () => {
 test('serveren laeser haandtrykket og tjekker for konflikt bagefter', () => {
   assert.match(kilde, /msg\.type === 'hello'/, 'serveren laeser ikke hello');
   const i = kilde.indexOf("msg.type === 'hello'");
-  const blok = kilde.slice(i, i + 600);
+  const blok = kilde.slice(i, i + 1400);
   assert.match(blok, /advarOmKonflikt\(conn\)/, 'konflikten tjekkes ikke naar versionen bliver kendt');
 });
 
@@ -197,8 +197,16 @@ test('konflikten opdages allerede ved opkoblingen — uden haandtryk', () => {
   // Alle udgivne udgaver af udvidelsen er fra foer haandtrykket. Ventede serveren
   // paa hello, ville konflikten foerst kunne ses efter at brugeren havde opdateret —
   // altsaa aldrig, for det er netop det de ikke har gjort.
+  // Vinduet afgraenses af handleren selv, ikke af et fast tegnantal. MAALT 23/8:
+  // med slice(i, i + 2400) blev testen roed saa snart Origin-gaten blev tilfoejet —
+  // altsaa af en KORREKT sikkerhedsrettelse.
   const i = kilde.indexOf("server.on('connection'");
-  const blok = kilde.slice(i, i + 2400);
+  let d = 0, slut = i;
+  for (let k = kilde.indexOf('{', i); k < kilde.length; k++) {
+    if (kilde[k] === '{') d++;
+    else if (kilde[k] === '}' && --d === 0) { slut = k + 1; break; }
+  }
+  const blok = kilde.slice(i, slut);
   assert.match(blok, /req\?\.headers\?\.origin/, 'Origin laeses ikke ved opkobling');
   assert.match(blok, /chrome-extension/, 'Origin-moenstret mangler');
   assert.match(blok, /advarOmKonflikt\(conn\)/, 'der advares ikke ved opkobling');
@@ -280,7 +288,7 @@ test('BROWSER_MCP_EXTENSION_ID binder serveren til én bestemt udvidelse', () =>
   assert.match(kilde, /const PINNET_UDVIDELSE = \(process\.env\.BROWSER_MCP_EXTENSION_ID/,
     'pin-variablen mangler');
   const i = kilde.indexOf("server.on('connection'");
-  const blok = kilde.slice(i, i + 1200);
+  const blok = kilde.slice(i, i + 2600);
   assert.match(blok, /if \(PINNET_UDVIDELSE && fraOrigin && fraOrigin !== PINNET_UDVIDELSE\)/,
     'pinnen tjekkes ikke ved opkobling');
   assert.match(blok, /ws\.close\(/, 'en afvist udvidelse skal lukkes ned, ikke bare ignoreres');
@@ -291,8 +299,16 @@ test('BROWSER_MCP_EXTENSION_ID binder serveren til én bestemt udvidelse', () =>
 });
 
 test('pin-gaten ligger FOER forbindelsen registreres', () => {
+  // Vinduet afgraenses af handleren selv, ikke af et fast tegnantal. MAALT 23/8:
+  // med slice(i, i + 2400) blev testen roed saa snart Origin-gaten blev tilfoejet —
+  // altsaa af en KORREKT sikkerhedsrettelse.
   const i = kilde.indexOf("server.on('connection'");
-  const blok = kilde.slice(i, i + 2400);
+  let d = 0, slut = i;
+  for (let k = kilde.indexOf('{', i); k < kilde.length; k++) {
+    if (kilde[k] === '{') d++;
+    else if (kilde[k] === '}' && --d === 0) { slut = k + 1; break; }
+  }
+  const blok = kilde.slice(i, slut);
   assert.ok(blok.indexOf('PINNET_UDVIDELSE &&') < blok.indexOf('connections.add(conn)'),
     'en afvist udvidelse maa aldrig naa ind i registret — saa ville den taelle som en konflikt');
 });

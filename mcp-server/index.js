@@ -151,7 +151,26 @@ let parentCheck = null;
 // ── WebSocket Server ───────────────────────────────────────────────────────
 
 function createWSS(port = BASE_PORT) {
-  const server = new WebSocketServer({ host: '127.0.0.1', port });
+  const server = new WebSocketServer({
+    host: '127.0.0.1',
+    port,
+    // Afvis allerede i HAANDTRYKKET, ikke efter. MAALT 23/8: lukkede vi foerst
+    // forbindelsen inde i 'connection', naaede den fremmede at faa en aaben socket
+    // (og et 101-svar) foer den blev smidt ud. Med verifyClient faar den 401 og
+    // ingen socket overhovedet.
+    //
+    // Chrome saetter ALTID Origin: chrome-extension://<32 tegn> paa en WebSocket fra
+    // en udvidelse — verificeret mod den koerende. Alt andet er per definition ikke
+    // en udvidelse, saa gaten koster aegte brugere ingenting.
+    verifyClient: ({ origin }, godkend) => {
+      if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin || '')) return godkend(true);
+      process.stderr.write(
+        `[MCP] Afviser opkobling uden gyldig chrome-extension-Origin` +
+        `${origin ? ` (fik "${String(origin).slice(0, 60)}")` : ' (ingen Origin-header)'}\n`,
+      );
+      godkend(false, 401, 'only chrome extensions may connect');
+    },
+  });
   wss = server;
 
   server.on('error', (err) => {
@@ -183,6 +202,31 @@ function createWSS(port = BASE_PORT) {
     const origin = req?.headers?.origin || '';
     const fraOrigin = /^chrome-extension:\/\/([a-p]{32})$/.exec(origin)?.[1] || null;
 
+    // ── Kun Chrome-udvidelser lukkes ind (MAALT 23/8) ─────────────────────────
+    //
+    // Reproduceret med en raa WebSocket-klient mod en aegte server: en klient der
+    // simpelthen UDELOD Origin-headeren blev accepteret, vandt rollen som aktiv
+    // udvidelse med `hello version 99.0.0`, fik `browser_get_cookies` leveret, og
+    // kunne lukke serveren med `terminate`. Alle tre trin lykkedes.
+    //
+    // Serveren lytter kun paa 127.0.0.1, saa angriberen skal koere lokalt — men det
+    // goer enhver anden app og ethvert npm-postinstall-script. Og hvad den kan er
+    // ikke smaating: laese alt agenten sender til browseren (kodeord fra ask_user,
+    // cookies, sidetekst), fodre agenten med opdigtet sideindhold, og slukke
+    // browser-adgangen i alle aabne chats.
+    //
+    // Chrome saetter ALTID `Origin: chrome-extension://<id>` paa en WebSocket fra en
+    // udvidelse — verificeret mod den koerende udvidelse. En manglende header er
+    // derfor ikke en aeldre udgave; det er noget andet end en udvidelse.
+    if (!fraOrigin) {
+      process.stderr.write(
+        "[MCP] Afviser forbindelse uden gyldig chrome-extension-Origin" +
+        (origin ? ` (fik "${origin.slice(0, 60)}")` : " (ingen Origin-header)") + "\n",
+      );
+      try { ws.close(1008, "only chrome extensions may connect"); } catch {}
+      return;
+    }
+
     // Noedudgang naar flere udvidelser er indlaest og brugeren ikke kan eller vil
     // slaa dem fra: BROWSER_MCP_EXTENSION_ID=<id> binder serveren til én bestemt.
     // Uden den er valget vilkaarligt naar ingen af dem oplyser en version.
@@ -192,7 +236,8 @@ function createWSS(port = BASE_PORT) {
       return;
     }
 
-    const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null, since: Date.now() };
+    const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
+      harHilst: false, helloId: null, since: Date.now() };
     connections.add(conn);
     // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
     // nytilkommen udvidelse maa gerne komme i betragtning igen.
@@ -215,7 +260,19 @@ function createWSS(port = BASE_PORT) {
 
       // Identitets-haandtryk fra offscreen-dokumentet (v1.28+).
       if (msg.type === 'hello') {
-        if (typeof msg.extensionId === 'string') conn.extensionId = msg.extensionId;
+        // MAALT 23/8: her stod `conn.extensionId = msg.extensionId` — altsaa lod
+        // haandtrykket afsenderen OVERSKRIVE sin egen identitet med hvad som helst.
+        // Origin-headeren er den eneste kilde Chrome selv saetter og som afsenderen
+        // ikke kan forfalske, saa den vinder. Beskedens id gemmes separat: stemmer de
+        // ikke overens, er noget galt, og saa maa forbindelsen ikke lukke serveren ned.
+        conn.helloId = typeof msg.extensionId === 'string' ? msg.extensionId : null;
+        conn.harHilst = true;
+        if (conn.helloId && conn.helloId !== conn.extensionId) {
+          process.stderr.write(
+            `[MCP] Haandtryk oplyser ${conn.helloId} men Origin siger ${conn.extensionId} — ` +
+            'bruger Origin\n',
+          );
+        }
         conn.version = typeof msg.version === 'string' ? msg.version : null;
         conn.name = typeof msg.name === 'string' ? msg.name : null;
         advarOmKonflikt(conn);
@@ -223,9 +280,18 @@ function createWSS(port = BASE_PORT) {
       }
 
       if (msg.type === 'terminate') {
-        // Kun den udvidelse vi faktisk styrer maa lukke serveren ned. Uden denne
-        // gate kunne en gammel sidelaebende kopi, der lukkede sin sidste fane,
-        // rive serveren vaek under den udvidelse der reelt loeste opgaven.
+          // terminate lukker serveren for ALLE chats paa porten, saa den har to gates.
+          //
+          // 1) Afsenderen skal have sendt et hello der stemmer med sin egen Origin.
+          //    MAALT 23/8: uden den kunne en forbindelse der lige havde vundet rollen
+          //    som aktiv slukke browser-adgangen med én besked.
+          // 2) Afsenderen skal VAERE den aktive. Uden den kunne en gammel sidelaebende
+          //    kopi, der lukkede sin sidste fane, rive serveren vaek under den
+          //    udvidelse der reelt loeste opgaven.
+          if (!conn.harHilst || conn.helloId !== conn.extensionId) {
+          process.stderr.write('[MCP] terminate ignoreret — intet gyldigt haandtryk\n');
+          return;
+          }
         if (activeConnection() !== conn) {
           process.stderr.write('[MCP] terminate ignoreret — kom fra en inaktiv udvidelses-forbindelse\n');
           return;

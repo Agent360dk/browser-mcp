@@ -40,7 +40,7 @@ test('select_option melder sandt paa BEGGE grene', () => {
 test('terminate er gated paa den aktive forbindelse', () => {
   const i = srv.indexOf("'terminate'");
   assert.ok(i > -1, 'terminate skal findes');
-  const blok = srv.slice(Math.max(0, i - 600), i + 600);
+  const blok = srv.slice(Math.max(0, i - 900), i + 1400);
   assert.match(blok, /activeConnection\(\)/,
     'terminate skal sammenholdes med den aktive forbindelse, ikke tages fra hvem som helst');
 });
