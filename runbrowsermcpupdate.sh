@@ -8,7 +8,7 @@
 #                      mcp-server/package.json, mcp-server/server.json (×2 fields)
 #   2. Sync          → extension/  →  mcp-server/extension/  (the npm-bundled copy)
 #   3. README        → bump the download-zip link to the new version
-#   4. npm           → npm publish (server + bundled extension)
+#   4. npm           → npm publish (server + bundled extension) — KOERER SIDST
 #   4b. MCP registry → mcp-publisher publish (what MCP clients/directories discover)
 #   5. Chrome Web Store → scripts/publish-cws.sh (review queue, 1-3 days)
 #   6. GitHub        → commit, tag vX.Y.Z, push, gh release create + zip asset
@@ -271,70 +271,33 @@ fi
 #     meldte toerkoerslen GROENT mens den rigtige koersel doede — efter at 5 JSON-filer
 #     allerede var bumpet. Trinnet var overfloedigt: README peger ikke paa en versioneret fil.
 
-# ── 2. npm ────────────────────────────────────────────────────────────────────
-step "2. npm publish"
-if [[ "$SKIP_NPM" == 1 ]]; then warn "skipped (--skip-npm)"
+# ── 2. Pakke-tjek: starter tarballen overhovedet? ─────────────────────────────
+# MAALT 23/8: `vagt.js` blev importeret af index.js men glemt i package.json "files".
+# `npm pack` gav 14 filer uden den, og HVER eneste `npx @agent360/browser-mcp` doede
+# med ERR_MODULE_NOT_FOUND foer den naaede at sige noget. 178 tests var groenne, og
+# release-testen der skulle fange det itererede over en haandskrevet fil-liste.
+#
+# Derfor pakkes tarballen nu og startes som en rigtig bruger ville goere det, FOER
+# noget som helst udgives. Det er det eneste trin der beviser at pakken virker.
+step "2. Pakke-tjek (pack → udpak → start)"
+if [[ "$DRY" == 1 ]]; then
+  say "ville pakke tarballen ud og starte den"
 else
-  if [[ "$(npm view @agent360/browser-mcp@"$NEW_VERSION" version 2>/dev/null || true)" == "$NEW_VERSION" ]]; then
-    warn "v$NEW_VERSION already on npm — skipping (resumable re-run)"
-  else
-    say "publishing @agent360/browser-mcp@$NEW_VERSION"
-    # Pass the token EXPLICITLY on the CLI. npm run from mcp-server/ reads only
-    # mcp-server/.npmrc + ~/.npmrc — NOT the repo-root .npmrc that references
-    # ${NPM_TOKEN} — so without this it silently uses the stale ~/.npmrc token
-    # and 404s. Requires NPM_TOKEN from .env (sourced at top).
-    [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env — needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
-    # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
-    # not the secret) and is expanded by the inner bash -c from the exported env.
-    run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"
+  SMOKE_DIR="$(mktemp -d)"
+  ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
+  ( cd "$SMOKE_DIR" && tar xzf agent360-browser-mcp-*.tgz ) || die "kunne ikke pakke tarballen ud"
+  ( cd "$SMOKE_DIR/package" && npm install --silent --no-audit --no-fund >/dev/null 2>&1 ) || die "npm install i tarballen fejlede"
+  SMOKE_INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}'
+  SMOKE_UD="$(cd "$SMOKE_DIR/package" && printf '%s\n' "$SMOKE_INIT" | node bin/cli.js 2>&1 | head -20 || true)"
+  if grep -qE "ERR_MODULE_NOT_FOUND|Cannot find module|SyntaxError" <<<"$SMOKE_UD"; then
+    printf '%s\n' "$SMOKE_UD" >&2
+    die "tarballen kan ikke starte — UDGIV IKKE. Mangler der en fil i package.json files?"
   fi
+  grep -q "server running" <<<"$SMOKE_UD" || warn "pakken startede, men sagde ikke 'server running'"
+  ok "tarballen starter"
+  rm -rf "$SMOKE_DIR"
 fi
 
-# ── 2b. MCP registry ──────────────────────────────────────────────────────────
-# The MCP registry is what clients and directories read to discover the server. It was NOT
-# wired into this script, so every release left it behind — it sat 3 months on v1.16.1 once,
-# and v1.24.0 shipped to npm while the registry still advertised v1.23.0. Runs after npm
-# because the registry entry points at the published npm package.
-step "2b. MCP registry publish"
-if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
-elif ! command -v mcp-publisher >/dev/null 2>&1; then
-  warn "mcp-publisher not installed (brew install mcp-publisher) — registry NOT updated"
-elif ! command -v gh >/dev/null 2>&1; then
-  warn "gh not installed — cannot mint a registry token; registry NOT updated"
-else
-  REG_LIVE="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
-    | python3 -c "import json,sys;print(next((e['server']['version'] for e in json.load(sys.stdin).get('servers',[]) if e.get('_meta',{}).get('io.modelcontextprotocol.registry/official',{}).get('isLatest')),''))" 2>/dev/null || true)"
-  if [[ "$REG_LIVE" == "$NEW_VERSION" ]]; then
-    warn "registry already at v$NEW_VERSION — skipping (resumable re-run)"
-  elif [[ "$SHIP" != 1 ]]; then
-    say "would: gh auth token → exchange for registry JWT → mcp-publisher publish mcp-server/server.json"
-    say "       (registry currently advertises '${REG_LIVE:-unknown}')"
-  else
-    say "registry advertises '${REG_LIVE:-unknown}' → publishing $NEW_VERSION"
-    # The registry JWT lives ~5 min, so mint it immediately before publishing.
-    # `gh auth token` carries read:org, which the exchange requires — a mcp-publisher
-    # device-flow login does NOT get an effective read:org and yields a token scoped to
-    # io.github.<user>/* only, which cannot publish under the org namespace.
-    GH_TOK="$(gh auth token 2>/dev/null || true)"
-    [[ -n "$GH_TOK" ]] || die "gh auth token empty — run 'gh auth login' (scope must include read:org)"
-    REG_TOK="$(curl -s -X POST https://registry.modelcontextprotocol.io/v0/auth/github-at \
-      -H 'Content-Type: application/json' -d "{\"github_token\":\"$GH_TOK\"}" 2>/dev/null \
-      | python3 -c "import json,sys;print(json.load(sys.stdin).get('registry_token',''))" 2>/dev/null || true)"
-    [[ -n "$REG_TOK" ]] || die "registry token exchange failed — the gh token needs read:org AND you must be an active Owner of the org"
-    mkdir -p "$HOME/.config/mcp-publisher"
-    REG_TOK="$REG_TOK" python3 - <<'PY'
-import json, os
-p = os.path.expanduser("~/.config/mcp-publisher/token.json")
-d = json.load(open(p)) if os.path.exists(p) else {"method": "github", "registry": "https://registry.modelcontextprotocol.io"}
-d["token"] = os.environ["REG_TOK"]
-json.dump(d, open(p, "w"))
-os.chmod(p, 0o600)
-PY
-    ( cd "$REPO_ROOT/mcp-server" && mcp-publisher publish server.json ) \
-      || die "registry publish failed — see the error above (description must be <=100 chars)"
-    ok "registry now advertises v$NEW_VERSION"
-  fi
-fi
 
 # ── 3. Chrome Web Store ───────────────────────────────────────────────────────
 step "3. Chrome Web Store publish"
@@ -392,9 +355,80 @@ else
       --notes "Browser MCP v${NEW_VERSION}. Install: \`npx @agent360/browser-mcp install\` or load the attached zip unpacked."
   fi
 fi
+# ── npm SIDST: det eneste trin der ikke kan fortrydes ─────────────────────────
+# MAALT 23/8: npm publish laa som step 2, altsaa FOER Chrome Web Store og git push.
+# Fejlede noget bagefter, var kanalerne ude af sync — og scriptets egen monotone
+# versions-gate blokerede at man kunne genoptage paa samme version. Et brugt
+# versionsnummer er brugt for evigt (dist-tag kan flyttes, unpublish kun i 72 timer).
+# Alt det reversible koerer nu foerst, og npm er det sidste haandtag der traekkes.
+
+# ── 2. npm ────────────────────────────────────────────────────────────────────
+step "5. npm publish  ← sidste uigenkaldelige skridt"
+if [[ "$SKIP_NPM" == 1 ]]; then warn "skipped (--skip-npm)"
+else
+  if [[ "$(npm view @agent360/browser-mcp@"$NEW_VERSION" version 2>/dev/null || true)" == "$NEW_VERSION" ]]; then
+    warn "v$NEW_VERSION already on npm — skipping (resumable re-run)"
+  else
+    say "publishing @agent360/browser-mcp@$NEW_VERSION"
+    # Pass the token EXPLICITLY on the CLI. npm run from mcp-server/ reads only
+    # mcp-server/.npmrc + ~/.npmrc — NOT the repo-root .npmrc that references
+    # ${NPM_TOKEN} — so without this it silently uses the stale ~/.npmrc token
+    # and 404s. Requires NPM_TOKEN from .env (sourced at top).
+    [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env — needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
+    # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
+    # not the secret) and is expanded by the inner bash -c from the exported env.
+    run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"
+  fi
+fi
+
+# ── 2b. MCP registry ──────────────────────────────────────────────────────────
+# The MCP registry is what clients and directories read to discover the server. It was NOT
+# wired into this script, so every release left it behind — it sat 3 months on v1.16.1 once,
+# and v1.24.0 shipped to npm while the registry still advertised v1.23.0. Runs after npm
+# because the registry entry points at the published npm package.
+step "5b. MCP registry publish"
+if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
+elif ! command -v mcp-publisher >/dev/null 2>&1; then
+  warn "mcp-publisher not installed (brew install mcp-publisher) — registry NOT updated"
+elif ! command -v gh >/dev/null 2>&1; then
+  warn "gh not installed — cannot mint a registry token; registry NOT updated"
+else
+  REG_LIVE="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
+    | python3 -c "import json,sys;print(next((e['server']['version'] for e in json.load(sys.stdin).get('servers',[]) if e.get('_meta',{}).get('io.modelcontextprotocol.registry/official',{}).get('isLatest')),''))" 2>/dev/null || true)"
+  if [[ "$REG_LIVE" == "$NEW_VERSION" ]]; then
+    warn "registry already at v$NEW_VERSION — skipping (resumable re-run)"
+  elif [[ "$SHIP" != 1 ]]; then
+    say "would: gh auth token → exchange for registry JWT → mcp-publisher publish mcp-server/server.json"
+    say "       (registry currently advertises '${REG_LIVE:-unknown}')"
+  else
+    say "registry advertises '${REG_LIVE:-unknown}' → publishing $NEW_VERSION"
+    # The registry JWT lives ~5 min, so mint it immediately before publishing.
+    # `gh auth token` carries read:org, which the exchange requires — a mcp-publisher
+    # device-flow login does NOT get an effective read:org and yields a token scoped to
+    # io.github.<user>/* only, which cannot publish under the org namespace.
+    GH_TOK="$(gh auth token 2>/dev/null || true)"
+    [[ -n "$GH_TOK" ]] || die "gh auth token empty — run 'gh auth login' (scope must include read:org)"
+    REG_TOK="$(curl -s -X POST https://registry.modelcontextprotocol.io/v0/auth/github-at \
+      -H 'Content-Type: application/json' -d "{\"github_token\":\"$GH_TOK\"}" 2>/dev/null \
+      | python3 -c "import json,sys;print(json.load(sys.stdin).get('registry_token',''))" 2>/dev/null || true)"
+    [[ -n "$REG_TOK" ]] || die "registry token exchange failed — the gh token needs read:org AND you must be an active Owner of the org"
+    mkdir -p "$HOME/.config/mcp-publisher"
+    REG_TOK="$REG_TOK" python3 - <<'PY'
+import json, os
+p = os.path.expanduser("~/.config/mcp-publisher/token.json")
+d = json.load(open(p)) if os.path.exists(p) else {"method": "github", "registry": "https://registry.modelcontextprotocol.io"}
+d["token"] = os.environ["REG_TOK"]
+json.dump(d, open(p, "w"))
+os.chmod(p, 0o600)
+PY
+    ( cd "$REPO_ROOT/mcp-server" && mcp-publisher publish server.json ) \
+      || die "registry publish failed — see the error above (description must be <=100 chars)"
+    ok "registry now advertises v$NEW_VERSION"
+  fi
+fi
 
 # ── 5. refresh local install ──────────────────────────────────────────────────
-step "5. Refresh local install (~/.browser-mcp/extension/)"
+step "6. Refresh local install (~/.browser-mcp/extension/)"
 if [[ "$SKIP_LOCAL" == 1 ]]; then warn "skipped (--skip-local)"
 else
   say "copy extension/ → ~/.browser-mcp/extension/"
