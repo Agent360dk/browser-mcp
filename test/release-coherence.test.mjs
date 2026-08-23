@@ -60,12 +60,37 @@ test('alle versionsfelter oplyser det samme tal', () => {
   assert.match(unikke[0], /^\d+\.\d+\.\d+$/);
 });
 
-test('npm-pakken bundter faktisk de filer serveren har brug for', () => {
-  const files = json('mcp-server/package.json').files;
-  for (const n of ['index.js', 'tools.js', 'bin/', 'extension/']) {
-    assert.ok(files.includes(n), `"${n}" mangler i package.json "files" — den ryger ikke med i udgivelsen`);
-  }
-});
+  test('npm-pakken bundter HVER fil serveren faktisk importerer', () => {
+    // MAALT 23/8 — og det er praecis den fejl den her test fandtes for at fange:
+    // `vagt.js` blev oprettet, importeret af index.js, og glemt i `files`. Pakken var
+    // DOED VED ANKOMST — hver eneste `npx @agent360/browser-mcp` fejlede med
+    // ERR_MODULE_NOT_FOUND foer den naaede at sige noget. 178 tests var groenne.
+    //
+    // Den gamle udgave itererede over en HAANDSKREVET liste og kunne per konstruktion
+    // aldrig opdage en NY fil. Nu foelges importerne rekursivt fra begge indgange.
+    const pakkeRod = join(rod, 'mcp-server');
+    const files = json('mcp-server/package.json').files;
+
+    const set = new Set();
+    const besoeg = (relSti) => {
+      if (set.has(relSti)) return;
+      set.add(relSti);
+      let src;
+      try { src = readFileSync(join(pakkeRod, relSti), 'utf8'); } catch { return; }
+      for (const m of src.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+        besoeg(join(dirname(relSti), m[1]).replace(/^\.\//, ''));
+      }
+    };
+    besoeg('index.js');
+    besoeg('bin/cli.js');
+
+    const findes = (f) => { try { statSync(join(pakkeRod, f)); return true; } catch { return false; } };
+    const daekket = (f) => files.some((m) => (m.endsWith('/') ? f.startsWith(m) : f === m));
+    const mangler = [...set].filter((f) => findes(f) && !daekket(f));
+    assert.deepEqual(mangler, [],
+      `disse filer importeres men ryger IKKE med i npm-pakken: ${mangler.join(', ')} — ` +
+      'pakken ville fejle med ERR_MODULE_NOT_FOUND ved foerste opstart hos hver bruger');
+  });
 
 test('server.json-beskrivelsen kan slippe gennem MCP-registret', () => {
   // Registret afviser >100 tegn med en 422. Fejler den DER, er npm allerede udgivet
