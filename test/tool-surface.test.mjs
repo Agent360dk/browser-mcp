@@ -192,8 +192,16 @@ test('overlay-synlighed hviler ikke paa offsetParent', () => {
   // dismiss_overlays blind for netop den slags elementer som cookie-bannere,
   // samtykke-bjaelker og modaler er. Den svarede count:0 og skipped:[] — altsaa
   // "der var ingenting", ikke "jeg kunne ikke se det".
+  // Vinduet afgraenses med klamme-matchning, ikke et fast tegnantal. MAALT 23/8:
+  // med `slice(i, i + 3000)` faldt getComputedStyle uden for vinduet saa snart
+  // veto-listen blev tilfoejet, og testen blev roed af en KORREKT aendring.
   const i = bgSrc.indexOf('async function dismissOverlays(');
-  const blok = bgSrc.slice(i, i + 3000).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  let dybde = 0, slut = i;
+  for (let k = bgSrc.indexOf('{', i); k < bgSrc.length; k++) {
+    if (bgSrc[k] === '{') dybde++;
+    else if (bgSrc[k] === '}' && --dybde === 0) { slut = k + 1; break; }
+  }
+  const blok = bgSrc.slice(i, slut).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
   assert.ok(!/!el\.offsetParent/.test(blok),
     'offsetParent-testen er tilbage — fixed-overlays bliver usynlige igen');
   assert.match(blok, /st\.display === 'none' \|\| st\.visibility === 'hidden'/,

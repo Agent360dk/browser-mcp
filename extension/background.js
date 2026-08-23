@@ -1709,6 +1709,38 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
       ];
       // "Ambiguous" texts MAY revert partial form data ("Cancel" usually reverts state)
       // — only used when overlay has no editable form fields, or in aggressive scope
+      // ── VETO-LISTE (MAALT 23/8 — det dyreste fund i hele auditten) ────────────
+      //
+      // Koert med den ORDRETTE kode mod knapper i en rigtig browser trykkede
+      // dismiss_overlays paa "Close account", "Close and delete everything",
+      // "Cancel subscription" og "Afvis betalingen permanent" — og paa enhver knap
+      // med aria-label="Close account" eller "Luk kontoen". Det skete i DEFAULT-scope,
+      // ikke kun aggressive.
+      //
+      // Aarsagen: "close" og "luk" er lovlige luk-ord, og matchningen havde ingen
+      // ord-graense. "Close account" indeholder "close". Og instruktionerne beder
+      // agenten kalde dismiss_overlays FOER hvert stoerre skridt, saa det ville ske
+      // paa hver eneste side hvor saadan en knap findes.
+      //
+      // Et luk-ord er derfor ikke laengere nok: findes ET af disse ord i teksten eller
+      // aria-labelen, klikkes der ALDRIG — uanset hvor godt resten matcher. Det er en
+      // veto, ikke en vaegtning. Et overlay der ikke bliver lukket koster et ekstra
+      // skridt; en lukket konto koster brugeren penge eller adgang.
+      const VETO = [
+        'account', 'konto', 'subscription', 'abonnement', 'membership', 'medlemskab',
+        'payment', 'betaling', 'kort', 'card', 'billing', 'faktura', 'invoice',
+        'delete', 'slet', 'remove', 'fjern', 'erase', 'wipe', 'destroy',
+        'permanent', 'permanently', 'forever', 'for evigt', 'irreversibl',
+        'unsubscribe', 'opsig', 'afmeld', 'terminate', 'opheav',
+        'deactivate', 'deaktiver', 'disable', 'deaktivér',
+        'sign out', 'log out', 'log ud', 'logout', 'sign-out',
+        'order', 'ordre', 'purchase', 'koeb', 'køb', 'refund', 'refunder',
+      ];
+      const erFarlig = (tekst) => {
+        const t = (tekst || '').toLowerCase();
+        return VETO.some((v) => t.includes(v));
+      };
+
       const ambiguousTexts = [
         "skip", "cancel", "afvis", "spring over",
       ];
@@ -1736,11 +1768,14 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
         const all = [...overlay.querySelectorAll('button, [role="button"], a[href="#"], [aria-label]')];
         const allTexts = allowAmbiguous ? [...safeTexts, ...ambiguousTexts] : safeTexts;
 
-        // Priority 1: aria-label match (close/dismiss/luk/afvis are always safe)
+        // Priority 1: aria-label match. MAALT 23/8: "always safe" var FORKERT — aria-label
+          // "Close account" indeholder "close", saa knappen blev trykket. Vetoet nedenfor
+          // er derfor det foerste der koeres, foer nogen match overhovedet forsoeges.
         for (const c of all) {
           if (!isVisible(c)) continue;
           const label = (c.getAttribute('aria-label') || '').toLowerCase();
           if (!label) continue;
+            if (erFarlig(label) || erFarlig(c.textContent)) continue;   // veto — se listen ovenfor
           if (label.includes('close') || label.includes('dismiss') || label.includes('luk')) {
             return { el: c, method: 'aria-label', label };
           }
@@ -1754,6 +1789,7 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
           if (!isVisible(c)) continue;
           const text = (c.textContent || '').trim().toLowerCase();
           if (!text || text.length > 30) continue;
+          if (erFarlig(text) || erFarlig(c.getAttribute('aria-label'))) continue;   // veto
           if (allTexts.some(t => text === t || text === t + '!' || text === t + '.')) {
             return { el: c, method: 'text-exact', label: text };
           }
@@ -1766,6 +1802,7 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
           // MAALT 22/8: contains-passet gjorde "ok" til en delstreng-traeffer, saa
           // "Book a demo", "Unlock account" og "Cookie settings" blev klikbare — i
           // DEFAULT-scope. Korte ord maa kun matche eksakt (prioritet 2 ovenfor).
+          if (erFarlig(text) || erFarlig(c.getAttribute('aria-label'))) continue;   // veto
           if (allTexts.filter(t => t.length >= 5).some(t => text.includes(t))) {
             return { el: c, method: 'text-contains', label: text };
           }
@@ -1775,6 +1812,7 @@ async function dismissOverlays(tabId, scope = 'non_critical', maxPasses = 3) {
         for (const c of all) {
           if (!isVisible(c)) continue;
           const text = (c.textContent || '').trim();
+          if (erFarlig(c.getAttribute('aria-label'))) continue;   // et × med farlig aria-label
           if (xChars.includes(text)) {
             return { el: c, method: 'x-char', label: text };
           }
