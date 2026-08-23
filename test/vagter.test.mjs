@@ -114,7 +114,16 @@ test('index.js bruger den testede vagt i stedet for sin egen kopi', () => {
   assert.match(srv, /import \{[^}]*ledErDoedt[^}]*\} from '\.\/vagt\.js'/,
     'doeds-dommen skal komme fra vagt.js, som kan koeres i en test — ' +
     'ikke fra en indlejret try/catch der kun kan grepped efter');
-  assert.match(srv, /if \(ledErDoedt\(pid\)\)/, 'og den skal faktisk kaldes i vagten');
+  assert.match(srv, /ledErDoedt\(pid\)/, 'og den skal faktisk kaldes i vagten');
+  // MAALT 23/8: kaeden genlaeses nu naar noget SER doedt ud, i stedet for at stole paa
+  // et snapshot fra opstarten. Et mellemled kan afslutte helt normalt mens ejeren
+  // koerer videre — det udloeste "chatten er vaek" mens chatten var uroert.
+  const iVagt = srv.indexOf('parentCheck = setInterval');
+  const blokVagt = srv.slice(iVagt, srv.indexOf('}, 5000)', iVagt));
+  assert.match(blokVagt, /forfaedreKaede\(process\.ppid, laesPpid\)/,
+    'kaeden skal genlaeses foer vi lukker ned — ellers draeber et normalt afsluttet ' +
+    'mellemled en chat der koerer fint');
+  assert.match(blokVagt, /if \(frisk\.length\)/, 'og en levende vej op skal betyde: fortsaet');
   assert.match(srv, /forfaedreKaede\(parentPid, laesPpid\)/, 'kaeden ogsaa');
   assert.ok(!/process\.kill\(pid, 0\)/.test(srv),
     'ingen indlejret kopi tilbage i index.js — to udgaver af samme dom driver fra hinanden');

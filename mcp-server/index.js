@@ -309,8 +309,40 @@ function createWSS(port = BASE_PORT) {
       else p.resolve(result);
     });
 
+    // ── En doed socket skal AFVISE de kald der var undervejs (MAALT 23/8) ──────
+    // Foer roerte close-handleren ikke `pending`. Maalt: en socket der doede 300 ms
+    // inde i et kald gav foerst svar efter 30.011 ms — og med den FORKERTE
+    // forklaring, "kommandoen tog for lang tid". For extract_list er timeouten 180
+    // sekunder, altsaa tre minutters tavshed hvor sandheden var kendt med det samme.
+    const afvisVentende = (grund) => {
+      // Kun naar ingen anden levende forbindelse kan svare — ellers ville et helt
+      // normalt skift mellem to udvidelser afbryde kald der er fuldt i orden.
+      if (!pending.size || liveConnections().length) return;
+      const antal = pending.size;
+      for (const [id, p] of pending) {
+        clearTimeout(p.timer);
+        pending.delete(id);
+        p.reject(new Error(
+          `Forbindelsen til Chrome-udvidelsen forsvandt mens kommandoen koerte (${grund}). ` +
+          'Kommandoen naaede maaske at blive udfoert i browseren — tjek tilstanden foer du ' +
+          'proever igen. Er udvidelsen slaaet fra eller Chrome lukket, saa start den og proev forfra.',
+        ));
+      }
+      process.stderr.write(`[MCP] ${antal} ventende kald afvist — ${grund}\n`);
+    };
+
+    // MAALT 23/8: der fandtes INGEN error-handler. Et ugyldigt WebSocket-frame (fx
+    // RSV1 sat) faar 'ws' til at emitte 'error' paa socketen, og en uhaandteret
+    // 'error' paa en EventEmitter kaster og draeber hele processen — altsaa alle
+    // chats paa den port. Tre linjer lukker det.
+    ws.on('error', (e) => {
+      process.stderr.write(`[MCP] WebSocket-fejl paa forbindelsen: ${e?.message || e}\n`);
+      try { ws.close(); } catch {}
+    });
+
     ws.on('close', () => {
       connections.delete(conn);
+      afvisVentende('udvidelsen koblede fra');
       process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
     });
   });
@@ -1014,19 +1046,42 @@ if (!vagtKaede.length) {
 process.stderr.write(`[MCP] vagt-kaede: ${vagtKaede.join(' → ')}\n`);
 
 parentCheck = setInterval(() => {
-  for (const pid of vagtKaede) {
-    if (ledErDoedt(pid)) {
-      // MAALT 22/8 — og det var en fejl JEG indfoerte samme aften: enhver exception
-      // blev tolket som "processen doede". Men `kill(0)` kaster EPERM naar processen
-      // LEVER og bare ejes af en anden bruger. Er ét led i kaeden ejet af root — og
-      // pid 1 er launchd, som altid er det — lukkede serveren sig selv ned efter fem
-      // sekunder med teksten "chatten bag denne server er vaek", mens chatten koerte
-      // fint. Vagten der skulle frigive porte draebte i stedet levende chats.
-      // Kun ESRCH ("no such process") betyder faktisk doed.
-      gracefulShutdown(`Proces ${pid} i kaeden doede — chatten bag denne server er vaek`);
-      return;
-    }
+  const doede = vagtKaede.filter((pid) => ledErDoedt(pid));
+  if (!doede.length) return;
+
+  // ── Et doedt led betyder ikke automatisk at chatten er vaek (MAALT 23/8) ──────
+  //
+  // Kaeden blev frosset ved opstart. Men et MELLEMLED kan afslutte helt normalt
+  // mens ejeren koerer videre — maalt to gange paa denne maskine, hvor kaeden gaar
+  // npm exec → wrapper → claude → Code Helper (Plugin) → Code. Et forbigaaende led
+  // der lukkede pænt udloeste "chatten bag denne server er vaek", mens chatten var
+  // uroert. Og risikoen er ensrettet vaerre end 1.25.0, som vogtede ét pid: nu er
+  // hvert af 5-6 led en ny doedsaarsag.
+  //
+  // Derfor genlaeses kaeden foerst naar noget SER doedt ud. Kan vi stadig gaa fra
+  // vores egen foraelder op til en rod, er vi ikke foraeldreloese — vi er bare blevet
+  // reparented, og den nye kaede overtager. Kun naar den vej ogsaa er vaek, lukker vi.
+  //
+  // Prisen er nul i normal drift: genlaesningen koerer kun i det tik hvor et led er
+  // forsvundet, ikke hvert 5. sekund.
+  let frisk = [];
+  try {
+    frisk = forfaedreKaede(process.ppid, laesPpid).filter((x) => x > 1 && !ledErDoedt(x));
+  } catch {}
+
+  if (frisk.length) {
+    process.stderr.write(
+      `[MCP] led ${doede.join(', ')} er vaek, men kaeden gaar stadig op: ` +
+      `${frisk.join(' → ')} — fortsaetter\n`,
+    );
+    vagtKaede = frisk;
+    return;
   }
+
+  gracefulShutdown(
+    `Proces ${doede[0]} i kaeden doede, og der er ingen levende vej op — ` +
+    'chatten bag denne server er vaek',
+  );
 }, 5000); // hvert 5. sekund
 
 // Also listen for stdin close as backup
