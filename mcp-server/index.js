@@ -282,13 +282,22 @@ function createWSS(port = BASE_PORT) {
       if (msg.type === 'terminate') {
           // terminate lukker serveren for ALLE chats paa porten, saa den har to gates.
           //
+          // Om id-sammenligningen: ORIGIN er autoriteten — Chrome saetter den, og
+          // afsenderen kan ikke forfalske den. Haandtrykkets id er kun et ekstra
+          // signal. MAALT 23/8 mod den AEGTE udvidelse: den sender hello med id null,
+          // fordi chrome.runtime.getManifest() kan fejle i offscreen-dokumentet.
+          // Kraevede vi lighed ubetinget, kunne en HELT legitim udvidelse aldrig lukke
+          // sin session ned — en fejl jeg selv indfoerte samme aften. Derfor: et id der
+          // MANGLER er fint (Origin har allerede bevist hvem det er), mens et id der er
+          // TIL STEDE og peger et ANDET sted afvises.
+          //
           // 1) Afsenderen skal have sendt et hello der stemmer med sin egen Origin.
           //    MAALT 23/8: uden den kunne en forbindelse der lige havde vundet rollen
           //    som aktiv slukke browser-adgangen med én besked.
           // 2) Afsenderen skal VAERE den aktive. Uden den kunne en gammel sidelaebende
           //    kopi, der lukkede sin sidste fane, rive serveren vaek under den
           //    udvidelse der reelt loeste opgaven.
-          if (!conn.harHilst || conn.helloId !== conn.extensionId) {
+          if (!conn.harHilst || (conn.helloId && conn.helloId !== conn.extensionId)) {
           process.stderr.write('[MCP] terminate ignoreret — intet gyldigt haandtryk\n');
           return;
           }

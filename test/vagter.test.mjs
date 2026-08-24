@@ -15,6 +15,21 @@ const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'ut
 // ── select_option loej paa den ene gren i maaneder: den native <select>-gren blev
 //    rettet, men custom-dropdown-grenen returnerede stadig `{ ok: true }` haardkodet,
 //    uanset om klikket landede. Fundet 21/8 af en agent paa tredje gennemloeb.
+
+// Afgraenser `if (msg.type === '<type>') { ... }` med klamme-matchning i stedet for et
+// fast tegnantal. MAALT 23/8: faste vinduer blev roede hver gang en kommentar voksede —
+// altsaa af korrekte aendringer. Tre gange paa én aften.
+function blokFor(kilde, type) {
+  const i = kilde.indexOf(`msg.type === '${type}'`);
+  if (i < 0) return '';
+  let d = 0;
+  for (let k = kilde.indexOf('{', i); k < kilde.length; k++) {
+    if (kilde[k] === '{') d++;
+    else if (kilde[k] === '}' && --d === 0) return kilde.slice(i, k + 1);
+  }
+  return kilde.slice(i);
+}
+
 test('select_option melder sandt paa BEGGE grene', () => {
   const i = bg.indexOf("case 'select_option'");
   assert.ok(i > -1, 'select_option-handleren skal findes');
@@ -38,9 +53,8 @@ test('select_option melder sandt paa BEGGE grene', () => {
 //    Ellers kan en anden udvidelse — eller en zombie-forbindelse — lukke en session
 //    der er midt i noget.
 test('terminate er gated paa den aktive forbindelse', () => {
-  const i = srv.indexOf("'terminate'");
-  assert.ok(i > -1, 'terminate skal findes');
-  const blok = srv.slice(Math.max(0, i - 900), i + 1400);
+  const blok = blokFor(srv, 'terminate');
+  assert.ok(blok, 'terminate-haandteringen findes');
   assert.match(blok, /activeConnection\(\)/,
     'terminate skal sammenholdes med den aktive forbindelse, ikke tages fra hvem som helst');
 });

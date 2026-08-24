@@ -63,6 +63,21 @@ const forbind = (connections, { version = null, id = null, state = AABEN, since 
 
 // ── cmpVersion ──────────────────────────────────────────────────────────────
 
+
+// Afgraenser `if (msg.type === '<type>') { ... }` med klamme-matchning i stedet for et
+// fast tegnantal. MAALT 23/8: faste vinduer blev roede hver gang en kommentar voksede —
+// altsaa af korrekte aendringer. Tre gange paa én aften.
+function blokFor(kilde, type) {
+  const i = kilde.indexOf(`msg.type === '${type}'`);
+  if (i < 0) return '';
+  let d = 0;
+  for (let k = kilde.indexOf('{', i); k < kilde.length; k++) {
+    if (kilde[k] === '{') d++;
+    else if (kilde[k] === '}' && --d === 0) return kilde.slice(i, k + 1);
+  }
+  return kilde.slice(i);
+}
+
 test('cmpVersion sammenligner tal, ikke tekst', () => {
   const { cmpVersion } = byg();
   assert.equal(cmpVersion('1.27.1', '1.27.0'), 1);
@@ -165,9 +180,8 @@ test('serveren holder ikke laengere én enkelt socket-variabel', () => {
 });
 
 test('terminate fra en inaktiv forbindelse lukker ikke serveren', () => {
-  const i = kilde.indexOf("msg.type === 'terminate'");
-  assert.ok(i > -1, 'terminate-haandteringen findes');
-  const blok = kilde.slice(i, i + 1600);
+  const blok = blokFor(kilde, 'terminate');
+  assert.ok(blok, 'terminate-haandteringen findes');
   assert.match(blok, /activeConnection\(\) !== conn/,
     'uden denne gate kan en sidelaebende gammel udvidelse rive serveren ned');
   const gateIdx = blok.indexOf('activeConnection() !== conn');
