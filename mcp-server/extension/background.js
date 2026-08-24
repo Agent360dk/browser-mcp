@@ -610,6 +610,27 @@ async function debuggerType(tabId, text) {
   }
 }
 
+// ── Naar en dialog kan aabne midt i klikket (MAALT 24/8) ─────────────────────
+//
+// Et confirm() fryser rendereren, og Chrome svarer ALDRIG paa den CDP-kommando der
+// udloeste det. Maalt: browser_click haengte i 25,9 sekunder og gav aldrig svar —
+// mens dialogen faktisk BLEV besvaret af den armerede haandtering (siden rapporterede
+// window.__svar === true). Klikket var altsaa leveret; kun svaret var vaek.
+//
+// Er der armeret en dialog paa fanen, venter vi derfor kun kort. Kommer der intet
+// svar, ER klikket leveret — det er jo netop dét der aabnede dialogen.
+async function dispatchTaalmodigt(tabId, params) {
+  if (!armeredeDialoger.has(tabId)) {
+    return cdpSend(tabId, 'Input.dispatchMouseEvent', params);
+  }
+  let faerdig = false;
+  const kald = cdpSend(tabId, 'Input.dispatchMouseEvent', params)
+    .then((r) => { faerdig = true; return r; })
+    .catch(() => { faerdig = true; });
+  await Promise.race([kald, new Promise((r) => setTimeout(r, 1200))]);
+  return faerdig ? kald : { __dialogBlokerede: true };
+}
+
 async function debuggerClick(tabId, x, y) {
   await debuggerAttach(tabId);
   try {
@@ -647,7 +668,7 @@ async function debuggerClick(tabId, x, y) {
       })()`,
     });
     // 1. mouseMoved first (triggers hover state, required by some frameworks)
-    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+    await dispatchTaalmodigt(tabId, {
       type: 'mouseMoved', x, y,
     });
     await new Promise(r => setTimeout(r, 30));
@@ -655,11 +676,11 @@ async function debuggerClick(tabId, x, y) {
     //    0 on release) plus a small press→release gap are REQUIRED for Chrome to
     //    synthesize a *trusted* 'click' from the pair. Without them, web-components
     //    that gate on the trusted click event (Google Ads, Material Web) never fire.
-    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+    await dispatchTaalmodigt(tabId, {
       type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
     });
     await new Promise(r => setTimeout(r, 30));
-    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+    await dispatchTaalmodigt(tabId, {
       type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
     });
     // 3. Framework fallback — only if the captured target is STILL connected (i.e.
