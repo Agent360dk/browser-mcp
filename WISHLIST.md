@@ -78,6 +78,41 @@ Kun læsning af DOM'en kræver skærmbillede.
 execute_script på denne frame", frem for den rå Trusted-Types-besked.
 
 
+### 4. `fill` tilfoejer i stedet for at erstatte · **hoej**
+
+`browser_fill` paa et felt der allerede har tekst giver begge dele. Konkret ramt to
+gange 22/8: feltet indeholdt "Indsend kundeformular", jeg fyldte "Formular udfyldt
+(tag)" i, og resultatet blev `Indsend kundeformularFormular udfyldt (tag)`.
+
+Maatte ryddes med en native value-setter foerst:
+
+```js
+const s = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+s.call(input, ''); input.dispatchEvent(new Event('input', {bubbles:true}));
+```
+
+**Forslag:** ryd feltet foer der skrives, eller tilfoej `append: true` som
+eksplicit tilvalg. Den nuvaerende adfaerd er naesten aldrig den oenskede.
+
+### 5. Checkbox-varianter · **middel**
+
+Punkt 2 ovenfor loeses ved at klikke det indre element — men hvilket indre element
+varierer mellem Googles egne tabeller:
+
+| Tabel | Virkende klikmaal |
+|---|---|
+| Kampagner | `.particle-ripple-container` |
+| Konverteringshandlinger | `.mat-checkbox-container` |
+
+Begge ligger inde i `<mat-checkbox role="checkbox">`, og host-elementet reagerer
+paa ingen af dem. En loesning boer proeve begge — og generelt det inderste
+klikbare barn — frem for at antage én struktur.
+
+**Bemaerk ogsaa:** i konverteringstabellen er bulk-"Rediger" *deaktiveret* naar
+raekkerne er "standardmaal paa kontoniveau". Det er ikke en browser-mcp-fejl, men
+det er vaerd at vide at en markeret raekke ikke altid kan redigeres.
+
+
 ---
 
 _Last updated: 2026-08-22 · Maintained by [@Agent360dk](https://github.com/Agent360dk)_
