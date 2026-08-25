@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Agent360 Browser MCP",
-  "version": "1.27.1",
+  "version": "1.28.0",
   "description": "Give Claude Code your real logged-in Chrome. Two parts: this extension + one npx command. Multi-session, local, MIT.",
   "permissions": [
     "tabs",
