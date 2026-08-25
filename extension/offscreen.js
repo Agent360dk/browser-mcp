@@ -8,6 +8,16 @@
  * Flow: MCP Server(s) ←(WS)→ this ←(chrome.runtime.sendMessage)→ Service Worker → Chrome APIs
  */
 
+// Et offscreen-dokument har IKKE chrome.runtime.getManifest() — kaldet kaster
+// "chrome.runtime.getManifest is not a function". Versionen kommer derfor med i
+// dokumentets egen URL, sat af background.js da dokumentet blev oprettet. Det er
+// samtidig den rigtige semantik: et dokument oprettet af en aeldre udgave baerer
+// den aeldre version, saa `offscreenSvarer()` kan se forskel paa "svarer" og
+// "er den udgave vi koerer nu".
+function minVersion() {
+  try { return new URLSearchParams(location.search).get('v') || null; } catch { return null; }
+}
+
 const BASE_PORT = 9876;
 const MAX_PORT = 9895;
 const connections = new Map(); // port → WebSocket
@@ -131,12 +141,11 @@ function tryConnect(port) {
     // To rettelser: haandtrykket sendes nu UANSET om manifest-opslaget lykkes (det er
     // selve beskeden serveren har brug for, ikke felterne i den), og en fejl bliver
     // logget i stedet for at forsvinde.
-    let hilsen = { type: 'hello', extensionId: null, version: null, name: null };
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null };
     try {
-      const m = chrome.runtime.getManifest();
-      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: m.version, name: m.name };
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null };
     } catch (e) {
-      console.warn('[Offscreen] kunne ikke laese manifestet til haandtrykket:', e?.message || e);
+      console.warn('[Offscreen] kunne ikke bygge haandtrykket:', e?.message || e);
     }
     try {
       ws.send(JSON.stringify(hilsen));
@@ -211,9 +220,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // og udskiftede den aldrig. Resultatet: kode-aendringer slog aldrig igennem uden en
   // fuld genstart af Chrome, heller ikke efter "Genindlaes" paa chrome://extensions.
   // Versionen med i svaret goer forskellen synlig.
-  let version = null;
-  try { version = chrome.runtime.getManifest().version; } catch {}
-  sendResponse({ ok: true, version });
+  sendResponse({ ok: true, version: minVersion() });
   return true;
 });
 

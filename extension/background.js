@@ -1161,8 +1161,18 @@ async function ensureOffscreen() {
     }
   }
 
+  // Versionen foelger med i URL'en. Et offscreen-dokument har IKKE
+  // chrome.runtime.getManifest() — kaldet kaster "is not a function", saa dokumentet
+  // kunne aldrig oplyse sin version, `offscreenSvarer()` sammenlignede null mod vores
+  // og fik altid falsk, og broen blev revet ned tre gange hvert tiende minut for evigt.
+  // (Symptomet var "Offscreen document closed before fully loading" — nedrivningen
+  // ramte dokumentet mens det stadig startede op.)
+  // URL'en er baaret af dokumentet selv: et dokument oprettet af en aeldre udgave
+  // baerer den aeldre version, hvilket er praecis den skelnen tjekket skal bruge.
+  let minVersion = '';
+  try { minVersion = chrome.runtime.getManifest().version; } catch {}
   await chrome.offscreen.createDocument({
-    url: 'offscreen.html',
+    url: 'offscreen.html' + (minVersion ? '?v=' + encodeURIComponent(minVersion) : ''),
     reasons: ['WORKERS'],
     justification: 'Maintain persistent WebSocket connection to local MCP server',
   });
