@@ -2860,11 +2860,11 @@ async function dispatch(port, method, params) {
       await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await new Promise(r => setTimeout(r, 30));
       // Proper dblclick: two press/release pairs with escalating clickCount.
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
       await new Promise(r => setTimeout(r, 40));
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
+      await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
+      await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
       return { ok: true, double_clicked: true, tag: el.tag, text: el.text };
     }
 
@@ -2877,8 +2877,8 @@ async function dispatch(port, method, params) {
       const { x, y } = el;
       await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await new Promise(r => setTimeout(r, 30));
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
+      await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
+      await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
       return { ok: true, right_clicked: true, tag: el.tag, text: el.text, note: 'contextmenu event fired; native Chrome menu does not open via CDP — page-level menus (OWA, web apps) do' };
     }
 
@@ -3714,10 +3714,10 @@ async function clickRecaptchaCheckbox(tabId) {
       type: 'mouseMoved', x: pos.x, y: pos.y,
     });
     await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
-    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+    await dispatchTaalmodigt(tabId, {
       type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
     });
-    await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+    await dispatchTaalmodigt(tabId, {
       type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1,
     });
     await debuggerDetach(tabId);
@@ -3778,10 +3778,10 @@ async function clickCaptchaGridCells(tabId, cells) {
         type: 'mouseMoved', x: ox, y: oy,
       });
       await new Promise(r => setTimeout(r, 150 + Math.random() * 300));
-      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+      await dispatchTaalmodigt(tabId, {
         type: 'mousePressed', x: ox, y: oy, button: 'left', clickCount: 1,
       });
-      await cdpSend(tabId, 'Input.dispatchMouseEvent', {
+      await dispatchTaalmodigt(tabId, {
         type: 'mouseReleased', x: ox, y: oy, button: 'left', clickCount: 1,
       });
       await new Promise(r => setTimeout(r, 200 + Math.random() * 400));
