@@ -279,7 +279,7 @@
       <span class="sub">Paste this in a terminal. Required &mdash; the extension does nothing on its own.</span>
       <div class="install">
         <code>claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
-        <button onclick="navigator.clipboard.writeText('claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 1500);">Copy</button>
+        <button class="copy-btn" data-copy="claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest">Copy</button>
       </div>
     </li>
     <li>
@@ -291,7 +291,7 @@
       <span class="sub">Paste it to Claude Code:</span>
       <div class="install">
         <code>Take a screenshot of my current Chrome tab.</code>
-        <button onclick="navigator.clipboard.writeText('Take a screenshot of my current Chrome tab.'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy', 1500);">Copy</button>
+        <button class="copy-btn" data-copy="Take a screenshot of my current Chrome tab.">Copy</button>
       </div>
       <span class="sub">You get an image back instead of <i>&ldquo;I don&rsquo;t have browser access&rdquo;</i>. <span class="done">That&rsquo;s it &mdash; you&rsquo;re running.</span> <a href="#try">What else to try &rarr;</a></span>
     </li>
@@ -569,5 +569,26 @@
     .catch(function () { /* leave badge hidden */ });
 </script>
 
+<script>
+// Sig kun "Copied!" naar det faktisk lykkedes. Clipboard-skrivning kan afvises
+// (dokument uden fokus, policy, aeldre browser) — og en knap der lyver om det
+// sender folk videre til terminalen med en tom udklipsholder.
+document.querySelectorAll('.copy-btn').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var reset = function () { setTimeout(function () { b.textContent = 'Copy'; }, 1800); };
+    navigator.clipboard.writeText(b.dataset.copy).then(function () {
+      b.textContent = 'Copied!'; reset();
+    }, function () {
+      b.textContent = 'Select & copy';
+      var code = b.parentElement.querySelector('code');
+      if (code) {
+        var r = document.createRange(); r.selectNodeContents(code);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      }
+      reset();
+    });
+  });
+});
+</script>
 </body>
 </html>
