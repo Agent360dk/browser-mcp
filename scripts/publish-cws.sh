@@ -61,7 +61,11 @@ if [[ "${SPRING_FLOW_OVER:-}" == "1" ]]; then
 else
   echo "→ Flow-test mod en aegte Chrome (spaerre foer udgivelse)"
   FLOW_UD="$(mktemp)"
-  if ! npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1; then
+  # Flow-testen returnerer en fejlkode naar der ER fejl. Det er IKKE det samme som at
+  # den ikke kunne koere — den skelnen kostede en blokeret udgivelse 30/8. DAEKNING-
+  # linjen er beviset paa at den naaede hele vejen igennem.
+  npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
+  if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
     echo "  Flow-testen kunne slet ikke koere:"; tail -20 "$FLOW_UD"
     echo "  Er Chrome aaben med udvidelsen indlaest?"; exit 1
   fi
