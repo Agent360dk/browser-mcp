@@ -26,29 +26,33 @@ const kilde = readFileSync(join(rod, 'extension/background.js'), 'utf8');
 
 // ── Fix A: `landed` skal afleveres, ikke smides vaek ────────────────────────
 
+// 30/8: mønstrene her laaste kaldets NAVN (`cdpSend`) i stedet for egenskaben. Da
+// settle-kaldet fik en frist paa sig og skiftede navn til `evaluerTaalmodigt`, faldt
+// tre tests — uden at adfaerden havde aendret sig. De matcher nu paa at vaerdien
+// FANGES og AFLEVERES, uanset hvad kaldet hedder.
 test('debuggerClick returnerer resultatet af settle-kaldet', () => {
   assert.match(
     kilde,
-    /const settle = await cdpSend\(tabId, 'Runtime\.evaluate'/,
+    /const settle = await \w+\(tabId,/,
     'settle-kaldet skal fanges i en variabel — ellers er landed-vaerdien tabt',
   );
   assert.match(
     kilde,
-    /return settle\?\.result\?\.value \?\? null;/,
+    /const vaerdi = settle\?\.result\?\.value \?\? null;[\s\S]{0,1200}\n    return vaerdi;/,
     'debuggerClick skal returnere den maalte vaerdi til kaldestedet',
   );
 });
 
 test('settle-kaldet bruger returnByValue — ellers kommer vaerdien aldrig over CDP', () => {
-  const i = kilde.indexOf("const settle = await cdpSend(tabId, 'Runtime.evaluate'");
+  const i = kilde.search(/const settle = await \w+\(tabId,/);
   assert.ok(i > -1, 'settle-kaldet findes');
   const blok = kilde.slice(i, i + 200);
   assert.match(blok, /returnByValue: true/, 'uden returnByValue returnerer CDP kun en objekt-reference');
 });
 
 test('alle tre udgange fra settle-udtrykket rapporterer landed', () => {
-  const i = kilde.indexOf("const settle = await cdpSend(tabId, 'Runtime.evaluate'");
-  const blok = kilde.slice(i, kilde.indexOf('return settle?.result?.value', i));
+  const i = kilde.search(/const settle = await \w+\(tabId,/);
+  const blok = kilde.slice(i, kilde.indexOf('const vaerdi = settle?.result?.value', i));
   assert.match(blok, /return \{ landed: true, fallbackFired: false \}/, 'trusted klik landede');
   assert.match(blok, /return \{ landed: false, fallbackFired: false, detached: true \}/, 'element forsvandt');
   assert.match(blok, /return \{ landed: false, fallbackFired: true \}/, 'framework-fallback fyrede');
@@ -122,4 +126,24 @@ test('simuleret: skjult 0x0-element giver ikke laengere et klik i (0,0)', () => 
   assert.equal(synlig.found, true);
   assert.equal(synlig.x, 693.5);
   assert.equal(synlig.y, 452);
+});
+
+// ── Fix D (30/8): settle-kaldet skal have en frist ──────────────────────────
+//
+// MAALT: en aaben ja/nej-boks fryser rendereren, og settle-opslaget lige efter
+// museklikket kom ALDRIG tilbage — browser_click haengte 30 sekunder og meldte
+// falsk fejl, selvom klikket var landet. Fristen er hele rettelsen; forsvinder den,
+// er hænget tilbage uden at noget andet siger fra.
+test('settle-kaldet er tidsbegraenset — et frossent renderer-kald maa ikke haenge', () => {
+  assert.match(
+    kilde,
+    /const settle = await evaluerTaalmodigt\(tabId,/,
+    'settle skal gaa gennem den tidsbegraensede hjaelper, ikke raa cdpSend',
+  );
+  const i = kilde.indexOf('async function evaluerTaalmodigt');
+  assert.ok(i > -1, 'evaluerTaalmodigt findes');
+  const krop = kilde.slice(i, i + 900);
+  assert.match(krop, /Promise\.race\(/, 'uden et kapløb er der ingen frist');
+  assert.match(krop, /setTimeout\(/, 'fristen skal have et ur');
+  assert.match(krop, /rendererSvarede: false/, 'kalderen skal kunne se at rendereren ikke svarede');
 });

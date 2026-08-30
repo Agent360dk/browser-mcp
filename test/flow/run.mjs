@@ -353,14 +353,33 @@ try {
       `svarede uden at et menneske havde svaret — det maa den aldrig: ${svar.tekst.slice(0, 160)}`);
   });
 
-  // Dialogen blokerer hele fanen mens den staar aaben, saa den koeres SIDST i sin
-  // egen fane. Ellers arver alt efter den en timeout der ikke er deres fejl.
+  // Dialogen blokerer hele fanen mens den staar aaben. Kommentaren her sagde foer at
+  // testen derfor koeres SIDST i sin egen fane — men den var IKKE sidst (elleve
+  // kontroller laa efter den), og den lukkede ikke fanen igen.
+  //
+  // MAALT 30/8: begge de foelgende kontroller BESTAAR naar de koeres for sig selv
+  // (#usynligt-element paa 41 ms, #klik-aerlighed svarer korrekt). I flow-testen
+  // arvede de en frossen fane og timede ud efter 30 sek — to roede linjer der maalte
+  // testens egen manglende oprydning, ikke koden. Vi jagede dem i to dage.
+  //
+  // Fanen lukkes nu i en finally, saa udfaldet af DEN her test aldrig kan smitte af
+  // paa de naeste. Fejler den, skal den fejle alene.
   await proev('browser_handle_dialog', 'accepterer en confirm() uden at blokere fanen', async () => {
     await kald('browser_navigate', { url: BASE, new_tab: true });
-    await kald('browser_handle_dialog', { action: 'accept' });     // arm FOER klikket
-    await kald('browser_click', { selector: '#dialogknap' }, 15000);
-    const r = await kald('browser_execute_script', { script: 'String(window.__svar)' }, 15000);
-    skalVaere(/true|false/.test(r.tekst), 'confirm() blev aldrig besvaret — fanen stod laast');
+    try {
+      await kald('browser_handle_dialog', { action: 'accept' });     // arm FOER klikket
+      await kald('browser_click', { selector: '#dialogknap' }, 15000);
+      const r = await kald('browser_execute_script', { script: 'String(window.__svar)' }, 15000);
+      skalVaere(/true|false/.test(r.tekst), 'confirm() blev aldrig besvaret — fanen stod laast');
+    } finally {
+      // Staar dialogen stadig aaben, skal den vaek FOER fanen lukkes — ellers naegter
+      // Chrome at lukke fanen, og saa er vi lige vidt.
+      await kald('browser_handle_dialog', { action: 'accept', wait: true, timeout: 2000 }, 6000).catch(() => {});
+      // IKKE close_tab: lukkes sessionens sidste fane, beder udvidelsen serveren om at
+      // lukke ned (terminate) — og saa fejler alt efter med timeouts der ligner alt
+      // muligt andet. Maalt 30/8. En navigation frigoer fanen lige saa godt.
+      await kald('browser_navigate', { url: BASE }, 10000).catch(() => {});
+    }
   });
 
   // ── ekstra: adfaerd der har kostet tid foer ────────────────────────────────

@@ -517,7 +517,11 @@ const agentLukkedeFaner = new Set();
 // Nu armerer den og vender tilbage med det samme. Lytteren bliver siddende og tager
 // den naeste dialog paa fanen. `wait: true` giver den gamle blokerende adfaerd for
 // de tilfaelde hvor dialogen allerede er undervejs.
-const armeredeDialoger = new Map();   // tabId → { listener, timer, action }
+const armeredeDialoger = new Map();
+// Loeftet for den senest armerede dialog pr. fane. Ligger UDEN for armeredeDialoger,
+// fordi lytteren afvaebner i samme oejeblik dialogen aabner — og klikket skal kunne
+// vente paa svaret BAGEFTER.
+const dialogLoefter = new Map();   // tabId -> Promise   // tabId → { listener, timer, action }
 
 function afvaebnDialog(tabId, grund) {
   const a = armeredeDialoger.get(tabId);
@@ -631,6 +635,30 @@ async function dispatchTaalmodigt(tabId, params) {
   return faerdig ? kald : { __dialogBlokerede: true };
 }
 
+// MAALT 28/8: `dispatchTaalmodigt` ovenfor lukkede deadlocken paa museklikket, men
+// settle-opslaget i step 3 er OGSAA et renderer-kald — og maalingen viste at det er
+// PRAECIS der klikket haenger (HAENGER@step3-settle). Deadlocken var kun lukket paa
+// hovedstien.
+//
+// Foerste forsoeg gjorde kuren betinget af at vi kunne SE en dialog (armeret, eller en
+// dispatch der blokerede). Den betingelse holder ikke: dispatchen kan naa at blive
+// kvitteret, og lytteren kan naa at afvaebne, FOER rendereren gaar i staa. Saa faldt vi
+// tilbage i det ubeskyttede kald og hang alligevel — maalt.
+//
+// Derfor er fristen nu betingelsesloes. Opslaget er et par linjers synkron JS: svarer
+// rendereren, er den tilbage paa millisekunder. Bruger den over tre sekunder, er den
+// blokeret — ikke langsom. Saa svarer vi aerligt i stedet for at vente i 30.
+// Et klik der aabnede en dialog ER landet, saa framework-fallbacken skal ikke fyre oveni.
+async function evaluerTaalmodigt(tabId, params, ms = 3000) {
+  let faerdig = false;
+  const kald = cdpSend(tabId, 'Runtime.evaluate', params)
+    .then((r) => { faerdig = true; return r; })
+    .catch(() => { faerdig = true; });
+  await Promise.race([kald, new Promise((r) => setTimeout(r, ms))]);
+  if (faerdig) return kald;
+  return { result: { value: { landed: true, fallbackFired: false, rendererSvarede: false } } };
+}
+
 async function debuggerClick(tabId, x, y) {
   await debuggerAttach(tabId);
   try {
@@ -688,7 +716,7 @@ async function debuggerClick(tabId, x, y) {
     //    SPA re-renders (Google Ads) detach the element first. Fires a full pointer
     //    + mouse sequence on the shadow-pierced target, then React/Angular handlers.
     await new Promise(r => setTimeout(r, 120));
-    const settle = await cdpSend(tabId, 'Runtime.evaluate', {
+    const settle = await evaluerTaalmodigt(tabId, {
       returnByValue: true,
       expression: `(() => {
         const el = window.__bmcpClickTarget;
@@ -724,7 +752,21 @@ async function debuggerClick(tabId, x, y) {
         return { landed: false, fallbackFired: true };
       })()`,
     });
-    return settle?.result?.value ?? null;
+    const vaerdi = settle?.result?.value ?? null;
+
+    // MAALT 28/8: uden det her svarede klikket 5,5 sek FOER dialogen var besvaret, saa
+    // den NAESTE kommando ramte en stadig frossen side og ventede 15 sek forgaeves.
+    // Svarede rendereren ikke, ER der en dialog i vejen — saa vent til den er ude af
+    // verden, foer vi melder klikket faerdigt. Sidebonus: kalderen faar en side der
+    // rent faktisk er klar til naeste skridt.
+    if (vaerdi && vaerdi.rendererSvarede === false) {
+      const loefte = dialogLoefter.get(tabId);
+      if (loefte) {
+        await Promise.race([loefte, new Promise((r) => setTimeout(r, 8000))]);
+        dialogLoefter.delete(tabId);
+      }
+    }
+    return vaerdi;
   } finally {
     await debuggerDetach(tabId);
   }
@@ -3051,6 +3093,7 @@ async function dispatch(port, method, params) {
       }, levetid);
 
       armeredeDialoger.set(tab.id, { listener, timer, action, opfyld });
+      dialogLoefter.set(tab.id, svar);
       chrome.debugger.onEvent.addListener(listener);
 
       if (vent) return await svar;
