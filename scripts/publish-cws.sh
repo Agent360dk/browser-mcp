@@ -39,6 +39,55 @@ fi
 : "${CWS_REFRESH_TOKEN:?missing in .env}"
 : "${CWS_EXTENSION_ID:?missing in .env — find at chrome.google.com/webstore/devconsole}"
 
+# ── Flow-spaerre (30/8) ─────────────────────────────────────────────────────
+#
+# Flow-testen stod kun i CONTRIBUTING.md. Man kunne udgive uden nogensinde at have
+# roert en browser — og det var praecis saadan en klik-fejl naaede GitHub.
+#
+# Den kan ikke koere i CI (kraever Chrome + udvidelsen indlaest), saa den hoerer til
+# her, hvor udgivelsen faktisk sker.
+#
+# KENDTE FEJL staar navngivet nedenfor. En spaerre der er roed ved foedslen bliver
+# slaaet fra foerste gang den er i vejen; en der kun reagerer paa NYE fejl bliver
+# staaende. Luk en kendt fejl -> slet den fra listen, saa den ikke kan komme igen.
+KENDTE_FEJL=(
+  "browser_handle_dialog"   # klik der aabner en ja/nej-boks: klikket lander og boksen
+                            # besvares, men fanen forbliver frossen for naeste kommando.
+                            # Maalt 30/8. Findes ogsaa i 1.25, med faerre vaern.
+)
+
+if [[ "${SPRING_FLOW_OVER:-}" == "1" ]]; then
+  echo "⚠  Flow-spaerren sprunget over (SPRING_FLOW_OVER=1) — du udgiver i blinde"
+else
+  echo "→ Flow-test mod en aegte Chrome (spaerre foer udgivelse)"
+  FLOW_UD="$(mktemp)"
+  if ! npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1; then
+    echo "  Flow-testen kunne slet ikke koere:"; tail -20 "$FLOW_UD"
+    echo "  Er Chrome aaben med udvidelsen indlaest?"; exit 1
+  fi
+  tail -6 "$FLOW_UD" | sed 's/^/  /'
+  UVENTEDE=0
+  while IFS= read -r linje; do
+    navn="$(echo "$linje" | sed 's/^  //; s/:.*//')"
+    [[ -z "$navn" ]] && continue
+    kendt=0
+    for k in "${KENDTE_FEJL[@]}"; do [[ "$navn" == "$k" ]] && kendt=1; done
+    if [[ $kendt -eq 1 ]]; then
+      echo "  ◦ kendt fejl, accepteret: $navn"
+    else
+      echo "  ✗ NY fejl: $navn"; UVENTEDE=$((UVENTEDE+1))
+    fi
+  done < <(sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | sed '1d; /^====/d')
+  if [[ $UVENTEDE -gt 0 ]]; then
+    echo ""
+    echo "⛔ $UVENTEDE ny(e) fejl i flow-testen — udgivelsen er stoppet."
+    echo "   Ret dem, eller tilfoej dem bevidst til KENDTE_FEJL i dette script."
+    echo "   Hastesag: SPRING_FLOW_OVER=1 $0 $*"
+    exit 1
+  fi
+  echo "  ✅ ingen nye fejl — spaerren giver groent lys"
+fi
+
 # Read version from extension manifest
 VERSION="$(node -p "require('./extension/manifest.json').version")"
 ZIP="/tmp/agent360-browser-mcp-${VERSION}.zip"

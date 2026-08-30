@@ -7,14 +7,14 @@
     "url": "https://github.com/Agent360dk/browser-mcp",
     "source": "github"
   },
-  "version": "1.28.0",
+  "version": "1.28.1",
   "websiteUrl": "https://browsermcp.dev",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@agent360/browser-mcp",
-      "version": "1.28.0",
+      "version": "1.28.1",
       "transport": {
         "type": "stdio"
       }
