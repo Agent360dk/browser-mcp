@@ -56,6 +56,24 @@ KENDTE_FEJL=(
                             # Maalt 30/8. Findes ogsaa i 1.25, med faerre vaern.
 )
 
+# ── Automatiske tests (30/8) ────────────────────────────────────────────────
+#
+# Spaerren nedenfor koerer flow-testen mod en aegte Chrome. Den koerte IKKE `npm test`
+# — og det var et hul: `release-coherence` (som bl.a. tjekker at mcp-server/extension/
+# er en tro kopi af extension/) ligger netop der. MAALT 31/8: traeet stod roedt paa
+# praecis den test, mens spaerren ville have sagt groent lys — og npm-pakken ville
+# have faaet en foraeldet udvidelse med.
+#
+# En port med en aaben doer ved siden af er ingen port.
+echo "→ Automatiske tests"
+if ! npm --prefix mcp-server test > /tmp/bmcp-unit.log 2>&1; then
+  echo "  ⛔ automatiske tests fejler — udgivelsen er stoppet:"
+  grep -E "^not ok|^# (pass|fail)" /tmp/bmcp-unit.log | head -12 | sed 's/^/     /'
+  exit 1
+fi
+grep -E "^# (pass|fail)" /tmp/bmcp-unit.log | sed 's/^/  /'
+echo "  ✅ alle groenne"
+
 if [[ "${SPRING_FLOW_OVER:-}" == "1" ]]; then
   echo "⚠  Flow-spaerren sprunget over (SPRING_FLOW_OVER=1) — du udgiver i blinde"
 else
