@@ -3524,9 +3524,24 @@ async function dispatch(port, method, params) {
         throw new Error(`Tab ${params.tab_id} does not belong to this session (${session.label})`);
       }
       const tab = await chrome.tabs.update(params.tab_id, { active: true });
+      // Gør ogsaa VINDUET forrest. Uden det bliver fanen aktiv inde i sit vindue —
+      // document.hasFocus() bliver sand — men document.visibilityState forbliver
+      // 'hidden' fordi vinduet ligger bagved. Chrome struber timere i skjulte
+      // faner, saa Angular-apps (Google Ads, GA4, Search Console) renderer aldrig
+      // faerdigt: man laeser en halvt bygget side og drager forkerte konklusioner.
+      // Kostede to opgaver og en forkert konklusion 31/8-2026.
+      let vinduesFokus = null;
+      try {
+        await chrome.windows.update(tab.windowId, { focused: true });
+        vinduesFokus = true;
+      } catch (e) {
+        // Vinduet kan vaere lukket eller paa et andet Space. Fanen er stadig
+        // aktiv; vi siger bare aerligt at synligheden ikke kunne sikres.
+        vinduesFokus = false;
+      }
       session.activeTabId = tab.id;
       persistSessions();
-      return { id: tab.id, url: tab.url, title: tab.title };
+      return { id: tab.id, url: tab.url, title: tab.title, windowFocused: vinduesFokus };
     }
 
     case 'close_tab': {

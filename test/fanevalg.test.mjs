@@ -137,3 +137,41 @@ test('bedes der eksplicit om det, aktiveres den', async () => {
   });
   assert.equal(log.aktiveret.length, 1, 'et klik skal kunne bede om fokus');
 });
+
+/**
+ * switch_tab skal ogsaa goere VINDUET forrest.
+ *
+ * MAALT 31/8-2026: `chrome.tabs.update(id, {active:true})` alene goer fanen aktiv
+ * inde i sit vindue. document.hasFocus() bliver sand — men visibilityState
+ * forbliver 'hidden' saa laenge vinduet ligger bagved. Chrome struber timere i
+ * skjulte faner, saa Angular-apps (Google Ads, GA4, Search Console) aldrig
+ * renderer faerdigt.
+ *
+ * Konsekvensen var ikke "klik virker ikke". Den var VAERRE: sider blev laest
+ * halvt bygget, og der blev draget forkerte konklusioner af dem — bl.a. at tre
+ * GA4-ejendomme laa paa en utilgaengelig konto. De laa lige for.
+ */
+test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
+  const i = kilde.indexOf("case 'switch_tab'");
+  assert.ok(i > -1, "switch_tab findes");
+  const blok = kilde.slice(i, i + 1600);
+
+  assert.match(blok, /chrome\.tabs\.update\([^)]*active:\s*true/,
+    'fanen skal stadig goeres aktiv');
+  assert.match(blok, /chrome\.windows\.update\(/,
+    'VINDUET skal ogsaa fokuseres — ellers forbliver siden hidden og renderer ikke');
+  assert.match(blok, /focused:\s*true/,
+    'vinduet skal fokuseres med focused:true');
+});
+
+test('switch_tab: et vindue der ikke kan fokuseres vaelter ikke kaldet', () => {
+  const i = kilde.indexOf("case 'switch_tab'");
+  const blok = kilde.slice(i, i + 1600);
+  // Vinduet kan vaere lukket eller paa et andet Space. Fanen er stadig aktiv,
+  // saa kaldet skal lykkes — men svaret skal sige aerligt at synligheden ikke
+  // kunne sikres, i stedet for at lade kalderen tro at siden er synlig.
+  assert.match(blok, /try\s*\{[\s\S]*chrome\.windows\.update[\s\S]*\}\s*catch/,
+    'vinduesfokus skal vaere i try/catch');
+  assert.match(blok, /windowFocused/,
+    'svaret skal baere om vinduet faktisk blev forrest');
+});
