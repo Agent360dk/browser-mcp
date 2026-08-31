@@ -401,7 +401,13 @@ async function debuggerAttach(tabId) {
       lastMsg = 'attach resolved but Chrome shows tab not attached (ghost — page likely mid-reload)';
       try { await chrome.debugger.detach({ tabId }); } catch {}
     } catch (e) {
-      if (e.message?.includes('Already attached')) {
+      // MAALT 31/8 af den nye udvidelses-test: her stod `includes('Already attached')`
+      // med stort A. Chromes faktiske besked er "Another debugger is already attached
+      // to the tab with id: N" — med lille. Tjekket ramte ALDRIG. Resultat: naar en
+      // anden debugger havde fanen (DevTools aabent, en anden udvidelse), blev det
+      // behandlet som en fejl, proevet tre gange, og kastet — i stedet for bare at
+      // bruge den session der allerede fandtes.
+      if (/already attached/i.test(e.message || '')) {
         // Chrome side has session — sync local cache
         debuggerAttached.add(tabId);
         return;
