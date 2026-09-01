@@ -97,8 +97,23 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       onEvent: haendelse('debugger.onEvent'), onDetach: haendelse('debugger.onDetach'),
     },
     scripting: { executeScript: kald('scripting.executeScript') },
+    // storage.local.get destruktureres af kalderen ({ sessions } = await get(...)),
+    // saa den skal svare et OBJEKT som standard. Svarer den undefined, kaster
+    // udvidelsen med "Cannot destructure property 'sessions'" — og fejlen ligner en
+    // produktfejl, selvom det er selen der er for tynd. Kaldes get med et objekt af
+    // standardvaerdier (Chromes egen konvention), gives de tilbage.
     storage: {
-      local: { get: kald('storage.local.get'), set: kald('storage.local.set'), remove: kald('storage.local.remove') },
+      local: {
+        get: (arg, ...r) => {
+          optager.kald.push({ sti: 'storage.local.get', args: [arg, ...r] });
+          const s = svar['storage.local.get'];
+          if (typeof s === 'function') return Promise.resolve(s(arg, ...r));
+          if (s !== undefined) return Promise.resolve(s);
+          return Promise.resolve(arg && typeof arg === 'object' && !Array.isArray(arg) ? { ...arg } : {});
+        },
+        set: kald('storage.local.set'),
+        remove: kald('storage.local.remove'),
+      },
       session: { get: kald('storage.session.get'), set: kald('storage.session.set') },
     },
     offscreen: {

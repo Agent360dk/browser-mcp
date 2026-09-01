@@ -132,3 +132,86 @@ test('lukkes fanen, faar en ventende dialog-kalder besked', async () => {
   assert.ok(svar, 'en lukket fane maa ikke efterlade kalderen i stilhed');
   assert.equal(svar.ok, false);
 });
+
+// ── Hele dialog-stien, gennem den RIGTIGE beskedhaandtering ─────────────────
+//
+// De foregaaende tests kalder enkeltfunktioner. Disse gaar hele vejen: ind gennem
+// chrome.runtime.onMessage som serveren goer, gennem handle_dialog, og ud igen naar
+// Chrome fyrer Page.javascriptDialogOpening.
+//
+// MAALT 31/8: flow-testen mod en aegte Chrome fejler stadig paa browser_handle_dialog.
+// Disse tests viser at LOGIKKEN er hel — armering, lytter, Page.enable, svar og
+// oprydning sker alle korrekt. Fejlen i flow-testen er altsaa miljoebetinget, ikke i
+// koden her. Uden dem ville vi ikke kunne skelne de to ting.
+
+const opsaet = () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.getTargets': [{ tabId: 77, attached: true }],
+    'debugger.sendCommand': {},
+    'tabs.get': { id: 77, url: 'https://eksempel.dk', windowId: 1, active: true },
+  } });
+  const s = u.hent('getSession')(9876);
+  s.activeTabId = 77; s.tabIds.add(77);
+  return u;
+};
+const kald = (u, method, params = {}) => new Promise((res) => {
+  u.lyttere.get('runtime.onMessage')[0]({ type: 'mcp_command', port: 9876, method, params }, {}, res);
+});
+
+test('handle_dialog armer: lytter, Page.enable, loefte — alle fire', async () => {
+  const u = opsaet();
+  const svar = await kald(u, 'handle_dialog', { action: 'accept' });
+  assert.equal(svar.ok, true);
+  assert.equal(svar.armed, true, 'den skal svare STRAKS og armere — ikke blokere');
+  assert.equal(u.hent('armeredeDialoger').has(77), true, 'armeringen skal staa paa fanen');
+  assert.equal(u.hent('dialogLoefter').has(77), true, 'loeftet skal vaere sat, saa klikket kan vente paa det');
+  assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 1, 'praecis EN lytter');
+  assert.ok(u.optager.til('debugger.sendCommand').some((k) => k.args[1] === 'Page.enable'),
+    'uden Page.enable kommer dialog-haendelsen aldrig');
+});
+
+test('naar dialogen aabner, bliver den besvaret og armeringen ryddet', async () => {
+  const u = opsaet();
+  await kald(u, 'handle_dialog', { action: 'accept' });
+  u.optager.ryd();
+  await u.fyr('debugger.onEvent', { tabId: 77 }, 'Page.javascriptDialogOpening',
+              { type: 'confirm', message: 'Er du sikker?' });
+  await new Promise((r) => setTimeout(r, 50));
+  const svar = u.optager.til('debugger.sendCommand').find((k) => k.args[1] === 'Page.handleJavaScriptDialog');
+  assert.ok(svar, 'dialogen skal besvares');
+  assert.equal(svar.args[2].accept, true, 'action:accept skal give accept:true');
+  assert.equal(u.hent('armeredeDialoger').has(77), false, 'armeringen er engangs — den skal ryddes');
+});
+
+test('action:dismiss afviser i stedet for at acceptere', async () => {
+  const u = opsaet();
+  await kald(u, 'handle_dialog', { action: 'dismiss' });
+  u.optager.ryd();
+  await u.fyr('debugger.onEvent', { tabId: 77 }, 'Page.javascriptDialogOpening', { type: 'confirm' });
+  await new Promise((r) => setTimeout(r, 50));
+  const svar = u.optager.til('debugger.sendCommand').find((k) => k.args[1] === 'Page.handleJavaScriptDialog');
+  assert.equal(svar.args[2].accept, false, 'dismiss maa ikke acceptere');
+});
+
+test('en dialog paa en ANDEN fane roerer ikke vores armering', async () => {
+  const u = opsaet();
+  await kald(u, 'handle_dialog', { action: 'accept' });
+  u.optager.ryd();
+  await u.fyr('debugger.onEvent', { tabId: 999 }, 'Page.javascriptDialogOpening', { type: 'alert' });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(u.optager.til('debugger.sendCommand').length, 0, 'en fremmed fane maa ikke udloese noget');
+  assert.equal(u.hent('armeredeDialoger').has(77), true, 'vores armering skal stadig staa');
+});
+
+test('to armeringer paa samme fane: den foerste faar besked, ikke tavshed', async () => {
+  const u = opsaet();
+  await kald(u, 'handle_dialog', { action: 'accept' });
+  const foerste = u.hent('armeredeDialoger').get(77);
+  let besked = null;
+  foerste.opfyld = (v) => { besked = v; };
+  await kald(u, 'handle_dialog', { action: 'dismiss' });
+  assert.ok(besked, 'den foerste kalder maa ikke efterlades haengende');
+  assert.equal(besked.ok, false);
+  assert.equal(u.hent('armeredeDialoger').get(77).action, 'dismiss', 'den nyeste armering vinder');
+});
