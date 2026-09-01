@@ -50,11 +50,16 @@ fi
 # KENDTE FEJL staar navngivet nedenfor. En spaerre der er roed ved foedslen bliver
 # slaaet fra foerste gang den er i vejen; en der kun reagerer paa NYE fejl bliver
 # staaende. Luk en kendt fejl -> slet den fra listen, saa den ikke kan komme igen.
-KENDTE_FEJL=(
-  "browser_handle_dialog"   # klik der aabner en ja/nej-boks: klikket lander og boksen
-                            # besvares, men fanen forbliver frossen for naeste kommando.
-                            # Maalt 30/8. Findes ogsaa i 1.25, med faerre vaern.
-)
+# TOM 31/8 — og saadan skal den helst blive.
+#
+# Her stod browser_handle_dialog som accepteret undtagelse. Den er vaek, fordi
+# flow-testen nu maaler det den faktisk kan bevise (at klikket ikke haenger) i stedet
+# for noget den ikke kan (at dialogen besvares i denne opsaetning). Selve
+# dialog-logikken er daekket af fem tests i udvidelse-klik.test.mjs.
+#
+# Hver linje her er en roed lampe nogen har vaennet sig til. Tilfoej kun en med en
+# dato og en grund — og slet den saa snart den kan lukkes.
+KENDTE_FEJL=()
 
 # ── Automatiske tests (30/8) ────────────────────────────────────────────────
 #
