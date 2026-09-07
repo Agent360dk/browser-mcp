@@ -87,6 +87,20 @@ Built something cool with Browser MCP? [🎯 Share it](https://github.com/Agent3
 6. Push: `git push origin my-feature`
 7. Open a Pull Request
 
+**What happens on our side — so you know what you're walking into.**
+
+If a PR is pointing at a real problem, we merge it and fix what needs fixing *on top*,
+rather than closing it and rewriting the same change ourselves. You keep the credit for
+finding it. We only close a PR outright when the change would make something worse, and
+when we do, you get the measurement that says so — not an opinion.
+
+We have not always been good at this. Two PRs in this repo waited 46 and 59 days for a
+first reply, and both were then closed rather than merged, even though one of them was
+right about the problem. That is the bar we are trying to clear, and it is fair to hold
+us to it.
+
+If your PR has been sitting for more than a week, bump the thread. That is not rude here.
+
 ### Adding a New Tool
 
 1. Add tool definition in `mcp-server/tools.js`:

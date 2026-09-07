@@ -138,6 +138,27 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
 | **Install** | `claude mcp add` + extension from the Chrome Web Store | `npx @playwright/mcp` | Manual clone |
 
+### The pages that defeat everything else
+
+The reason this works where headless dies is not that it slips past anything. It is that
+there is nothing to slip past: it is your Chrome, your session, your consent. What is left
+is the hard part — pages that fight *any* automation because of how they are built.
+
+Every release is gated on a flow test against a real Chrome that has to survive exactly
+those. Latest run, v1.29.0: **40/40 tools exercised, 51 checks, 0 failures**, including
+
+- **strict CSP** — navigate, read, execute, wait and click all still work (falls back to
+  the Chrome Debugger API when script injection is blocked)
+- **cross-origin iframes** — seen into and reached inside
+- **shadow DOM** — selectors reach through it
+- **controlled inputs** — `fill` sticks in a React-style controlled field
+- **honesty checks** — `click` refuses a 0×0 element instead of hitting (0,0), and says so
+  when the page never took the event
+
+That last group matters most. A tool that quietly reports success is worse than one that
+fails, because you build on the answer. Where we still fall short of it, it is written
+down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
+
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
 ### Environment variables
