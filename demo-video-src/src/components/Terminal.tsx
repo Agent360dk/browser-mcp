@@ -27,7 +27,7 @@ const COLORS = {
 
 export const Terminal: React.FC<TerminalProps> = ({
   lines,
-  title = "claude — Claude Code",
+  title = "claude - Claude Code",
   typingSpeed = 1.0,
 }) => {
   const frame = useCurrentFrame();
