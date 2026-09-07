@@ -130,10 +130,10 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
-| **Browser** | Your real Chrome | Headless (new session) | Your real Chrome |
+| **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
 | **Maintained** | Actively — latest release v1.29.0 (2026-09-07) | Actively (Microsoft) | Last commit Apr 2025 |
-| **Logins/cookies** | Already authenticated | Must log in every time | Already authenticated |
-| **Multi-session** | 20 concurrent sessions with color-coded tab groups | Single session | Single session |
+| **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
+| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Their docs: concurrent clients on one profile *conflict* — each extra client needs `--isolated` or its own `--user-data-dir` | Single session |
 | **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
 | **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
@@ -162,6 +162,15 @@ those. Latest run, v1.29.0: **40/40 tools exercised, 51 checks, 0 failures**, in
 That last group matters most. A tool that quietly reports success is worse than one that
 fails, because you build on the answer. Where we still fall short of it, it is written
 down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
+
+> **Corrected 2026-09-07.** This table used to say Playwright MCP was headless and made you
+> log in every time. That was wrong, and it had been wrong for a while — Microsoft's own README
+> documents a persistent profile as the default, plus a browser extension for using the Chrome
+> you already have. The row that actually survives is the one above it, and it is their
+> documented limitation, not our claim: *"A persistent profile can only be used by one browser
+> instance at a time, so concurrent MCP clients sharing the same workspace will conflict."*
+> If you run one agent, Playwright MCP will serve you well. The difference shows up when you
+> run twenty against the same logged-in browser.
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
