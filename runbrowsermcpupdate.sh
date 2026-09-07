@@ -452,11 +452,20 @@ PY
       || die "registry publish failed — see the error above (description must be <=100 chars)"
     # Laes tilbage. Linjen herunder PAASTOD tidligere at registret var opdateret uden at
     # spoerge det om noget — praecis den slags paastand der lod 1.25.0 staa i tre udgivelser.
-    sleep 3
-    REG_EFTER="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
-      | python3 -c "import json,sys;print(next((e['server']['version'] for e in json.load(sys.stdin).get('servers',[]) if e.get('_meta',{}).get('io.modelcontextprotocol.registry/official',{}).get('isLatest')),''))" 2>/dev/null || true)"
+    #
+    # MAALT 7/9 ved foerste koersel: registret indekserer IKKE med det samme. Med et fast
+    # `sleep 3` afbroed gaten en udgivelse der var lykkedes — 1.29.0 stod i registret 6
+    # sekunder senere med isLatest=true. En gate der raaber ulv er naesten lige saa slem
+    # som en der tier. Derfor pollet, ikke ét kig.
+    REG_EFTER=""
+    for _forsoeg in $(seq 1 20); do
+      sleep 3
+      REG_EFTER="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
+        | python3 -c "import json,sys;print(next((e['server']['version'] for e in json.load(sys.stdin).get('servers',[]) if e.get('_meta',{}).get('io.modelcontextprotocol.registry/official',{}).get('isLatest')),''))" 2>/dev/null || true)"
+      [[ "$REG_EFTER" == "$NEW_VERSION" ]] && break
+    done
     [[ "$REG_EFTER" == "$NEW_VERSION" ]] \
-      || die "registry still advertises '${REG_EFTER:-unknown}' after publish — do NOT claim the release is out"
+      || die "registry still advertises '${REG_EFTER:-unknown}' 60s after publish — do NOT claim the release is out"
     ok "registry now advertises v$NEW_VERSION (laest tilbage)"
   fi
 fi
