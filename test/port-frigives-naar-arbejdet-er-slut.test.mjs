@@ -171,3 +171,40 @@ test('en UVENTET afbrydelse rydder stadig op — faner lukkes', async () => {
   const lukkede = u.optager.til('tabs.remove').map((b) => b.args[0]);
   assert.deepEqual(lukkede, [80], 'en doed chats faner blev efterladt aabne');
 });
+
+// ── #12: forældede frigiv-alarmer må ikke overleve portgenbrug ──────────────
+test('en session der slippes rydder sin egen frist', async () => {
+  const { u, s } = medSession(90);
+  s.tabIds.clear();
+  await u.fyr('alarms.onAlarm', { name: `frigiv-${PORT}` });   // saetter frivilligtFrigivet
+  await new Promise((r) => setTimeout(r, 20));
+  u.optager.ryd();
+  await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
+  await new Promise((r) => setTimeout(r, 20));
+  const ryd = u.optager.til('alarms.clear').filter((b) => String(b.args[0]) === `frigiv-${PORT}`);
+  assert.equal(ryd.length, 1, 'fristen blev efterladt og kan fyre mod den naeste chat der tager porten');
+});
+
+test('ogsaa en chat der bare DOER rydder sin frist', async () => {
+  // Modstykket til testen ovenfor: dér blev porten sluppet frivilligt. Her forsvinder
+  // chatten uden varsel, hvilket er praecis den vej hvor en frist ellers ville blive
+  // efterladt — og senere fyre mod den naeste chat der tager porten.
+  const { u } = medSession(91);
+  u.optager.ryd();
+  await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
+  await new Promise((r) => setTimeout(r, 20));
+  const ryd = u.optager.til('alarms.clear').filter((b) => String(b.args[0]) === `frigiv-${PORT}`);
+  assert.equal(ryd.length, 1, 'fristen overlevede chatten og kan ramme den naeste der tager porten');
+});
+
+// ── #13: faner maa ikke strande tavst hvis lukningen fejler ─────────────────
+test('fejler en fane-lukning under oprydning, beholdes sessionen i stedet for at forsvinde', async () => {
+  const u = indlaesUdvidelse({ svar: { 'tabs.remove': new Error('kan ikke lukke fanen') } });
+  const s = u.hent('getSession')(PORT);
+  s.tabIds.add(95);
+  u.optager.ryd();
+  await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(u.hent('sessions').has(PORT),
+    'sessionen blev slettet mens dens fane stadig var aaben — fanen ligger nu i en gruppe ingen ejer');
+});

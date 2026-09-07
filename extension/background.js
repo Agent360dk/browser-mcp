@@ -260,6 +260,9 @@ async function releaseSession(port) {
   //
   // En UVENTET afbrydelse (chatten er vaek) skal stadig lukke fanerne — derfor
   // skelnes der, i stedet for bare at tjekke om sessionen er tom.
+  // #12: sessionen forsvinder her — dens frist skal med, uanset hvilken vej vi gaar ud.
+  chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
+
   if (frivilligtFrigivet.delete(port)) {
     if (session.tabIds.size) {
       // Sessionen arbejder igen. Behold den, saa naeste binding kan adoptere den
@@ -273,12 +276,35 @@ async function releaseSession(port) {
   }
 
   // Detach debugger + close all session tabs
-  const tabIds = [...session.tabIds];
-  for (const tabId of tabIds) {
+  //
+  // #13: fejlene blev slugt her, og `sessions.delete(port)` koerte alligevel. En fane der
+  // ikke KUNNE lukkes blev dermed foraeldreloes: stadig aaben, stadig i en farvet gruppe,
+  // men uden for enhver session — usynlig for list_tabs og aldrig ryddet op. Praeeksisterende,
+  // men v1.29 slipper porte langt oftere, saa stien koeres langt hyppigere end foer.
+  const stadigAabne = new Set();
+  for (const tabId of [...session.tabIds]) {
     debuggerForceDetach(tabId);
     try {
       await chrome.tabs.remove(tabId);
-    } catch {} // tab may already be closed
+      session.tabIds.delete(tabId);
+    } catch {
+      // Fanen kan vaere lukket i forvejen — saa er den vaek, og det er fint. Findes den
+      // stadig, beholder vi den: bedre en session der lever lidt for laenge end en fane
+      // ingen ejer.
+      try {
+        await chrome.tabs.get(tabId);
+        stadigAabne.add(tabId);
+      } catch {
+        session.tabIds.delete(tabId);
+      }
+    }
+  }
+
+  if (stadigAabne.size) {
+    console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
+    session.tabIds = stadigAabne;
+    persistSessions();
+    return;
   }
 
   sessions.delete(port);

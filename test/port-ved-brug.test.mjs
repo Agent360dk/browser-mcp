@@ -161,7 +161,11 @@ test('bind-fejl der ikke er "optaget" giver en FEJL, ikke en evig venten', async
   boerneprocesser.push(p);
   await haandtryk(p);
 
-  const svar = await browserKald(p, 15000);
+  // Budgettet er rundhaandet med vilje. Testen beviser at kaldet SVARER — ikke at det
+  // svarer hurtigt. Seks bindeforsoeg med 1500 ms mellem kan lovligt tage over 15 s, og
+  // en test der ogsaa maalte hastigheden ville falde roed paa en travl maskine uden at
+  // noget var i stykker. Deadlocken den vogter var uendelig; 30 s adskiller de to fint.
+  const svar = await browserKald(p, 30000);
   assert.notEqual(svar, 'TIMEOUT', 'kaldet haengte i stedet for at fejle — det er deadlocken');
   assert.match(svar, /kunne ikke aabne en port|Alle porte/,
     'kaldet svarede, men ikke med en forklaring paa at bindingen fejlede: ' + svar.slice(0, 200));
