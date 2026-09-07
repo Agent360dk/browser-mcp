@@ -236,6 +236,47 @@ Claude Session 3 ←(stdio)→ MCP :9878 ←(WS)→
 - **Session isolation** — each session gets a color-coded Chrome Tab Group
 - **Tab ownership** — sessions can only see and control their own tabs
 - **Auto-cleanup** — processes exit when Claude Code closes the conversation
+- **Ports are taken on demand** — a server binds its port on the first browser call, not
+  at startup, and releases it 5 minutes after its last tab closes. A chat that never
+  touches the browser never occupies a slot.
+
+### Running the agent on another machine
+
+The extension only connects to `127.0.0.1`, deliberately — it will not talk to a remote
+WebSocket. If your MCP gateway runs on a different box than your browser, forward the port
+range over SSH.
+
+Recipe below contributed by [@bkuri](https://github.com/Agent360dk/browser-mcp/issues/1),
+who ran into exactly this and solved it. Linux + systemd; needs `autossh` locally and your
+public key already on the server:
+
+```ini
+# ~/.config/systemd/user/browser-mcp-tunnel.service
+[Unit]
+Description=SSH tunnel for browser-mcp WebSocket (ports 9876-9895)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c '/usr/bin/autossh -M 0 -N \
+  -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes -o LogLevel=ERROR \
+  $(for p in $(seq 9876 9895); do printf " -L %s:127.0.0.1:%s" "$p" "$p"; done) \
+  server-name'
+Restart=on-failure
+RestartSec=5
+Environment="AUTOSSH_GATETIME=0"
+
+[Install]
+WantedBy=default.target
+```
+
+Replace `server-name`, then `systemctl --user enable --now browser-mcp-tunnel.service`.
+
+> The original recipe listed ports 9876-9885 by hand — the range was ten back then. It is
+> twenty now, so the loop above generates them instead of hard-coding a list that goes
+> stale the next time the range changes.
 
 ## Built-in Provider Integrations
 
