@@ -15,7 +15,16 @@ Baseline captured 2026-07-21:
 """
 import json, os, re, sys, time, urllib.request, urllib.error
 
-BASE_HEADERS = {"User-Agent": "browsermcp-dominans-audit"}
+# MAALT 7/9-2026: med en egen User-Agent svarer Cloudflare 403 paa mcpservers.org og
+# mcp.so. Tjekket rapporterede derfor "⚠ transient" ved HVER koersel siden det blev
+# skrevet — det kunne hverken bekraefte eller afkraefte noget. En vagt der aldrig kan
+# sige nej er ikke en vagt. En almindelig browser-UA slipper igennem.
+BASE_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/140.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 GH_TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 
 def fetch(url, as_json=False, timeout=25, retries=2):
@@ -87,6 +96,8 @@ def listed(url, needles=("agent360", "browser-mcp")):
     return ok, "HTTP %s" % code
 
 for name, url, was_live in [
+    # PulseMCP tilfoejet 7/9: den eneste kanal hvor vi kan se et faktisk trafiktal.
+    ("PulseMCP",       "https://www.pulsemcp.com/servers/agent360dk-browser",    True),
     ("mcpservers.org", "https://mcpservers.org/servers/agent360dk/browser-mcp", True),
     ("Glama",          "https://glama.ai/mcp/servers/Agent360dk/browser-mcp",    False),
     ("Smithery",       "https://smithery.ai/server/@Agent360dk/browser-mcp",     False),
@@ -103,6 +114,37 @@ for name, url, was_live in [
         rows.append((name, "🟢", detail + " — NY optagelse"))
     else:
         rows.append((name, "✓" if is_listed else "·", detail))
+
+# ---- Chrome Web Store: brugertal OG ratings ----
+# Tilfoejet 7/9-2026. Ratings er butikkens EGEN rangeringsfaktor, og vi stod paa
+# 0 anmeldelser mod tvillingens 717 — det er den storste enkeltforskel i synlighed,
+# og den blev ikke maalt af noget. Brugertallet alene siger intet om placeringen.
+import re as _re
+CWS_ID = "jdehgalffmffhfhmmhaokfbfnafnmgcl"
+cws, _ = fetch("https://chromewebstore.google.com/detail/agent360-browser-mcp/" + CWS_ID)
+if cws:
+    _brugere = _re.search(r"([\d.,]+)\s*(?:users|brugere)", cws)
+    _rating  = _re.search(r"([0-9][.,][0-9])\s*(?:out of 5|af 5|\u2605)", cws)
+    _antal   = _re.search(r"([\d.,]+)\s*(?:ratings|reviews|anmeldelser)", cws)
+    _dele = []
+    if _brugere: _dele.append(_brugere.group(1) + " brugere")
+    # Stjerne-tallet vises KUN naar der faktisk er anmeldelser bag det. Uden den regel
+    # hentede regexen 7/9 et 4,8 fra en anden udvidelse paa siden og satte det paa en
+    # listing med nul anmeldelser — praecis den slags tal en vagt aldrig maa opfinde.
+    if _antal:
+        _dele.append((_rating.group(1) + "\u2605") if _rating else "ingen rating")
+        _dele.append(_antal.group(1) + " anmeldelser")
+    else:
+        _dele.append("0 anmeldelser")
+    _txt = " \u00b7 ".join(_dele)
+    if not _antal:
+        # Ikke en fejl — men det er det billigste synligheds-hul der findes, og det
+        # skal staa i rapporten hver maaned indtil det er lukket.
+        rows.append(("Chrome Web Store", "\u26a0", _txt + " \u2014 ratings er butikkens rangeringsfaktor"))
+    else:
+        rows.append(("Chrome Web Store", "\u2713", _txt))
+else:
+    rows.append(("Chrome Web Store", "\u26a0", "kunne ikke laeses"))
 
 pk, _ = fetch("https://raw.githubusercontent.com/punkpeye/awesome-mcp-servers/main/README.md")
 if pk and "Agent360dk" in pk:

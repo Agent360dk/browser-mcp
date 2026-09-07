@@ -9,6 +9,10 @@
 
 **Your AI agent drives your real, logged-in Chrome — and works where headless tools die.**
 
+[![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-000?logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJAYWdlbnQzNjAvYnJvd3Nlci1tY3BAbGF0ZXN0Il19)
+[![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
+[![Glama quality](https://glama.ai/mcp/servers/Agent360dk/browser-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Agent360dk/browser-mcp)
+
 [![Browser MCP Demo](assets/demo.gif)](https://browsermcp.dev)
 
 ▶ **[Watch the 37-second demo with sound →](https://browsermcp.dev)**
@@ -386,6 +390,13 @@ Browser MCP is built in the open and shaped by the people using it.
 - 🐛 [Report a bug](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml)
 
 Or just **ask Claude** — it knows about the `browser_about` tool and will draft + submit on your behalf when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
+
+### If it works for you
+
+The Chrome Web Store ranks on ratings, and we have none — so a sentence from you moves this
+further than anything we can write. [Leave a review](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl/reviews)
+if it earned one, and say so honestly if it did not. No signup, no reward, nothing gated
+behind it — we just have no signal at all right now.
 
 ## License
 
