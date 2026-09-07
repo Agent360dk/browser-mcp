@@ -14,13 +14,36 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 ## 🟡 Wanted
 
-_Nothing on the public list yet — be the first._
+- **Profile pairing — bind one MCP server to one Chrome profile**
+  ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)). With the extension active in
+  two profiles (work + personal), both connect to every server in the port range and which
+  one wins is a race. An opt-in token (`AGENT360_TOKEN`) would let two MCP entries target two
+  profiles deliberately. Accepted, not scheduled — say so on the issue if you need it.
+  *Note on the security framing: the current `Origin` check proves "some Chrome extension",
+  not which profile, and a local program can set that header itself. An opt-in token doesn't
+  change that for users who leave it off — the value here is profile pairing, not auth.*
 
 - [💡 Submit a wish →](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
 
 ---
 
 ## ✅ Shipped
+
+- **v1.29.0 (2026-09-07) — porten tages ved brug, ikke ved opstart.** Målt samme dag:
+  37 kørende servere, alle 20 porte i spændet optaget, 17 chats helt uden browser. To
+  årsager der forstærkede hinanden — hver chat tog en port ved opstart, også de mange der
+  aldrig rørte browseren; og en chat der tabte portkapløbet prøvede aldrig igen.
+  - Porten bindes ved **første browser-kald**, og hvert kald prøver igen hvis det forrige
+    ikke fik en. Udvidelsen genscanner spændet hvert 2. sekund, så en port der åbnes sent
+    findes af sig selv.
+  - Lukker **agenten** sin sidste fane, slippes porten efter **5 minutter uden faner** —
+    aflyst hvis der kommer en ny. Før stod porten reserveret i op til fire timer, fordi
+    nedlukningen kun udløstes når et *menneske* lukkede fanen. Serverens egen instruks
+    siger «ALWAYS close tabs when done», så den dokumenterede god-praksis slog
+    oprydningen ihjel.
+  - `terminate` **slipper porten i stedet for at lukke processen**, så en chat der er
+    færdig kl. 10 stadig kan bruge browseren kl. 10:40.
+  - Fejlbeskeden ved fuldt spænd beder ikke længere om en genstart — den er ikke nødvendig.
 
 - **v1.26.0 (2026-07-27) — The "superior" batch** (born from a real all-night Azure/Railway/OWA session):
   - `browser_copy_to_clipboard` / `browser_paste_from_clipboard` / `browser_clipboard_stats` — SECRET-SAFE clipboard bridge: move credentials from page to field/CLI without the value ever entering the LLM conversation
@@ -36,7 +59,15 @@ _Nothing on the public list yet — be the first._
 
 Things we've intentionally decided **not** to do (so you don't have to ask twice):
 
-- _Will be filled in as recurring "no"-answers come up._
+- **Firefox support** ([#8](https://github.com/Agent360dk/browser-mcp/issues/8)). Not a
+  manifest port. The extension makes 61 Chrome Debugger Protocol calls across 17 distinct CDP
+  methods, and that is where the value sits — trusted input events, dialog handling,
+  cross-origin frames. Firefox's remote protocol isn't CDP, so this is a rewrite of the
+  interaction layer maintained in parallel, indefinitely, by one person. If Firefox ships
+  meaningful CDP compatibility, the answer changes.
+
+- **Usage monetization via a third-party SDK** ([#9](https://github.com/Agent360dk/browser-mcp/issues/9)).
+  MIT, local, no telemetry. That stays.
 
 ## 📋 TODO — samlet, tages løbende
 
@@ -49,6 +80,10 @@ at undvære, ikke efter nummer.
   `switch_tab` mangler stadig `windowFocused`, altså kører den gamle kode. Symptomet er at
   ALT timer ud efter 30 s i en baggrundsfane. Omvejen der virker: `computer-mcp` →
   `app focus "Google Chrome"` før hvert kald. Det skal ikke være nødvendigt.
+  **Reproduceret 7/9:** `browser_screenshot` returnerede et billede af et HELT andet
+  vindues fane — ikke sessionens egen. Værktøjsbeskrivelsen lover «the tab is
+  auto-activated before capture»; det skete ikke. Et skærmbillede af den forkerte side
+  er værre end ingen, fordi der drages konklusioner af det.
 - [ ] **`browser_fill` føjer til i stedet for at erstatte** (allerede noteret) — men her kostede
   det to ekstra runder, fordi feltet så indeholdt adressen to gange. Forslag: ryd feltet som
   standard, med `append: true` som tilvalg.
