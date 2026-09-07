@@ -224,11 +224,10 @@ run cp README.md mcp-server/README.md
 
 # 1c. ATOMIC version bump: one node process reads+validates ALL json, then writes
 #     ALL — so a parse error can't leave the tree half-bumped at mixed versions.
-#     NOTE: server.json's version IS bumped here for internal consistency, but the
-#     MCP registry (registry.modelcontextprotocol.io) is NOT auto-published — that
-#     channel is deferred. TODO: wire `mcp-publisher` (OIDC) as a 4th channel when
-#     registry traffic justifies it; until then the bumped server.json just keeps
-#     the repo coherent so the eventual first registry-publish is at the right ver.
+#     NOTE: server.json's version bumpes her, og trin 5b UDGIVER den til MCP-registret.
+#     (Kommentaren sagde indtil 7/9 at registret ikke blev udgivet — det var sandt da den
+#     blev skrevet, og forkert fra 23/8. En foraeldet note om en kanal er hvordan kanalen
+#     bliver glemt.)
 JSON_FILES="server.json extension/manifest.json mcp-server/extension/manifest.json mcp-server/package.json mcp-server/package-lock.json mcp-server/server.json"
 say "bump .version → $NEW_VERSION in: $JSON_FILES"
 run node -e "
@@ -253,6 +252,19 @@ for f in $TOOLCOUNT_FILES; do
   # smaa-bogstavs-moenster, saa mcp-server/README.md stod med "## 34 Tools" i otte udgaver.
   run perl -0pi -e "s/\b[0-9]+ browser tools\b/${TOOL_COUNT} browser tools/g; s/\b[0-9]+ tools\b/${TOOL_COUNT} tools/g; s/\\b[0-9]+ Tools\\b/${TOOL_COUNT} Tools/g" "$f"
 done
+
+# 1d-1b. README's "latest release vX.Y.Z (dato)" er en versionspaastand paa forsiden — og
+#        den kopieres til npmjs.com i trin 1b. Intet trin vedligeholdt den: den stod paa
+#        v1.25.0 (2026-07-24) mens npm var paa 1.28.1. Fejes som de oevrige versionsfelter.
+say "README: 'latest release vX.Y.Z' -> v${NEW_VERSION} ($(date +%Y-%m-%d))"
+for f in README.md mcp-server/README.md; do
+  [[ -f "$f" ]] || continue
+  run perl -0pi -e "s/latest release v[0-9]+\.[0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)/latest release v${NEW_VERSION} ($(date +%Y-%m-%d))/g" "$f"
+done
+if [[ "$SHIP" == 1 ]]; then
+  grep -q "latest release v${NEW_VERSION}" README.md \
+    || die "README 'latest release' did not update to v${NEW_VERSION} — the line moved; fix the regex"
+fi
 
 # 1d-2. Homepage JSON-LD softwareVersion. This is the machine-readable version claim that
 #       search engines and AI crawlers read — it is NOT covered by the tool-count sweep above,
@@ -389,8 +401,13 @@ fi
 step "5b. MCP registry publish"
 if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
 elif ! command -v mcp-publisher >/dev/null 2>&1; then
+  # MAALT 7/9: her stod `warn` + fortsaet. Konsekvensen var at 1.28.0 og 1.28.1 begge
+  # gik paa npm mens registret blev staaende paa 1.25.0 — og scriptet sluttede GROENT.
+  # En udgivelse der kun naaede tre af fire kanaler skal fejle, ikke advare.
+  [[ "$SHIP" == 1 ]] && die "mcp-publisher not installed (brew install mcp-publisher) — registry would be left behind; use --skip-registry to accept that deliberately"
   warn "mcp-publisher not installed (brew install mcp-publisher) — registry NOT updated"
 elif ! command -v gh >/dev/null 2>&1; then
+  [[ "$SHIP" == 1 ]] && die "gh not installed — cannot mint a registry token; use --skip-registry to accept that deliberately"
   warn "gh not installed — cannot mint a registry token; registry NOT updated"
 else
   REG_LIVE="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
@@ -423,7 +440,14 @@ os.chmod(p, 0o600)
 PY
     ( cd "$REPO_ROOT/mcp-server" && mcp-publisher publish server.json ) \
       || die "registry publish failed — see the error above (description must be <=100 chars)"
-    ok "registry now advertises v$NEW_VERSION"
+    # Laes tilbage. Linjen herunder PAASTOD tidligere at registret var opdateret uden at
+    # spoerge det om noget — praecis den slags paastand der lod 1.25.0 staa i tre udgivelser.
+    sleep 3
+    REG_EFTER="$(curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Agent360dk/browser-mcp" 2>/dev/null \
+      | python3 -c "import json,sys;print(next((e['server']['version'] for e in json.load(sys.stdin).get('servers',[]) if e.get('_meta',{}).get('io.modelcontextprotocol.registry/official',{}).get('isLatest')),''))" 2>/dev/null || true)"
+    [[ "$REG_EFTER" == "$NEW_VERSION" ]] \
+      || die "registry still advertises '${REG_EFTER:-unknown}' after publish — do NOT claim the release is out"
+    ok "registry now advertises v$NEW_VERSION (laest tilbage)"
   fi
 fi
 
