@@ -1,6 +1,8 @@
 // KILDE: https://developers.openai.com/codex/mcp (canonical; redirects to https://learn.chatgpt.com/docs/extend/mcp?surface=cli — verified 15/7: `codex mcp add <name> -- <command>` syntax, `~/.codex/config.toml` default path, `[mcp_servers.<name>]` TOML table, `/mcp` verify command, and config shared across ChatGPT desktop app / Codex CLI / IDE extension)
 
 # Install Browser MCP for OpenAI Codex
+*Suggested meta description: "Four steps, about 90 seconds. Codex drives the Chrome you are already signed in to, with your cookies and logged-in sessions intact."*
+
 
 **Give Codex control of your real, already-logged-in Chrome — about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank headless browser that gets blocked on every login wall.
 

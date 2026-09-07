@@ -1,6 +1,8 @@
 // KILDE: https://cursor.com/docs/mcp
 
 # Add Browser MCP to Cursor
+*Suggested meta description: "Four steps, about 60 seconds. Your agent controls your real, already-logged-in Chrome instead of a blank sandbox browser, so cookies and sessions just work."*
+
 
 **Give Cursor's agent control of your real, already-logged-in Chrome — about 60 seconds, four steps.**
 

@@ -1,4 +1,6 @@
 # Add Browser MCP to Claude Code
+*Suggested meta description: "Four steps, about a minute. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
+
 
 **Give Claude Code control of your real, already-logged-in Chrome — about a minute, four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
 

@@ -1,6 +1,8 @@
 // KILDE: https://zcode.z.ai/en/docs/mcp-services
 
 # Add Browser MCP to ZCode
+*Suggested meta description: "About 90 seconds. Your agent works in your real, already-logged-in Chrome instead of a separate browser, so nothing needs logging in twice."*
+
 
 **Give your ZCode agent control of your real, already-logged-in Chrome — install takes about 90 seconds.**
 
