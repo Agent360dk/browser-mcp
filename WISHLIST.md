@@ -74,6 +74,36 @@ Things we've intentionally decided **not** to do (so you don't have to ask twice
 Felt-fundene herunder, som handlingspunkter. Rækkefølgen er efter hvad der koster mest
 at undvære, ikke efter nummer.
 
+**Fra to uafhængige reviews af port-arbejdet 7/9 — seks fund lukket, disse står åbne:**
+
+- [ ] **Brugerens manuelle lukning af sidste fane sætter ikke fristen, hvis Chromes
+  baggrundsproces sover.** `tabs.onRemoved` itererer `sessions` direkte uden at genindlæse
+  dem først, så en vækket service-worker ser et tomt kort og gør ingenting. Agentens egen
+  `close_tab` rammer ikke hullet (den kommer som en kommando, der genindlæser først).
+  Præ-eksisterende, men det er halvdelen af frigivelsens præmis.
+- [ ] **Første kald efter en binding kan timeout med den forkerte fejltekst.** Uret starter
+  nu ved kaldet: binding → op til 2 s til udvidelsens næste scanning → probe → handshake,
+  som Chrome lovligt kan holde i 5 s. Budgettet er 7,5 s. Normalt rigeligt, men på en maskine
+  med 20 samtidige chats er marginen tynd — og beskeden er den værst mulige («installer
+  udvidelsen fra Chrome Web Store»). **Kan kun afgøres ved at køre det mod en rigtig Chrome
+  under load.**
+- [ ] **Fanegruppens navn og farve skifter efter hver frigivelse.** «Claude 3» bliver til
+  «Claude 1» når chatten kommer tilbage. Kosmetisk — men det er præcis det symptom der kostede
+  tre commits 21-22/8.
+- [ ] **Forældede `frigiv-<port>`-alarmer overlever portgenbrug.** Dør en chat inden fristen
+  udløber, ryddes alarmen aldrig; tager en anden chat porten, kan den fyre mod dens session.
+  Størrelses-tjekket fanger det, så værste udfald er selvhelbredende — men koblingen bør væk.
+- [ ] **Faner strander hvis `chrome.tabs.remove()` fejler i `releaseSession`.** Fejlen sluges,
+  og sessionen slettes alligevel. Præ-eksisterende, men nås nu ad en hyppigere vej.
+- [ ] **~120 mislykkede bindingsforsøg pr. værktøjskald når hele spændet er optaget** (målt).
+  **Bevidst ikke rettet:** kaskaden ER mekanismen der lader en sultet chat få en port i det
+  øjeblik en bliver fri. At dæmpe den ville svække selve rettelsen for at spare noget der
+  hverken koster ventetid eller hukommelse. Noteret som kendt støj.
+- [ ] **To tests måler svagere end de ser ud.** `terminate slipper porten` er en
+  kildetekst-søgning forklædt som adfærdstest (589 tegns slack — et ekstra kommentarafsnit
+  gør den rød uden at noget er i stykker). Og retry-testen beviser gentagelsen *inde i* ét
+  kald, ikke på tværs af to. Begge bør erstattes af procesbaserede tests.
+
 **Målt 31/8-2026 under live-test af forbrugeragenten.dk — tre ting kostede reelt tid:**
 
 - [ ] **Udvidelsen skal genindlæses i Chrome, før fane-fokus-rettelsen virker.** Svaret fra
