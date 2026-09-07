@@ -249,6 +249,29 @@ async function releaseSession(port) {
   const session = sessions.get(port);
   if (!session) return;
 
+  // ── Bad vi selv om frigivelsen? (FUNDET AF REVIEW 7/9) ────────────────────
+  //
+  // Vejen fra "sessionen er tom" til denne funktion gaar over mindst tre hop:
+  // sendMessage -> offscreen sender terminate og lukker WS -> ws.onclose ->
+  // session_disconnect. Aabner agenten en fane i de ~50 ms undervejs, lukkede
+  // oprydningen herunder DEN fane — paa grundlag af en beslutning der blev truffet
+  // foer fanen fandtes. Det er praecis "agenten holder pause og genoptager"-
+  // scenariet frigivelsen er bygget til at understoette.
+  //
+  // En UVENTET afbrydelse (chatten er vaek) skal stadig lukke fanerne — derfor
+  // skelnes der, i stedet for bare at tjekke om sessionen er tom.
+  if (frivilligtFrigivet.delete(port)) {
+    if (session.tabIds.size) {
+      // Sessionen arbejder igen. Behold den, saa naeste binding kan adoptere den
+      // (adoptOrphanedSession finder donorer med samme pid OG faner).
+      persistSessions();
+      return;
+    }
+    sessions.delete(port);
+    persistSessions();
+    return;
+  }
+
   // Detach debugger + close all session tabs
   const tabIds = [...session.tabIds];
   for (const tabId of tabIds) {
@@ -512,6 +535,10 @@ async function cdpSend(tabId, method, params = {}) {
 // Faner agenten selv lukkede via close_tab. En tom session betyder kun "arbejdet er slut"
 // hvis det var BRUGEREN der lukkede den sidste fane.
 const agentLukkedeFaner = new Set();
+// Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
+// Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
+// faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
+const frivilligtFrigivet = new Set();
 
 // ── Armerede dialog-haandterere, pr. fane ──────────────────────────────────────
 // MAALT 22/8 af flowtesten: handle_dialog var ubrugelig som den var skrevet. Den
@@ -554,6 +581,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
+      frivilligtFrigivet.add(port);
       chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
     } else if (session.tabIds.size === 0) {
       // ── Agenten lukkede selv sin sidste fane (MAALT 7/9-2026) ────────────────
@@ -3963,6 +3991,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         if (!gemt) return;                          // sessionen er reelt vaek
         if ((gemt.tabIds || []).length > 0) return; // den arbejder igen
       }
+      frivilligtFrigivet.add(port);
       chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
     })().catch(() => {});
   }

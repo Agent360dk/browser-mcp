@@ -151,6 +151,22 @@ const pending = new Map();
 // Timers hoisted to module scope so gracefulShutdown can clear them deterministically.
 let heartbeat = null;
 let parentCheck = null;
+let tomgangsvagt = null;
+
+// ── 4-timers-tomgangen bor paa modul-niveau, ikke i hjerteslaget ────────────
+//
+// FUNDET AF REVIEW 7/9. Tjekket laa INDE i `heartbeat`, som kun findes mens serveren
+// har en port — og som `frigivPort` rydder. Da porten blev doven, betoed det at en
+// proces der ALDRIG binder (en chat der ikke roerer browseren) heller aldrig faar
+// sin tomgang tjekket. Det var den eneste vej hvor en browser-inaktiv server gav sine
+// ~35 MB tilbage; med mange samtidige chats er det maalbart. Nu koerer vagten altid.
+// Graensen staar som literal, ikke bag en konstant: `vagter.test.mjs` laeser tallet
+// direkte ud af kilden for at haandhaeve at den aldrig bliver kort. En kort graense
+// ville lade en aaben chat miste browseren permanent — vaerre end en port der staar
+// optaget lidt for laenge.
+tomgangsvagt = setInterval(() => {
+  if (Date.now() - lastActivity > 4 * 60 * 60 * 1000) gracefulShutdown('Idle timeout (4h)');
+}, 60000);
 
 // ── WebSocket Server ───────────────────────────────────────────────────────
 
@@ -386,9 +402,6 @@ function createWSS(port = BASE_PORT) {
   if (heartbeat) clearInterval(heartbeat);
   heartbeat = setInterval(() => {
     for (const c of liveConnections()) c.ws.ping();
-    if (Date.now() - lastActivity > 4 * 60 * 60 * 1000) {
-      gracefulShutdown('Idle timeout (4h)');
-    }
   }, 20000);
 }
 
@@ -446,6 +459,17 @@ function sikrePort() {
   alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
   bindFejl = null;
   bindLoefte = new Promise((res) => { portResolver = res; });
+  // Vagthund. F8 var ét konkret hul hvor loeftet aldrig blev indfriet; det her lukker
+  // KLASSEN. Emitter en fremtidig fejlsti hverken 'listening' eller 'error', svarer
+  // kaldet nu med en fejl i stedet for at haenge tavst for evigt. 10 s er rigeligt:
+  // en loopback-binding tager millisekunder, og hele spaendet naas paa under ét.
+  const vagthund = setTimeout(() => {
+    if (!portResolver) return;
+    bindFejl = bindFejl || 'bindingen svarede ikke inden for 10 sekunder';
+    process.stderr.write('[MCP] port-bindingen svarede aldrig — opgiver dette forsoeg\n');
+    loesPortLoefte(false);
+  }, 10000);
+  bindLoefte.finally(() => clearTimeout(vagthund));
   createWSS();
   return bindLoefte;
 }
@@ -1095,6 +1119,7 @@ function gracefulShutdown(reason, code = 0) {
   // Stop timers so they can't re-enter gracefulShutdown
   if (parentCheck) clearInterval(parentCheck);
   if (heartbeat) clearInterval(heartbeat);
+  if (tomgangsvagt) clearInterval(tomgangsvagt);
 
   // Close WS with explicit close-frame so extension's onclose handler fires
   for (const c of liveConnections()) {

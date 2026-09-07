@@ -129,3 +129,45 @@ test('genstartet worker, men sessionen har faaet faner igen: der sker ingenting'
     'lytteren naaede aldrig frem — nul terminates er saa intet bevis');
   assert.equal(terminates(u).length, 0, 'en arbejdende session fik sin port revet vaek');
 });
+
+// ── Race-vinduet mellem "sessionen er tom" og selve frigivelsen ─────────────
+//
+// FUNDET AF REVIEW 7/9. Kaeden fra beslutning til handling er lang: alarm-tjek
+// (0 faner) -> sendMessage -> offscreen sender terminate + lukker WS -> ws.onclose
+// -> session_disconnect -> releaseSession(port) -> chrome.tabs.remove() paa ALT i
+// sessionen. `releaseSession` gen-tjekkede ikke tomhed. Aabnede agenten en fane i
+// de ~50 ms undervejs, blev DEN fane lukket. Vinduet er lille, men det er praecis
+// "agenten holder pause og genoptager"-scenariet frigivelsen er bygget til.
+test('en fane der dukker op midt i en frivillig frigivelse bliver IKKE lukket', async () => {
+  const { u, s } = medSession(70);
+  s.tabIds.clear();
+  u.optager.ryd();
+
+  // Fristen fyrer paa en tom session -> terminate sendes
+  await u.fyr('alarms.onAlarm', { name: `frigiv-${PORT}` });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(terminates(u).length, 1, 'forudsaetningen holder ikke: der blev ikke bedt om frigivelse');
+
+  // ... og imens naaede agenten at aabne en ny fane
+  await u.hent('addTabToSession')(PORT, 71);
+  u.optager.ryd();
+
+  // Nu lander WS-lukningen og udloeser oprydningen
+  await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
+  await new Promise((r) => setTimeout(r, 30));
+
+  const lukkede = u.optager.til('tabs.remove').map((b) => b.args[0]);
+  assert.ok(!lukkede.includes(71),
+    'agentens nye fane blev lukket af en frigivelse der var besluttet foer den fandtes');
+});
+
+test('en UVENTET afbrydelse rydder stadig op — faner lukkes', async () => {
+  // Modstykket til testen ovenfor. Skelnen mellem frivillig og uventet frigivelse maa
+  // ikke goere den aegte oprydning tavs: doer chatten, skal dens faner stadig lukkes.
+  const { u } = medSession(80);
+  u.optager.ryd();
+  await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
+  await new Promise((r) => setTimeout(r, 30));
+  const lukkede = u.optager.til('tabs.remove').map((b) => b.args[0]);
+  assert.deepEqual(lukkede, [80], 'en doed chats faner blev efterladt aabne');
+});
