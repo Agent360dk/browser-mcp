@@ -133,15 +133,43 @@ test('server-instruktionerne naevner de vaerktoejer der skal kaldes af sig selv'
 //   saa den doede paa "Cannot read properties of undefined" ved hvert eneste kald.
 // Samme fejlklasse som klikket der svarede ok:true uden at siden reagerede.
 
+// Henter en hel `case '<navn>'`-blok ud af udvidelsen ved dens EGNE graenser — fra case'et
+// til det naeste. Et fast antal tegn (`slice(i, i + 3200)`) gaar tavst i stykker den dag
+// nogen skriver et kommentar-afsnit ind: assertionen falder uden at noget er brudt. Maalt
+// 8/9, hvor praecis det skete for select_option-vagten (jf. issue #14).
+function caseBlok(kilde, navn) {
+  const start = kilde.indexOf(`case '${navn}'`);
+  if (start < 0) return '';
+  const naeste = kilde.indexOf("\n      case '", start + 10);
+  return kilde.slice(start, naeste > start ? naeste : start + 8000);
+}
+
 test('select_option kaster ikke resultatet af sit eget valg vaek', () => {
-  const i = bgSrc.indexOf("case 'select_option'");
-  const blok = bgSrc.slice(i, i + 3200);
+  const blok = caseBlok(bgSrc, 'select_option');
+  assert.ok(blok.length > 500, 'select_option-blokken kunne ikke findes');
   assert.ok(!/return \{ ok: true, type: 'native_select' \};/.test(blok),
     'ubetinget ok:true er tilbage — vaerktoejet kan lyve om at have valgt noget');
   assert.match(blok, /if \(!r\.found\) return \{ ok: false/, 'et manglende match skal give ok:false');
-  assert.match(blok, /r\.actual !== r\.wanted/,
-    'der skal laeses TILBAGE fra feltet — en React-styret select kan rulle valget tilbage');
+  assert.match(blok, /r\.actual === r\.wanted|r\.actual !== r\.wanted/,
+    'der skal laeses TILBAGE fra feltet — en select kan rulle valget tilbage');
   assert.match(blok, /available/, 'ved manglende match skal de mulige valg med, ellers kan agenten ikke rette sig selv');
+});
+
+// MAALT 8/9 paa forbrugeragenten.dk/penge-tilbage: vagten ovenfor var for skarp. Den
+// laeste feltet SYNKRONT efter dispatch og kaldte enhver afvigelse "rullet tilbage" — men
+// et styret felt der ARBEJDER ser praecis saadan ud (onChange gemmer valget et andet sted
+// og nulstiller sin egen value). Vaerktoejet svarede ok:false om et valg der landede;
+// chippen "Norlys Energi ×" stod paa siden bagefter. Den omvendte udgave af issue #19.
+test('en select der nulstiller sig selv, men aendrer siden, regnes som lykkedes', () => {
+  const blok = caseBlok(bgSrc, 'select_option');
+  assert.match(blok, /aftryk/,
+    'der tages ikke et aftryk af siden — saa kan "rullet tilbage" ikke skelnes fra "komponenten gik videre"');
+  assert.match(blok, /e\.aftryk !== r\.foer/,
+    'aftrykket sammenlignes ikke — vagten kan stadig kalde et vellykket valg for en rollback');
+  const iRollback = blok.indexOf('Valget blev rullet tilbage');
+  assert.ok(iRollback > -1, 'rollback-beskeden findes ikke laengere');
+  assert.match(blok.slice(iRollback, iRollback + 300), /intet andet paa siden aendrede sig/,
+    'rollback maa kun meldes naar INTET andet aendrede sig — ellers er det en falsk negativ');
 });
 
 test('upload_file pakker DOM.getDocument ud som CDP faktisk svarer', () => {

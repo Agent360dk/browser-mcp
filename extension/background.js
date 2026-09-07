@@ -3078,6 +3078,20 @@ async function dispatch(port, method, params) {
         // INTET, og svaret sagde stadig at det var lykkedes. Samme fejlklasse som klikket
         // der svarede ok:true uden at siden reagerede. Nu laeses svaret, og der laeses
         // TILBAGE fra feltet bagefter, saa "valgt" betyder at vaerdien faktisk staar der.
+        // MAALT 8/9 paa forbrugeragenten.dk/penge-tilbage: her laa en anden fejl af samme
+        // familie. Vagten laeste `sel.value` SYNKRONT lige efter dispatch og kaldte enhver
+        // afvigelse "rullet tilbage". Men et React-styret felt der ARBEJDER ser praecis
+        // saadan ud: onChange koerer, komponenten gemmer valget et andet sted og nulstiller
+        // sin egen `value`. Vi maalte altsaa succes som fiasko — og sagde ok:false om et
+        // valg der faktisk landede (chippen "Norlys Energi ×" stod paa siden bagefter).
+        //
+        // Det er den omvendte udgave af issue #19, og rettelsen er den samme som issuet
+        // beder om: maal EFFEKTEN, ikke feltet. Aendrede resten af siden sig, gjorde
+        // komponenten sit arbejde — uanset hvad feltet staar paa nu.
+        const aftryk = `(function(el){
+          return el.options.length + '|' + (el.form ? el.form.innerText.length : document.body.innerText.length);
+        })(document.querySelector(${JSON.stringify(params.selector)}))`;
+
         const valg = await debuggerEval(tab.id, `
           (function() {
             const sel = document.querySelector(${JSON.stringify(params.selector)});
@@ -3090,20 +3104,44 @@ async function dispatch(port, method, params) {
               return JSON.stringify({ found: false, error: 'Ingen mulighed matchede: ' + oensket,
                 available: Array.from(sel.options).map(o => o.text.trim()).slice(0, 25) });
             }
+            const foer = ${aftryk};
             sel.value = opt.value;
             sel.dispatchEvent(new Event('input', { bubbles: true }));
             sel.dispatchEvent(new Event('change', { bubbles: true }));
-            return JSON.stringify({ found: true, wanted: opt.value, actual: sel.value, text: opt.text.trim() });
+            return JSON.stringify({ found: true, wanted: opt.value, actual: sel.value, text: opt.text.trim(), foer });
           })()
         `);
         let r; try { r = JSON.parse(valg); } catch { r = null; }
         if (!r) return { ok: false, type: 'native_select', error: 'Kunne ikke laese resultatet af valget' };
         if (!r.found) return { ok: false, type: 'native_select', error: r.error, available: r.available };
-        if (r.actual !== r.wanted) {
-          // Reagerede siden ved at rulle valget tilbage (React-styret select), skal det siges.
-          return { ok: false, type: 'native_select', error: `Valget blev rullet tilbage: satte "${r.wanted}", feltet staar paa "${r.actual}"` };
+
+        if (r.actual === r.wanted) return { ok: true, type: 'native_select', selected: r.text, value: r.actual };
+
+        // Feltet holder ikke vaerdien. Giv rammen tid til at gen-rendere, og se saa efter
+        // om NOGET andet aendrede sig. Gjorde det det, blev valget taget imod.
+        await new Promise((res) => setTimeout(res, 150));
+        const efter = await debuggerEval(tab.id, `
+          (function() {
+            const sel = document.querySelector(${JSON.stringify(params.selector)});
+            if (!sel) return JSON.stringify({ vaerdi: null, aftryk: null });
+            return JSON.stringify({ vaerdi: sel.value, aftryk: ${aftryk} });
+          })()
+        `);
+        let e; try { e = JSON.parse(efter); } catch { e = null; }
+
+        if (e && e.vaerdi === r.wanted) {
+          return { ok: true, type: 'native_select', selected: r.text, value: e.vaerdi };
         }
-        return { ok: true, type: 'native_select', selected: r.text, value: r.actual };
+        if (e && e.aftryk && r.foer && e.aftryk !== r.foer) {
+          return {
+            ok: true, type: 'native_select', selected: r.text, value: e.vaerdi,
+            note: `Feltet nulstillede sig selv til "${e.vaerdi}", men siden reagerede — ` +
+                  'et styret felt der gemmer valget et andet sted. Valget landede.',
+          };
+        }
+        return { ok: false, type: 'native_select',
+          error: `Valget blev rullet tilbage: satte "${r.wanted}", feltet staar paa "${e ? e.vaerdi : r.actual}", ` +
+                 'og intet andet paa siden aendrede sig.' };
       }
 
       // Custom dropdown (Angular Material, React Select, etc.)
