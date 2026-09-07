@@ -129,6 +129,15 @@ try {
   const alle = liste.result.tools.map(t => t.name);
   console.log(`\nServeren udstiller ${alle.length} vaerktoejer. Fixture: ${BASE}\n`);
 
+  // ── Bed om browseren FOER der ventes paa den (MAALT 7/9) ──────────────────
+  //
+  // Serveren binder ikke laengere en port ved opstart, men ved foerste browser-kald.
+  // Uden det her kald bandt flow-testens server aldrig en port, udvidelsen havde
+  // ingenting at forbinde til, og testen ventede sig selv ihjel — hvorefter
+  // udgivelsen blev afvist af sin egen spaerre. Kaldet fyres uden at afvente svar:
+  // dets eneste formaal er at aabne doeren, og det fejler indtil udvidelsen er inde.
+  rpc('tools/call', { name: 'browser_list_tabs', arguments: {} }).catch(() => {});
+
   process.stdout.write('Venter paa at Chrome-udvidelsen forbinder');
   const frist = Date.now() + VENT_PAA_UDVIDELSE_MS;
   while (!udvidelseKlar && Date.now() < frist) { await new Promise(r => setTimeout(r, 1000)); process.stdout.write('.'); }
