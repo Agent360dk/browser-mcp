@@ -931,7 +931,11 @@ async function handleProvideFeedback(args) {
       'Det skal brugeren selv goere — chrome:// kan ikke styres herfra. Behold den nyeste.',
     );
   }
-  if (!active) {
+  if (!active && activePort === null) {
+    // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
+    // i stykker, og et fix-skridt her ville vaere en falsk alarm — se verdict 'idle'.
+    findings.push('Browseren er ikke taget i brug i denne chat endnu, saa der er ingen forbindelse at maale paa. Det er ikke en fejl.');
+  } else if (!active) {
     findings.push('Ingen Chrome-udvidelse er forbundet til denne MCP-server lige nu.');
     fix_steps.push('Tjek at Chrome koerer og at udvidelsen er slaaet til paa chrome://extensions, klik derefter paa ikonet → Reconnect.');
   }
@@ -962,9 +966,24 @@ async function handleProvideFeedback(args) {
     );
   }
 
+  // ── "ingen forbindelse" og "ingen port endnu" er IKKE det samme ────────────
+  //
+  // FUNDET AF REVIEW 7/9. Foer porten blev doven, bandt hver server ved opstart, saa
+  // udvidelsen var altid forbundet naar dette vaerktoej blev kaldt — og `!active`
+  // betoed derfor paalideligt "udvidelsen kan ikke naas". Nu binder en chat foerst en
+  // port naar den bruger browseren, saa en HELT SUND chat der ikke har roert den kan
+  // staa uden forbindelse. Uden det her skel fik den `disconnected` + fix_steps der
+  // bad brugeren geninstallere — og INSTRUCTIONS beder agenten viderebringe dem.
+  // Vi ville altsaa fortaelle folk at deres installation var i stykker, fordi vi selv
+  // endnu ikke havde aabnet doeren.
+  //
+  // Loesningen er ikke at binde en port her (et diagnose-vaerktoej skal ikke aendre
+  // tilstand for at kunne maale den) — det er at sige praecis hvad der er tilfaeldet.
+  const ingenPortEndnu = activePort === null;
   const verdict =
     exts.length > 1 ? 'conflict'
     : (serverOutdated || extOutdated) ? 'outdated'
+    : (!active && ingenPortEndnu) ? 'idle'
     : !active ? 'disconnected'
     : (npmLatest === null ? 'unknown' : 'current');
 
@@ -1004,7 +1023,11 @@ async function handleProvideFeedback(args) {
     `&title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
 
   const instruction =
-    verdict === 'conflict' || verdict === 'outdated' || verdict === 'disconnected'
+    verdict === 'idle'
+      ? 'Browseren er ikke taget i brug i denne chat endnu, saa der er intet at diagnosticere paa forbindelsen — ' +
+        'det er IKKE en fejl i installationen, og du maa ikke sige det til brugeren. ' +
+        'Er der en aegte mangel, saa tilbyd submit_url som et klikbart link.'
+    : verdict === 'conflict' || verdict === 'outdated' || verdict === 'disconnected'
       ? 'Fortael brugeren hvad der blev fundet, og giv fix_steps som konkrete skridt. Proev derefter handlingen igen. ' +
         'Del KUN submit_url hvis problemet stadig staar efter at fix_steps er fulgt — det er sandsynligvis installationen, ikke en fejl i Browser MCP.'
       : 'Installationen er frisk, saa det her er sandsynligvis en aegte mangel eller fejl. Fortael brugeren kort hvad der ikke kunne lade sig goere, ' +

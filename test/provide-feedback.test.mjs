@@ -37,7 +37,7 @@ const ext = (version, id) => ({ ws: { readyState: AABEN }, seq: ++seq, extension
 
 // Bygger handleProvideFeedback med kontrolleret omverden: hvilke udvidelser der er
 // forbundet, hvad npm siger, og hvilken version serveren selv har.
-function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')] } = {}) {
+function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')], activePort = 9876 } = {}) {
   const connections = new Set(udvidelser);
   // fingeraftryk/afkortUrl/skrivTilLogbog hentes ud af den RIGTIGE kilde. Kun
   // filsystemet stubbes — ellers ville testen maale sin egen attrap i stedet for
@@ -63,7 +63,7 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
      return handleProvideFeedback;`,
   );
   const h = fabrik(
-    connections, serverVersion, 9876,
+    connections, serverVersion, activePort,
     'https://github.com/Agent360dk/browser-mcp',
     { wish: 'wish.yml', use_case: 'use-case.yml', bug: 'bug.yml' },
     async () => npmLatest,
@@ -286,4 +286,28 @@ test('butiks-brugere faar et raad der kan foelges i review-vinduet', async () =>
 test('en kendt version faar det korte raad, ikke butiks-forklaringen', async () => {
   const r = await byg({ serverVersion: '1.28.0', udvidelser: [ext('1.26.0', 'a')] })({ what_happened: 'x' });
   assert.ok(!r.fix_steps.join(' ').includes('review'), 'butiks-forklaringen gives til en der ikke skal have den');
+});
+
+// ── "endnu ikke brugt" er ikke "i stykker" ─────────────────────────────────
+//
+// FUNDET AF REVIEW 7/9. Da porten blev doven (den bindes nu ved foerste browser-kald
+// i stedet for ved opstart), kunne en HELT SUND chat staa uden forbindelse — og
+// verdict'et var `disconnected` med fix_steps der bad brugeren geninstallere.
+// INSTRUCTIONS beder agenten viderebringe netop de skridt, saa vi ville fortaelle
+// folk at deres installation var i stykker fordi vi selv ikke havde aabnet doeren.
+test('ingen port taget endnu → idle, ikke disconnected, og ingen fix-skridt', async () => {
+  const kald = byg({ udvidelser: [], activePort: null });
+  const r = await kald({ what_happened: 'noget gik galt' });
+  assert.equal(r.verdict, 'idle', 'en sund chat der ikke har roert browseren blev meldt i stykker');
+  assert.deepEqual(r.fix_steps, [], 'der blev givet fix-skridt paa en installation der fejler intet');
+  assert.equal(r.environment.ws_port, null);
+  assert.ok(!/Reconnect|chrome:\/\/extensions/.test(JSON.stringify(r.findings)),
+    'findings sender stadig brugeren i gang med at reparere noget der virker');
+});
+
+test('port taget, men udvidelsen svarer ikke → stadig disconnected', async () => {
+  const kald = byg({ udvidelser: [], activePort: 9876 });
+  const r = await kald({ what_happened: 'noget gik galt' });
+  assert.equal(r.verdict, 'disconnected', 'den aegte fejltilstand blev tavs af rettelsen');
+  assert.ok(r.fix_steps.length > 0, 'en aegte afbrudt forbindelse skal stadig give skridt');
 });
