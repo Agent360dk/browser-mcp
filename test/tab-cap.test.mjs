@@ -68,8 +68,16 @@ test('portspaendet tillader lige saa mange sessioner som loftet tillader faner',
 test('serveren scanner det samme portspaend som udvidelsen', () => {
   const srv = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
   const off = readFileSync(join(rod, 'extension/offscreen.js'), 'utf8');
-  assert.equal(srv.match(/const BASE_PORT = (\d+);/)[1], off.match(/const BASE_PORT = (\d+);/)[1]);
-  assert.equal(srv.match(/const MAX_PORT = (\d+);/)[1], off.match(/const MAX_PORT = (\d+);/)[1],
+  // Serveren fik 7/9 en env-override paa spaendet, saa port-testen kan koere uden at
+  // beslaglaegge brugerens rigtige porte. STANDARDEN — tallet efter `||` — skal stadig
+  // vaere den samme som udvidelsens, ellers findes der servere den aldrig forbinder til.
+  const tal = (kilde, navn) => {
+    const m = kilde.match(new RegExp(`const ${navn} = (?:[^;]*\\|\\| )?(\\d+);`));
+    assert.ok(m, `${navn} kunne ikke laeses — er formen aendret?`);
+    return m[1];
+  };
+  assert.equal(tal(srv, 'BASE_PORT'), tal(off, 'BASE_PORT'));
+  assert.equal(tal(srv, 'MAX_PORT'), tal(off, 'MAX_PORT'),
     'driver spaendene fra hinanden, findes servere som udvidelsen aldrig forbinder til');
 });
 

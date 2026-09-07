@@ -39,8 +39,11 @@ const repoDir = dirname(__dirname); // parent of mcp-server/
 // `npx @agent360/browser-mcp@latest` opdaterer allerede serveren; blokken var overfloedig.
 let extensionUpdated = false;
 
-const BASE_PORT = 9876;
-const MAX_PORT = 9895; // 20 ports instead of 10 — zombies die within 5s via parent check
+// Spaendet kan flyttes med env — ellers ville en test af port-udsultning skulle
+// beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.
+// Uden env er vaerdierne uaendrede. (Samme moenster som BROWSER_MCP_EXTENSION_ID.)
+const BASE_PORT = Number(process.env.BROWSER_MCP_BASE_PORT) || 9876;
+const MAX_PORT = Number(process.env.BROWSER_MCP_MAX_PORT) || 9895; // 20 ports instead of 10 — zombies die within 5s via parent check
 
 // ── Extension connections ───────────────────────────────────────────────────
 // FEJL MAALT 21/8: her stod `let extensionSocket = null`, og hver ny forbindelse
@@ -187,6 +190,7 @@ function createWSS(port = BASE_PORT) {
           // sendToExtension, saa agenten kan give brugeren den rigtige forklaring.
           alleePorteOptaget = true;
         process.stderr.write(`[MCP] All ports ${BASE_PORT}-${MAX_PORT} in use. Cannot start.\n`);
+        loesPortLoefte(false);
       }
     } else {
       process.stderr.write(`[MCP] WebSocket error: ${err.message}\n`);
@@ -305,7 +309,11 @@ function createWSS(port = BASE_PORT) {
           process.stderr.write('[MCP] terminate ignoreret — kom fra en inaktiv udvidelses-forbindelse\n');
           return;
         }
-        gracefulShutdown('Terminate signal from extension (last tab closed)');
+        // AENDRET 7/9: her stod `gracefulShutdown`. En chat der var faerdig med browseren
+        // mistede altsaa browseren HELT — og porten blev alligevel hverken frigivet hurtigt
+        // nok til andre (processen doede foerst efter oprydning) eller genvundet af chatten
+        // selv. Nu slippes kun porten; naeste browser-kald tager en ny (se sikrePort).
+        frigivPort('udvidelsen meldte: sidste fane lukket');
         return;
       }
 
@@ -359,9 +367,13 @@ function createWSS(port = BASE_PORT) {
   server.on('listening', () => {
     activePort = port;
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
+    loesPortLoefte(true);
   });
 
   // Heartbeat + idle timeout (4 hours) — hoisted to module scope so gracefulShutdown can clear it
+  // Ryddes foerst: porten kan bindes flere gange i samme proces (se sikrePort), og uden
+  // det her ville hver ny binding efterlade en ekstra timer der aldrig blev stoppet.
+  if (heartbeat) clearInterval(heartbeat);
   heartbeat = setInterval(() => {
     for (const c of liveConnections()) c.ws.ping();
     if (Date.now() - lastActivity > 4 * 60 * 60 * 1000) {
@@ -370,11 +382,69 @@ function createWSS(port = BASE_PORT) {
   }, 20000);
 }
 
-createWSS();
+// ── Porten tages ved BRUG, ikke ved opstart ─────────────────────────────────
+//
+// MAALT 7/9-2026 paa Gustavs maskine: 37 koerende servere, 20 porte i spaendet, 17 chats
+// helt uden browser. Hver Claude Code-chat starter en server ved opstart — ogsaa de mange
+// chats der aldrig roerer browseren — og her stod `createWSS()` paa modul-niveau. Porten
+// blev altsaa reserveret af en chat der maaske aldrig fik brug for den, og holdt indtil
+// chatten doede eller 4-timers-tomgangen udloeb.
+//
+// Konsekvensen var ensidigt slem: chat nr. 21 fik `alleePorteOptaget = true` ÉN gang og
+// proevede aldrig igen — dens browser var doed hele chattens levetid, selv naar en port
+// blev fri et minut senere.
+//
+// Nu bindes porten foerste gang et vaerktoej faktisk skal bruge udvidelsen, og HVERT kald
+// proever igen hvis det forrige ikke fik en. Udvidelsen genscanner hele spaendet hvert
+// 2. sekund (offscreen.js), saa en port der aabnes sent bliver fundet af sig selv.
+//
+// Bemaerk hvorfor det ikke er en 5-minutters timer der draeber processen: en chat der
+// foerst skal bruge browseren efter en halv time ville saa staa uden. Processen lever
+// videre — det er kun PORTEN der ikke holdes reserveret til noget der ikke sker.
+let portResolver = null;
+let bindLoefte = null;
+
+function loesPortLoefte(fik) {
+  if (!portResolver) return;
+  const r = portResolver;
+  portResolver = null;
+  bindLoefte = null;
+  r(fik);
+}
+
+// Slip porten, men BLIV I LIVE. Forskellen er hele pointen: lukkede vi processen ned,
+// ville en chat der er faerdig med browseren kl. 10 og skal bruge den igen kl. 10:40 staa
+// uden — og Claude Code genstarter ikke en MCP-server midt i en samtale. Processen koster
+// ~35 MB og ingen port; det er porten der er den knappe ressource.
+function frigivPort(grund) {
+  if (activePort === null) return;
+  process.stderr.write(`[MCP] frigiver port ${activePort} — ${grund}\n`);
+  if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+  const gammel = wss;
+  wss = null;
+  activePort = null;
+  laastForbindelse = null;
+  harSendtKommando = false;          // naeste binding vaelger udvidelse forfra
+  for (const c of connections) { try { c.ws.close(); } catch {} }
+  connections.clear();
+  try { gammel?.close(); } catch {}
+}
+
+function sikrePort() {
+  if (activePort !== null) return Promise.resolve(true);
+  if (bindLoefte) return bindLoefte;              // en binding er allerede i gang
+  alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
+  bindLoefte = new Promise((res) => { portResolver = res; });
+  createWSS();
+  return bindLoefte;
+}
 
 // ── Send command to extension ───────────────────────────────────────────────
 
 async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5) {
+  // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
+  // Fik vi ingen (hele spaendet optaget), proever naeste kald igen — derfor ingen kast her.
+  await sikrePort();
   // Retry if extension is temporarily disconnected (reconnects every 2s)
   const conn = activeConnection();
   if (!conn) {
@@ -387,10 +457,11 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // between them. Say which, and where to get it — the agent relays this text to the user.
     if (alleePorteOptaget) {
       throw new Error(
-        `Alle porte ${BASE_PORT}-${MAX_PORT} er optaget, saa denne server fik aldrig en port. ` +
+        `Alle porte ${BASE_PORT}-${MAX_PORT} er optaget lige nu, saa dette kald fik ingen port. ` +
         'Det er IKKE et problem med Chrome eller udvidelsen — de virker fint.\n' +
-        `Du har ${MAX_PORT - BASE_PORT + 1} chats i gang der bruger browseren samtidig. ` +
-        'Luk en af dem — pladsen frigives inden for faa sekunder — og genstart saa denne chat.\n' +
+        `${MAX_PORT - BASE_PORT + 1} andre chats bruger browseren i oejeblikket. ` +
+        'Luk en af dem, eller vent til en bliver faerdig — og proev saa kommandoen igen. ' +
+        'Denne chat skal IKKE genstartes: hvert kald proever selv at faa en port.\n' +
         'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
       );
     }

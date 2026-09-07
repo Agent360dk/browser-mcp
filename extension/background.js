@@ -211,6 +211,8 @@ async function evictOldestTabs(session, justAddedTabId) {
 async function addTabToSession(port, tabId) {
   const session = getSession(port);
   session.tabIds.add(tabId);
+  // Sessionen lever igen — aflys en eventuel port-frigivelse (se tabs.onRemoved).
+  chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
 
   // LRU eviction: når sessionen overstiger cap, luk de ældste tabs.
   if (session.tabIds.size > MAX_TABS_PER_SESSION) {
@@ -553,6 +555,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
       chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+    } else if (session.tabIds.size === 0) {
+      // ── Agenten lukkede selv sin sidste fane (MAALT 7/9-2026) ────────────────
+      // Her stod der intet, og det var med vilje: en agent der lukker en fane midt i
+      // et forloeb skal ikke miste browseren. Men serverens EGEN instruks siger til
+      // hver eneste agent: "ALWAYS close tabs when done". Hver velopdragen chat endte
+      // altsaa med at holde sin port til 4-timers-tomgangen udloeb — den dokumenterede
+      // god-praksis slog oprydningen ihjel, og 20 porte kunne staa optaget af chats
+      // der for laengst var faerdige.
+      //
+      // Nu: fem minutters henstand. Kommer der en ny fane inden da, aflyses den
+      // (se getSessionTab). Sker der intet, bedes serveren slippe porten — den DOER
+      // ikke, saa chatten kan hente browseren tilbage naar som helst.
+      //
+      // chrome.alarms og ikke setTimeout: en MV3-service-worker suspenderes, og en
+      // timer ville forsvinde med den.
+      chrome.alarms.create(`frigiv-${port}`, { delayInMinutes: 5 });
+      persistSessions();
     } else {
       persistSessions();
     }
@@ -3918,5 +3937,18 @@ chrome.alarms.get('ensure-offscreen', (eksisterende) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'ensure-offscreen') {
     ensureOffscreen().catch(console.error);
+  }
+  if (alarm.name.startsWith('frigiv-')) {
+    const port = Number(alarm.name.slice('frigiv-'.length));
+    // Sessions genindlaeses foerst: service-workeren kan vaere genstartet siden alarmen
+    // blev sat, og et tomt kort ville se ud som "ingen faner" for ENHVER session.
+    restoreSessions()
+      .then(() => {
+        const s = sessions.get(port);
+        if (!s) return;                       // sessionen er allerede vaek
+        if (s.tabIds.size > 0) return;        // den arbejder igen — lad den vaere
+        chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      })
+      .catch(() => {});
   }
 });

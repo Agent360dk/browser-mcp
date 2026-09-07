@@ -1,0 +1,143 @@
+/**
+ * Porten tages ved BRUG — ikke ved opstart. Og en sultet server proever igen.
+ *
+ * MAALT 7/9-2026 paa Gustavs maskine: 37 koerende servere, alle 20 porte i spaendet
+ * optaget, 17 chats helt uden browser. Aarsagen var to ting der forstaerkede hinanden:
+ *
+ *   1. `createWSS()` stod paa modul-niveau, saa HVER chat tog en port ved opstart —
+ *      ogsaa de mange chats der aldrig roerte browseren.
+ *   2. Naar spaendet var fuldt, satte serveren `alleePorteOptaget = true` ÉN gang og
+ *      proevede aldrig igen. Chattens browser var doed hele dens levetid.
+ *
+ * Denne test starter AEGTE serverprocesser. De oevrige tests i mappen laeser kildeteksten,
+ * og det kan ikke skelne "porten bindes ikke ved opstart" fra "linjen er flyttet".
+ *
+ * Testen bruger sit EGET portspaend via env, saa den ikke beslaglaegger de rigtige porte
+ * og sulter brugerens oevrige chats mens den koerer.
+ */
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import net from 'node:net';
+import { fileURLToPath } from 'node:url';
+
+const SRV = fileURLToPath(new URL('../mcp-server/index.js', import.meta.url));
+const BASE = 19876, MAX = 19880;          // 5 porte — nok til at fylde spaendet hurtigt
+const ENV = { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) };
+
+const boerneprocesser = [];
+const blokke = [];
+after(() => {
+  for (const p of boerneprocesser) { try { p.kill('SIGKILL'); } catch {} }
+  for (const b of blokke) { try { b.close(); } catch {} }
+});
+
+const vent = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function lytter(port) {
+  return new Promise((res, rej) => {
+    const s = net.createServer(() => {});
+    s.once('error', rej);
+    s.listen(port, '127.0.0.1', () => res(s));
+  });
+}
+
+function erOptaget(port) {
+  return new Promise((res) => {
+    const s = net.connect({ port, host: '127.0.0.1' });
+    s.once('connect', () => { s.destroy(); res(true); });
+    s.once('error', () => res(false));
+  });
+}
+
+async function optagne() {
+  const ude = [];
+  for (let p = BASE; p <= MAX; p++) if (await erOptaget(p)) ude.push(p);
+  return ude;
+}
+
+function start() {
+  const p = spawn(process.execPath, [SRV], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });
+  p.stderr.on('data', () => {});   // serveren skriver diagnostik; testen laeser svarene paa stdout
+  boerneprocesser.push(p);
+  return p;
+}
+
+let n = 0;
+function send(p, method, params) {
+  p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: ++n, method, params }) + '\n');
+  return n;
+}
+
+/** Kalder et browser-vaerktoej og returnerer svarteksten (fejl ELLER resultat). */
+function browserKald(p, timeoutMs = 20000) {
+  const id = send(p, 'tools/call', { name: 'browser_list_tabs', arguments: {} });
+  return new Promise((res) => {
+    let buf = '';
+    const ur = setTimeout(() => res('TIMEOUT'), timeoutMs);
+    p.stdout.on('data', (d) => {
+      buf += d;
+      for (const linje of buf.split('\n')) {
+        if (!linje.trim()) continue;
+        let m; try { m = JSON.parse(linje); } catch { continue; }
+        if (m.id !== id) continue;
+        clearTimeout(ur);
+        res(JSON.stringify(m));
+      }
+    });
+  });
+}
+
+async function haandtryk(p) {
+  send(p, 'initialize', {
+    protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' },
+  });
+  await vent(600);
+  p.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+  await vent(200);
+}
+
+test('en server der aldrig bruger browseren tager ingen port', async () => {
+  const foer = await optagne();
+  const p = start();
+  await haandtryk(p);
+  await vent(2500);                       // rigeligt: den gamle kode bandt inden for ~50 ms
+  assert.deepEqual(await optagne(), foer,
+    'serveren tog en port uden at et eneste browser-vaerktoej var kaldt');
+});
+
+test('foerste browser-kald tager porten', async () => {
+  const foer = await optagne();
+  const p = start();
+  await haandtryk(p);
+  // Skal stadig staa uden port PAA DETTE TIDSPUNKT — ellers maaler resten ingenting.
+  await vent(1500);
+  assert.deepEqual(await optagne(), foer, 'porten var taget allerede foer kaldet');
+
+  browserKald(p);                         // svaret er ligegyldigt — der er ingen udvidelse
+  let efter = foer;
+  for (let i = 0; i < 30 && efter.length === foer.length; i++) { await vent(200); efter = await optagne(); }
+  assert.equal(efter.length, foer.length + 1, 'foerste browser-kald bandt ingen port');
+});
+
+test('en sultet server faar en port naar en bliver fri — uden genstart', async () => {
+  for (let port = BASE; port <= MAX; port++) {
+    if (!(await erOptaget(port))) blokke.push(await lytter(port));
+  }
+  assert.equal((await optagne()).length, MAX - BASE + 1, 'spaendet blev ikke fyldt');
+
+  const p = start();
+  await haandtryk(p);
+
+  const svar = browserKald(p, 25000);
+  await vent(2000);                       // serveren har nu proevet og fejlet mindst én gang
+  const frigivet = blokke.pop();
+  const friPort = frigivet.address().port;
+  await new Promise((r) => frigivet.close(r));
+
+  const tekst = await svar;
+  assert.ok(!/Alle porte/.test(tekst),
+    'serveren gav op paa portene i stedet for at proeve igen da en blev fri: ' + tekst.slice(0, 300));
+  assert.ok(await erOptaget(friPort),
+    'den frigivne port blev ikke taget af den ventende server');
+});
