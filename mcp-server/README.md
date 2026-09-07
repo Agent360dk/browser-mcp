@@ -127,7 +127,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome | Headless (new session) | Your real Chrome |
-| **Maintained** | Actively — latest release v1.25.0 (2026-07-24) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively — latest release v1.29.0 (2026-09-07) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Already authenticated | Must log in every time | Already authenticated |
 | **Multi-session** | 20 concurrent sessions with color-coded tab groups | Single session | Single session |
 | **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
