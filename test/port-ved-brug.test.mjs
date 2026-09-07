@@ -141,3 +141,28 @@ test('en sultet server faar en port naar en bliver fri — uden genstart', async
   assert.ok(await erOptaget(friPort),
     'den frigivne port blev ikke taget af den ventende server');
 });
+
+// ── Bind-fejl der IKKE er "porten er optaget" ───────────────────────────────
+//
+// FUNDET AF REVIEW 7/9. Da porten blev doven, blev en gammel harmloes stderr-linje
+// til en permanent deadlock: `createWSS`s error-handler loeste kun port-loeftet i
+// EADDRINUSE-grenen. Enhver anden bind-fejl (EACCES paa en privilegeret port,
+// EADDRNOTAVAIL, en firewall) efterlod loeftet pending — og `sendToExtension` venter
+// paa det UDEN timeout. Resultatet var at hvert eneste browser-kald haengte tavst,
+// uden fejlbesked, indtil agenten selv gav op. At haenge uden besked er vaerre end
+// den fejl vi rettede.
+test('bind-fejl der ikke er "optaget" giver en FEJL, ikke en evig venten', async () => {
+  const p = spawn(process.execPath, [SRV], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    // Port 80 kraever root. Som almindelig bruger giver bind EACCES — ikke EADDRINUSE.
+    env: { ...process.env, BROWSER_MCP_BASE_PORT: '80', BROWSER_MCP_MAX_PORT: '80' },
+  });
+  p.stderr.on('data', () => {});
+  boerneprocesser.push(p);
+  await haandtryk(p);
+
+  const svar = await browserKald(p, 15000);
+  assert.notEqual(svar, 'TIMEOUT', 'kaldet haengte i stedet for at fejle — det er deadlocken');
+  assert.match(svar, /kunne ikke aabne en port|Alle porte/,
+    'kaldet svarede, men ikke med en forklaring paa at bindingen fejlede: ' + svar.slice(0, 200));
+});

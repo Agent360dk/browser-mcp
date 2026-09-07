@@ -61,6 +61,7 @@ const connections = new Set(); // { ws, seq, extensionId, version, name, since }
 let connSeq = 0;
 let activePort = null;
 let alleePorteOptaget = false;   // hele spaendet i brug — se createWSS
+let bindFejl = null;             // bind fejlede af en ANDEN grund end optaget port
 
 function cmpVersion(a, b) {
   const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
@@ -193,7 +194,16 @@ function createWSS(port = BASE_PORT) {
         loesPortLoefte(false);
       }
     } else {
+      // FUNDET AF REVIEW 7/9. Her stod KUN stderr-linjen. Foer porten blev doven, var
+      // det harmloest: en opstartsfejl man kunne se i loggen. Nu venter `sikrePort()`
+      // paa et loefte der aldrig blev indfriet — og `sendToExtension` goer
+      // `await sikrePort()` UDEN timeout. Enhver anden bind-fejl end EADDRINUSE
+      // (EACCES paa en privilegeret port, EADDRNOTAVAIL, en restriktiv firewall)
+      // ville derfor faa hvert eneste browser-kald til at haenge tavst for evigt.
+      // At haenge uden besked er vaerre end den fejl vi rettede.
+      bindFejl = err.message;
       process.stderr.write(`[MCP] WebSocket error: ${err.message}\n`);
+      loesPortLoefte(false);
     }
   });
 
@@ -434,6 +444,7 @@ function sikrePort() {
   if (activePort !== null) return Promise.resolve(true);
   if (bindLoefte) return bindLoefte;              // en binding er allerede i gang
   alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
+  bindFejl = null;
   bindLoefte = new Promise((res) => { portResolver = res; });
   createWSS();
   return bindLoefte;
@@ -455,6 +466,14 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // This is the other half of the two-part setup: the server is clearly running (it is
     // throwing this), so what is missing is the extension, Chrome itself, or the connection
     // between them. Say which, and where to get it — the agent relays this text to the user.
+    if (bindFejl) {
+      throw new Error(
+        `Serveren kunne ikke aabne en port paa 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bindFejl}\n` +
+        'Det er IKKE Chrome eller udvidelsen — det er operativsystemet eller en firewall der ' +
+        'afviser bindingen. Tjek om noget blokerer loopback-porte.\n' +
+        'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
+      );
+    }
     if (alleePorteOptaget) {
       throw new Error(
         `Alle porte ${BASE_PORT}-${MAX_PORT} er optaget lige nu, saa dette kald fik ingen port. ` +

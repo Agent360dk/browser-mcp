@@ -3940,15 +3940,30 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
   if (alarm.name.startsWith('frigiv-')) {
     const port = Number(alarm.name.slice('frigiv-'.length));
-    // Sessions genindlaeses foerst: service-workeren kan vaere genstartet siden alarmen
-    // blev sat, og et tomt kort ville se ud som "ingen faner" for ENHVER session.
-    restoreSessions()
-      .then(() => {
-        const s = sessions.get(port);
-        if (!s) return;                       // sessionen er allerede vaek
-        if (s.tabIds.size > 0) return;        // den arbejder igen — lad den vaere
-        chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
-      })
-      .catch(() => {});
+    // ── Hvorfor lageret laeses DIREKTE og ikke via restoreSessions() ─────────
+    //
+    // FUNDET AF REVIEW 7/9. Her stod `restoreSessions().then(...)`, og kommentaren
+    // sagde at det var vaernet mod en genstartet service-worker. Den gjorde det
+    // modsatte: `restoreSessions()` gendanner kun sessioner der har GYLDIGE FANER
+    // (`if (validTabIds.size > 0)`) — og en tom session er praecis den her alarm
+    // handler om. En MV3-worker suspenderes efter ~30 sekunder; fristen er paa fem
+    // minutter, saa workeren er naesten altid frisk naar alarmen fyrer. Sessionen
+    // blev derfor aldrig fundet, `if (!s) return` ramte, og porten blev holdt til
+    // 4-timers-tomgangen — altsaa praecis den fejl frigivelsen skulle fjerne.
+    //
+    // restoreSessions() har god grund til ikke at genoplive doede sessioner (andre
+    // kaldere vil ikke arve faner der ikke findes). Derfor rettes det HER.
+    (async () => {
+      const iHukommelsen = sessions.get(port);
+      if (iHukommelsen) {
+        if (iHukommelsen.tabIds.size > 0) return;   // den arbejder igen — lad den vaere
+      } else {
+        const { sessions: gemte } = await chrome.storage.local.get({ sessions: {} });
+        const gemt = gemte[String(port)];
+        if (!gemt) return;                          // sessionen er reelt vaek
+        if ((gemt.tabIds || []).length > 0) return; // den arbejder igen
+      }
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+    })().catch(() => {});
   }
 });
