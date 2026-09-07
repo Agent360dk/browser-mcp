@@ -177,8 +177,18 @@ fi
 # in dry-run it's only a warning so you can still preview the full plan.
 
 if [[ "$SKIP_NPM" == 0 ]]; then
-  if npm whoami >/dev/null 2>&1; then ok "npm authenticated as $(npm whoami)"
-  else gate "npm not authenticated (E401) — run 'npm login', or pass --skip-npm"; fi
+  # MAALT 7/9: her stod KUN `npm whoami`, som laeser den lokale ~/.npmrc-login.
+  # Men trin 5 udgiver med `--//registry.npmjs.org/:_authToken=${NPM_TOKEN}` fra .env —
+  # en HELT anden noegle. Spaerren tjekkede altsaa en legitimation udgivelsen ikke bruger:
+  # den blokerede en udgivelse der ville lykkes, og ville have lukket én igennem der
+  # ville fejle. Nu tjekkes den noegle der faktisk bliver brugt.
+  if [[ -n "${NPM_TOKEN:-}" ]]; then
+    NPM_WHO="$(curl -s -H "Authorization: Bearer $NPM_TOKEN" https://registry.npmjs.org/-/whoami \
+      | python3 -c "import json,sys;print(json.load(sys.stdin).get('username',''))" 2>/dev/null || true)"
+    if [[ -n "$NPM_WHO" ]]; then ok "npm authenticated as $NPM_WHO (NPM_TOKEN fra .env)"
+    else gate "NPM_TOKEN i .env afvises af npm — forny den paa npmjs.com/settings/<bruger>/tokens, eller pass --skip-npm"; fi
+  elif npm whoami >/dev/null 2>&1; then ok "npm authenticated as $(npm whoami) (lokal login)"
+  else gate "npm not authenticated (E401) — run 'npm login', saet NPM_TOKEN i .env, eller pass --skip-npm"; fi
 fi
 if [[ "$SKIP_CWS" == 0 ]]; then
   if [[ ! -f .env ]]; then gate ".env missing (CWS secrets) — see docs/CWS_PUBLISH_SETUP.md, or --skip-cws"
