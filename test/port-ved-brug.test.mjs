@@ -170,3 +170,24 @@ test('bind-fejl der ikke er "optaget" giver en FEJL, ikke en evig venten', async
   assert.match(svar, /kunne ikke aabne en port|Alle porte/,
     'kaldet svarede, men ikke med en forklaring paa at bindingen fejlede: ' + svar.slice(0, 200));
 });
+
+// ── #16: beskeden naar vi lige selv har aabnet doeren ───────────────────────
+//
+// Foer porten blev doven var udvidelsen for laengst forbundet naar foerste kald kom.
+// Nu starter uret VED kaldet, og loeber budgettet ud, faar brugeren den vaerst mulige
+// besked: "install it from the Chrome Web Store" — om en installation der virker fint.
+test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller"', async () => {
+  // Sultnings-testen ovenfor fylder spaendet og frigiver kun én. Uden det her maalte
+  // denne test "alle porte optaget" i stedet for beskeden efter en vellykket binding.
+  while (blokke.length) await new Promise((r) => blokke.pop().close(r));
+  const foer = await optagne();
+  const p = start();
+  await haandtryk(p);
+  const svar = await browserKald(p, 60000);
+  assert.notEqual(svar, 'TIMEOUT', 'kaldet svarede aldrig');
+  assert.ok(!/Chrome Web Store|chromewebstore/i.test(svar),
+    'brugeren sendes hen for at geninstallere en udvidelse der ikke naaede at forbinde: ' + svar.slice(0, 240));
+  assert.match(svar, /ikke naaet at forbinde|scanner hvert/,
+    'beskeden forklarer ikke at doeren lige er aabnet: ' + svar.slice(0, 240));
+  assert.equal((await optagne()).length, foer.length + 1, 'porten blev ikke bundet');
+});

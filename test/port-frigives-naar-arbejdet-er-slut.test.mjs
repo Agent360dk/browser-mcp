@@ -208,3 +208,37 @@ test('fejler en fane-lukning under oprydning, beholdes sessionen i stedet for at
   assert.ok(u.hent('sessions').has(PORT),
     'sessionen blev slettet mens dens fane stadig var aaben — fanen ligger nu i en gruppe ingen ejer');
 });
+
+// ── #15: brugerens lukning naar baggrundsprocessen sover ────────────────────
+//
+// `tabs.onRemoved` loeb `sessions` SYNKRONT. Vaekker eventet en suspenderet
+// MV3-service-worker, er kortet tomt, loekken koerer nul gange — og hverken den
+// oejeblikkelige nedlukning (brugerens lukning) eller 5-minutters-fristen bliver sat.
+// Porten holdes saa til 4-timers-tomgangen. Det er halvdelen af hele frigivelsens
+// praemis, og den halvdel virkede kun naar workeren tilfaeldigvis var vaagen.
+//
+// Faelden: `restoreSessions()` kan ikke bruges her — den dropper sessioner uden
+// GYLDIGE faner, og fanen vi lige har mistet er netop den der goer sessionen ugyldig.
+function friskWorkerMedLager(gemt) {
+  return indlaesUdvidelse({ svar: { 'storage.local.get': { sessions: { [String(PORT)]: gemt } } } });
+}
+
+test('brugeren lukker sidste fane paa en sovende worker: serveren faar stadig besked', async () => {
+  const u = friskWorkerMedLager({ tabIds: [77], activeTabId: 77, groupId: 3, nummer: 1, color: 'blue', label: 'Claude 1' });
+  assert.equal(u.hent('sessions').size, 0, 'forudsaetningen holder ikke: kortet skal vaere tomt');
+  u.optager.ryd();
+  await u.fyr('tabs.onRemoved', 77);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(terminates(u).length, 1,
+    'porten holdes til 4-timers-tomgangen fordi workeren sov da brugeren lukkede fanen');
+});
+
+test('agenten lukker sidste fane paa en sovende worker: fristen saettes stadig', async () => {
+  const u = friskWorkerMedLager({ tabIds: [78], activeTabId: 78, groupId: 3, nummer: 1, color: 'blue', label: 'Claude 1' });
+  u.hent('agentLukkedeFaner').add(78);
+  u.optager.ryd();
+  await u.fyr('tabs.onRemoved', 78);
+  await new Promise((r) => setTimeout(r, 40));
+  const alarmer = u.optager.til('alarms.create').filter((b) => String(b.args[0]) === `frigiv-${PORT}`);
+  assert.equal(alarmer.length, 1, 'fristen blev aldrig sat — porten frigives aldrig');
+});

@@ -62,6 +62,7 @@ let connSeq = 0;
 let activePort = null;
 let alleePorteOptaget = false;   // hele spaendet i brug — se createWSS
 let bindFejl = null;             // bind fejlede af en ANDEN grund end optaget port
+let portBundetTid = 0;           // hvornaar porten sidst blev aaben — se sendToExtension
 
 function cmpVersion(a, b) {
   const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
@@ -392,6 +393,7 @@ function createWSS(port = BASE_PORT) {
 
   server.on('listening', () => {
     activePort = port;
+    portBundetTid = Date.now();
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
     loesPortLoefte(true);
   });
@@ -458,6 +460,7 @@ function sikrePort() {
   if (bindLoefte) return bindLoefte;              // en binding er allerede i gang
   alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
   bindFejl = null;
+  portBundetTid = 0;   // nulstilles her; saettes naar 'listening' faktisk kommer
   bindLoefte = new Promise((res) => { portResolver = res; });
   // Vagthund. F8 var ét konkret hul hvor loeftet aldrig blev indfriet; det her lukker
   // KLASSEN. Emitter en fremtidig fejlsti hverken 'listening' eller 'error', svarer
@@ -476,16 +479,46 @@ function sikrePort() {
 
 // ── Send command to extension ───────────────────────────────────────────────
 
-async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5) {
+async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
   // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
   // Fik vi ingen (hele spaendet optaget), proever naeste kald igen — derfor ingen kast her.
   await sikrePort();
+  // Spoergsmaalet er om doeren var NYAABNET da kaldet begyndte — ikke om den stadig er
+  // "ny" efter at vi selv har brugt femten sekunder paa at proeve igen. Derfor maales det
+  // ved indgangen og baeres med gennem gentagelserne.
+  const doerAabnetNu = _doerAabnetNu !== null
+    ? _doerAabnetNu
+    : Boolean(portBundetTid && (Date.now() - portBundetTid) < 10000);
   // Retry if extension is temporarily disconnected (reconnects every 2s)
   const conn = activeConnection();
   if (!conn) {
     if (_retries > 0) {
       await new Promise(r => setTimeout(r, 1500));
-      return sendToExtension(method, params, timeoutMs, _retries - 1);
+      return sendToExtension(method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu);
+    }
+    // ── Har vi lige aabnet doeren selv? (MAALT 8/9, #16) ─────────────────────
+    //
+    // Foer porten blev doven, var udvidelsen for laengst forbundet naar foerste
+    // vaerktoejskald kom. Nu starter uret VED kaldet: binding -> op til 2 s til
+    // udvidelsens naeste port-scanning -> probe -> WS-haandtryk, som udvidelsens egen
+    // bremse lovligt kan holde i flere sekunder. Budgettet er 5 x 1500 ms.
+    //
+    // Paa en maskine med mange samtidige chats er marginen tynd — og beskeden nedenfor
+    // er den vaerst mulige: den sender en bruger hen for at reparere en installation der
+    // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
+    // ekstra budget, og siger sandheden hvis den stadig er tom.
+    if (doerAabnetNu && !_ekstraRunde) {
+      return sendToExtension(method, params, timeoutMs, 5, true, doerAabnetNu);
+    }
+    if (doerAabnetNu) {
+      throw new Error(
+        `Porten ${activePort} blev aabnet for ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
+        'sekunder siden, og udvidelsen har ikke naaet at forbinde endnu. Den scanner hvert ' +
+        '2. sekund, saa det tager normalt under fem.\n' +
+        'Det er sandsynligvis IKKE en manglende installation — proev kommandoen igen om et ' +
+        'oejeblik. Bliver den ved, saa tjek at Chrome koerer og at udvidelsen er slaaet til.\n' +
+        'Sig det til brugeren i den raekkefoelge. Bed IKKE om en geninstallation foerst.',
+      );
     }
     // This is the other half of the two-part setup: the server is clearly running (it is
     // throwing this), so what is missing is the extension, Chrome itself, or the connection

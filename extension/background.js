@@ -597,10 +597,41 @@ function afvaebnDialog(tabId, grund) {
   if (grund && a.opfyld) a.opfyld({ ok: false, error: grund });
 }
 
+// Fylder sessions-kortet fra lageret UDEN at filtrere paa om fanerne stadig findes.
+//
+// `restoreSessions()` dropper sessioner uden GYLDIGE faner (`validTabIds.size > 0`), og i
+// `tabs.onRemoved` er den fane vi lige har mistet netop den der ville goere sessionen
+// ugyldig. Bruger man restoreSessions dér, forsvinder praecis den session man skal handle
+// paa. Samme faelde som i alarm-lytteren, og derfor samme svar: laes lageret raat.
+async function hydrerSessionerRaat() {
+  if (sessions.size) return;
+  const { sessions: gemte } = await chrome.storage.local.get({ sessions: {} });
+  for (const [port, d] of Object.entries(gemte)) {
+    const p = Number(port);
+    if (sessions.has(p)) continue;
+    sessions.set(p, {
+      tabIds: new Set(d.tabIds || []),
+      activeTabId: d.activeTabId ?? null,
+      groupId: d.groupId ?? null,
+      color: d.color,
+      label: d.label,
+      nummer: d.nummer ?? null,
+      pid: d.pid ?? null,
+    });
+  }
+}
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   afvaebnDialog(tabId, 'fanen blev lukket foer der kom en dialog');
   const lukketAfAgenten = agentLukkedeFaner.delete(tabId);
   debuggerAttached.delete(tabId);
+  // MAALT 8/9 (#15): loekken herunder loeb SYNKRONT paa `sessions`. Vaekker eventet en
+  // suspenderet service-worker, er kortet tomt, loekken koerer nul gange, og hverken
+  // nedlukningen eller fristen bliver sat — porten holdes saa til 4-timers-tomgangen.
+  // Agentens egen close_tab ramte det ikke (den kommer som mcp_command, der vaekker og
+  // gendanner foerst). Det var specifikt MENNESKET der lukkede den sidste fane, senere.
+  (async () => {
+  await hydrerSessionerRaat();
   for (const [port, session] of sessions) {
     if (!session.tabIds.has(tabId)) continue;
     session.tabIds.delete(tabId);
@@ -630,6 +661,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
       persistSessions();
     }
   }
+  })().catch(() => {});
 });
 
 // Physical-key `code` for a character, US layout. We used to build this as
