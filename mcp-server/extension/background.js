@@ -79,7 +79,15 @@ function getSession(port, pid) {
     // samtidige sessioner heller ikke kan faa samme farve.
     const brugte = new Set([...sessions.values()].map((s) => s.nummer).filter((n) => typeof n === 'number'));
     let nummer = 1;
-    while (brugte.has(nummer)) nummer++;
+    // Havde denne chat en plads foer den slap sin port, og er den stadig ledig, saa faar
+    // den sin egen tilbage — se pladsPrPid. Ellers laveste ledige, som foer.
+    const husket = typeof pid === 'number' ? pladsPrPid.get(pid) : undefined;
+    if (typeof husket === 'number' && !brugte.has(husket)) {
+      nummer = husket;
+    } else {
+      while (brugte.has(nummer)) nummer++;
+    }
+    husketPlads(pid, nummer);
 
     sessions.set(port, {
       tabIds: new Set(),
@@ -93,7 +101,7 @@ function getSession(port, pid) {
   }
   const s = sessions.get(port);
   // Foerste kald fra en genstartet server kan baere pid'en foer sessionen har den.
-  if (s.pid == null && typeof pid === 'number') s.pid = pid;
+  if (s.pid == null && typeof pid === 'number') { s.pid = pid; husketPlads(pid, s.nummer); }
   return s;
 }
 
@@ -565,6 +573,23 @@ const agentLukkedeFaner = new Set();
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
 const frivilligtFrigivet = new Set();
+// Hvilken plads en chat sidst havde, husket paa dens pid — ikke paa porten.
+//
+// MAALT 8/9 (#17): siden porten slippes naar en session er faerdig, slettes sessionen.
+// Kommer chatten tilbage, faar den det laveste LEDIGE nummer — saa en chat der var
+// "Claude 3" vender tilbage som "Claude 1" i en anden farve, og brugeren kan ikke
+// genkende sin egen fanegruppe. Identiteten hoerer til chatten, ikke til porten.
+//
+// Garantien er praecis "dit gamle nummer HVIS det er ledigt". Er det taget, vinder den
+// nulevende session — ellers ville vi genindfoere den navnekollision som lavest-ledige-
+// nummer blev indfoert for at loese.
+const pladsPrPid = new Map();
+function husketPlads(pid, nummer) {
+  if (typeof pid !== 'number') return;
+  pladsPrPid.set(pid, nummer);
+  // Kortet maa ikke vokse i det uendelige paa en langtlevende worker.
+  if (pladsPrPid.size > 60) pladsPrPid.delete(pladsPrPid.keys().next().value);
+}
 
 // ── Armerede dialog-haandterere, pr. fane ──────────────────────────────────────
 // MAALT 22/8 af flowtesten: handle_dialog var ubrugelig som den var skrevet. Den

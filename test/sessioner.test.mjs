@@ -198,6 +198,11 @@ function rejsGetSession() {
   const sessions = new Map();
   const src = [
     "const SESSION_COLORS = ['blue','green','yellow','red'];",
+    // getSession husker nu hvilken plads en chat havde, paa dens pid (#17). Det er en
+    // aegte afhaengighed, saa den injiceres her ligesom farvelisten — i stedet for at
+    // gemme funktionen bag en attrap der ikke ville maale den rigtige adfaerd.
+    "const pladsPrPid = new Map();",
+    udklip('husketPlads'),
     udklip('getSession'),
     'return getSession;',
   ].join('\n');
@@ -289,4 +294,41 @@ test('navn og farve foelger nummeret, ogsaa naar det bumpes ved gendannelse', ()
     'samme for farven: to fanegrupper i samme farve er lige saa forvirrende');
   assert.match(blok, /label: `Claude \$\{nummer\}`/, 'navnet skal udledes af nummeret');
   assert.match(blok, /color: SESSION_COLORS\[\(nummer - 1\)/, 'farven ogsaa');
+});
+
+// ── #17: identiteten skal foelge chatten, ikke porten ───────────────────────
+//
+// Siden porten slippes naar en session er faerdig, slettes sessionen — og naar chatten
+// kommer tilbage, faar den det laveste LEDIGE nummer. En chat der var "Claude 3" kommer
+// altsaa tilbage som "Claude 1" i en anden farve. Kosmetisk, men det er praecis det
+// symptom der kostede tre commits i august: brugeren kan ikke genkende sin egen gruppe.
+test('en chat der slipper sin port og kommer igen beholder navn og farve', () => {
+  const { getSession: get, sessions } = rejsGetSession();
+
+  const a = get(9876, 101);
+  const b = get(9877, 102);
+  const c = get(9878, 103);
+  assert.deepEqual([a.label, b.label, c.label], ['Claude 1', 'Claude 2', 'Claude 3']);
+  const farveC = c.color;
+
+  // Alle tre bliver faerdige og slipper deres porte.
+  sessions.delete(9876); sessions.delete(9877); sessions.delete(9878);
+
+  // Chat 103 kommer tilbage — paa en ny port, som den vil efter en frigivelse.
+  const igen = get(9880, 103);
+  assert.equal(igen.label, 'Claude 3',
+    `chatten skiftede navn til "${igen.label}" — brugeren kan ikke genkende sin gruppe`);
+  assert.equal(igen.color, farveC, 'farven fulgte ikke med navnet');
+});
+
+test('men en optaget plads vinder over hukommelsen', () => {
+  // Garantien er "dit gamle nummer hvis det er ledigt" — aldrig to sessioner med samme
+  // navn. Det var netop kollisionen som lavest-ledige-nummer blev indfoert for at loese.
+  const { getSession: get, sessions } = rejsGetSession();
+  get(9876, 201);
+  sessions.delete(9876);
+  get(9877, 202);                       // tager nu plads 1
+  const gammel = get(9878, 201);        // 201 husker plads 1, men den er taget
+  assert.notEqual(gammel.label, 'Claude 1', 'to sessioner fik samme navn');
+  assert.equal(gammel.label, 'Claude 2');
 });
