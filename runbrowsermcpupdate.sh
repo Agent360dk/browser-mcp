@@ -167,7 +167,11 @@ gate() { if [[ "$SHIP" == 1 ]]; then die "$1"; else warn "$1 ${Y}(dry-run: conti
 # udvidelsen af sted som var 88 linjer bagud for kilden, uden at noget sagde fra.
 # Testene er rene node:test-filer uden Chrome-afhaengighed, saa de koster to sekunder.
 if TEST_OUT="$(node --test "$REPO_ROOT"/test/*.test.mjs 2>&1)"; then
-  ok "tests groenne ($(printf '%s' "$TEST_OUT" | grep -m1 '^# pass' | tr -dc '0-9') bestaaet)"
+  # MAALT 8/9: her stod kun `grep '^# pass'`. node --test skriver nu `ℹ pass 257`, saa
+  # tallet blev tomt og linjen sagde "tests groenne ( bestaaet)". Spaerren SELV var i
+  # orden — den hviler paa exit-koden — men rapporten sagde ingenting. Et tal der tavst
+  # forsvinder er praecis den slags man senere kommer til at stole paa.
+  ok "tests groenne ($(printf '%s' "$TEST_OUT" | grep -m1 -E '^(# |ℹ )pass' | tr -dc '0-9') bestaaet)"
 else
   printf '%s\n' "$TEST_OUT" | tail -40
   gate "tests fejler — ret dem foer udgivelse"
