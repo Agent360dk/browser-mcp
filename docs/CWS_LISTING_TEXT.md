@@ -101,3 +101,39 @@ More: https://browsermcp.dev/#try
   "34" in the current listing are exactly that drift.
 - `extension/manifest.json`'s `description` field becomes the store summary on the next
   publish, so keep the two in sync.
+
+---
+
+## 3. Screenshots — replace all three (produced 2026-09-08)
+
+**The three images live in the listing today are not product screenshots.** They are cropped
+captures of the *old website*, dated 3 May. `docs/screenshots/multi-session.png` — the one whose
+name promises the differentiator — shows the April-2025 hero *"Your AI can't use a browser. Until
+now."*, a large empty black box, and `npx @agent360/browser-mcp install` as the install command,
+which copies extension files but does not register the server (the same stale command this doc
+already replaces in the description). Delete all three; do not reuse.
+
+New set: `docs/store-2026-09-08/01.png` … `05.png`, 1280×800, upload in that order. Slot 1 is the
+only one most people see, so it carries the two-parts warning rather than a feature claim.
+
+| # | File | What it says | Caption to paste |
+|---|---|---|---|
+| 1 | `01.png` | This extension is one half — the 3-step setup, step 1 already ticked | Two parts: this extension plus one command. Neither half can install the other. |
+| 2 | `02.png` | Real Chrome tab strip, four agent sessions colour-coded side by side | Twenty agents in one signed-in browser — each chat sees only its own tabs. |
+| 3 | `03.png` | The 2FA moment: hits a login wall, reads the code from your own Gmail tab | The move no API can make — because it is your browser, not a bypass. |
+| 4 | `04.png` | Four prompts to paste once it works, starting with the screenshot smoke test | Nothing happens until you ask. Start with "take a screenshot of my current tab". |
+| 5 | `05.png` | 40 tools · 20 concurrent sessions · 9 integrations · $0 | Free, MIT, 100% local. No account, no telemetry. |
+
+**Numbers on the images, verified 2026-09-08 — re-check before any re-render:**
+
+- **40 tools** — `mcp-server/tools.js` exports 40.
+- **20 concurrent sessions** — port range 9876–9895 (`mcp-server/index.js:45-46`) is 20 ports, so
+  20 sessions can hold one at a time. Not to be confused with `MAX_TABS_PER_SESSION = 20`
+  (`extension/background.js:195`), which is 20 *tabs* per session.
+- **9 built-in integrations** — the comparison table in `README.md:138`.
+
+Source: `demo-video-src/src/Store.tsx`, composition `Store` (1280×800, one slide per frame).
+Re-render with `cd demo-video-src && ./node_modules/.bin/remotion still Store out.png --frame=N`.
+The tab-strip image is `demo-video-src/public/fanegrupper.png`, cropped from
+`assets/raw-2026-09-07/fanegrupper-live.png`. The crop deliberately drops the fifth group: the raw
+capture shows *two* groups both labelled "Claude 1" — that was issue #17, fixed the same day.
