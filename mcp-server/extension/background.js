@@ -926,6 +926,37 @@ async function debuggerFill(tabId, selector, value) {
   try {
     await clearFieldAttached(tabId);
 
+    // ── Blev feltet FAKTISK tomt? (MAALT 8/9) ────────────────────────────────
+    //
+    // `clearFieldAttached` sender Cmd/Ctrl+A og Backspace som aegte tastetryk. Paa et
+    // React-styret felt tommer det ikke: maalt paa forbrugeragenten.dk/penge-tilbage gav
+    // to fill-kald efter hinanden vaerdien "test@example.dkanden@example.dk" — begge kald
+    // svarede ok:true. Vaerktoejet meldte succes og gjorde noget andet end det lovede.
+    //
+    // Et fill paa et TOMT felt var rent i samme maaling, saa fejlen sidder alene her.
+    // Derfor: laes tilbage, og ryd med den vej der virker paa styrede felter hvis
+    // tastetrykkene ikke slog igennem. Vi gaetter ikke paa hvorfor — vi tjekker.
+    const restVaerdi = await evalAttached(tabId, `
+      (function() {
+        const el = document.activeElement;
+        return el && 'value' in el ? el.value : '';
+      })()
+    `);
+    if (restVaerdi) {
+      await evalAttached(tabId, `
+        (function() {
+          const el = document.activeElement;
+          if (!el || !('value' in el)) return false;
+          const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+          if (setter) setter.call(el, ''); else el.value = '';
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()
+      `);
+    }
+
     // Fast path: one trusted InputEvent instead of N key events. This is the same
     // primitive set_combobox and set_date already rely on, it avoids per-key `code`
     // mapping entirely, and it turns a 40-character value from ~3 seconds of

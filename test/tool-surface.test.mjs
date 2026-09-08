@@ -275,3 +275,23 @@ test('ingen andre executeScript-kald sender raa valgfrie parametre', () => {
       `raa uvagtede parametre i et args-kald: ${raa.join(', ')} — udelades de, afviser Chrome hele kaldet`);
   }
 });
+
+// ── MAALT 8/9 paa forbrugeragenten.dk/penge-tilbage ─────────────────────────
+// To fill-kald efter hinanden gav "test@example.dkanden@example.dk" — og BEGGE
+// svarede ok:true. Vaerktoejet meldte succes og gjorde noget andet end det lovede.
+// Et fill paa et TOMT felt var rent i samme maaling, saa fejlen sad alene i rydningen:
+// `clearFieldAttached` sender Cmd/Ctrl+A + Backspace som aegte tastetryk, og det tommer
+// ikke et React-styret felt. Samme princip som select-rettelsen: tjek effekten.
+test('fill tjekker at feltet faktisk blev tomt, i stedet for at stole paa tastetryk', () => {
+  const i = bgSrc.indexOf('async function debuggerFill');
+  const blok = bgSrc.slice(i, bgSrc.indexOf('\nasync function', i + 30));
+  assert.ok(blok.length > 500, 'debuggerFill kunne ikke findes');
+  assert.match(blok, /clearFieldAttached/, 'rydningen er vaek');
+  assert.match(blok, /restVaerdi/,
+    'der laeses ikke tilbage efter rydningen — saa kan fill stadig skrive oven i det gamle');
+  const iRest = blok.indexOf('restVaerdi');
+  assert.match(blok.slice(iRest), /setter\.call\(el, ''\)|el\.value = ''/,
+    'der er ingen reserve-rydning naar tastetrykkene ikke slog igennem');
+  assert.ok(blok.indexOf('Input.insertText') > iRest,
+    'teksten indsaettes FOER kontrollen af at feltet er tomt — saa virker kontrollen ikke');
+});
