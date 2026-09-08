@@ -2,7 +2,7 @@ import "./index.css";
 import { Composition } from "remotion";
 import { Demo } from "./Demo";
 import { Hero, HERO_DURATION } from "./Hero";
-import { StoreShots, STORE_COUNT } from "./Store";
+import { StoreShots, STORE_COUNT, PromoTile, MarqueeTile } from "./Store";
 
 // 100 + 90 + 255 + 255 + 235 + 235 + 215 + 235 + 140 = 1760 (~59 sec)
 export const RemotionRoot: React.FC = () => {
@@ -25,6 +25,9 @@ export const RemotionRoot: React.FC = () => {
         width={1280}
         height={800}
       />
+      {/* Butikkens smaa brik (soegeresultater) og marquee (featuring) */}
+      <Composition id="PromoTile" component={PromoTile} durationInFrames={1} fps={1} width={440} height={280} />
+      <Composition id="MarqueeTile" component={MarqueeTile} durationInFrames={1} fps={1} width={1400} height={560} />
       <Composition
         id="Demo"
         component={Demo}
