@@ -191,3 +191,38 @@ test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller
     'beskeden forklarer ikke at doeren lige er aabnet: ' + svar.slice(0, 240));
   assert.equal((await optagne()).length, foer.length + 1, 'porten blev ikke bundet');
 });
+
+// ── #14: den paastand fejlbeskeden faktisk giver ────────────────────────────
+//
+// Testen ovenfor beviser gentagelsen INDE i ét kald (5 x 1500 ms i sendToExtension).
+// Men baade commit-beskeden og den tekst brugeren faar lover noget staerkere:
+// "hvert kald proever selv at faa en port. Denne chat skal IKKE genstartes."
+// Det er PAA TVAERS af kald, og det var utestet — praecis den slags hul issue #14
+// handler om: en test der maaler mindre end den ser ud til.
+test('kald 1 fejler paa fuldt spaend, kald 2 lykkes — uden genstart', async () => {
+  while (blokke.length) await new Promise((r) => blokke.pop().close(r));
+  for (let port = BASE; port <= MAX; port++) {
+    if (!(await erOptaget(port))) blokke.push(await lytter(port));
+  }
+  assert.equal((await optagne()).length, MAX - BASE + 1, 'spaendet blev ikke fyldt');
+
+  const p = start();
+  await haandtryk(p);
+
+  // Kald 1: spaendet er fuldt hele vejen igennem, saa det SKAL give op.
+  const foerste = await browserKald(p, 25000);
+  assert.match(foerste, /Alle porte/,
+    'kald 1 gav ikke op paa et fuldt spaend — testen maaler saa ikke det den paastaar');
+
+  // Nu bliver en plads fri, uden at chatten roeres.
+  const frigivet = blokke.pop();
+  const friPort = frigivet.address().port;
+  await new Promise((r) => frigivet.close(r));
+  await vent(300);
+
+  // Kald 2 i SAMME proces skal selv tage den.
+  const andet = await browserKald(p, 40000);
+  assert.ok(!/Alle porte/.test(andet),
+    'kald 2 gav ogsaa op — saa er "denne chat skal ikke genstartes" en tom paastand: ' + andet.slice(0, 220));
+  assert.ok(await erOptaget(friPort), 'den frigivne port blev ikke taget af naeste kald');
+});
