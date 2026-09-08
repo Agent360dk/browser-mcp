@@ -528,6 +528,25 @@ const RETRYABLE_CDP_METHODS = new Set([
 // CDP wrapper with auto-recovery: re-attaches on detach errors.
 // For read-only methods (whitelist above), retries once after re-attach.
 // For side-effectful methods, only re-attaches and throws — caller must decide.
+// MAALT 8/9-2026: `Input.dispatchMouseEvent` med mouseWheel indfrier ALDRIG sit loefte.
+// `browser_scroll` med pixels ramte derfor serverens 30-sekunders-loft 6 kald ud af 6,
+// paa baade en kort og en lang side — og den `window.scrollBy` der er skrevet til netop
+// det tilfaelde, ligger i et `catch` og kunne aldrig naas. En haenger er ikke en exception.
+// Fristen findes for at reserveloesningen kan naas. Alt der HAR en reserveloesning skal
+// kunne naas via en frist, ikke kun via en fejl.
+const CDP_FRIST_MS = 1500;
+
+function cdpMedFrist(tabId, method, params) {
+  let ur;
+  return Promise.race([
+    chrome.debugger.sendCommand({ tabId }, method, params),
+    new Promise((_, afvis) => {
+      ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${CDP_FRIST_MS} ms: ${method}`)),
+        CDP_FRIST_MS);
+    }),
+  ]).finally(() => clearTimeout(ur));
+}
+
 async function cdpSend(tabId, method, params = {}) {
   await debuggerAttach(tabId);
   let lastMsg = '';
@@ -536,7 +555,7 @@ async function cdpSend(tabId, method, params = {}) {
   // where Chrome re-detaches between attach and command execution.
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return await chrome.debugger.sendCommand({ tabId }, method, params);
+      return await cdpMedFrist(tabId, method, params);
     } catch (e) {
       const msg = e?.message || String(e);
       const isDetachError =
