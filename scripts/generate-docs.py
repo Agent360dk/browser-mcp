@@ -4,7 +4,7 @@
 # never hand-edit it — edit the markdown source (or this generator) and re-run:
 #   python3 scripts/generate-docs.py
 # Output is deterministic; a clean run leaves `git status` unchanged.
-import re, html, os, json, datetime, pathlib
+import re, html, os, json, datetime, pathlib, subprocess
 
 REPO=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','docs')+os.sep  # site root (build output)
 DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources
@@ -210,7 +210,31 @@ def head(title, desc, url):
       '<link rel="stylesheet" href="/assets/docs.css">']
     return '\n'.join(h)
 
-def jsonld(title, desc, url, section, faq):
+# Datoer til TechArticle og sitemap udledes af kildefilens historik. Uden dem skrev
+# generatoren INGEN dato, og haandindsatte datoer forsvandt ved hver koersel — det skete
+# 8/9-2026, hvor 20 sider mistede deres datePublished og sitemappets lastmod ved en
+# regenerering. Nu er de udledt, saa de overlever og altid passer til indholdet.
+_DATO_CACHE = {}
+def git_datoer(fn):
+    """(foerste commit, seneste commit) for en kildefil, som YYYY-MM-DD."""
+    if fn in _DATO_CACHE: return _DATO_CACHE[fn]
+    sti = os.path.join(DRAFTS, fn)
+    def _kald(args):
+        try:
+            r = subprocess.run(['git','log',*args,'--format=%ad','--date=short','--',sti],
+                               capture_output=True, text=True, timeout=10,
+                               cwd=os.path.dirname(os.path.abspath(__file__)))
+            ud = [l for l in r.stdout.strip().split('\n') if l]
+            return ud[0] if ud else ''
+        except Exception:
+            return ''
+    seneste = _kald(['-1'])
+    foerste = _kald(['--reverse']) or seneste
+    par = (foerste or TODAY, seneste or TODAY)
+    _DATO_CACHE[fn] = par
+    return par
+
+def jsonld(title, desc, url, section, faq, datoer=None):
     can='https://browsermcp.dev'+url+'/'
     blocks=[]
     # BreadcrumbList
@@ -220,11 +244,15 @@ def jsonld(title, desc, url, section, faq):
         {"@type":"ListItem","position":2,"name":section,"item":sec_url},
         {"@type":"ListItem","position":3,"name":title,"item":can}]})
     # TechArticle (Org author per author-policy)
-    blocks.append({"@context":"https://schema.org","@type":"TechArticle","headline":title,"description":desc,"url":can,
+    _ta = {"@context":"https://schema.org","@type":"TechArticle","headline":title,"description":desc,"url":can}
+    if datoer:
+        _ta["datePublished"], _ta["dateModified"] = datoer[0], datoer[1]
+    _ta.update({
         "author":{"@type":"Organization","name":"Agent360","url":"https://agent360.dk"},
         "publisher":{"@type":"Organization","name":"Agent360","url":"https://agent360.dk"},
         "about":{"@type":"SoftwareApplication","name":"Browser MCP","applicationCategory":"DeveloperApplication",
             "operatingSystem":"Chrome","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}})
+    blocks.append(_ta)
     # FAQPage
     if faq:
         blocks.append({"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
@@ -247,7 +275,7 @@ for fn,grp,label,url in LIVE:
     lines=clean_lines(SOURCES[url])
     title=title_of(lines); desc=meta_desc(lines, SOURCES[url]); faq=extract_faq(lines); nfaq+=1 if faq else 0
     body=md_to_html(lines)
-    page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq)+'\n</head><body>'
+    page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq,git_datoer(fn))+'\n</head><body>'
     page+='<div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><a class="star" href="https://github.com/Agent360dk/browser-mcp" style="color:inherit;text-decoration:none">GitHub &#8599;</a></div></div>'
     page+='<div class="shell"><nav class="side">'+sidebar(url)+'</nav><main class="content">'+body+related(url)+'</main></div>'
     page+='<script src="/assets/docs.js"></script></body></html>'
