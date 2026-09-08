@@ -98,7 +98,18 @@ def inline(t):
     t=html.escape(t,quote=False)
     t=re.sub(r'`([^`]+)`',r'<code>\1</code>',t); t=re.sub(r'\*\*([^*]+)\*\*',r'<b>\1</b>',t)
     t=re.sub(r'(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)',r'<i>\1</i>',t)
-    t=re.sub(r'\[([^\]]+)\]\(([^)]+)\)',r'<a href="\2">\1</a>',t); return t
+    # Sitet serverer hver side paa en adresse der ender paa skraastreg; uden den svarer
+    # serveren 301 og sender laeser og crawler et ekstra hop. Maalt 8/9-2026: 18 links paa
+    # 22 sider ramte forbi. "Related"-blokken nedenfor har altid haft skraastregen —
+    # markdown-links fra kildefilerne kom aldrig forbi den, og det var halvdelen af fejlen.
+    def _sti(m):
+        tekst, adr = m.group(1), m.group(2)
+        if adr.startswith('/') and '.' not in adr.split('/')[-1].split('#')[0]:
+            sti, _, anker = adr.partition('#')
+            if not sti.endswith('/'):
+                adr = sti + '/' + (('#' + anker) if anker else '')
+        return '<a href="%s">%s</a>' % (adr, tekst)
+    t=re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _sti, t); return t
 def strip_md(t):
     t=re.sub(r'`([^`]+)`',r'\1',t); t=re.sub(r'\*\*([^*]+)\*\*',r'\1',t)
     t=re.sub(r'\*([^*\n]+)\*',r'\1',t)

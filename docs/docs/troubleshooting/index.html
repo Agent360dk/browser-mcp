@@ -30,7 +30,7 @@
 <div class="code"><pre>codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest</pre><button class="copy">Copy</button></div>
 <p>Cursor, VS Code, Windsurf or anything else — add this to that client's MCP config:</p>
 <div class="code"><pre>{&quot;mcpServers&quot;: {&quot;browser-mcp&quot;: {&quot;command&quot;: &quot;npx&quot;, &quot;args&quot;: [&quot;@agent360/browser-mcp@latest&quot;]}}}</pre><button class="copy">Copy</button></div>
-<p>Then <b>restart your agent</b> so it launches the server, and click the extension icon again. Per-client walkthroughs: <a href="/docs/install-claude-code">Claude Code</a> · <a href="/docs/install-cursor">Cursor</a> · <a href="/docs/install-vscode">VS Code</a> · <a href="/docs/install-codex">Codex</a>.</p>
+<p>Then <b>restart your agent</b> so it launches the server, and click the extension icon again. Per-client walkthroughs: <a href="/docs/install-claude-code/">Claude Code</a> · <a href="/docs/install-cursor/">Cursor</a> · <a href="/docs/install-vscode/">VS Code</a> · <a href="/docs/install-codex/">Codex</a>.</p>
 <p><b>Note on <code>npx @agent360/browser-mcp install</code>:</b> that command copies the extension files to <code>~/.browser-mcp/extension/</code>, which is useful for an unpacked install — but do not rely on it to register the server with Claude Code. Use <code>claude mcp add</code> above.</p>
 <p><b>How to tell this apart from a real fault:</b> if you have never run an <code>npx @agent360/browser-mcp …</code> command on this machine, this is your problem — not the sections below. A quick check that a server is running at all:</p>
 <div class="code"><pre>lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux — expect one line per active agent session</pre><button class="copy">Copy</button></div>
