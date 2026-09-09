@@ -2,18 +2,18 @@ import React from "react";
 import { AbsoluteFill, useCurrentFrame, staticFile, Img } from "remotion";
 
 /**
- * Chrome Web Store-billeder — 1280x800, ét slide pr. frame. Engelsk, som butikken.
+ * Chrome Web Store-billeder - 1280x800, ét slide pr. frame. Engelsk, som butikken.
  *
  * Foerste udgave (8/9 formiddag) var fem tekstplakater. Googles egen vejledning til
  * store listings siger at skaermbilleder skal "demonstrate the actual user experience,
- * focusing on the core features and content" — plakater goer ikke det, og de tre
+ * focusing on the core features and content" - plakater goer ikke det, og de tre
  * billeder der laa i butikken i forvejen (fra 3. maj) var skaermbilleder af WEBSITET,
  * altsaa samme fejl en generation tidligere.
  *
  * Derfor er popup'en, sessions-kortene, handlings-loggen og menneske-i-loopet-dialogen
  * her gengivet fra extensionens EGEN markup og CSS (popup.html og den overlay-kode der
  * bygges i background.js), ikke tegnet paa fri haand. Aendrer produktets UI sig, skal
- * de her aendres med — det er prisen for at vise produktet i stedet for at paastaa det.
+ * de her aendres med - det er prisen for at vise produktet i stedet for at paastaa det.
  */
 
 const BG = "#0E0D14";
@@ -103,7 +103,7 @@ const LogEntry: React.FC<{ time: string; method: string; session: string; sensit
   </div>
 );
 
-/* ── 1. To halvdele — popup'ens egen opsætnings-tilstand ───────────────────── */
+/* ── 1. To halvdele - popup'ens egen opsætnings-tilstand ───────────────────── */
 
 const Halves: React.FC = () => (
   <Frame>
@@ -113,7 +113,7 @@ const Halves: React.FC = () => (
         <H>The store can only give you one half.</H>
         <Sub>
           Browser MCP is this extension <b style={{ color: INK }}>plus</b> a local server. Without the
-          second half the icon stays red — so the extension says so itself, and hands you the command.
+          second half the icon stays red - so the extension says so itself, and hands you the command.
         </Sub>
         <div style={{ marginTop: 26, fontSize: 18, color: DIM }}>
           One command, once. Chrome cannot install from npm, and npm cannot install a Chrome extension.
@@ -121,11 +121,11 @@ const Halves: React.FC = () => (
       </div>
       <div style={{ width: 500, height: 520, position: "relative", flex: "none" }}>
         <PopupChrome>
-          <Status on={false} label="Not connected — no MCP server found" />
+          <Status on={false} label="Not connected - no MCP server found" />
           <div style={{ background: "#1e293b", border: "1px solid #334155", borderLeft: "3px solid #f59e0b", borderRadius: 8, padding: 10, marginBottom: 8 }}>
             <p style={{ fontSize: 11, lineHeight: 1.5, color: "#94a3b8", marginBottom: 8 }}>
               <b style={{ color: "#e2e8f0" }}>This extension is only half of Browser MCP.</b> It needs a
-              local MCP server to talk to — the Chrome Web Store cannot install that part. Register it
+              local MCP server to talk to - the Chrome Web Store cannot install that part. Register it
               once, then restart your agent. Claude Code:
             </p>
             <code style={{ display: "block", background: "#0f172a", borderRadius: 6, padding: 8, fontFamily: MONO, fontSize: 10, color: "#22c55e", wordBreak: "break-all", marginBottom: 6 }}>
@@ -145,7 +145,7 @@ const Halves: React.FC = () => (
   </Frame>
 );
 
-/* ── 2. Mange agenter, én browser — popup + ægte fanebånd ──────────────────── */
+/* ── 2. Mange agenter, én browser - popup + ægte fanebånd ──────────────────── */
 
 const Parallel: React.FC = () => (
   <Frame>
@@ -161,7 +161,7 @@ const Parallel: React.FC = () => (
     <div style={{ display: "flex", gap: 44, marginTop: 24, alignItems: "flex-start" }}>
       <div style={{ width: 390, flex: "none" }}>
         <PopupChrome scale={1.16}>
-          <Status on label="Connected — 4 active sessions" />
+          <Status on label="Connected - 4 active sessions" />
           <div style={P.sectionTitle}>Sessions</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <SessionCard label="Claude 6" color="purple" port={9876} tabs={["app.hubspot.com"]} />
@@ -193,7 +193,7 @@ const Parallel: React.FC = () => (
   </Frame>
 );
 
-/* ── 3. Menneske i loopet — dialogen fra background.js ─────────────────────── */
+/* ── 3. Menneske i loopet - dialogen fra background.js ─────────────────────── */
 
 const HumanInLoop: React.FC = () => (
   <Frame>
@@ -202,7 +202,7 @@ const HumanInLoop: React.FC = () => (
         <Eyebrow color={GREEN}>You stay in the loop</Eyebrow>
         <H>It asks you. It never guesses.</H>
         <Sub>
-          Passwords, one-time codes, anything sensitive — the agent stops and puts the
+          Passwords, one-time codes, anything sensitive - the agent stops and puts the
           question on the page in front of you. Nothing is typed until you answer.
         </Sub>
         <div style={{ marginTop: 26, fontSize: 18, color: DIM }}>
@@ -211,7 +211,7 @@ const HumanInLoop: React.FC = () => (
       </div>
       <div style={{ width: 560, flex: "none" }}>
         <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: `1px solid ${LINE}`, boxShadow: "0 24px 70px rgba(0,0,0,0.6)" }}>
-          {/* Siden bagved, daempet — som dialogens egen rgba(0,0,0,0.6)-baggrund goer det */}
+          {/* Siden bagved, daempet - som dialogens egen rgba(0,0,0,0.6)-baggrund goer det */}
           <div style={{ background: "#F6F6F8", padding: "14px 18px", borderBottom: "1px solid #E3E3EA", display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ display: "flex", gap: 5 }}>
               {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => <div key={c} style={{ width: 10, height: 10, borderRadius: 99, background: c }} />)}
@@ -235,7 +235,7 @@ const HumanInLoop: React.FC = () => (
           </div>
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 40px" }}>
             <div style={{ background: "#1e293b", borderRadius: 12, padding: 24, color: "#e2e8f0", boxShadow: "0 20px 60px rgba(0,0,0,0.5)", width: "100%" }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#3b82f6", marginBottom: 4 }}>Agent360 — Action Required</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#3b82f6", marginBottom: 4 }}>Agent360 - Action Required</div>
               <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 12 }}>Claude 1</div>
               <div style={{ fontSize: 13, color: "#cbd5e1", marginBottom: 16, lineHeight: 1.5 }}>
                 HubSpot sent a 6-digit code to your email. Paste it here and I will finish signing in.
@@ -256,7 +256,7 @@ const HumanInLoop: React.FC = () => (
   </Frame>
 );
 
-/* ── 4. Handlings-loggen — det der gør de brede tilladelser til at bære ────── */
+/* ── 4. Handlings-loggen - det der gør de brede tilladelser til at bære ────── */
 
 const Trust: React.FC = () => (
   <Frame>
@@ -274,7 +274,7 @@ const Trust: React.FC = () => (
       </div>
       <div style={{ width: 500, flex: "none", height: 430 }}>
         <PopupChrome scale={1.5}>
-          <Status on label="Connected — 1 active session" />
+          <Status on label="Connected - 1 active session" />
           <div style={P.sectionTitle}>Action Log</div>
           <div style={P.log}>
             <LogEntry time="14:22:07" method="navigate" session="Claude 1" />
@@ -298,7 +298,7 @@ const What: React.FC = () => (
     <Eyebrow color={GREEN}>Free forever · MIT · open source</Eyebrow>
     <H>Your real Chrome. 40 tools.</H>
     <Sub>
-      Navigate, click, fill, read, screenshot — plus the things headless browsers cannot
+      Navigate, click, fill, read, screenshot - plus the things headless browsers cannot
       do, because it is the browser you are already signed into.
     </Sub>
     <div style={{ display: "flex", gap: 16, marginTop: 40 }}>
@@ -337,7 +337,7 @@ export const StoreShots: React.FC = () => {
 export const STORE_COUNT = SCENES.length;
 
 /* ── Butikkens ANDRE billedfelter ──────────────────────────────────────────────
- * 440x280 "small promo tile" vises i soegeresultater og paa kategorisiderne — det
+ * 440x280 "small promo tile" vises i soegeresultater og paa kategorisiderne - det
  * er det billede folk ser FOER de klikker ind. Googles raad: lidt tekst, virker i
  * halv stoerrelse, samme brand-elementer. 1400x560 "marquee" bruges kun hvis
  * butikken featurer en udvidelse, men uden den kan man ikke blive featured.

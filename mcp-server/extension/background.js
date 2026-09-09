@@ -3615,7 +3615,7 @@ async function dispatch(port, method, params) {
       chrome.notifications.create(notifId, {
         type: 'basic',
         iconUrl: 'icons/icon-128.png',
-        title: `${session.label} — Action Required`,
+        title: `${session.label} - Action Required`,
         message: params.message,
         requireInteraction: true,
         silent: false,
@@ -3676,7 +3676,7 @@ async function dispatch(port, method, params) {
 
             const h = document.createElement('div');
             h.style.cssText = 'font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:4px';
-            h.textContent = title || 'Agent360 — Action Required';
+            h.textContent = title || 'Agent360 - Action Required';
             card.appendChild(h);
             const badge = document.createElement('div');
             badge.style.cssText = 'font-size:10px;color:#94a3b8;margin-bottom:12px';
@@ -3730,7 +3730,7 @@ async function dispatch(port, method, params) {
           });
         },
         // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
-        // med standarden "Agent360 — Action Required", men udelades den, er vaerdien
+        // med standarden "Agent360 - Action Required", men udelades den, er vaerdien
         // undefined — og chrome.scripting.executeScript afviser hele kaldet med
         // "Error at property 'args': Error at index 1: Value is unserializable".
         // Altsaa styrtede human-in-the-loop-vaerktoejet hver gang en agent fulgte sit
@@ -3741,7 +3741,7 @@ async function dispatch(port, method, params) {
         // anvendes der hvor den er lovet.
         args: [
           String(params.message ?? ''),
-          String(params.title ?? 'Agent360 — Action Required'),
+          String(params.title ?? 'Agent360 - Action Required'),
           Array.isArray(fields) ? fields : [],
           Boolean(hasFields),
           Number(timeout) || 120000,

@@ -1,11 +1,11 @@
-# Browser MCP — Wishlist
+# Browser MCP - Wishlist
 
 This is the public list of features people have asked for. Open and curated by Agent360.
 
 ## How to add a wish
 
-- **Easy:** [Open a wish issue](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml) — fill the form, we'll triage and roll it in.
-- **Faster:** Ask Claude in your session to "submit a wish for browser-mcp to do X" — it knows the format.
+- **Easy:** [Open a wish issue](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml) - fill the form, we'll triage and roll it in.
+- **Faster:** Ask Claude in your session to "submit a wish for browser-mcp to do X" - it knows the format.
 - **PR directly:** Edit this file and open a pull request with your bullet under **🟡 Wanted**.
 
 When a wish gets implemented, it moves to **✅ Shipped** with the version it landed in.
@@ -14,14 +14,14 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 ## 🟡 Wanted
 
-- **Profile pairing — bind one MCP server to one Chrome profile**
+- **Profile pairing - bind one MCP server to one Chrome profile**
   ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)). With the extension active in
   two profiles (work + personal), both connect to every server in the port range and which
   one wins is a race. An opt-in token (`AGENT360_TOKEN`) would let two MCP entries target two
-  profiles deliberately. Accepted, not scheduled — say so on the issue if you need it.
+  profiles deliberately. Accepted, not scheduled - say so on the issue if you need it.
   *Note on the security framing: the current `Origin` check proves "some Chrome extension",
   not which profile, and a local program can set that header itself. An opt-in token doesn't
-  change that for users who leave it off — the value here is profile pairing, not auth.*
+  change that for users who leave it off - the value here is profile pairing, not auth.*
 
 - [💡 Submit a wish →](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
 
@@ -31,20 +31,20 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 Rettelserne herunder er lavet, testet og committet, men **ingen udgivelse har fundet sted endnu**,
 så de er ikke i den udvidelse eller den npm-pakke du har. Står her fordi det er ærligere end at
-lade dem stå under «Shipped» — hvilket de gjorde ved en fejl indtil 9/9.
+lade dem stå under «Shipped» - hvilket de gjorde ved en fejl indtil 9/9.
 
 - **Skærmbilledet kunne fotografere din egen fane.** Fejlede CDP-optagelsen, faldt koden tilbage
-  på `captureVisibleTab`, som fotograferer den *synlige* fane — ikke agentens. Siden aktiveringen
+  på `captureVisibleTab`, som fotograferer den *synlige* fane - ikke agentens. Siden aktiveringen
   bevidst blev fjernet i august, er agentens fane normalt netop ikke den synlige. Reproduceret:
   agenten fik et billede af en anden åben side, uden at noget i svaret afslørede det. Afvises nu.
 - **`browser_scroll` med pixels ramte 30-sekunders-loftet hver gang, på hver side.** CDP's
   hjulafsendelse indfrier aldrig sit løfte, og den `window.scrollBy` der er skrevet til netop det
-  tilfælde, lå i et `catch` — en hænger er ikke en exception, så den kunne aldrig nås.
+  tilfælde, lå i et `catch` - en hænger er ikke en exception, så den kunne aldrig nås.
   Nu 1,5 sekund i stedet for 30, og siden ruller.
 - **`browser_click` svarede `ok: true` sammen med `landed: false`.** Reserveløsningen fyrede uden
   nogensinde at måle om den virkede. Nu måles den, og `ok` udledes af resultatet ([#19]).
 - **Et muterende CDP-udtryk kunne køre fire gange.** `Runtime.evaluate` stod på retry-listen, men
-  flere af vores egne udtryk muterer — settle-udtrykket fyrer selve reserveløsnings-klikket. På en
+  flere af vores egne udtryk muterer - settle-udtrykket fyrer selve reserveløsnings-klikket. På en
   SPA hvor debuggeren falder af, kunne det lande fire klik.
 - **`set_combobox` brugte 8,5 sekunder på at sige nej** til en almindelig `<select>` den aldrig
   kunne betjene. Nu genkendes den straks, og svaret navngiver `browser_select_option`.
@@ -53,53 +53,53 @@ lade dem stå under «Shipped» — hvilket de gjorde ved en fejl indtil 9/9.
 
 ## ✅ Shipped
 
-- **IKKE UDGIVET — v1.29.1. Punkterne herunder ligger på `main` og venter en udgivelse.**
+- **IKKE UDGIVET - v1.29.1. Punkterne herunder ligger på `main` og venter en udgivelse.**
   (Stod fejlagtigt som shipped fra 8/9 til 9/9. Fem fejl af samme familie: værktøjet sagde ét og
   gjorde et andet.)
   Fundet ved at køre værktøjerne mod en ægte React-formular, ikke ved at læse koden.
   - `select_option` meldte **fiasko om valg der lykkedes.** Vagten læste feltet synkront
-    efter hændelsen — men et styret felt der arbejder ser præcis sådan ud: det gemmer
+    efter hændelsen - men et styret felt der arbejder ser præcis sådan ud: det gemmer
     valget et andet sted og nulstiller sig selv. Nu tages et aftryk af siden, og rollback
     meldes kun når *intet andet* ændrede sig.
   - `fill` **skrev ovenpå i stedet for at erstatte.** To kald gav
-    `"test@example.dkanden@example.dk"` — og begge svarede ok. Cmd+A og Backspace tømmer
+    `"test@example.dkanden@example.dk"` - og begge svarede ok. Cmd+A og Backspace tømmer
     ikke et styret felt. Nu læses feltet tilbage efter rydningen.
   - **Brugerens lukning af sidste fane frigav ikke porten** når Chromes baggrundsproces
     sov. Halvdelen af hele frigivelsens præmis virkede kun når processen tilfældigvis var
     vågen. Fælden: `restoreSessions()` dropper netop den session man skal handle på.
   - **Første kald efter en binding sendte folk hen for at geninstallere** en udvidelse der
-    virkede fint. Nu måles «er døren lige åbnet?» ved kaldets begyndelse — ikke bagefter,
+    virkede fint. Nu måles «er døren lige åbnet?» ved kaldets begyndelse - ikke bagefter,
     hvor gentagelserne selv har brugt femten sekunder.
   - **Fanegruppen mistede navn og farve** ved hver frigivelse. Pladsen huskes nu på chattens
-    pid, ikke på porten — men kun hvis den er ledig, så navnekollisionen ikke vender tilbage.
+    pid, ikke på porten - men kun hvis den er ledig, så navnekollisionen ikke vender tilbage.
 
-- **v1.29.0 (2026-09-07) — porten tages ved brug, ikke ved opstart.** Målt samme dag:
+- **v1.29.0 (2026-09-07) - porten tages ved brug, ikke ved opstart.** Målt samme dag:
   37 kørende servere, alle 20 porte i spændet optaget, 17 chats helt uden browser. To
-  årsager der forstærkede hinanden — hver chat tog en port ved opstart, også de mange der
+  årsager der forstærkede hinanden - hver chat tog en port ved opstart, også de mange der
   aldrig rørte browseren; og en chat der tabte portkapløbet prøvede aldrig igen.
   - Porten bindes ved **første browser-kald**, og hvert kald prøver igen hvis det forrige
     ikke fik en. Udvidelsen genscanner spændet hvert 2. sekund, så en port der åbnes sent
     findes af sig selv.
-  - Lukker **agenten** sin sidste fane, slippes porten efter **5 minutter uden faner** —
+  - Lukker **agenten** sin sidste fane, slippes porten efter **5 minutter uden faner** -
     aflyst hvis der kommer en ny. Før stod porten reserveret i op til fire timer, fordi
     nedlukningen kun udløstes når et *menneske* lukkede fanen. Serverens egen instruks
     siger «ALWAYS close tabs when done», så den dokumenterede god-praksis slog
     oprydningen ihjel.
   - `terminate` **slipper porten i stedet for at lukke processen**, så en chat der er
     færdig kl. 10 stadig kan bruge browseren kl. 10:40.
-  - Fejlbeskeden ved fuldt spænd beder ikke længere om en genstart — den er ikke nødvendig.
+  - Fejlbeskeden ved fuldt spænd beder ikke længere om en genstart - den er ikke nødvendig.
 
-- **IKKE UDGIVET — v1.26.0, og tre af punkterne blev aldrig bygget.**
+- **IKKE UDGIVET - v1.26.0, og tre af punkterne blev aldrig bygget.**
   Stod som shipped fra 27/7 til 9/9. Der findes hverken en git-tag eller en npm-udgivelse for
-  1.26.0, og **de tre udklipsholder-værktøjer eksisterer ingen steder** — hverken i
+  1.26.0, og **de tre udklipsholder-værktøjer eksisterer ingen steder** - hverken i
   `mcp-server/tools.js` eller i udvidelsen. De blev annonceret som en «SECRET-SAFE clipboard
   bridge» til at flytte kodeord uden om samtalen; havde nogen stolet på den beskrivelse, ville
   de have stolet på noget der ikke var der. Fjernet frem for skrevet om.
   De fire nedenfor **findes** i koden, men er landet i senere udgivelser, ikke i en 1.26.0:
-  - `browser_double_click` — true dblclick (OWA month-view opened inline-rename on two single clicks)
-  - `browser_right_click` — page-level context menus
-  - `browser_click_xy` — raw-coordinate escape hatch for unselectable custom widgets (Azure portal dialogs)
-  - `browser_reattach_debugger` — ghost-attach recovery without extension reload
+  - `browser_double_click` - true dblclick (OWA month-view opened inline-rename on two single clicks)
+  - `browser_right_click` - page-level context menus
+  - `browser_click_xy` - raw-coordinate escape hatch for unselectable custom widgets (Azure portal dialogs)
+  - `browser_reattach_debugger` - ghost-attach recovery without extension reload
   - `browser_execute_script` now accepts `script` as alias for `code` + fails loudly with guidance instead of silent undefined
 
 ---
@@ -110,7 +110,7 @@ Things we've intentionally decided **not** to do (so you don't have to ask twice
 
 - **Firefox support** ([#8](https://github.com/Agent360dk/browser-mcp/issues/8)). Not a
   manifest port. The extension makes 61 Chrome Debugger Protocol calls across 17 distinct CDP
-  methods, and that is where the value sits — trusted input events, dialog handling,
+  methods, and that is where the value sits - trusted input events, dialog handling,
   cross-origin frames. Firefox's remote protocol isn't CDP, so this is a rewrite of the
   interaction layer maintained in parallel, indefinitely, by one person. If Firefox ships
   meaningful CDP compatibility, the answer changes.
@@ -118,16 +118,16 @@ Things we've intentionally decided **not** to do (so you don't have to ask twice
 - **Usage monetization via a third-party SDK** ([#9](https://github.com/Agent360dk/browser-mcp/issues/9)).
   MIT, local, no telemetry. That stays.
 
-## 📋 TODO — samlet, tages løbende
+## 📋 TODO - samlet, tages løbende
 
 Felt-fundene herunder, som handlingspunkter. Rækkefølgen er efter hvad der koster mest
 at undvære, ikke efter nummer.
 
-**Fra to uafhængige reviews af port-arbejdet 7/9 — seks fund lukket, disse står åbne:**
+**Fra to uafhængige reviews af port-arbejdet 7/9 - seks fund lukket, disse står åbne:**
 
 - [ ] **Forældede `frigiv-<port>`-alarmer overlever portgenbrug.** Dør en chat inden fristen
   udløber, ryddes alarmen aldrig; tager en anden chat porten, kan den fyre mod dens session.
-  Størrelses-tjekket fanger det, så værste udfald er selvhelbredende — men koblingen bør væk.
+  Størrelses-tjekket fanger det, så værste udfald er selvhelbredende - men koblingen bør væk.
 - [ ] **Faner strander hvis `chrome.tabs.remove()` fejler i `releaseSession`.** Fejlen sluges,
   og sessionen slettes alligevel. Præ-eksisterende, men nås nu ad en hyppigere vej.
 - [ ] **~120 mislykkede bindingsforsøg pr. værktøjskald når hele spændet er optaget** (målt).
@@ -135,26 +135,26 @@ at undvære, ikke efter nummer.
   øjeblik en bliver fri. At dæmpe den ville svække selve rettelsen for at spare noget der
   hverken koster ventetid eller hukommelse. Noteret som kendt støj.
 
-**Målt 31/8-2026 under live-test af forbrugeragenten.dk — tre ting kostede reelt tid:**
+**Målt 31/8-2026 under live-test af forbrugeragenten.dk - tre ting kostede reelt tid:**
 
 - [ ] **Udvidelsen skal genindlæses i Chrome, før fane-fokus-rettelsen virker.** Svaret fra
   `switch_tab` mangler stadig `windowFocused`, altså kører den gamle kode. Symptomet er at
   ALT timer ud efter 30 s i en baggrundsfane. Omvejen der virker: `computer-mcp` →
   `app focus "Google Chrome"` før hvert kald. Det skal ikke være nødvendigt.
   **Reproduceret 7/9:** `browser_screenshot` returnerede et billede af et HELT andet
-  vindues fane — ikke sessionens egen. Værktøjsbeskrivelsen lover «the tab is
+  vindues fane - ikke sessionens egen. Værktøjsbeskrivelsen lover «the tab is
   auto-activated before capture»; det skete ikke. Et skærmbillede af den forkerte side
   er værre end ingen, fordi der drages konklusioner af det.
-- [ ] **`browser_fill` føjer til i stedet for at erstatte** (allerede noteret) — men her kostede
+- [ ] **`browser_fill` føjer til i stedet for at erstatte** (allerede noteret) - men her kostede
   det to ekstra runder, fordi feltet så indeholdt adressen to gange. Forslag: ryd feltet som
   standard, med `append: true` som tilvalg.
-- [ ] **React-styrede `<select>` kan slet ikke drives — fem metoder proevet, alle fejlede.**
+- [ ] **React-styrede `<select>` kan slet ikke drives - fem metoder proevet, alle fejlede.**
   Maalt 1/9 paa forbrugeragenten.dk's penge-tilbage-formular. Proevet: `browser_select_option`
-  (svarer `ok:true` med rigtig vaerdi — men React's `onChange` fyrer aldrig), native
+  (svarer `ok:true` med rigtig vaerdi - men React's `onChange` fyrer aldrig), native
   value-setter + `dispatchEvent('change')`, samme plus nulstilling af `_valueTracker`,
   `browser_click` + `ArrowDown`, og `browser_click` paa selve `<option>`. Feltets DOM-vaerdi
   aendrer sig hver gang; komponentens `useState` hoerer det aldrig. Det blokerede en hel
-  e2e-test af en formular. **Vaerktoejet svarer `ok:true` mens intet er sket — det er
+  e2e-test af en formular. **Vaerktoejet svarer `ok:true` mens intet er sket - det er
   vaerre end en fejl.** Forslag: verificér effekten (aendrede den omkringliggende UI sig?)
   og svar `ok:false` hvis ikke, som `browser_select_option` allerede goer for rollback.
 - [ ] **React-styrede felter opdaterer ikke komponentens egen tilstand.** Både den native
@@ -164,35 +164,35 @@ at undvære, ikke efter nummer.
   `input`+`change` med `bubbles`, eller dokumentér tast-omvejen ét sted.
 - [ ] **`browser_navigate` timer ud når siden straks redirecter til et andet domæne.** `/tak`
   sender videre til app-domænet; værktøjet venter på den URL man bad om, og opgiver.
-  Navigationen LYKKES — svaret lyver. Forslag: løs op ved første `load`, uanset slut-URL.
+  Navigationen LYKKES - svaret lyver. Forslag: løs op ved første `load`, uanset slut-URL.
 
-- [ ] **#1 · Udrul `switch_tab`-vinduesfokus** — FIXET ER SKREVET og testet (3 mutationer,
+- [ ] **#1 · Udrul `switch_tab`-vinduesfokus** - FIXET ER SKREVET og testet (3 mutationer,
       alle fanget). Ligger i `extension/background.js` i dev-checkout. Den kørende kopi er
       `~/Downloads/browser-mcp-AKTIV/background.js` og har det IKKE. Kræver kopiering +
       genindlæsning i `chrome://extensions`. **Højest værdi: uden den læses Google-apps
       halvt renderede, og der drages forkerte konklusioner af dem.**
-- [ ] **#4 · `fill` erstatter ikke, den tilføjer** — brug native value-setter, eller gør
+- [ ] **#4 · `fill` erstatter ikke, den tilføjer** - brug native value-setter, eller gør
       `append: true` til et eksplicit tilvalg. Nuværende adfærd er næsten aldrig den ønskede.
-- [ ] **#2 + #5 · Angular Material-checkboxes** — host-elementet reagerer ikke; det indre
+- [ ] **#2 + #5 · Angular Material-checkboxes** - host-elementet reagerer ikke; det indre
       element varierer mellem Googles egne tabeller (`.particle-ripple-container` vs
       `.mat-checkbox-container`). En løsning bør prøve det inderste klikbare barn generelt.
-- [ ] **#7 · Sessioner er isolerede uden vej imellem** — `list_tabs` viser kun egen session,
+- [ ] **#7 · Sessioner er isolerede uden vej imellem** - `list_tabs` viser kun egen session,
       `switch_tab` afviser på tværs, og der er intet `list_sessions`. Kostede en opgave 30/8
       fordi det nødvendige login lå i den anden session.
-- [ ] **#6 · Vandret klipning måles ikke** — elementer uden for viewporten får gyldige
+- [ ] **#6 · Vandret klipning måles ikke** - elementer uden for viewporten får gyldige
       koordinater, klikket sendes i blinde. Scroll ind, eller returnér `offscreen: true`.
-- [ ] **#8 · Googles Closure-formularer** — ingen kendt løsning. Værd at dokumentere som
+- [ ] **#8 · Googles Closure-formularer** - ingen kendt løsning. Værd at dokumentere som
       kendt grænse, så man stopper i stedet for at bruge tredive kald.
-- [ ] **#3 · Trusted Types i iframes** — laveste prioritet, veldokumenteret grænse.
+- [ ] **#3 · Trusted Types i iframes** - laveste prioritet, veldokumenteret grænse.
 
 ---
 
 ## Målt mod Google Ads (22/8-2026)
 
-Tre huller fundet under en rigtig opgave — annoncørverificering, konverterings-opsætning
+Tre huller fundet under en rigtig opgave - annoncørverificering, konverterings-opsætning
 og pausering af en kampagne. Alle tre kostede tid, og det første kostede en fejldiagnose.
 
-### 1. `switch_tab` fokuserer ikke VINDUET — diagnosen, ikke symptomet · **hoej** · FIX SKREVET
+### 1. `switch_tab` fokuserer ikke VINDUET - diagnosen, ikke symptomet · **hoej** · FIX SKREVET
 
 Symptomet blev beskrevet her i maaneder som "klik lander ikke naar fanen er skjult".
 Det var ikke aarsagen. 31/8-2026 blev den fundet i koden:
@@ -203,24 +203,24 @@ case 'switch_tab': {
   ...
 ```
 
-Det goer fanen aktiv INDE I sit vindue. `document.hasFocus()` bliver sand — men
+Det goer fanen aktiv INDE I sit vindue. `document.hasFocus()` bliver sand - men
 `document.visibilityState` forbliver `hidden` saa laenge vinduet ligger bagved.
 Chrome struber timere i skjulte faner, saa Angular-apps (Google Ads, GA4, Search
 Console) aldrig renderer faerdigt.
 
 **Konsekvensen er vaerre end "klik virker ikke".** Sider bliver laest HALVT BYGGET,
 og der drages forkerte konklusioner af dem. 31/8 konkluderede jeg at tre GA4-
-ejendomme laa paa en utilgaengelig konto — de laa lige for; jeg havde bare laest en
+ejendomme laa paa en utilgaengelig konto - de laa lige for; jeg havde bare laest en
 halvt renderet vaelger. Den fejl kostede en time og en forkert melding til brugeren.
 
-**Fix (skrevet, testet, mutationsbevist — 3 mutationer, alle fanget):**
+**Fix (skrevet, testet, mutationsbevist - 3 mutationer, alle fanget):**
 ```js
 await chrome.windows.update(tab.windowId, { focused: true });
 ```
 i try/catch, og svaret baerer `windowFocused: true|false` saa kalderen kan se om
 synligheden faktisk blev sikret. Test i `test/fanevalg.test.mjs`.
 
-**VIGTIG afgraensning — laes foer du udvider fixet:** `background.js:337` siger
+**VIGTIG afgraensning - laes foer du udvider fixet:** `background.js:337` siger
 ordret *"screenshot/press_key run constantly, so we must NOT
 chrome.windows.update({focused:true})"*, og linje 347 saetter bevidst `state:
 'normal'` UDEN `focused`. Det er rigtigt: browseren maa ikke springe frem ved hvert
@@ -228,10 +228,10 @@ skaermbillede. `switch_tab` er den eneste undtagelse, fordi den udtrykker en
 eksplicit hensigt om at se fanen. Udvid IKKE fixet til de hyppige vaerktoejer.
 
 **Udestaar:** fixet ligger i dev-checkout'et. Den koerende kopi er
-`~/Downloads/browser-mcp-AKTIV/background.js` (Load Unpacked) og har det ikke —
+`~/Downloads/browser-mcp-AKTIV/background.js` (Load Unpacked) og har det ikke -
 den skal opdateres og udvidelsen genindlaeses foer det virker.
 
-**Tredje bekraeftelse 30/8 — og den dyreste konsekvens hidtil:** samme moenster paa en
+**Tredje bekraeftelse 30/8 - og den dyreste konsekvens hidtil:** samme moenster paa en
 helt almindelig `<button onclick="...">` paa en lokal fixture: `ok: true`, men
 `landed: false, fallbackFired: true`, 5,3 sek. Fanen var lige aabnet med
 `new_tab: true` og var ikke aktiveret.
@@ -245,7 +245,7 @@ mens vaerktoejet melder `ok: true`:
   - popups, fuldskaerm, lyd-afspilning
 
 MAALT 30/8: forsoeg paa at komme igennem npm's 2FA strandede her. Knappen blev
-"klikket" (`ok: true`), men prompten kom aldrig — fordi fallbacken er syntetisk.
+"klikket" (`ok: true`), men prompten kom aldrig - fordi fallbacken er syntetisk.
 Uden `landed`-flaget ville det have lignet at npm's side var i stykker.
 
 **Skaerpet forslag:** `click` boer aktivere fanen foerst (jf. ovenfor) OG svaret boer
@@ -260,7 +260,7 @@ Den reagerer **hverken** på trusted klik på host-elementet (`landed: true`, me
 når elementet har fokus.
 
 **Det der virker:** klik på det indre `.particle-ripple-container`. Fem forsøg gik
-til spilde før det blev fundet — pausering af en kampagne var reelt umulig imens.
+til spilde før det blev fundet - pausering af en kampagne var reelt umulig imens.
 
 **Forslag:** når `click` rammer en `[role=checkbox]`/`[role=switch]` og `aria-checked`
 ikke ændrer sig, så prøv automatisk det inderste klikbare barn og rapportér hvad der virkede.
@@ -269,7 +269,7 @@ ikke ændrer sig, så prøv automatisk det inderste klikbare barn og rapportér 
 
 `payments.google.com`-iframen (annoncørverificering) afviser al JS-evaluering:
 *"Evaluating a string as JavaScript violates this document's Trusted Type assignment
-requirements."* Ikke noget vi kan omgå — det er sidens egen politik.
+requirements."* Ikke noget vi kan omgå - det er sidens egen politik.
 
 Klik og `upload_file` virker fint der, fordi de går gennem fejlfindings-API'et.
 Kun læsning af DOM'en kræver skærmbillede.
@@ -296,7 +296,7 @@ eksplicit tilvalg. Den nuvaerende adfaerd er naesten aldrig den oenskede.
 
 ### 5. Checkbox-varianter · **middel**
 
-Punkt 2 ovenfor loeses ved at klikke det indre element — men hvilket indre element
+Punkt 2 ovenfor loeses ved at klikke det indre element - men hvilket indre element
 varierer mellem Googles egne tabeller:
 
 | Tabel | Virkende klikmaal |
@@ -305,8 +305,8 @@ varierer mellem Googles egne tabeller:
 | Konverteringshandlinger | `.mat-checkbox-container` |
 
 Begge ligger inde i `<mat-checkbox role="checkbox">`, og host-elementet reagerer
-paa ingen af dem. En loesning boer proeve begge — og generelt det inderste
-klikbare barn — frem for at antage én struktur.
+paa ingen af dem. En loesning boer proeve begge - og generelt det inderste
+klikbare barn - frem for at antage én struktur.
 
 **Bemaerk ogsaa:** i konverteringstabellen er bulk-"Rediger" *deaktiveret* naar
 raekkerne er "standardmaal paa kontoniveau". Det er ikke en browser-mcp-fejl, men
@@ -315,17 +315,17 @@ det er vaerd at vide at en markeret raekke ikke altid kan redigeres.
 
 ### 6. Vandret klipning maales ikke · **lav**
 
-Samme session: et element laa paa `x: 3523` i et vindue paa `vw: 3420` — altsaa
+Samme session: et element laa paa `x: 3523` i et vindue paa `vw: 3420` - altsaa
 uden for skaermen til hoejre. `resolveElement` gav gyldige koordinater, og klikket
 blev sendt til et punkt uden for viewporten, hvor `elementFromPoint` returnerer
 `null`. Resultatet var endnu et `landed: false` uden forklaring.
 
 **Forslag:** naar et elements midtpunkt falder uden for viewporten, saa scroll det
-ind (inkl. vandret, og i alle scrollende forfaedre) foer klikket — eller returnér
+ind (inkl. vandret, og i alle scrollende forfaedre) foer klikket - eller returnér
 en distinkt fejl `offscreen: true` i stedet for at klikke i blinde.
 
 
-### 7. Sessioner er isolerede — og der er ingen vej imellem dem · **middel**
+### 7. Sessioner er isolerede - og der er ingen vej imellem dem · **middel**
 
 Fundet 30/8. `browser_list_tabs` viste en tom liste i session "Claude 2", mens en
 tidligere del af samme opgave havde arbejdet i session "Claude 1" med et logget-ind
@@ -335,7 +335,7 @@ Meta Business. `browser_switch_tab` afviser tvaers af sessioner:
 
 Der findes intet `list_sessions` og ingen maade at skifte til en anden session.
 Konsekvensen var konkret: den login der skulle bruges laa i den anden session, og
-opgaven kunne ikke faerdiggoeres — ikke fordi adgangen manglede, men fordi den laa
+opgaven kunne ikke faerdiggoeres - ikke fordi adgangen manglede, men fordi den laa
 et sted vaerktoejet ikke kunne naa.
 
 **Forslag:** enten et `list_sessions`/`attach_session`, eller at `list_tabs` viser
@@ -346,7 +346,7 @@ skal bruge findes et andet sted.
 ### 8. Googles Closure-formularer kan ikke betjenes · **hoej**
 
 Fundet 31/8 i Search Console (`search.google.com/search-console/welcome`). Feltet
-til webadresse kan fyldes ad ALLE veje — native value-setter + input/change,
+til webadresse kan fyldes ad ALLE veje - native value-setter + input/change,
 `browser_fill`, ægte OS-indsaet med cmd+V, og ægte tastetryk (jeg skrev et 'a' og
 saa vaerdien aendre sig). Men submit-knappen forbliver `aria-disabled="true"` med
 klassen `RDPZE`, og Enter submitter ikke.
@@ -358,7 +358,7 @@ Det her er en anden fejlklasse end punkt 2 og 5 (Angular Material, hvor et indre
 element skulle rammes). Her rammer vi det rigtige element, inputtet lander, og
 UI'en reagerer alligevel ikke.
 
-**Forslag:** ingen kendt loesning fra vaerktoejets side — men det er vaerd at
+**Forslag:** ingen kendt loesning fra vaerktoejets side - men det er vaerd at
 kende graensen, saa man ikke bruger tredive kald paa at proeve. Naar en Google-
 Closure-formular ikke aktiverer sin knap efter et ægte tastetryk, saa stop og
 giv opgaven videre. Overvej en `browser_about`-note om kendte uframbare flader.
@@ -374,7 +374,7 @@ _Last updated: 2026-08-22 · Maintained by [@Agent360dk](https://github.com/Agen
 ### 7. `navigate` deler 30-sekunders budget med alt andet · **hoej**
 
 `index.js` giver `ask_user`, `solve_captcha` og `extract_list` deres egne budgetter.
-Alt andet — inklusive `navigate` — faar 30000 ms.
+Alt andet - inklusive `navigate` - faar 30000 ms.
 
 MAALT i en Chrome med 86 faner, samme session, samme URL-type:
 
@@ -384,13 +384,13 @@ MAALT i en Chrome med 86 faner, samme session, samme URL-type:
     navigate (samme fane) 30.095 ms  TIMEOUT
 
 Den ligger paa graensen. Udfaldet afhaenger af hvor travlt browseren har, saa den
-samme kommando lykkes og fejler skiftevis — og fejlen ligner "browseren er i stykker"
+samme kommando lykkes og fejler skiftevis - og fejlen ligner "browseren er i stykker"
 i stedet for "den var 400 ms for langsom".
 
 **Forslag:** giv `navigate` sit eget budget (60-90 sek), eller lad kalderen saette det.
 Og naar den timer ud: naevn antallet af aabne faner i fejlen, saa aarsagen er synlig.
 
-### 8. `list_tabs` kan ikke se ud over sin egen session — og tier om det · **middel**
+### 8. `list_tabs` kan ikke se ud over sin egen session - og tier om det · **middel**
 
 `browser_list_tabs` har `inputSchema: { properties: {} }`. Et `{ all: true }` bliver
 **tavst ignoreret** og svaret er `{"tabs": []}` for en frisk session.
@@ -399,7 +399,7 @@ Det goer diagnose umulig indefra: da navigation begyndte at time ud, kunne jeg i
 om Chrome var stoppet til, om der laa en fastfrossen dialog, eller hvor mange faner der
 var. Jeg maatte gaa uden om vaerktoejet (AppleScript) for at finde ud af at der var 86.
 
-Og jeg naaede en forkert konklusion undervejs — at mine egne testkoersler havde fyldt
+Og jeg naaede en forkert konklusion undervejs - at mine egne testkoersler havde fyldt
 browseren. Maalingen viste 84 fremmede faner og 2 af mine.
 
 **Forslag:** enten et `all: true` der faktisk virker (eller en `browser_diagnose`), ELLER
@@ -411,19 +411,19 @@ en fejl ved ukendte parametre. Et tavst ignoreret flag er vaerre end ingen flag.
 Knappen fandtes, med praecis den `innerText`.
 
 Aarsagen: tekst-matchning kraever praefiks (`text=...` eller `tag:text(...)`). Uden det
-falder den igennem til `document.querySelector("Use security key")` — ugyldig CSS.
+falder den igennem til `document.querySelector("Use security key")` - ugyldig CSS.
 Dokumentationen er korrekt; fejlbeskeden er det ikke.
 
 **Forslag:** ser selektoren ud som fritekst (mellemrum, ingen CSS-tegn), saa sig
-"ugyldig CSS-selektor — mente du `text=Use security key`?" i stedet for "Element not found".
+"ugyldig CSS-selektor - mente du `text=Use security key`?" i stedet for "Element not found".
 
-### 10. To-faktor kan ikke automatiseres — og skal ikke kunne · **ikke en fejl**
+### 10. To-faktor kan ikke automatiseres - og skal ikke kunne · **ikke en fejl**
 
 Skrevet ned saa ingen bruger tid paa det igen.
 
 En sikkerhedsnoegle (WebAuthn/Touch ID) kraever et fysisk tryk paa hardware. Der findes
 ingen vej udenom med browser-automatik, og det er hele pointen. Dertil blokerer Claude
-Codes egen sikkerhedsklassifikator forsoeg paa at klikke i et 2FA-flow — med rette.
+Codes egen sikkerhedsklassifikator forsoeg paa at klikke i et 2FA-flow - med rette.
 
 **Hvad der DOG kan automatiseres:** alt frem til porten. Aabne siden, laese den, finde
 knapperne, bekraefte at brugeren er genkendt. Stop der, og sig praecist hvad mennesket

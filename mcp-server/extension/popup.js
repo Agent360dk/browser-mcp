@@ -6,10 +6,10 @@
 function paintStatus(connected, count, sessionCount) {
   document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
   document.getElementById('label').textContent = !connected
-    ? 'Not connected — no MCP server found'
+    ? 'Not connected - no MCP server found'
     : sessionCount > 0
-      ? `Connected — ${sessionCount} active session${sessionCount === 1 ? '' : 's'}`
-      : `Connected — ready (${count} agent${count === 1 ? '' : 's'} listening)`;
+      ? `Connected - ${sessionCount} active session${sessionCount === 1 ? '' : 's'}`
+      : `Connected - ready (${count} agent${count === 1 ? '' : 's'} listening)`;
   // The Chrome Web Store can only install the extension. If nothing is listening on
   // ports 9876-9895, the user almost certainly never ran the npx install — say so.
   document.getElementById('setup').classList.toggle('show', !connected);

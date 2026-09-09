@@ -356,7 +356,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         message: { type: 'string', description: 'What the user needs to do or provide' },
-        title: { type: 'string', description: 'Dialog title (default: "Agent360 — Action Required")' },
+        title: { type: 'string', description: 'Dialog title (default: "Agent360 - Action Required")' },
         fields: {
           type: 'array',
           description: 'Input fields for user to fill in. Each field has: name (key), label (display text), type (text/password/email). Omit for simple "Done/Skip" confirmation.',

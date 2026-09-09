@@ -1,12 +1,12 @@
 # Browser MCP by [Agent360](https://agent360.dk)
 
-**Your AI agent drives your real, logged-in Chrome — and works where headless tools die.**
+**Your AI agent drives your real, logged-in Chrome - and works where headless tools die.**
 
 It is the browser you are already signed into. No login step to fail, no API key to wire up,
 no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
 in its own colour-coded tab group. 40 tools, MIT, 100% local.
 
-→ **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** — every
+→ **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** - every
 wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones we have not fixed.
 
 [![npm version](https://img.shields.io/npm/v/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
@@ -25,35 +25,35 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 
 ▶ **[Watch the 37-second demo with sound →](https://browsermcp.dev)**
 
-Browser MCP gives Claude Code (and any MCP client — Cursor, VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked — because it's *you* browsing.
+Browser MCP gives Claude Code (and any MCP client - Cursor, VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
-The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace — with you approving the sensitive steps.
+The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
 
-40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local — nothing leaves your machine.**
+40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local - nothing leaves your machine.**
 
 ## The whole thing, in four steps
 
-**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? See the unpacked install below.
+**1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? See the unpacked install below.
 
-**2 — Add the MCP server.** Paste this in a terminal. Required — the extension does nothing on its own:
+**2 - Add the MCP server.** Paste this in a terminal. Required - the extension does nothing on its own:
 
 ```bash
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-**3 — Restart Claude Code.** That is what starts the server. The extension icon turns green.
+**3 - Restart Claude Code.** That is what starts the server. The extension icon turns green.
 
-**4 — Say this, to check it worked.** Paste it to Claude Code:
+**4 - Say this, to check it worked.** Paste it to Claude Code:
 
 > Take a screenshot of my current Chrome tab.
 
-You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#youre-in-now-what)
+You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#youre-in-now-what)
 
-Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config — see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Everything below is the long version.
+Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config - see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Everything below is the long version.
 
-## The long version — install, step by step
+## The long version - install, step by step
 
-> **Browser MCP is two halves and you need both:** a **Chrome extension** (drives the browser) and a **local MCP server** (what your agent actually talks to). Installing only the extension — e.g. straight from the Chrome Web Store — leaves it stuck on *"Not connected"*, because there is no server for it to reach. Chrome cannot install the server, and npm cannot install the extension. Hence two steps.
+> **Browser MCP is two halves and you need both:** a **Chrome extension** (drives the browser) and a **local MCP server** (what your agent actually talks to). Installing only the extension - e.g. straight from the Chrome Web Store - leaves it stuck on *"Not connected"*, because there is no server for it to reach. Chrome cannot install the server, and npm cannot install the extension. Hence two steps.
 
 ### Step 1: Register the MCP server with Claude Code
 
@@ -69,11 +69,11 @@ Want the extension files on disk for the unpacked install in Step 2? Also run:
 npx @agent360/browser-mcp install
 ```
 
-It copies the extension to `~/.browser-mcp/extension/` and **prints that path in the terminal — copy it.** (Use it for the extension files only; register the server with `claude mcp add` above.)
+It copies the extension to `~/.browser-mcp/extension/` and **prints that path in the terminal - copy it.** (Use it for the extension files only; register the server with `claude mcp add` above.)
 
 ### Step 2: Load the extension in Chrome
 
-> Chrome won't let extensions install themselves from npm — you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-one-click-install) install if you'd rather have the extension auto-update.
+> Chrome won't let extensions install themselves from npm - you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-one-click-install) install if you'd rather have the extension auto-update.
 
 1. **Open Chrome** and type `chrome://extensions` in the address bar
 2. **Toggle "Developer mode"** ON (top right corner)
@@ -91,9 +91,9 @@ That's it. The Browser MCP icon will appear in your toolbar, and 40 browser tool
 If you don't want to use npm, download the extension directly:
 
 1. [Download the extension zip](https://github.com/Agent360dk/browser-mcp/releases/latest) (`agent360-browser-mcp-<version>.zip`) from the latest GitHub release
-2. Unzip the file (anywhere — e.g. `~/Downloads/browser-mcp-extension/`)
+2. Unzip the file (anywhere - e.g. `~/Downloads/browser-mcp-extension/`)
 3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
-4. Register the server — run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`, or add this to `~/.claude.json` by hand:
+4. Register the server - run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`, or add this to `~/.claude.json` by hand:
    ```json
    {
      "mcpServers": {
@@ -107,17 +107,17 @@ If you don't want to use npm, download the extension directly:
 
 ### Chrome Web Store (no Developer mode, auto-updating extension)
 
-**This replaces Step 2 only — you still need Step 1.**
+**This replaces Step 2 only - you still need Step 1.**
 
-1. [**Install the extension from the Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl) — no Developer mode toggle, and Chrome keeps it updated for you.
+1. [**Install the extension from the Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl) - no Developer mode toggle, and Chrome keeps it updated for you.
 2. Register the MCP server:
    ```bash
    claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
    ```
-   (For Cursor / VS Code / Codex, use that client's own MCP config instead — see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-claude-code/).)
+   (For Cursor / VS Code / Codex, use that client's own MCP config instead - see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-claude-code/).)
 3. Restart Claude Code.
 
-Skip step 2 and the extension icon will sit on **"Not connected"** forever — that is the symptom of a missing MCP server, not a broken extension.
+Skip step 2 and the extension icon will sit on **"Not connected"** forever - that is the symptom of a missing MCP server, not a broken extension.
 
 ## You're in. Now what?
 
@@ -126,23 +126,23 @@ Nothing happens until you ask, and the hardest part of a new tool is knowing wha
 | Say this | What it shows |
 |---|---|
 | *"Take a screenshot of my current Chrome tab."* | **Start here.** An image back instead of *"I don't have browser access"* means both halves are talking. That is the whole install test. |
-| *"Open my Gmail tab and tell me who sent my last 3 emails."* | The one that shows the difference — it works because it is *your* browser, already signed in. A headless tool hits a login wall here. |
+| *"Open my Gmail tab and tell me who sent my last 3 emails."* | The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here. |
 | *"Go to my analytics dashboard, pull this month's numbers, and put them in a table."* | Any dashboard you are already logged into. No API key, no export, no integration to build first. |
-| *"Fill in this signup form with my details. Stop and ask me before anything sensitive."* | You stay in the loop — it hands control back for passwords, payment details, or anything it should not decide alone. |
+| *"Fill in this signup form with my details. Stop and ask me before anything sensitive."* | You stay in the loop - it hands control back for passwords, payment details, or anything it should not decide alone. |
 | *"Log me in here. If it emails a code, read it from my Gmail tab and continue."* | The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in. |
 | *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
+The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
 
 ## Why This Over Playwright MCP / BrowserMCP?
 
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively — latest release v1.29.0 (2026-09-07) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.29.0 (2026-09-07) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
-| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Their docs: concurrent clients on one profile *conflict* — each extra client needs `--isolated` or its own `--user-data-dir` | Single session |
-| **Human-in-the-loop** | `browser_ask_user` — 2FA, CAPTCHA, credential input | None | None |
+| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Their docs: concurrent clients on one profile *conflict* - each extra client needs `--isolated` or its own `--user-data-dir` | Single session |
+| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None | None |
 | **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
@@ -154,17 +154,17 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 The reason this works where headless dies is not that it slips past anything. It is that
 there is nothing to slip past: it is your Chrome, your session, your consent. What is left
-is the hard part — pages that fight *any* automation because of how they are built.
+is the hard part - pages that fight *any* automation because of how they are built.
 
 Every release is gated on a flow test against a real Chrome that has to survive exactly
 those. Latest run, v1.29.0: **40/40 tools exercised, 51 checks, 0 failures**, including
 
-- **strict CSP** — navigate, read, execute, wait and click all still work (falls back to
+- **strict CSP** - navigate, read, execute, wait and click all still work (falls back to
   the Chrome Debugger API when script injection is blocked)
-- **cross-origin iframes** — seen into and reached inside
-- **shadow DOM** — selectors reach through it
-- **controlled inputs** — `fill` sticks in a React-style controlled field
-- **honesty checks** — `click` refuses a 0×0 element instead of hitting (0,0), and says so
+- **cross-origin iframes** - seen into and reached inside
+- **shadow DOM** - selectors reach through it
+- **controlled inputs** - `fill` sticks in a React-style controlled field
+- **honesty checks** - `click` refuses a 0×0 element instead of hitting (0,0), and says so
   when the page never took the event
 
 That last group matters most. A tool that quietly reports success is worse than one that
@@ -172,7 +172,7 @@ fails, because you build on the answer. Where we still fall short of it, it is w
 down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 
 > **Corrected 2026-09-07.** This table used to say Playwright MCP was headless and made you
-> log in every time. That was wrong, and it had been wrong for a while — Microsoft's own README
+> log in every time. That was wrong, and it had been wrong for a while - Microsoft's own README
 > documents a persistent profile as the default, plus a browser extension for using the Chrome
 > you already have. The row that actually survives is the one above it, and it is their
 > documented limitation, not our claim: *"A persistent profile can only be used by one browser
@@ -180,7 +180,7 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > If you run one agent, Playwright MCP will serve you well. The difference shows up when you
 > run twenty against the same logged-in browser.
 
-> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) — actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
+> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
 ### Environment variables
 
@@ -262,7 +262,7 @@ Both are optional. Neither is needed for normal use.
 ### Diagnostics & feedback
 | Tool | Description |
 |------|-------------|
-| `browser_provide_feedback` | Self-check + report in one call. Compares this server against the latest on npm, the connected extension against this server, and detects **more than one Browser MCP extension connected at once** — the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
+| `browser_provide_feedback` | Self-check + report in one call. Compares this server against the latest on npm, the connected extension against this server, and detects **more than one Browser MCP extension connected at once** - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
 | `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
 
 ## Multi-Session Support
@@ -275,16 +275,16 @@ Claude Session 2 ←(stdio)→ MCP :9877 ←(WS)→  Chrome Extension → Browse
 Claude Session 3 ←(stdio)→ MCP :9878 ←(WS)→
 ```
 
-- **Session isolation** — each session gets a color-coded Chrome Tab Group
-- **Tab ownership** — sessions can only see and control their own tabs
-- **Auto-cleanup** — processes exit when Claude Code closes the conversation
-- **Ports are taken on demand** — a server binds its port on the first browser call, not
+- **Session isolation** - each session gets a color-coded Chrome Tab Group
+- **Tab ownership** - sessions can only see and control their own tabs
+- **Auto-cleanup** - processes exit when Claude Code closes the conversation
+- **Ports are taken on demand** - a server binds its port on the first browser call, not
   at startup, and releases it 5 minutes after its last tab closes. A chat that never
   touches the browser never occupies a slot.
 
 ### Running the agent on another machine
 
-The extension only connects to `127.0.0.1`, deliberately — it will not talk to a remote
+The extension only connects to `127.0.0.1`, deliberately - it will not talk to a remote
 WebSocket. If your MCP gateway runs on a different box than your browser, forward the port
 range over SSH.
 
@@ -316,7 +316,7 @@ WantedBy=default.target
 
 Replace `server-name`, then `systemctl --user enable --now browser-mcp-tunnel.service`.
 
-> The original recipe listed ports 9876-9885 by hand — the range was ten back then. It is
+> The original recipe listed ports 9876-9885 by hand - the range was ten back then. It is
 > twenty now, so the loop above generates them instead of hard-coding a list that goes
 > stale the next time the range changes.
 
@@ -341,9 +341,9 @@ Replace `server-name`, then `systemctl --user enable --now browser-mcp-tunnel.se
 ```
 extension/
   manifest.json       # Manifest V3
-  background.js       # Service worker — Chrome API dispatcher, session tab groups
+  background.js       # Service worker - Chrome API dispatcher, session tab groups
   offscreen.js        # Persistent WebSocket bridge (multi-port scanning)
-  popup.html/js       # Status UI — sessions, tabs, action log
+  popup.html/js       # Status UI - sessions, tabs, action log
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
@@ -361,7 +361,7 @@ mcp-server/
 
 ## Keeping it updated
 
-Browser MCP has two parts, and they update independently — how the **extension** updates depends on how you installed it:
+Browser MCP has two parts, and they update independently - how the **extension** updates depends on how you installed it:
 
 | Part | Install method | How it updates |
 |------|----------------|----------------|
@@ -371,7 +371,7 @@ Browser MCP has two parts, and they update independently — how the **extension
 
 **Not sure which you have?** Open `chrome://extensions` and find Browser MCP. If it shows a **"Loaded from /path/…"** line, it's unpacked (manual updates). If there's no such line, it came from the Chrome Web Store (auto-updates).
 
-**Want zero-maintenance updates?** Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl), then run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` to register the server. After that, both parts stay current on their own — as long as your config uses `@agent360/browser-mcp@latest`.
+**Want zero-maintenance updates?** Install the extension from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl), then run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` to register the server. After that, both parts stay current on their own - as long as your config uses `@agent360/browser-mcp@latest`.
 
 ## Troubleshooting
 
@@ -398,23 +398,23 @@ Browser MCP has two parts, and they update independently — how the **extension
 Browser MCP is built in the open and shaped by the people using it.
 
 ### Browse what others want / built
-- 💡 **[Wishlist →](WISHLIST.md)** — features people are asking for
-- 🎯 **[Use-cases →](USE_CASES.md)** — what others have built (LinkedIn ICP scraping, vendor research, daily ops, …)
+- 💡 **[Wishlist →](WISHLIST.md)** - features people are asking for
+- 🎯 **[Use-cases →](USE_CASES.md)** - what others have built (LinkedIn ICP scraping, vendor research, daily ops, …)
 
 ### Contribute in 30 seconds
 - 💡 [Wish for a feature](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
 - 🎯 [Share a use-case](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml)
 - 🐛 [Report a bug](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml)
 
-Or just **ask Claude** — it knows about the `browser_about` tool and will draft + submit on your behalf when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
+Or just **ask Claude** - it knows about the `browser_about` tool and will draft + submit on your behalf when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
 
 ### If it works for you
 
-The Chrome Web Store ranks on ratings, and we have none — so a sentence from you moves this
+The Chrome Web Store ranks on ratings, and we have none - so a sentence from you moves this
 further than anything we can write. [Leave a review](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl/reviews)
 if it earned one, and say so honestly if it did not. No signup, no reward, nothing gated
-behind it — we just have no signal at all right now.
+behind it - we just have no signal at all right now.
 
 ## License
 
-MIT — [Agent360](https://agent360.dk)
+MIT - [Agent360](https://agent360.dk)

@@ -239,7 +239,7 @@ test('overlay-synlighed hviler ikke paa offsetParent', () => {
 
 test('ask_user sender kun serialiserbare argumenter til Chrome', () => {
   // MAALT 21/8: `args: [params.message, params.title, ...]` sendte params.title raat.
-  // Skemaet siger at title er VALGFRI med standarden "Agent360 — Action Required",
+  // Skemaet siger at title er VALGFRI med standarden "Agent360 - Action Required",
   // men udelades den er vaerdien undefined — og chrome.scripting.executeScript
   // afviser HELE kaldet: "Error at property 'args': Error at index 1: Value is
   // unserializable". Saa human-in-the-loop-vaerktoejet — 2FA, kodeord, CAPTCHA —
@@ -254,7 +254,7 @@ test('ask_user sender kun serialiserbare argumenter til Chrome', () => {
   const args = m[1];
   assert.ok(!/params\.title\s*[,\]]/.test(args), 'params.title sendes raat — undefined braekker hele kaldet');
   assert.ok(!/params\.message\s*[,\]]/.test(args), 'params.message sendes raat — samme faelde');
-  assert.match(args, /Agent360 — Action Required/, 'standard-titlen fra skemaet anvendes ikke');
+  assert.match(args, /Agent360 - Action Required/, 'standard-titlen fra skemaet anvendes ikke');
   assert.match(args, /String\(params\.message \?\? ''\)/, 'message tvinges ikke til en streng');
 });
 
