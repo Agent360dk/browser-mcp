@@ -153,6 +153,23 @@ if pk and "Agent360dk" in pk:
 else:
     rows.append(("punkpeye awesome (91k★)", "·", "PR #10565 ikke merget endnu"))
 
+# ---- DEL 1b — TOOL-TALLET DRIFTER TRE STEDER, IKKE ÉT ----
+# MAALT 9/9-2026: butikken sagde 29, MCP-registret sagde 34, og GitHub-repoets egen
+# beskrivelse sagde ogsaa 34 — mens tools.js sagde 40. Tallet staar fire steder og
+# vedligeholdes ét sted. Vagten tjekkede kun registret, saa de to andre kunne drifte
+# i det uendelige. Nu tjekkes de sammen.
+gh_desc = ""
+gh_meta = fetch("https://api.github.com/repos/Agent360dk/browser-mcp", as_json=True)[0]
+if isinstance(gh_meta, dict):
+    gh_desc = gh_meta.get("description") or ""
+if tools != "?" and gh_desc and str(tools) not in gh_desc:
+    gammelt = re.search(r"(\d+)\s+tools", gh_desc)
+    red.append("GitHub-beskrivelsen siger %s, ikke %s tools" %
+               (gammelt.group(1) if gammelt else "et andet tal", tools))
+    rows.append(("Tool-count paa GitHub", "🔴", "%s tools, ikke naevnt i repo-desc" % tools))
+elif gh_desc:
+    rows.append(("Tool-count paa GitHub", "🟢", "%s tools" % tools))
+
 # ---- DEL 2b — SØGEPLACERING I BUTIKKEN ----
 # MAALT 9/9-2026: butikkens sogeside svarer paa en almindelig browser-UA, og resultatlisten
 # staar i den raa HTML som /detail/<slug>/<id> i raekkefolge. Vi har altsaa aldrig behovet

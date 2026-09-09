@@ -1,5 +1,14 @@
 # Browser MCP by [Agent360](https://agent360.dk)
 
+**Your AI agent drives your real, logged-in Chrome — and works where headless tools die.**
+
+It is the browser you are already signed into. No login step to fail, no API key to wire up,
+no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
+in its own colour-coded tab group. 40 tools, MIT, 100% local.
+
+→ **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** — every
+wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones we have not fixed.
+
 [![npm version](https://img.shields.io/npm/v/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
 [![npm downloads](https://img.shields.io/npm/dw/@agent360/browser-mcp)](https://www.npmjs.com/package/@agent360/browser-mcp)
 [![GitHub stars](https://img.shields.io/github/stars/Agent360dk/browser-mcp)](https://github.com/Agent360dk/browser-mcp)
@@ -7,7 +16,6 @@
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-live-green)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
-**Your AI agent drives your real, logged-in Chrome — and works where headless tools die.**
 
 [![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-000?logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJAYWdlbnQzNjAvYnJvd3Nlci1tY3BAbGF0ZXN0Il19)
 [![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
