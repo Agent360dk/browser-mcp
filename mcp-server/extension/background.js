@@ -534,15 +534,29 @@ const RETRYABLE_CDP_METHODS = new Set([
 // det tilfaelde, ligger i et `catch` og kunne aldrig naas. En haenger er ikke en exception.
 // Fristen findes for at reserveloesningen kan naas. Alt der HAR en reserveloesning skal
 // kunne naas via en frist, ikke kun via en fejl.
-const CDP_FRIST_MS = 1500;
+// Foerste udgave satte 1.500 ms paa ALT. Astra fandt 9/9 at det indfoerte en ny fejlklasse:
+// dialog-ventetider bruger 3.000 ms, og et Page.captureScreenshot paa en tung side kan
+// lovligt tage laengere. Fristen skar dem over, og skaermbilledets reserveloesning blev
+// dermed naaet i almindelig drift — se rettelse B nedenfor.
+//
+// Den hang der blev MAALT var Input.dispatchMouseEvent med mouseWheel, som aldrig indfrier
+// sit loefte. Laesekald har i forvejen deres egne ydre frister (evaluerTaalmodigt).
+// Derfor: kort frist paa input-kald, og en rundhaandet bagstopper paa resten — stadig under
+// serverens 30 s, saa kalderens reserveloesning kan naas.
+const CDP_FRIST_INPUT_MS = 1500;
+const CDP_FRIST_MS = 8000;
+
+function cdpFrist(method) {
+  return String(method).startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
+}
 
 function cdpMedFrist(tabId, method, params) {
   let ur;
+  const frist = cdpFrist(method);
   return Promise.race([
     chrome.debugger.sendCommand({ tabId }, method, params),
     new Promise((_, afvis) => {
-      ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${CDP_FRIST_MS} ms: ${method}`)),
-        CDP_FRIST_MS);
+      ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: ${method}`)), frist);
     }),
   ]).finally(() => clearTimeout(ur));
 }
@@ -2648,7 +2662,19 @@ async function dispatch(port, method, params) {
             return { image: 'data:image/png;base64,' + shot.data };
           }
         } catch {
-          // CDP failed entirely — native tabs API (needs the tab visible in its window).
+          // MAALT 9/9-2026 (fundet af Astra, reproduceret her): captureVisibleTab fotograferer
+          // den fane der er SYNLIG i vinduet — ikke `tab.id`. Siden aktiveringen bevidst blev
+          // fjernet 21/8, er agentens fane normalt IKKE den synlige. Reserveloesningen leverede
+          // altsaa et billede af brugerens egen aabne fane til agenten, uden at nogen kunne se
+          // det paa svaret. Det er en laek, ikke en unoejagtighed.
+          const stadig = await chrome.tabs.get(tab.id).catch(() => null);
+          if (!stadig || stadig.active !== true) {
+            throw new Error(
+              'Skaermbillede afvist: agentens fane er ikke den synlige i vinduet, og ' +
+              'captureVisibleTab ville have fotograferet brugerens egen fane i stedet. ' +
+              'Ingen billeder af andre faner leveres.'
+            );
+          }
           const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
           return { image: dataUrl };
         }

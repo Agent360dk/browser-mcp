@@ -40,18 +40,33 @@ test('kun ask_user aktiverer fanen — alt andet arbejder i baggrunden', () => {
     'Kun ask_user maa — brugeren skal kunne se det den spoerger om.');
 });
 
+// 9/9-2026, tredje gang samme faelde paa én dag: `slice(i, i + 4000)` gik i stykker fordi
+// der kom en ny vagt ind i blokken. Et fast antal tegn er ikke en blok. Nu klippes ved
+// case'ets EGNE graenser — samme greb som caseBlok() i tool-surface.
+function caseBlok(kilde, navn) {
+  const start = kilde.indexOf(`case '${navn}'`);
+  if (start < 0) return '';
+  const naeste = kilde.indexOf("\n      case '", start + 10);
+  return kilde.slice(start, naeste > start ? naeste : start + 8000);
+}
+
 test('screenshot fotograferer uden at skifte fane', () => {
-  const i = kilde.indexOf("case 'screenshot'");
-  const blok = kilde.slice(i, i + 900);
+  const blok = caseBlok(kilde, 'screenshot');
+  assert.ok(blok.length > 500, 'screenshot-blokken kunne ikke findes');
   assert.match(blok, /getSessionTab\(port, false\)/,
     'screenshot aktiverer fanen igen — CDP kan fotografere en baggrundsfane, det er unoedvendigt');
   // Den okkluderede sidste-udvej maa stadig loefte vinduet, ellers virker et
   // helt tildaekket vindue slet ikke.
-  const helt = kilde.slice(i, i + 4000);
+  const helt = blok;
   assert.match(helt, /chrome\.windows\.update\(tab\.windowId, \{ focused: true/,
     'sidste-udvejen for et tildaekket vindue er vaek — saa fejler skaermbilleder helt');
   assert.match(helt, /chrome\.windows\.update\(prev\.id, \{ focused: true \}\)/,
     'fokus skal gives tilbage til brugerens vindue efter en noedloeftning');
+  // MAALT 9/9: reserveloesningen captureVisibleTab fotograferer den SYNLIGE fane, ikke
+  // agentens. Uden vagten leverede den brugerens egen aabne side til agenten. Adfaerden
+  // proeves i skaermbillede-laek; her staar kun at vagten ikke maa forsvinde.
+  assert.match(helt, /stadig\.active !== true/,
+    'vagten mod at fotografere en ANDEN fane er vaek — det er en laek, ikke en unoejagtighed');
 });
 
 test('press_key sender tasten uden at hente fanen frem', () => {
