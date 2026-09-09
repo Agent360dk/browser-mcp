@@ -1,4 +1,4 @@
-// KILDE: bevidst DIFFERENTIERET fra /learn/model-context-protocol (protokollen) — denne handler om KOMPONENTEN (hvad en server er, hvad den gør, hvordan man kører/vælger/bygger en). Undgår kannibalisering via distinkt intent + krydslink. Targeting "what is an mcp server"-klyngen (~28.500/md).
+// KILDE: bevidst DIFFERENTIERET fra /learn/model-context-protocol (protokollen) - denne handler om KOMPONENTEN (hvad en server er, hvad den gør, hvordan man kører/vælger/bygger en). Undgår kannibalisering via distinkt intent + krydslink. Targeting "what is an mcp server"-klyngen (~28.500/md).
 
 # What is an MCP server?
 
@@ -6,13 +6,13 @@
 
 ---
 
-**Short answer:** an MCP server is a small program that hands an AI assistant one specific capability — reading a database, driving a browser, calling an API — through a standard interface. It contains no model and no intelligence of its own. It advertises a list of **tools**, and when the assistant decides to use one, the server does the work and returns the result. Most run locally on your own machine.
+**Short answer:** an MCP server is a small program that hands an AI assistant one specific capability - reading a database, driving a browser, calling an API - through a standard interface. It contains no model and no intelligence of its own. It advertises a list of **tools**, and when the assistant decides to use one, the server does the work and returns the result. Most run locally on your own machine.
 
 *(If you want the protocol itself rather than the component, start with [Model Context Protocol, explained](/learn/model-context-protocol/).)*
 
 ## What a server actually is
 
-Strip away the terminology and a typical MCP server is: a process that starts when your AI client starts, says "here are the things I can do," waits, and executes requests. That's it. It's closer to a plugin than to a web server, despite the name — "server" here means "serves capabilities," not "runs in a data centre."
+Strip away the terminology and a typical MCP server is: a process that starts when your AI client starts, says "here are the things I can do," waits, and executes requests. That's it. It's closer to a plugin than to a web server, despite the name - "server" here means "serves capabilities," not "runs in a data centre."
 
 Two things follow from that, and they're the ones worth internalising:
 
@@ -28,11 +28,11 @@ Two things follow from that, and they're the ones worth internalising:
 | Typical use | Filesystem, git, databases, your browser | Hosted SaaS APIs |
 | Data exposure | Stays local | Leaves your machine |
 
-If a capability needs *your* environment — your files, your VPN, the browser you're signed into — it has to be local. That's not a preference, it's a constraint.
+If a capability needs *your* environment - your files, your VPN, the browser you're signed into - it has to be local. That's not a preference, it's a constraint.
 
 ## Adding one
 
-For most clients it's a config entry naming a command to run. In Claude Code, for example, adding a server is a single `claude mcp add` command; Cursor and VS Code use a small JSON block. You don't build anything — you point your client at a program and restart it. Servers are increasingly discoverable through the official MCP registry rather than word of mouth.
+For most clients it's a config entry naming a command to run. In Claude Code, for example, adding a server is a single `claude mcp add` command; Cursor and VS Code use a small JSON block. You don't build anything - you point your client at a program and restart it. Servers are increasingly discoverable through the official MCP registry rather than word of mouth.
 
 ## How to tell a good server from a bad one
 
@@ -46,7 +46,7 @@ Since a local server runs with your permissions, this matters more than feature 
 
 ## An example: the browser
 
-[Browser MCP](/docs/what-is-browser-mcp/) is a local stdio server plus a Chrome extension. Its single job is to let an agent operate the real, already-logged-in Chrome you use — 40 tools for navigating, reading, clicking, filling and screenshotting. It has to be local, because the whole point is your own browser session, and nothing it reads leaves your machine. It's a fair example of the pattern: narrow job, local by necessity, source you can read.
+[Browser MCP](/docs/what-is-browser-mcp/) is a local stdio server plus a Chrome extension. Its single job is to let an agent operate the real, already-logged-in Chrome you use - 40 tools for navigating, reading, clicking, filling and screenshotting. It has to be local, because the whole point is your own browser session, and nothing it reads leaves your machine. It's a fair example of the pattern: narrow job, local by necessity, source you can read.
 
 ## FAQ
 
@@ -57,7 +57,7 @@ No. An API is a service you call; an MCP server is an adapter that makes some ca
 The protocol and most servers are free and open source. Some wrap paid services, in which case you pay that service.
 
 **How many can I run at once?**
-Several — clients let you register multiple servers, and the assistant picks tools across them.
+Several - clients let you register multiple servers, and the assistant picks tools across them.
 
 **Can an MCP server see my whole computer?**
 A local one runs with your user permissions, so treat installing it like installing any local software: prefer readable source and a narrow scope.

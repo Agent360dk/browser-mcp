@@ -68,14 +68,14 @@ SOURCES={}; LIVE=[]
 for _fn,_grp,_label,_url in PAGES:
     _fm,_body=front_matter(open(DRAFTS+_fn).read())
     if _fm.get('publish_date','')>TODAY:
-        print('  %-32s scheduled %s — held back' % (_url,_fm['publish_date']))
+        print('  %-32s scheduled %s - held back' % (_url,_fm['publish_date']))
         continue
     SOURCES[_url]=_body; LIVE.append((_fn,_grp,_label,_url))
 LABELS={url:label for _,_,label,url in LIVE}
 # <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form)
-TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io \u2014 which is maintained? (2026)',
- '/compare/browser-automation-mcp-servers':'Best Browser Automation MCP Servers (2026) — Compared',
- '/docs/install-claude-code':'Browser MCP for Claude Code — Give Claude Your Real, Logged-In Chrome',
+TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io - which is maintained? (2026)',
+ '/compare/browser-automation-mcp-servers':'Best Browser Automation MCP Servers (2026) - Compared',
+ '/docs/install-claude-code':'Browser MCP for Claude Code - Give Claude Your Real, Logged-In Chrome',
  '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Logged-In vs Headless',
  '/compare/mcp-chrome':'Browser MCP vs mcp-chrome (2026): Is mcp-chrome Still Maintained?',
  '/docs/uninstall':'Uninstall Browser MCP + Exactly What Data It Touches (2026)',
@@ -187,7 +187,7 @@ def meta_desc(lines, raw=''):
         if not s or s.startswith(('#','>','|','-','*')) or re.match(r'^\d+\.',s): continue
         d=strip_md(s)
         if len(d)>60: return (d[:152].rsplit(' ',1)[0]+'…') if len(d)>155 else d
-    return 'Browser MCP — give your AI agent a real, already-logged-in Chrome.'
+    return 'Browser MCP - give your AI agent a real, already-logged-in Chrome.'
 def extract_faq(lines):
     # find ## FAQ section, parse **Q?** + answer
     faq=[];in_faq=False;q=None;a=[]

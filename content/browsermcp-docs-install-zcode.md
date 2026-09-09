@@ -4,23 +4,23 @@
 *Suggested meta description: "About 90 seconds. Your agent works in your real, already-logged-in Chrome instead of a separate browser, so nothing needs logging in twice."*
 
 
-**Give your ZCode agent control of your real, already-logged-in Chrome — install takes about 90 seconds.**
+**Give your ZCode agent control of your real, already-logged-in Chrome - install takes about 90 seconds.**
 
-**Give your ZCode agent control of your real, already-logged-in Chrome — about 90 seconds, four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local — nothing leaves your machine.
+**Give your ZCode agent control of your real, already-logged-in Chrome - about 90 seconds, four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local - nothing leaves your machine.
 
 ## The whole thing, in four steps
 
-**1 — Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
+**1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
 
-**2 — Add the MCP server in ZCode.** **Settings → MCP Servers → New MCP Server** — scope `User`, name `browser-mcp`, type `stdio`, command `npx`, argument `@agent360/browser-mcp@latest`. Required — the extension does nothing on its own.
+**2 - Add the MCP server in ZCode.** **Settings → MCP Servers → New MCP Server** - scope `User`, name `browser-mcp`, type `stdio`, command `npx`, argument `@agent360/browser-mcp@latest`. Required - the extension does nothing on its own.
 
-**3 — Restart ZCode.** That is what starts the server. The extension icon turns green.
+**3 - Restart ZCode.** That is what starts the server. The extension icon turns green.
 
-**4 — Say this, to check it worked.** Paste it to your ZCode agent:
+**4 - Say this, to check it worked.** Paste it to your ZCode agent:
 
 > Take a screenshot of my current Chrome tab.
 
-You get an image back instead of *"I don't have browser access"*. **That's it — you're running.** → [What else to say](#now-what-things-to-actually-say)
+You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#now-what-things-to-actually-say)
 
 Everything below is the long version.
 
@@ -28,15 +28,15 @@ Everything below is the long version.
 
 ## Step-by-step install (ZCode)
 
-### Step 1 — Get the extension files
+### Step 1 - Get the extension files
 
 ```bash
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension to `~/.browser-mcp/extension/` and prints the path in your terminal — copy it, you'll need it in Step 3. (It also writes a Claude Code MCP config entry as a side effect; harmless to ignore if ZCode is the only agent you use — Step 2 is what actually wires it into ZCode.)
+This copies the Chrome extension to `~/.browser-mcp/extension/` and prints the path in your terminal - copy it, you'll need it in Step 3. (It also writes a Claude Code MCP config entry as a side effect; harmless to ignore if ZCode is the only agent you use - Step 2 is what actually wires it into ZCode.)
 
-### Step 2 — Add the MCP server in ZCode
+### Step 2 - Add the MCP server in ZCode
 
 Open ZCode → **Settings → MCP Servers → New MCP Server** (top-right corner).
 
@@ -44,14 +44,14 @@ Open ZCode → **Settings → MCP Servers → New MCP Server** (top-right corner
 
 | Field | Value |
 |---|---|
-| Scope | `User` (available in every workspace) — or `Workspace` to scope it to the current project only |
+| Scope | `User` (available in every workspace) - or `Workspace` to scope it to the current project only |
 | Name | `browser-mcp` |
-| Type | `stdio` (leave HTTP/SSE alone — Browser MCP runs locally over stdio, it's not a remote service) |
+| Type | `stdio` (leave HTTP/SSE alone - Browser MCP runs locally over stdio, it's not a remote service) |
 | Command | `npx` |
 | Arguments | `@agent360/browser-mcp@latest` |
-| Environment variables | none — leave empty, no API key required |
+| Environment variables | none - leave empty, no API key required |
 
-**Or Full configuration mode** — paste this JSON directly instead of filling the form:
+**Or Full configuration mode** - paste this JSON directly instead of filling the form:
 
 ```json
 {
@@ -64,9 +64,9 @@ Open ZCode → **Settings → MCP Servers → New MCP Server** (top-right corner
 }
 ```
 
-ZCode also advertises auto-detection of MCP servers you've already configured for Claude Code, Codex CLI, or OpenCode. If you ran Step 1 previously for one of those, check the "Configured MCP servers" list first — `browser-mcp` may already show up as a one-click import instead of something you need to type in. We couldn't pin down the exact detection path from ZCode's public docs, so treat this as a shortcut worth checking, not a guaranteed step.
+ZCode also advertises auto-detection of MCP servers you've already configured for Claude Code, Codex CLI, or OpenCode. If you ran Step 1 previously for one of those, check the "Configured MCP servers" list first - `browser-mcp` may already show up as a one-click import instead of something you need to type in. We couldn't pin down the exact detection path from ZCode's public docs, so treat this as a shortcut worth checking, not a guaranteed step.
 
-### Step 3 — Load the extension in Chrome
+### Step 3 - Load the extension in Chrome
 
 Chrome doesn't let extensions install themselves from npm, so this one step is manual:
 
@@ -78,11 +78,11 @@ Chrome doesn't let extensions install themselves from npm, so this one step is m
    - **Windows:** paste `%USERPROFILE%\.browser-mcp\extension\` into the address bar
    - **Linux:** type `~/.browser-mcp/extension/` into the path field
 
-Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-mode-chrome-web-store) instead — see below.
+Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-mode-chrome-web-store) instead - see below.
 
-### Step 4 — Confirm it's enabled and reload ZCode
+### Step 4 - Confirm it's enabled and reload ZCode
 
-Check that `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list. If your agent doesn't see the browser tools right away, restart ZCode — that forces it to pick up the new server. You'll also see the Browser MCP icon appear in your Chrome toolbar once the extension connects.
+Check that `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list. If your agent doesn't see the browser tools right away, restart ZCode - that forces it to pick up the new server. You'll also see the Browser MCP icon appear in your Chrome toolbar once the extension connects.
 
 ### Verify it's working
 
@@ -92,13 +92,13 @@ Paste this to your ZCode agent:
 
 If you get an image back instead of *"I don't have browser access"*, both halves are talking to each other. That is the whole test.
 
-### Now what — things to actually say
+### Now what - things to actually say
 
 Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start with these:
 
 > Open my Gmail tab and tell me who sent my last 3 emails.
 
-The one that shows the difference — it works because it is *your* browser, already signed in. A headless tool hits a login wall here.
+The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here.
 
 > Go to my analytics dashboard, pull this month's numbers, and put them in a table.
 
@@ -106,7 +106,7 @@ Any dashboard you are already logged into. No API key, no export, no integration
 
 > Fill in this signup form with my details. Stop and ask me before anything sensitive.
 
-You stay in the loop — the agent hands control back for passwords, payment details, or anything it should not decide alone.
+You stay in the loop - the agent hands control back for passwords, payment details, or anything it should not decide alone.
 
 > Log me in here. If it emails a code, read it from my Gmail tab and continue.
 
@@ -116,13 +116,13 @@ The move no API can make: it reads the one-time code out of your own inbox and f
 
 End-to-end QA of your own product, in the same browser your users have.
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API — internal dashboards, admin panels, portals, LinkedIn. [More examples](https://browsermcp.dev/#try).
+The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. [More examples](https://browsermcp.dev/#try).
 
 ---
 
 ## Alternative installs
 
-### No Developer mode — Chrome Web Store
+### No Developer mode - Chrome Web Store
 
 [Install from the Chrome Web Store →](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
@@ -133,7 +133,7 @@ No Developer mode toggle needed, and Chrome updates the extension automatically 
 1. Download the extension zip from the [latest GitHub release](https://github.com/Agent360dk/browser-mcp/releases/latest)
 2. Unzip it anywhere (e.g. `~/Downloads/browser-mcp-extension/`)
 3. Follow Step 3 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
-4. Add the server in ZCode using the JSON block from Step 2 — no `npx install` run needed for this path.
+4. Add the server in ZCode using the JSON block from Step 2 - no `npx install` run needed for this path.
 
 ---
 
@@ -141,9 +141,9 @@ No Developer mode toggle needed, and Chrome updates the extension automatically 
 
 ### The 2FA killer move
 
-This is the reason people install Browser MCP: your ZCode agent hits a login wall, needs a verification code, and — because it's driving your actual logged-in Chrome rather than a fresh headless session — it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
+This is the reason people install Browser MCP: your ZCode agent hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
 
-The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer — it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
+The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
 ### 40 tools
 
@@ -154,10 +154,10 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
-| **Human-in-the-loop** | `browser_ask_user` — overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
-| **Meta** | `browser_about` — session/extension info |
+| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
+| **Meta** | `browser_about` - session/extension info |
 
-`browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) — but it isn't limited to those. For anything else, the agent falls back to `browser_navigate` + `browser_get_page_content` and walks the dashboard itself.
+`browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) - but it isn't limited to those. For anything else, the agent falls back to `browser_navigate` + `browser_get_page_content` and walks the dashboard itself.
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
 
@@ -167,7 +167,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 |---|---|---|
 | Browser | Your real Chrome | Headless (fresh session) |
 | Logins/cookies | Already authenticated | Must log in every time |
-| 2FA / CAPTCHA-gated sites | Works — it's your session | Frequently blocked |
+| 2FA / CAPTCHA-gated sites | Works - it's your session | Frequently blocked |
 | Human-in-the-loop | `browser_ask_user` | None |
 | Multi-session | 20 concurrent sessions, color-coded tab groups | Single session |
 | Provider dashboards | Zero-config shortcuts for 9 common ones, works with any | None |
@@ -175,11 +175,11 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 
 ### Works with any MCP client
 
-Browser MCP is a standard stdio MCP server — it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 40 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 — how each client's UI registers a stdio server.
+Browser MCP is a standard stdio MCP server - it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 40 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 - how each client's UI registers a stdio server.
 
 ### Running more than one agent session at once
 
-Each session gets its own MCP server on its own port (9876–9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group — one session can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
+Each session gets its own MCP server on its own port (9876–9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one session can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
 
 ---
 
@@ -189,28 +189,28 @@ Each session gets its own MCP server on its own port (9876–9895), and the exte
 Run `npx @agent360/browser-mcp install` to fetch the extension files, then in ZCode go to Settings → MCP Servers → New MCP Server, set type `stdio`, command `npx`, argument `@agent360/browser-mcp`. Load the Chrome extension once (Step 3), confirm `browser-mcp` shows Enabled, and restart ZCode if the tools don't appear immediately.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives ZCode — or any MCP client, including Claude Code, Cursor, and VS Code agent mode — control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives ZCode - or any MCP client, including Claude Code, Cursor, and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, 100% local.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with ZCode?**
-No. It's a standard MCP server, so it works with any MCP-compatible client. Only Step 2 — how you register the server — differs between clients; Cursor and VS Code agent mode both take the same `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` block.
+No. It's a standard MCP server, so it works with any MCP-compatible client. Only Step 2 - how you register the server - differs between clients; Cursor and VS Code agent mode both take the same `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` block.
 
 **Why do I have to load the extension manually instead of it just installing?**
-Chrome blocks extensions from self-installing from npm or any script — that's a Chrome security boundary, not a Browser MCP limitation. Loading unpacked once, or installing from the Chrome Web Store, are the only two ways in.
+Chrome blocks extensions from self-installing from npm or any script - that's a Chrome security boundary, not a Browser MCP limitation. Loading unpacked once, or installing from the Chrome Web Store, are the only two ways in.
 
 **Does my browsing data leave my machine?**
 No. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. Nothing is sent to a remote server.
 
 **How do I update it?**
-The MCP server updates itself — `npx @agent360/browser-mcp` always resolves to latest on npm, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
+The MCP server updates itself - `npx @agent360/browser-mcp` always resolves to latest on npm, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
-**ZCode isn't picking up the browser tools — what do I check?**
-First, confirm `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list (adding it isn't always the same as it being active). Then confirm the Chrome extension is loaded under `chrome://extensions` — click the extension icon → "Reconnect" and give it 2–3 seconds, it scans ports 9876–9895 for the running MCP server. If both check out and it's still not showing, restart ZCode.
+**ZCode isn't picking up the browser tools - what do I check?**
+First, confirm `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list (adding it isn't always the same as it being active). Then confirm the Chrome extension is loaded under `chrome://extensions` - click the extension icon → "Reconnect" and give it 2–3 seconds, it scans ports 9876–9895 for the running MCP server. If both check out and it's still not showing, restart ZCode.
 
 **Is this the same as browsermcp.io?**
-No — different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.
+No - different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.
 
 **Can I run it across multiple ZCode sessions at once?**
-Yes — up to 20 concurrent sessions, each on its own port with its own color-coded Chrome tab group, so sessions can't see or control each other's tabs.
+Yes - up to 20 concurrent sessions, each on its own port with its own color-coded Chrome tab group, so sessions can't see or control each other's tabs.
