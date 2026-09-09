@@ -55,15 +55,27 @@ test('alle tre udgange fra settle-udtrykket rapporterer landed', () => {
   const blok = kilde.slice(i, kilde.indexOf('const vaerdi = settle?.result?.value', i));
   assert.match(blok, /return \{ landed: true, fallbackFired: false \}/, 'trusted klik landede');
   assert.match(blok, /return \{ landed: false, fallbackFired: false, detached: true \}/, 'element forsvandt');
-  assert.match(blok, /return \{ landed: false, fallbackFired: true \}/, 'framework-fallback fyrede');
+  // 9/9-2026: den tredje udgang sagde foer `landed: false` HAARDKODET — altsaa et gaet,
+  // afgivet uden at nogen havde set efter. Nu maales lytteren igen efter reserveloesningen,
+  // saa vaerdien er en observation. Testen skal foelge med, ikke holde det gamle gaet i live.
+  assert.match(blok, /const efter = window\.__bmcpClicked === true;/,
+    'reserveloesningen skal MAALE om den virkede, ikke gaette');
+  assert.match(blok, /return \{ landed: efter, fallbackFired: true \}/, 'framework-fallback fyrede');
 });
 
 test('click videregiver debuggerClick-resultatet i sit svar', () => {
+  // 9/9-2026: her stod `kilde.slice(i, i + 2000)`. To tilfoejede kommentarlinjer skubbede
+  // spredningen ud over de 2000 tegn, og testen blev roed uden at koden var forkert.
+  // En magisk tegn-afstand er ikke en blok — nu klippes ved case'ens EGNE graenser.
   const i = kilde.indexOf("case 'click': {");
   assert.ok(i > -1, "case 'click' findes");
-  const blok = kilde.slice(i, i + 2000);
+  const naeste = kilde.indexOf("case 'fill': {", i);
+  const blok = kilde.slice(i, naeste > -1 ? naeste : i + 6000);
   assert.match(blok, /const clickResult = await debuggerClick\(/, 'resultatet skal fanges');
   assert.match(blok, /\.\.\.\(clickResult \|\| \{\}\)/, 'og spredes ud i svaret til kalderen');
+  // Og selve kontrakten: `ok` maa ikke vaere en konstant. Adfaerden proeves i klik-aerlighed.
+  assert.doesNotMatch(blok, /^\s*ok: true,\s*$/m,
+    'ok maa ikke staa haardkodet — den skal udledes af om klikket landede (issue #19)');
 });
 
 // ── Fix B: skjulte elementer maa ALDRIG klikkes ─────────────────────────────

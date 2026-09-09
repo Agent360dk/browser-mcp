@@ -871,15 +871,24 @@ async function debuggerClick(tabId, x, y) {
     //    SPA re-renders (Google Ads) detach the element first. Fires a full pointer
     //    + mouse sequence on the shadow-pierced target, then React/Angular handlers.
     await new Promise(r => setTimeout(r, 120));
+    // MAALT 9/9-2026: oprydningen (removeEventListener + delete) laa FOER reserveloesningen
+    // fyrede. Derfor kunne intet observere om det syntetiske klik virkede, og udtrykket
+    // svarede landed:false som et GAET. Paa en div-baseret dropdown betoed det
+    // {ok:true, landed:false} og en menu der aldrig aabnede — issue #19.
+    // Nu staar lytteren stadig paa document mens reserveloesningen fyrer, og laeses bagefter:
+    // det er forskellen paa en maaling og en antagelse. Der ryddes op paa hver udgang.
+    // NB: ingen backticks i udtrykket herunder — det ER et template literal.
     const settle = await evaluerTaalmodigt(tabId, {
       returnByValue: true,
       expression: `(() => {
         const el = window.__bmcpClickTarget;
         const landed = window.__bmcpClicked === true;
-        try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
-        try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
-        if (landed) return { landed: true, fallbackFired: false };   // FIX-13: trusted click already landed — do NOT double-fire
-        if (!el || !el.isConnected) return { landed: false, fallbackFired: false, detached: true };   // already navigated/handled — don't double-fire
+        const ryd = () => {
+          try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
+          try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
+        };
+        if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
+        if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
         const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
         try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mousedown', opts));
@@ -904,7 +913,9 @@ async function debuggerClick(tabId, x, y) {
           const matRipple = el.closest && el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
           if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', opts));
         }
-        return { landed: false, fallbackFired: true };
+        const efter = window.__bmcpClicked === true;
+        ryd();
+        return { landed: efter, fallbackFired: true };
       })()`,
     });
     const vaerdi = settle?.result?.value ?? null;
@@ -2792,7 +2803,11 @@ async function dispatch(port, method, params) {
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
         const clickResult = await debuggerClick(tab.id, el.x, el.y);
         return {
-          ok: true,
+          // MAALT 9/9 (issue #19, fjerde gang samme fejlklasse efter select_option og fill):
+          // `ok: true` stod hardkodet, og `landed` blev spredt ind bagefter. Klikket svarede
+          // altsaa ja og nej i samme aandedrag, og en agent laeser `ok`.
+          // Et element der forsvandt ER en virkning — derfor tæller `detached` som landet.
+          ok: clickResult?.landed !== false || clickResult?.detached === true,
           method: el.method || 'debugger',
           tag: el.tag,
           text: el.text,
