@@ -510,13 +510,26 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 // Side-effectful methods (Input.*, DOM.setFileInputFiles) must NEVER auto-retry:
 // Chrome may detach AFTER processing the input (e.g., keystroke triggered navigation),
 // and a blind retry would double-type or double-click.
+// MAALT 9/9-2026 (fundet af Astra, reproduceret her): `Runtime.evaluate` stod paa listen,
+// fordi de fleste kald er laesninger. Men vi kan ikke afgoere paa metodenavnet om et
+// udtryk MUTERER — og flere af dem goer:
+//   * settle-udtrykket i debuggerClick FYRER reserveloesnings-klikket
+//   * scroll'ens reserveloesning kalder window.scrollBy
+//   * fill skriver i feltet gennem evalAttached
+// Reproduktion: cdpSend(1,'Runtime.evaluate',{expression:'window.tael++'}) med en
+// detach-fejl koerte udtrykket FIRE gange. Paa en SPA hvor debuggeren falder af, kunne
+// det altsaa lande fire klik — paa en knap der maaske bestiller noget.
+//
+// Vi kan ikke skelne, saa standarden skal vaere sikker. Falder debuggeren af midt i en
+// evaluering, faar kalderen fejlen og kan selv beslutte om det er forsvarligt at gentage.
+// Prisen er en tabt gentagelse paa anti-automatiserings-sider; alternativet er et
+// dobbeltklik, og de to ting er ikke lige slemme.
 const RETRYABLE_CDP_METHODS = new Set([
   'DOM.getDocument',
   'DOM.querySelector',
   'DOM.querySelectorAll',
   'DOM.focus',
   'DOM.describeNode',
-  'Runtime.evaluate',
   'Runtime.enable',
   'Page.captureScreenshot',
   'Page.enable',
