@@ -47,6 +47,36 @@ test('et raskt CDP-kald venter ikke paa fristen', async () => {
   assert.ok(Date.now() - t0 < 500, 'et rask svar maa ikke koste ventetid');
 });
 
+// Det her er den vagt der faktisk daekker BRUGERENS oplevelse. De to ovenfor beviser at
+// cdpSend afviser; kun den her beviser at scroll saa NAAR sin reserveloesning — og det var
+// jo hele pointen. Maalt 9/9: 1.504 ms i stedet for 30.007, og window.scrollBy koert.
+test('scroll ender med at rulle — reserveloesningen naas, og svaret siger hvorfor', async () => {
+  const kald = [];
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: true },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: true }],
+    'debugger.sendCommand': (_m, metode, params) => {
+      kald.push({ metode, expression: params?.expression });
+      if (metode === 'Input.dispatchMouseEvent') return new Promise(() => {});   // hjulet tier
+      if (metode === 'Runtime.evaluate') return { result: { value: null } };
+      return {};
+    },
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  const t0 = Date.now();
+  const svar = await u.hent('dispatch')(9876, 'scroll', { y: 300 });
+  const brugt = Date.now() - t0;
+
+  assert.equal(svar.ok, true, 'siden blev rullet — via reserveloesningen');
+  assert.equal(svar.method, 'fallback', 'svaret skal sige AT det var reserveloesningen');
+  assert.match(svar.fallback_reason || '', /svarede ikke/, 'og HVORFOR, saa fejlen kan foelges');
+  assert.ok(brugt < 5000, `maa ikke koste 30 sekunder, brugte ${brugt} ms`);
+  assert.ok(kald.some((k) => /window\.scrollBy\(0, 300\)/.test(k.expression || '')),
+    'window.scrollBy blev aldrig kaldt — saa rullede siden ikke, uanset hvad svaret siger');
+});
+
 test('scroll med pixels falder tilbage til window.scrollBy naar hjulet tier', async () => {
   // Det er HELE pointen: fristen findes for at reserveloesningen kan naas.
   const evalKald = [];
