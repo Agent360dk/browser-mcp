@@ -153,6 +153,52 @@ if pk and "Agent360dk" in pk:
 else:
     rows.append(("punkpeye awesome (91k★)", "·", "PR #10565 ikke merget endnu"))
 
+# ---- DEL 2b — SØGEPLACERING I BUTIKKEN ----
+# MAALT 9/9-2026: butikkens sogeside svarer paa en almindelig browser-UA, og resultatlisten
+# staar i den raa HTML som /detail/<slug>/<id> i raekkefolge. Vi har altsaa aldrig behovet
+# en headless browser til det her — vi havde bare aldrig maalt.
+#
+# Baseline 9/9: "browser mcp" = #3 af 9 · "mcp" = ikke til stede.
+# Google rangerer paa bedommelser + installationer minus afinstallationer over tid, saa
+# placeringen er den eneste udadvendte maalestok vi har paa om noget af arbejdet virker.
+VORES_ID = "jdehgalffmffhfhmmhaokfbfnafnmgcl"
+SOEGEORD = [
+    "browser mcp", "mcp", "chrome mcp", "claude chrome",
+    "mcp server", "browser automation", "ai browser control", "logged in chrome",
+]
+BASELINE_PLADS = {"browser mcp": 3}   # kun ord vi FAKTISK stod paa; resten var ikke i top 9
+
+placeringer = []
+for ord_ in SOEGEORD:
+    body, code = fetch("https://chromewebstore.google.com/search/" + ord_.replace(" ", "%20"))
+    if not body:
+        placeringer.append((ord_, "?", "HTTP %s — kunne ikke hentes" % code))
+        continue
+    fundne, set_ = re.findall(r"/detail/[a-z0-9-]+/([a-p]{32})", body), []
+    for i in fundne:
+        if i not in set_:
+            set_.append(i)
+    if not set_:
+        # Ingen resultater overhovedet = siden svarede, men uden liste. Det er UKENDT,
+        # ikke "vi er faldet ud" — samme skel som katalog-tjekket ovenfor.
+        placeringer.append((ord_, "?", "siden svarede uden resultatliste"))
+        continue
+    plads = set_.index(VORES_ID) + 1 if VORES_ID in set_ else None
+    grund = BASELINE_PLADS.get(ord_)
+    if plads is None:
+        placeringer.append((ord_, "—", "ikke i de %d viste" % len(set_)))
+        if grund:
+            red.append("Faldet ud af soegningen paa '%s' (var #%d)" % (ord_, grund))
+    else:
+        pil = ""
+        if grund and plads > grund:
+            pil = " ↓ fra #%d" % grund
+            red.append("Placering faldet paa '%s': #%d → #%d" % (ord_, grund, plads))
+        elif grund and plads < grund:
+            pil = " ↑ fra #%d" % grund
+            green.append("Placering steget paa '%s': #%d → #%d" % (ord_, grund, plads))
+        placeringer.append((ord_, "#%d" % plads, "af %d viste%s" % (len(set_), pil)))
+
 # ---- DEL 3 — KONKURRENT-FAKTA (dateret; twin-resurrection er kritisk) ----
 competitors = [
     ("microsoft/playwright-mcp",            "@playwright%2Fmcp"),
@@ -192,6 +238,10 @@ def build():
     o.append("| Kanal | Status | Detalje |")
     o.append("|---|---|---|")
     o += ["| %s | %s | %s |" % r for r in rows]
+    o.append("\n## Søgeplacering i Chrome Web Store\n")
+    o.append("| Søgeord | Plads | Detalje |")
+    o.append("|---|---|---|")
+    o += ["| %s | %s | %s |" % r for r in placeringer]
     o.append("\n## Konkurrent-fakta (hentet denne kørsel)\n")
     o.append("| Projekt | Stars | Sidste commit | npm/uge |")
     o.append("|---|---|---|---|")
