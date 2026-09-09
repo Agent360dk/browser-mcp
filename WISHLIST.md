@@ -27,9 +27,35 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 ---
 
+## 🚧 Landet på `main`, endnu ikke udgivet
+
+Rettelserne herunder er lavet, testet og committet, men **ingen udgivelse har fundet sted endnu**,
+så de er ikke i den udvidelse eller den npm-pakke du har. Står her fordi det er ærligere end at
+lade dem stå under «Shipped» — hvilket de gjorde ved en fejl indtil 9/9.
+
+- **Skærmbilledet kunne fotografere din egen fane.** Fejlede CDP-optagelsen, faldt koden tilbage
+  på `captureVisibleTab`, som fotograferer den *synlige* fane — ikke agentens. Siden aktiveringen
+  bevidst blev fjernet i august, er agentens fane normalt netop ikke den synlige. Reproduceret:
+  agenten fik et billede af en anden åben side, uden at noget i svaret afslørede det. Afvises nu.
+- **`browser_scroll` med pixels ramte 30-sekunders-loftet hver gang, på hver side.** CDP's
+  hjulafsendelse indfrier aldrig sit løfte, og den `window.scrollBy` der er skrevet til netop det
+  tilfælde, lå i et `catch` — en hænger er ikke en exception, så den kunne aldrig nås.
+  Nu 1,5 sekund i stedet for 30, og siden ruller.
+- **`browser_click` svarede `ok: true` sammen med `landed: false`.** Reserveløsningen fyrede uden
+  nogensinde at måle om den virkede. Nu måles den, og `ok` udledes af resultatet ([#19]).
+- **Et muterende CDP-udtryk kunne køre fire gange.** `Runtime.evaluate` stod på retry-listen, men
+  flere af vores egne udtryk muterer — settle-udtrykket fyrer selve reserveløsnings-klikket. På en
+  SPA hvor debuggeren falder af, kunne det lande fire klik.
+- **`set_combobox` brugte 8,5 sekunder på at sige nej** til en almindelig `<select>` den aldrig
+  kunne betjene. Nu genkendes den straks, og svaret navngiver `browser_select_option`.
+
+---
+
 ## ✅ Shipped
 
-- **v1.29.1 (2026-09-08) — fem fejl af samme familie: værktøjet sagde ét og gjorde et andet.**
+- **IKKE UDGIVET — v1.29.1. Punkterne herunder ligger på `main` og venter en udgivelse.**
+  (Stod fejlagtigt som shipped fra 8/9 til 9/9. Fem fejl af samme familie: værktøjet sagde ét og
+  gjorde et andet.)
   Fundet ved at køre værktøjerne mod en ægte React-formular, ikke ved at læse koden.
   - `select_option` meldte **fiasko om valg der lykkedes.** Vagten læste feltet synkront
     efter hændelsen — men et styret felt der arbejder ser præcis sådan ud: det gemmer
@@ -63,8 +89,13 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
     færdig kl. 10 stadig kan bruge browseren kl. 10:40.
   - Fejlbeskeden ved fuldt spænd beder ikke længere om en genstart — den er ikke nødvendig.
 
-- **v1.26.0 (2026-07-27) — The "superior" batch** (born from a real all-night Azure/Railway/OWA session):
-  - `browser_copy_to_clipboard` / `browser_paste_from_clipboard` / `browser_clipboard_stats` — SECRET-SAFE clipboard bridge: move credentials from page to field/CLI without the value ever entering the LLM conversation
+- **IKKE UDGIVET — v1.26.0, og tre af punkterne blev aldrig bygget.**
+  Stod som shipped fra 27/7 til 9/9. Der findes hverken en git-tag eller en npm-udgivelse for
+  1.26.0, og **de tre udklipsholder-værktøjer eksisterer ingen steder** — hverken i
+  `mcp-server/tools.js` eller i udvidelsen. De blev annonceret som en «SECRET-SAFE clipboard
+  bridge» til at flytte kodeord uden om samtalen; havde nogen stolet på den beskrivelse, ville
+  de have stolet på noget der ikke var der. Fjernet frem for skrevet om.
+  De fire nedenfor **findes** i koden, men er landet i senere udgivelser, ikke i en 1.26.0:
   - `browser_double_click` — true dblclick (OWA month-view opened inline-rename on two single clicks)
   - `browser_right_click` — page-level context menus
   - `browser_click_xy` — raw-coordinate escape hatch for unselectable custom widgets (Azure portal dialogs)

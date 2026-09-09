@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { dirname, join, relative } from 'node:path';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -147,4 +148,61 @@ test('semver-sammenligningen i cli.js regner med tal', () => {
   assert.equal(f('1.28.0', '1.27.1'), 1, 'pakken er nyere — der skal kopieres');
   assert.equal(f('1.27.1', '1.27.1'), 0);
   assert.equal(f('1.10.0', '1.9.0'), 1, 'tekstsammenligning ville sige 1.9.0 var nyest');
+});
+
+// Kun selve Shipped-afsnittet, ikke resten af filen. Uden afgraensningen laeste vagterne
+// ogsaa forslags-afsnittene og kaldte "Forslag: et browser_react_fill ..." for en falsk
+// paastand om et shippet vaerktoej. En vagt der raaber ulv paa noget lovligt, bliver slaaet fra.
+function shippedAfsnit(tekst) {
+  const start = tekst.indexOf('## ✅ Shipped');
+  if (start < 0) return '';
+  const naeste = tekst.indexOf('\n## ', start + 5);
+  return tekst.slice(start, naeste > start ? naeste : tekst.length);
+}
+
+// MAALT 9/9-2026: WISHLIST.md stod med "✅ Shipped — v1.29.1 (2026-09-08)" for en udgivelse
+// der ALDRIG fandt sted. npm stod paa 1.29.0, taggen var v1.29.0, manifestet 1.29.0. Filen er
+// offentlig og linket fra READMEt, saa enhver der laeste den, troede fem rettelser var
+// tilgaengelige. De laa paa main.
+//
+// Det er samme fejlklasse som alt andet vi har jagtet: et dokument der paastaar noget der ikke
+// er sandt. Vagten her er billig, fordi sandheden allerede findes — git's egne tags.
+test('WISHLIST paastaar ikke en udgivelse der ikke findes', () => {
+  const sti = new URL('../WISHLIST.md', import.meta.url);
+  const tekst = readFileSync(sti, 'utf8');
+  const i = tekst.indexOf('## ✅ Shipped');
+  assert.ok(i > -1, 'Shipped-afsnittet findes ikke laengere — er filen lagt om?');
+  const afsnit = shippedAfsnit(tekst);
+
+  const tags = new Set(
+    execSync('git tag', { cwd: new URL('..', import.meta.url).pathname, encoding: 'utf8' })
+      .split('\n').map((t) => t.trim()).filter(Boolean),
+  );
+  // Kun overskrifts-linjer taeller: "- **v1.29.0 (dato) — ...**". Broedtekst maa gerne
+  // naevne en version uden at paastaa at den er ude.
+  const paastande = [...afsnit.matchAll(/^- \*\*(v\d+\.\d+\.\d+)\b/gm)].map((m) => m[1]);
+  assert.ok(paastande.length > 0, 'ingen versioner fundet under Shipped — regexet er droslet af');
+  const opfundne = paastande.filter((v) => !tags.has(v));
+  assert.deepEqual(opfundne, [],
+    `WISHLIST siger disse er shipped, men de har ingen git-tag: ${opfundne.join(', ')}`);
+});
+
+// MAALT 9/9-2026: samme fil lovede `browser_copy_to_clipboard`,
+// `browser_paste_from_clipboard` og `browser_clipboard_stats` som shipped i v1.26.0 — beskrevet
+// som en "SECRET-SAFE clipboard bridge" der flytter kodeord uden om samtalen. De findes ingen
+// steder: hverken i tools.js eller i udvidelsen. Det stod der fra 27/7.
+//
+// En version uden tag er én slags loegn; et vaerktoejsnavn uden kode er en vaerre, fordi nogen
+// kan bygge oven paa den. Sandheden findes allerede i tools.js.
+test('WISHLIST lover ikke vaerktoejer der ikke findes', () => {
+  const rod = new URL('..', import.meta.url);
+  const wish = readFileSync(new URL('WISHLIST.md', rod), 'utf8');
+  const toolsSrc = readFileSync(new URL('mcp-server/tools.js', rod), 'utf8');
+  const findes = new Set([...toolsSrc.matchAll(/name:\s*['"](browser_[a-z0-9_]+)['"]/g)].map((m) => m[1]));
+  assert.ok(findes.size > 30, 'kunne ikke laese vaerktoejslisten — regexet er droslet af');
+
+  const lovede = new Set([...shippedAfsnit(wish).matchAll(/`(browser_[a-z0-9_]+)`/g)].map((m) => m[1]));
+  const opfundne = [...lovede].filter((t) => !findes.has(t));
+  assert.deepEqual(opfundne, [],
+    `WISHLIST lover disse som shipped, men de findes ikke i tools.js: ${opfundne.join(', ')}`);
 });
