@@ -2207,6 +2207,26 @@ async function setCombobox(tabId, selector, values, opts = {}) {
   const waitIterations = Math.max(1, Math.ceil(waitMs / 100));
   const results = [];
 
+  // MAALT 9/9-2026: paa en aegte <select> brugte den her 8,5 sekunder paa at sige nej.
+  // Den klikkede feltet, forsoegte at tomme det med en input-vaerdisaetter (en <select>
+  // ER ikke et input), skrev tekst ind, og pollede saa 30 gange efter en listbox der
+  // aldrig kan opstaa — for saa at svare "no-options-rendered". Kapaciteten fandtes hele
+  // tiden i browser_select_option, som klarer samme felt paa 9 ms. Nu siger den det
+  // med det samme i stedet for at lade agenten vente og gaette.
+  const erNativeSelect = await debuggerEval(tabId, `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    return el?.tagName === 'SELECT';
+  })()`).catch(() => false);
+  if (erNativeSelect) {
+    return {
+      ok: false,
+      error: 'native-select',
+      hint: 'Feltet er en almindelig <select>. Brug browser_select_option i stedet — ' +
+            'set_combobox er til dropdowns bygget af div/li med en listbox.',
+      selector,
+    };
+  }
+
   for (const val of valueList) {
     try {
       const inputEl = await resolveElement(tabId, selector);
