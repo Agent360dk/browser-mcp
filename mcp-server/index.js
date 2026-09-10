@@ -18,7 +18,7 @@ import { execSync, execFile } from 'child_process';
 import { dirname, join, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 // Read version from package.json — single source of truth, never drifts
@@ -751,9 +751,15 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const raa = Array.isArray(args?.files) ? args.files
                 : [args?.files, args?.file, args?.file_path].filter(Boolean);
       const rod = resolve(process.cwd());
+      // MAALT 10/9 af Astra: vagten var leksikalsk. Et symlink INDE i arbejdsmappen der peger UD
+      // (fx `noegle -> ~/.ssh/id_rsa`) passerede, fordi stien saa rigtig ud som tekst. Nu tjekkes
+      // baade stien og det den reelt peger paa.
+      let rodReel = rod; try { rodReel = realpathSync(rod); } catch {}
+      const udenfor = (p, r) => p !== r && !p.startsWith(r + sep);
       for (const f of raa) {
         const maal = resolve(rod, String(f).replace(/^~(?=\/|$)/, homedir()));
-        if (maal !== rod && !maal.startsWith(rod + sep)) {
+        let reel = maal; try { reel = realpathSync(maal); } catch {}
+        if (udenfor(maal, rod) || udenfor(reel, rodReel)) {
           return {
             content: [{ type: 'text', text:
               `Filen skal ligge inden for arbejdsmappen (${rod}). "${f}" peger udenfor.\n` +

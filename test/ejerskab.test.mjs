@@ -73,7 +73,8 @@ test('upload-stien er indesluttet i arbejdsmappen — samme vagt som skaermbille
   assert.ok(i > -1, 'vagten mod stier uden for arbejdsmappen er vaek fra upload');
   const blok = srv.slice(i, i + 1200);
   assert.match(blok, /resolve\(process\.cwd\(\)\)/, 'roden skal vaere arbejdsmappen');
-  assert.match(blok, /startsWith\(rod \+ sep\)/, 'praefiks-tjekket er den faktiske indeslutning');
+  assert.match(blok, /startsWith\(r \+ sep\)/, 'praefiks-tjekket er den faktiske indeslutning');
+  assert.match(blok, /udenfor\(reel, rodReel\)/, 'ogsaa det stien PEGER paa skal tjekkes (symlinks)');
   assert.match(blok, /homedir\(\)/, '~ skal foldes ud, ellers slipper ~/.ssh/id_rsa forbi som relativ sti');
   assert.ok(srv.indexOf("const method = methodMap[name]") < i,
     'vagten skal ligge FOER kaldet sendes til udvidelsen');

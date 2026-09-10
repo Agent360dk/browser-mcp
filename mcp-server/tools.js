@@ -29,7 +29,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_list',
-    description: 'Read EVERY row of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport — mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. Returns deduplicated row text plus reached_end so you know whether you saw the whole list.',
+    description: 'Read EVERY row of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport - mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. Returns deduplicated row text plus reached_end so you know whether you saw the whole list.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -55,7 +55,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_execute_script',
-    description: 'Execute JavaScript in the current page. IMPORTANT: the parameter is `code` (NOT `script` — though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
+    description: 'Execute JavaScript in the current page. IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -77,7 +77,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_right_click',
-    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP — only in-page menus.',
+    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -100,7 +100,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_reattach_debugger',
-    description: 'RECOVERY: Force-detach and re-attach the Chrome debugger on the current tab. Use when interactive tools (click/fill/press_key) start timing out or reporting ghost-attach ("Debugger attach failed ... ghost") while list_tabs still works — faster than reloading the extension.',
+    description: 'RECOVERY: Force-detach and re-attach the Chrome debugger on the current tab. Use when interactive tools (click/fill/press_key) start timing out or reporting ghost-attach ("Debugger attach failed ... ghost") while list_tabs still works - faster than reloading the extension.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -185,7 +185,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS or text selector for the dropdown trigger / <select> element' },
-        option: { type: 'string', description: 'Text OR value of the option to select. Exact value match wins, then exact text, then partial text. Aliases: `value`, `label`. Fails loudly with the available options if nothing matches — it never reports success without the field actually changing.' },
+        option: { type: 'string', description: 'Text OR value of the option to select. Exact value match wins, then exact text, then partial text. Aliases: `value`, `label`. Fails loudly with the available options if nothing matches - it never reports success without the field actually changing.' },
         wait: { type: 'number', description: 'Ms to wait after clicking trigger for options to appear (default: 300)' },
       },
       required: ['selector', 'option'],
@@ -220,7 +220,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_drop_file',
-    description: 'Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree or up to 2 ancestor levels; (2) if there is no input at all, intercepts the NATIVE OS file-chooser — pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 handles sites like Google Ads that never put a file input in the DOM.',
+    description: 'Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree or up to 2 ancestor levels; (2) if there is no input at all, intercepts the NATIVE OS file-chooser - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 handles sites like Google Ads that never put a file input in the DOM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -233,7 +233,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_set_date',
-    description: 'Robustly set a date input — handles native <input type="date">, masked text inputs (e.g. MM/DD/YYYY), and calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). Tries native value-set, format-aware typing via Input.insertText, and ARIA-based picker navigation in sequence with read-back verification. Use instead of browser_fill when fill fails or for any input that opens a calendar widget.',
+    description: 'Robustly set a date input - handles native <input type="date">, masked text inputs (e.g. MM/DD/YYYY), and calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). Tries native value-set, format-aware typing via Input.insertText, and ARIA-based picker navigation in sequence with read-back verification. Use instead of browser_fill when fill fails or for any input that opens a calendar widget.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -246,7 +246,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Arm automatic handling of the next JavaScript alert/confirm/prompt on the active tab, then return immediately. Call this BEFORE the click that opens the dialog — a dialog freezes the tab, so nothing can be clicked once it is on screen. Pass wait=true only when the dialog is already opening.',
+    description: 'Arm automatic handling of the next JavaScript alert/confirm/prompt on the active tab, then return immediately. Call this BEFORE the click that opens the dialog - a dialog freezes the tab, so nothing can be clicked once it is on screen. Pass wait=true only when the dialog is already opening.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -259,7 +259,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_wait_for_network',
-    description: 'Wait for a network request to complete. Useful after clicking buttons that trigger API calls — ensures data is loaded before reading the page. Monitors real network traffic via Chrome DevTools Protocol.',
+    description: 'Wait for a network request to complete. Useful after clicking buttons that trigger API calls - ensures data is loaded before reading the page. Monitors real network traffic via Chrome DevTools Protocol.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -289,11 +289,11 @@ export const TOOLS = [
   },
   {
     name: 'browser_get_cookies',
-    description: 'Get cookies for a specific domain.',
+    description: 'Get cookies for a site this session has open in one of its tabs (the site itself, a parent domain or a subdomain). Navigate to the site first - cookies for sites the session is not working on are refused.',
     inputSchema: {
       type: 'object',
       properties: {
-        domain: { type: 'string', description: 'Domain to get cookies for (e.g. ".stripe.com")' },
+        domain: { type: 'string', description: 'Domain to get cookies for (e.g. ".stripe.com"). Must match a tab this session has open.' },
       },
       required: ['domain'],
     },
@@ -421,7 +421,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_upload_file',
-    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically — no dialog needed. For drag-drop zones without visible file input use browser_drop_file.',
+    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -460,7 +460,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_about',
-    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped — this tool is how the user contributes back.',
+    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped - this tool is how the user contributes back.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -482,7 +482,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_provide_feedback',
-    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL — the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) — so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap, read-only, and safe to call speculatively — never sends anything anywhere by itself.',
+    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap, read-only, and safe to call speculatively - never sends anything anywhere by itself.',
     inputSchema: {
       type: 'object',
       properties: {

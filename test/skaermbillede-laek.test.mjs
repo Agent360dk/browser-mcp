@@ -21,7 +21,10 @@ function sele(agentFaneAktiv) {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
     'tabs.get': { id: 1, url: 'https://agent.example', active: agentFaneAktiv, windowId: 9 },
-    'tabs.query': [{ id: 2, url: 'https://brugerens-bank.example', active: true, windowId: 9 }],
+    // Stubben skal vaere sig selv konsekvent: er agentens fane aktiv, er DEN den aktive i vinduet.
+    'tabs.query': agentFaneAktiv
+      ? [{ id: 1, url: 'https://agent.example', active: true, windowId: 9 }]
+      : [{ id: 2, url: 'https://brugerens-bank.example', active: true, windowId: 9 }],
     // Laekken afhaenger ikke af HVORFOR CDP fejler, kun af AT den gjorde. En oejeblikkelig
     // fejl rammer samme sti som en haenger, og koster ikke 48 sek. i hver suite-koersel.
     'debugger.sendCommand': () => { throw new Error('CDP nede'); },

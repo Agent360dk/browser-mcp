@@ -251,7 +251,7 @@ Both are optional. Neither is needed for normal use.
 ### Data
 | Tool | Description |
 |------|-------------|
-| `browser_get_cookies` | Get cookies for a domain |
+| `browser_get_cookies` | Get cookies for a site this session has open |
 | `browser_set_cookies` | Set cookies for a domain |
 | `browser_get_local_storage` | Read localStorage from page |
 | `browser_set_local_storage` | Write localStorage values |

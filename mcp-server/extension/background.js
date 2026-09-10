@@ -2752,6 +2752,19 @@ async function dispatch(port, method, params) {
           // dér den er aktiv.
           tab.windowId = stadig.windowId;
           const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+          // MAALT 10/9 af Astra: tjekket ovenfor og optagelsen er to separate asynkrone kald.
+          // Skifter brugeren fane imellem, fotograferer captureVisibleTab brugerens side —
+          // reproduceret med en stub der skiftede fane ved optagelsen. Derfor tjekkes der igen
+          // EFTER: er vores fane ikke laengere den aktive, kasseres billedet.
+          const efter = await chrome.tabs.query({ active: true, windowId: tab.windowId }).catch(() => []);
+          if (!efter || !efter[0] || efter[0].id !== tab.id) {
+            const kasseret = new Error(
+              'Skaermbillede kasseret: fanen skiftede mens billedet blev taget, og billedet ' +
+              'kunne vaere af brugerens side. Proev igen.'
+            );
+            kasseret.laekageVagt = true;
+            throw kasseret;
+          }
           return { image: dataUrl };
         }
       };
@@ -2996,6 +3009,25 @@ async function dispatch(port, method, params) {
         await debuggerFill(tab.id, parsed.selector, params.value);
         return { ok: true, method: 'debugger' };
       } catch (e) {
+        // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
+        // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra
+        // debugger-forsoeget kan lande BAGEFTER. Reproduceret: "X" blev til "XX", og kaldet
+        // svarede ok:true. To regler: er vaerdien der allerede efter en frist, er vi faerdige;
+        // og efter reserveloesningen laeses feltet igen, saa en fordobling ses i stedet for
+        // at blive meldt som succes.
+        const laesFelt = async () => {
+          const r = await safeExecuteScript(tab.id, (sel) => {
+            const el = document.querySelector(sel);
+            return el && 'value' in el ? el.value : null;
+          }, [parsed.selector]).catch(() => null);
+          return r && !r.cspBlocked ? r.result : null;
+        };
+        if (/svarede ikke inden/.test(e?.message || '')) {
+          await new Promise((r) => setTimeout(r, 400));
+          if ((await laesFelt()) === params.value) {
+            return { ok: true, method: 'debugger', note: 'landede trods fristen' };
+          }
+        }
         // Fallback to executeScript if debugger fails
         const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
           const el = document.querySelector(sel);
@@ -3010,8 +3042,29 @@ async function dispatch(port, method, params) {
           el.dispatchEvent(new Event('change', { bubbles: true }));
           return { ok: true };
         }, [parsed.selector, params.value]);
-        if (!scriptResult.cspBlocked) return scriptResult.result;
-        return { ok: false, error: e.message, method: 'debugger' };
+        if (scriptResult.cspBlocked) return { ok: false, error: e.message, method: 'debugger' };
+        if (!scriptResult.result?.ok) return scriptResult.result;
+        await new Promise((r) => setTimeout(r, 300));
+        const endelig = await laesFelt();
+        // Kun to sluttilstande er fejl. FORDOBLET: et forsinket Input.insertText landede efter
+        // setteren ("X" -> "XX", reproduceret). TOEMT: et forsinket Cmd+A/Backspace ryddede feltet
+        // igen. Alt andet — "5" der bliver til "5,00 kr", et telefonnummer med mellemrum — er
+        // feltets egen formatering og maa ikke meldes som fejl.
+        const v = String(params.value ?? '');
+        if (typeof endelig === 'string' && endelig !== v) {
+          const fordoblet = endelig === v + v || (v.length >= 3 && endelig.includes(v + v));
+          if (fordoblet || (v && endelig === '')) {
+            return {
+              ok: false, method: 'fallback', error: fordoblet ? 'feltet-fordoblet' : 'feltet-toemt',
+              forventet: v, faktisk: endelig,
+              note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
+            };
+          }
+        }
+        return {
+          ok: true, method: 'fallback', value: endelig ?? v,
+          ...(typeof endelig === 'string' ? {} : { verificeret: false }),
+        };
       }
     }
 
@@ -3344,8 +3397,14 @@ async function dispatch(port, method, params) {
       if (typeof params.x !== 'number' || typeof params.y !== 'number') {
         return { ok: false, error: 'x and y (numbers, CSS pixels in viewport) are required' };
       }
-      await debuggerClick(tab.id, params.x, params.y);
-      return { ok: true, clicked_at: { x: params.x, y: params.y } };
+      // MAALT 10/9: debuggerClick maaler om klikket landede, men svaret blev smidt vaek og
+      // `ok: true` stod hardkodet — samme fejl som `click` havde (issue #19). Samme regel her.
+      const klik = await debuggerClick(tab.id, params.x, params.y);
+      return {
+        ok: klik?.landed !== false || klik?.detached === true,
+        clicked_at: { x: params.x, y: params.y },
+        ...(klik || {}),
+      };
     }
 
     case 'reattach_debugger': {
@@ -3652,7 +3711,34 @@ async function dispatch(port, method, params) {
                 'ogsaa fra sider der intet har med opgaven at goere.',
         };
       }
-      const cookies = await chrome.cookies.getAll({ domain: params.domain });
+      // MAALT 10/9 af sikkerhedsreviewet og Astra: med domaene-kravet alene kunne en session
+      // stadig laese cookies for ETHVERT domaene i profilen — ogsaa brugerens netbank, som
+      // agenten aldrig har aabnet. Cookies hoerer til de sider agenten arbejder paa. Et domaene
+      // er tilladt naar det er, eller er under/over, vaertsnavnet paa en af sessionens faner.
+      const session = getSession(port);
+      const vaertsnavne = [];
+      for (const id of session.tabIds) {
+        const t = await chrome.tabs.get(id).catch(() => null);
+        try { if (t?.url) vaertsnavne.push(new URL(t.url).hostname.toLowerCase()); } catch {}
+      }
+      const d = params.domain.trim().replace(/^\./, '').toLowerCase();
+      const tilladt = vaertsnavne.some((h) => h === d || h.endsWith('.' + d) || d.endsWith('.' + h));
+      if (!tilladt) {
+        return {
+          ok: false, error: 'domaene-ikke-i-sessionen', domain: d, aabne: vaertsnavne,
+          hint: 'Cookies kan kun laeses for sider denne session har aabne. Naviger til siden ' +
+                'foerst — saa kan agenten ikke laese cookies fra noget den ikke arbejder med.',
+        };
+      }
+      // Portvagten ovenfor er ikke nok alene: a.example.com ligger under "com", saa en
+      // forespoergsel paa "com" slap igennem — og Chrome returnerer ALLE cookies under det
+      // domaene man spoerger paa, ogsaa brugerens bank. Derfor filtreres svaret: en cookie
+      // med kun, hvis dens domaene er en af sessionens sider, ligger over den eller under den.
+      const hoererTilSessionen = (c) => {
+        const cd = String(c.domain || '').replace(/^\./, '').toLowerCase();
+        return vaertsnavne.some((h) => cd === h || h.endsWith('.' + cd) || cd.endsWith('.' + h));
+      };
+      const cookies = (await chrome.cookies.getAll({ domain: params.domain })).filter(hoererTilSessionen);
       return { cookies: cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };
     }
 

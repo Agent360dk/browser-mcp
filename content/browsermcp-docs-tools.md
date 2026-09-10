@@ -50,7 +50,7 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 
 | Tool | Description |
 |---|---|
-| `browser_get_cookies` | Get cookies for a domain. |
+| `browser_get_cookies` | Get cookies for a site this session has open. |
 | `browser_set_cookies` | Set one or more cookies for a domain (single cookie or a `cookies[]` batch). |
 | `browser_get_local_storage` | Read `localStorage` from the current page - a single key or all of it. |
 | `browser_set_local_storage` | Write a `localStorage` key/value pair on the current page. |
