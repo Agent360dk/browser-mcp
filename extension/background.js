@@ -914,15 +914,36 @@ async function debuggerClick(tabId, x, y) {
           try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
           try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
         };
+        // Et billigt fingeraftryk af det et klik plejer at aendre: antal noder, synlig tekst,
+        // adressen, og om noget er aabnet/valgt. Bevidst groft — det skal kunne tages to gange
+        // paa faa millisekunder, ikke beskrive siden.
+        const aftryk = () => {
+          try {
+            return document.querySelectorAll('*').length + '|' +
+                   (document.body ? document.body.innerText.length : 0) + '|' +
+                   location.href + '|' +
+                   document.querySelectorAll('[aria-expanded="true"],[aria-selected="true"],[open],.open,.active').length;
+          } catch (e) { return 'aftryk-fejlede'; }
+        };
         if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
+        const foerAftryk = aftryk();
         const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
         try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mousedown', opts));
         try { el.dispatchEvent(new PointerEvent('pointerup', opts)); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
-        el.dispatchEvent(new MouseEvent('click', opts));
+        // MAALT 10/9 i en rigtig browser: her stod BEGGE — dispatchEvent('click') OG el.click().
+        // Det er to klik-haendelser. Paa alt hvad der skifter tilstand (dropdowns, faneblade,
+        // afkrydsningsfelter, harmonikaer) aabner det foerste og det andet lukker igen, saa
+        // resultatet er intet. Det er aarsagen til at issue #19's div-dropdown "aldrig aabnede":
+        // den aabnede og lukkede inde i den samme reserveloesning.
+        //   ét klik:  aftryk 11|53|…|0 -> 11|69|…|1   (menuen aaben)
+        //   to klik:  aftryk 11|53|…|0 -> 11|53|…|0   (tilbage ved start)
+        // el.click() foretraekkes, fordi den ogsaa udloeser elementets aktiverings-adfaerd
+        // (foelg link, skift afkrydsning) — det goer en syntetisk MouseEvent ikke paalideligt.
         if (typeof el.click === 'function') el.click();
+        else el.dispatchEvent(new MouseEvent('click', opts));
 
         // React fiber fallback — find and call onClick handler directly
         const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
@@ -940,9 +961,16 @@ async function debuggerClick(tabId, x, y) {
           const matRipple = el.closest && el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
           if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', opts));
         }
-        const efter = window.__bmcpClicked === true;
+        // Lytteren kan IKKE bruges her. Den udloeses af enhver dispatch paa maalet, og
+        // reserveloesningen dispatcher netop paa maalet — saa flaget ville vaere sandt fordi
+        // VI sendte noget, ikke fordi siden reagerede. Reproduceret 9/9 mod et <div> uden
+        // nogen handler: foer=false, efter=true.
+        // Derfor maales sidens REAKTION i stedet, med samme aftryks-greb som select_option
+        // allerede bruger: aendrede noget sig af det et klik plejer at aendre?
+        const efterAftryk = aftryk();
+        const reagerede = efterAftryk !== foerAftryk;
         ryd();
-        return { landed: efter, fallbackFired: true };
+        return { landed: reagerede, fallbackFired: true, aftrykFoer: foerAftryk, aftrykEfter: efterAftryk };
       })()`,
     });
     const vaerdi = settle?.result?.value ?? null;

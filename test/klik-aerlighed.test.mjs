@@ -65,6 +65,8 @@ test('reserveløsningen maaler om den selv virkede — den gaetter ikke', async 
     fs.readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8'));
   const blok = kilde.slice(kilde.indexOf('const landed = window.__bmcpClicked === true;'));
   const efterFallback = blok.slice(blok.indexOf('fiberKey'));
-  assert.match(efterFallback.slice(0, 1400), /__bmcpClicked === true/,
-    'efter reserveloesningen skal lytteren laeses igen, ellers er landed et gaet');
+  // 10/9: at laese lytteren igen VAR rettelsen om morgenen — og den var forkert. Lytteren
+  // udloeses af vores egen dispatch. Nu skal der maales et aftryk af siden i stedet.
+  assert.match(efterFallback.slice(0, 1600), /efterAftryk !== foerAftryk/,
+    'efter reserveloesningen skal SIDENS reaktion maales, ikke vores egen dispatch');
 });

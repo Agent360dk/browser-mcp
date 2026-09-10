@@ -55,12 +55,17 @@ test('alle tre udgange fra settle-udtrykket rapporterer landed', () => {
   const blok = kilde.slice(i, kilde.indexOf('const vaerdi = settle?.result?.value', i));
   assert.match(blok, /return \{ landed: true, fallbackFired: false \}/, 'trusted klik landede');
   assert.match(blok, /return \{ landed: false, fallbackFired: false, detached: true \}/, 'element forsvandt');
-  // 9/9-2026: den tredje udgang sagde foer `landed: false` HAARDKODET — altsaa et gaet,
-  // afgivet uden at nogen havde set efter. Nu maales lytteren igen efter reserveloesningen,
-  // saa vaerdien er en observation. Testen skal foelge med, ikke holde det gamle gaet i live.
-  assert.match(blok, /const efter = window\.__bmcpClicked === true;/,
-    'reserveloesningen skal MAALE om den virkede, ikke gaette');
-  assert.match(blok, /return \{ landed: efter, fallbackFired: true \}/, 'framework-fallback fyrede');
+  // 9/9 om morgenen: den tredje udgang sagde `landed: false` HAARDKODET — et gaet.
+  // 9/9 om aftenen: jeg "rettede" det ved at laese lytteren igen. Det var VAERRE: lytteren
+  // udloeses af enhver dispatch paa maalet, og reserveloesningen dispatcher netop paa maalet.
+  // Reproduceret i en rigtig browser mod et <div> uden handler: foer=false, efter=true.
+  // 10/9: nu maales sidens REAKTION med et aftryk, samme greb som select_option bruger.
+  assert.doesNotMatch(blok, /const efter = window\.__bmcpClicked === true;/,
+    'lytteren maa IKKE bruges efter reserveloesningen — den er sand fordi vi selv dispatcher');
+  assert.match(blok, /const foerAftryk = aftryk\(\)/, 'der skal tages et aftryk FOER fallbacken');
+  assert.match(blok, /const reagerede = efterAftryk !== foerAftryk/,
+    'landed skal komme af at noget aendrede sig, ikke af at vi sendte noget');
+  assert.match(blok, /return \{ landed: reagerede, fallbackFired: true/, 'framework-fallback fyrede');
 });
 
 test('click videregiver debuggerClick-resultatet i sit svar', () => {
@@ -76,6 +81,21 @@ test('click videregiver debuggerClick-resultatet i sit svar', () => {
   // Og selve kontrakten: `ok` maa ikke vaere en konstant. Adfaerden proeves i klik-aerlighed.
   assert.doesNotMatch(blok, /^\s*ok: true,\s*$/m,
     'ok maa ikke staa haardkodet — den skal udledes af om klikket landede (issue #19)');
+});
+
+// MAALT 10/9 i en rigtig browser: reserveloesningen fyrede BEGGE — dispatchEvent('click')
+// og el.click(). To klik-haendelser. Paa alt der skifter tilstand aabner den foerste og den
+// anden lukker igen, saa resultatet er intet. Det VAR aarsagen til at issue #19's dropdown
+// "aldrig aabnede".  ét klik: 11|53|…|0 -> 11|69|…|1   ·   to klik: 11|53|…|0 -> 11|53|…|0
+test('reserveloesningen fyrer ÉT klik, ikke to', () => {
+  const i = kilde.search(/const settle = await \w+\(tabId,/);
+  const blok = kilde.slice(i, kilde.indexOf('const vaerdi = settle?.result?.value', i));
+  const klikLinjer = (blok.match(/el\.dispatchEvent\(new MouseEvent\('click'/g) || []).length;
+  const elClick = (blok.match(/el\.click\(\)/g) || []).length;
+  assert.ok(!(klikLinjer > 0 && elClick > 0 && !/else el\.dispatchEvent\(new MouseEvent\('click'/.test(blok)),
+    'baade dispatchEvent(click) og el.click() fyrer ubetinget — det er to klik, og en toggle ender hvor den startede');
+  assert.match(blok, /if \(typeof el\.click === 'function'\) el\.click\(\);\s*\n\s*else el\.dispatchEvent/,
+    'de to klik-veje skal vaere hinandens alternativer, ikke begge');
 });
 
 // ── Fix B: skjulte elementer maa ALDRIG klikkes ─────────────────────────────
