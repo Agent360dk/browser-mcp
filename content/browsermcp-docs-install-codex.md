@@ -71,7 +71,7 @@ Restart your Codex CLI session so it picks up the new server, then in the compos
 /mcp
 ```
 
-`browser-mcp` should show up connected, with its tools listed. That's it - no API keys, no cloud account, nothing leaves your machine.
+`browser-mcp` should show up connected, with its tools listed. That's it - no API keys, no cloud account, nothing sent to us.
 
 ### Now what - things to actually say
 

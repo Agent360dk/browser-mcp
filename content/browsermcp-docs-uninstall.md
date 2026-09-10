@@ -1,4 +1,4 @@
-// KILDE: permissions verbatim fra extension/manifest.json (tabs, tabGroups, cookies, scripting, activeTab, storage, alarms, offscreen, notifications, webNavigation, debugger + host_permissions <all_urls>). "100% local / nothing leaves your machine" fra README (verificeret 2026-07-21). Uninstall-trin fra CWS + npm standard.
+// KILDE: permissions verbatim fra extension/manifest.json (tabs, tabGroups, cookies, scripting, activeTab, storage, alarms, offscreen, notifications, webNavigation, debugger + host_permissions <all_urls>). "100% local" fra README (verificeret 2026-07-21; "nothing leaves your machine" trukket tilbage 10/9 - agenten sender det den laeser videre til AI-klienten). Uninstall-trin fra CWS + npm standard.
 
 # Uninstalling Browser MCP - and exactly what data it touches
 
@@ -30,9 +30,11 @@ Browser MCP requests broad permissions for one reason: its whole job is to opera
 
 This is a lot of access, and we won't pretend otherwise. It is the same access any tool would need to do what this one does. What makes it safe is not a short permission list - it's where the data goes.
 
-## The one thing that matters: nothing leaves your machine
+## The one thing that matters: nothing is sent to us
 
 The extension talks to a local MCP server over a `127.0.0.1` WebSocket bridge, and that server talks to your MCP client on the same machine. There is no Agent360 backend in the loop. Your pages, cookies, sessions and keystrokes are never sent to us - there is nowhere for them to be sent, because we don't run a server that receives them. The project is open source (MIT), so this isn't a promise you have to take on trust: you can read `extension/background.js` and confirm there is no outbound telemetry.
+
+What does leave your machine is what you would expect from any AI agent: the pages your agent reads are handed to your AI client (Claude Code, Cursor, Codex...), which sends them to its model provider the same way it sends anything else you show it. The browser visits the sites your agent opens. And if you start the server with `npx ...@latest`, npm looks the package up once at startup.
 
 ## FAQ
 
@@ -40,10 +42,10 @@ The extension talks to a local MCP server over a `127.0.0.1` WebSocket bridge, a
 There's nothing to delete - Browser MCP has no account and no server that stores your data. Removing the extension and the config entry is complete removal.
 
 **Why does it need access to all sites and my cookies?**
-Because it drives *your* logged-in browser on whatever site you choose. Cookies are how you stay logged in; `<all_urls>` is so you're not limited to a pre-approved list. Neither is transmitted anywhere.
+Because it drives *your* logged-in browser on whatever site you choose. Cookies are how you stay logged in; `<all_urls>` is so you're not limited to a pre-approved list. Neither is sent to us.
 
 **Is the debugger permission dangerous?**
 It's what lets the agent send trusted clicks and reads that work on strict sites. Chrome shows its standard "Browser MCP started debugging this browser" banner while a session is active; it clears when the session ends.
 
-**Can I verify the "nothing leaves your machine" claim myself?**
+**Can I verify the "nothing is sent to you" claim myself?**
 Yes - it's MIT-licensed open source. Read `extension/background.js` and `mcp-server/index.js`; there is no outbound analytics or telemetry endpoint.

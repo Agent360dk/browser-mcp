@@ -12,7 +12,8 @@ brochure, and you cannot plan against a brochure.
 
 | Mark | Means |
 |---|---|
-| **Measured** | We ran it and watched it work. Date in the note. |
+| **Measured** | We ran it against the released version and watched it work. Date in the note. |
+| **Fixed on main** | Broken in the released version (v1.29.0), fixed and tested on the main branch, not in a release yet. Until it ships, you have the broken behaviour. |
 | **By design** | The mechanism is there and reviewed, but we have no dated measurement. Treat as likely, not proven. |
 | **Not yet** | We ran it and it did not work. Open, with the reason. |
 | **Won't** | A deliberate non-goal. The reason is given, not hidden. |
@@ -36,16 +37,16 @@ brochure, and you cannot plan against a brochure.
 | Content Security Policy blocks injected script | **By design** | The debugger path does not go through `eval`, so CSP-strict pages (Google Cloud, Stripe, Angular Material) work where script injection is refused. |
 | Content inside an iframe | **By design** | `browser_list_frames` and `browser_select_frame`. |
 | Shadow DOM | **By design** | The click path resolves through shadow roots before dispatching. |
-| React / Vue controlled input that "resets itself" | **Measured** | `browser_fill` uses the native value setter and reads the field back afterwards. Fixed 2026-09-08 after it was found appending instead of replacing. |
+| React / Vue controlled input that "resets itself" | **Fixed on main** | In v1.29.0 `browser_fill` could append instead of replacing. Fixed 2026-09-08: it now reads the field back after clearing it. |
 | Native `<select>` | **Measured** | `browser_select_option`, 9 ms, 2026-09-09. |
-| A `<select>` whose framework stores the value elsewhere | **Measured** | Fixed 2026-09-08: the guard used to call a working choice a rollback. It now fingerprints the page and only reports a rollback when nothing else changed. |
+| A `<select>` whose framework stores the value elsewhere | **Fixed on main** | In v1.29.0 the guard could call a working choice a rollback. Fixed 2026-09-08: it fingerprints the page and only reports a rollback when nothing else changed. |
 | Custom combobox / autocomplete (div + listbox) | **By design** | `browser_set_combobox` types a prefix, waits for options, clicks the match. |
-| **Custom dropdown that opens on a plain `click`** | **Not yet** | Measured 2026-09-09: `browser_click` on a div-based dropdown took 5.2 s, did not open the menu, and reported `landed: false`. The honesty half is fixed - the tool now answers `ok: false` instead of claiming success. Why the click does not land is open. |
+| **Custom dropdown that opens on a plain `click`** | **Fixed on main** | In v1.29.0 the click fallback fired *two* click events, so anything that toggles opened and closed again. Measured 2026-09-10 in a real page: one click 11\|53\|…\|0 → 11\|69\|…\|1, two clicks unchanged. It now fires one, and judges success by whether the page changed. The tool itself has not been re-run live since. |
 | Date picker | **By design** | `browser_set_date`. |
 | File upload, including drag-and-drop targets | **By design** | `browser_upload_file`, `browser_drop_file`. |
 | Cookie banner or modal in the way | **By design** | `browser_dismiss_overlays`, with a veto list so it never clicks something dangerous. |
 | `alert` / `confirm` freezing the page | **Measured** | `browser_handle_dialog` arms the listener first; a frozen renderer is reported as frozen instead of hanging. |
-| Content that only loads on scroll | **Measured** | Fixed 2026-09-09: pixel scrolling hit a 30-second timeout on every call, on every page, because the wheel dispatch never resolved and the fallback sat in a `catch` where a hang could not reach it. |
+| Content that only loads on scroll | **Fixed on main** | In v1.29.0 pixel scrolling hit a 30-second timeout on every call, on every page. Fixed 2026-09-09/10: the fallback is now reachable, scrolls to a target position instead of adding a second scroll, and reports failure when it fails. |
 | Page needs a real keystroke, not a synthetic one | **By design** | Debugger key events carry `isTrusted`. |
 | Endless page, need the network to settle | **By design** | `browser_wait_for_network`. |
 
@@ -54,7 +55,7 @@ brochure, and you cannot plan against a brochure.
 | Wall | State | Note |
 |---|---|---|
 | CAPTCHA | **Partly** | `browser_solve_captcha` tries the checkbox first (often enough when you are signed into Google), then hands the model a screenshot to look at, then asks you. There is no success-rate claim on this page on purpose: we have not measured one, and a number we cannot show the working for is worth nothing. |
-| Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries reads. Side-effectful calls are never retried blindly - a repeated keystroke is worse than a failed one. |
+| Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries DOM reads. On main, script evaluations are no longer retried automatically, because some of them click. One known gap remains: `browser_execute_script` still retries your own code on a detach. |
 
 ## Walls we will not cross
 

@@ -33,7 +33,7 @@ This works on **your own accounts, that you're already logged into, for things y
 ## FAQ
 
 **Does the 2FA code leave my machine?**
-No. The agent reads it locally in your own browser and types it back locally. Browser MCP runs 100% on your machine - [nothing is transmitted](/docs/uninstall/) to any server of ours.
+Not to us. The agent reads it in your own browser and types it back. Like anything the agent reads, it passes through your AI client and that client's model provider - but it is [never sent to a server of ours](/docs/uninstall/), because there isn't one.
 
 **Do I need the Gmail API or an app password?**
 No. The whole point is that it uses the Gmail you're already signed into in Chrome - no API, no key, no forwarding rule.

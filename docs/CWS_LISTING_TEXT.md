@@ -136,9 +136,10 @@ automation tools take over the whole profile, so a second agent has to wait.
 
 ═══ WHAT IT DOES WITH YOUR DATA ═══
 
-Nothing leaves your machine. The extension talks to one thing: a server on
+Nothing is sent to us. The extension talks to one thing: a server on
 127.0.0.1 that you started. There is no account, no telemetry, no server of ours,
-and no payment. The extension keeps a local log of every action the agent took,
+and no payment. What your agent reads goes to your AI client and its model
+provider, the same as anything else you show it. The extension keeps a local log of every action the agent took,
 and marks the sensitive ones, so you can look at what happened.
 
 MIT licensed, source at https://github.com/Agent360dk/browser-mcp
@@ -167,7 +168,7 @@ New set: `docs/store-2026-09-08/`, upload in this order.
 | 1 | `01.png` | The popup in its real not-connected state, with the setup card and the command | Two parts: this extension plus one command. The extension tells you so itself. |
 | 2 | `02.png` | Real Chrome tab strip with four agent groups, plus the popup listing who owns what | Twenty agents in one signed-in browser - each sees only its own tabs. |
 | 3 | `03.png` | The in-page dialog asking for a 2FA code, over a dimmed login page | It asks you. It never guesses. |
-| 4 | `04.png` | The action log, sensitive entries in amber | Every action written down. 100% local, no account. |
+| 4 | `04.png` | The action log, sensitive entries in amber | Every action written down. Runs locally, no account, nothing sent to us. |
 | 5 | `05.png` | 40 tools · 20 sessions · 9 integrations · $0, plus the capability chips | Free, MIT, open source. Works with Claude Code, Codex, Cursor, VS Code, Windsurf. |
 
 Two more image fields, both empty today:
@@ -233,7 +234,7 @@ a swap to the corporate logo. Say the word and I will draw them.
 ## §5 Privacy tab - worth a read-through, not yet audited
 
 The listing's privacy section carries a single-purpose statement and one justification per
-permission. This extension requests twelve permissions plus `<all_urls>` plus `debugger` - the
+permission. This extension requests eleven permissions, `debugger` among them, plus `<all_urls>` - the
 heaviest combination the store allows without special review. Those justification fields are what
 a reviewer reads, and they are also shown to users. Nothing in this repo tracks what is currently
 written in them, so they need a read-through in the dashboard before the next submit. If they still

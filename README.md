@@ -29,7 +29,7 @@ Browser MCP gives Claude Code (and any MCP client - Cursor, VS Code agent mode) 
 
 The killer move: it hits a login wall, reads the verification code from your own Gmail tab, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
 
-40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and 100% local - nothing leaves your machine.**
+40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and it runs on your machine - no account, no telemetry, nothing sent to us.**
 
 ## The whole thing, in four steps
 
@@ -157,7 +157,7 @@ there is nothing to slip past: it is your Chrome, your session, your consent. Wh
 is the hard part - pages that fight *any* automation because of how they are built.
 
 Every release is gated on a flow test against a real Chrome that has to survive exactly
-those. Latest run, v1.29.0: **40/40 tools exercised, 51 checks, 0 failures**, including
+those. Latest run, v1.29.0: **40/40 tools exercised, 51 checks, 0 failures** - but that run only scrolled by selector, and scrolling by pixels timed out on every call in that very release. The flow test now needs to cover it. It does cover
 
 - **strict CSP** - navigate, read, execute, wait and click all still work (falls back to
   the Chrome Debugger API when script injection is blocked)

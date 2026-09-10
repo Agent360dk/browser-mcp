@@ -262,14 +262,14 @@ const Trust: React.FC = () => (
   <Frame>
     <div style={{ display: "flex", gap: 56, alignItems: "center" }}>
       <div style={{ flex: 1 }}>
-        <Eyebrow color={GREEN}>100% local · MIT · no account</Eyebrow>
+        <Eyebrow color={GREEN}>Runs locally · MIT · no account</Eyebrow>
         <H>Every action, written down.</H>
         <Sub>
           The extension keeps a log of what the agent did, and marks the sensitive ones
           amber. It talks to one thing only: a server on 127.0.0.1 that you started.
         </Sub>
         <div style={{ marginTop: 26, fontSize: 18, color: DIM }}>
-          No account, no telemetry, no server of ours. Nothing leaves your machine.
+          No account, no telemetry, and nothing is sent to us.
         </div>
       </div>
       <div style={{ width: 500, flex: "none", height: 430 }}>

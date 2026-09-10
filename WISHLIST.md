@@ -41,13 +41,22 @@ lade dem stå under «Shipped» - hvilket de gjorde ved en fejl indtil 9/9.
   hjulafsendelse indfrier aldrig sit løfte, og den `window.scrollBy` der er skrevet til netop det
   tilfælde, lå i et `catch` - en hænger er ikke en exception, så den kunne aldrig nås.
   Nu 1,5 sekund i stedet for 30, og siden ruller.
-- **`browser_click` svarede `ok: true` sammen med `landed: false`.** Reserveløsningen fyrede uden
-  nogensinde at måle om den virkede. Nu måles den, og `ok` udledes af resultatet ([#19]).
+- **`browser_click` fyrede to klik, og dropdowns åbnede og lukkede igen.** Reserveløsningen kaldte både `dispatchEvent('click')` og `el.click()`. Målt i en rigtig side: ét klik åbner menuen, to efterlader den uændret. Det var årsagen til [#19]'s dropdown. Nu fyres ét, og `ok` afgøres af om siden ændrede sig — en første rettelse læste klik-lytteren igen, men den udløses af vores egen dispatch og var derfor altid sand.
 - **Et muterende CDP-udtryk kunne køre fire gange.** `Runtime.evaluate` stod på retry-listen, men
   flere af vores egne udtryk muterer - settle-udtrykket fyrer selve reserveløsnings-klikket. På en
   SPA hvor debuggeren falder af, kunne det lande fire klik.
 - **`set_combobox` brugte 8,5 sekunder på at sige nej** til en almindelig `<select>` den aldrig
   kunne betjene. Nu genkendes den straks, og svaret navngiver `browser_select_option`.
+
+- **Tre huller hvor agenten kunne nå noget der ikke var dens.** `get_new_tab` adopterede enhver ny
+  fane, også en brugeren selv havde åbnet. `get_cookies` uden domæne returnerede hele cookie-krukken.
+  `upload_file` sendte en vilkårlig filsti videre til en fremmed side. Alle tre reproduceret og lukket.
+- **Én frist på alle CDP-kald brækkede tre ting**, og er nu delt pr. kald: skærmbilledet kunne bruge
+  over 30 sekunder og hæve brugerens vindue, `execute_script` blev kappet fra 30 til 8 sekunder, og
+  en scroll-fallback kunne slå fejl og svare `ok: true` alligevel.
+- **Serverens egen instruks løj**: den lovede hver agent at skærmbilledet aktiverer fanen først. Det
+  gør det bevidst ikke. Og ni sider sagde 34, 41 eller 42 værktøjer — docs-gaten var grøn, fordi dens
+  mønster ikke kendte de formuleringer. Begge rettet, og gaten kender dem nu.
 
 ---
 
