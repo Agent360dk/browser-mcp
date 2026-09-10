@@ -42,9 +42,11 @@ test('select_option melder sandt paa BEGGE grene', () => {
     'den skal kunne melde at valget IKKE lykkedes');
 
   // Custom-dropdown-grenen: resultatet skal afhaenge af om klikket landede.
-  assert.match(blok, /ok: valgKlik\?\.landed !== false/,
-    'custom-dropdown-grenen maa ikke haardkode ok:true — det var den halve rettelse ' +
-    'der stod tilbage i to gennemloeb, fordi ingen test kiggede paa den anden gren');
+  // 11/9 (Astra, tredje runde): reglen "landed !== false" lod et uvist klik (landed:null) blive til ok:true.
+  // Grenen skal nu bruge den faelles regel klikLandede - samme som click og click_xy.
+  assert.match(blok, /ok: klikLandede\(valgKlik\)/,
+    'custom-dropdown-grenen maa ikke haardkode ok:true eller bruge sin egen regel — det var den halve ' +
+    'rettelse der stod tilbage i to gennemloeb, fordi ingen test kiggede paa den anden gren');
   assert.ok(!/return \{ ok: true \};/.test(blok),
     'ingen ubetinget succes-retur i select_option');
 });
