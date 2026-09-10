@@ -78,3 +78,14 @@ test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async
   assert.equal(svar.ok, false, `feltet endte tomt og vaerktoejet sagde ${JSON.stringify(svar)}`);
   assert.equal(svar.error, 'feltet-toemt');
 });
+
+test('en vaerdi siden afviste ("OLD" blev staaende) meldes - den kaldes ikke formatering', async () => {
+  // MAALT 10/9 af Astra (anden runde): "OLD" er hverken tom eller fordoblet, saa den blev
+  // behandlet som formatering og svaret ok:true med value "OLD".
+  const saet = [], taster = [];
+  const u = sele(['OLD', 'OLD'], saet, taster);
+  const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NEW' });
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
+  assert.equal(svar.ok, false, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
+  assert.equal(svar.error, 'feltet-afviste');
+});

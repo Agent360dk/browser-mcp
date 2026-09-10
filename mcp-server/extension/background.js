@@ -1688,10 +1688,16 @@ function valueLooksLikeIso(value, iso) {
   if (digits.includes(y + m + d)) return true;
   if (digits.includes(m + d + y)) return true;
   if (digits.includes(d + m + y)) return true;
-  const hasYear = value.includes(y);
-  const hasMonth = value.includes(m) || value.includes(String(parseInt(m, 10)));
-  const hasDay = value.includes(d) || value.includes(String(parseInt(d, 10)));
-  return hasYear && hasMonth && hasDay;
+  // MAALT 10/9 af Astra (anden runde): her stod tre `value.includes(...)` hver for sig.
+  // "20/12/2026" indeholder "2026", "1" og "2" som delstrenge og blev godkendt som 2026-01-02.
+  // Nu sammenlignes HELE TAL i raekkefoelge: aar, maaned og dag skal staa ved siden af hinanden.
+  const tal = (value.match(/\d+/g) || []).map(Number);
+  const Y = Number(y), M = Number(m), D = Number(d);
+  const iRaekke = (a, b, c) => tal.some((_, i) => tal[i] === a && tal[i + 1] === b && tal[i + 2] === c);
+  if (iRaekke(Y, M, D) || iRaekke(D, M, Y) || iRaekke(M, D, Y)) return true;
+  // Maanedsnavn ("2 Jan 2026", "2. januar 2026"): dag og aar som hele tal, maaneden som navn.
+  const navne = [/jan/, /feb/, /mar/, /apr/, /ma[iy]/, /jun/, /jul/, /aug/, /sep/, /o[ck]t/, /nov/, /de[cz]/];
+  return tal.includes(Y) && tal.includes(D) && !!navne[M - 1] && navne[M - 1].test(value.toLowerCase());
 }
 
 async function getDateInputInfo(tabId, selector) {
@@ -2786,19 +2792,31 @@ async function dispatch(port, method, params) {
 
       const diag = { tried: [] };
 
+      // MAALT 10/9 af Astra (anden runde), reproduceret med en taeller: kode der udfoerte en
+      // effekt og SAA kastede, blev koert igen via debuggeren - to effekter. `sendt` beskyttede
+      // kun debugger-loekken. Er koden koert, er dens fejl svaret; den koeres ikke igen.
+      // Samme runde: scripting-stierne afventede ikke et Promise ("Promise.resolve(42)" gav {}).
+      // Den injicerede funktion er nu async og afventer resultatet.
+      const koertOgFejlede = (r) => ({
+        ok: false, error: r.message, name: r.name,
+        method: r.world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
+        note: 'Koden KOERTE og kastede en fejl. Den koeres ikke igen via debuggeren, fordi det den ' +
+              'naaede at goere foer fejlen saa ville ske to gange.',
+      });
       // Step 1: try ISOLATED world
       try {
         const [result] = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           world: 'ISOLATED',
           args: [params.code],
-          func: (codeStr) => {
-            try {
-              const fn = new Function('return (' + codeStr + ')');
-              return { __ok: true, value: fn() };
-            } catch (e) {
-              return { __scriptingError: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' };
-            }
+          func: async (codeStr) => {
+            // Oversaettelse og koersel er adskilt: fejler oversaettelsen (CSP, syntaks), koerte
+            // intet, og debuggeren maa proeve. Fejler KOERSLEN, er koden allerede koert.
+            let fn;
+            try { fn = new Function('return (' + codeStr + ')'); }
+            catch (e) { return { __kompilering: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' }; }
+            try { return { __ok: true, value: await fn() }; }
+            catch (e) { return { __scriptingError: true, koerte: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' }; }
           },
         });
         const r = result?.result;
@@ -2806,7 +2824,8 @@ async function dispatch(port, method, params) {
         if (r && typeof r === 'object' && r.__ok) {
           return { result: r.value, method: 'scripting-isolated' };
         }
-        if (r && typeof r === 'object' && r.__scriptingError) {
+        if (r && typeof r === 'object' && r.__scriptingError && r.koerte) return koertOgFejlede(r);
+        if (r && typeof r === 'object' && (r.__scriptingError || r.__kompilering)) {
           diag.isolated_error = r.message;
         }
       } catch (e) {
@@ -2819,13 +2838,14 @@ async function dispatch(port, method, params) {
           target: { tabId: tab.id },
           world: 'MAIN',
           args: [params.code],
-          func: (codeStr) => {
-            try {
-              const fn = new Function('return (' + codeStr + ')');
-              return { __ok: true, value: fn() };
-            } catch (e) {
-              return { __scriptingError: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' };
-            }
+          func: async (codeStr) => {
+            // Oversaettelse og koersel er adskilt: fejler oversaettelsen (CSP, syntaks), koerte
+            // intet, og debuggeren maa proeve. Fejler KOERSLEN, er koden allerede koert.
+            let fn;
+            try { fn = new Function('return (' + codeStr + ')'); }
+            catch (e) { return { __kompilering: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' }; }
+            try { return { __ok: true, value: await fn() }; }
+            catch (e) { return { __scriptingError: true, koerte: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' }; }
           },
         });
         const r = result?.result;
@@ -2833,7 +2853,8 @@ async function dispatch(port, method, params) {
         if (r && typeof r === 'object' && r.__ok) {
           return { result: r.value, method: 'scripting-main' };
         }
-        if (r && typeof r === 'object' && r.__scriptingError) {
+        if (r && typeof r === 'object' && r.__scriptingError && r.koerte) return koertOgFejlede(r);
+        if (r && typeof r === 'object' && (r.__scriptingError || r.__kompilering)) {
           diag.main_error = r.message;
         }
       } catch (e) {
@@ -3028,6 +3049,17 @@ async function dispatch(port, method, params) {
               ok: false, method: 'fallback', error: fordoblet ? 'feltet-fordoblet' : 'feltet-toemt',
               forventet: v, faktisk: endelig,
               note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
+            };
+          }
+          // AFVIST (Astra, anden runde): "OLD" efter fill("NEW") er hverken tom eller fordoblet og
+          // blev kaldt formatering. Formatering beholder vaerdiens bogstaver og cifre ("5" ->
+          // "5,00 kr"); staar de ikke i feltet, har siden afvist vaerdien eller sat den tilbage.
+          const tegn = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+          if (v && !tegn(endelig).includes(tegn(v))) {
+            return {
+              ok: false, method: 'fallback', error: 'feltet-afviste', forventet: v, faktisk: endelig,
+              note: 'Siden beholdt en anden vaerdi end den der blev skrevet - feltet afviste den, ' +
+                    'eller en validering satte den tilbage.',
             };
           }
         }
