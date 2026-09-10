@@ -2866,10 +2866,15 @@ async function dispatch(port, method, params) {
       // fires and debuggerEval silently returned undefined → the caller saw a bare
       // `{method:"debugger"}` with no result. Also surface script exceptions + raw
       // diagnostics so a genuine failure is never mistaken for an empty success.
-      let rawDbg, dbgErr = '';
+      let rawDbg, dbgErr = '', sendt = false;
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
           await debuggerAttach(tab.id);
+          // MAALT 10/9 af Astra: faldt debuggeren af EFTER at scriptet var sendt, loeb loekken
+          // videre og koerte BRUGERENS kode igen — op til fire gange. Vi kan ikke se om et
+          // vilkaarligt script muterer. Samme regel som for Runtime.evaluate i cdpSend: er det
+          // sendt, gentages det ikke automatisk. Kun en fejl FOER afsendelse proeves igen.
+          sendt = true;
           rawDbg = await cdpSend(tab.id, 'Runtime.evaluate', {
             expression: '(' + params.code + '\n)',
             returnByValue: true,
@@ -2885,12 +2890,14 @@ async function dispatch(port, method, params) {
             return { result: rawDbg.result.value, method: 'debugger' };
           }
           dbgErr = 'empty/undefined CDP response: ' + JSON.stringify(rawDbg);
+          break;   // tomt svar efter afsendelse: scriptet kan have koert — gentag ikke
         } catch (e) {
           const m = String(e?.message || e);
           if (m.startsWith('__SCRIPT_EX__')) {
             throw new Error(m.slice('__SCRIPT_EX__'.length) + ' | scripting-diag: ' + JSON.stringify(diag));
           }
           dbgErr = m;
+          if (sendt) break;   // sendt = maaske koert — se kommentaren ved afsendelsen
           if (!/detach|attach|empty|gone|given id|not attached/i.test(m)) break;
         }
         await debuggerDetach(tab.id).catch(() => {});
@@ -2898,6 +2905,8 @@ async function dispatch(port, method, params) {
       }
       throw new Error(
         'execute_script failed on all paths. debugger: ' + dbgErr +
+        (sendt ? ' | NB: scriptet blev sendt til siden foer det fejlede og KAN allerede have koert. ' +
+                 'Det gentages ikke automatisk — kald igen kun hvis det er sikkert at koere to gange.' : '') +
         ' | raw: ' + JSON.stringify(rawDbg) +
         ' | scripting-diag: ' + JSON.stringify(diag)
       );
@@ -3039,7 +3048,14 @@ async function dispatch(port, method, params) {
             tried.push({ path: 'masked', format: fmt.order.join(fmt.sep), value: v });
             if (valueLooksLikeIso(v, iso)) return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep) };
           } catch (e) {
-            tried.push({ path: 'masked', error: e.message });
+            // MAALT 10/9 af Astra: en frist her betyder ikke at intet skete. Tastetrykkene kan
+            // allerede staa i feltet, og saa ville kalender-vejen nedenfor saette datoen EN GANG
+            // TIL. Laes feltet foer vi proever noget andet.
+            const v = await readBackValue(tab.id, params.selector).catch(() => null);
+            tried.push({ path: 'masked', error: e.message, value: v });
+            if (valueLooksLikeIso(v, iso)) {
+              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landede trods fejl i afsendelsen' };
+            }
           }
         } else {
           tried.push({
@@ -3161,25 +3177,43 @@ async function dispatch(port, method, params) {
       const vkCode = VK_CODES[key];
       const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
 
+      // MAALT 10/9 af Astra: keyDown og keyUp stod i samme try. Timede keyDown ud — og det
+      // kan det, selv naar tasten LANDEDE (Enter der sender en formular) — blev keyUp aldrig
+      // sendt. En tast der kun er trykket ned, er en tast der haenger. Nu sendes keyUp altid,
+      // og svaret siger om nedtrykket fejlede i stedet for at kaste raat.
       await debuggerAttach(tab.id);
+      let tastFejl = null;
       try {
-        await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
-          type: 'keyDown',
-          key,
-          code: params.code || key,
-          modifiers,
-          text: key.length === 1 ? key : '',
-          ...vkParams,
-        });
-        await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key,
-          code: params.code || key,
-          modifiers,
-          ...vkParams,
-        });
+        try {
+          await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
+            type: 'keyDown',
+            key,
+            code: params.code || key,
+            modifiers,
+            text: key.length === 1 ? key : '',
+            ...vkParams,
+          });
+        } catch (e) { tastFejl = e; }
+        try {
+          await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            key,
+            code: params.code || key,
+            modifiers,
+            ...vkParams,
+          });
+        } catch (e) { if (!tastFejl) tastFejl = e; }
       } finally {
         await debuggerDetach(tab.id);
+      }
+      if (tastFejl) {
+        const frist = /svarede ikke inden/.test(tastFejl.message || '');
+        return {
+          ok: false, key, error: tastFejl.message,
+          ...(frist ? { maaske_landet: true,
+            note: 'Chrome kvitterede ikke inden fristen. Tasten kan alligevel have virket ' +
+                  '(fx en formular der blev sendt) — tjek siden foer du trykker igen.' } : {}),
+        };
       }
       return { ok: true, key };
     }
