@@ -558,14 +558,23 @@ const RETRYABLE_CDP_METHODS = new Set([
 // serverens 30 s, saa kalderens reserveloesning kan naas.
 const CDP_FRIST_INPUT_MS = 1500;
 const CDP_FRIST_MS = 8000;
+// MAALT 9/9 af reviewet: ét loft paa alt braekker tre ting. Et skaermbillede paa en tung
+// side bruger lovligt mere end 8 s; `execute_script` med awaitPromise venter paa BRUGERENS
+// egen kode, som serveren giver 30 s; og et enkelt tastetryk paa en side med validering
+// pr. anslag kan lovligt overskride input-fristen. Fristen skal derfor kende kaldet.
+const CDP_FRIST_TUNG_MS = 20000;   // under serverens 30 s, men over alt lovligt
 
-function cdpFrist(method) {
-  return String(method).startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
+function cdpFrist(method, params) {
+  const m = String(method);
+  // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte".
+  if (m === 'Runtime.evaluate' && params && params.awaitPromise) return CDP_FRIST_TUNG_MS;
+  if (m === 'Page.captureScreenshot' || m === 'Network.getResponseBody') return CDP_FRIST_TUNG_MS;
+  return m.startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
 }
 
 function cdpMedFrist(tabId, method, params) {
   let ur;
-  const frist = cdpFrist(method);
+  const frist = cdpFrist(method, params);
   return Promise.race([
     chrome.debugger.sendCommand({ tabId }, method, params),
     new Promise((_, afvis) => {
@@ -2710,12 +2719,22 @@ async function dispatch(port, method, params) {
           // det paa svaret. Det er en laek, ikke en unoejagtighed.
           const stadig = await chrome.tabs.get(tab.id).catch(() => null);
           if (!stadig || stadig.active !== true) {
-            throw new Error(
+            // MAALT 9/9 af reviewet: da vagten kastede herfra, ramte fejlen den ydre catch,
+            // som HAEVER vinduet og aktiverer fanen — praecis den aktivering EKSPERIMENT 21/8
+            // bevidst fjernede — og hele stien overskred serverens 30 s. Vagten skal afvise,
+            // ikke starte en ny runde. Markoeren gør at den ydre catch kaster videre i stedet.
+            const afvist = new Error(
               'Skaermbillede afvist: agentens fane er ikke den synlige i vinduet, og ' +
               'captureVisibleTab ville have fotograferet brugerens egen fane i stedet. ' +
               'Ingen billeder af andre faner leveres.'
             );
+            afvist.laekageVagt = true;
+            throw afvist;
           }
+          // Fanen ER den synlige, saa captureVisibleTab fotograferer netop den. windowId
+          // laeses fra det FRISKE objekt: er fanen flyttet til et andet vindue, er det
+          // dér den er aktiv.
+          tab.windowId = stadig.windowId;
           const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
           return { image: dataUrl };
         }
@@ -2725,6 +2744,9 @@ async function dispatch(port, method, params) {
       try {
         return await tryCapture();
       } catch (firstErr) {
+        // En afvisning fra laekage-vagten er et NEJ, ikke et "proev haardere". At haeve
+        // vinduet ville stjaele brugerens fane for at omgaa vores egen sikkerhedsvagt.
+        if (firstErr && firstErr.laekageVagt) throw firstErr;
         // Both methods failed → the window is genuinely OCCLUDED (covered by other windows),
         // so Chrome's compositor produced no frames. LAST RESORT ONLY: raise the window to
         // de-occlude it, capture, then RESTORE the user's previously-focused window. This
@@ -3161,6 +3183,11 @@ async function dispatch(port, method, params) {
       // FB/Twitter/IG only trigger lazy-load on continuous wheel events, not a single large delta.
       const dx = params.x || 0;
       const dy = params.y || 0;
+      // Hvor stod siden FOER vi roerte den? Uden det tal kan reserveloesningen ikke vide
+      // hvor meget hjulet naaede, og ender med at rulle for langt.
+      const start = await debuggerEval(tab.id, '({x: window.scrollX, y: window.scrollY})')
+        .catch(() => ({ x: 0, y: 0 }));
+      const startX = start?.x ?? 0, startY = start?.y ?? 0;
       try {
         await debuggerAttach(tab.id);
         const STEP_SIZE = 300; // pixels per wheel-event (matches a typical mouse-wheel notch)
@@ -3178,9 +3205,21 @@ async function dispatch(port, method, params) {
         // before any subsequent commands run (caller often scrapes immediately after)
         await new Promise(r => setTimeout(r, 600));
       } catch (e) {
-        // Fallback to window.scrollBy for simple pages (synthetic but works on non-anti-scrape sites)
-        await debuggerEval(tab.id, `window.scrollBy(${dx}, ${dy})`);
-        return { ok: true, scrolled: { x: dx, y: dy }, method: 'fallback', fallback_reason: e.message };
+        // MAALT 9/9 af reviewet: her stod `window.scrollBy(dx, dy)` — altsaa "rul det HELE igen".
+        // Promise.race afbryder ikke det kald den opgiver, saa hjultrin der allerede virkede
+        // bliver liggende. Reproduceret: scroll({y:600}), foerste trin flyttede 300 uden at
+        // kvittere, fallbacken lagde 600 oveni = 900 faktisk, 600 rapporteret.
+        // scrollTo mod en beregnet MAAL-position er idempotent: har hjulet allerede rullet
+        // halvdelen, ruller vi kun resten.
+        const landede = await debuggerEval(tab.id, `(() => {
+          window.scrollTo(${startX} + ${dx}, ${startY} + ${dy});
+          return { x: window.scrollX, y: window.scrollY };
+        })()`).catch(() => null);
+        return {
+          ok: true, method: 'fallback', fallback_reason: e.message,
+          scrolled: { x: dx, y: dy },
+          ...(landede ? { position: landede, startede: { x: startX, y: startY } } : {}),
+        };
       }
       return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };
     }

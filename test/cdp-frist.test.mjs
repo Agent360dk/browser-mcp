@@ -73,8 +73,11 @@ test('scroll ender med at rulle — reserveloesningen naas, og svaret siger hvor
   assert.equal(svar.method, 'fallback', 'svaret skal sige AT det var reserveloesningen');
   assert.match(svar.fallback_reason || '', /svarede ikke/, 'og HVORFOR, saa fejlen kan foelges');
   assert.ok(brugt < 5000, `maa ikke koste 30 sekunder, brugte ${brugt} ms`);
-  assert.ok(kald.some((k) => /window\.scrollBy\(0, 300\)/.test(k.expression || '')),
-    'window.scrollBy blev aldrig kaldt — saa rullede siden ikke, uanset hvad svaret siger');
+  // 10/9: vagten kraevede scrollBy. Den blev udskiftet med scrollTo mod en beregnet
+  // maal-position, fordi scrollBy lagde sig oveni det hjulet allerede havde naaet —
+  // reproduceret: 900 px faktisk, 600 rapporteret. Vagten skal foelge mekanismen.
+  assert.ok(kald.some((k) => /window\.scrollTo\(\d+ \+ 0, \d+ \+ 300\)/.test(k.expression || '')),
+    'siden blev aldrig rullet — reserveloesningen skal ramme en beregnet maal-position');
 });
 
 test('scroll med pixels falder tilbage til window.scrollBy naar hjulet tier', async () => {
