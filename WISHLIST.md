@@ -47,7 +47,8 @@ lade dem stå under «Shipped» - hvilket de gjorde ved en fejl indtil 9/9.
   det som landet; en anden fejl svares som uvist. Fejler debuggeren efter at museknappen er sendt,
   klikkes der ikke igen, og knappen slippes altid. `click`, `click_xy` og `select_option` bruger samme regel.
 - **`fill`, `set_date` og `execute_script` sagde ja til noget andet.** `fill` kunne efterlade `XX`
-  eller en afvist værdi og svare ok; nu er formatering kun samme tal eller samme cifre i et nummer.
+  eller en afvist værdi og svare ok; nu meldes et felt der viser noget andet end det skrevne,
+  med den faktiske værdi - også når det blot er formatering, fordi hver regel for det blev omgået.
   `set_date` godkendte `20/12/2026` som 2. januar; nu læses datoen efter feltets format.
   `execute_script` kunne køre din kode to gange og afventede ikke et Promise.
 - **Taster kunne sidde fast.** Timede et tastetryk ud efter at være landet, blev tasten aldrig
