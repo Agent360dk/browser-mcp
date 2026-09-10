@@ -18,7 +18,7 @@ import { execSync, execFile } from 'child_process';
 import { dirname, join, resolve, sep, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 // Read version from package.json — single source of truth, never drifts
@@ -596,9 +596,9 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - browser_screenshot captures YOUR session's tab, without pulling it in front of the user
 - It does NOT activate the tab first. That was removed deliberately: the user sits in the
   same window, and yanking their tab away on every screenshot is worse than the alternative
-- If your tab is not the visible one and the debugger cannot produce a frame, the call is
-  REFUSED rather than returning a picture of whatever the user happens to be looking at.
-  Navigate or switch_tab first, then capture
+- The picture always comes from the debugger for YOUR tab. There is no fallback that photographs
+  whichever tab happens to be visible, so if the debugger cannot produce a frame the call fails.
+  If the whole window is covered, it may be raised briefly as a last resort
 
 ## Text-based selectors (preferred for dynamic sites)
 - browser_click("text=Get started") — clicks any element containing "Get started"
@@ -810,6 +810,23 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error(
             `path skal ligge inden for arbejdsmappen (${rod}). ` +
             `"${args.path}" peger udenfor. Brug en relativ sti uden ../.`,
+          );
+        }
+        // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
+        // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
+        // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
+        // skabe filen i den anden ende), og den dybeste del af stien der findes skal ligge inde.
+        // lstat - ikke exists - saa et dinglende link taeller som "findes" og derfor bliver undersoegt.
+        const findes = (x) => { try { lstatSync(x); return true; } catch { return false; } };
+        let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
+        let forfader = dirname(targetPath);
+        while (!findes(forfader) && dirname(forfader) !== forfader) forfader = dirname(forfader);
+        let forfaderReel = null; try { forfaderReel = realpathSync.native(forfader); } catch {}
+        let erLink = false; try { erLink = lstatSync(targetPath).isSymbolicLink(); } catch {}
+        if (erLink || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel + sep))) {
+          throw new Error(
+            `path skal ligge inden for arbejdsmappen (${rod}). ` +
+            `"${args.path}" peger udenfor (via et symlink). Brug en almindelig mappe i arbejdsmappen.`,
           );
         }
         mkdirSync(dirname(targetPath), { recursive: true });
