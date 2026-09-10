@@ -89,3 +89,20 @@ test('en vaerdi siden afviste ("OLD" blev staaende) meldes - den kaldes ikke for
   assert.equal(svar.ok, false, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
   assert.equal(svar.error, 'feltet-afviste');
 });
+
+// ── Tredje runde (Astra): formatering er et tal eller et nummer - ikke "tegnene staar et sted" ─────
+for (const [navn, laesninger, vaerdi, skalOk] of [
+  ['et tal der blev til et ANDET tal ("5" -> "15") er ikke formatering', ['', '15'], '5', false],
+  ['et fortegn der forsvandt ("-5" -> "5") er ikke formatering', ['', '5'], '-5', false],
+  ['tegn der forsvandt fra tekst ("A!b" -> "ab") meldes', ['', 'ab'], 'A!b', false],
+  ['et felt der skulle toemmes men beholdt "OLD", meldes', ['OLD', 'OLD'], '', false],
+  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") er formatering', ['', '5'], '5.00', true],
+]) {
+  test(navn, async () => {
+    const saet = [], taster = [];
+    const u = sele(laesninger, saet, taster);
+    const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: vaerdi });
+    assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
+    assert.equal(svar.ok, skalOk, `"${vaerdi}" -> "${laesninger[laesninger.length - 1]}" gav ${JSON.stringify(svar)}`);
+  });
+}

@@ -3099,17 +3099,33 @@ async function dispatch(port, method, params) {
               note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
             };
           }
-          // AFVIST (Astra, anden runde): "OLD" efter fill("NEW") er hverken tom eller fordoblet og
-          // blev kaldt formatering. Formatering beholder vaerdiens bogstaver og cifre ("5" ->
-          // "5,00 kr"); staar de ikke i feltet, har siden afvist vaerdien eller sat den tilbage.
-          const tegn = (x) => x.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-          if (v && !tegn(endelig).includes(tegn(v))) {
+          // AFVIST (Astra, anden runde): "OLD" efter fill("NEW") blev kaldt formatering.
+          // Tredje runde: reglen "vaerdiens tegn staar et sted i feltet" godkendte "5" -> "15", "-5" -> "5",
+          // "A!b" -> "ab" og en tom vaerdi, og afviste "5.00" -> "5". Formatering er nu kun to ting der kan
+          // maales: SAMME TAL ("5" -> "5,00 kr", "5.00" -> "5"), eller SAMME CIFRE i et nummer hvor kun
+          // skilletegn og en landekode foran er kommet til ("12345678" -> "+45 12 34 56 78").
+          // Alt andet meldes med den faktiske vaerdi. Et nyt fill er ufarligt - det goer det samme igen.
+          const somTal = (x) => {
+            const m = /^[^\d-]*(-?\d+(?:[.,]\d+)?)[^\d]*$/.exec(x.replace(/\s/g, ''));
+            return m ? Number(m[1].replace(',', '.')) : null;
+          };
+          const cifre = (x) => x.replace(/\D/g, '');
+          const talV = /^-?\d+(?:[.,]\d+)?$/.test(v.trim()) ? Number(v.trim().replace(',', '.')) : null;
+          const talLigner = talV !== null && somTal(endelig) === talV;
+          const erNummer = (x) => /^\+?[\d\s().-]+$/.test(x.trim());
+          const samteFortegn = v.trim().startsWith('-') === endelig.trim().startsWith('-');
+          const nummerLigner = erNummer(v) && erNummer(endelig) && samteFortegn && !!cifre(v) &&
+            (cifre(endelig) === cifre(v) ||
+             (endelig.trim().startsWith('+') && cifre(endelig).endsWith(cifre(v)) && cifre(endelig).length - cifre(v).length <= 3));
+          const formateret = talLigner || nummerLigner;
+          if (!formateret) {
             return {
               ok: false, method: 'fallback', error: 'feltet-afviste', forventet: v, faktisk: endelig,
-              note: 'Siden beholdt en anden vaerdi end den der blev skrevet - feltet afviste den, ' +
-                    'eller en validering satte den tilbage.',
+              note: 'Feltet viser en anden vaerdi end den der blev skrevet - siden har afvist den, sat den ' +
+                    'tilbage eller aendret den. Tjek "faktisk" foer du gaar videre.',
             };
           }
+          return { ok: true, method: 'fallback', value: endelig, formateret: true };
         }
         return {
           ok: true, method: 'fallback', value: endelig ?? v,
