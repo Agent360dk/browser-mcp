@@ -141,24 +141,9 @@ test('click klikker ikke naar elementet er skjult — den svarer ok:false', () =
 
 // ── Adfaerds-simulering: den konkrete fejl fra 21/8 ─────────────────────────
 
-test('simuleret: skjult 0x0-element giver ikke laengere et klik i (0,0)', () => {
-  // Genskaber den praecise beregning resolveElement laver.
-  const beregn = (rect) => {
-    if (rect.width <= 0 || rect.height <= 0) return { found: false, hidden: true };
-    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, found: true };
-  };
-
-  // Den skjulte dialog fra 21/8: rect 0x0 ved (0,0).
-  const skjult = beregn({ x: 0, y: 0, width: 0, height: 0 });
-  assert.equal(skjult.hidden, true, 'skjult element skal flages');
-  assert.equal(skjult.x, undefined, 'og maa IKKE give koordinater at klikke paa');
-
-  // Den synlige knap: 165x36 ved (611, 434) — skal stadig virke praecis som foer.
-  const synlig = beregn({ x: 611, y: 434, width: 165, height: 36 });
-  assert.equal(synlig.found, true);
-  assert.equal(synlig.x, 693.5);
-  assert.equal(synlig.y, 452);
-});
+// Fjernet 11/9 (Astra, tredje runde): 'simuleret: skjult 0x0-element ...' afproevede sin EGEN kopi af
+// koordinatberegningen og kunne ikke blive roed af nogen aendring i udvidelsen. Vagten i den rigtige
+// resolveElement holdes fast af de to kildetests ovenfor (alle tre stier + vagten foer koordinaterne).
 
 // ── Fix D (30/8): settle-kaldet skal have en frist ──────────────────────────
 //
