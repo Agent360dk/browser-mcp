@@ -57,17 +57,16 @@ test('laekage-vagten starter ikke en ny runde med haevet vindue', () => {
 
 test('scroll-reserveloesningen ruller mod en maal-position, ikke en gang til', () => {
   const i = kilde.indexOf("case 'scroll'");
-  const blok = kilde.slice(i, i + 4000);
-  // scrollBy er ikke forbudt — den er den RIGTIGE gren naar startpositionen ikke kunne
-  // laeses. Det forbudte er en UBETINGET scrollBy, som lagde sig oveni hjulets arbejde.
-  assert.doesNotMatch(blok, /\n\s*window\.scrollBy\(\$\{dx\}, \$\{dy\}\);\n/,
-    'en ubetinget scrollBy lægger sig oveni det hjulet naaede — 900 px hvor der stod 600');
-  // 10/9: rulningen er nu betinget — er startpositionen kendt, rammer vi et absolut maal
-  // (idempotent). Kunne den ikke laeses, ruller vi relativt og MARKERER det, i stedet for
-  // at opdigte et nulpunkt der kunne sende siden opad.
+  // Klippet ved case'ets graense - et fast antal tegn brast da vagten for ukendt start kom ind.
+  const blok = kilde.slice(i, kilde.indexOf("case 'double_click'", i));
+  // En relativ rulning laegger sig oveni det hjulet naaede - 900 px hvor der stod 600.
+  // 10/9, anden runde (Astra): den var tilladt naar starten var ukendt, og saa skete netop det.
+  // Nu findes der slet ingen scrollBy: kendt start giver et absolut maal, ukendt start giver intet.
+  // Kaldets form i koden er `window.scrollBy(${...})`; kommentarerne naevner den gamle linje og maa gerne.
+  assert.doesNotMatch(blok, /window\.scrollBy\(\$\{/, 'en relativ rulning kan ikke gentages uden at rulle dobbelt');
   assert.match(blok, /window\.scrollTo\(\$\{startX\} \+ \$\{dx\}, \$\{startY\} \+ \$\{dy\}\)/,
-    'med kendt start skal reserveloesningen ramme et absolut maal — idempotent');
-  assert.match(blok, /startKendt \?/, 'og vaelge relativ rulning kun naar starten er ukendt');
+    'med kendt start skal reserveloesningen ramme et absolut maal - idempotent');
+  assert.match(blok, /if \(!startKendt\) \{\s*return \{/, 'med ukendt start skal der svares, ikke rulles');
   assert.ok(blok.indexOf('const startX') < blok.indexOf('STEP_SIZE'),
     'startpositionen skal laeses FOER hjulet forsoeges');
 });
@@ -78,7 +77,7 @@ test('scroll-reserveloesningen ruller mod en maal-position, ikke en gang til', (
 // "0 pixels faktisk, 600 rapporteret". Femte gang samme fejlklasse paa én dag.
 test('scroll lyver ikke naar ogsaa reserveloesningen fejler', () => {
   const i = kilde.indexOf("case 'scroll'");
-  const blok = kilde.slice(i, i + 5000);
+  const blok = kilde.slice(i, kilde.indexOf("case 'double_click'", i));
   assert.doesNotMatch(blok, /\.catch\(\(\) => null\);\s*\n\s*return \{\s*\n?\s*ok: true/,
     'en slugt fejl efterfulgt af ok:true er praecis den loegn resten af dagen gik med at fjerne');
   assert.match(blok, /if \(!landede \|\| landede\.fejl\)/, 'fallbackens fejl skal laeses');
@@ -90,7 +89,7 @@ test('scroll lyver ikke naar ogsaa reserveloesningen fejler', () => {
 
 test('scroll opdigter ikke et nulpunkt naar startpositionen ikke kan laeses', () => {
   const i = kilde.indexOf("case 'scroll'");
-  const blok = kilde.slice(i, i + 5000);
+  const blok = kilde.slice(i, kilde.indexOf("case 'double_click'", i));
   assert.doesNotMatch(blok, /\.catch\(\(\) => \(\{ x: 0, y: 0 \}\)\)/,
     'stod siden paa 500 og laesningen fejlede, ville et opdigtet nulpunkt rulle OP');
   assert.match(blok, /const startKendt = !!start/, 'det skal kunne skelnes om starten er kendt');

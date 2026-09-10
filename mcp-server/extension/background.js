@@ -776,18 +776,9 @@ async function typeCharsAttached(tabId, text) {
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     const code = cdpCodeForChar(char);
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown',
-      text: char,
-      key: char,
-      ...(code ? { code } : {}),
-      unmodifiedText: char,
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyUp',
-      key: char,
-      ...(code ? { code } : {}),
-    });
+    await tastParAttached(tabId,
+      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char },
+      { key: char, ...(code ? { code } : {}) });
     // Human-like typing: random 30-120ms, occasional longer pause
     const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
       ? 150 + Math.random() * 200  // thinking pause every ~10 chars
@@ -1028,20 +1019,21 @@ async function evalAttached(tabId, expression) {
   return result.result?.value;
 }
 
+// En tast ned og op igen - og op igen UANSET hvad. MAALT 10/9 af Astra (anden runde): press_key fik
+// keyUp-altid i foerste runde, men de tre hjaelpere der ogsaa sender taster gjorde ikke. Timede et
+// keyDown ud efter at det VAR landet, forlod hjaelperen funktionen foer sit keyUp, og tasten sad fast
+// for siden. Et fastsiddende Cmd goer det naeste tastetryk til en genvej.
+async function tastParAttached(tabId, ned, op) {
+  let fejl = null;
+  try { await cdpSend(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...ned }); } catch (e) { fejl = e; }
+  try { await cdpSend(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...op }); } catch (e) { fejl = fejl || e; }
+  if (fejl) throw fejl;
+}
+
 // Select-all + Backspace. Assumes the debugger is already attached.
 async function clearFieldAttached(tabId) {
-  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-    type: 'keyDown', key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS,
-  });
-  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-    type: 'keyUp', key: 'a', code: 'KeyA',
-  });
-  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-    type: 'keyDown', key: 'Backspace', code: 'Backspace',
-  });
-  await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-    type: 'keyUp', key: 'Backspace', code: 'Backspace',
-  });
+  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS }, { key: 'a', code: 'KeyA' });
+  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
 }
 
 async function debuggerFill(tabId, selector, value) {
@@ -1766,25 +1758,9 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS,
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'a', code: 'KeyA',
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'Backspace', code: 'Backspace',
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'Backspace', code: 'Backspace',
-    });
+    await clearFieldAttached(tabId);
     await cdpSend(tabId, 'Input.insertText', { text: formatted });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyDown', key: 'Tab', code: 'Tab',
-    });
-    await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'Tab', code: 'Tab',
-    });
+    await tastParAttached(tabId, { key: 'Tab', code: 'Tab' }, { key: 'Tab', code: 'Tab' });
   } finally {
     await debuggerDetach(tabId);
   }
@@ -3323,10 +3299,20 @@ async function dispatch(port, method, params) {
         // `.catch(() => null)` og derefter `ok: true` ubetinget. Fejlede ogsaa
         // reserveloesningen, svarede vaerktoejet succes med nul rullede pixels.
         // Femte gang samme fejlklasse paa én dag — og den her var min.
+        // MAALT 10/9 af Astra (anden runde), reproduceret: kunne starten ikke laeses, blev der
+        // rullet RELATIVT - og hjultrin der allerede var landet blev lagt oveni (500 -> 1400 ved
+        // y:600). Flaget start_ukendt dokumenterede risikoen uden at forhindre den. Uden kendt
+        // start findes ingen rulning der kan gentages uden at rulle dobbelt, saa der rulles ikke.
+        if (!startKendt) {
+          return {
+            ok: false, method: 'fallback', error: 'scroll-uvist', start_ukendt: true, hjul_fejl: e.message,
+            hint: 'Hjul-kaldet svarede ikke, og startpositionen kunne ikke laeses, saa siden KAN have ' +
+                  'rullet. Laes window.scrollY med browser_execute_script, og rul derefter det der mangler.',
+          };
+        }
         const landede = await debuggerEval(tab.id, `(() => {
           const foer = { x: window.scrollX, y: window.scrollY };
-          ${startKendt ? `window.scrollTo(${startX} + ${dx}, ${startY} + ${dy});`
-                       : `window.scrollBy(${dx}, ${dy});`}
+          window.scrollTo(${startX} + ${dx}, ${startY} + ${dy});
           return { foer, efter: { x: window.scrollX, y: window.scrollY } };
         })()`).catch((fejl) => ({ fejl: fejl?.message || String(fejl) }));
 
@@ -3345,9 +3331,6 @@ async function dispatch(port, method, params) {
           method: 'fallback', fallback_reason: e.message,
           position: landede.efter, foer: landede.foer,
           ...(flyttede || alleredeFremme ? {} : { note: 'siden flyttede sig ikke — bunden er maaske naaet' }),
-          // Kunne startpositionen ikke laeses, er rulningen RELATIV og kan derfor laegge sig
-          // oveni det hjulet naaede. Det skal kalderen kunne se, ikke gaette.
-          ...(startKendt ? {} : { start_ukendt: true }),
         };
       }
       return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };
@@ -4161,7 +4144,7 @@ async function dispatch(port, method, params) {
         const { result: nodeResult } = await cdpSend(tab.id, 'Runtime.evaluate', {
           expression: `(() => {
             const el = document.querySelector(${JSON.stringify(selector)});
-            if (!el) return JSON.stringify({ found: false, error: 'File input not found: ${selector}' });
+            if (!el) return JSON.stringify({ found: false, error: 'File input not found: ' + ${JSON.stringify(selector)} });
             return JSON.stringify({ found: true, tag: el.tagName, type: el.type, accept: el.accept, multiple: el.multiple });
           })()`,
           returnByValue: true,
