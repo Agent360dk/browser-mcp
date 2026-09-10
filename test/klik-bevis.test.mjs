@@ -14,14 +14,15 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 const FANE = { id: 1, url: 'https://x.example', windowId: 1, active: true };
-function sele(sendCommand, executeScript) {
+function sele(sendCommand, executeScript, tabsGet) {
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
-    'tabs.get': FANE, 'tabs.query': [FANE],
+    'tabs.get': tabsGet ?? FANE, 'tabs.query': [FANE],
     'debugger.sendCommand': sendCommand,
     'scripting.executeScript': executeScript ?? [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }],
   } });
@@ -118,4 +119,70 @@ test('intet element under punktet er ikke "elementet forsvandt"', async () => {
   const r = koer(await settleUdtryk());
   assert.notEqual(r.detached, true, 'et klik ved siden af alt blev meldt som landet');
   assert.equal(r.intetMaal, true);
+});
+
+// ── Tredje runde (Astra) ────────────────────────────────────────────────────
+test('"not attached" paa samme adresse er IKKE en navigation', async () => {
+  // Afkobling sker ogsaa naar nogen aabner DevTools eller annullerer debuggeren - siden er uaendret.
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Runtime.evaluate' && erSettle(p)) throw new Error('Debugger is not attached to the tab with id: 1.');
+    return {};
+  });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
+  assert.notEqual(svar.navigerede, true, `en afkobling blev kaldt navigation: ${JSON.stringify(svar)}`);
+  assert.equal(svar.ok, false);
+  assert.equal(svar.uverificeret, true);
+});
+
+test('en adresse der skiftede efter klikket, er bevis for en virkning', async () => {
+  let efterKlik = false;
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Runtime.evaluate' && erSettle(p)) { efterKlik = true; throw new Error('Internal error'); }
+    return {};
+  }, undefined, () => (efterKlik ? { ...FANE, url: 'https://x.example/kvittering' } : FANE));
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
+  assert.equal(svar.navigerede, true, `siden skiftede adresse, men klikket blev ikke kaldt landet: ${JSON.stringify(svar)}`);
+  assert.equal(svar.ok, true);
+});
+
+test('fejler mousePressed efter levering, slippes museknappen alligevel', async () => {
+  const typer = [];
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent') {
+      typer.push(p.type);
+      if (p.type === 'mousePressed') throw new Error('Detached while handling command');
+    }
+    return {};
+  });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
+  assert.ok(typer.includes('mouseReleased'), `museknappen blev aldrig sluppet: ${typer.join(',')}`);
+  assert.equal(svar.maaske_landet, true);
+});
+
+test('click_xy: afkobling efter at museknappen var sendt giver maaske_landet, ikke en kastet fejl', async () => {
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent' && p?.type === 'mouseReleased') throw new Error('Detached while handling command');
+    return {};
+  });
+  const svar = await u.hent('dispatch')(9876, 'click_xy', { x: 5, y: 5 }).catch((e) => ({ kastet: e.message }));
+  assert.equal(svar.kastet, undefined, `fejlen slap ud, og markeringen gik tabt over forbindelsen: ${svar.kastet}`);
+  assert.equal(svar.maaske_landet, true);
+  assert.equal(svar.ok, false);
+});
+
+test('click, click_xy og select_option bruger SAMME regel for et landet klik', () => {
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  // select_option havde stadig den gamle regel, saa "uverificeret" (landed:null) blev til ok:true.
+  assert.equal((kilde.match(/\?\.landed !== false/g) || []).length, 0, 'den gamle regel ("ikke falsk" = landet) findes stadig');
+  for (const navn of ["case 'click': {", "case 'click_xy': {", "case 'select_option': {"]) {
+    const i = kilde.indexOf(navn);
+    assert.ok(i > -1, `${navn} findes ikke`);
+    const blok = kilde.slice(i, kilde.indexOf("\n    case '", i + 10));
+    assert.match(blok, /klikLandede\(/, `${navn} bruger ikke den faelles regel`);
+  }
+  const landede = indlaesUdvidelse({ svar: {} }).hent('klikLandede');
+  assert.equal(landede({ landed: null, uverificeret: true }), false, 'uvist er ikke landet');
+  assert.equal(landede({ landed: false, detached: true }), true, 'et element der forsvandt er en virkning');
+  assert.equal(landede({ landed: true }), true);
+  assert.equal(landede(null), false);
 });

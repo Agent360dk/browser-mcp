@@ -29,13 +29,13 @@ function sele() {
 test('rydningen (Cmd+A, Backspace) slipper tasten selv om keyDown timede ud', async () => {
   const { u, typer } = sele();
   await assert.rejects(u.hent('clearFieldAttached')(1), /svarede ikke inden/, 'fejlen skal stadig naa kalderen');
-  assert.deepEqual(typer.slice(0, 2), ['keyDown', 'keyUp'], `tasten blev ikke sluppet: ${typer.join(',')}`);
+  assert.deepEqual(typer, ['keyDown', 'keyUp'], `forkert tastraekke (sluppet? dobbelt?): ${typer.join(',')}`);
 });
 
 test('skrivning tegn for tegn slipper tasten selv om keyDown timede ud', async () => {
   const { u, typer } = sele();
   await assert.rejects(u.hent('typeCharsAttached')(1, 'ab'), /svarede ikke inden/);
-  assert.deepEqual(typer.slice(0, 2), ['keyDown', 'keyUp'], `tasten blev ikke sluppet: ${typer.join(',')}`);
+  assert.deepEqual(typer, ['keyDown', 'keyUp'], `forkert tastraekke (sluppet? dobbelt?): ${typer.join(',')}`);
 });
 
 test('dato-skrivningen sender ingen keyDown uden om hjaelperen', () => {
@@ -43,5 +43,14 @@ test('dato-skrivningen sender ingen keyDown uden om hjaelperen', () => {
   const i = kilde.indexOf('async function setDateMaskedTyping(');
   const blok = kilde.slice(i, kilde.indexOf('\n}\n', i));
   assert.ok(i > -1 && blok.length > 100, 'setDateMaskedTyping blev ikke fundet');
+  assert.doesNotMatch(blok, /type: 'keyDown'/, 'et raat keyDown her kan efterlade tasten nede');
+});
+
+test('kalenderens PageUp/PageDown sender ingen keyDown uden om hjaelperen', () => {
+  // Astra, tredje runde: setDatePicker var overset i anden runde.
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const i = kilde.indexOf('async function setDatePicker(');
+  const blok = kilde.slice(i, kilde.indexOf('\n}\n', i));
+  assert.ok(i > -1 && blok.length > 100, 'setDatePicker blev ikke fundet');
   assert.doesNotMatch(blok, /type: 'keyDown'/, 'et raat keyDown her kan efterlade tasten nede');
 });

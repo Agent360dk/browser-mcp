@@ -841,13 +841,24 @@ async function evaluerTaalmodigt(tabId, params, ms = 3000) {
   return { result: { value: { landed: true, fallbackFired: false, rendererSvarede: false, observeret: false } } };
 }
 
-// MAALT 10/9 af Astra (anden runde): et settle-opslag der FEJLEDE gav null, og null blev til ok:true
-// ("undefined !== false"). Men den hyppigste grund til at opslaget fejler er at klikket NAVIGEREDE -
-// konteksten er vaek. Det er en virkning, og agenten maa ikke faa at vide at den skal klikke igen.
-// Derfor skelnes: navigation/afkobling taeller som landet; alt andet er uvist og siges som uvist.
-function tolkManglendeSettle(settle) {
+// Én regel for om et klik landede - brugt af click, click_xy og select_option. Astra, tredje runde:
+// select_option havde stadig den gamle ("ikke falsk" = landet), saa et uvist klik blev til ok:true.
+function klikLandede(r) {
+  return r?.landed === true || r?.detached === true;
+}
+
+// MAALT 10/9 af Astra (anden runde): et settle-opslag der FEJLEDE gav null, og null blev til ok:true.
+// Men den hyppigste grund til at opslaget fejler er at klikket navigerede - det er en virkning, og agenten
+// maa ikke faa at vide at den skal klikke igen.
+// Tredje runde: "detached", "closed" og "Cannot find" er IKKE bevis for navigation - afkobling sker ogsaa
+// naar nogen aabner DevTools. Bevis er nu: fanen er lukket, adressen er skiftet, eller JavaScript-konteksten
+// blev revet ned (det sker kun naar dokumentet blev udskiftet). Alt andet er uvist og siges som uvist.
+async function tolkManglendeSettle(tabId, settle, urlFoer) {
   const fejl = settle?.__fejl || 'settle-opslaget gav intet svar';
-  if (/context|navigat|destroyed|detached|closed|Cannot find/i.test(fejl)) {
+  const fane = await chrome.tabs.get(tabId).catch(() => null);
+  const urlEfter = fane?.url ?? null;
+  const kontekstVaek = /Execution context was destroyed|Cannot find context with specified id|Inspected target navigated/i.test(fejl);
+  if (!fane || (urlFoer && urlEfter && urlEfter !== urlFoer) || kontekstVaek) {
     return { landed: false, fallbackFired: false, detached: true, navigerede: true };
   }
   return { landed: null, fallbackFired: false, uverificeret: true, fejl };
@@ -858,6 +869,8 @@ async function debuggerClick(tabId, x, y) {
   // Er museknappen sendt ned, kan klikket vaere landet - saa maa en fejl bagefter ikke fore til et klik til.
   let trykSendt = false;
   try {
+    // Adressen foer klikket - et skift bagefter er bevis for en virkning (se tolkManglendeSettle).
+    const urlFoer = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
     // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
     //    Web-components (Google Ads <button-panel>, Material Web) keep their real
     //    <button> inside an (open) shadow root, so we pierce shadow roots to reach
@@ -901,13 +914,21 @@ async function debuggerClick(tabId, x, y) {
     //    synthesize a *trusted* 'click' from the pair. Without them, web-components
     //    that gate on the trusted click event (Google Ads, Material Web) never fire.
     trykSendt = true;
-    await dispatchTaalmodigt(tabId, {
-      type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
-    });
-    await new Promise(r => setTimeout(r, 30));
-    await dispatchTaalmodigt(tabId, {
-      type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
-    });
+    // Astra, tredje runde: fejlede mousePressed EFTER at vaere leveret, blev mouseReleased aldrig sendt,
+    // og siden stod tilbage med knappen nede (drag-tilstand). Knappen slippes nu altid.
+    let trykFejl = null;
+    try {
+      await dispatchTaalmodigt(tabId, {
+        type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
+      });
+      await new Promise(r => setTimeout(r, 30));
+    } catch (e) { trykFejl = e; }
+    try {
+      await dispatchTaalmodigt(tabId, {
+        type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
+      });
+    } catch (e) { trykFejl = trykFejl || e; }
+    if (trykFejl) throw trykFejl;
     // 3. Framework fallback — only if the captured target is STILL connected (i.e.
     //    the trusted click in step 2 did not already handle it). Settle delay lets
     //    SPA re-renders (Google Ads) detach the element first. Fires a full pointer
@@ -1013,7 +1034,7 @@ async function debuggerClick(tabId, x, y) {
         dialogLoefter.delete(tabId);
       }
     }
-    return vaerdi ?? tolkManglendeSettle(settle);
+    return vaerdi ?? await tolkManglendeSettle(tabId, settle, urlFoer);
   } catch (e) {
     if (trykSendt && e && typeof e === 'object') e.trykSendt = true;
     throw e;
@@ -1948,12 +1969,7 @@ async function setDatePicker(tabId, selector, iso) {
       await debuggerAttach(tabId);
       try {
         const key = delta > 0 ? 'PageDown' : 'PageUp';
-        await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-          type: 'keyDown', key, code: key,
-        });
-        await cdpSend(tabId, 'Input.dispatchKeyEvent', {
-          type: 'keyUp', key, code: key,
-        });
+        await tastParAttached(tabId, { key, code: key }, { key, code: key });
       } finally {
         await debuggerDetach(tabId);
       }
@@ -2950,7 +2966,7 @@ async function dispatch(port, method, params) {
           // `ok: true` stod hardkodet, og `landed` blev spredt ind bagefter. Klikket svarede
           // altsaa ja og nej i samme aandedrag, og en agent laeser `ok`.
           // Et element der forsvandt ER en virkning — derfor tæller `detached` som landet.
-          ok: clickResult?.landed === true || clickResult?.detached === true,
+          ok: klikLandede(clickResult),
           method: el.method || 'debugger',
           tag: el.tag,
           text: el.text,
@@ -3423,9 +3439,23 @@ async function dispatch(port, method, params) {
       }
       // MAALT 10/9: debuggerClick maaler om klikket landede, men svaret blev smidt vaek og
       // `ok: true` stod hardkodet — samme fejl som `click` havde (issue #19). Samme regel her.
-      const klik = await debuggerClick(tab.id, params.x, params.y);
+      let klik;
+      try {
+        klik = await debuggerClick(tab.id, params.x, params.y);
+      } catch (e) {
+        // Samme regel som click (Astra, tredje runde): er museknappen sendt, kan klikket vaere landet -
+        // og en kastet fejl mister markeringen over forbindelsen.
+        if (e?.trykSendt) {
+          return {
+            ok: false, error: e.message, maaske_landet: true, clicked_at: { x: params.x, y: params.y },
+            note: 'Museklikket blev sendt, men debuggeren fejlede bagefter. Klikket KAN vaere landet, ' +
+                  'saa det gentages ikke. Tjek siden foer du klikker igen.',
+          };
+        }
+        throw e;
+      }
       return {
-        ok: klik?.landed === true || klik?.detached === true,
+        ok: klikLandede(klik),
         clicked_at: { x: params.x, y: params.y },
         ...(klik || {}),
       };
@@ -3574,7 +3604,7 @@ async function dispatch(port, method, params) {
       // ordret "it never reports success without the field actually changing".
       return {
         ...(valgKlik || {}),
-        ok: valgKlik?.landed !== false,
+        ok: klikLandede(valgKlik),
         type: 'custom_dropdown',
         selected: oensket,
         ...(valgKlik?.landed === false
