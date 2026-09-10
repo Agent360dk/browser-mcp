@@ -3790,16 +3790,26 @@ async function dispatch(port, method, params) {
       // spoerges Chrome i stedet: hvilke cookies ville du SENDE til de http(s)-sider sessionen har
       // aabne? Kun dem - og kun dem der passer paa det domaene der blev bedt om.
       const session = getSession(port);
+      // Astra, tredje runde: en inkognito-fane har sit EGET cookie-lager. Uden storeId blev den
+      // almindelige profils cookies laest for en inkognito-fane.
+      let lagre = null;
+      try { lagre = await chrome.cookies.getAllCookieStores(); } catch {}
+      const lagerFor = (tabId) => (lagre || []).find((l) => (l.tabIds || []).includes(tabId))?.id;
       const sider = [];
       for (const id of session.tabIds) {
         const t = await chrome.tabs.get(id).catch(() => null);
         try {
           const u = new URL(t?.url || '');
-          if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) sider.push(u);
+          if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) {
+            // Fanens vaertsnavn er altid ASCII (punycode); et afsluttende punktum er samme vaert.
+            sider.push({ u, vaert: u.hostname.toLowerCase().replace(/\.+$/, ''), storeId: lagerFor(id) });
+          }
         } catch {}
       }
-      const vaertsnavne = sider.map((u) => u.hostname.toLowerCase());
-      const d = params.domain.trim().toLowerCase().replace(/^\.+/, '').replace(/\.+$/, '');
+      const vaertsnavne = sider.map((x) => x.vaert);
+      // Argumentet normaliseres som fanens adresse - "bücher.example" ER xn--bcher-kva.example.
+      let d = params.domain.trim().toLowerCase().replace(/^\.+/, '').replace(/\.+$/, '');
+      try { if (d) d = new URL('http://' + d + '/').hostname.replace(/\.+$/, ''); } catch {}
       const slaegt = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
       if (!d || !vaertsnavne.some((h) => slaegt(h, d))) {
         return {
@@ -3808,11 +3818,21 @@ async function dispatch(port, method, params) {
                 'siden foerst - saa kan agenten ikke laese cookies fra noget den ikke arbejder med.',
         };
       }
+      // Noeglen er et JSON-array, saa "a|b" i sti og navn ikke kan laegge to cookies sammen til én.
       const fundne = new Map();
-      for (const u of sider) {
-        for (const c of await chrome.cookies.getAll({ url: u.href })) {
-          const cd = String(c.domain || '').toLowerCase().replace(/^\./, '');
-          if (slaegt(cd, d)) fundne.set(`${c.domain}|${c.path}|${c.name}`, c);
+      const med = (c, storeId) => {
+        const cd = String(c.domain || '').toLowerCase().replace(/^\./, '');
+        if (slaegt(cd, d)) fundne.set(JSON.stringify([storeId ?? '', c.domain, c.path, c.name]), c);
+      };
+      for (const side of sider) {
+        const lager = side.storeId ? { storeId: side.storeId } : {};
+        // De cookies Chrome ville SENDE til siden - inklusive overdomaenets ...
+        for (const c of await chrome.cookies.getAll({ url: side.u.href, ...lager })) med(c, side.storeId);
+        // ... plus sidens EGNE cookies paa alle stier (Path=/api kom ikke med ovenfor). {domain} giver
+        // ogsaa underdomaener og, for et public suffix, hele suffixet - saa kun cookies hvis domaene ER
+        // vaertsnavnet.
+        for (const c of await chrome.cookies.getAll({ domain: side.vaert, ...lager })) {
+          if (String(c.domain || '').toLowerCase().replace(/^\./, '') === side.vaert) med(c, side.storeId);
         }
       }
       return { cookies: [...fundne.values()].map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };

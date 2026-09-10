@@ -127,7 +127,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       onAlarm: haendelse('alarms.onAlarm'),
     },
     webNavigation: { getAllFrames: kald('webNavigation.getAllFrames') },
-    cookies: { getAll: kald('cookies.getAll'), set: kald('cookies.set') },
+    cookies: { getAll: kald('cookies.getAll'), set: kald('cookies.set'), getAllCookieStores: kald('cookies.getAllCookieStores') },
     permissions: { contains: kald('permissions.contains'), request: kald('permissions.request') },
   };
 

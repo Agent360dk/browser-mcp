@@ -41,19 +41,25 @@ const KRUKKE = [
   { name: 'bank', value: 'HEMMELIG', domain: '.bank.com', path: '/' },
   { name: 'bankx', value: 'HEMMELIG_FILE', domain: '.bank.example', path: '/' },
   { name: 'punktum', value: 'HEMMELIG_PUNKTUM', domain: 'bank.example.', path: '/' },
+  { name: 'api', value: '6', domain: 'a.example.com', path: '/api' },
+  { name: 'bog', value: '7', domain: 'xn--bcher-kva.example', path: '/' },
+  { name: 'c', value: '8', domain: 'a.example.com', path: '/a|b' },
+  { name: 'b|c', value: '9', domain: 'a.example.com', path: '/a' },
 ];
 const tilVaert = (h, cd) => h === cd || h.endsWith('.' + cd);
-function cookieSele(faneUrl) {
+function cookieSele(faneUrl, { lagre } = {}) {
   const kaldt = [];
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'tabs.get': { id: 1, url: faneUrl, windowId: 1, active: true },
     'tabs.query': [{ id: 1, url: faneUrl, windowId: 1, active: true }],
+    'cookies.getAllCookieStores': lagre ?? [{ id: '0', tabIds: [1] }],
     'cookies.getAll': (f) => {
       kaldt.push(f);
       return KRUKKE.filter((c) => {
         const cd = c.domain.replace(/^\./, '');
-        if (f.url) return tilVaert(new URL(f.url).hostname, cd);
+        // {url} giver kun cookies hvis sti passer paa adressen - som i Chrome.
+        if (f.url) { const u = new URL(f.url); return tilVaert(u.hostname.replace(/\.$/, ''), cd) && decodeURIComponent(u.pathname).startsWith(c.path); }
         if (f.domain !== undefined) { const fd = String(f.domain).replace(/^\./, ''); return cd === fd || cd.endsWith('.' + fd); }
         return true;
       });
@@ -112,4 +118,37 @@ test('et tomt vaertsnavn (about:blank) lukker ikke "bank.example." ind', async (
   const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'bank.example.' });
   assert.doesNotMatch(JSON.stringify(svar), /HEMMELIG_PUNKTUM/);
   assert.equal(svar.error, 'domaene-ikke-i-sessionen');
+});
+
+// ── Tredje runde (Astra) ────────────────────────────────────────────────────
+test('sidens egne cookies paa andre stier (Path=/api) kommer med', async () => {
+  const { u } = cookieSele('https://a.example.com/');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'a.example.com' });
+  assert.ok(navne(svar).includes('api'), `cookien paa /api manglede: ${navne(svar)}`);
+});
+
+test('en inkognito-fane laeses fra sit EGET cookie-lager', async () => {
+  const { u, kaldt } = cookieSele('https://a.example.com/', { lagre: [{ id: '0', tabIds: [] }, { id: '1', tabIds: [1] }] });
+  await u.hent('dispatch')(9876, 'get_cookies', { domain: 'a.example.com' });
+  assert.ok(kaldt.length > 0);
+  assert.ok(kaldt.every((f) => f.storeId === '1'), `laest fra forkert lager: ${JSON.stringify(kaldt)}`);
+});
+
+test('et domaene med ikke-ASCII-tegn matcher fanens punycode', async () => {
+  const { u } = cookieSele('https://xn--bcher-kva.example/');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'bücher.example' });
+  assert.equal(svar.error, undefined, `afvist: ${JSON.stringify(svar)}`);
+  assert.ok(navne(svar).includes('bog'));
+});
+
+test('en fane-adresse med afsluttende punktum afviser ikke sit eget domaene', async () => {
+  const { u } = cookieSele('https://a.example.com./');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'a.example.com' });
+  assert.equal(svar.error, undefined, `afvist: ${JSON.stringify(svar)}`);
+});
+
+test('to cookies med "|" i sti og navn slaas ikke sammen', async () => {
+  const { u } = cookieSele('https://a.example.com/');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'a.example.com' });
+  assert.ok(navne(svar).includes('c') && navne(svar).includes('b|c'), `en af dem forsvandt: ${navne(svar)}`);
 });
