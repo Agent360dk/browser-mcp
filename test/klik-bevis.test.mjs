@@ -95,6 +95,7 @@ function side({ nativeVirker = true, effekt, react = false, maal = 'element' }) 
 test('en afkrydsning der blev sat, er et landet klik', async () => {
   const { t, koer } = side({ effekt: (s) => { s.checked++; } });
   const r = koer(await settleUdtryk());
+  assert.equal(t.native, 1, 'reserveloesningen klikkede mere end én gang - en afkrydsning ender hvor den startede');
   assert.equal(t.checked, 1);
   assert.equal(r.landed, true, `aftrykket saa ikke afkrydsningen: ${r.aftrykFoer} -> ${r.aftrykEfter}`);
 });
