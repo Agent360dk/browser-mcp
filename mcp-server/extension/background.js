@@ -1692,7 +1692,9 @@ function parsePlaceholderFormat(placeholder) {
   const order = parts.map(p => p.includes('Y') ? 'Y' : p.includes('M') ? 'M' : p.includes('D') ? 'D' : null);
   if (order.includes(null) || new Set(order).size !== 3) return null;
   const padded = parts.map(p => p.length >= 2);
-  return { sep, order, padded };
+  // Fjerde runde: YY og YYYY skal kunne skelnes, ellers skrives "2026" i et felt der kun tager to cifre.
+  const lengths = parts.map(p => p.length);
+  return { sep, order, padded, lengths };
 }
 
 function isoToFormat(iso, fmt) {
@@ -1700,7 +1702,7 @@ function isoToFormat(iso, fmt) {
   if (!m) throw new Error('Invalid ISO date: ' + iso);
   const [, y, mo, d] = m;
   return fmt.order.map((slot, i) => {
-    if (slot === 'Y') return y;
+    if (slot === 'Y') return fmt.lengths && fmt.lengths[i] === 2 ? y.slice(2) : y;
     if (slot === 'M') return fmt.padded[i] ? mo : String(parseInt(mo, 10));
     if (slot === 'D') return fmt.padded[i] ? d : String(parseInt(d, 10));
   }).join(fmt.sep);
@@ -1727,6 +1729,9 @@ function valueLooksLikeIso(value, iso, fmt) {
   if (!value || !iso) return false;
   const [y, m, d] = iso.split('-');
   const Y = Number(y), M = Number(m), D = Number(d);
+  // Fjerde runde: en aflaesning der BEGYNDER med den oenskede ISO-dato (fx "2026-01-02T12:00:00") er den dato,
+  // uanset hvilket format placeholderen lover - ellers blev en korrekt dato afvist og kalenderen proevet oveni.
+  if (value.trim().startsWith(iso) && !/\d/.test(value.trim().charAt(iso.length))) return true;
   // Astra, anden runde: tre `value.includes(...)` hver for sig godkendte "20/12/2026" som 2026-01-02.
   // Tredje runde: tre `digits.includes(...)` koerte stadig FOER kontrollen af hele tal, saa
   // "2026-1-1 02:00" blev 2026-11-02. Nu sammenlignes cifre som én streng KUN naar vaerdien udelukkende
@@ -1745,15 +1750,16 @@ function valueLooksLikeIso(value, iso, fmt) {
     if (slot === 'Y') return (s.length === 4 && Number(s) === Y) || (s.length === 2 && Number(s) === Y % 100);
     return s.length <= 2 && Number(s) === (slot === 'M' ? M : D);
   };
-  if (ordener.some((o) => o.every((slot, i) => passer(slot, tok[i])))) return true;
+  // Fjerde runde: rene tal kun naar vaerdien ingen bogstaver har - i "2 Jan 26 05:00" blev timen ellers et aarstal.
+  if (!/\p{L}/u.test(value) && ordener.some((o) => o.every((slot, i) => passer(slot, tok[i])))) return true;
   // Maanedsnavn ("2 Jan 2026", "2. maj 2026", "Jan 2, 2026"): dagen skal staa lige foer eller lige efter navnet.
   const navne = [/jan/, /feb/, /mar/, /apr/, /ma[iyj]/, /jun/, /jul/, /aug/, /sep/, /o[ck]t/, /nov/, /de[cz]/];
   const navn = navne[M - 1];
   if (navn) {
     const lav = value.toLowerCase();
     const n = navn.source;
-    const foer = new RegExp('^\\s*(\\d{1,2})\\.?\\s+' + n + '[a-zæøå]*\\.?,?\\s+(\\d{4})').exec(lav);
-    const efter = new RegExp('^\\s*' + n + '[a-zæøå]*\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})').exec(lav);
+    const foer = new RegExp('^\\s*(\\d{1,2})\\.?\\s+' + n + '[a-zæøå]*\\.?,?\\s+(\\d{4})(?!\\d)').exec(lav);
+    const efter = new RegExp('^\\s*' + n + '[a-zæøå]*\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})(?!\\d)').exec(lav);
     for (const r of [foer, efter]) if (r && Number(r[1]) === D && Number(r[2]) === Y) return true;
   }
   return false;
@@ -3099,33 +3105,16 @@ async function dispatch(port, method, params) {
               note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
             };
           }
-          // AFVIST (Astra, anden runde): "OLD" efter fill("NEW") blev kaldt formatering.
-          // Tredje runde: reglen "vaerdiens tegn staar et sted i feltet" godkendte "5" -> "15", "-5" -> "5",
-          // "A!b" -> "ab" og en tom vaerdi, og afviste "5.00" -> "5". Formatering er nu kun to ting der kan
-          // maales: SAMME TAL ("5" -> "5,00 kr", "5.00" -> "5"), eller SAMME CIFRE i et nummer hvor kun
-          // skilletegn og en landekode foran er kommet til ("12345678" -> "+45 12 34 56 78").
-          // Alt andet meldes med den faktiske vaerdi. Et nyt fill er ufarligt - det goer det samme igen.
-          const somTal = (x) => {
-            const m = /^[^\d-]*(-?\d+(?:[.,]\d+)?)[^\d]*$/.exec(x.replace(/\s/g, ''));
-            return m ? Number(m[1].replace(',', '.')) : null;
+          // Anden runde: "OLD" efter fill("NEW") blev kaldt formatering. Tredje runde: "5" -> "15" og "-5" -> "5"
+          // blev godkendt. Fjerde runde: reglerne "samme tal" og "samme cifre" blev ogsaa omgaaet - "1.5" -> "15",
+          // "5" -> "-5" med Unicode-minus, to store tal der afrundes ens, "+45 ..." -> "+1 45 ...".
+          // En regel for "det er bare formatering" bliver ved med at have huller. Et felt der viser noget ANDET
+          // end det der blev skrevet, meldes derfor altid med den faktiske vaerdi. Et nyt fill er ufarligt.
+          return {
+            ok: false, method: 'fallback', error: 'feltet-viser-andet', forventet: v, faktisk: endelig,
+            note: 'Feltet viser en anden tekst end den der blev skrevet. Er det blot formatering (fx "5,00 kr" ' +
+                  'eller "+45 12 34 56 78"), er feltet udfyldt; ellers har siden afvist eller aendret vaerdien.',
           };
-          const cifre = (x) => x.replace(/\D/g, '');
-          const talV = /^-?\d+(?:[.,]\d+)?$/.test(v.trim()) ? Number(v.trim().replace(',', '.')) : null;
-          const talLigner = talV !== null && somTal(endelig) === talV;
-          const erNummer = (x) => /^\+?[\d\s().-]+$/.test(x.trim());
-          const samteFortegn = v.trim().startsWith('-') === endelig.trim().startsWith('-');
-          const nummerLigner = erNummer(v) && erNummer(endelig) && samteFortegn && !!cifre(v) &&
-            (cifre(endelig) === cifre(v) ||
-             (endelig.trim().startsWith('+') && cifre(endelig).endsWith(cifre(v)) && cifre(endelig).length - cifre(v).length <= 3));
-          const formateret = talLigner || nummerLigner;
-          if (!formateret) {
-            return {
-              ok: false, method: 'fallback', error: 'feltet-afviste', forventet: v, faktisk: endelig,
-              note: 'Feltet viser en anden vaerdi end den der blev skrevet - siden har afvist den, sat den ' +
-                    'tilbage eller aendret den. Tjek "faktisk" foer du gaar videre.',
-            };
-          }
-          return { ok: true, method: 'fallback', value: endelig, formateret: true };
         }
         return {
           ok: true, method: 'fallback', value: endelig ?? v,
@@ -3195,11 +3184,13 @@ async function dispatch(port, method, params) {
 
       // Path C: calendar-picker navigation
       if (!params.skip_picker) {
+        // Fjerde runde (Astra): kalender-grenen glemte feltets format, saa 01/12/2026 blev godkendt som 12. januar.
+        const kendtFormat = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
         const r = await setDatePicker(tab.id, params.selector, iso);
         await new Promise(r2 => setTimeout(r2, 200));
         const v = await readBackValue(tab.id, params.selector);
         tried.push({ path: 'picker', ...r, value: v });
-        if (r.ok && valueLooksLikeIso(v, iso)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
+        if (r.ok && valueLooksLikeIso(v, iso, kendtFormat)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
       }
 
       const visibleErrors = await collectVisibleErrors(tab.id, params.selector);
@@ -3640,7 +3631,7 @@ async function dispatch(port, method, params) {
         ok: klikLandede(valgKlik),
         type: 'custom_dropdown',
         selected: oensket,
-        ...(valgKlik?.landed === false
+        ...(!klikLandede(valgKlik)
           ? { error: 'Klikket paa muligheden blev ikke taget imod af siden: ' + oensket }
           : {}),
       };

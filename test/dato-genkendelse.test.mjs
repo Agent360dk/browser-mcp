@@ -7,6 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 const ligner = indlaesUdvidelse({ svar: {} }).hent('valueLooksLikeIso');
@@ -40,4 +41,30 @@ test('med kendt format proeves KUN den raekkefoelge', () => {
 test('dansk maj og tocifret aar genkendes', () => {
   assert.equal(ligner('2. maj 2026', '2026-05-02'), true);
   assert.equal(ligner('2/1/26', '2026-01-02'), true);
+});
+
+// ── Fjerde runde (Astra) ────────────────────────────────────────────────────
+const udv = indlaesUdvidelse({ svar: {} });
+
+test('et klokkeslaet bliver ikke til et aarstal, og aaret har en graense', () => {
+  assert.equal(ligner('2 Jan 26 05:00', '2005-02-26'), false, 'maanedsnavnet ignoreredes og timen blev aar');
+  assert.equal(ligner('2 Jan 20260', '2026-01-02'), false, 'aaret 20260 er ikke 2026');
+});
+
+test('en korrekt ISO-aflaesning med tid godkendes - ogsaa med kendt format', () => {
+  assert.equal(ligner('2026-01-02T12:00:00', '2026-01-02', DMY), true);
+  assert.equal(ligner('2026-01-020', '2026-01-02'), false);
+});
+
+test('tocifret aar i placeholderen skrives med to cifre', () => {
+  const fmt = udv.hent('parsePlaceholderFormat')('DD/MM/YY');
+  assert.equal(udv.hent('isoToFormat')('2026-01-02', fmt), '02/01/26');
+});
+
+test('alle tre aflaesninger i set_date kender feltets format - ogsaa kalender-grenen', () => {
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const i = kilde.indexOf("case 'set_date'");
+  const blok = kilde.slice(i, kilde.indexOf("\n    case '", i + 10));
+  const antal = (blok.match(/valueLooksLikeIso\(v, iso, (fmt|kendtFormat)\)/g) || []).length;
+  assert.equal(antal, 3, `kun ${antal} af 3 aflaesninger giver formatet med - 01/12/2026 kan blive 12. januar`);
 });

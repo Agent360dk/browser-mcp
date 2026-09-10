@@ -187,3 +187,11 @@ test('click, click_xy og select_option bruger SAMME regel for et landet klik', (
   assert.equal(landede({ landed: true }), true);
   assert.equal(landede(null), false);
 });
+
+test('select_option giver ikke baade succes og fejl - fejlteksten foelger samme regel', () => {
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const i = kilde.indexOf("case 'select_option': {");
+  const blok = kilde.slice(i, kilde.indexOf("\n    case '", i + 10));
+  assert.doesNotMatch(blok, /valgKlik\?\.landed === false/, 'fejlteksten bruger stadig den gamle regel');
+  assert.match(blok, /!klikLandede\(valgKlik\)/);
+});

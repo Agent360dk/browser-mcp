@@ -54,12 +54,14 @@ test('staar vaerdien der allerede efter fristen, skrives den ikke en gang til', 
   assert.equal(saet.length, 0, `reserveloesningen skrev ${saet.length} gang(e) oveni en vaerdi der allerede var landet`);
 });
 
-test('et felt der formaterer vaerdien, meldes ikke som fejl', async () => {
+test('et felt der formaterer vaerdien, meldes ikke som fordobling - men med den faktiske vaerdi', async () => {
   const saet = [], taster = [];
   const u = sele(['', '+45 12 34 56 78'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '12345678' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
-  assert.equal(svar.ok, true, 'formatering er ikke en fordobling — kun gentagelsen af vaerdien er');
+  // Fjerde runde (Astra): formatering kan ikke skelnes sikkert fra en aendret vaerdi - den meldes med den faktiske tekst.
+  assert.notEqual(svar.error, 'feltet-fordoblet', 'formatering er ikke en fordobling');
+  assert.equal(svar.faktisk, '+45 12 34 56 78', 'kalderen skal se hvad feltet viser');
 });
 
 test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling', async () => {
@@ -67,7 +69,8 @@ test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling
   const u = sele(['', '5,00 kr'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '5' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
-  assert.equal(svar.ok, true, `et beloebsfelt der formaterer blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.notEqual(svar.error, 'feltet-fordoblet', `et beloebsfelt der formaterer blev kaldt fordoblet: ${JSON.stringify(svar)}`);
+  assert.equal(svar.faktisk, '5,00 kr', 'kalderen skal se hvad feltet viser');
 });
 
 test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async () => {
@@ -87,7 +90,7 @@ test('en vaerdi siden afviste ("OLD" blev staaende) meldes - den kaldes ikke for
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NEW' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, false, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
-  assert.equal(svar.error, 'feltet-afviste');
+  assert.equal(svar.error, 'feltet-viser-andet');
 });
 
 // ── Tredje runde (Astra): formatering er et tal eller et nummer - ikke "tegnene staar et sted" ─────
@@ -96,7 +99,12 @@ for (const [navn, laesninger, vaerdi, skalOk] of [
   ['et fortegn der forsvandt ("-5" -> "5") er ikke formatering', ['', '5'], '-5', false],
   ['tegn der forsvandt fra tekst ("A!b" -> "ab") meldes', ['', 'ab'], 'A!b', false],
   ['et felt der skulle toemmes men beholdt "OLD", meldes', ['OLD', 'OLD'], '', false],
-  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") er formatering', ['', '5'], '5.00', true],
+  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") meldes med den faktiske vaerdi', ['', '5'], '5.00', false],
+  // Fjerde runde (Astra): hver 'bare formatering'-regel blev omgaaet.
+  ['et decimaltal der mistede kommaet ("1.5" -> "15") meldes', ['', '15'], '1.5', false],
+  ['et beloeb der blev negativt med Unicode-minus ("5" -> "\u22125") meldes', ['', '\u22125'], '5', false],
+  ['to store tal der afrundes ens i JavaScript meldes', ['', '9007199254740993'], '9007199254740992', false],
+  ['en ekstra landekode foran et internationalt nummer meldes', ['', '+1 45 12345678'], '+45 12345678', false],
 ]) {
   test(navn, async () => {
     const saet = [], taster = [];
