@@ -12,7 +12,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, mkdirSync, symlinkSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, existsSync, rmSync, writeFileSync, linkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,8 @@ const udenfor = mkdtempSync(join(tmpdir(), 'bmcp-skaerm-ude-'));
 symlinkSync(udenfor, join(arbejd, 'ud'));                                   // mappe-link ud af arbejdsmappen
 symlinkSync(join(udenfor, 'findes-ikke.png'), join(arbejd, 'dinglende.png')); // fil-link til noget der ikke findes endnu
 mkdirSync(join(arbejd, 'inde'));
+writeFileSync(join(udenfor, 'vigtig.png'), 'BRUGERENS-FIL');
+linkSync(join(udenfor, 'vigtig.png'), join(arbejd, 'haard.png'));   // hardlink: samme fil som en udenfor
 
 const boern = [];
 const sokler = [];
@@ -102,4 +104,11 @@ test('en sti der selv er et dinglende symlink afvises, og intet skrives udenfor'
   const svar = await skaermbillede('dinglende.png');
   assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 240)}`);
   assert.ok(!existsSync(join(udenfor, 'findes-ikke.png')), 'filen blev skabt gennem linket, uden for arbejdsmappen');
+});
+
+// Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men writeFileSync trunkerer den faelles fil.
+test('en hardlink til en fil udenfor overskrives ikke', { timeout: 45000 }, async () => {
+  const svar = await skaermbillede('haard.png');
+  assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 240)}`);
+  assert.equal(readFileSync(join(udenfor, 'vigtig.png'), 'utf8'), 'BRUGERENS-FIL', 'filen udenfor blev overskrevet');
 });

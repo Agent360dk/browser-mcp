@@ -18,7 +18,7 @@ import { execSync, execFile } from 'child_process';
 import { dirname, join, resolve, sep, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 // Read version from package.json — single source of truth, never drifts
@@ -749,7 +749,9 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     // konsekvensen var stoerst.
     if (method === 'upload_file' || method === 'drop_file') {
       const raa = Array.isArray(args?.files) ? args.files
-                : [args?.files, args?.file, args?.file_path].filter(Boolean);
+                // Astra, tredje runde: aliaserne blev lagt SAMMEN, saa file + file_path sendte to filer.
+                // Udvidelsen valgte altid den foerste der fandtes - samme prioritet her.
+                : [args?.files || args?.file || args?.file_path].filter(Boolean);
       const rod = resolve(process.cwd());
       // MAALT 10/9 af Astra (anden runde), reproduceret paa denne maskine: resolve() fjerner
       // "link/.." som TEKST foer symlinket er fulgt. Med link -> /ude/dir blev "link/../secret"
@@ -777,6 +779,12 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
         if (!reel) return afvis(inde(resolve(raaSti), rod) ? 'findes ikke (eller kan ikke laeses)' : 'peger udenfor');
         if (!inde(reel, rodReel)) return afvis('peger udenfor');
+        // Astra, tredje runde: en MAPPE blev godkendt ud fra mappens egen sti - men Chrome gennemloeber
+        // mappen og foelger links i den, saa bundle/key -> ~/.ssh/id_rsa kom med. Og en HARDLINK inde i
+        // mappen er samme fil som en fil udenfor; realpath kan ikke se det.
+        let st = null; try { st = statSync(reel); } catch {}
+        if (!st || !st.isFile()) return afvis('er ikke en almindelig fil (mapper uploades ikke - de kan indeholde links ud af arbejdsmappen)');
+        if (st.nlink > 1) return afvis('har flere navne paa disken (hardlink) og kan vaere en fil uden for arbejdsmappen');
         kanoniske.push(reel);
       }
       if (args && kanoniske.length) {
@@ -822,11 +830,13 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         let forfader = dirname(targetPath);
         while (!findes(forfader) && dirname(forfader) !== forfader) forfader = dirname(forfader);
         let forfaderReel = null; try { forfaderReel = realpathSync.native(forfader); } catch {}
-        let erLink = false; try { erLink = lstatSync(targetPath).isSymbolicLink(); } catch {}
-        if (erLink || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel + sep))) {
+        // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men skrivningen trunkerer den faelles fil.
+        let erLink = false, flereNavne = false;
+        try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
+        if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel + sep))) {
           throw new Error(
             `path skal ligge inden for arbejdsmappen (${rod}). ` +
-            `"${args.path}" peger udenfor (via et symlink). Brug en almindelig mappe i arbejdsmappen.`,
+            `"${args.path}" peger udenfor (via et link). Brug en almindelig mappe i arbejdsmappen.`,
           );
         }
         mkdirSync(dirname(targetPath), { recursive: true });
