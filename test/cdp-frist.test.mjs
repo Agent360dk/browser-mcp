@@ -60,7 +60,16 @@ test('scroll ender med at rulle — reserveloesningen naas, og svaret siger hvor
     'debugger.sendCommand': (_m, metode, params) => {
       kald.push({ metode, expression: params?.expression });
       if (metode === 'Input.dispatchMouseEvent') return new Promise(() => {});   // hjulet tier
-      if (metode === 'Runtime.evaluate') return { result: { value: null } };
+      // Siden skal svare som en RIGTIG side: hvor stod den foer, hvor staar den nu.
+      // Foer 10/9 svarede selen `null`, og saa kunne testen ikke se forskel paa
+      // "reserveloesningen rullede" og "reserveloesningen fejlede tavst".
+      if (metode === 'Runtime.evaluate') {
+        const udtryk = String(params?.expression || '');
+        if (/scrollX/.test(udtryk) && !/scrollTo|scrollBy/.test(udtryk)) {
+          return { result: { value: { x: 0, y: 0 } } };            // startpositionen
+        }
+        return { result: { value: { foer: { x: 0, y: 0 }, efter: { x: 0, y: 300 } } } };
+      }
       return {};
     },
   } });

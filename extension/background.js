@@ -2716,7 +2716,12 @@ async function dispatch(port, method, params) {
           try {
             const shot = await cdpSend(tab.id, 'Page.captureScreenshot', { format: 'png' });
             return { image: 'data:image/png;base64,' + shot.data };
-          } catch {
+          } catch (foersteFejl) {
+            // MAALT 10/9 af Astra: to forsoeg à 20 s koeres sekventielt = 40.040 ms, og
+            // serverens loft er 30 s pr. VAERKTOEJ. "20 under 30" var forkert regnet.
+            // Det andet forsoeg findes for en ANDEN fejl (fromSurface), ikke for en frist:
+            // svarer kompositoren ikke inden for 20 s, svarer den heller ikke paa forsoeg to.
+            if (/svarede ikke inden/.test(foersteFejl?.message || '')) throw foersteFejl;
             const shot = await cdpSend(tab.id, 'Page.captureScreenshot', {
               format: 'png', fromSurface: false, captureBeyondViewport: false,
             });
@@ -3196,9 +3201,12 @@ async function dispatch(port, method, params) {
       const dy = params.y || 0;
       // Hvor stod siden FOER vi roerte den? Uden det tal kan reserveloesningen ikke vide
       // hvor meget hjulet naaede, og ender med at rulle for langt.
+      // MAALT 10/9: her stod `.catch(() => ({x:0,y:0}))`. Et opdigtet nulpunkt er vaerre end
+      // ingen: stod siden paa 500 og laesningen fejlede, ville reserveloesningen rulle OP.
       const start = await debuggerEval(tab.id, '({x: window.scrollX, y: window.scrollY})')
-        .catch(() => ({ x: 0, y: 0 }));
-      const startX = start?.x ?? 0, startY = start?.y ?? 0;
+        .catch(() => null);
+      const startKendt = !!start && typeof start.y === 'number';
+      const startX = startKendt ? start.x : 0, startY = startKendt ? start.y : 0;
       try {
         await debuggerAttach(tab.id);
         const STEP_SIZE = 300; // pixels per wheel-event (matches a typical mouse-wheel notch)
@@ -3222,14 +3230,35 @@ async function dispatch(port, method, params) {
         // kvittere, fallbacken lagde 600 oveni = 900 faktisk, 600 rapporteret.
         // scrollTo mod en beregnet MAAL-position er idempotent: har hjulet allerede rullet
         // halvdelen, ruller vi kun resten.
+        // MAALT 10/9 af Astra, i MIN egen rettelse fra fire timer foer: her stod
+        // `.catch(() => null)` og derefter `ok: true` ubetinget. Fejlede ogsaa
+        // reserveloesningen, svarede vaerktoejet succes med nul rullede pixels.
+        // Femte gang samme fejlklasse paa én dag — og den her var min.
         const landede = await debuggerEval(tab.id, `(() => {
-          window.scrollTo(${startX} + ${dx}, ${startY} + ${dy});
-          return { x: window.scrollX, y: window.scrollY };
-        })()`).catch(() => null);
+          const foer = { x: window.scrollX, y: window.scrollY };
+          ${startKendt ? `window.scrollTo(${startX} + ${dx}, ${startY} + ${dy});`
+                       : `window.scrollBy(${dx}, ${dy});`}
+          return { foer, efter: { x: window.scrollX, y: window.scrollY } };
+        })()`).catch((fejl) => ({ fejl: fejl?.message || String(fejl) }));
+
+        if (!landede || landede.fejl) {
+          return {
+            ok: false, method: 'fallback', error: 'scroll-mislykkedes',
+            hjul_fejl: e.message,
+            fallback_fejl: landede?.fejl || 'reserveloesningen svarede ikke',
+          };
+        }
+        const flyttede = landede.efter.x !== landede.foer.x || landede.efter.y !== landede.foer.y;
+        const alleredeFremme = !flyttede && startKendt &&
+          landede.efter.x === startX + dx && landede.efter.y === startY + dy;
         return {
-          ok: true, method: 'fallback', fallback_reason: e.message,
-          scrolled: { x: dx, y: dy },
-          ...(landede ? { position: landede, startede: { x: startX, y: startY } } : {}),
+          ok: flyttede || alleredeFremme,
+          method: 'fallback', fallback_reason: e.message,
+          position: landede.efter, foer: landede.foer,
+          ...(flyttede || alleredeFremme ? {} : { note: 'siden flyttede sig ikke — bunden er maaske naaet' }),
+          // Kunne startpositionen ikke laeses, er rulningen RELATIV og kan derfor laegge sig
+          // oveni det hjulet naaede. Det skal kalderen kunne se, ikke gaette.
+          ...(startKendt ? {} : { start_ukendt: true }),
         };
       }
       return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };
