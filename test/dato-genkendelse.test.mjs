@@ -22,3 +22,22 @@ test('den rigtige dato genkendes i de almindelige formater', () => {
     assert.equal(ligner(v, '2026-01-02'), true, `"${v}" er 2026-01-02`);
   }
 });
+
+// ── Tredje runde (Astra) ────────────────────────────────────────────────────
+const DMY = { order: ['D', 'M', 'Y'], sep: '/', padded: [true, true, true] };
+
+test('et klokkeslaet eller en cifferstreng leverer ikke datoen', () => {
+  assert.equal(ligner('2026-1-1 02:00', '2026-11-02'), false, '1. januar kl. 02 er ikke 2. november');
+  assert.equal(ligner('12 Jan 2026 02:00', '2026-01-02'), false, 'dagen er 12, ikke klokkeslaettets 2');
+});
+
+test('med kendt format proeves KUN den raekkefoelge', () => {
+  assert.equal(ligner('01/12/2026', '2026-01-12', DMY), false, 'DD/MM/YYYY: 01/12/2026 er 1. december, ikke 12. januar');
+  assert.equal(ligner('01/12/2026', '2026-12-01', DMY), true);
+  assert.equal(ligner('02012026', '2026-01-02', DMY), true);
+});
+
+test('dansk maj og tocifret aar genkendes', () => {
+  assert.equal(ligner('2. maj 2026', '2026-05-02'), true);
+  assert.equal(ligner('2/1/26', '2026-01-02'), true);
+});

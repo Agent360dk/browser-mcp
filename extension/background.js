@@ -1723,23 +1723,40 @@ function parseMonthYearText(text) {
   return null;
 }
 
-function valueLooksLikeIso(value, iso) {
+function valueLooksLikeIso(value, iso, fmt) {
   if (!value || !iso) return false;
   const [y, m, d] = iso.split('-');
-  const digits = value.replace(/\D/g, '');
-  if (digits.includes(y + m + d)) return true;
-  if (digits.includes(m + d + y)) return true;
-  if (digits.includes(d + m + y)) return true;
-  // MAALT 10/9 af Astra (anden runde): her stod tre `value.includes(...)` hver for sig.
-  // "20/12/2026" indeholder "2026", "1" og "2" som delstrenge og blev godkendt som 2026-01-02.
-  // Nu sammenlignes HELE TAL i raekkefoelge: aar, maaned og dag skal staa ved siden af hinanden.
-  const tal = (value.match(/\d+/g) || []).map(Number);
   const Y = Number(y), M = Number(m), D = Number(d);
-  const iRaekke = (a, b, c) => tal.some((_, i) => tal[i] === a && tal[i + 1] === b && tal[i + 2] === c);
-  if (iRaekke(Y, M, D) || iRaekke(D, M, Y) || iRaekke(M, D, Y)) return true;
-  // Maanedsnavn ("2 Jan 2026", "2. januar 2026"): dag og aar som hele tal, maaneden som navn.
-  const navne = [/jan/, /feb/, /mar/, /apr/, /ma[iy]/, /jun/, /jul/, /aug/, /sep/, /o[ck]t/, /nov/, /de[cz]/];
-  return tal.includes(Y) && tal.includes(D) && !!navne[M - 1] && navne[M - 1].test(value.toLowerCase());
+  // Astra, anden runde: tre `value.includes(...)` hver for sig godkendte "20/12/2026" som 2026-01-02.
+  // Tredje runde: tre `digits.includes(...)` koerte stadig FOER kontrollen af hele tal, saa
+  // "2026-1-1 02:00" blev 2026-11-02. Nu sammenlignes cifre som én streng KUN naar vaerdien udelukkende
+  // ER otte cifre - og med kendt format kun i formatets raekkefoelge ("01/12/2026" under DD/MM/YYYY er
+  // 1. december, ikke 12. januar).
+  const ordener = fmt?.order ? [fmt.order] : [['Y', 'M', 'D'], ['D', 'M', 'Y'], ['M', 'D', 'Y']];
+  const del = { Y: y, M: m, D: d };
+  if (/^\s*\d{8}\s*$/.test(value)) {
+    const cifre = value.trim();
+    return ordener.some((o) => o.map((slot) => del[slot]).join('') === cifre);
+  }
+  // Hele tal fra vaerdiens START - et klokkeslaet bagefter maa ikke levere dag eller maaned.
+  const tok = value.match(/\d+/g) || [];
+  const passer = (slot, s) => {
+    if (s === undefined) return false;
+    if (slot === 'Y') return (s.length === 4 && Number(s) === Y) || (s.length === 2 && Number(s) === Y % 100);
+    return s.length <= 2 && Number(s) === (slot === 'M' ? M : D);
+  };
+  if (ordener.some((o) => o.every((slot, i) => passer(slot, tok[i])))) return true;
+  // Maanedsnavn ("2 Jan 2026", "2. maj 2026", "Jan 2, 2026"): dagen skal staa lige foer eller lige efter navnet.
+  const navne = [/jan/, /feb/, /mar/, /apr/, /ma[iyj]/, /jun/, /jul/, /aug/, /sep/, /o[ck]t/, /nov/, /de[cz]/];
+  const navn = navne[M - 1];
+  if (navn) {
+    const lav = value.toLowerCase();
+    const n = navn.source;
+    const foer = new RegExp('^\\s*(\\d{1,2})\\.?\\s+' + n + '[a-zæøå]*\\.?,?\\s+(\\d{4})').exec(lav);
+    const efter = new RegExp('^\\s*' + n + '[a-zæøå]*\\.?\\s+(\\d{1,2}),?\\s+(\\d{4})').exec(lav);
+    for (const r of [foer, efter]) if (r && Number(r[1]) === D && Number(r[2]) === Y) return true;
+  }
+  return false;
 }
 
 async function getDateInputInfo(tabId, selector) {
@@ -3132,14 +3149,14 @@ async function dispatch(port, method, params) {
             await new Promise(r => setTimeout(r, 250));
             const v = await readBackValue(tab.id, params.selector);
             tried.push({ path: 'masked', format: fmt.order.join(fmt.sep), value: v });
-            if (valueLooksLikeIso(v, iso)) return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep) };
+            if (valueLooksLikeIso(v, iso, fmt)) return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep) };
           } catch (e) {
             // MAALT 10/9 af Astra: en frist her betyder ikke at intet skete. Tastetrykkene kan
             // allerede staa i feltet, og saa ville kalender-vejen nedenfor saette datoen EN GANG
             // TIL. Laes feltet foer vi proever noget andet.
             const v = await readBackValue(tab.id, params.selector).catch(() => null);
             tried.push({ path: 'masked', error: e.message, value: v });
-            if (valueLooksLikeIso(v, iso)) {
+            if (valueLooksLikeIso(v, iso, fmt)) {
               return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landede trods fejl i afsendelsen' };
             }
           }

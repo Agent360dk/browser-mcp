@@ -68,6 +68,6 @@ test('set_date laeser feltet foer den proever kalender-vejen efter en fejl', () 
   const fang = blok.slice(blok.lastIndexOf('} catch (e) {'));
   assert.match(fang, /readBackValue\(tab\.id, params\.selector\)/,
     'efter en fejl i den maskerede indtastning skal feltet laeses — tastetrykkene kan staa der allerede');
-  assert.match(fang, /if \(valueLooksLikeIso\(v, iso\)\) \{\s*\n\s*return \{ ok: true, method: 'masked'/,
+  assert.match(fang, /if \(valueLooksLikeIso\(v, iso, fmt\)\) \{\s*\n\s*return \{ ok: true, method: 'masked'/,
     'staar datoen der, skal kaldet slutte — ellers saetter kalender-vejen den en gang til');
 });
