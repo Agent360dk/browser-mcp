@@ -6,7 +6,7 @@
 
 **Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome - install takes about 90 seconds.**
 
-**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome - about 90 seconds, four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local - nothing leaves your machine.
+**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome - about 90 seconds, four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local - nothing leaves your machine.
 
 ## The whole thing, in four steps
 

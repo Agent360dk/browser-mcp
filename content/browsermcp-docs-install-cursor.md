@@ -44,7 +44,7 @@ Everything below is the long version.
 }
 ```
 
-Paste that into `~/.cursor/mcp.json` (global - available in every project) or `.cursor/mcp.json` inside one project (that project only), reload Cursor, then load the Chrome extension once - done. 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local - nothing leaves your machine.
+Paste that into `~/.cursor/mcp.json` (global - available in every project) or `.cursor/mcp.json` inside one project (that project only), reload Cursor, then load the Chrome extension once - done. 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and 100% local - nothing leaves your machine.
 
 If you want the full walkthrough, keep reading. If you just needed the config block, that's it above.
 

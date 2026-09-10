@@ -20,7 +20,7 @@
 | Logged-in state | Fresh by default | Inherited (cookies, 2FA, extensions) |
 | CI / headless | Yes - core use case | No |
 | Parallel instances | Yes | One (your browser; multi-tab sessions supported) |
-| Tools | 69 documented (incl. opt-in vision/pdf/devtools) | 34 |
+| Tools | 69 documented (incl. opt-in vision/pdf/devtools) | 40 |
 | Install | `npx @playwright/mcp` | Chrome extension + `claude mcp add` (two parts) |
 | Scale signal | 4,588,713 npm dl/week (2026-08-19) | 469 npm dl/week (2026-08-19) |
 | Maintenance | Last commit 2026-08-17 · v0.0.79 | Last commit 2026-08-19 · v1.25.0 2026-07-24 |

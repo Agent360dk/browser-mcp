@@ -1,12 +1,12 @@
-// KILDE: grounded i README ("up to 10 concurrent", "Multi-session color-coded tab groups") + extension chrome.tabGroups.update + tools browser_list_tabs/get_new_tab/switch_tab (verificeret). INGEN performance-tal - ren walkthrough.
+// KILDE: grounded i README ("up to 20 concurrent", "Multi-session color-coded tab groups") + extension chrome.tabGroups.update + tools browser_list_tabs/get_new_tab/switch_tab (verificeret). INGEN performance-tal - ren walkthrough.
 
 # Running several AI agent sessions in one Chrome - without them colliding
 
-*Suggested URL: `/use-cases/concurrent-sessions` · Suggested title tag: "Run Multiple AI Agent Sessions in One Chrome (Browser MCP)" · Suggested meta description: "How Browser MCP keeps several concurrent agent sessions isolated inside a single Chrome - up to 10, each in its own color-coded tab group, none able to see the others' tabs." · Last verified: July 22, 2026*
+*Suggested URL: `/use-cases/concurrent-sessions` · Suggested title tag: "Run Multiple AI Agent Sessions in One Chrome (Browser MCP)" · Suggested meta description: "How Browser MCP keeps several concurrent agent sessions isolated inside a single Chrome - up to 20, each in its own color-coded tab group, none able to see the others' tabs." · Last verified: July 22, 2026*
 
 ---
 
-**Short answer:** you can run several agent sessions against the same Chrome at once - up to 10 - and Browser MCP keeps them from stepping on each other by giving each session its own **color-coded Chrome tab group**. A session only sees and acts on its own tabs, so a research agent, a testing agent and a monitoring agent can work in parallel in one browser without crossing wires.
+**Short answer:** you can run several agent sessions against the same Chrome at once - up to 20 - and Browser MCP keeps them from stepping on each other by giving each session its own **color-coded Chrome tab group**. A session only sees and acts on its own tabs, so a research agent, a testing agent and a monitoring agent can work in parallel in one browser without crossing wires.
 
 ## The problem this solves
 

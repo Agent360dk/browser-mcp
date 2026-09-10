@@ -80,7 +80,7 @@ No - read the "Where browsermcp.io genuinely wins" section above. The scale numb
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-Two parts, both required - about a minute. MIT licensed, 41 tools, runs 100% locally. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that's the right call for you](https://browsermcp.io) - we mean that.
+Two parts, both required - about a minute. MIT licensed, 40 tools, runs 100% locally. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that's the right call for you](https://browsermcp.io) - we mean that.
 
 ---
 

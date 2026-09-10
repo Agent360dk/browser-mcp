@@ -593,8 +593,12 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 6. After success, extract what you need with browser_get_page_content
 
 ## Screenshots
-- browser_screenshot captures the visible tab — useful for visual verification
-- The tab is auto-activated before capture, so it always shows the right page
+- browser_screenshot captures YOUR session's tab, without pulling it in front of the user
+- It does NOT activate the tab first. That was removed deliberately: the user sits in the
+  same window, and yanking their tab away on every screenshot is worse than the alternative
+- If your tab is not the visible one and the debugger cannot produce a frame, the call is
+  REFUSED rather than returning a picture of whatever the user happens to be looking at.
+  Navigate or switch_tab first, then capture
 
 ## Text-based selectors (preferred for dynamic sites)
 - browser_click("text=Get started") — clicks any element containing "Get started"

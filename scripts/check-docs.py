@@ -36,6 +36,21 @@ claim_files = [f for f in claim_files if os.path.isfile(f)]
 # stod paa sitet mens gaten meldte alt groent. Baade "N tools" og "N tool
 # definitions" taelles nu med.
 TOOL_CLAIM = re.compile(r'(\d+)\s+(?:browser\s+)?tools?\b')
+# MAALT 9/9: moenstret ovenfor kraever ordet "tools" LIGE efter tallet. Fire udgivne sider
+# slap forbi med "We document 34.", "34 of them" og "41 tools" i en tabelcelle — mens gaten
+# meldte groent. Formerne herunder er dem der faktisk blev brugt. En vagt der kun kender én
+# formulering, vogter én formulering.
+TOOL_CLAIM_EKSTRA = [
+    re.compile(r'[Ww]e document (\d+)\b'),
+    re.compile(r'(\d+) of them\b'),
+    # Kun en raekke der HANDLER om vaerktoejer. Foerste udgave matchede enhver sidste
+    # tabelcelle og roedmarkerede stjerner, downloads og issue-tal. En vagt der raaber ulv
+    # paa noget lovligt, bliver slaaet fra — saa den er snaevret ind til raekkens emne.
+    re.compile(r'^\|\s*Tools?\s*\|.*\|\s*(\d+)\s*\|\s*$', re.I),
+]
+# MAALT 9/9: forsidens tal stod i en tabel hvor etiketten "Tool count" er paa ÉN linje og
+# tallet paa den naeste. Ingen linje-baseret vagt kan se det, saa raekken tjekkes for sig.
+TOOLCOUNT_RAEKKE = re.compile(r'Tool count', re.I)
 # Overskrifter undtages. Vaerktoejssiden grupperer efter kategori — "Interaction — 14
 # tools" er et AFSNITS-tal og skal ikke vaere lig totalen. Alt andet er en paastand om
 # hvor mange vaerktoejer produktet har, og den skal passe.
@@ -46,17 +61,40 @@ HEADING = re.compile(r'^\s{0,3}#{1,6}\s|<h[1-6][^>]*>', re.I)
 # naevner et andet produkt. Kommer der en ny konkurrent til, fejler gaten én gang og
 # navnet tilfoejes her — stoejende frem for tavst forkert.
 ANDRE = re.compile(r'playwright|chrome devtools mcp|mcp-chrome|browsermcp\.io|puppeteer|selenium', re.I)
+# MAALT 9/9: at springe HELE linjen over var det andet hul. En sammenligningsraekke
+# indeholder BEGGE tal — "| Tools | 69 documented | 34 |" — saa undtagelsen beskyttede
+# praecis det sted hvor vores eget forkerte tal stod. Nu springes kun de tal over der er
+# verificeret som andres. Kommer der et nyt, fejler gaten én gang og tallet skrives her.
+KONKURRENT_TAL = {
+    69,   # microsoft/playwright-mcp, verificeret 2026-08-19
+    52,   # ChromeDevTools/chrome-devtools-mcp
+    19,   # yolo-chrome-mcp (SeedX), verificeret 2026-09-08
+    29,   # chrome-devtools-mcp's egen "29 tools"-formulering i deres README
+}
 for f in claim_files:
     naermeste_overskrift = ''
-    for linje in open(f, encoding='utf-8').read().split('\n'):
+    linjer = open(f, encoding='utf-8').read().split('\n')
+    for nr, linje in enumerate(linjer):
         if HEADING.search(linje):
             naermeste_overskrift = linje
             continue
-        if ANDRE.search(linje) or ANDRE.search(naermeste_overskrift):
-            continue
-        for m in TOOL_CLAIM.finditer(linje):
-            if int(m.group(1)) != TOOLCOUNT:
-                fail('%s claims "%s" but tools.js defines %d' % (os.path.relpath(f, ROOT), m.group(0), TOOLCOUNT))
+        andres = ANDRE.search(linje) or ANDRE.search(naermeste_overskrift)
+        for moenster in [TOOL_CLAIM] + TOOL_CLAIM_EKSTRA:
+            for m in moenster.finditer(linje):
+                tal = int(m.group(1))
+                if tal == TOOLCOUNT:
+                    continue
+                # Paa en konkurrent-linje springes KUN de tal over der er verificeret som andres.
+                if andres and tal in KONKURRENT_TAL:
+                    continue
+                fail('%s claims "%s" but tools.js defines %d' % (os.path.relpath(f, ROOT), m.group(0).strip(), TOOLCOUNT))
+        # Tabelraekken "Tool count" har etiketten paa én linje og tallet paa de naeste.
+        if TOOLCOUNT_RAEKKE.search(linje):
+            naeste = ' '.join(linjer[nr + 1:nr + 5])
+            vores = re.findall(r'>(\d+)<', naeste)
+            if vores and int(vores[0]) != TOOLCOUNT:
+                fail('%s: "Tool count"-raekken siger %s, tools.js definerer %d'
+                     % (os.path.relpath(f, ROOT), vores[0], TOOLCOUNT))
 
 # ---- 1b. tools reference page lists exactly the tools.js tool set ----------
 tools_page = os.path.join(DOCS, 'docs', 'tools', 'index.html')

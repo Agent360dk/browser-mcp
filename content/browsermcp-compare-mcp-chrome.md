@@ -62,7 +62,7 @@ No. Different authors, different codebases, independently built around the same 
 Technically yes - they register as separate MCP servers - but they both drive your Chrome, so running them at once mostly creates confusion about which one owns a tab.
 
 **Which has more tools?**
-We document 34. We have not counted mcp-chrome's tool list, and would rather say that than guess.
+We document 40. We have not counted mcp-chrome's tool list, and would rather say that than guess.
 
 **Why should I trust your comparison of a competitor?**
 You shouldn't, entirely - we make one of these. Every number above is from the public GitHub and npm APIs with the date we pulled it, so you can check all of it in about two minutes.

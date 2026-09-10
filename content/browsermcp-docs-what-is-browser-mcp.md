@@ -6,7 +6,7 @@ That one distinction - *your* browser versus *a* browser - is the whole reason i
 
 ## What is an MCP server?
 
-The Model Context Protocol (MCP) is an open standard, published by Anthropic, that defines how an AI model connects to external tools and data sources through a common interface - instead of every integration needing its own custom, one-off wiring. An **MCP server** is a program that implements that standard on the "tool" side: it exposes a set of callable functions (in Browser MCP's case, 34 of them - navigate, click, fill, screenshot, solve a CAPTCHA, and so on) that any MCP-compatible client can call over a shared, structured protocol.
+The Model Context Protocol (MCP) is an open standard, published by Anthropic, that defines how an AI model connects to external tools and data sources through a common interface - instead of every integration needing its own custom, one-off wiring. An **MCP server** is a program that implements that standard on the "tool" side: it exposes a set of callable functions (in Browser MCP's case, 40 of them - navigate, click, fill, screenshot, solve a CAPTCHA, and so on) that any MCP-compatible client can call over a shared, structured protocol.
 
 The full specification is maintained at [modelcontextprotocol.io](https://modelcontextprotocol.io). Browser MCP is one implementation of that spec, scoped specifically to browser control.
 
