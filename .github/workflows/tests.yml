@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Generatoren udleder datePublished/dateModified med 'git log', og
+          # release-coherence-testen laeser 'git tag'. En shallow klon har hverken
+          # historik eller tags — saa begge porte fejlede paa noget der var i orden.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
