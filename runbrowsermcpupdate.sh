@@ -352,7 +352,7 @@ else
     if git diff --cached --quiet; then
       warn "nothing staged (resumed run) — skipping commit"
     else
-      git commit -m "release: v${NEW_VERSION} — npm + Chrome Web Store + GitHub"
+      git commit -m "release: v${NEW_VERSION} - npm + Chrome Web Store + GitHub"
     fi
   else
     echo "    ${C}would run:${Z} git commit -m \"release: v${NEW_VERSION} …\" (if anything staged)"
@@ -377,7 +377,7 @@ else
     run gh release upload "v${NEW_VERSION}" "$ZIP" --clobber
   else
     run gh release create "v${NEW_VERSION}" "$ZIP" \
-      --title "v${NEW_VERSION} — Chrome extension + MCP server" \
+      --title "v${NEW_VERSION} - Chrome extension + MCP server" \
       --notes "Browser MCP v${NEW_VERSION}. Install: \`npx @agent360/browser-mcp install\` or load the attached zip unpacked."
   fi
 fi
