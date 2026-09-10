@@ -45,15 +45,14 @@ test('input-kald beholder den korte frist — det var dem der haengte', () => {
 });
 
 test('laekage-vagten starter ikke en ny runde med haevet vindue', () => {
+  // 10/9, anden runde: reserveloesningen og dens laekage-vagt er fjernet helt, fordi A->B->A ikke
+  // kunne udelukkes. Der er derfor intet at afvise - og ingen vej hvor en afvisning kan ende i et
+  // haevet vindue. Adfaerden (intet billede, ingen captureVisibleTab, ET forsoeg ved frist)
+  // proeves i skaermbillede-laek.test.mjs og sikkerhed-graenser.test.mjs.
   const i = kilde.indexOf("case 'screenshot'");
   const blok = kilde.slice(i, kilde.indexOf("case 'execute_script'", i));
-  assert.match(blok, /afvist\.laekageVagt = true/,
-    'afvisningen skal kunne kendes fra en almindelig fejl');
-  assert.match(blok, /if \(firstErr && firstErr\.laekageVagt\) throw firstErr;/,
-    'den ydre catch skal kaste videre — ellers haever den vinduet for at omgaa vores egen vagt');
-  const iHaev = blok.indexOf('chrome.windows.update(tab.windowId, { focused: true');
-  const iVagt = blok.indexOf('firstErr.laekageVagt');
-  assert.ok(iVagt > -1 && iVagt < iHaev, 'vagten skal komme FOER haevningen, ikke efter');
+  assert.doesNotMatch(blok, /laekageVagt/, 'den gamle vagt maa ikke komme tilbage uden reserveloesningen');
+  assert.doesNotMatch(blok, /chrome\.tabs\.captureVisibleTab\(/, 'og reserveloesningen heller ikke');
 });
 
 test('scroll-reserveloesningen ruller mod en maal-position, ikke en gang til', () => {
@@ -102,8 +101,11 @@ test('scroll opdigter ikke et nulpunkt naar startpositionen ikke kan laeses', ()
 // MAALT 10/9 af Astra: to captureScreenshot à 20 s koeres SEKVENTIELT = 40.040 ms, mens
 // serverens loft er 30 s pr. vaerktoej. "20 er under 30" var regnet pr. kald, ikke pr. kald-kaede.
 test('skaermbilledet proever ikke to gange paa en frist der allerede loeb ud', () => {
+  // Adfaerden proeves i skaermbillede-laek.test.mjs (ET forsoeg, intet vindue haevet). Her holdes
+  // markeringen fast, saa ingen fjerner den uden at se hvorfor den er der.
   const i = kilde.indexOf("case 'screenshot'");
   const blok = kilde.slice(i, kilde.indexOf("case 'execute_script'", i));
-  assert.match(blok, /if \(\/svarede ikke inden\/\.test\(foersteFejl\?\.message \|\| ''\)\) throw foersteFejl;/,
-    'et andet forsoeg efter en frist-udloebning fordobler bare ventetiden — kompositoren svarer ikke');
+  assert.match(blok, /e\.ingenNyRunde = true/, 'en frist skal markeres');
+  assert.match(blok, /if \(firstErr\?\.ingenNyRunde\) throw firstErr;/, 'og den ydre runde skal respektere markeringen');
+  assert.doesNotMatch(blok, /chrome\.tabs\.captureVisibleTab\(/, 'reserveloesningen fotograferer den synlige fane, ikke agentens');
 });

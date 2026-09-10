@@ -1,81 +1,115 @@
 /**
- * To graenser der kun holdt paa papiret. Begge fundet af Astra og sikkerhedsreviewet 10/9.
+ * Graenser der kun holdt paa papiret. Fundet af Astra og sikkerhedsreviewet 10/9, to runder.
  *
- *   skaermbillede  tjek og optagelse var to separate kald. Skiftede brugeren fane imellem,
- *                  blev brugerens side fotograferet. Nu tjekkes der igen efter optagelsen.
- *   get_cookies    domaene-kravet alene lod en session laese cookies for ETHVERT domaene i
- *                  profilen — ogsaa et den aldrig havde aabnet. Nu kun sessionens egne.
+ *   skaermbillede  captureVisibleTab fotograferer den SYNLIGE fane, ikke agentens. Et tjek foer
+ *                  og et efter kan ikke udelukke A->B->A imens, saa reserveloesningen er fjernet.
+ *   get_cookies    kun cookies Chrome selv ville SENDE til sessionens egne http(s)-sider. At
+ *                  gaette domaeneslaegtskab blev omgaaet af et public suffix (https://com/), en
+ *                  file:-fane og et tomt vaertsnavn.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
-test('et skaermbillede kasseres hvis fanen skiftede under optagelsen', async () => {
+test('et skaermbillede tages aldrig med captureVisibleTab - heller ikke ved A->B->A', async () => {
+  let q = 0;
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
-    'tabs.get': { id: 1, url: 'https://agent.example', active: true, windowId: 9 },   // aktiv ved tjekket
-    'tabs.query': [{ id: 2, url: 'https://brugerens-bank.example', active: true, windowId: 9 }], // skiftet ved optagelsen
+    'tabs.get': { id: 1, url: 'https://agent.example', active: true, windowId: 9 },
+    // Agentens fane A aktiv, saa brugerens B ved optagelsen, saa A igen ved efter-tjekket
+    'tabs.query': () => [[{ id: 1, active: true, windowId: 9 }], [{ id: 2, active: true, windowId: 9 }],
+                         [{ id: 1, active: true, windowId: 9 }]][Math.min(q++, 2)],
     'debugger.sendCommand': () => { throw new Error('CDP nede'); },
     'tabs.captureVisibleTab': 'data:image/png;base64,BRUGERENS_SIDE',
     'windows.getLastFocused': { id: 9 }, 'windows.update': undefined, 'tabs.update': undefined,
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
-  assert.ok(svar.fejl, 'der skal kastes');
+  assert.ok(svar.fejl, 'uden CDP er der intet billede');
   assert.doesNotMatch(JSON.stringify(svar), /BRUGERENS_SIDE/, 'brugerens side maa aldrig naa kalderen');
-  assert.equal(u.optager.antal('windows.update'), 0, 'og kasseringen maa ikke udloese en vindues-haevning');
+  assert.equal(u.optager.antal('tabs.captureVisibleTab'), 0, 'den synlige fane maa slet ikke fotograferes');
 });
 
+// Chromes egne filtre, forenklet efter cookies_helpers.cc: {domain} giver cookies paa domaenet og
+// under det; {url} giver de cookies der SENDES til den vaert.
+const KRUKKE = [
+  { name: 'egen', value: '1', domain: 'a.example.com', path: '/' },
+  { name: 'foraelder', value: '2', domain: '.example.com', path: '/' },
+  { name: 'soeskende', value: '3', domain: 'b.example.com', path: '/' },
+  { name: 'stripe', value: '4', domain: '.stripe.com', path: '/' },
+  { name: 'dash', value: '5', domain: 'dashboard.stripe.com', path: '/' },
+  { name: 'bank', value: 'HEMMELIG', domain: '.bank.com', path: '/' },
+  { name: 'bankx', value: 'HEMMELIG_FILE', domain: '.bank.example', path: '/' },
+  { name: 'punktum', value: 'HEMMELIG_PUNKTUM', domain: 'bank.example.', path: '/' },
+];
+const tilVaert = (h, cd) => h === cd || h.endsWith('.' + cd);
 function cookieSele(faneUrl) {
   const kaldt = [];
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'tabs.get': { id: 1, url: faneUrl, windowId: 1, active: true },
     'tabs.query': [{ id: 1, url: faneUrl, windowId: 1, active: true }],
-    'cookies.getAll': (f) => { kaldt.push(f); return [{ name: 's', value: 'v', domain: f.domain, path: '/' }]; },
+    'cookies.getAll': (f) => {
+      kaldt.push(f);
+      return KRUKKE.filter((c) => {
+        const cd = c.domain.replace(/^\./, '');
+        if (f.url) return tilVaert(new URL(f.url).hostname, cd);
+        if (f.domain !== undefined) { const fd = String(f.domain).replace(/^\./, ''); return cd === fd || cd.endsWith('.' + fd); }
+        return true;
+      });
+    },
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
   return { u, kaldt };
 }
+const navne = (svar) => (svar.cookies || []).map((c) => c.name);
 
 test('get_cookies naegter et domaene sessionen ikke har aabent', async () => {
-  const { u, kaldt } = cookieSele('https://a.example/side');
+  const { u, kaldt } = cookieSele('https://a.example.com/side');
   const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'brugerens-netbank.example' });
   assert.equal(svar.error, 'domaene-ikke-i-sessionen');
   assert.equal(kaldt.length, 0, 'Chromes cookie-lager maa slet ikke spoerges');
 });
 
-test('get_cookies tillader sessionens eget domaene, dets underdomaener og dets overdomaene', async () => {
-  for (const [fane, domaene] of [
-    ['https://a.example/', 'a.example'],
-    ['https://dashboard.stripe.com/', 'stripe.com'],
-    ['https://stripe.com/', 'dashboard.stripe.com'],
-    ['https://a.example/', '.a.example'],
+test('get_cookies giver sessionens egne cookies - eget domaene, overdomaene og underdomaene', async () => {
+  for (const [fane, domaene, skalHave] of [
+    ['https://a.example.com/', 'a.example.com', ['egen', 'foraelder']],
+    ['https://dashboard.stripe.com/', 'stripe.com', ['stripe', 'dash']],
+    ['https://stripe.com/', 'dashboard.stripe.com', ['stripe']],
+    ['https://a.example.com/', '.a.example.com', ['egen']],
   ]) {
-    const { u, kaldt } = cookieSele(fane);
+    const { u } = cookieSele(fane);
     const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: domaene });
     assert.equal(svar.error, undefined, `${domaene} fra ${fane} skulle vaere tilladt: ${JSON.stringify(svar)}`);
-    assert.equal(kaldt.length, 1);
+    for (const n of skalHave) assert.ok(navne(svar).includes(n), `${n} mangler for ${domaene} fra ${fane}: ${navne(svar)}`);
+    assert.ok(!navne(svar).some((n) => n.startsWith('bank')), 'aldrig bankens');
   }
 });
 
-test('get_cookies med et overdomaene som "com" giver ikke andre .com-siders cookies', async () => {
-  // Chrome returnerer ALLE cookies under det domaene man spoerger paa. En fane paa a.example.com
-  // maatte spoerge paa "com" (a.example.com ligger jo under com) — og fik brugerens bank med.
-  const u = indlaesUdvidelse({ svar: {
-    'debugger.attach': undefined,
-    'tabs.get': { id: 1, url: 'https://a.example.com/', windowId: 1, active: true },
-    'tabs.query': [{ id: 1, url: 'https://a.example.com/', windowId: 1, active: true }],
-    'cookies.getAll': () => [
-      { name: 'egen', value: '1', domain: 'a.example.com', path: '/' },
-      { name: 'foraelder', value: '2', domain: '.example.com', path: '/' },
-      { name: 'bank', value: 'HEMMELIG', domain: '.brugerens-bank.com', path: '/' },
-      { name: 'soeskende', value: '3', domain: 'b.example.com', path: '/' },
-    ],
-  } });
-  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+test('get_cookies med "com" fra a.example.com giver ikke andre .com-siders cookies', async () => {
+  const { u } = cookieSele('https://a.example.com/');
   const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'com' });
-  const navne = (svar.cookies || []).map((c) => c.name);
-  assert.ok(!navne.includes('bank'), `en anden sides cookie slap igennem: ${JSON.stringify(navne)}`);
-  assert.ok(navne.includes('egen') && navne.includes('foraelder'), `sessionens egne cookies skal stadig med: ${JSON.stringify(navne)}`);
+  assert.ok(!navne(svar).includes('bank'), `en anden sides cookie slap igennem: ${navne(svar)}`);
+  assert.ok(!navne(svar).includes('soeskende'), 'et soeskende-underdomaene sendes ikke til siden');
+  assert.ok(navne(svar).includes('egen') && navne(svar).includes('foraelder'), `sessionens egne skal med: ${navne(svar)}`);
+});
+
+test('en fane paa selve public suffixet (https://com/) aabner ikke hele .com', async () => {
+  const { u } = cookieSele('https://com/');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'com' });
+  assert.ok(!navne(svar).includes('bank'), `bankens cookie slap igennem: ${JSON.stringify(svar)}`);
+});
+
+test('en file:-fane autoriserer ingen http-cookies', async () => {
+  const { u } = cookieSele('file://bank.example/sti');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'bank.example' });
+  assert.doesNotMatch(JSON.stringify(svar), /HEMMELIG_FILE/, 'en file:-fane er ingen side paa bank.example');
+  assert.equal(svar.error, 'domaene-ikke-i-sessionen');
+});
+
+test('et tomt vaertsnavn (about:blank) lukker ikke "bank.example." ind', async () => {
+  const { u } = cookieSele('about:blank');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'bank.example.' });
+  assert.doesNotMatch(JSON.stringify(svar), /HEMMELIG_PUNKTUM/);
+  assert.equal(svar.error, 'domaene-ikke-i-sessionen');
 });

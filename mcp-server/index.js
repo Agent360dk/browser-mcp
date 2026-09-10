@@ -15,7 +15,7 @@ import { ledErDoedt, forfaedreKaede } from './vagt.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
 import { execSync, execFile } from 'child_process';
-import { dirname, join, resolve, sep } from 'path';
+import { dirname, join, resolve, sep, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync } from 'fs';
@@ -751,23 +751,38 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const raa = Array.isArray(args?.files) ? args.files
                 : [args?.files, args?.file, args?.file_path].filter(Boolean);
       const rod = resolve(process.cwd());
-      // MAALT 10/9 af Astra: vagten var leksikalsk. Et symlink INDE i arbejdsmappen der peger UD
-      // (fx `noegle -> ~/.ssh/id_rsa`) passerede, fordi stien saa rigtig ud som tekst. Nu tjekkes
-      // baade stien og det den reelt peger paa.
-      let rodReel = rod; try { rodReel = realpathSync(rod); } catch {}
-      const udenfor = (p, r) => p !== r && !p.startsWith(r + sep);
+      // MAALT 10/9 af Astra (anden runde), reproduceret paa denne maskine: resolve() fjerner
+      // "link/.." som TEKST foer symlinket er fulgt. Med link -> /ude/dir blev "link/../secret"
+      // tjekket som <cwd>/secret, mens den UAENDREDE sti blev sendt videre, og operativsystemet
+      // laeste /ude/secret. Node's egen realpathSync normaliserer ogsaa foerst - den gav ENOENT,
+      // og saa blev den leksikalske sti godkendt. realpathSync.native spoerger operativsystemet,
+      // der foelger links foer "..". Det svar tjekkes, og det er DET der sendes videre: ellers kan
+      // det der godkendes og det der aabnes vaere to forskellige filer. (Den giver ogsaa den rigtige
+      // bogstavstoerrelse, saa /users/... ikke afvises paa macOS.)
+      // Tilbage staar et smalt vindue: en proces med skriveadgang til arbejdsmappen kan bytte en
+      // mappe ud med et symlink mellem tjekket og det oejeblik Chrome aabner filen.
+      let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
+      const inde = (p, r) => p === r || p.startsWith(r + sep);
+      const kanoniske = [];
       for (const f of raa) {
-        const maal = resolve(rod, String(f).replace(/^~(?=\/|$)/, homedir()));
-        let reel = maal; try { reel = realpathSync(maal); } catch {}
-        if (udenfor(maal, rod) || udenfor(reel, rodReel)) {
-          return {
-            content: [{ type: 'text', text:
-              `Filen skal ligge inden for arbejdsmappen (${rod}). "${f}" peger udenfor.\n` +
-              `Uploads sender filen til en fremmed side, og stien kommer fra en model der ` +
-              `laeser de sider. Kopiér filen ind i arbejdsmappen foerst, hvis den skal med.` }],
-            isError: true,
-          };
-        }
+        const udfoldet = String(f).replace(/^~(?=\/|$)/, homedir());
+        const raaSti = isAbsolute(udfoldet) ? udfoldet : rod + sep + udfoldet;
+        let reel = null; try { reel = realpathSync.native(raaSti); } catch {}
+        const afvis = (hvorfor) => ({
+          content: [{ type: 'text', text:
+            `Filen skal ligge inden for arbejdsmappen (${rod}). "${f}" ${hvorfor}.\n` +
+            `Uploads sender filen til en fremmed side, og stien kommer fra en model der ` +
+            `laeser de sider. Kopiér filen ind i arbejdsmappen foerst, hvis den skal med.` }],
+          isError: true,
+        });
+        if (!reel) return afvis(inde(resolve(raaSti), rod) ? 'findes ikke (eller kan ikke laeses)' : 'peger udenfor');
+        if (!inde(reel, rodReel)) return afvis('peger udenfor');
+        kanoniske.push(reel);
+      }
+      if (args && kanoniske.length) {
+        args.files = kanoniske;
+        delete args.file;
+        delete args.file_path;
       }
     }
 

@@ -62,11 +62,11 @@ test('screenshot fotograferer uden at skifte fane', () => {
     'sidste-udvejen for et tildaekket vindue er vaek — saa fejler skaermbilleder helt');
   assert.match(helt, /chrome\.windows\.update\(prev\.id, \{ focused: true \}\)/,
     'fokus skal gives tilbage til brugerens vindue efter en noedloeftning');
-  // MAALT 9/9: reserveloesningen captureVisibleTab fotograferer den SYNLIGE fane, ikke
-  // agentens. Uden vagten leverede den brugerens egen aabne side til agenten. Adfaerden
-  // proeves i skaermbillede-laek; her staar kun at vagten ikke maa forsvinde.
-  assert.match(helt, /stadig\.active !== true/,
-    'vagten mod at fotografere en ANDEN fane er vaek — det er en laek, ikke en unoejagtighed');
+  // MAALT 9/9: reserveloesningen captureVisibleTab fotograferer den SYNLIGE fane, ikke agentens.
+  // 10/9, anden runde: en vagt foer og efter kunne ikke udelukke A->B->A, saa reserveloesningen er
+  // fjernet helt. Adfaerden proeves i skaermbillede-laek; her staar kun at den ikke kommer igen.
+  assert.doesNotMatch(helt, /chrome\.tabs\.captureVisibleTab\(/,
+    'captureVisibleTab er tilbage - den fotograferer den synlige fane, ikke agentens. Det er en laek.');
 });
 
 test('press_key sender tasten uden at hente fanen frem', () => {

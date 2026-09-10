@@ -1585,11 +1585,14 @@ const OAUTH_DOMAINS = ['accounts.google.com', 'login.microsoftonline.com', 'gith
 // link med target=_blank, en OAuth-popup). Det staar i openerTabId. Er der ingen opener,
 // var det brugeren, og saa er den ikke vores.
 let lastCreatedTabId = null;
-let lastCreatedOpener = null;
+// Aabneren huskes PR. FANE. En global "seneste aabner" blev 10/9 (Astra, reproduceret) laant af
+// den forkerte fane, naar to faner blev aabnet mens get_new_tab ventede paa tabs.get.
+const openerForFane = new Map();
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   lastCreatedTabId = tab.id;
-  lastCreatedOpener = tab.openerTabId ?? null;
+  openerForFane.set(tab.id, tab.openerTabId ?? null);
+  if (openerForFane.size > 500) openerForFane.delete(openerForFane.keys().next().value);
 
   // Auto-claim OAuth popups for the session that opened them
   if (tab.pendingUrl || tab.url) {
@@ -2708,64 +2711,31 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://') || tab.url.startsWith('about:')) {
         throw new Error(`Cannot screenshot ${tab.url.split(':')[0]}: pages — navigate to a real page first`);
       }
-      // Capture without stealing focus: CDP Page.captureScreenshot (default → fromSurface:false
-      // retry) works for background/visible tabs; captureVisibleTab is the secondary.
+      // MAALT 10/9, anden runde (Astra, reproduceret): reserveloesningen captureVisibleTab
+      // fotograferer den fane der er SYNLIG i vinduet, ikke agentens. Et tjek foer og et efter
+      // kunne ikke udelukke at brugeren skiftede A->B->A imens - og saa blev brugerens side
+      // leveret. To tidspunkter beviser ikke hvad der skete imellem. Reserveloesningen er derfor
+      // fjernet: CDP optager netop `tab.id`, eller der er intet billede.
+      // Samme runde: en frist paa optagelsen startede alligevel en ny runde (haev vinduet, optag
+      // igen), og kaeden kom over serverens 30 s. En frist markeres nu, og saa proeves der ikke igen.
       const tryCapture = async () => {
-        try {
-          await debuggerAttach(tab.id);
+        await debuggerAttach(tab.id);
+        const optag = async (p) => {
           try {
-            const shot = await cdpSend(tab.id, 'Page.captureScreenshot', { format: 'png' });
-            return { image: 'data:image/png;base64,' + shot.data };
-          } catch (foersteFejl) {
-            // MAALT 10/9 af Astra: to forsoeg à 20 s koeres sekventielt = 40.040 ms, og
-            // serverens loft er 30 s pr. VAERKTOEJ. "20 under 30" var forkert regnet.
-            // Det andet forsoeg findes for en ANDEN fejl (fromSurface), ikke for en frist:
-            // svarer kompositoren ikke inden for 20 s, svarer den heller ikke paa forsoeg to.
-            if (/svarede ikke inden/.test(foersteFejl?.message || '')) throw foersteFejl;
-            const shot = await cdpSend(tab.id, 'Page.captureScreenshot', {
-              format: 'png', fromSurface: false, captureBeyondViewport: false,
-            });
-            return { image: 'data:image/png;base64,' + shot.data };
+            return await cdpSend(tab.id, 'Page.captureScreenshot', p);
+          } catch (e) {
+            if (e && /svarede ikke inden/.test(e.message || '')) e.ingenNyRunde = true;
+            throw e;
           }
-        } catch {
-          // MAALT 9/9-2026 (fundet af Astra, reproduceret her): captureVisibleTab fotograferer
-          // den fane der er SYNLIG i vinduet — ikke `tab.id`. Siden aktiveringen bevidst blev
-          // fjernet 21/8, er agentens fane normalt IKKE den synlige. Reserveloesningen leverede
-          // altsaa et billede af brugerens egen aabne fane til agenten, uden at nogen kunne se
-          // det paa svaret. Det er en laek, ikke en unoejagtighed.
-          const stadig = await chrome.tabs.get(tab.id).catch(() => null);
-          if (!stadig || stadig.active !== true) {
-            // MAALT 9/9 af reviewet: da vagten kastede herfra, ramte fejlen den ydre catch,
-            // som HAEVER vinduet og aktiverer fanen — praecis den aktivering EKSPERIMENT 21/8
-            // bevidst fjernede — og hele stien overskred serverens 30 s. Vagten skal afvise,
-            // ikke starte en ny runde. Markoeren gør at den ydre catch kaster videre i stedet.
-            const afvist = new Error(
-              'Skaermbillede afvist: agentens fane er ikke den synlige i vinduet, og ' +
-              'captureVisibleTab ville have fotograferet brugerens egen fane i stedet. ' +
-              'Ingen billeder af andre faner leveres.'
-            );
-            afvist.laekageVagt = true;
-            throw afvist;
-          }
-          // Fanen ER den synlige, saa captureVisibleTab fotograferer netop den. windowId
-          // laeses fra det FRISKE objekt: er fanen flyttet til et andet vindue, er det
-          // dér den er aktiv.
-          tab.windowId = stadig.windowId;
-          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
-          // MAALT 10/9 af Astra: tjekket ovenfor og optagelsen er to separate asynkrone kald.
-          // Skifter brugeren fane imellem, fotograferer captureVisibleTab brugerens side —
-          // reproduceret med en stub der skiftede fane ved optagelsen. Derfor tjekkes der igen
-          // EFTER: er vores fane ikke laengere den aktive, kasseres billedet.
-          const efter = await chrome.tabs.query({ active: true, windowId: tab.windowId }).catch(() => []);
-          if (!efter || !efter[0] || efter[0].id !== tab.id) {
-            const kasseret = new Error(
-              'Skaermbillede kasseret: fanen skiftede mens billedet blev taget, og billedet ' +
-              'kunne vaere af brugerens side. Proev igen.'
-            );
-            kasseret.laekageVagt = true;
-            throw kasseret;
-          }
-          return { image: dataUrl };
+        };
+        try {
+          const shot = await optag({ format: 'png' });
+          return { image: 'data:image/png;base64,' + shot.data };
+        } catch (foersteFejl) {
+          // Det andet forsoeg findes for en ANDEN fejl (fromSurface), ikke for en frist.
+          if (foersteFejl?.ingenNyRunde) throw foersteFejl;
+          const shot = await optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
+          return { image: 'data:image/png;base64,' + shot.data };
         }
       };
 
@@ -2773,9 +2743,9 @@ async function dispatch(port, method, params) {
       try {
         return await tryCapture();
       } catch (firstErr) {
-        // En afvisning fra laekage-vagten er et NEJ, ikke et "proev haardere". At haeve
-        // vinduet ville stjaele brugerens fane for at omgaa vores egen sikkerhedsvagt.
-        if (firstErr && firstErr.laekageVagt) throw firstErr;
+        // En frist er et svar: kompositoren svarede ikke. At haeve vinduet og optage igen
+        // fordobler kun ventetiden og tager brugerens fokus for ingenting.
+        if (firstErr?.ingenNyRunde) throw firstErr;
         // Both methods failed → the window is genuinely OCCLUDED (covered by other windows),
         // so Chrome's compositor produced no frames. LAST RESORT ONLY: raise the window to
         // de-occlude it, capture, then RESTORE the user's previously-focused window. This
@@ -3711,35 +3681,40 @@ async function dispatch(port, method, params) {
                 'ogsaa fra sider der intet har med opgaven at goere.',
         };
       }
-      // MAALT 10/9 af sikkerhedsreviewet og Astra: med domaene-kravet alene kunne en session
-      // stadig laese cookies for ETHVERT domaene i profilen — ogsaa brugerens netbank, som
-      // agenten aldrig har aabnet. Cookies hoerer til de sider agenten arbejder paa. Et domaene
-      // er tilladt naar det er, eller er under/over, vaertsnavnet paa en af sessionens faner.
+      // MAALT 10/9, to runder. Foerste udgave gaettede domaeneslaegtskab ud fra fanernes
+      // vaertsnavne ("a.example.com ligger under com"). Astra omgik det tre veje: en fane paa
+      // https://com/ aabnede hele .com, en file://bank.example/-fane gav bankens cookies uden at
+      // nogen side var aabnet, og et tomt vaertsnavn (about:blank) lod "bank.example." slippe
+      // igennem. Et domaene kan man ikke raesonnere sig til uden public suffix-listen. Saa nu
+      // spoerges Chrome i stedet: hvilke cookies ville du SENDE til de http(s)-sider sessionen har
+      // aabne? Kun dem - og kun dem der passer paa det domaene der blev bedt om.
       const session = getSession(port);
-      const vaertsnavne = [];
+      const sider = [];
       for (const id of session.tabIds) {
         const t = await chrome.tabs.get(id).catch(() => null);
-        try { if (t?.url) vaertsnavne.push(new URL(t.url).hostname.toLowerCase()); } catch {}
+        try {
+          const u = new URL(t?.url || '');
+          if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) sider.push(u);
+        } catch {}
       }
-      const d = params.domain.trim().replace(/^\./, '').toLowerCase();
-      const tilladt = vaertsnavne.some((h) => h === d || h.endsWith('.' + d) || d.endsWith('.' + h));
-      if (!tilladt) {
+      const vaertsnavne = sider.map((u) => u.hostname.toLowerCase());
+      const d = params.domain.trim().toLowerCase().replace(/^\.+/, '').replace(/\.+$/, '');
+      const slaegt = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
+      if (!d || !vaertsnavne.some((h) => slaegt(h, d))) {
         return {
           ok: false, error: 'domaene-ikke-i-sessionen', domain: d, aabne: vaertsnavne,
-          hint: 'Cookies kan kun laeses for sider denne session har aabne. Naviger til siden ' +
-                'foerst — saa kan agenten ikke laese cookies fra noget den ikke arbejder med.',
+          hint: 'Cookies kan kun laeses for http(s)-sider denne session har aabne. Naviger til ' +
+                'siden foerst - saa kan agenten ikke laese cookies fra noget den ikke arbejder med.',
         };
       }
-      // Portvagten ovenfor er ikke nok alene: a.example.com ligger under "com", saa en
-      // forespoergsel paa "com" slap igennem — og Chrome returnerer ALLE cookies under det
-      // domaene man spoerger paa, ogsaa brugerens bank. Derfor filtreres svaret: en cookie
-      // med kun, hvis dens domaene er en af sessionens sider, ligger over den eller under den.
-      const hoererTilSessionen = (c) => {
-        const cd = String(c.domain || '').replace(/^\./, '').toLowerCase();
-        return vaertsnavne.some((h) => cd === h || h.endsWith('.' + cd) || cd.endsWith('.' + h));
-      };
-      const cookies = (await chrome.cookies.getAll({ domain: params.domain })).filter(hoererTilSessionen);
-      return { cookies: cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };
+      const fundne = new Map();
+      for (const u of sider) {
+        for (const c of await chrome.cookies.getAll({ url: u.href })) {
+          const cd = String(c.domain || '').toLowerCase().replace(/^\./, '');
+          if (slaegt(cd, d)) fundne.set(`${c.domain}|${c.path}|${c.name}`, c);
+        }
+      }
+      return { cookies: [...fundne.values()].map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };
     }
 
     case 'get_local_storage': {
@@ -4050,7 +4025,7 @@ async function dispatch(port, method, params) {
         // Kun faner der er aabnet FRA en af sessionens egne faner. Uden det her overtog
         // agenten enhver fane brugeren selv havde aabnet — se kommentaren ved onCreated.
         const session = getSession(port);
-        const opener = tab.openerTabId ?? lastCreatedOpener;
+        const opener = tab.openerTabId ?? openerForFane.get(tab.id) ?? null;
         if (!opener || !session.tabIds.has(opener)) {
           return {
             error: 'not-ours',
