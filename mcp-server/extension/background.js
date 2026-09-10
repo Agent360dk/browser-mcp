@@ -3808,15 +3808,16 @@ async function dispatch(port, method, params) {
         try {
           const u = new URL(t?.url || '');
           if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) {
-            // Fanens vaertsnavn er altid ASCII (punycode); et afsluttende punktum er samme vaert.
-            sider.push({ u, vaert: u.hostname.toLowerCase().replace(/\.+$/, ''), storeId: lagerFor(id) });
+            // Fanens vaertsnavn er altid ASCII (punycode). Et afsluttende punktum er en ANDEN cookie-vaert i
+            // Chromium (Astra, fjerde runde: x.example. fik cookies fra x.example) - saa det bevares.
+            sider.push({ u, vaert: u.hostname.toLowerCase(), storeId: lagerFor(id) });
           }
         } catch {}
       }
       const vaertsnavne = sider.map((x) => x.vaert);
       // Argumentet normaliseres som fanens adresse - "bücher.example" ER xn--bcher-kva.example.
-      let d = params.domain.trim().toLowerCase().replace(/^\.+/, '').replace(/\.+$/, '');
-      try { if (d) d = new URL('http://' + d + '/').hostname.replace(/\.+$/, ''); } catch {}
+      let d = params.domain.trim().toLowerCase().replace(/^\.+/, '');
+      try { if (d) d = new URL('http://' + d + '/').hostname; } catch {}
       const slaegt = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
       if (!d || !vaertsnavne.some((h) => slaegt(h, d))) {
         return {

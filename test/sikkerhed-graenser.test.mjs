@@ -45,6 +45,8 @@ const KRUKKE = [
   { name: 'bog', value: '7', domain: 'xn--bcher-kva.example', path: '/' },
   { name: 'c', value: '8', domain: 'a.example.com', path: '/a|b' },
   { name: 'b|c', value: '9', domain: 'a.example.com', path: '/a' },
+  { name: 'sid-uden', value: '10', domain: 'x.example', path: '/' },
+  { name: 'sid-punktum', value: '11', domain: 'x.example.', path: '/' },
 ];
 const tilVaert = (h, cd) => h === cd || h.endsWith('.' + cd);
 function cookieSele(faneUrl, { lagre } = {}) {
@@ -59,7 +61,7 @@ function cookieSele(faneUrl, { lagre } = {}) {
       return KRUKKE.filter((c) => {
         const cd = c.domain.replace(/^\./, '');
         // {url} giver kun cookies hvis sti passer paa adressen - som i Chrome.
-        if (f.url) { const u = new URL(f.url); return tilVaert(u.hostname.replace(/\.$/, ''), cd) && decodeURIComponent(u.pathname).startsWith(c.path); }
+        if (f.url) { const u = new URL(f.url); return tilVaert(u.hostname, cd) && decodeURIComponent(u.pathname).startsWith(c.path); }
         if (f.domain !== undefined) { const fd = String(f.domain).replace(/^\./, ''); return cd === fd || cd.endsWith('.' + fd); }
         return true;
       });
@@ -141,10 +143,15 @@ test('et domaene med ikke-ASCII-tegn matcher fanens punycode', async () => {
   assert.ok(navne(svar).includes('bog'));
 });
 
-test('en fane-adresse med afsluttende punktum afviser ikke sit eget domaene', async () => {
-  const { u } = cookieSele('https://a.example.com./');
-  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'a.example.com' });
+test('en fane-adresse med afsluttende punktum faar sin EGEN vaerts cookies - ikke den uden punktum', async () => {
+  // Fjerde runde (Astra): Chromium behandler x.example og x.example. som to cookie-vaerter. Tredje rundes
+  // normalisering fjernede punktummet og gav fanen den ANDEN vaerts cookie. Stubben fjernede det ogsaa -
+  // og modellerede dermed Chromium forkert.
+  const { u } = cookieSele('https://x.example./');
+  const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'x.example.' });
   assert.equal(svar.error, undefined, `afvist: ${JSON.stringify(svar)}`);
+  assert.ok(navne(svar).includes('sid-punktum'), `fanens egen cookie manglede: ${navne(svar)}`);
+  assert.ok(!navne(svar).includes('sid-uden'), `en anden vaerts cookie slap med: ${navne(svar)}`);
 });
 
 test('to cookies med "|" i sti og navn slaas ikke sammen', async () => {
