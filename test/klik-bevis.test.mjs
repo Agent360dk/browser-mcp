@@ -1,0 +1,121 @@
+/**
+ * Et klik er landet naar noget viser det - ikke fordi intet viste det modsatte.
+ *
+ * MAALT 10/9 af Astra (anden runde). Fire veje i klik-stien sagde ja uden bevis eller klikkede to gange:
+ *   1. settle-opslaget fejlede -> null -> "undefined !== false" -> ok:true. Men den HYPPIGSTE grund til
+ *      at opslaget fejler er at klikket navigerede. Det er en virkning; agenten maa ikke klikke igen.
+ *   2. museknappen var sendt, CDP koblede fra, og reserveloesningen klikkede EN GANG TIL (to effekter).
+ *   3. React-fallbacken kaldte onClick direkte, OGSAA naar el.click() allerede havde udloest den.
+ *   4. aftrykket saa ikke en afkrydsning eller en feltvaerdi, saa et klik der VIRKEDE blev meldt som fejl.
+ *   5. intet element under punktet (fx uden for vinduet) blev meldt som "elementet forsvandt" = landet.
+ *
+ * Settle-udtrykket fanges fra en rigtig koersel og koeres mod en falsk side, saa det er udvidelsens
+ * egen tekst der proeves - ikke en kopi af den.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+
+const FANE = { id: 1, url: 'https://x.example', windowId: 1, active: true };
+function sele(sendCommand, executeScript) {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': FANE, 'tabs.query': [FANE],
+    'debugger.sendCommand': sendCommand,
+    'scripting.executeScript': executeScript ?? [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }],
+  } });
+  u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([1]), activeTabId: 1, groupId: 1, windowId: 1 });
+  return u;
+}
+const erSettle = (p) => String(p?.expression || '').includes('foerAftryk');
+
+test('et settle-opslag der fejler fordi siden NAVIGEREDE, er et landet klik', async () => {
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Runtime.evaluate' && erSettle(p)) throw new Error('Cannot find context with specified id');
+    return {};
+  });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
+  assert.equal(svar.ok, true, `et klik der navigerede blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.equal(svar.navigerede, true, 'kalderen skal kunne se hvorfor');
+});
+
+test('et settle-opslag der fejler af anden grund, er IKKE et landet klik', async () => {
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Runtime.evaluate' && erSettle(p)) throw new Error('Internal error');
+    return {};
+  });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
+  assert.equal(svar.ok, false, `intet bevis blev meldt som succes: ${JSON.stringify(svar)}`);
+  assert.equal(svar.uverificeret, true);
+});
+
+test('afkobling EFTER at museknappen var sendt: der klikkes ikke en gang til', async () => {
+  let scripting = 0;
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent' && p?.type === 'mouseReleased') throw new Error('Detached while handling command');
+    return {};
+  }, () => { scripting++; return [{ result: { found: true, ok: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }]; });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
+  assert.equal(scripting, 1, `reserveloesningen klikkede igen (${scripting - 1} ekstra): ${JSON.stringify(svar)}`);
+  assert.equal(svar.ok, false);
+  assert.equal(svar.maaske_landet, true, 'kalderen skal vide at klikket KAN vaere landet');
+});
+
+// ── Settle-udtrykket mod en falsk side ─────────────────────────────────────
+let SETTLE = null;
+async function settleUdtryk() {
+  if (SETTLE) return SETTLE;
+  const u = sele((_m, metode, p) => {
+    if (metode === 'Runtime.evaluate' && erSettle(p)) SETTLE = p.expression;
+    return metode === 'Runtime.evaluate' ? { result: { value: { landed: true } } } : {};
+  });
+  await u.hent('dispatch')(9876, 'click_xy', { x: 5, y: 5 });
+  assert.ok(SETTLE, 'settle-udtrykket blev aldrig sendt');
+  return SETTLE;
+}
+function side({ nativeVirker = true, effekt, react = false, maal = 'element' }) {
+  const t = { checked: 0, tekst: 10, react: 0, native: 0 };
+  class Ev { constructor(type, o) { this.type = type; Object.assign(this, o || {}); } }
+  const el = { isConnected: true, dispatchEvent: () => true, closest: () => null, getAttribute: () => null,
+    click() { t.native++; if (nativeVirker) effekt(t); } };
+  if (react) el['__reactFiber$x'] = { memoizedProps: { onClick: () => { t.react++; effekt(t); } }, return: null };
+  const document = {
+    body: { get innerText() { return 'x'.repeat(t.tekst); } },
+    querySelectorAll: (s) => s === '*' ? { length: 20 } : s.includes(':checked') ? { length: t.checked } : s.startsWith('input,textarea') ? [] : { length: 0 },
+    removeEventListener() {},
+  };
+  const window = { __bmcpClickTarget: maal === 'intet' ? null : el, __bmcpClicked: false, __bmcpClickListener: null };
+  const koer = (udtryk) => new Function('window', 'document', 'location', 'MouseEvent', 'PointerEvent', 'return ' + udtryk)(
+    window, document, { href: 'https://x.example/' }, Ev, Ev);
+  return { t, koer };
+}
+
+test('en afkrydsning der blev sat, er et landet klik', async () => {
+  const { t, koer } = side({ effekt: (s) => { s.checked++; } });
+  const r = koer(await settleUdtryk());
+  assert.equal(t.checked, 1);
+  assert.equal(r.landed, true, `aftrykket saa ikke afkrydsningen: ${r.aftrykFoer} -> ${r.aftrykEfter}`);
+});
+
+test('virkede el.click(), kaldes Reacts onClick IKKE en gang til', async () => {
+  const { t, koer } = side({ react: true, effekt: (s) => { s.tekst++; } });
+  const r = koer(await settleUdtryk());
+  assert.equal(t.react, 0, `onClick koerte ${t.react} gang(e) oveni et klik der allerede virkede`);
+  assert.equal(r.landed, true);
+});
+
+test('virkede el.click() IKKE, faar React-fallbacken sin chance', async () => {
+  // Positiv kontrol: ellers ville en fallback der aldrig fyrer bestaa testen ovenfor.
+  const { t, koer } = side({ react: true, nativeVirker: false, effekt: (s) => { s.tekst++; } });
+  const r = koer(await settleUdtryk());
+  assert.equal(t.react, 1);
+  assert.equal(r.landed, true);
+});
+
+test('intet element under punktet er ikke "elementet forsvandt"', async () => {
+  const { koer } = side({ maal: 'intet', effekt: () => {} });
+  const r = koer(await settleUdtryk());
+  assert.notEqual(r.detached, true, 'et klik ved siden af alt blev meldt som landet');
+  assert.equal(r.intetMaal, true);
+});

@@ -835,14 +835,28 @@ async function evaluerTaalmodigt(tabId, params, ms = 3000) {
   let faerdig = false;
   const kald = cdpSend(tabId, 'Runtime.evaluate', params)
     .then((r) => { faerdig = true; return r; })
-    .catch(() => { faerdig = true; });
+    .catch((e) => { faerdig = true; return { __fejl: String(e?.message || e) }; });
   await Promise.race([kald, new Promise((r) => setTimeout(r, ms))]);
   if (faerdig) return kald;
-  return { result: { value: { landed: true, fallbackFired: false, rendererSvarede: false } } };
+  return { result: { value: { landed: true, fallbackFired: false, rendererSvarede: false, observeret: false } } };
+}
+
+// MAALT 10/9 af Astra (anden runde): et settle-opslag der FEJLEDE gav null, og null blev til ok:true
+// ("undefined !== false"). Men den hyppigste grund til at opslaget fejler er at klikket NAVIGEREDE -
+// konteksten er vaek. Det er en virkning, og agenten maa ikke faa at vide at den skal klikke igen.
+// Derfor skelnes: navigation/afkobling taeller som landet; alt andet er uvist og siges som uvist.
+function tolkManglendeSettle(settle) {
+  const fejl = settle?.__fejl || 'settle-opslaget gav intet svar';
+  if (/context|navigat|destroyed|detached|closed|Cannot find/i.test(fejl)) {
+    return { landed: false, fallbackFired: false, detached: true, navigerede: true };
+  }
+  return { landed: null, fallbackFired: false, uverificeret: true, fejl };
 }
 
 async function debuggerClick(tabId, x, y) {
   await debuggerAttach(tabId);
+  // Er museknappen sendt ned, kan klikket vaere landet - saa maa en fejl bagefter ikke fore til et klik til.
+  let trykSendt = false;
   try {
     // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
     //    Web-components (Google Ads <button-panel>, Material Web) keep their real
@@ -886,6 +900,7 @@ async function debuggerClick(tabId, x, y) {
     //    0 on release) plus a small press→release gap are REQUIRED for Chrome to
     //    synthesize a *trusted* 'click' from the pair. Without them, web-components
     //    that gate on the trusted click event (Google Ads, Material Web) never fire.
+    trykSendt = true;
     await dispatchTaalmodigt(tabId, {
       type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
     });
@@ -922,10 +937,15 @@ async function debuggerClick(tabId, x, y) {
             return document.querySelectorAll('*').length + '|' +
                    (document.body ? document.body.innerText.length : 0) + '|' +
                    location.href + '|' +
-                   document.querySelectorAll('[aria-expanded="true"],[aria-selected="true"],[open],.open,.active').length;
+                   document.querySelectorAll('[aria-expanded="true"],[aria-selected="true"],[open],.open,.active').length + '|' +
+                   // Astra, anden runde: en afkrydsning eller en feltvaerdi aendrer hverken noder, tekst eller
+                   // adresse - saa et klik der VIRKEDE blev meldt som fejl, og et nyt klik ville fortryde det.
+                   document.querySelectorAll('input:checked,option:checked').length + '|' +
+                   Array.from(document.querySelectorAll('input,textarea,select')).reduce((n, e) => n + String(e.value || '').length, 0);
           } catch (e) { return 'aftryk-fejlede'; }
         };
         if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
+        if (el === null) { ryd(); return { landed: false, fallbackFired: false, intetMaal: true }; }   // intet element under punktet (fx uden for vinduet) - ingen virkning
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
         const foerAftryk = aftryk();
         const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
@@ -945,22 +965,28 @@ async function debuggerClick(tabId, x, y) {
         if (typeof el.click === 'function') el.click();
         else el.dispatchEvent(new MouseEvent('click', opts));
 
-        // React fiber fallback — find and call onClick handler directly
-        const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
-        if (fiberKey) {
-          let fiber = el[fiberKey];
-          for (let i = 0; i < 10 && fiber; i++) {
-            if (fiber.memoizedProps?.onClick) { fiber.memoizedProps.onClick(new MouseEvent('click', {bubbles:true})); break; }
-            fiber = fiber.return;
+        // MAALT 10/9 af Astra (anden runde): React-fiberens onClick blev kaldt UBETINGET efter el.click() -
+        // men el.click() udloeser allerede Reacts handler. To koersler, og en toggle endte hvor den startede.
+        // Framework-vejene er til elementer hvor det native klik INGEN virkning gav.
+        if (aftryk() === foerAftryk) {
+          // React fiber fallback — find and call onClick handler directly
+          const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
+          if (fiberKey) {
+            let fiber = el[fiberKey];
+            for (let i = 0; i < 10 && fiber; i++) {
+              if (fiber.memoizedProps?.onClick) { fiber.memoizedProps.onClick(new MouseEvent('click', {bubbles:true})); break; }
+              fiber = fiber.return;
+            }
+          }
+
+          // Angular Material fallback — ripple + internal handlers
+          const ngKey = Object.keys(el).find(k => k.startsWith('__ng'));
+          if (ngKey || el.getAttribute('ng-click') || el.getAttribute('(click)')) {
+            const matRipple = el.closest && el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
+            if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', opts));
           }
         }
 
-        // Angular Material fallback — ripple + internal handlers
-        const ngKey = Object.keys(el).find(k => k.startsWith('__ng'));
-        if (ngKey || el.getAttribute('ng-click') || el.getAttribute('(click)')) {
-          const matRipple = el.closest && el.closest('[mat-button], [mat-raised-button], [mat-icon-button], [mat-fab], mat-checkbox, mat-slide-toggle, mat-radio-button');
-          if (matRipple) matRipple.dispatchEvent(new MouseEvent('click', opts));
-        }
         // Lytteren kan IKKE bruges her. Den udloeses af enhver dispatch paa maalet, og
         // reserveloesningen dispatcher netop paa maalet — saa flaget ville vaere sandt fordi
         // VI sendte noget, ikke fordi siden reagerede. Reproduceret 9/9 mod et <div> uden
@@ -987,7 +1013,10 @@ async function debuggerClick(tabId, x, y) {
         dialogLoefter.delete(tabId);
       }
     }
-    return vaerdi;
+    return vaerdi ?? tolkManglendeSettle(settle);
+  } catch (e) {
+    if (trykSendt && e && typeof e === 'object') e.trykSendt = true;
+    throw e;
   } finally {
     await debuggerDetach(tabId);
   }
@@ -2921,7 +2950,7 @@ async function dispatch(port, method, params) {
           // `ok: true` stod hardkodet, og `landed` blev spredt ind bagefter. Klikket svarede
           // altsaa ja og nej i samme aandedrag, og en agent laeser `ok`.
           // Et element der forsvandt ER en virkning — derfor tæller `detached` som landet.
-          ok: clickResult?.landed !== false || clickResult?.detached === true,
+          ok: clickResult?.landed === true || clickResult?.detached === true,
           method: el.method || 'debugger',
           tag: el.tag,
           text: el.text,
@@ -2948,6 +2977,16 @@ async function dispatch(port, method, params) {
         //
         // Prisen ved fallbacken er at klikket mister isTrusted=true. Det tjekker de færreste
         // sider, og et klik der virker på 95% af nettet slår et klik der aldrig virker.
+        // MAALT 10/9 af Astra (anden runde), reproduceret: museknappen var sendt ned og op, CDP meldte
+        // derefter afkobling - og reserveloesningen klikkede EN GANG TIL. To effekter, ok:true. Er
+        // trykket sendt, kan klikket vaere landet; saa klikkes der ikke igen.
+        if (e?.trykSendt) {
+          return {
+            ok: false, error: e.message, maaske_landet: true, method: 'debugger',
+            note: 'Museklikket blev sendt, men debuggeren koblede fra bagefter. Klikket KAN vaere landet, ' +
+                  'saa det gentages ikke. Tjek siden foer du klikker igen.',
+          };
+        }
         if (/Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
           const r = await scriptingClick(tab.id, params.selector);
           if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag };
@@ -3386,7 +3425,7 @@ async function dispatch(port, method, params) {
       // `ok: true` stod hardkodet — samme fejl som `click` havde (issue #19). Samme regel her.
       const klik = await debuggerClick(tab.id, params.x, params.y);
       return {
-        ok: klik?.landed !== false || klik?.detached === true,
+        ok: klik?.landed === true || klik?.detached === true,
         clicked_at: { x: params.x, y: params.y },
         ...(klik || {}),
       };

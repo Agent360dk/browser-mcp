@@ -38,7 +38,7 @@ test('debuggerClick returnerer resultatet af settle-kaldet', () => {
   );
   assert.match(
     kilde,
-    /const vaerdi = settle\?\.result\?\.value \?\? null;[\s\S]{0,1200}\n    return vaerdi;/,
+    /const vaerdi = settle\?\.result\?\.value \?\? null;[\s\S]{0,1200}\n    return vaerdi \?\? tolkManglendeSettle\(settle\);/,
     'debuggerClick skal returnere den maalte vaerdi til kaldestedet',
   );
 });
