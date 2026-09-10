@@ -34,29 +34,37 @@ så de er ikke i den udvidelse eller den npm-pakke du har. Står her fordi det e
 lade dem stå under «Shipped» - hvilket de gjorde ved en fejl indtil 9/9.
 
 - **Skærmbilledet kunne fotografere din egen fane.** Fejlede CDP-optagelsen, faldt koden tilbage
-  på `captureVisibleTab`, som fotograferer den *synlige* fane - ikke agentens. Siden aktiveringen
-  bevidst blev fjernet i august, er agentens fane normalt netop ikke den synlige. Reproduceret:
-  agenten fik et billede af en anden åben side, uden at noget i svaret afslørede det. Afvises nu.
-- **`browser_scroll` med pixels ramte 30-sekunders-loftet hver gang, på hver side.** CDP's
-  hjulafsendelse indfrier aldrig sit løfte, og den `window.scrollBy` der er skrevet til netop det
-  tilfælde, lå i et `catch` - en hænger er ikke en exception, så den kunne aldrig nås.
-  Nu 1,5 sekund i stedet for 30, og siden ruller.
-- **`browser_click` fyrede to klik, og dropdowns åbnede og lukkede igen.** Reserveløsningen kaldte både `dispatchEvent('click')` og `el.click()`. Målt i en rigtig side: ét klik åbner menuen, to efterlader den uændret. Det var årsagen til [#19]'s dropdown. Nu fyres ét, og `ok` afgøres af om siden ændrede sig — en første rettelse læste klik-lytteren igen, men den udløses af vores egen dispatch og var derfor altid sand.
+  på `captureVisibleTab`, som fotograferer den *synlige* fane, ikke agentens. Et tjek før og efter
+  kunne ikke udelukke at du skiftede fane imellem, så reserveløsningen er fjernet helt: billedet
+  kommer fra agentens egen fane, eller kaldet fejler. En frist giver ét forsøg, ikke en ny runde.
+- **`browser_scroll` med pixels ramte 30-sekunders-loftet hver gang.** CDP's hjulafsendelse indfrier
+  aldrig sit løfte, og reserveløsningen lå i et `catch` den aldrig nåede. Nu 1,5 sekund, og
+  reserveløsningen ruller mod en målposition. Kan startpositionen ikke læses, ruller den ikke igen -
+  den siger det i stedet for at risikere at rulle dobbelt.
+- **`browser_click` sagde ja uden bevis og kunne klikke to gange.** Reserveløsningen fyrede både
+  `dispatchEvent('click')` og `el.click()`, så dropdowns åbnede og lukkede igen ([#19]). Nu ét klik,
+  og `ok` afgøres af om siden ændrede sig, også afkrydsninger og feltværdier. Navigerer siden, tæller
+  det som landet; en anden fejl svares som uvist. Fejler debuggeren efter at museknappen er sendt,
+  klikkes der ikke igen, og knappen slippes altid. `click`, `click_xy` og `select_option` bruger samme regel.
+- **`fill`, `set_date` og `execute_script` sagde ja til noget andet.** `fill` kunne efterlade `XX`
+  eller en afvist værdi og svare ok; nu er formatering kun samme tal eller samme cifre i et nummer.
+  `set_date` godkendte `20/12/2026` som 2. januar; nu læses datoen efter feltets format.
+  `execute_script` kunne køre din kode to gange og afventede ikke et Promise.
+- **Taster kunne sidde fast.** Timede et tastetryk ud efter at være landet, blev tasten aldrig
+  sluppet. Nu slippes den altid, også i udfyldning og kalendere.
+- **Agenten kunne nå ting der ikke var dens.** `get_new_tab` adopterede faner du selv åbnede.
+  `get_cookies` kunne læse cookies fra ethvert domæne, også via en fane på `https://com/`, en
+  `file:`-fane eller den forkerte profil i inkognito; nu kun det Chrome ville sende til sessionens egne
+  sider. `upload_file` sendte vilkårlige filstier videre; nu kun almindelige filer inde i arbejdsmappen,
+  ikke via symlinks, mapper eller hardlinks. Et skærmbillede med `path` skriver heller ikke gennem et link.
 - **Et muterende CDP-udtryk kunne køre fire gange.** `Runtime.evaluate` stod på retry-listen, men
-  flere af vores egne udtryk muterer - settle-udtrykket fyrer selve reserveløsnings-klikket. På en
-  SPA hvor debuggeren falder af, kunne det lande fire klik.
+  flere af vores egne udtryk muterer - settle-udtrykket fyrer selve klikket. Nu gentages det ikke.
 - **`set_combobox` brugte 8,5 sekunder på at sige nej** til en almindelig `<select>` den aldrig
   kunne betjene. Nu genkendes den straks, og svaret navngiver `browser_select_option`.
-
-- **Tre huller hvor agenten kunne nå noget der ikke var dens.** `get_new_tab` adopterede enhver ny
-  fane, også en brugeren selv havde åbnet. `get_cookies` uden domæne returnerede hele cookie-krukken.
-  `upload_file` sendte en vilkårlig filsti videre til en fremmed side. Alle tre reproduceret og lukket.
 - **Én frist på alle CDP-kald brækkede tre ting**, og er nu delt pr. kald: skærmbilledet kunne bruge
-  over 30 sekunder og hæve brugerens vindue, `execute_script` blev kappet fra 30 til 8 sekunder, og
-  en scroll-fallback kunne slå fejl og svare `ok: true` alligevel.
-- **Serverens egen instruks løj**: den lovede hver agent at skærmbilledet aktiverer fanen først. Det
-  gør det bevidst ikke. Og ni sider sagde 34, 41 eller 42 værktøjer — docs-gaten var grøn, fordi dens
-  mønster ikke kendte de formuleringer. Begge rettet, og gaten kender dem nu.
+  over 30 sekunder, og `execute_script` blev kappet fra 30 til 8 sekunder.
+- **Serverens egen instruks løj** om skærmbilleder, og ni sider sagde 34, 41 eller 42 værktøjer.
+  Begge rettet, og docs-gaten kender de formuleringer nu.
 
 ---
 

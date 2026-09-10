@@ -381,8 +381,8 @@ Browser MCP has two parts, and they update independently - how the **extension**
 - Wait 2-3 seconds for port scan
 
 **Screenshot fails**
-- Uses Chrome Debugger API (works even when tab isn't focused)
-- Falls back to `captureVisibleTab` if debugger unavailable
+- Uses the Chrome Debugger API for your session's own tab (works even when the tab isn't focused)
+- There is no fallback that captures whichever tab happens to be visible: if the debugger can't produce a frame, the call fails. Run `browser_reattach_debugger` and try again
 
 **Click doesn't work on SPA**
 - Try text selector: `browser_click("text=Submit")`
