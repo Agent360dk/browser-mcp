@@ -741,6 +741,30 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
 
+    // MAALT 10/9: skaermbilledets `path` fik en indeslutning 23/8, med begrundelsen
+    // "argumenterne kommer fra en model der laeser FREMMEDE websider". Praecis samme
+    // argument gaelder upload — og DER forlader filen faktisk maskinen. Stien gik raat
+    // videre til DOM.setFileInputFiles, saa upload_file({files:["~/.ssh/id_rsa"]}) paa en
+    // vilkaarlig side med et filfelt lagde noeglen i en upload. Vagten manglede netop hvor
+    // konsekvensen var stoerst.
+    if (method === 'upload_file' || method === 'drop_file') {
+      const raa = Array.isArray(args?.files) ? args.files
+                : [args?.files, args?.file, args?.file_path].filter(Boolean);
+      const rod = resolve(process.cwd());
+      for (const f of raa) {
+        const maal = resolve(rod, String(f).replace(/^~(?=\/|$)/, homedir()));
+        if (maal !== rod && !maal.startsWith(rod + sep)) {
+          return {
+            content: [{ type: 'text', text:
+              `Filen skal ligge inden for arbejdsmappen (${rod}). "${f}" peger udenfor.\n` +
+              `Uploads sender filen til en fremmed side, og stien kommer fra en model der ` +
+              `laeser de sider. Kopiér filen ind i arbejdsmappen foerst, hvis den skal med.` }],
+            isError: true,
+          };
+        }
+      }
+    }
+
     // extract_list scrolls a container in a loop (up to 300 rounds × wait_ms), so the 30 s
     // default would kill a long mail list mid-walk and report a partial set as complete.
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :

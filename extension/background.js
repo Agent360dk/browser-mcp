@@ -1575,10 +1575,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 const OAUTH_DOMAINS = ['accounts.google.com', 'login.microsoftonline.com', 'github.com/login/oauth', 'slack.com/oauth', 'app.hubspot.com/oauth'];
 
+// MAALT 10/9, reproduceret i selen: her stod kun `lastCreatedTabId = tab.id` — sat paa
+// HVER onCreated, ogsaa naar brugeren selv trykker Cmd+T eller aabner sin netbank.
+// `get_new_tab` adopterede den saa ind i agentens session, hvorefter skaermbillede,
+// sidetekst og localStorage af BRUGERENS fane var lovligt. Reproduktionen: bruger aabner
+// brugerens-netbank.example -> get_new_tab svarer med den -> fanen staar i tabIds.
+//
+// En ny fane hoerer til en session naar den er aabnet FRA en af dens faner (klik paa et
+// link med target=_blank, en OAuth-popup). Det staar i openerTabId. Er der ingen opener,
+// var det brugeren, og saa er den ikke vores.
 let lastCreatedTabId = null;
+let lastCreatedOpener = null;
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   lastCreatedTabId = tab.id;
+  lastCreatedOpener = tab.openerTabId ?? null;
 
   // Auto-claim OAuth popups for the session that opened them
   if (tab.pendingUrl || tab.url) {
@@ -3566,6 +3577,18 @@ async function dispatch(port, method, params) {
     }
 
     case 'get_cookies': {
+      // MAALT 10/9, reproduceret i selen: uden `domain` blev filteret {} — altsaa INTET
+      // filter, altsaa hver eneste cookie i profilen, inklusive httpOnly-sessionscookies
+      // som sidens eget JS ikke maa se. Skemaet siger required: ['domain'], men serveren
+      // videresender argumenter uvalideret, saa skemaet var en henstilling.
+      if (!params.domain || typeof params.domain !== 'string' || !params.domain.trim()) {
+        return {
+          ok: false,
+          error: 'domain-mangler',
+          hint: 'Angiv `domain`. Uden det ville kaldet returnere HVER cookie i profilen — ' +
+                'ogsaa fra sider der intet har med opgaven at goere.',
+        };
+      }
       const cookies = await chrome.cookies.getAll({ domain: params.domain });
       return { cookies: cookies.map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };
     }
@@ -3875,7 +3898,19 @@ async function dispatch(port, method, params) {
       if (!lastCreatedTabId) return { error: 'No new tab detected' };
       try {
         const tab = await chrome.tabs.get(lastCreatedTabId);
-        // Claim the new tab for this session
+        // Kun faner der er aabnet FRA en af sessionens egne faner. Uden det her overtog
+        // agenten enhver fane brugeren selv havde aabnet — se kommentaren ved onCreated.
+        const session = getSession(port);
+        const opener = tab.openerTabId ?? lastCreatedOpener;
+        if (!opener || !session.tabIds.has(opener)) {
+          return {
+            error: 'not-ours',
+            hint: 'Den seneste nye fane blev ikke aabnet fra en af dine egne faner, saa den ' +
+                  'tilhoerer brugeren. Brug browser_navigate(new_tab: true) hvis du selv skal ' +
+                  'have en ny fane.',
+            tab_id: tab.id,
+          };
+        }
         await addTabToSession(port, tab.id);
         return { id: tab.id, url: tab.url, title: tab.title };
       } catch {
