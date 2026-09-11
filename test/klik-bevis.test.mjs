@@ -31,6 +31,49 @@ function sele(sendCommand, executeScript, tabsGet) {
 }
 const erSettle = (p) => String(p?.expression || '').includes('foerAftryk');
 
+// ── En fane i baggrunden ───────────────────────────────────────────────────
+// MAALT 11/9 i Chrome for Testing med en raa CDP-proeve: Chrome leverer ikke Input.dispatchMouseEvent til en
+// fane i baggrunden. Kaldet haenger, og efter Target.activateTarget svarer det paa 9 ms. browser_click kastede
+// derfor "CDP svarede ikke inden 1500 ms" allerede ved musebevaegelsen, foer knappen var trykket. Samme i 1.29.0.
+// Script-klikket virker paa en baggrundsfane og kan bruges uden risiko for to klik, fordi intet tryk er sendt.
+function baggrundsSele(haengerVed) {
+  let scriptingKlik = 0;
+  const u = sele(
+    (_m, metode, p) => {
+      if (metode === 'Input.dispatchMouseEvent' && p?.type === haengerVed) return new Promise(() => {});   // som Chrome
+      if (metode === 'Runtime.evaluate') return { result: { value: { landed: true } } };
+      return {};
+    },
+    (o) => {
+      if (String(o.func).includes("reason: 'not_found'")) { scriptingKlik++; return [{ result: { ok: true, tag: 'BUTTON' } }]; }
+      return [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }];
+    },
+  );
+  return { u, scriptKlik: () => scriptingKlik };
+}
+
+test('en fane i baggrunden: udloeber musebevaegelsen FOER trykket, klikkes der via script - én gang', { timeout: 20000 }, async () => {
+  const { u, scriptKlik } = baggrundsSele('mouseMoved');
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.equal(svar.ok, true, `klikket fejlede paa en baggrundsfane: ${JSON.stringify(svar)}`);
+  assert.equal(svar.method, 'scripting-fallback');
+  assert.equal(scriptKlik(), 1);
+});
+
+test('udloeber selve trykket, klikkes der IKKE via script - det kan vaere landet', { timeout: 20000 }, async () => {
+  // Positiv kontrol mod en reserve der fyrer paa enhver frist.
+  const { u, scriptKlik } = baggrundsSele('mousePressed');
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.equal(scriptKlik(), 0, `script-klikket fyrede oveni et tryk der kan vaere landet: ${JSON.stringify(svar)}`);
+  assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
+});
+
+test('en frist paa input siger at fanen kan vaere i baggrunden, og hvad agenten skal goere', { timeout: 20000 }, async () => {
+  const { u } = baggrundsSele('mouseMoved');
+  const svar = await u.hent('dispatch')(9876, 'hover', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.match(JSON.stringify(svar), /baggrunden[^"]*switch_tab/, `fejlen giver ingen vej ud: ${JSON.stringify(svar)}`);
+});
+
 // ── select_option: det FAKTISKE svar, ikke kildeteksten ────────────────────
 // MAALT 11/9 af Astra (R5 T1): vagten i vagter.test.mjs laeser kildeteksten, og mutationen
 // `ok: klikLandede(valgKlik), ...{ok:true}` gav stadig 42/42 groenne. Her kaldes handleren, og klikket paa

@@ -643,6 +643,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - Element not found → try text-based selector instead of CSS
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
+- A click, hover or key press answers "CDP svarede ikke inden … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click)
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 

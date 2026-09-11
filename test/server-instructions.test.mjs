@@ -82,6 +82,15 @@ test('instruktionerne indeholder faktisk det agenten skal styres af', () => {
 // "The MCP server auto-pulls the latest code from git on every new session startup". Det
 // blev fjernet 22/8; serveren opdateres via npm (@latest) og kopierer selv nye udvidelsesfiler.
 // En agent der tror paa git-saetningen, forklarer brugeren noget der ikke sker.
+// MAALT 11/9 i Chrome for Testing: Chrome leverer ikke mus og taster til en fane i baggrunden, og vaerktoejet
+// svarer "CDP svarede ikke inden ... ms". En agent der ikke ved det, proever igen eller opgiver.
+test('instruktionerne siger hvad agenten goer naar input ikke naar en fane i baggrunden', () => {
+  const i = kilde.indexOf('const INSTRUCTIONS = `');
+  const blok = kilde.slice(i, kilde.indexOf('`;', i));
+  assert.match(blok, /CDP svarede ikke[^\n]*background[^\n]*browser_switch_tab/,
+    'INSTRUCTIONS skal forbinde fristfejlen med en baggrundsfane og browser_switch_tab');
+});
+
 test('instruktionerne lover ikke at serveren henter kode fra git', () => {
   const i = kilde.indexOf('const INSTRUCTIONS = `');
   const blok = kilde.slice(i, kilde.indexOf('`;', i));

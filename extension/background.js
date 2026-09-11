@@ -578,7 +578,12 @@ function cdpMedFrist(tabId, method, params) {
   return Promise.race([
     chrome.debugger.sendCommand({ tabId }, method, params),
     new Promise((_, afvis) => {
-      ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: ${method}`)), frist);
+      // MAALT 11/9 (raa CDP-proeve i Chrome for Testing): Chrome leverer ikke Input.* til en fane i baggrunden.
+      // Kaldet haenger, og efter aktivering svarer det paa millisekunder. Fejlen siger det, saa agenten ved hvad den goer.
+      const hint = String(method).startsWith('Input.')
+        ? ' (fanen er sandsynligvis i baggrunden - Chrome leverer ikke mus og taster til en fane der ikke er aktiv; kald browser_switch_tab og proev igen)'
+        : '';
+      ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: ${method}${hint}`)), frist);
     }),
   ]).finally(() => clearTimeout(ur));
 }
@@ -3090,9 +3095,17 @@ async function dispatch(port, method, params) {
                   'saa det gentages ikke. Tjek siden foer du klikker igen.',
           };
         }
-        if (/Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
+        // MAALT 11/9 i Chrome for Testing: en fane i baggrunden faar ikke Input.* - musebevaegelsen udloeber FOER
+        // trykket er sendt. Intet klik kan vaere landet (trykSendt er falsk, se ovenfor), saa script-klikket er sikkert.
+        const inputFristFoerTryk = /svarede ikke inden \d+ ms: Input\./.test(e?.message || '');
+        if (inputFristFoerTryk || /Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
           const r = await scriptingClick(tab.id, params.selector);
-          if (r.ok) return { ok: true, method: 'scripting-fallback', tag: r.tag };
+          if (r.ok) {
+            return {
+              ok: true, method: 'scripting-fallback', tag: r.tag,
+              ...(inputFristFoerTryk ? { note: 'Fanen var i baggrunden, saa musehaendelser naaede ikke frem. Klikket blev udfoert med et script i stedet.' } : {}),
+            };
+          }
         }
         throw e;
       }
