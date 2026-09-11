@@ -10,12 +10,20 @@
 // log-linje beviser heller ikke at serveren svarer; det goer kun svaret.
 
 import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const mappe = resolve(process.argv[2] || '.');
 const frist = Number(process.env.PAKKE_ROEGTEST_FRIST_MS || 20000);
 
-const barn = spawn(process.execPath, [join(mappe, 'bin/cli.js')], { cwd: mappe, stdio: ['pipe', 'pipe', 'pipe'] });
+// MAALT 11/9 af Fable (sign-off): bin/cli.js kopierer ved start sin udvidelse over ~/.browser-mcp/extension, hvis den er
+// nyere. Et tjek af en kandidat der endnu ikke er udgivet, skrev derfor i brugerens rigtige udvidelsesmappe.
+// Kandidaten koeres med et midlertidigt hjem.
+const hjem = mkdtempSync(join(tmpdir(), 'pakke-roegtest-hjem-'));
+const barn = spawn(process.execPath, [join(mappe, 'bin/cli.js')], {
+  cwd: mappe, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HOME: hjem, USERPROFILE: hjem },
+});
 let ud = '';
 let fejl = '';
 let faerdig = false;
@@ -25,6 +33,7 @@ function slut(kode, besked) {
   faerdig = true;
   clearTimeout(ur);
   try { barn.kill('SIGTERM'); } catch {}
+  setTimeout(() => { try { rmSync(hjem, { recursive: true, force: true }); } catch {} }, 300).unref();
   if (kode === 0) {
     process.stdout.write(`${besked}\n`);
   } else {

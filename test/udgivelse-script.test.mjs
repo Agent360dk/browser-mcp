@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -80,6 +80,30 @@ test('pakketjek: repoets egen server besvarer haandtrykket', () => {
   assert.match(r.stdout, /agent360-browser/);
 });
 
+// MAALT 11/9 af Fable (sign-off): pakketjekket starter bin/cli.js, og cli.js kopierer ved start sin udvidelse over
+// ~/.browser-mcp/extension hvis den er nyere. En "test" af en kandidat der endnu ikke er udgivet, skrev altsaa i
+// brugerens rigtige udvidelsesmappe.
+test('pakketjek: pakken koeres med et midlertidigt hjem, ikke brugerens', () => {
+  const d = pakke(`import { homedir } from 'node:os';
+process.stdin.setEncoding('utf8');
+let buf = '';
+process.stdin.on('data', (c) => {
+  buf += c;
+  const i = buf.indexOf('\\n');
+  if (i < 0) return;
+  const m = JSON.parse(buf.slice(0, i));
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'hjem=' + homedir(), version: '1' } } }) + '\\n');
+});
+`);
+  try {
+    const r = koer(d);
+    assert.equal(r.status, 0, r.stderr);
+    const hjem = (r.stdout.match(/hjem=(\S+)/) || [])[1];
+    assert.ok(hjem, `pakken fortalte ikke sit hjem: ${r.stdout}`);
+    assert.notEqual(hjem, homedir(), 'pakketjekket koerte kandidaten med brugerens rigtige hjem');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
 test('release-scriptet bruger pakketjekket og ikke log-linjen', () => {
   const s = script();
   assert.match(s, /node "\$REPO_ROOT\/scripts\/pakke-roegtest\.mjs" "\$SMOKE_DIR\/package"/,
@@ -110,6 +134,43 @@ test('versionstjek: samme version som npm genoptager en halv udgivelse', () => {
 test('versionstjek: en aeldre version stopper', () => {
   assert.notEqual(tjek('1.29.0', '1.29.1').status, 0);
   assert.notEqual(tjek('1.9.0', '1.10.0').status, 0);
+});
+
+// MAALT 11/9 af Fable (sign-off): samme version som npm + ny kode paa main (glemt versionsbump) blev kaldt "genoptag".
+// Med --skip-cws blev main pushet, og GitHub-udgivelsens zip blev erstattet (--clobber) med kode der hverken var tagget
+// eller paa npm. En halv udgivelse genoptages kun, hvis tagget for versionen peger paa netop den kode der udgives.
+function genoptagTjek(opsaet) {
+  const repo = mkdtempSync(join(tmpdir(), 'genoptag-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('commit', '-q', '--allow-empty', '-m', 'udgivet');
+  opsaet(git);
+  const s = script();
+  const start = s.indexOf('genoptag_tjek() {');
+  assert.ok(start > -1, 'genoptag_tjek() mangler i release-scriptet');
+  const funktion = s.slice(start, s.indexOf('\n}\n', start) + 3);
+  const r = spawnSync('bash', ['-c', `${funktion}\ncd "$2" && genoptag_tjek "$1"`, '_', '1.29.1', repo], { encoding: 'utf8' });
+  rmSync(repo, { recursive: true, force: true });
+  return r.status;
+}
+
+test('genoptag: tagget peger paa den kode der udgives -> genoptag tilladt', () => {
+  assert.equal(genoptagTjek((git) => git('tag', 'v1.29.1')), 0);
+});
+
+test('genoptag: ny kode efter tagget (glemt versionsbump) -> stop', () => {
+  assert.notEqual(genoptagTjek((git) => { git('tag', 'v1.29.1'); git('commit', '-q', '--allow-empty', '-m', 'ny kode'); }), 0);
+});
+
+test('genoptag: intet tag for versionen -> stop', () => {
+  assert.notEqual(genoptagTjek(() => {}), 0);
+});
+
+test('release-scriptet koerer genoptag-tjekket naar versionen allerede er paa npm', () => {
+  const s = script();
+  const i = s.indexOf('if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then');
+  assert.ok(i > -1);
+  assert.match(s.slice(i, i + 400), /genoptag_tjek "\$NEW_VERSION" \|\| die/, 'genoptag-grenen tjekker ikke tagget');
 });
 
 test('release-scriptet stopper paa versionstjekket og ikke paa den gamle lighed', () => {

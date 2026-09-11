@@ -123,9 +123,18 @@ versions_tjek() {
   [[ "$(printf '%s\n%s\n' "$npm" "$ny" | sort -V | tail -1)" == "$ny" ]] || return 1
   echo ny
 }
+# MAALT 11/9 af Fable (sign-off): samme version som npm + ny kode paa main (glemt versionsbump) blev kaldt
+# "genoptag". Med --skip-cws blev main pushet, og GitHub-udgivelsens zip erstattet (--clobber) med kode der
+# hverken var tagget eller paa npm. En halv udgivelse genoptages kun, hvis tagget peger paa netop HEAD.
+genoptag_tjek() {
+  local ny="$1" tag_commit
+  tag_commit="$(git rev-parse -q --verify "v${ny}^{commit}" 2>/dev/null)" || return 1
+  [[ "$tag_commit" == "$(git rev-parse HEAD)" ]]
+}
 VERSIONS_TILSTAND="$(versions_tjek "$NEW_VERSION" "$NPM_LATEST")" \
   || die "new version $NEW_VERSION must be greater than or equal to npm-latest ($NPM_LATEST)"
 if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then
+  genoptag_tjek "$NEW_VERSION" || die "v$NEW_VERSION er allerede paa npm, men tagget v$NEW_VERSION findes ikke eller peger ikke paa HEAD: der er ny kode siden udgivelsen. Bump versionen i stedet for at genoptage"
   warn "v$NEW_VERSION er allerede paa npm: genoptager en halv udgivelse. npm springes over; brug --skip-cws hvis butikken allerede har versionen (den afviser samme version igen)"
 else
   ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
