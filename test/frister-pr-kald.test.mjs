@@ -83,8 +83,11 @@ test('scroll lyver ikke naar ogsaa reserveloesningen fejler', () => {
   assert.match(blok, /if \(!landede \|\| landede\.fejl\)/, 'fallbackens fejl skal laeses');
   assert.match(blok, /ok: false, method: 'fallback', error: 'scroll-mislykkedes'/,
     'fejler begge veje, skal svaret sige det');
-  assert.match(blok, /ok: flyttede \|\| alleredeFremme/,
-    'ok skal komme af om siden FLYTTEDE sig, ikke af at vi kaldte noget');
+  // 11/9 (Astra, tredje runde paa samme sted): "ok kommer af om siden flyttede sig" gav falsk fiasko paa en blød rulning der
+  // stadig var i gang (1.29.0: ok:true). En sendt rulning meldes ikke som fiasko - den markeres uvist med den maalte position.
+  assert.doesNotMatch(blok, /ok: flyttede \|\| alleredeFremme/, 'en sendt rulning maa ikke meldes som fiasko');
+  assert.match(blok, /uvist: true/, 'en bevaegelse der ikke blev set, skal markeres uvist');
+  assert.match(blok, /position: landede\.efter/, 'den maalte position skal med, saa kalderen selv kan doemme');
 });
 
 test('scroll opdigter ikke et nulpunkt naar startpositionen ikke kan laeses', () => {

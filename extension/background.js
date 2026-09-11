@@ -3623,11 +3623,18 @@ async function dispatch(port, method, params) {
         const flyttede = landede.efter.x !== landede.foer.x || landede.efter.y !== landede.foer.y;
         const alleredeFremme = !flyttede && startKendt &&
           landede.efter.x === startX + dx && landede.efter.y === startY + dy;
+        // Astra (efterproevning af cf5b98a): en animation der gik frem, tilbage og foerst naaede maalet efter 1,6 s, fik
+        // svaret ok:false "siden flyttede sig ikke" (1.29.0: ok:true). En rulning der ER sendt, meldes aldrig som fiasko.
+        // Kan bevaegelsen ikke ses inden for ventetiden, er svaret uvist - samme aerlighed som maaske_landet paa klik.
         return {
-          ok: flyttede || alleredeFremme,
+          ok: true,
           method: 'fallback', fallback_reason: e.message,
           position: landede.efter, foer: landede.foer,
-          ...(flyttede || alleredeFremme ? {} : { note: 'siden flyttede sig ikke — bunden er maaske naaet' }),
+          ...(flyttede || alleredeFremme ? {} : {
+            uvist: true,
+            note: 'Rulningen blev sendt, men positionen var uaendret da vi svarede: enten er en blød rulning stadig i gang, ' +
+                  'eller bunden er naaet. Laes window.scrollY med browser_execute_script hvis den praecise position betyder noget.',
+          }),
         };
       }
       return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };

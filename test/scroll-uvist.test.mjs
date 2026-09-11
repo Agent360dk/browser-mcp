@@ -100,6 +100,33 @@ test('genlaesningen efter scrollTo er bundet af tid, ikke af et antal forsoeg', 
   assert.equal(svar.ok, true, JSON.stringify(svar));
 });
 
+// MAALT 11/9 af Astra (efterproevning af cf5b98a): animationen gik 0 -> 120 -> tilbage til 0 og naaede foerst 600 efter 1,6 s,
+// mens hvert opslag tog 1,1 s. Genlaesningen stoppede mens siden stod paa 0, og svaret blev ok:false "siden flyttede sig ikke".
+// 1.29.0: ok:true. En rulning der ER sendt, maa aldrig meldes som fiasko: kan bevaegelsen ikke ses, er svaret uvist.
+test('kan bevaegelsen ikke ses inden for ventetiden, er svaret uvist - ikke en fiasko', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: true },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: true }],
+    'debugger.sendCommand': async (_m, metode, p) => {
+      if (metode === 'Input.dispatchMouseEvent') throw new Error('CDP svarede ikke inden 1500 ms: Input.dispatchMouseEvent');
+      if (metode === 'Runtime.evaluate') {
+        await new Promise((r) => setTimeout(r, 110));
+        const ex = String(p?.expression || '');
+        if (/scrollTo/.test(ex)) return { result: { value: { foer: { x: 0, y: 0 }, efter: { x: 0, y: 0 } } } };
+        return { result: { value: { x: 0, y: 0 } } };   // animationen er endnu ikke naaet ud af startpositionen
+      }
+      return {};
+    },
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  const svar = await u.hent('dispatch')(9876, 'scroll', { y: 600 });
+  assert.notEqual(svar.ok, false, `en rulning der blev sendt, blev meldt som fiasko: ${JSON.stringify(svar)}`);
+  assert.equal(svar.uvist, true, 'kalderen skal kunne se at bevaegelsen ikke blev set');
+  assert.deepEqual(svar.position, { x: 0, y: 0 }, 'den maalte position skal med, saa kalderen selv kan doemme');
+});
+
 test('kendt start: reserveloesningen ruller mod MAAL-positionen', async () => {
   // Positiv kontrol: ellers ville en scroll der aldrig falder tilbage bestaa testen ovenfor.
   const { u, rulninger } = sele({ startKendt: true });
