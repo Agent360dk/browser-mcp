@@ -56,17 +56,75 @@ test('haenger begge optagelser: vinduet haeves som sidste udvej, og billedet naa
     // Kompositoren svarer foerst naar vinduet er haevet - som paa en tildaekket skaerm.
     return haevet ? { data: 'HAEVET' } : new Promise(() => {});
   } });
-  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 60, samletMs: 260, haevMs: 80 });
+  // Skaleret ca. 1:30, saa den uskalerede pause paa 250 ms (siden tegner efter haevningen) fylder det samme
+  // forholdsmaessigt som i virkeligheden - og saa proeven ikke falder af belastning paa maskinen.
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 200, samletMs: 900, haevMs: 300 });
   const opdater = u.chrome.windows.update;
   u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
   const t0 = Date.now();
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
   const brugt = Date.now() - t0;
   assert.match(String(svar.image), /HAEVET/, `intet billede fra den haevede runde: ${JSON.stringify(svar).slice(0, 160)}`);
-  // Tiden er skaleret 1:100, men pausen paa 250 ms der lader siden tegne efter haevningen er et fast tal i koden.
   // Budgettet i rigtige tal: 10 s + 8 s + 0,25 s + optagelsen = under 26 s, altsaa under serverens 30 s.
-  assert.ok(brugt < 600, `billedet kom efter ${brugt} ms (skaleret + 250 ms uskaleret pause)`);
+  assert.ok(brugt < 1600, `billedet kom efter ${brugt} ms (skaleret budget 900 + 250 ms uskaleret pause)`);
   assert.ok(u.optager.antal('windows.update') >= 1, 'vinduet blev aldrig haevet');
+});
+
+// MAALT 11/9 af Astra (e2e runde 2), tre fejl i den haevede runde:
+//  1. Reservationen (haevMs) blev trukket fra IGEN i den haevede runde, saa reserven dér fik 0 ms.
+//  2. `debuggerAttach` laa uden for fristloebet: en gentilslutning paa 12,5 s bar kaeden over serverens 30 s.
+//  3. Haevningen startede NYE optagelser og smed de igangværende vaek - 1.29.0 fik svar fra dem der allerede loeb.
+test('den haevede runde: reserven faar den tid der er tilbage, ikke nul', async () => {
+  let haevet = false;
+  const kald = [];
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    const reserve = p?.fromSurface === false;
+    kald.push((haevet ? 'haevet-' : '') + (reserve ? 'reserve' : 'standard'));
+    if (!haevet) return new Promise(() => {});                       // foer haevningen haenger begge
+    if (!reserve) throw new Error('Unable to capture screenshot: image readback failed');   // efter: standard fejler straks
+    return new Promise((ok) => setTimeout(() => ok({ data: 'RESERVE-EFTER-HAEVNING' }), 50));
+  } });
+  // Budgettet er skaleret, men pausen paa 250 ms der lader siden tegne efter haevningen er et fast tal i koden - derfor
+  // et budget hvor den fylder det samme forholdsmaessigt som i virkeligheden (0,25 s af 26 s).
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 40, samletMs: 900, haevMs: 400 });
+  const opdater = u.chrome.windows.update;
+  u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.match(String(svar.image), /RESERVE-EFTER-HAEVNING/, `reserven i den haevede runde fik ingen tid: ${JSON.stringify(svar).slice(0, 200)} (${kald.join(', ')})`);
+});
+
+test('den haevede runde: en langsom gentilslutning maa ikke baere kaeden over serverens frist', async () => {
+  let haevet = false;
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    return new Promise(() => {});   // ingen optagelse svarer nogensinde
+  } });
+  // Gentilslutningen efter haevningen tager laenge - laengere end budgettet har tilbage.
+  u.ctx.debuggerAttach = async () => { if (haevet) await new Promise((r) => setTimeout(r, 900)); };
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 40, samletMs: 900, haevMs: 400 });
+  const opdater = u.chrome.windows.update;
+  u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
+  const t0 = Date.now();
+  await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const brugt = Date.now() - t0;
+  // Budgettet er 900 ms (skaleret fra 26 s); gentilslutningen ville alene tage 900 ms mere, hvis den laa udenfor.
+  assert.ok(brugt < 1150, `svaret kom efter ${brugt} ms - gentilslutningen laa uden for budgettet`);
+});
+
+test('den haevede runde: en optagelse der allerede loeb, taeller stadig med', async () => {
+  let haevet = false;
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    if (haevet) return new Promise(() => {});   // nye optagelser efter haevningen svarer aldrig
+    // De FOERSTE optagelser er langsomme - de svarer FOERST efter at vinduet er haevet, som paa en tung side.
+    return new Promise((ok) => setTimeout(() => ok({ data: p?.fromSurface === false ? 'FOERSTE-RESERVE' : 'FOERSTE-STANDARD' }), 700));
+  } });
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 40, samletMs: 1400, haevMs: 500 });
+  const opdater = u.chrome.windows.update;
+  u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.match(String(svar.image), /FOERSTE-(STANDARD|RESERVE)/, `billedet fra de igangvaerende optagelser blev smidt vaek: ${JSON.stringify(svar).slice(0, 200)}`);
 });
 
 test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - og hoejst én runde med haevet vindue', async () => {

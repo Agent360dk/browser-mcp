@@ -2880,11 +2880,16 @@ async function dispatch(port, method, params) {
       // cdpSend gentager et kald efter en afkobling - det var den gentagelse der bar kaeden over 30 s.
       const { foersteMs, samletMs, haevMs = 0 } = skaermbilledeFrister();
       const budgetSlut = Date.now() + samletMs;
-      const tryCapture = async () => {
-        await debuggerAttach(tab.id);
+      // MAALT 11/9 af Astra (e2e runde 2), tre fejl i den haevede runde: reservationen blev trukket fra IGEN (reserven fik
+      // 0 ms), `debuggerAttach` laa uden for fristloebet (en gentilslutning paa 12,5 s bar kaeden over 30 s), og haevningen
+      // startede nye optagelser og smed de igangvaerende vaek - 1.29.0 fik netop svar fra dem der allerede loeb.
+      const igangvaerende = [];   // alle optagelser der stadig kan svare, paa tvaers af runder
+      const tryCapture = async ({ sidsteUdvej = false } = {}) => {
+        const reserveret = sidsteUdvej ? 0 : haevMs;   // kun foerste runde holder tid fri til haevningen
         const optag = (p) => {
           const kald = cdpSend(tab.id, 'Page.captureScreenshot', p);
           kald.catch(() => {});   // et svar efter budgettet er ligegyldigt
+          igangvaerende.push(kald);
           return kald;
         };
         const medFrist = async (loefte, ms) => {
@@ -2904,9 +2909,11 @@ async function dispatch(port, method, params) {
             clearTimeout(ur);
           }
         };
+        // Tilslutningen skal ogsaa ligge inde i budgettet: en gentilslutning kan tage lang tid paa et haevet vindue.
+        await medFrist(debuggerAttach(tab.id), budgetSlut - reserveret - Date.now());
         const standard = optag({ format: 'png' });
         try {
-          const shot = await medFrist(standard, Math.min(foersteMs, budgetSlut - Date.now()));
+          const shot = await medFrist(standard, Math.min(foersteMs, budgetSlut - reserveret - Date.now()));
           return { image: 'data:image/png;base64,' + shot.data };
         } catch (foersteFejl) {
           // fromSurface:false proeves ogsaa efter en frist: i 1.29.0 var det netop fristen der naaede hertil, og den
@@ -2914,12 +2921,14 @@ async function dispatch(port, method, params) {
           // MAALT 11/9 af Astra (efterproevning af f084d1b): standardoptagelsen lykkedes efter 11 s, reserven fejlede, og
           // fristen paa 10 s havde kasseret standardbilledet. Standardoptagelsen loeber derfor videre efter sin frist, og
           // den af de to der lykkes foerst inden for budgettet, vinder.
-          const reserve = optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
-          const kandidater = foersteFejl?.ingenNyRunde ? [standard, reserve] : [reserve];
+          optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
+          // Alle optagelser der stadig kan svare, taeller med - ogsaa dem fra en tidligere runde. Promise.any ser bort fra
+          // dem der allerede er fejlet, saa den foerste der lykkes inden for budgettet vinder.
+          const kandidater = igangvaerende.slice();
           try {
             // Den haevede runde er sidste udvej paa en tildaekket skaerm og skal have tid tilbage (haevMs) - ellers naar
             // 1.29.0's eneste virkende vej aldrig frem (Fable, e2e 11/9).
-            const shot = await medFrist(Promise.any(kandidater), budgetSlut - haevMs - Date.now());
+            const shot = await medFrist(Promise.any(kandidater), budgetSlut - reserveret - Date.now());
             return { image: 'data:image/png;base64,' + shot.data };
           } catch (andenFejl) {
             const fejl = andenFejl instanceof AggregateError ? andenFejl.errors[andenFejl.errors.length - 1] : andenFejl;
@@ -2949,7 +2958,7 @@ async function dispatch(port, method, params) {
           await chrome.windows.update(tab.windowId, { focused: true, state: 'normal' });
           await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
           await new Promise(r => setTimeout(r, 250)); // let it composite
-          return await tryCapture();
+          return await tryCapture({ sidsteUdvej: true });   // resten af budgettet - der er ikke en runde mere efter denne
         } catch (secondErr) {
           throw new Error(
             `Screenshot failed after focus-neutral AND raised attempts. ` +

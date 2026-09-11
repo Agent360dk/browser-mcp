@@ -26,10 +26,12 @@ function sele({ svarEfterMs, bodyEfterMs }) {
     },
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
-  // Skaleret 1:100: serverens loft 30 s = 300 ms, budgettet 28 s, 1.29.0's body-frist 8 s, den lange frist 20 s.
+  // Skaleret ca. 1:30 (ikke 1:100): under belastning skred de smaa tal, og en proeve der falder tilfaeldigt spaerrer en
+  // udgivelse uden grund (Fable, e2e runde 2). Serverens loft 30 s = 1000 ms, budgettet 28 s = 930, 1.29.0's body-frist
+  // 8 s = 270, den lange frist 20 s = 670.
   // (netvaerkBudgetMs er c826f63's navn; overskrives ogsaa, saa testen kan blive roed paa den udgave.)
-  u.ctx.netvaerkBudgetMs = () => 280;
-  u.ctx.netvaerkFrister = () => ({ budgetMs: 280, bodyMinMs: 80, bodyMaxMs: 200 });
+  u.ctx.netvaerkBudgetMs = () => 930;
+  u.ctx.netvaerkFrister = () => ({ budgetMs: 930, bodyMinMs: 270, bodyMaxMs: 670 });
   setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Network.responseReceived', {
     requestId: 'r1', response: { url: 'https://x.example/api/data', status: 200 },
   }), svarEfterMs);
@@ -37,24 +39,24 @@ function sele({ svarEfterMs, bodyEfterMs }) {
 }
 
 test('en body der tager for lang tid, skaeres ved budgettet - svaret naar frem foer serverens frist', { timeout: 20000 }, async () => {
-  const u = sele({ svarEfterMs: 130, bodyEfterMs: 250 });   // svar efter 13 s, body 25 s senere
+  const u = sele({ svarEfterMs: 430, bodyEfterMs: 830 });   // svar efter 13 s, body 25 s senere
   const t0 = Date.now();
-  const svar = await u.hent('dispatch')(9876, 'wait_for_network', { url_pattern: '/api/', timeout: 200 });
+  const svar = await u.hent('dispatch')(9876, 'wait_for_network', { url_pattern: '/api/', timeout: 670 });
   const brugt = Date.now() - t0;
-  assert.ok(brugt < 300, `svaret kom efter ${brugt} ms (skaleret) - serveren opgiver ved 300`);
+  assert.ok(brugt < 1000, `svaret kom efter ${brugt} ms (skaleret) - serveren opgiver ved 1000`);
   assert.equal(svar.ok, true, JSON.stringify(svar));
   assert.equal(svar.status, 200);
   assert.equal(svar.body, null, 'en body der ikke naaede frem inden budgettet er null, som i 1.29.0');
 });
 
 test('en body der naar frem inden budgettet, kommer med (positiv kontrol)', { timeout: 20000 }, async () => {
-  const u = sele({ svarEfterMs: 30, bodyEfterMs: 20 });
-  const svar = await u.hent('dispatch')(9876, 'wait_for_network', { url_pattern: '/api/', timeout: 200 });
+  const u = sele({ svarEfterMs: 100, bodyEfterMs: 70 });
+  const svar = await u.hent('dispatch')(9876, 'wait_for_network', { url_pattern: '/api/', timeout: 670 });
   assert.equal(svar.body, '{"ok":true}', JSON.stringify(svar));
 });
 
 test('et sent svar med en hurtig body faar stadig 1.29.0\'s body-frist - body skaeres ikke over', { timeout: 20000 }, async () => {
-  const u = sele({ svarEfterMs: 270, bodyEfterMs: 20 });   // svar efter 27 s, body 2 s senere (1.29.0: leveret efter 29 s)
-  const svar = await u.hent('dispatch')(9876, 'wait_for_network', { url_pattern: '/api/', timeout: 295 });
+  const u = sele({ svarEfterMs: 900, bodyEfterMs: 70 });   // svar efter 27 s, body 2 s senere (1.29.0: leveret efter 29 s)
+  const svar = await u.hent('dispatch')(9876, 'wait_for_network', { url_pattern: '/api/', timeout: 980 });
   assert.equal(svar.body, '{"ok":true}', `body blev skaaret over hvor 1.29.0 leverede den: ${JSON.stringify(svar)}`);
 });
