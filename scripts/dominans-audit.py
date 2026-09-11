@@ -15,6 +15,9 @@ Baseline captured 2026-07-21:
 """
 import json, os, re, sys, time, urllib.request, urllib.error
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from katalog_tal import katalog_fejl
+
 # MAALT 7/9-2026: med en egen User-Agent svarer Cloudflare 403 paa mcpservers.org og
 # mcp.so. Tjekket rapporterede derfor "⚠ transient" ved HVER koersel siden det blev
 # skrevet — det kunne hverken bekraefte eller afkraefte noget. En vagt der aldrig kan
@@ -70,6 +73,10 @@ if reg and reg.get("servers"):
 
 tjs, _ = fetch("https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/mcp-server/tools.js")
 tools = len(re.findall(r"""name: ['\"]browser_""", tjs)) if tjs else "?"
+# Sessionstallet laeses paa samme maade fra kilden: portintervallet i index.js (9876-9895 = 20 sessioner).
+idx, _ = fetch("https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/mcp-server/index.js")
+_porte = re.search(r"BASE_PORT\)\s*\|\|\s*(\d+).*?MAX_PORT\)\s*\|\|\s*(\d+)", idx or "", re.S)
+sessioner = int(_porte.group(2)) - int(_porte.group(1)) + 1 if _porte else None
 
 if npm_latest != "?" and reg_ver not in ("?", npm_latest):
     red.append("DRIFT: MCP-registry viser %s, npm er %s (registry hang 3 mdr sidst — republish)" % (reg_ver, npm_latest))
@@ -90,11 +97,12 @@ else:
 def listed(url, needles=("agent360", "browser-mcp")):
     body, code = fetch(url)
     if not body:
-        return None, "HTTP %s" % code  # couldn't fetch after retries — UNKNOWN, not a delisting
+        return None, "HTTP %s" % code, None  # couldn't fetch after retries — UNKNOWN, not a delisting
     low = body.lower()
     ok = any(n in low for n in needles) and "404:" not in body and "not found or removed" not in low
-    return ok, "HTTP %s" % code
+    return ok, "HTTP %s" % code, body
 
+sider = {}
 for name, url, was_live in [
     # PulseMCP tilfoejet 7/9: den eneste kanal hvor vi kan se et faktisk trafiktal.
     ("PulseMCP",       "https://www.pulsemcp.com/servers/agent360dk-browser",    True),
@@ -102,7 +110,7 @@ for name, url, was_live in [
     ("Glama",          "https://glama.ai/mcp/servers/Agent360dk/browser-mcp",    False),
     ("Smithery",       "https://smithery.ai/server/@Agent360dk/browser-mcp",     False),
 ]:
-    is_listed, detail = listed(url)
+    is_listed, detail, sider[name] = listed(url)
     if is_listed is None:
         # transient fetch failure — report but do NOT escalate to a 🔴 regression
         rows.append((name, "⚠", detail + " — kunne ikke tjekke (transient)"))
@@ -152,6 +160,30 @@ if pk and "Agent360dk" in pk:
     rows.append(("punkpeye awesome (91k★)", "🟢", "merget"))
 else:
     rows.append(("punkpeye awesome (91k★)", "·", "PR #10565 ikke merget endnu"))
+
+# ---- DEL 2c — HVAD KATALOGERNE SIGER OM OS ----
+# MAALT 11/9-2026: mcp.so viste "34 tools" og "MIT, local-only", og punkpeye viste "34 tools, up to 10 concurrent
+# sessions" - i to maaneder, fordi tjekket ovenfor kun ser om navnet staar der. Kun tekst der med sikkerhed er vores
+# laeses: meta-beskrivelsen (resten af en katalogside kan omtale andre servere) og vores egen linje hos punkpeye.
+# Fund er ⚠, ikke 🔴: teksten ligger hos andre og kan ikke rettes med et push.
+def _meta(html):
+    fundne = re.findall(r'<meta[^>]+(?:name|property)="(?:description|og:description)"[^>]+content="([^"]*)"', html or "")
+    return " ".join(dict.fromkeys(fundne))
+
+_facit_tools = tools if tools != "?" else None
+_mcpso, _ = fetch("https://mcp.so/servers/browser-mcp-agent360dk")
+_pk_linje = "\n".join(l for l in (pk or "").splitlines() if "Agent360dk" in l)
+for navn, tekst, fund in [
+    ("mcp.so-beskrivelsen", _meta(_mcpso), katalog_fejl(_meta(_mcpso), _facit_tools, sessioner)),
+    ("punkpeye-linjen", _pk_linje, katalog_fejl(_pk_linje, _facit_tools, sessioner)),
+    ("PulseMCP-beskrivelsen", _meta(sider.get("PulseMCP")), katalog_fejl(_meta(sider.get("PulseMCP")), _facit_tools, sessioner)),
+]:
+    if not tekst:
+        rows.append((navn, "⚠", "ingen tekst at tjekke (siden kunne ikke laeses)"))
+    elif fund:
+        rows.append((navn, "⚠", "forkert om os: " + "; ".join(fund)))
+    else:
+        rows.append((navn, "✓", "ingen forkerte tal eller løfter"))
 
 # ---- DEL 1b — TOOL-TALLET DRIFTER TRE STEDER, IKKE ÉT ----
 # MAALT 9/9-2026: butikken sagde 29, MCP-registret sagde 34, og GitHub-repoets egen
