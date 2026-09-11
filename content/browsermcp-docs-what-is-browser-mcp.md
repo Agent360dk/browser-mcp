@@ -1,6 +1,6 @@
 # What Is Browser MCP?
 
-**Browser MCP is an MCP (Model Context Protocol) server that hands any MCP-connected AI agent - Claude Code, Cursor, or any other MCP client - the wheel of your real, already-logged-in Chrome browser, instead of spinning up a fresh, unauthenticated headless browser.** It runs as a Chrome extension paired with a local MCP server (package: `@agent360/browser-mcp`), exposes 40 tools over the protocol, and never sends your browsing data anywhere - everything stays on your machine.
+**Browser MCP is an MCP (Model Context Protocol) server that hands any MCP-connected AI agent - Claude Code, Cursor, or any other MCP client - the wheel of your real, already-logged-in Chrome browser, instead of spinning up a fresh, unauthenticated headless browser.** It runs as a Chrome extension paired with a local MCP server (package: `@agent360/browser-mcp`), exposes 40 tools over the protocol, and sends nothing to Agent360 - what your agent reads goes only to your own AI client, like anything else you show it.
 
 That one distinction - *your* browser versus *a* browser - is the whole reason it exists. A headless tool like Playwright or Puppeteer starts a browser with no cookies, no session, and no identity. Browser MCP starts from the browser you were already signed into. The agent inherits your logins, your 2FA-trusted device, and your session state, so it can act on sites that have no API and no tolerance for bots.
 

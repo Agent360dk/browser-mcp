@@ -2,7 +2,7 @@
 
 # Uninstalling Browser MCP - and exactly what data it touches
 
-*Suggested URL: `/docs/uninstall` · Suggested title tag: "Uninstall Browser MCP + Exactly What Data It Touches (2026)" · Suggested meta description: "How to fully remove Browser MCP, every Chrome permission it requests and why, and the one thing that matters most: nothing it reads ever leaves your machine." · Last verified: July 21, 2026*
+*Suggested URL: `/docs/uninstall` · Suggested title tag: "Uninstall Browser MCP + Exactly What Data It Touches (2026)" · Suggested meta description: "How to fully remove Browser MCP, every Chrome permission it requests and why, and the one thing that matters most: nothing is sent to Agent360." · Last verified: July 21, 2026*
 
 ---
 

@@ -26,7 +26,9 @@ const UNDTAGET = new Set(['docs/CWS_LISTING_TEXT.md']);
 const ENDELSER = /\.(md|html|txt|js|mjs|ts|tsx|json)$/;
 
 const LOEFTER = [
-  [/nothing (ever )?leaves (your|the) machine/i, 'intet forlader maskinen'],
+  [/nothing[^."]{0,40}leaves (your|the) machine/i, 'intet forlader maskinen'],
+  [/stays on your machine/i, 'bliver paa maskinen'],
+  [/never sends your [^.]{0,30}data anywhere/i, 'sender aldrig data nogen steder'],
   [/100% local/i, '100% local'],
   [/\blocal-only\b/i, 'local-only'],
   [/everything stays local/i, 'everything stays local'],
@@ -74,6 +76,11 @@ test('ingen udgivet tekst bruger gamle vaerktoejs- eller sessionstal eller en op
 
 test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   // Kalibrering: en vagt der aldrig kan sige nej er ikke en vagt.
-  for (const [re] of LOEFTER.slice(0, 2)) assert.ok(re.test('MIT, free, and 100% local - nothing leaves your machine.'));
+  const regel = (navn) => LOEFTER.find(([, n]) => n === navn)[0];
+  const eksempel = 'MIT, free, and 100% local - nothing leaves your machine.';
+  assert.ok(regel('intet forlader maskinen').test(eksempel) && regel('100% local').test(eksempel));
+  assert.ok(regel('bliver paa maskinen').test('Extracted — stays on your machine'));
+  assert.ok(regel('intet forlader maskinen').test('the one thing that matters most: nothing it reads ever leaves your machine'), 'ord imellem maa ikke skjule loeftet');
+  assert.ok(regel('sender aldrig data nogen steder').test('never sends your browsing data anywhere'));
   assert.ok(FORKERTE_TAL[0][0].test('Restart Claude Code - 29 browser tools are now available'));
 });

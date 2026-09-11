@@ -773,7 +773,7 @@ const ChromePanel: React.FC = () => {
             }}
           >
             <span style={{ fontWeight: 800 }}>✓</span>
-            Extracted — stays on your machine
+            Extracted from your logged-in tab
           </div>
         )}
     </ChromeFrame>
