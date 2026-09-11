@@ -8,29 +8,38 @@ Dates are when the version was published on GitHub. The full notes for each rele
 Every change below was written test-first and checked with a mutation test: the fix is removed on purpose, and the test must turn red.
 
 **Privacy and security**
-- The extension's action log stored the first 200 characters of every tool call's parameters in Chrome's local storage, including values typed with `browser_fill` (passwords) and cookie values. The log now keeps only time, tool name and session, and entries saved by older versions are cleaned when the extension updates.
+- The extension's action log stored the first 200 characters of every tool call's parameters in Chrome's local storage, including values typed with `browser_fill` (passwords) and cookie values. The log now keeps only time, tool name and session. Entries saved by older versions are removed when the extension updates, and every new write removes them too, so a tool call that happens during the update cannot write them back.
 - Several pages and READMEs promised that "nothing leaves your machine". What the agent reads goes to your own AI client and its model provider. The text now says what is true: it runs on your machine, and nothing is sent to Agent360.
 - The server's instructions told agents that it "auto-pulls the latest code from git". It updates through npm.
 - `hono` (via the MCP SDK) moved from 4.13.3 to 4.13.7, which fixes one moderate advisory.
 
 **Tools that said something happened when it did not, or the reverse**
-- `browser_execute_script`: if the page navigated away while the script was still running, the script was run a second time through the debugger. It now answers `ok:false, maybe_ran:true` and does not run it again.
+- `browser_execute_script`: if the page navigated away while the script was still running, the script was run a second time through the debugger. It now answers `ok:false, maybe_ran:true` and does not run it again. When Chrome refuses the isolated-world injection before anything runs, the script still runs once in the page's main world.
 - `browser_get_new_tab`: a popup opened by one of the session's own tabs was refused as "not-ours" if that tab had closed in the meantime.
 - `browser_click`: a ripple effect added on mousedown hid that the click itself did nothing, so the React fallback was skipped and the answer was `landed:true`.
 - `browser_click_xy` / `browser_click`: a click that changed text without changing its length (for example `AAAA` to `BBBB`) was reported as not landed.
-- `browser_fill`: correct formatting by the page (`1234.5` shown as `1.234,50 kr`) was reported as a failure. The field is now read before and after: unchanged means the page refused the value (`ok:false`); changed to something else means `ok:true` with `afviger:true` and the actual value.
+- `browser_click` in a background tab: Chrome does not deliver mouse events to a tab that is not active, so the click timed out. It now falls back to a script click and answers `ok:true` only when the page visibly reacted to the click itself; otherwise `ok:false` with `maaske_landet:true` and a hint to switch to the tab. Timeouts on mouse and keyboard input say that the tab is probably in the background.
+- `browser_fill`: correct formatting by the page (`1234.5` shown as `1.234,50 kr`) was reported as a failure. The field is now read before and after. If it changed to something else, the answer is `ok:true` with `afviger:true` and the actual value. If it shows the same before and after, the answer is `ok:true` with `afviger:true, uaendret:true`, because a value that was already there and a refused value look the same. Only a field that should have been emptied but was not gives `ok:false`.
+- `browser_screenshot`: a standard capture that hung and then disconnected was retried until after the server's 30-second limit. The capture now has one time budget, the `fromSurface:false` fallback is tried in time, and a slow standard capture still wins if it answers first.
+- `browser_wait_for_network`: a response body that was slow to arrive could push the tool past the server's 30-second limit. The body now only gets the time left in the tool's budget; if it does not arrive, the answer is `body:null`.
+- `browser_scroll`: when the mouse wheel timed out and the fallback scrolled a page with smooth scrolling, the position was read before the animation finished, and a scroll that worked was reported as "the bottom may have been reached". The position is now read again until the page reaches the target or stops moving.
 - `browser_set_date`: a clock time could be read as the year (`02/01 20:26` accepted as 2020), and a correct date with a time zone (`02/01/2026 12:00 GMT`) was rejected.
-- `browser_get_cookies`: a parent-domain cookie on another path (`Domain=.example.com; Path=/api`) was missing.
+- `browser_get_cookies`: a parent-domain cookie on another path (`Domain=.example.com; Path=/api`) was missing. Secure cookies are returned only for https pages and localhost, and an incognito tab whose cookie store cannot be identified reads nothing.
 - `browser_upload_file`, `browser_drop_file` and the screenshot `path`: with the working directory `/`, every ordinary file was refused.
+- The server's instructions now explain `maaske_landet`, `landed`, `afviger` and `uaendret`, so an agent does not repeat an action that may already have happened.
+
+**Install**
+- `npx @agent360/browser-mcp install` now also registers the server with Codex (`codex mcp add`), VS Code (`code --add-mcp`, when that version supports it) and Cursor (`~/.cursor/mcp.json`, keeping the servers already there). Clients that are not installed are left alone.
 
 **Release process**
-- The package check before publishing accepted a package that crashed on start. It now requires a valid answer to the MCP `initialize` handshake.
-- A release that stopped after npm could not be resumed on the same version.
-- The browser flow test required a cookie URL and upload files that the new guards reject, and it accepted an outdated or duplicate extension. It now proves that the candidate extension is the one running.
+- The package check before publishing accepted a package that crashed on start. It now requires this server's answer to the MCP `initialize` handshake (with tools), requires the package to keep running shortly after, and runs the package with a temporary home folder so it cannot touch the real extension folder.
+- A release that stopped after npm could not be resumed on the same version. It now resumes only when the version's git tag points at the code being released.
+- The browser flow test required a cookie URL and upload files that the new guards reject, and it accepted an outdated or duplicate extension. It now requires exactly one connected extension whose version matches the server. It does not prove which code that extension runs.
 
-**Site**
+**Site and npm page**
 - `llms-install.md` is published on browsermcp.dev (it returned 404).
 - The comparison with browsermcp.io was updated with numbers re-pulled on 2026-09-11.
+- The demo GIF on the npm page uses an absolute address.
 
 ## 1.29.0 (2026-09-07)
 
