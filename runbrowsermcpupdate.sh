@@ -131,12 +131,21 @@ genoptag_tjek() {
   tag_commit="$(git rev-parse -q --verify "v${ny}^{commit}" 2>/dev/null)" || return 1
   [[ "$tag_commit" == "$(git rev-parse HEAD)" ]]
 }
+# MAALT 11/9 af Fable (e2e-review): paa "ny"-vejen blev et eksisterende tag ikke tjekket. Stoppede en udgivelse efter
+# push+tag, og kom der én commit mere, ville naeste koersel pushe, erstatte zippen (--clobber) og udgive npm fra HEAD,
+# mens tagget blev staaende paa den gamle commit. Intet tag er fint; et tag skal pege paa den kode der udgives.
+ny_tag_tjek() {
+  local ny="$1" tag_commit
+  tag_commit="$(git rev-parse -q --verify "v${ny}^{commit}" 2>/dev/null)" || return 0
+  [[ "$tag_commit" == "$(git rev-parse HEAD)" ]]
+}
 VERSIONS_TILSTAND="$(versions_tjek "$NEW_VERSION" "$NPM_LATEST")" \
   || die "new version $NEW_VERSION must be greater than or equal to npm-latest ($NPM_LATEST)"
 if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then
   genoptag_tjek "$NEW_VERSION" || die "v$NEW_VERSION er allerede paa npm, men tagget v$NEW_VERSION findes ikke eller peger ikke paa HEAD: der er ny kode siden udgivelsen. Bump versionen i stedet for at genoptage"
   warn "v$NEW_VERSION er allerede paa npm: genoptager en halv udgivelse. npm springes over; brug --skip-cws hvis butikken allerede har versionen (den afviser samme version igen)"
 else
+  ny_tag_tjek "$NEW_VERSION" || die "tagget v$NEW_VERSION findes allerede, men peger ikke paa HEAD: en tidligere koersel naaede at tagge og pushe, og der er kommet ny kode siden. Bump versionen, eller flyt tagget bevidst foer du koerer igen"
   ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
 fi
 

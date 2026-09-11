@@ -37,7 +37,7 @@ Every change below was written test-first and checked with a mutation test: the 
 
 **Release process**
 - The package check before publishing accepted a package that crashed on start. It now requires this server's answer to the MCP `initialize` handshake (with tools), requires the package to keep running shortly after, and runs the package with a temporary home folder so it cannot touch the real extension folder.
-- A release that stopped after npm could not be resumed on the same version. It now resumes only when the version's git tag points at the code being released.
+- A release that stopped after npm could not be resumed on the same version. It now resumes only when the version's git tag points at the code being released, and a new release refuses to start if a tag for that version already exists somewhere else — otherwise a second run could publish newer code while the tag still pointed at the old commit.
 - The browser flow test required a cookie URL and upload files that the new guards reject, and it accepted an outdated or duplicate extension. It now requires exactly one connected extension whose version matches the server. It does not prove which code that extension runs.
 
 **Site and npm page**

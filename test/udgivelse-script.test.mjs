@@ -206,6 +206,44 @@ test('release-scriptet koerer genoptag-tjekket naar versionen allerede er paa np
   assert.match(s.slice(i, i + 400), /genoptag_tjek "\$NEW_VERSION" \|\| die/, 'genoptag-grenen tjekker ikke tagget');
 });
 
+// MAALT 11/9 af Fable (e2e-review): "ny"-vejen (npm mangler versionen) tjekker ikke et eksisterende tag. Stoppede en
+// udgivelse efter push+tag (fx --skip-npm eller en registerfejl), og kom der én commit mere, ville naeste koersel pushe,
+// erstatte zippen med --clobber og udgive npm fra HEAD - mens v1.29.1 blev staaende paa den gamle commit.
+function nyTagTjek(opsaet) {
+  const repo = mkdtempSync(join(tmpdir(), 'nytag-'));
+  const git = (...a) => spawnSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('commit', '-q', '--allow-empty', '-m', 'start');
+  opsaet(git);
+  const s = script();
+  const start = s.indexOf('ny_tag_tjek() {');
+  assert.ok(start > -1, 'ny_tag_tjek() mangler i release-scriptet');
+  const funktion = s.slice(start, s.indexOf('\n}\n', start) + 3);
+  const r = spawnSync('bash', ['-c', `${funktion}\ncd "$2" && ny_tag_tjek "$1"`, '_', '1.29.1', repo], { encoding: 'utf8' });
+  rmSync(repo, { recursive: true, force: true });
+  return r.status;
+}
+
+test('ny udgivelse uden tag for versionen: fint', () => {
+  assert.equal(nyTagTjek(() => {}), 0);
+});
+
+test('ny udgivelse hvor tagget allerede peger paa HEAD (genoptaget efter npm-fejl): fint', () => {
+  assert.equal(nyTagTjek((git) => git('tag', 'v1.29.1')), 0);
+});
+
+test('ny udgivelse hvor tagget peger paa en AELDRE commit: stop', () => {
+  assert.notEqual(nyTagTjek((git) => { git('tag', 'v1.29.1'); git('commit', '-q', '--allow-empty', '-m', 'ny kode'); }), 0);
+});
+
+test('release-scriptet koerer ny_tag_tjek paa ny-vejen', () => {
+  const s = script();
+  const i = s.indexOf('if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then');
+  assert.ok(i > -1);
+  const blok = s.slice(i, i + 900);
+  assert.match(blok, /else[\s\S]*ny_tag_tjek "\$NEW_VERSION" \|\| die/, 'ny-vejen tjekker ikke et eksisterende tag');
+});
+
 test('release-scriptet stopper paa versionstjekket og ikke paa den gamle lighed', () => {
   const s = script();
   assert.doesNotMatch(s, /"\$NEW_VERSION" != "\$NPM_LATEST"/, 'den gamle lighedsbetingelse er tilbage');
