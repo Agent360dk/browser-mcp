@@ -1,0 +1,15 @@
+# Automatic dependency updates.
+#
+# MAALT 11/9: hono stod paa en version med en kendt saarbarhed (4.13.3), og intet sagde det foer en
+# manuel `npm audit`. Dependabot aabner en PR naar en afhaengighed eller en GitHub Action har en ny udgave.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /mcp-server
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

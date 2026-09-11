@@ -296,5 +296,10 @@ for fn,grp,label,url in LIVE:
     os.makedirs(os.path.dirname(disk),exist_ok=True)
     open(disk,'w').write(page)
     print('  %-32s desc=%dch faq=%d' % (url, len(desc), len(faq)))
+# MAALT 11/9 (SEO-teamet, curl 404): llms-install.md - installationsvejledningen som AI-assistenter laeser - laa i
+# repo-roden og blev aldrig lagt paa sitet. Den kopieres nu hertil ved hver genbygning, saa roden er eneste kilde,
+# og docs-gatens regen-diff fanger en kopi der er kommet ud af takt.
+_llms_kilde = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'llms-install.md')
+open(REPO + 'llms-install.md', 'w').write(open(_llms_kilde).read())
 print('Regenerated %d pages · FAQPage schema on %d' % (len(LIVE), nfaq))
 
