@@ -87,15 +87,34 @@ test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async
   assert.equal(svar.error, 'feltet-toemt');
 });
 
-test('en vaerdi siden afviste ("OLD" blev staaende) meldes - den kaldes ikke formatering', async () => {
+test('en vaerdi siden afviste ("OLD" blev staaende) er aldrig en tavs succes', async () => {
   // MAALT 10/9 af Astra (anden runde): "OLD" er hverken tom eller fordoblet, saa den blev
-  // behandlet som formatering og svaret ok:true med value "OLD".
+  // behandlet som formatering og svaret ok:true med value "OLD" - uden at kalderen kunne se det.
+  // Sign-off 11/9 (Astra + Fable): "stod stille" kan ikke skelnes fra "viste allerede sidens format", se naeste test.
+  // Svaret er derfor uvist, og det siges: afviger + uaendret + den faktiske vaerdi.
   const saet = [], taster = [];
   const u = sele(['OLD', 'OLD'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NEW' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
-  assert.equal(svar.ok, false, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
-  assert.equal(svar.error, 'feltet-viser-andet');
+  assert.equal(svar.afviger, true, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
+  assert.equal(svar.uaendret, true, 'kalderen skal kunne se at feltet stod stille');
+  assert.equal(svar.faktisk, 'OLD');
+  assert.equal(svar.forventet, 'NEW');
+});
+
+// MAALT 11/9 i sign-off (Astra og Fable, begge reproduceret): feltet viser allerede "1.234,50 kr", og fill("1234.5")
+// skriver via setteren, som siden formaterer tilbage til praecis det samme. 1.29.0: ok:true. HEAD: ok:false
+// "Siden tog ikke imod vaerdien" - men feltet stod rigtigt. Foer = efter beviser ikke en afvisning.
+test('et felt der allerede viste vaerdien i sidens format ("1.234,50 kr") meldes ikke som afvist', async () => {
+  const saet = [], taster = [];
+  const u = sele(['1.234,50 kr', '1.234,50 kr'], saet, taster);
+  const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '1234.5' });
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
+  assert.equal(svar.ok, true, `korrekt felt blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.notEqual(svar.error, 'feltet-viser-andet');
+  assert.equal(svar.afviger, true, 'kalderen skal stadig kunne se at feltet viser noget andet end det skrevne');
+  assert.equal(svar.uaendret, true);
+  assert.equal(svar.faktisk, '1.234,50 kr');
 });
 
 // ── Tredje/fjerde runde (Astra) + femte runde (R5 F1) ──────────────────────────────────────────

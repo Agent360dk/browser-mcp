@@ -572,6 +572,15 @@ function cdpFrist(method, params) {
   return m.startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
 }
 
+// Skaermbilledet har et budget for HELE kaeden, ikke kun pr. kald.
+// MAALT 11/9 af Astra (sign-off, R5 F8): standardoptagelsen hang og koblede foerst fra efter 19 s. cdpSend gentog den,
+// fordi den staar som sikker at gentage, og billedet kom efter ca. 38 s - serveren havde opgivet ved 30 s. I 1.29.0
+// sendte en frist paa 8 s kaldet videre til fromSurface:false, som svarede paa et halvt sekund.
+// Standardoptagelsen faar derfor 10 s. Reserven faar resten op til 26 s, saa svaret naar frem foer serverens 30 s.
+function skaermbilledeFrister() {
+  return { foersteMs: 10000, samletMs: 26000 };
+}
+
 function cdpMedFrist(tabId, method, params) {
   let ur;
   const frist = cdpFrist(method, params);
@@ -2821,24 +2830,44 @@ async function dispatch(port, method, params) {
       // fjernet: CDP optager netop `tab.id`, eller der er intet billede.
       // Samme runde: en frist paa optagelsen startede alligevel en ny runde (haev vinduet, optag
       // igen), og kaeden kom over serverens 30 s. En frist markeres nu, og saa proeves der ikke igen.
+      // Sign-off 11/9 (Astra, R5 F8): hele kaeden har ét budget (skaermbilledeFrister). Fristen gaelder ogsaa mens
+      // cdpSend gentager et kald efter en afkobling - det var den gentagelse der bar kaeden over 30 s.
+      const { foersteMs, samletMs } = skaermbilledeFrister();
+      const budgetSlut = Date.now() + samletMs;
       const tryCapture = async () => {
         await debuggerAttach(tab.id);
-        const optag = async (p) => {
+        const optag = async (p, ms) => {
+          let ur;
+          const kald = cdpSend(tab.id, 'Page.captureScreenshot', p);
+          kald.catch(() => {});   // svarer det foerst efter fristen, er svaret ligegyldigt
           try {
-            return await cdpSend(tab.id, 'Page.captureScreenshot', p);
+            return await Promise.race([
+              kald,
+              new Promise((_, afvis) => {
+                const frist = Math.max(0, ms);
+                ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: Page.captureScreenshot`)), frist);
+              }),
+            ]);
           } catch (e) {
             if (e && /svarede ikke inden/.test(e.message || '')) e.ingenNyRunde = true;
             throw e;
+          } finally {
+            clearTimeout(ur);
           }
         };
         try {
-          const shot = await optag({ format: 'png' });
+          const shot = await optag({ format: 'png' }, Math.min(foersteMs, budgetSlut - Date.now()));
           return { image: 'data:image/png;base64,' + shot.data };
         } catch (foersteFejl) {
-          // Det andet forsoeg findes for en ANDEN fejl (fromSurface), ikke for en frist.
-          if (foersteFejl?.ingenNyRunde) throw foersteFejl;
-          const shot = await optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
-          return { image: 'data:image/png;base64,' + shot.data };
+          // fromSurface:false proeves ogsaa efter en frist: i 1.29.0 var det netop fristen der naaede hertil, og den
+          // leverede billedet. Men efter en frist startes ingen runde mere, uanset hvordan reserven fejler.
+          try {
+            const shot = await optag({ format: 'png', fromSurface: false, captureBeyondViewport: false }, budgetSlut - Date.now());
+            return { image: 'data:image/png;base64,' + shot.data };
+          } catch (andenFejl) {
+            if (foersteFejl?.ingenNyRunde) andenFejl.ingenNyRunde = true;
+            throw andenFejl;
+          }
         }
       };
 
@@ -2849,6 +2878,8 @@ async function dispatch(port, method, params) {
         // En frist er et svar: kompositoren svarede ikke. At haeve vinduet og optage igen
         // fordobler kun ventetiden og tager brugerens fokus for ingenting.
         if (firstErr?.ingenNyRunde) throw firstErr;
+        // Er budgettet brugt, er der ikke tid til en runde med haevet vindue foer serverens 30 s.
+        if (budgetSlut - Date.now() < 1000) throw firstErr;
         // Both methods failed → the window is genuinely OCCLUDED (covered by other windows),
         // so Chrome's compositor produced no frames. LAST RESORT ONLY: raise the window to
         // de-occlude it, capture, then RESTORE the user's previously-focused window. This
@@ -3188,13 +3219,24 @@ async function dispatch(port, method, params) {
           // "det er bare formatering" havde huller ("5" -> "15", "1.5" -> "15", Unicode-minus, "+45" -> "+1 45").
           // Femte runde (R5 F1): at melde ENHVER afvigelse som fejl gjorde korrekt formatering ("1.234,50 kr",
           // "+45 12 34 56 78") til ok:false, hvor 1.29.0 sagde ok. Skellet maales nu i stedet for at gaettes:
-          //   stod feltet stille (foer === efter)  -> siden afviste vaerdien: ok:false
+          //   stod feltet stille (foer === efter)  -> uvist, og det siges: afviger + uaendret (se nedenfor)
           //   aendrede det sig til noget andet     -> ok:true, men afviger:true med den faktiske vaerdi
           // Kalderen faar altsaa aldrig en tavs succes paa en anden vaerdi end den der blev skrevet.
+          // Sign-off 11/9 (Astra og Fable, begge reproduceret): feltet viste allerede "1.234,50 kr", fill("1234.5")
+          // blev formateret tilbage til praecis det samme, og svaret var "siden tog ikke imod vaerdien" (1.29.0: ok).
+          // Foer = efter kan ikke skelne en afvisning fra en vaerdi der allerede stod der i sidens format.
+          // Kun en toemning der ikke skete er entydig: intet format goer "" til noget andet.
           if (typeof foer === 'string' && endelig === foer) {
+            if (!v) {
+              return {
+                ok: false, method: 'fallback', error: 'feltet-viser-andet', forventet: v, faktisk: endelig,
+                note: 'Feltet skulle toemmes, men viser det samme som foer.',
+              };
+            }
             return {
-              ok: false, method: 'fallback', error: 'feltet-viser-andet', forventet: v, faktisk: endelig,
-              note: 'Feltet stod paa det samme foer og efter skrivningen. Siden tog ikke imod vaerdien.',
+              ok: true, method: 'fallback', value: endelig, afviger: true, uaendret: true, forventet: v, faktisk: endelig,
+              note: 'Feltet viste det samme foer og efter skrivningen. Enten stod vaerdien der allerede i sidens eget ' +
+                    'format, eller siden tog ikke imod den. Tjek `faktisk` foer du gaar videre.',
             };
           }
           return {

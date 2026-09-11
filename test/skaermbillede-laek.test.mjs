@@ -46,16 +46,66 @@ test('heller ikke naar agentens fane ER den synlige - et skift imellem kan ikke 
     'captureVisibleTab maa ikke bruges: to tjek beviser ikke hvilken fane der var synlig ved optagelsen');
 });
 
-test('en frist paa optagelsen giver ET forsoeg - ingen ny runde, intet vindue haevet', async () => {
-  let optagelser = 0;
-  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
-    if (metode === 'Page.captureScreenshot') { optagelser++; throw new Error('CDP svarede ikke inden 20000 ms: Page.captureScreenshot'); }
+test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - men ingen tredje runde og intet vindue haevet', async () => {
+  // Sign-off 11/9 (Astra, R5 F8): HEAD sprang fromSurface:false over efter en frist. I 1.29.0 var det netop fristen
+  // der sendte kaldet videre til den, og den leverede billedet. Reserven proeves; en ny runde med haevet vindue ikke.
+  const kald = [];
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
+    if (metode === 'Page.captureScreenshot') {
+      kald.push(p?.fromSurface === false ? 'reserve' : 'standard');
+      throw new Error('CDP svarede ikke inden 20000 ms: Page.captureScreenshot');
+    }
     return {};
   } });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl, `en frist er ingen succes: ${JSON.stringify(svar).slice(0, 120)}`);
-  assert.equal(optagelser, 1, 'svarer kompositoren ikke inden 20 s, svarer den heller ikke paa et forsoeg mere');
+  assert.deepEqual(kald, ['standard', 'reserve'], 'efter en frist skal fromSurface:false proeves - og intet derudover');
   assert.equal(u.optager.antal('windows.update'), 0, 'og brugerens vindue maa ikke haeves for ingenting');
+});
+
+test('efter en frist haeves vinduet ikke, heller ikke naar reserven fejler hurtigt af en anden grund', async () => {
+  // Uden markeringen ville en hurtig "readback failed" fra reserven ligne et tildaekket vindue og starte runden med
+  // haevet vindue - oven paa en standardoptagelse der allerede havde brugt sin frist.
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    if (p?.fromSurface === false) throw new Error('Unable to capture screenshot: image readback failed');
+    throw new Error('CDP svarede ikke inden 10000 ms: Page.captureScreenshot');
+  } });
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.ok(svar.fejl);
+  assert.equal(u.optager.antal('windows.update'), 0, 'brugerens vindue blev haevet efter en frist');
+});
+
+test('er budgettet naesten brugt, startes runden med haevet vindue ikke', async () => {
+  // Begge optagelser fejler af en anden grund end en frist, men foerst naar tiden er ved at vaere gaaet.
+  // En runde mere ville bringe kaeden over serverens 30 s.
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    return new Promise((_, afvis) => setTimeout(() => afvis(new Error('Unable to capture screenshot: image readback failed')), 60));
+  } });
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 260 });
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.ok(svar.fejl);
+  assert.equal(u.optager.antal('windows.update'), 0, 'vinduet blev haevet uden tid tilbage til en optagelse');
+});
+
+// MAALT 11/9 af Astra (sign-off, skalerede timere): standardoptagelsen hang og koblede foerst fra efter 19 s. cdpSend
+// gentog den (den staar som sikker at gentage), saa billedet kom efter ca. 38 s - serveren havde opgivet ved 30 s.
+// 1.29.0: fristen paa 8 s sendte kaldet videre til fromSurface:false, som svarede paa et halvt sekund.
+test('haenger standardoptagelsen og kobler foerst fra sent, naar reserven frem foer serverens 30 s', async () => {
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    if (p?.fromSurface === false) return { data: 'RESERVE' };
+    return new Promise((_, afvis) => setTimeout(() => afvis(new Error('Debugger is detached')), 190));
+  } });
+  // Tiden skaleres 1:100 - 19 s bliver 190 ms, serverens 30 s bliver 300 ms.
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 260 });
+  const t0 = Date.now();
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const brugt = Date.now() - t0;
+  assert.match(String(svar.image), /RESERVE/, `intet billede fra reserven: ${JSON.stringify(svar).slice(0, 160)}`);
+  assert.ok(brugt < 300, `billedet kom efter ${brugt} ms (skaleret) - serveren opgiver ved 300`);
+  assert.equal(u.optager.antal('windows.update'), 0);
 });
 
 test('fristen rammer ikke kald der lovligt tager tid', async () => {
