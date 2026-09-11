@@ -40,6 +40,9 @@ const FORKERTE_TAL = [
   [/\b(29|34) (browser )?tools\b/i, 'gammelt vaerktoejstal'],
   [/up to 10 concurrent/i, 'gammelt sessionstal'],
   [/\d+% (pass|solve) rate/i, 'opfundet CAPTCHA-procent'],
+  // MAALT 11/9 af Fable (e2e runde 2): READMEen sagde "51 checks, 0 failures" fra 1.29.0 og blev kopieret uaendret til
+  // npm-siden. De seneste koersler er 46 af 51 - de fem er musehaendelser i en baggrundsfane, hvor Chrome ikke leverer dem.
+  [/\b0 failures\b/i, 'paastand om nul fejl i flowtesten'],
 ];
 
 function filer(sti) {

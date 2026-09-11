@@ -28,6 +28,13 @@ test('udvidelsen sender et fingeraftryk af sin egen background.js i haandtrykket
   assert.match(off, /type: 'hello'[^}]*kode/, 'haandtrykket sender ikke feltet `kode`');
 });
 
+// MAALT 11/9 af Astra (e2e runde 2): haenger hentningen af background.js, blev haandtrykket ALDRIG sendt, og serveren saa
+// en forbindelse uden version. Aftrykket er en bekvemmelighed for udgivelsens gate - hilsenen er ikke til forhandling.
+test('haandtrykket venter ikke i det uendelige paa aftrykket', () => {
+  const off = laes('extension/offscreen.js');
+  assert.match(off, /Promise\.race\(\[kodeAftryk\(\)/, 'aftrykket har ingen tidsgraense foer haandtrykket sendes');
+});
+
 test('serveren gemmer aftrykket fra haandtrykket og viser det i selv-diagnosen', () => {
   const srv = laes('mcp-server/index.js');
   assert.match(srv, /conn\.kode = typeof msg\.kode === 'string'/, 'serveren gemmer ikke aftrykket');

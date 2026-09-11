@@ -43,6 +43,8 @@
     .setup p { font-size: 11px; line-height: 1.5; color: #94a3b8; margin-bottom: 8px; }
     .setup p b { color: #e2e8f0; }
     .setup code { display: block; background: #0f172a; border-radius: 6px; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #22c55e; word-break: break-all; margin-bottom: 6px; }
+    /* De andre klienters kommandoer staar inde i en saetning - de maa ikke blive til blokke som hovedkommandoen. */
+    .setup p.clients code { display: inline; padding: 1px 5px; margin: 0; font-size: 10px; }
     .setup .row { display: flex; gap: 6px; }
     .setup .row button, .setup .row a { flex: 1; margin: 0; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-align: center; text-decoration: none; border: none; cursor: pointer; }
     .setup .row a:hover, .setup .row button:hover { background: #475569; }

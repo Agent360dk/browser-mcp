@@ -157,7 +157,10 @@ there is nothing to slip past: it is your Chrome, your session, your consent. Wh
 is the hard part - pages that fight *any* automation because of how they are built.
 
 Every release is gated on a flow test against a real Chrome that has to survive exactly
-those. Latest run, v1.29.0: **40/40 tools exercised, 51 checks, 0 failures** - but that run only scrolled by selector, and scrolling by pixels timed out on every call in that very release. The flow test now needs to cover it. It does cover
+those: all 40 tools are exercised, and the gate also checks that the extension Chrome is
+running is the one being released — not another copy with the same version number. The
+failures that do show up are honest ones: mouse events are not delivered to a tab that is
+not in front, and the tools say so instead of reporting success. What the test covers
 
 - **strict CSP** - navigate, read, execute, wait and click all still work (falls back to
   the Chrome Debugger API when script injection is blocked)

@@ -157,7 +157,9 @@ function tryConnect(port) {
     // To rettelser: haandtrykket sendes nu UANSET om manifest-opslaget lykkes (det er
     // selve beskeden serveren har brug for, ikke felterne i den), og en fejl bliver
     // logget i stedet for at forsvinde.
-    const kode = await kodeAftryk();
+    // MAALT 11/9 af Astra (e2e runde 2): haenger hentningen af background.js, blev haandtrykket ALDRIG sendt - og
+    // serveren saa en forbindelse uden version. Aftrykket er en bekvemmelighed for udgivelsens gate; hilsenen er ikke.
+    const kode = await Promise.race([kodeAftryk(), new Promise((ok) => setTimeout(() => ok(null), 1000))]);
     let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
     try {
       hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };

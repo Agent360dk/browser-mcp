@@ -244,6 +244,41 @@ test('release-scriptet koerer ny_tag_tjek paa ny-vejen', () => {
   assert.match(blok, /else[\s\S]*ny_tag_tjek "\$NEW_VERSION" \|\| die/, 'ny-vejen tjekker ikke et eksisterende tag');
 });
 
+// MAALT 11/9 af Fable (e2e runde 2): GitHub-udgivelsen fik én generisk linje ("Install: npx ..."), mens kladden og
+// ja-blokken lovede at CHANGELOG-afsnittet fulgte med ordret. Udgivelsesnoterne hentes nu ud af CHANGELOG.md.
+function noter(indhold, version = '1.29.1') {
+  const d = mkdtempSync(join(tmpdir(), 'noter-'));
+  writeFileSync(join(d, 'CHANGELOG.md'), indhold);
+  const s = script();
+  const start = s.indexOf('udgivelsesnoter() {');
+  assert.ok(start > -1, 'udgivelsesnoter() mangler i release-scriptet');
+  const funktion = s.slice(start, s.indexOf('\n}\n', start) + 3);
+  const r = spawnSync('bash', ['-c', `${funktion}\ncd "$2" && udgivelsesnoter "$1"`, '_', version, d], { encoding: 'utf8' });
+  rmSync(d, { recursive: true, force: true });
+  return r.stdout;
+}
+
+test('udgivelsesnoter: afsnittet for versionen hentes ud af CHANGELOG', () => {
+  const ud = noter('# Changelog\n\n## 1.29.1 (not released yet)\n\n- foerste punkt\n- andet punkt\n\n## 1.29.0 (2026-09-07)\n\n- gammelt punkt\n');
+  assert.match(ud, /foerste punkt/);
+  assert.match(ud, /andet punkt/);
+  assert.doesNotMatch(ud, /gammelt punkt/, 'den forrige udgaves punkter kom med');
+  assert.doesNotMatch(ud, /^## /m, 'overskriften skal ikke med - GitHub saetter sin egen titel');
+});
+
+test('udgivelsesnoter: en version uden afsnit giver ingenting (og udgivelsen falder tilbage)', () => {
+  assert.equal(noter('# Changelog\n\n## 1.29.0\n\n- gammelt\n', '1.30.0').trim(), '');
+});
+
+test('release-scriptet bruger CHANGELOG-afsnittet som udgivelsesnoter', () => {
+  const s = script();
+  const i = s.indexOf('run gh release create');   // ikke oversigten oeverst i filen, men selve kaldet
+  assert.ok(i > -1);
+  const blok = s.slice(Math.max(0, i - 600), i + 400);
+  assert.match(blok, /udgivelsesnoter "\$NEW_VERSION"/, 'noterne hentes ikke fra CHANGELOG');
+  assert.match(blok, /--notes-file/, 'noterne sendes ikke med til gh release create');
+});
+
 test('release-scriptet stopper paa versionstjekket og ikke paa den gamle lighed', () => {
   const s = script();
   assert.doesNotMatch(s, /"\$NEW_VERSION" != "\$NPM_LATEST"/, 'den gamle lighedsbetingelse er tilbage');

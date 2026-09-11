@@ -46,6 +46,15 @@ test('delingsbilledet har en kilde, saa det kan bygges igen naar tallene aendrer
   assert.match(root, /width=\{1280\}[\s\S]{0,80}height=\{640\}/, 'GitHub-billedet har ikke formatet 1280x640');
 });
 
+// MAALT 11/9 af Opus og Fable (e2e runde 2): `assets/demo.mp4` blev genrenderet, men sitets egen forsidevideo
+// `docs/demo.mp4` var stadig juni-udgaven - den lover "Extracted — stays on your machine", praecis det loefte CHANGELOG
+// offentligt kalder usandt. To kopier af samme video driver fra hinanden i tavshed.
+test('sitets forsidevideo er den samme som repoets demo', () => {
+  const a = readFileSync(join(rod, 'assets/demo.mp4'));
+  const b = readFileSync(join(rod, 'docs/demo.mp4'));
+  assert.ok(a.equals(b), `docs/demo.mp4 (${b.length} bytes) er ikke den samme som assets/demo.mp4 (${a.length} bytes)`);
+});
+
 test('de billeder sitet peger paa, findes', () => {
   const html = readFileSync(join(rod, 'docs/index.html'), 'utf8');
   for (const m of html.matchAll(/https:\/\/browsermcp\.dev\/([\w.-]+\.(?:jpg|png))/g)) {

@@ -134,6 +134,18 @@ genoptag_tjek() {
 # MAALT 11/9 af Fable (e2e-review): paa "ny"-vejen blev et eksisterende tag ikke tjekket. Stoppede en udgivelse efter
 # push+tag, og kom der én commit mere, ville naeste koersel pushe, erstatte zippen (--clobber) og udgive npm fra HEAD,
 # mens tagget blev staaende paa den gamle commit. Intet tag er fint; et tag skal pege paa den kode der udgives.
+# MAALT 11/9 af Fable (e2e runde 2): GitHub-udgivelsen fik én generisk linje, mens kladden og ja-blokken lovede at
+# CHANGELOG-afsnittet fulgte med ordret. Afsnittet for versionen hentes ud her og bruges som udgivelsesnoter.
+udgivelsesnoter() {
+  local ver="$1" fil="${2:-CHANGELOG.md}"
+  [[ -f "$fil" ]] || return 0
+  awk -v start="## ${ver}" '
+    index($0, start) == 1 { i = 1; next }
+    i && /^## / { exit }
+    i { print }
+  ' "$fil"
+}
+
 ny_tag_tjek() {
   local ny="$1" tag_commit
   tag_commit="$(git rev-parse -q --verify "v${ny}^{commit}" 2>/dev/null)" || return 0
@@ -405,9 +417,14 @@ else
     warn "release v${NEW_VERSION} exists — uploading asset with --clobber"
     run gh release upload "v${NEW_VERSION}" "$ZIP" --clobber
   else
+    NOTER_FIL="$(mktemp)"
+    {
+      printf 'Install: `npx @agent360/browser-mcp install` — or load the attached zip unpacked in chrome://extensions.\n\n'
+      udgivelsesnoter "$NEW_VERSION" "$REPO_ROOT/CHANGELOG.md"
+    } > "$NOTER_FIL"
     run gh release create "v${NEW_VERSION}" "$ZIP" \
       --title "v${NEW_VERSION} - Chrome extension + MCP server" \
-      --notes "Browser MCP v${NEW_VERSION}. Install: \`npx @agent360/browser-mcp install\` or load the attached zip unpacked."
+      --notes-file "$NOTER_FIL"
   fi
 fi
 # ── npm SIDST: det eneste trin der ikke kan fortrydes ─────────────────────────
