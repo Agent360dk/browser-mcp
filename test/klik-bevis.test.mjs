@@ -79,12 +79,14 @@ test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen succe
 // reagererPaa: 'click' | 'pointerdown' | 'ingen' | 'senere' (siden opdaterer sig foerst efter klikket, som React 18/Vue 3)
 // | 'dobbelt' (en handler paa pointerdown for ikke-mus-pointere OG en paa click - en rigtig mus udloeser kun click).
 function scriptSide(reagererPaa) {
-  const t = { tekst: 'Menu lukket', haendelser: [], handlinger: 0 };
+  const t = { tekst: 'Menu lukket', haendelser: [], handlinger: 0, noder: 0 };
   class Ev { constructor(type, o) { this.type = type; Object.assign(this, o || {}); } }
   const el = {
     tagName: 'BUTTON', isConnected: true, scrollIntoView() {},
     dispatchEvent(ev) {
       t.haendelser.push(ev.type);
+      // 'ripple': Material/MDC laegger en node ind paa mousedown - en aendring der ikke er klikkets virkning.
+      if (reagererPaa === 'ripple' && ev.type === 'mousedown') t.noder++;
       if (ev.type === reagererPaa) t.tekst = 'Menu aaben';
       if (reagererPaa === 'dobbelt' && ev.type === 'pointerdown' && ev.pointerType !== 'mouse') { t.handlinger++; t.tekst = 'aaben ' + t.handlinger; }
       return true;
@@ -98,7 +100,7 @@ function scriptSide(reagererPaa) {
   };
   const document = {
     querySelector: () => el,
-    querySelectorAll: (s) => (s === '*' ? { length: 5 } : s.startsWith('input,textarea') ? [] : { length: 0 }),
+    querySelectorAll: (s) => (s === '*' ? { length: 5 + t.noder } : s.startsWith('input,textarea') ? [] : { length: 0 }),
     body: { get innerText() { return t.tekst; } },
   };
   const koer = (kilde, sel) => new Function('window', 'document', 'location', 'MouseEvent', 'PointerEvent', 'return (' + kilde + ')')(
@@ -122,9 +124,22 @@ test('script-klikket maaler selv: en handler der kraever et aegte klik giver lan
 test('script-klikket maaler selv: en side der reagerede giver landed:true (positiv kontrol)', { timeout: 20000 }, async () => {
   const kilde = await scriptKlikKilde();
   assert.equal((await scriptSide('click').koer(kilde, '#knap')).landed, true, 'et klik der virkede blev ikke set');
-  // Radix/shadcn aabner paa pointerdown. Et rigtigt klik sender pointerdown foer mousedown; det goer script-klikket nu ogsaa.
+  // Radix/shadcn aabner paa pointerdown. Pointer-haendelserne sendes stadig (en rigtig mus sender dem), men en aendring der
+  // sker foer selve klikket, kan ikke skelnes fra en ripple (Astra, e2e 11/9) - saa den er ikke klikbevis. Aerligt uvist.
   const radix = scriptSide('pointerdown');
-  assert.equal((await radix.koer(kilde, '#knap')).landed, true, `pointerdown blev ikke sendt: ${radix.t.haendelser.join(',')}`);
+  const r = await radix.koer(kilde, '#knap');
+  assert.ok(radix.t.haendelser.includes('pointerdown'), `pointerdown blev ikke sendt: ${radix.t.haendelser.join(',')}`);
+  assert.equal(r.landed, false, 'en aendring foer klikket blev kaldt klikbevis');
+});
+
+// MAALT 11/9 af Astra (e2e-review af 1f52333): musebevaegelsen udloeb i en baggrundsfane, mousedown lagde en ripple ind, og
+// knappen kraevede isTrusted. Script-klikkets aftryk var taget FOER mousedown, saa ripplen blev klikbevis: ok:true, landed:true
+// med nul handlinger. 1.29.0: fristfejl, nul handlinger. Aftrykket tages nu lige foer el.click().
+test('en ripple fra mousedown er ikke klikbevis for script-klikket', { timeout: 20000 }, async () => {
+  const { t, koer } = scriptSide('ripple');
+  const r = await koer(await scriptKlikKilde(), '#knap');
+  assert.equal(t.noder, 1, 'ripplen blev ikke lagt ind - testen maaler intet');
+  assert.equal(r.landed, false, `en ripple uden handling blev kaldt klikbevis: ${JSON.stringify(r)}`);
 });
 
 // Fable (efterproevning 11/9) foreslog at maale igen efter 200 ms, fordi React 18/Vue 3 opdaterer siden et tick efter

@@ -39,6 +39,24 @@ async function logOgLaes(metode, params) {
   return skrevet[0].actionLog;
 }
 
+// MAALT 11/9 af Astra (e2e-review af 1f52333): onInstalled renser loggen, men et samtidigt logAction havde laest den gamle
+// log FOER oprydningen skrev - og skrev saa den gamle adgangskode tilbage sammen med sin egen post. CHANGELOG lover at
+// gamle poster renses. Hver skrivning skal derfor selv rense, ikke kun oprydningen.
+test('en handling logget mens gamle poster renses, skriver ikke adgangskoden tilbage', async () => {
+  let lagret = { actionLog: [{ time: 1, method: 'fill', params: '{"value":"gammel-hemmelighed"}', category: 'safe', session: 'Claude 1', color: 'blue' }] };
+  const u = indlaesUdvidelse({ svar: {
+    // Begge kald laeser den gamle log, foer nogen af dem skriver - som naar onInstalled og en kommando kommer samtidig.
+    'storage.local.get': async (arg) => {
+      const kopi = JSON.parse(JSON.stringify(lagret));
+      await new Promise((r) => setTimeout(r, 10));
+      return { ...(arg && typeof arg === 'object' ? arg : {}), ...kopi };
+    },
+    'storage.local.set': (obj) => { lagret = { ...lagret, ...JSON.parse(JSON.stringify(obj)) }; },
+  } });
+  await Promise.all([u.hent('rensHandlingslog')(), u.hent('logAction')(9876, 'navigate')]);
+  assert.doesNotMatch(JSON.stringify(lagret), /gammel-hemmelighed/, `adgangskoden blev skrevet tilbage: ${JSON.stringify(lagret)}`);
+});
+
 test('fill: den skrevne vaerdi gemmes ikke', async () => {
   const log = await logOgLaes('fill', { selector: '#password', value: 'hemmelig-kode-123' });
   assert.equal(log[0].method, 'fill');

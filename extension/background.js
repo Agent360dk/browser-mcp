@@ -581,6 +581,13 @@ function skaermbilledeFrister() {
   return { foersteMs: 10000, samletMs: 26000 };
 }
 
+// wait_for_network har samme loft hos serveren (30 s). MAALT 11/9 af Astra (e2e-review): svaret kom efter 13 s, body-kaldet
+// fik CDP_FRIST_TUNG_MS (20 s) oveni, og serveren opgav ved 30 s, hvor 1.29.0 svarede efter 21 s med body:null.
+// Hele vaerktoejet har derfor ét budget, og body-kaldet faar kun det der er tilbage.
+function netvaerkBudgetMs() {
+  return 28000;
+}
+
 function cdpMedFrist(tabId, method, params) {
   let ur;
   const frist = cdpFrist(method, params);
@@ -1266,7 +1273,6 @@ async function scriptingClick(tabId, selector) {
                    hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join(' '));
           } catch (e) { return 'aftryk-fejlede'; }
         };
-        const foer = aftryk();
         const opts = { bubbles: true, cancelable: true, composed: true, view: window };
         // Et rigtigt klik sender pointerdown foer mousedown; Radix/shadcn aabner paa pointerdown.
         // MAALT 11/9 af Astra (efterproevning af 9814636): uden pointerType ("") handlede en side der reagerer paa ikke-mus-
@@ -1276,6 +1282,9 @@ async function scriptingClick(tabId, selector) {
         el.dispatchEvent(new MouseEvent('mousedown', opts));
         try { el.dispatchEvent(new PointerEvent('pointerup', { ...mus, buttons: 0 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
+        // Aftrykket tages lige foer el.click(). MAALT 11/9 af Astra (e2e-review): taget foer mousedown blev en ripple klikbevis
+        // (ok:true, nul handlinger; 1.29.0: fejl). En side der reagerer paa pointerdown, bliver derfor aerligt uvist.
+        const foer = aftryk();
         el.click();
         // Maales i samme oejeblik som klikket. Astra (efterproevning af c1496d4): en anden maaling 200 ms senere gjorde et
         // uafhaengigt ur til klikbevis og et klik der navigerede i ventetiden til en fejl. En sen React-opdatering giver
@@ -1599,9 +1608,12 @@ async function logAction(port, method) {
   };
   try {
     const { actionLog = [] } = await chrome.storage.local.get({ actionLog: [] });
-    actionLog.unshift(entry);
-    if (actionLog.length > 50) actionLog.length = 50;
-    await chrome.storage.local.set({ actionLog });
+    // MAALT 11/9 af Astra (e2e-review): et logAction der koerte samtidig med rensHandlingslog i onInstalled, havde laest den
+    // gamle log foer oprydningen skrev - og skrev saa den gamle adgangskode tilbage. Hver skrivning renser derfor selv.
+    const renset = (Array.isArray(actionLog) ? actionLog : []).filter(Boolean).map(({ params, ...resten }) => resten);
+    renset.unshift(entry);
+    if (renset.length > 50) renset.length = 50;
+    await chrome.storage.local.set({ actionLog: renset });
   } catch (e) {
     console.warn('[BG] handlingslog kunne ikke skrives:', e?.message || e);
   }
@@ -3591,6 +3603,17 @@ async function dispatch(port, method, params) {
             fallback_fejl: landede?.fejl || 'reserveloesningen svarede ikke',
           };
         }
+        // MAALT 11/9 af Astra (e2e-review): med blød rulning (scroll-behavior: smooth) naar siden foerst maalet over de naeste
+        // billeder. Laest i samme oejeblik blev en rulning der lykkedes meldt som "bunden er maaske naaet" (1.29.0: ok).
+        // Positionen laeses igen hvert 100 ms, til maalet er naaet eller siden staar stille - hoejst ca. 1 s.
+        for (let i = 0; i < 10 && !(landede.efter.x === startX + dx && landede.efter.y === startY + dy); i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          const nu = await debuggerEval(tab.id, '({x: window.scrollX, y: window.scrollY})').catch(() => null);
+          if (!nu || typeof nu.y !== 'number') break;
+          const stille = nu.x === landede.efter.x && nu.y === landede.efter.y;
+          landede.efter = nu;
+          if (stille) break;
+        }
         const flyttede = landede.efter.x !== landede.foer.x || landede.efter.y !== landede.foer.y;
         const alleredeFremme = !flyttede && startKendt &&
           landede.efter.x === startX + dx && landede.efter.y === startY + dy;
@@ -3878,6 +3901,7 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const urlPattern = params.url_pattern || '';
       const timeout = params.timeout || 15000;
+      const budgetSlut = Date.now() + netvaerkBudgetMs();
 
       await debuggerAttach(tab.id);
       try {
@@ -3899,10 +3923,15 @@ async function dispatch(port, method, params) {
               if (!urlPattern || url.includes(urlPattern)) {
                 chrome.debugger.onEvent.removeListener(listener);
                 clearTimeout(timer);
-                // Try to get response body
-                cdpSend(tab.id, 'Network.getResponseBody', {
-                  requestId: eventParams.requestId,
-                }).then(bodyResult => {
+                // Try to get response body - kun inden for vaerktoejets budget (netvaerkBudgetMs). Naar den ikke frem, er
+                // svaret body:null som i 1.29.0, i stedet for at serverens 30 s loeber ud.
+                const bodyKald = cdpSend(tab.id, 'Network.getResponseBody', { requestId: eventParams.requestId });
+                bodyKald.catch(() => {});
+                let bodyUr;
+                Promise.race([
+                  bodyKald,
+                  new Promise((ok) => { bodyUr = setTimeout(() => ok(null), Math.max(0, budgetSlut - Date.now())); }),
+                ]).finally(() => clearTimeout(bodyUr)).then(bodyResult => {
                   resolve({
                     ok: true,
                     url,
