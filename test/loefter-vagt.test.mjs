@@ -74,6 +74,18 @@ test('ingen udgivet tekst bruger gamle vaerktoejs- eller sessionstal eller en op
   assert.deepEqual(f, [], `forkerte tal:\n  ${f.join('\n  ')}`);
 });
 
+// MAALT 11/9 i Chrome for Testing (Opus' backlog 10 fra e2e-reviewet): en adgangskode skrevet af 1.29.0's handlingslog laa
+// stadig i profilens `Local Extension Settings/<id>/000003.log` EFTER at posterne var renset - ogsaa efter 60 nye skrivninger.
+// Det er databasens skrivelog; den forsvinder foerst naar Chrome selv skriver filen om. Vores tekst maa ikke sige mere.
+test('changelog lover ikke at de gamle poster er vaek fra disken', () => {
+  const md = readFileSync(join(rod, 'CHANGELOG.md'), 'utf8');
+  const afsnit = md.slice(md.indexOf('## 1.29.1'), md.indexOf('## 1.29.0'));
+  assert.match(afsnit, /action log/i, 'afsnittet om handlingsloggen findes ikke');
+  assert.match(afsnit, /Chrome('s)? own (storage|file)|storage file/i,
+    'teksten siger ikke at Chromes egen lagerfil kan beholde de gamle vaerdier');
+  assert.match(afsnit, /until Chrome (rewrites|compacts)/i, 'teksten siger ikke hvornaar de forsvinder');
+});
+
 test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   // Kalibrering: en vagt der aldrig kan sige nej er ikke en vagt.
   const regel = (navn) => LOEFTER.find(([, n]) => n === navn)[0];
