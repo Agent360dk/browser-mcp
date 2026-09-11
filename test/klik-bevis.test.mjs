@@ -36,8 +36,8 @@ const erSettle = (p) => String(p?.expression || '').includes('foerAftryk');
 // fane i baggrunden. Kaldet haenger, og efter Target.activateTarget svarer det paa 9 ms. browser_click kastede
 // derfor "CDP svarede ikke inden 1500 ms" allerede ved musebevaegelsen, foer knappen var trykket. Samme i 1.29.0.
 // Script-klikket virker paa en baggrundsfane og kan bruges uden risiko for to klik, fordi intet tryk er sendt.
-function baggrundsSele(haengerVed) {
-  let scriptingKlik = 0;
+function baggrundsSele(haengerVed, { landed = true } = {}) {
+  let scriptingKlik = 0, klikFunc = null;
   const u = sele(
     (_m, metode, p) => {
       if (metode === 'Input.dispatchMouseEvent' && p?.type === haengerVed) return new Promise(() => {});   // som Chrome
@@ -45,11 +45,14 @@ function baggrundsSele(haengerVed) {
       return {};
     },
     (o) => {
-      if (String(o.func).includes("reason: 'not_found'")) { scriptingKlik++; return [{ result: { ok: true, tag: 'BUTTON' } }]; }
+      if (String(o.func).includes("reason: 'not_found'")) {
+        scriptingKlik++; klikFunc = String(o.func);
+        return [{ result: { ok: true, tag: 'BUTTON', landed } }];
+      }
       return [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }];
     },
   );
-  return { u, scriptKlik: () => scriptingKlik };
+  return { u, scriptKlik: () => scriptingKlik, klikFunc: () => klikFunc };
 }
 
 test('en fane i baggrunden: udloeber musebevaegelsen FOER trykket, klikkes der via script - én gang', { timeout: 20000 }, async () => {
@@ -58,6 +61,58 @@ test('en fane i baggrunden: udloeber musebevaegelsen FOER trykket, klikkes der v
   assert.equal(svar.ok, true, `klikket fejlede paa en baggrundsfane: ${JSON.stringify(svar)}`);
   assert.equal(svar.method, 'scripting-fallback');
   assert.equal(scriptKlik(), 1);
+});
+
+// MAALT 11/9 i sign-off (Astra og Fable, begge reproduceret): knappens handler kraever et aegte klik (isTrusted), eller
+// den lytter kun paa pointerdown. Script-klikket gjorde intet, og svaret var ok:true. 1.29.0 svarede med en fejl.
+test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen succes, men "kan vaere landet"', { timeout: 20000 }, async () => {
+  const { u, scriptKlik } = baggrundsSele('mouseMoved', { landed: false });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.equal(scriptKlik(), 1);
+  assert.equal(svar.ok, false, `et script-klik uden virkning blev meldt som succes: ${JSON.stringify(svar)}`);
+  assert.equal(svar.landed, false);
+  assert.equal(svar.maaske_landet, true, 'klikket blev sendt - kalderen skal vide at det ikke maa gentages blindt');
+  assert.match(JSON.stringify(svar), /switch_tab/, 'svaret skal give agenten en vej ud');
+});
+
+// Det injicerede script koeres mod en falsk side, saa det er udvidelsens egen tekst der proeves.
+function scriptSide(reagererPaa) {
+  const t = { tekst: 'Menu lukket', haendelser: [] };
+  class Ev { constructor(type, o) { this.type = type; Object.assign(this, o || {}); } }
+  const el = {
+    tagName: 'BUTTON', isConnected: true, scrollIntoView() {},
+    dispatchEvent(ev) { t.haendelser.push(ev.type); if (ev.type === reagererPaa) t.tekst = 'Menu aaben'; return true; },
+    click() { t.haendelser.push('click'); if (reagererPaa === 'click') t.tekst = 'Menu aaben'; },
+  };
+  const document = {
+    querySelector: () => el,
+    querySelectorAll: (s) => (s === '*' ? { length: 5 } : s.startsWith('input,textarea') ? [] : { length: 0 }),
+    body: { get innerText() { return t.tekst; } },
+  };
+  const koer = (kilde, sel) => new Function('window', 'document', 'location', 'MouseEvent', 'PointerEvent', 'return (' + kilde + ')')(
+    {}, document, { href: 'https://x.example/' }, Ev, Ev)(sel);
+  return { t, koer };
+}
+async function scriptKlikKilde() {
+  const { u, klikFunc } = baggrundsSele('mouseMoved');
+  await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch(() => {});
+  assert.ok(klikFunc(), 'script-klikket blev aldrig sendt');
+  return klikFunc();
+}
+
+test('script-klikket maaler selv: en handler der kraever et aegte klik giver landed:false', { timeout: 20000 }, async () => {
+  const { t, koer } = scriptSide('ingen');
+  const r = koer(await scriptKlikKilde(), '#knap');
+  assert.ok(t.haendelser.includes('click'), 'klikket blev ikke sendt');
+  assert.equal(r.landed, false, `siden reagerede ikke, men svaret var ${JSON.stringify(r)}`);
+});
+
+test('script-klikket maaler selv: en side der reagerede giver landed:true (positiv kontrol)', { timeout: 20000 }, async () => {
+  const kilde = await scriptKlikKilde();
+  assert.equal(scriptSide('click').koer(kilde, '#knap').landed, true, 'et klik der virkede blev ikke set');
+  // Radix/shadcn aabner paa pointerdown. Et rigtigt klik sender pointerdown foer mousedown; det goer script-klikket nu ogsaa.
+  const radix = scriptSide('pointerdown');
+  assert.equal(radix.koer(kilde, '#knap').landed, true, `pointerdown blev ikke sendt: ${radix.t.haendelser.join(',')}`);
 });
 
 test('udloeber selve trykket, klikkes der IKKE via script - det kan vaere landet', { timeout: 20000 }, async () => {

@@ -1246,11 +1246,33 @@ async function scriptingClick(tabId, selector) {
         }
         if (!el) return { ok: false, reason: 'not_found' };
         el.scrollIntoView({ block: 'center', behavior: 'instant' });
-        const opts = { bubbles: true, cancelable: true, view: window };
+        // Sign-off 11/9 (Astra og Fable, begge reproduceret): paa en baggrundsfane blev et klik der krævede isTrusted,
+        // eller kun lyttede paa pointerdown, meldt ok:true uden nogen virkning. Klikket maaler nu sidens reaktion med
+        // samme aftryk og samme regel som debuggerens reserve (debuggerClick) - ingen backticks herinde.
+        const hash = (s) => {
+          let x = 2166136261;
+          for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); }
+          return (x >>> 0).toString(36);
+        };
+        const aftryk = () => {
+          try {
+            return document.querySelectorAll('*').length + '|' +
+                   hash(document.body ? String(document.body.innerText) : '') + '|' +
+                   location.href + '|' +
+                   document.querySelectorAll('[aria-expanded="true"],[aria-selected="true"],[open],.open,.active').length + '|' +
+                   document.querySelectorAll('input:checked,option:checked').length + '|' +
+                   hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join(' '));
+          } catch (e) { return 'aftryk-fejlede'; }
+        };
+        const foer = aftryk();
+        const opts = { bubbles: true, cancelable: true, composed: true, view: window };
+        // Et rigtigt klik sender pointerdown foer mousedown; Radix/shadcn aabner paa pointerdown.
+        try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mousedown', opts));
+        try { el.dispatchEvent(new PointerEvent('pointerup', opts)); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
         el.click();
-        return { ok: true, tag: el.tagName };
+        return { ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false };
       },
       args: [selector],
     });
@@ -3132,10 +3154,25 @@ async function dispatch(port, method, params) {
         const inputFristFoerTryk = /svarede ikke inden \d+ ms: Input\./.test(e?.message || '');
         if (inputFristFoerTryk || /Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
           const r = await scriptingClick(tab.id, params.selector);
+          if (r.ok && !inputFristFoerTryk) {
+            // Debuggeren var blokeret eller afkoblet: samme svar som 1.29.0, nu med maalingen vedlagt.
+            return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: klikLandede(r) };
+          }
           if (r.ok) {
+            // Sign-off 11/9 (Astra og Fable): paa en baggrundsfane svarede reserven ok:true, ogsaa naar siden intet gjorde
+            // (handler der kraever isTrusted). 1.29.0 svarede med en fejl. Nu kraever ok samme bevis som de andre klikveje.
+            // Viste siden ingen reaktion, er klikket alligevel sendt - saa det meldes som "kan vaere landet", ikke gentag blindt.
+            if (klikLandede(r)) {
+              return {
+                ok: true, method: 'scripting-fallback', tag: r.tag, landed: true,
+                note: 'Fanen var i baggrunden, saa musehaendelser naaede ikke frem. Klikket blev udfoert med et script i stedet.',
+              };
+            }
             return {
-              ok: true, method: 'scripting-fallback', tag: r.tag,
-              ...(inputFristFoerTryk ? { note: 'Fanen var i baggrunden, saa musehaendelser naaede ikke frem. Klikket blev udfoert med et script i stedet.' } : {}),
+              ok: false, method: 'scripting-fallback', tag: r.tag, landed: false, maaske_landet: true, error: e.message,
+              note: 'Fanen var i baggrunden, saa musehaendelser naaede ikke frem. Et script-klik blev sendt, men siden viste ' +
+                    'ingen reaktion: enten kraever siden et aegte klik, eller klikket virkede uden synlig aendring. Tjek siden, ' +
+                    'og kald browser_switch_tab og klik igen kun hvis intet skete.',
             };
           }
         }
