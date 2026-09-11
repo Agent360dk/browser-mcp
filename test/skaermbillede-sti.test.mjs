@@ -63,8 +63,8 @@ function falskUdvidelse() {
   return () => { stop = true; };
 }
 
-function skaermbillede(sti) {
-  const p = spawn(process.execPath, [SRV], { cwd: arbejd, stdio: ['pipe', 'pipe', 'pipe'],
+function skaermbillede(sti, cwd = arbejd) {
+  const p = spawn(process.execPath, [SRV], { cwd, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) } });
   boern.push(p); p.stderr.on('data', () => {});
   const stopUdvidelse = falskUdvidelse();
@@ -111,4 +111,13 @@ test('en hardlink til en fil udenfor overskrives ikke', { timeout: 45000 }, asyn
   const svar = await skaermbillede('haard.png');
   assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 240)}`);
   assert.equal(readFileSync(join(udenfor, 'vigtig.png'), 'utf8'), 'BRUGERENS-FIL', 'filen udenfor blev overskrevet');
+});
+
+// MAALT 11/9 (Astra R5 F10, samme klasse): med arbejdsmappen "/" blev praefikset "//", og en sti i en
+// almindelig mappe blev afvist som "udenfor".
+test('arbejdsmappen "/" afviser ikke en almindelig sti (F10)', { timeout: 45000 }, async () => {
+  const maal = join(arbejd, 'inde', 'rod.png');
+  const svar = await skaermbillede(maal, '/');
+  assert.match(svar, /successfully saved/, `afvist med arbejdsmappe "/": ${svar.slice(0, 240)}`);
+  assert.ok(existsSync(maal));
 });

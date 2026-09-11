@@ -764,11 +764,14 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Tilbage staar et smalt vindue: en proces med skriveadgang til arbejdsmappen kan bytte en
       // mappe ud med et symlink mellem tjekket og det oejeblik Chrome aabner filen.
       let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
-      const inde = (p, r) => p === r || p.startsWith(r + sep);
+      // MAALT 11/9 af Astra (R5 F10): med arbejdsmappen "/" blev praefikset "//", og enhver almindelig fil
+      // blev afvist som "udenfor". En rod der allerede ender paa skilletegnet faar ikke et til.
+      const medSkille = (r) => (r.endsWith(sep) ? r : r + sep);
+      const inde = (p, r) => p === r || p.startsWith(medSkille(r));
       const kanoniske = [];
       for (const f of raa) {
         const udfoldet = String(f).replace(/^~(?=\/|$)/, homedir());
-        const raaSti = isAbsolute(udfoldet) ? udfoldet : rod + sep + udfoldet;
+        const raaSti = isAbsolute(udfoldet) ? udfoldet : medSkille(rod) + udfoldet;
         let reel = null; try { reel = realpathSync.native(raaSti); } catch {}
         const afvis = (hvorfor) => ({
           content: [{ type: 'text', text:
@@ -814,7 +817,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
         const rod = resolve(process.cwd());
         const targetPath = resolve(rod, args.path);
-        if (targetPath !== rod && !targetPath.startsWith(rod + sep)) {
+        if (targetPath !== rod && !targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep)) {   // "/" giver ikke "//" (R5 F10)
           throw new Error(
             `path skal ligge inden for arbejdsmappen (${rod}). ` +
             `"${args.path}" peger udenfor. Brug en relativ sti uden ../.`,
@@ -833,7 +836,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men skrivningen trunkerer den faelles fil.
         let erLink = false, flereNavne = false;
         try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
-        if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel + sep))) {
+        if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
           throw new Error(
             `path skal ligge inden for arbejdsmappen (${rod}). ` +
             `"${args.path}" peger udenfor (via et link). Brug en almindelig mappe i arbejdsmappen.`,

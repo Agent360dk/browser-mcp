@@ -39,7 +39,7 @@ after(() => {
   rmSync(arbejd, { recursive: true, force: true }); rmSync(udenfor, { recursive: true, force: true });
 });
 
-function upload(args) {
+function upload(args, cwd = arbejd) {
   const sendt = [];
   let stop = false;
   const ring = () => {
@@ -57,7 +57,7 @@ function upload(args) {
     }
     setTimeout(ring, 400);
   };
-  const p = spawn(process.execPath, [SRV], { cwd: arbejd, stdio: ['pipe', 'pipe', 'pipe'],
+  const p = spawn(process.execPath, [SRV], { cwd, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) } });
   boern.push(p); p.stderr.on('data', () => {});
   ring();
@@ -98,4 +98,12 @@ test('file og file_path laegges ikke sammen - den foerste vinder, som foer', { t
   assert.equal(sendt.length, 1, `intet naaede udvidelsen: ${svar.slice(0, 200)}`);
   assert.equal(sendt[0].files.length, 1, `to filer blev sendt: ${JSON.stringify(sendt[0].files)}`);
   assert.equal(sendt[0].files[0], realpathSync.native(join(arbejd, 'egen.txt')));
+});
+
+// MAALT 11/9 af Astra (R5 F10), reproduceret: med arbejdsmappen "/" blev praefikset "//", og en almindelig fil
+// blev afvist som "udenfor". 1.29.0 sendte filen videre. Samme fejl stod i skaermbilledets vagt.
+test('arbejdsmappen "/" afviser ikke en almindelig fil (F10)', { timeout: 45000 }, async () => {
+  const { svar, sendt } = await upload({ files: [join(arbejd, 'egen.txt')] }, '/');
+  assert.equal(sendt.length, 1, `filen blev afvist med arbejdsmappe "/": ${svar.slice(0, 240)}`);
+  assert.deepEqual(sendt[0].files, [realpathSync.native(join(arbejd, 'egen.txt'))]);
 });
