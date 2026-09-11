@@ -1647,11 +1647,22 @@ let lastCreatedTabId = null;
 // Aabneren huskes PR. FANE. En global "seneste aabner" blev 10/9 (Astra, reproduceret) laant af
 // den forkerte fane, naar to faner blev aabnet mens get_new_tab ventede paa tabs.get.
 const openerForFane = new Map();
+// MAALT 11/9 af Astra (R5 F9), reproduceret: fane 1 aabner en popup og lukkes derefter (typisk
+// "log ind i nyt vindue"). get_new_tab slog aabneren op i sessionens faner NU, hvor 1 var vaek,
+// og svarede not-ours paa sessionens egen popup. Ejeren huskes derfor i det oejeblik fanen
+// oprettes, hvor aabneren stadig staar i sin session.
+const ejerForFane = new Map();
 
 chrome.tabs.onCreated.addListener(async (tab) => {
   lastCreatedTabId = tab.id;
   openerForFane.set(tab.id, tab.openerTabId ?? null);
   if (openerForFane.size > 500) openerForFane.delete(openerForFane.keys().next().value);
+  let ejer = null;
+  if (tab.openerTabId != null) {
+    for (const [p, s] of sessions) { if (s.tabIds.has(tab.openerTabId)) { ejer = p; break; } }
+  }
+  ejerForFane.set(tab.id, ejer);
+  if (ejerForFane.size > 500) ejerForFane.delete(ejerForFane.keys().next().value);
 
   // Auto-claim OAuth popups for the session that opened them
   if (tab.pendingUrl || tab.url) {
@@ -2864,6 +2875,18 @@ async function dispatch(port, method, params) {
         note: 'Koden KOERTE og kastede en fejl. Den koeres ikke igen via debuggeren, fordi det den ' +
               'naaede at goere foer fejlen saa ville ske to gange.',
       });
+      // MAALT 11/9 af Astra (R5 F4), reproduceret: scriptet sendte en POST og returnerede et
+      // Promise; mens scripting-stien ventede, forsvandt dokumentet, og Chrome afviste med
+      // "Frame with ID 0 was removed." Handleren gik saa videre til debuggeren, som koerte koden
+      // igen - to POST'er. Forsvinder siden EFTER at koden er startet, kan den have koert, og
+      // den koeres ikke igen. Blev den aldrig indsproejtet, maa debuggeren stadig proeve.
+      const sidenForsvandt = (m) => /was removed|execution context was destroyed|document (was )?unloaded/i.test(m);
+      const maaskeKoert = (world, m) => ({
+        ok: false, error: m, maybe_ran: true,
+        method: world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
+        note: 'Siden skiftede eller lukkede mens koden koerte. Den kan allerede have koert, saa den ' +
+              'koeres ikke igen via debuggeren. Kald igen kun hvis det er sikkert at koere to gange.',
+      });
       // Step 1: try ISOLATED world
       try {
         const [result] = await chrome.scripting.executeScript({
@@ -2890,7 +2913,9 @@ async function dispatch(port, method, params) {
           diag.isolated_error = r.message;
         }
       } catch (e) {
-        diag.isolated_throw = String(e?.message || e);
+        const m = String(e?.message || e);
+        if (sidenForsvandt(m)) return maaskeKoert('ISOLATED', m);
+        diag.isolated_throw = m;
       }
 
       // Step 2: try MAIN world
@@ -2919,7 +2944,9 @@ async function dispatch(port, method, params) {
           diag.main_error = r.message;
         }
       } catch (e) {
-        diag.main_throw = String(e?.message || e);
+        const m = String(e?.message || e);
+        if (sidenForsvandt(m)) return maaskeKoert('MAIN', m);
+        diag.main_throw = m;
       }
 
       // Step 3: debugger fallback — the ONLY universal path for arbitrary STRING code
@@ -4172,7 +4199,11 @@ async function dispatch(port, method, params) {
         // agenten enhver fane brugeren selv havde aabnet — se kommentaren ved onCreated.
         const session = getSession(port);
         const opener = tab.openerTabId ?? openerForFane.get(tab.id) ?? null;
-        if (!opener || !session.tabIds.has(opener)) {
+        // Aabneren i sessionen NU, eller sessionen der ejede aabneren da fanen blev oprettet
+        // (aabneren kan vaere lukket siden - se ejerForFane ved onCreated).
+        const voresNu = opener != null && session.tabIds.has(opener);
+        const voresDaDenBlevAabnet = opener != null && ejerForFane.get(tab.id) === port;
+        if (!voresNu && !voresDaDenBlevAabnet) {
           return {
             error: 'not-ours',
             hint: 'Den seneste nye fane blev ikke aabnet fra en af dine egne faner, saa den ' +
