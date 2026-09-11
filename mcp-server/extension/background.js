@@ -584,8 +584,10 @@ function skaermbilledeFrister() {
 // wait_for_network har samme loft hos serveren (30 s). MAALT 11/9 af Astra (e2e-review): svaret kom efter 13 s, body-kaldet
 // fik CDP_FRIST_TUNG_MS (20 s) oveni, og serveren opgav ved 30 s, hvor 1.29.0 svarede efter 21 s med body:null.
 // Hele vaerktoejet har derfor ét budget, og body-kaldet faar kun det der er tilbage.
-function netvaerkBudgetMs() {
-  return 28000;
+// Astra (efterproevning af c826f63): budgettet skar en body over der kom efter 27 s + 2 s, som 1.29.0 leverede efter 29 s.
+// Body-kaldet faar derfor aldrig kortere tid end 1.29.0's frist (CDP_FRIST_MS) og aldrig mere end CDP_FRIST_TUNG_MS.
+function netvaerkFrister() {
+  return { budgetMs: 28000, bodyMinMs: CDP_FRIST_MS, bodyMaxMs: CDP_FRIST_TUNG_MS };
 }
 
 function cdpMedFrist(tabId, method, params) {
@@ -3188,8 +3190,9 @@ async function dispatch(port, method, params) {
           // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
           const r = await scriptingClick(tab.id, params.selector);
           if (r.ok && !inputFristFoerTryk) {
-            // Debuggeren var blokeret eller afkoblet: samme svar som 1.29.0, nu med maalingen vedlagt.
-            return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: klikLandede(r) };
+            // Debuggeren var blokeret eller afkoblet: samme svar som 1.29.0. landed vedlaegges kun naar klikket er bevist - Astra
+            // (efterproevning af c826f63): en menu der aabnede paa mousedown, blev ellers meldt som landed:false.
+            return { ok: true, method: 'scripting-fallback', tag: r.tag, ...(klikLandede(r) ? { landed: true } : {}) };
           }
           if (r.ok) {
             // Sign-off 11/9 (Astra og Fable): paa en baggrundsfane svarede reserven ok:true, ogsaa naar siden intet gjorde
@@ -3203,8 +3206,8 @@ async function dispatch(port, method, params) {
             }
             return {
               ok: false, method: 'scripting-fallback', tag: r.tag, landed: false, maaske_landet: true, error: e.message,
-              note: 'Fanen var i baggrunden, saa musehaendelser naaede ikke frem. Et script-klik blev sendt, men siden viste ' +
-                    'ingen reaktion: enten kraever siden et aegte klik, eller klikket virkede uden synlig aendring. Tjek siden, ' +
+              note: 'Fanen var i baggrunden, saa musehaendelser naaede ikke frem. Et script-klik blev sendt, men klikket selv ' +
+                    'gav ingen synlig virkning: enten kraever siden et aegte klik, eller klikket virkede uden synlig aendring. Tjek siden, ' +
                     'og kald browser_switch_tab og klik igen kun hvis intet skete.',
             };
           }
@@ -3606,7 +3609,10 @@ async function dispatch(port, method, params) {
         // MAALT 11/9 af Astra (e2e-review): med blød rulning (scroll-behavior: smooth) naar siden foerst maalet over de naeste
         // billeder. Laest i samme oejeblik blev en rulning der lykkedes meldt som "bunden er maaske naaet" (1.29.0: ok).
         // Positionen laeses igen hvert 100 ms, til maalet er naaet eller siden staar stille - hoejst ca. 1 s.
-        for (let i = 0; i < 10 && !(landede.efter.x === startX + dx && landede.efter.y === startY + dy); i++) {
+        // Astra (efterproevning af c826f63): bundet af et ANTAL forsoeg kom en side med langsomme opslag over serverens 30 s
+        // (1.29.0: svar efter 3 s). Genlaesningen er bundet af tid.
+        const roSlut = Date.now() + 1000;
+        while (Date.now() < roSlut && !(landede.efter.x === startX + dx && landede.efter.y === startY + dy)) {
           await new Promise((r) => setTimeout(r, 100));
           const nu = await debuggerEval(tab.id, '({x: window.scrollX, y: window.scrollY})').catch(() => null);
           if (!nu || typeof nu.y !== 'number') break;
@@ -3901,7 +3907,8 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const urlPattern = params.url_pattern || '';
       const timeout = params.timeout || 15000;
-      const budgetSlut = Date.now() + netvaerkBudgetMs();
+      const netFrister = netvaerkFrister();
+      const budgetSlut = Date.now() + netFrister.budgetMs;
 
       await debuggerAttach(tab.id);
       try {
@@ -3930,7 +3937,10 @@ async function dispatch(port, method, params) {
                 let bodyUr;
                 Promise.race([
                   bodyKald,
-                  new Promise((ok) => { bodyUr = setTimeout(() => ok(null), Math.max(0, budgetSlut - Date.now())); }),
+                  new Promise((ok) => {
+                    const bodyFrist = Math.min(netFrister.bodyMaxMs, Math.max(netFrister.bodyMinMs, budgetSlut - Date.now()));
+                    bodyUr = setTimeout(() => ok(null), bodyFrist);
+                  }),
                 ]).finally(() => clearTimeout(bodyUr)).then(bodyResult => {
                   resolve({
                     ok: true,

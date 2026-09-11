@@ -75,6 +75,27 @@ test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen succe
   assert.match(JSON.stringify(svar), /switch_tab/, 'svaret skal give agenten en vej ud');
 });
 
+// MAALT 11/9 af Astra (efterproevning af c826f63): debuggeren er afkoblet/blokeret, mousedown aabner menuen, og script-klikket
+// svarer som i 1.29.0 med ok:true - men nu ogsaa landed:false, selvom siden reagerede. Paa den vej er klikket ikke maalt
+// mod det brugeren saa, saa et ubevist landed maa ikke paastaa "ingen reaktion".
+test('debuggeren afkoblet: script-klikket siger ikke landed:false om en side der kan have reageret', { timeout: 20000 }, async () => {
+  let scriptKlik = 0;
+  const u = sele(
+    (_m, metode, p) => {
+      if (metode === 'Input.dispatchMouseEvent' && p?.type === 'mouseMoved') throw new Error('Detached while handling command.');
+      return {};
+    },
+    (o) => {
+      if (String(o.func).includes("reason: 'not_found'")) { scriptKlik++; return [{ result: { ok: true, tag: 'BUTTON', landed: false } }]; }
+      return [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }];
+    },
+  );
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.equal(scriptKlik, 1, `script-klikket blev ikke brugt: ${JSON.stringify(svar)}`);
+  assert.equal(svar.ok, true, 'samme svar som 1.29.0 paa den afkoblede vej');
+  assert.notEqual(svar.landed, false, `et ubevist klik blev meldt som "ingen reaktion": ${JSON.stringify(svar)}`);
+});
+
 // Det injicerede script koeres mod en falsk side, saa det er udvidelsens egen tekst der proeves.
 // reagererPaa: 'click' | 'pointerdown' | 'ingen' | 'senere' (siden opdaterer sig foerst efter klikket, som React 18/Vue 3)
 // | 'dobbelt' (en handler paa pointerdown for ikke-mus-pointere OG en paa click - en rigtig mus udloeser kun click).

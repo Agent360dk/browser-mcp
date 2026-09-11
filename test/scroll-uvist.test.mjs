@@ -71,6 +71,35 @@ test('blød rulning: siden der naar maalet lidt efter scrollTo, er en rulning de
   assert.deepEqual(svar.position, { x: 0, y: 600 });
 });
 
+// MAALT 11/9 af Astra (efterproevning af c826f63): en side der bliver ved med at bevaege sig, og hvor hvert opslag tager 3,1 s.
+// Genlaesningen gik op til 10 gange og kom over serverens 30 s. 1.29.0 svarede efter 3,1 s. Genlaesningen er nu bundet af tid.
+test('genlaesningen efter scrollTo er bundet af tid, ikke af et antal forsoeg', async () => {
+  let y = 0;
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: true },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: true }],
+    'debugger.sendCommand': async (_m, metode, p) => {
+      if (metode === 'Input.dispatchMouseEvent') throw new Error('CDP svarede ikke inden 1500 ms: Input.dispatchMouseEvent');
+      if (metode === 'Runtime.evaluate') {
+        await new Promise((r) => setTimeout(r, 310));   // hvert opslag er langsomt
+        const ex = String(p?.expression || '');
+        if (/scrollTo/.test(ex)) return { result: { value: { foer: { x: 0, y: 0 }, efter: { x: 0, y: 0 } } } };
+        y += 40;   // siden bliver ved med at bevaege sig og naar aldrig et hvilepunkt
+        return { result: { value: { x: 0, y } } };
+      }
+      return {};
+    },
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  const t0 = Date.now();
+  const svar = await u.hent('dispatch')(9876, 'scroll', { y: 600 });
+  const brugt = Date.now() - t0;
+  assert.ok(brugt < 2500, `scroll brugte ${brugt} ms paa en side der aldrig falder til ro`);
+  assert.equal(svar.ok, true, JSON.stringify(svar));
+});
+
 test('kendt start: reserveloesningen ruller mod MAAL-positionen', async () => {
   // Positiv kontrol: ellers ville en scroll der aldrig falder tilbage bestaa testen ovenfor.
   const { u, rulninger } = sele({ startKendt: true });
