@@ -1277,12 +1277,10 @@ async function scriptingClick(tabId, selector) {
         try { el.dispatchEvent(new PointerEvent('pointerup', { ...mus, buttons: 0 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
         el.click();
-        const svar = () => ({ ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false });
-        const straks = svar();
-        if (straks.landed || straks.detached) return straks;
-        // Fable (efterproevning 11/9): React 18 og Vue 3 opdaterer siden et tick efter klikket. Et oejeblik mere, saa et klik
-        // der virkede ikke meldes som "kan vaere landet". chrome.scripting venter selv paa et returneret loefte.
-        return new Promise((ok) => setTimeout(() => ok(svar()), 200));
+        // Maales i samme oejeblik som klikket. Astra (efterproevning af c1496d4): en anden maaling 200 ms senere gjorde et
+        // uafhaengigt ur til klikbevis og et klik der navigerede i ventetiden til en fejl. En sen React-opdatering giver
+        // derfor landed:false og maaske_landet - aerligt, aldrig en falsk succes.
+        return { ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false };
       },
       args: [selector],
     });
@@ -3173,20 +3171,10 @@ async function dispatch(port, method, params) {
         // trykket er sendt. Intet klik kan vaere landet (trykSendt er falsk, se ovenfor), saa script-klikket er sikkert.
         const inputFristFoerTryk = /svarede ikke inden \d+ ms: Input\./.test(e?.message || '');
         if (inputFristFoerTryk || /Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
-          const urlFoer = (await chrome.tabs.get(tab.id).catch(() => null))?.url ?? tab.url;
+          // Ingen "ny adresse = klikket navigerede"-regel her. Astra (efterproevning af c1496d4): en UAFHAENGIG navigation
+          // fjernede rammen foer scriptet koerte, og reglen svarede ok:true med nul handlinger. En afvisning beviser ikke at
+          // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
           const r = await scriptingClick(tab.id, params.selector);
-          // Afvises scriptet ("Frame ... was removed") og har fanen faaet en ny adresse, navigerede klikket siden bort -
-          // det VAR sendt. Den oprindelige fristfejl ville invitere agenten til at klikke igen. Samme bevis som
-          // tolkManglendeSettle: en ny adresse, ikke selve afvisningen.
-          if (!r.ok && r.reason === 'exception' && inputFristFoerTryk) {
-            const fane = await chrome.tabs.get(tab.id).catch(() => null);
-            if (fane?.url && urlFoer && fane.url !== urlFoer) {
-              return {
-                ok: true, method: 'scripting-fallback', landed: true, navigerede: true, url: fane.url,
-                note: 'Fanen var i baggrunden, saa klikket blev udfoert med et script, og siden navigerede bort bagefter.',
-              };
-            }
-          }
           if (r.ok && !inputFristFoerTryk) {
             // Debuggeren var blokeret eller afkoblet: samme svar som 1.29.0, nu med maalingen vedlagt.
             return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: klikLandede(r) };
@@ -4049,7 +4037,10 @@ async function dispatch(port, method, params) {
         const lager = side.storeId ? { storeId: side.storeId } : {};
         // Fable (sign-off 11/9): en session paa http:// fik en Secure-cookie fra overdomaenet. {url} udelader dem selv,
         // men opslagene paa {domain} kender ikke sidens protokol. Chrome sender aldrig en Secure-cookie til http.
-        const sendesOverProtokollen = (c) => !c.secure || side.u.protocol === 'https:';
+        // Astra (efterproevning af c1496d4): Chromium regner localhost for sikker og sender Secure-cookies dertil over http.
+        const sikkerVaert = side.u.protocol === 'https:' || side.vaert === 'localhost' || side.vaert.endsWith('.localhost') ||
+          /^127(\.\d{1,3}){3}$/.test(side.vaert) || side.vaert === '[::1]';
+        const sendesOverProtokollen = (c) => !c.secure || sikkerVaert;
         // De cookies Chrome ville SENDE til siden - inklusive overdomaenets ...
         for (const c of await chrome.cookies.getAll({ url: side.u.href, ...lager })) med(c, side.storeId);
         // ... plus sidens EGNE cookies paa alle stier (Path=/api kom ikke med ovenfor). {domain} giver

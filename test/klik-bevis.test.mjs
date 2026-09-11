@@ -127,13 +127,16 @@ test('script-klikket maaler selv: en side der reagerede giver landed:true (posit
   assert.equal((await radix.koer(kilde, '#knap')).landed, true, `pointerdown blev ikke sendt: ${radix.t.haendelser.join(',')}`);
 });
 
-// Fable (efterproevning 11/9): aftrykket blev taget i samme oejeblik som klikket. React 18 (createRoot) og Vue 3 opdaterer
-// siden en microtask eller et tick senere, saa et klik der virkede blev meldt "kan vaere landet" - paa netop de sider
-// reserven er til for.
-test('script-klikket ser en side der opdaterer sig lige efter klikket', { timeout: 20000 }, async () => {
+// Fable (efterproevning 11/9) foreslog at maale igen efter 200 ms, fordi React 18/Vue 3 opdaterer siden et tick efter
+// klikket. MAALT af Astra (efterproevning af c1496d4), to regressioner: et uafhaengigt ur der aendrede siden i ventetiden
+// blev til klikbevis (ok:true, nul handlinger; 1.29.0: fejl), og et klik der navigerede i ventetiden blev meldt som fejl
+// (1.29.0: ok). En aendring efter klikket kan ikke tilskrives klikket, saa script-klikket maaler i samme oejeblik.
+// Prisen er aerlig: en sen React-opdatering giver landed:false og maaske_landet - aldrig en falsk succes.
+test('en aendring efter script-klikket tilskrives ikke klikket - et ur kan ikke skelnes fra en sen handler', { timeout: 20000 }, async () => {
   const { koer } = scriptSide('senere');
   const r = await koer(await scriptKlikKilde(), '#knap');
-  assert.equal(r.landed, true, `en opdatering et tick efter klikket blev ikke set: ${JSON.stringify(r)}`);
+  assert.equal(r.landed, false, `en aendring der kom efter klikket blev kaldt klikbevis: ${JSON.stringify(r)}`);
+  assert.equal(typeof r?.then, 'undefined', 'script-klikket maa svare i samme oejeblik, ikke med et ventende loefte');
 });
 
 // MAALT 11/9 af Astra (efterproevning af 9814636): siden handler paa pointerdown naar pointerType !== "mouse" og paa click.
@@ -163,17 +166,13 @@ function navigationsSele(nyAdresse) {
   return u;
 }
 
-test('navigerede siden bort under script-klikket, er klikket landet', { timeout: 20000 }, async () => {
-  const u = navigationsSele('https://x.example/kvittering');
+// MAALT af Astra (efterproevning af c1496d4): musebevaegelsen udloeb, en UAFHAENGIG navigation fjernede rammen foer scriptet
+// koerte, og reglen "afvist script + ny adresse = klikket navigerede" svarede ok:true, navigerede:true med nul handlinger.
+// 1.29.0: fejl. En ny adresse beviser ikke at det var klikket - og en afvisning beviser ikke at scriptet koerte.
+test('afvises script-klikket og har fanen en ny adresse, er det IKKE en succes', { timeout: 20000 }, async () => {
+  const u = navigationsSele('https://test.example/session-expired');
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
-  assert.equal(svar.ok, true, `en navigation efter klikket blev meldt som fejl: ${JSON.stringify(svar)}`);
-  assert.equal(svar.navigerede, true);
-});
-
-test('afvises scriptet uden at adressen skiftede, er det stadig en fejl (positiv kontrol)', { timeout: 20000 }, async () => {
-  const u = navigationsSele(null);
-  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
-  assert.notEqual(svar.ok, true, `en afvisning uden tegn paa virkning blev kaldt succes: ${JSON.stringify(svar)}`);
+  assert.notEqual(svar.ok, true, `en navigation der ikke skyldtes klikket blev kaldt klikbevis: ${JSON.stringify(svar)}`);
 });
 
 test('udloeber selve trykket, klikkes der IKKE via script - det kan vaere landet', { timeout: 20000 }, async () => {

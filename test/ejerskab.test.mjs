@@ -120,6 +120,14 @@ test('get_cookies: en Secure-cookie leveres ikke til en http-side', async () => 
   assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), [], `en Secure-cookie slap igennem til http: ${JSON.stringify(r)}`);
 });
 
+// MAALT af Astra (efterproevning af c1496d4): fanen http://localhost/ og Secure-cookien sid; Path=/api. 1.29.0 leverede den,
+// HEAD skjulte den. Chromium regner localhost for sikker og sender Secure-cookies dertil over http.
+test('get_cookies: en Secure-cookie leveres til http://localhost, som Chromium selv goer', async () => {
+  const u = cookieSele([{ name: 'sid', value: 'LOCAL', domain: 'localhost', hostOnly: true, path: '/api', secure: true }], { url: 'http://localhost/' });
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'localhost' });
+  assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), ['sid'], `localhost-cookien blev skjult: ${JSON.stringify(r)}`);
+});
+
 test('get_cookies: en Secure-cookie leveres til en https-side (positiv kontrol)', async () => {
   const u = cookieSele([{ name: 'sikker', value: 'v', domain: '.example.com', path: '/', secure: true }]);
   const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
