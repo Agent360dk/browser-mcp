@@ -13,7 +13,7 @@
 [![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
 [![Glama quality](https://glama.ai/mcp/servers/Agent360dk/browser-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Agent360dk/browser-mcp)
 
-[![Browser MCP Demo](assets/demo.gif)](https://browsermcp.dev)
+[![Browser MCP Demo](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)
 
 ▶ **[Watch the 37-second demo with sound →](https://browsermcp.dev)**
 
