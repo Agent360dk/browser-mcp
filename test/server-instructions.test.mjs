@@ -37,6 +37,18 @@ function konstruktoerKald() {
   return kilde.slice(start, i + 1);
 }
 
+// Fable (efterproevning 11/9): svarene har faaet felterne landed, maaske_landet, afviger og uaendret, men instruktionerne
+// naevnte ingen af dem (0 traeffere i index.js). Kun svarets note bar betydningen, og en agent der kun laeser ok, klikker igen.
+test('instruktionerne forklarer de uvisse svar, saa agenten ikke gentager en handling blindt', () => {
+  const start = kilde.indexOf('## When things fail');
+  assert.ok(start > -1, 'afsnittet "When things fail" mangler');
+  const afsnit = kilde.slice(start, kilde.indexOf('\n## ', start + 5));
+  for (const felt of ['maaske_landet', 'landed', 'afviger', 'uaendret']) {
+    assert.match(afsnit, new RegExp(felt), `instruktionerne naevner ikke ${felt}`);
+  }
+  assert.match(afsnit, /maaske_landet[^\n]*(do not|don't|never)[^\n]*(again|repeat)/i, 'maaske_landet skal sige: gentag ikke blindt');
+});
+
 test('instructions leveres til klienten via SDK-serveren', () => {
   const src = konstruktoerKald();
   const INSTRUCTIONS = 'PROEVE-INSTRUKTIONER';

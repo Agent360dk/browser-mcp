@@ -644,6 +644,8 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
 - A click, hover or key press answers "CDP svarede ikke inden … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click)
+- An answer with maaske_landet: true means the action was sent but its effect could not be confirmed. Check the page first (browser_get_page_content or browser_screenshot) and do not repeat it blindly: a second click can submit twice. landed: false means the page showed no visible reaction to the click
+- browser_fill with afviger: true means the field shows something other than what you typed; read faktisk. uaendret: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check faktisk before moving on
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 
