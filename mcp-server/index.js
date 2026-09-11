@@ -477,9 +477,216 @@ function sikrePort() {
   return bindLoefte;
 }
 
+// ── Partitions: isolated browser sessions for parallel agents ──────────────
+//
+// Problem: every agent sharing one MCP session (coordinator + subagents) drives
+// the SAME tab group through the default port, so concurrent agents steal and
+// close each other's tabs.
+//
+// A partition is an extra WebSocket listener in the same port range. The
+// extension scans the whole range every 2 s and connects to every listener it
+// finds, so each partition automatically becomes its own Chrome tab group with
+// its own active tab — no extension changes needed. A partition holds a scarce
+// port only while it is open; closing it (browser_partition_close, or the last
+// tab of that partition closing) releases the port immediately.
+//
+// The default-port path below is untouched: partitions neither use nor disturb
+// its lazy binding, connection pinning, or error taxonomy.
+const partitions = new Map(); // port → { server, conns: Set<{ws, version, since}> }
+
+function partitionLiveConns(port) {
+  const p = partitions.get(port);
+  if (!p) return [];
+  return [...p.conns].filter(c => c.ws.readyState === 1);
+}
+
+// Newest live connection wins on a partition port (same rule the extension
+// itself implies: one session per port, last writer owns the tab group).
+function partitionConn(port) {
+  const live = partitionLiveConns(port);
+  live.sort((a, b) => b.since - a.since);
+  return live[0] || null;
+}
+
+function closePartition(port, reason = 'partition-closed') {
+  const p = partitions.get(port);
+  if (!p) return false;
+  partitions.delete(port);
+  for (const c of p.conns) { try { c.ws.close(1000, reason); } catch {} }
+  try { p.server.close(); } catch {}
+  process.stderr.write(`[MCP] Partition ${port} closed (${reason})\n`);
+  return true;
+}
+
+function openPartition() {
+  return new Promise((resolve, reject) => {
+    const taken = new Set(partitions.keys());
+    if (activePort !== null) taken.add(activePort);
+    const tryPort = (port) => {
+      if (port > MAX_PORT) {
+        return reject(new Error(
+          `No free port in ${BASE_PORT}-${MAX_PORT} for a new partition. ` +
+          'Close an unused partition (browser_partition_close) or wait for a chat to finish.'
+        ));
+      }
+      if (taken.has(port)) return tryPort(port + 1);
+      const server = new WebSocketServer({
+        host: '127.0.0.1',
+        port,
+        // Same gate as the default listener: only real Chrome extensions.
+        verifyClient: ({ origin }, godkend) => {
+          if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin || '')) return godkend(true);
+          godkend(false, 401, 'only chrome extensions may connect');
+        },
+      });
+      const entry = { server, conns: new Set() };
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') tryPort(port + 1);
+        else reject(err);
+      });
+      server.on('listening', () => {
+        partitions.set(port, entry);
+        process.stderr.write(`[MCP] Partition listener on ws://127.0.0.1:${port}\n`);
+        resolve(port);
+      });
+      server.on('connection', (ws, req) => {
+        const origin = req?.headers?.origin || '';
+        const fraOrigin = /^chrome-extension:\/\/([a-p]{32})$/.exec(origin)?.[1] || null;
+        if (!fraOrigin) { try { ws.close(1008, 'only chrome extensions may connect'); } catch {} return; }
+        const conn = { ws, version: null, since: Date.now(), harHilst: false };
+        entry.conns.add(conn);
+        process.stderr.write(`[MCP] Chrome extension connected to partition ${port}\n`);
+        ws.on('message', (data) => {
+          let msg;
+          try { msg = JSON.parse(data.toString()); } catch { return; }
+          if (msg.type === 'hello') {
+            conn.harHilst = true;
+            conn.version = typeof msg.version === 'string' ? msg.version : null;
+            return;
+          }
+          if (msg.type === 'terminate') {
+            // Last tab of THIS partition closed: release just this partition.
+            // (Hello-gated like the default path; the active-connection gate is
+            // N/A here — the port exists solely for this partition.)
+            if (!conn.harHilst) return;
+            closePartition(port, 'partition-terminated');
+            return;
+          }
+          const { id, result, error } = msg;
+          const p = pending.get(id);
+          if (!p) return;
+          pending.delete(id);
+          clearTimeout(p.timer);
+          if (error) p.reject(new Error(error));
+          else p.resolve(result);
+        });
+        ws.on('error', () => { try { ws.close(); } catch {} });
+        ws.on('close', () => { entry.conns.delete(conn); });
+      });
+    };
+    tryPort(BASE_PORT);
+  });
+}
+
+async function sendToPartition(port, method, params = {}, timeoutMs = 30000, _retries = 5) {
+  const conn = partitionConn(port);
+  // The extension rescans the port range every 2 s, so a fresh partition may
+  // need a few seconds before its first command can run.
+  if (!conn) {
+    if (_retries > 0) {
+      await new Promise(r => setTimeout(r, 1500));
+      return sendToPartition(port, method, params, timeoutMs, _retries - 1);
+    }
+    if (!partitions.has(port)) {
+      throw new Error(
+        `No such browser partition: ${port}. ` +
+        'List them with browser_partition_list or open one with browser_partition_new.'
+      );
+    }
+    throw new Error(
+      `Partition ${port} has no Chrome extension connection yet. ` +
+      'The extension adopts new partitions within a few seconds — retry the command.'
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const id = ++cmdId;
+    const timer = setTimeout(() => {
+      pending.delete(id);
+      reject(new Error(`Command timed out after ${timeoutMs}ms: ${method}`));
+    }, timeoutMs);
+    pending.set(id, { resolve, reject, timer });
+    harSendtKommando = true;
+    conn.ws.send(JSON.stringify({ id, method, params, pid: process.ppid }));
+  });
+}
+
+function handlePartitionNew(args) {
+  void args;
+  return openPartition().then(async (port) => {
+    // Wait for the extension to adopt the partition (2 s scan cycle).
+    let connected = false;
+    for (let i = 0; i < 8 && !connected; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      connected = !!partitionConn(port);
+    }
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          partition: port,
+          connected,
+          instructions: connected
+            ? `Partition ${port} is live. Pass partition: ${port} in every browser tool call made by the agent that owns it.`
+            : `Partition ${port} is open but Chrome has not connected yet. Pass partition: ${port} in every browser tool call; commands retry (~7 s) while Chrome adopts it.`,
+        }, null, 2),
+      }],
+    };
+  });
+}
+
+function handlePartitionList() {
+  const list = [...partitions.entries()].map(([port]) => ({
+    partition: port,
+    role: 'extra',
+    extension_connected: !!partitionConn(port),
+  }));
+  if (activePort !== null) {
+    list.unshift({ partition: activePort, role: 'default', extension_connected: liveConnections().length > 0 });
+  }
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({ partitions: list }, null, 2),
+    }],
+  };
+}
+
+function handlePartitionClose(args) {
+  const port = args?.partition;
+  if (typeof port !== 'number') {
+    return { content: [{ type: 'text', text: 'browser_partition_close requires a numeric `partition` (see browser_partition_list).' }], isError: true };
+  }
+  if (port === activePort) {
+    return { content: [{ type: 'text', text: `Partition ${port} is this session's default partition; it cannot be closed (close its tabs instead).` }], isError: true };
+  }
+  if (!closePartition(port)) {
+    return { content: [{ type: 'text', text: `No such partition: ${port} (see browser_partition_list).` }], isError: true };
+  }
+  return {
+    content: [{
+      type: 'text',
+      text: JSON.stringify({ closed: port, note: 'Chrome releases this partition\'s tab group within ~2 s.' }, null, 2),
+    }],
+  };
+}
+
 // ── Send command to extension ───────────────────────────────────────────────
 
-async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
+async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null, _partition = null) {
+  // A partitioned call bypasses the default port entirely (see Partitions above).
+  if (_partition !== null && _partition !== undefined) {
+    return sendToPartition(_partition, method, params, timeoutMs, _retries);
+  }
   // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
   // Fik vi ingen (hele spaendet optaget), proever naeste kald igen — derfor ingen kast her.
   await sikrePort();
@@ -583,6 +790,13 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - list_tabs only shows YOUR session's tabs — other Claude sessions have their own
 - switch_tab lets you jump between your tabs
 - close_tab cleans up when you're done
+
+## Partitions (parallel agents)
+A partition is an isolated browser session: its own Chrome tab group and its own active tab.
+- If multiple agents (you + subagents) drive the browser at the same time, they MUST each use their own partition or they will fight over the active tab.
+- browser_partition_new creates a fresh partition and returns its number.
+- Pass partition: <number> in EVERY browser tool call made by the agent that owns it. Omitting it targets the default partition.
+- browser_partition_list shows all partitions; browser_partition_close releases one when its agent is done.
 
 ## Authentication flows
 1. Navigate to login page
@@ -732,6 +946,16 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await handleExtractToken(args);
     }
 
+    if (name === 'browser_partition_new') {
+      return await handlePartitionNew(args);
+    }
+    if (name === 'browser_partition_list') {
+      return handlePartitionList();
+    }
+    if (name === 'browser_partition_close') {
+      return handlePartitionClose(args);
+    }
+
     const method = methodMap[name];
     if (!method) {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
@@ -739,10 +963,14 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // extract_list scrolls a container in a loop (up to 300 rounds × wait_ms), so the 30 s
     // default would kill a long mail list mid-walk and report a partial set as complete.
-    const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
+    // Strip the routing param; the extension never sees it. Omitting it targets
+    // the default partition, exactly as before.
+    const { partition: _routingPartition, ...rest } = args || {};
+
+    const timeout = method === 'ask_user' ? (rest.timeout || 120000) + 5000 :
                     method === 'solve_captcha' ? 60000 :
                     method === 'extract_list' ? 180000 : 30000;
-    const result = await sendToExtension(method, args || {}, timeout);
+    const result = await sendToExtension(method, rest, timeout, 5, false, null, _routingPartition ?? null);
 
     if (name === 'browser_screenshot' && result?.image) {
       const isJpeg = result.image.startsWith('data:image/jpeg');
@@ -750,17 +978,17 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
       const base64 = result.image.replace(prefix, '');
 
-      if (args && args.path) {
+      if (rest && rest.path) {
         // MAALT 23/8: ingen indeslutning. En sti med ../../.. skrev til
         // /private/tmp/a360-udenfor/x.png. Argumenterne kommer fra en model der laeser
         // FREMMEDE websider, saa en prompt-injektion paa en vilkaarlig side kunne
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
         const rod = resolve(process.cwd());
-        const targetPath = resolve(rod, args.path);
+        const targetPath = resolve(rod, rest.path);
         if (targetPath !== rod && !targetPath.startsWith(rod + sep)) {
           throw new Error(
             `path skal ligge inden for arbejdsmappen (${rod}). ` +
-            `"${args.path}" peger udenfor. Brug en relativ sti uden ../.`,
+            `"${rest.path}" peger udenfor. Brug en relativ sti uden ../.`,
           );
         }
         mkdirSync(dirname(targetPath), { recursive: true });
@@ -1159,6 +1387,7 @@ function gracefulShutdown(reason, code = 0) {
     try { c.ws.close(1000, 'mcp-shutdown'); } catch {}
   }
   if (wss) try { wss.close(); } catch {}
+  for (const port of [...partitions.keys()]) closePartition(port, 'mcp-shutdown');
 
   // 300ms grace for FIN-flush + extension session_disconnect cleanup
   setTimeout(() => process.exit(code), 300);
@@ -1170,6 +1399,11 @@ process.on('exit', () => {
   // Safety net for direct process.exit calls that bypass gracefulShutdown
   if (wss) try { wss.close(); } catch {}
   for (const c of connections) try { c.ws.close(); } catch {}
+  for (const [port, p] of [...partitions]) {
+    partitions.delete(port);
+    try { p.server.close(); } catch {}
+    for (const c of p.conns) try { c.ws.close(); } catch {}
+  }
 });
 
 // ── Naar lukker serveren sin port? (MAALT 22/8) ──────────────────────────────

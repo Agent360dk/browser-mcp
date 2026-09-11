@@ -31,7 +31,7 @@ const readme = laes('README.md');
 //   browser_about             — rene links + metadata, ingen browser involveret
 //   browser_provide_feedback  — selv-diagnose af installationen, spoerger npm, ikke Chrome
 //   browser_extract_token     — sammensat: kalder selv 'navigate' og returnerer vejledning
-const SERVER_LOKALE = new Set(['browser_about', 'browser_provide_feedback', 'browser_extract_token']);
+const SERVER_LOKALE = new Set(['browser_about', 'browser_provide_feedback', 'browser_extract_token', 'browser_partition_new', 'browser_partition_list', 'browser_partition_close']);
 
 const navne = TOOLS.map(t => t.name);
 
@@ -79,7 +79,9 @@ test('hver methodMap-metode har en dispatch-case i background.js', () => {
   // Vagten skal foelge vaerktoejerne, ikke et magisk tal. MAALT 22/8: den stod paa
   // ">= 40" og blev roed da tre udklipsholder-vaerktoejer blev fjernet — en test der
   // fejler paa en KORREKT aendring er et daarligt instrument. Nu udledes den.
-  assert.ok(par.length >= TOOLS.length - 5,
+  // Server-lokale vaerktoejer (about, feedback, extract_token, partition_*) har
+  // med vilje ingen methodMap-linje: de svarer uden at roere udvidelsen.
+  assert.ok(par.length >= TOOLS.length - SERVER_LOKALE.size,
     `fandt kun ${par.length} methodMap-linjer mod ${TOOLS.length} vaerktoejer — parseren er nok braekket`);
   const cases = new Set([...bgSrc.matchAll(/case '([a-z_]+)'/g)].map(m => m[1]));
   for (const [, vaerktoej, metode] of par) {

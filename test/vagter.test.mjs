@@ -172,9 +172,12 @@ test('set_combobox videregiver hver parameter den annoncerer', async () => {
   const i = bg.indexOf("case 'set_combobox'");
   const blok = bg.slice(i, bg.indexOf("case '", i + 20));
 
-  // value/values haandteres saerskilt (samles til en liste), resten skal videregives.
+  // value/values haandteres saerskilt (samles til en liste), og partition
+  // forbruges server-side (strippes i index.js foer dispatch, dirigerer kaldet
+  // til en partition) — den naar aldrig udvidelsen, saa handleren skal ikke
+  // naevne den. Resten skal videregives.
   const skalVidere = Object.keys(t.inputSchema.properties)
-    .filter((k) => !['selector', 'value', 'values'].includes(k));
+    .filter((k) => !['selector', 'value', 'values', 'partition'].includes(k));
 
   for (const p of skalVidere) {
     assert.match(blok, new RegExp(p),

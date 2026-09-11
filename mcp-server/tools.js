@@ -552,3 +552,56 @@ export const PROVIDER_PAGES = {
     instructions: 'Select app → Auth → Client credentials',
   },
 };
+
+// ── Partitions (parallel-agent isolation) ───────────────────────────────────
+// A partition is an isolated browser session (its own listener port → own
+// Chrome tab group + own active tab). Extra partitions are created at runtime
+// and adopted by the Chrome extension automatically. Passing `partition` in
+// any tool call routes that single call to that partition; omitting it uses
+// the default partition — exactly as before.
+
+const PARTITION_PROP = {
+  type: 'number',
+  description: 'Partition (port) to run this command in. Get one via browser_partition_new. Omit to use the default partition. Use this when multiple agents drive the browser concurrently so they never fight over the active tab.',
+};
+
+for (const t of TOOLS) {
+  // Server-local tools never touch a tab group, so routing them to a
+  // partition is meaningless: about/provide_feedback answer locally, and the
+  // partition_* tools operate on the partition registry itself.
+  if (['browser_about', 'browser_provide_feedback',
+       'browser_partition_new', 'browser_partition_list',
+       'browser_partition_close'].includes(t.name)) continue;
+  if (!t.inputSchema) t.inputSchema = { type: 'object', properties: {} };
+  if (!t.inputSchema.properties) t.inputSchema.properties = {};
+  t.inputSchema.properties.partition = PARTITION_PROP;
+}
+
+TOOLS.push(
+  {
+    name: 'browser_partition_new',
+    description: 'Create a NEW isolated browser partition (own Chrome tab group, own active tab) for a parallel agent to use without clashing with other agents. Returns the partition number. Then pass partition: <number> in EVERY browser tool call made by that agent. Chrome adopts the partition within ~2 seconds.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        label: { type: 'string', description: 'Optional human-readable label for the partition (informational only)' },
+      },
+    },
+  },
+  {
+    name: 'browser_partition_list',
+    description: 'List this session\'s browser partitions: the default port plus any extra partitions, with connection state.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'browser_partition_close',
+    description: 'Close an extra browser partition, releasing its port immediately. Chrome releases its tab group within ~2s. The default partition cannot be closed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        partition: { type: 'number', description: 'Partition (port) to close, from browser_partition_list' },
+      },
+      required: ['partition'],
+    },
+  },
+);

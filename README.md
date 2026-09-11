@@ -191,7 +191,7 @@ Both are optional. Neither is needed for normal use.
 | `BROWSER_MCP_CHECK_NPM=1` | Makes `browser_provide_feedback` also compare this server against the latest version published on npm. Off by default, so the call stays fast and works offline. |
 | `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. |
 
-## 40 Tools
+## 43 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -264,6 +264,15 @@ Both are optional. Neither is needed for normal use.
 |------|-------------|
 | `browser_provide_feedback` | Self-check + report in one call. Compares this server against the latest on npm, the connected extension against this server, and detects **more than one Browser MCP extension connected at once** - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
 | `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
+
+### Partitions (parallel agents)
+| Tool | Description |
+|------|-------------|
+| `browser_partition_new` | Open an isolated browser partition (own tab group + active tab) for one parallel agent; returns its number |
+| `browser_partition_list` | List this session's partitions (default + extras) with connection state |
+| `browser_partition_close` | Close an extra partition, releasing its port immediately |
+
+Every other tool accepts an optional `partition` number routing that call to the partition; omitting it targets the default partition.
 
 ## Multi-Session Support
 
