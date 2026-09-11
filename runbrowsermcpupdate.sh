@@ -113,10 +113,23 @@ say "current → extension:${CUR_EXT}  npm-package:${CUR_PKG}  npm-latest:${NPM_
 # shipped but whose npm publish failed). The per-channel guards below (npm view,
 # tag rev-parse, commit-diff, gh release view) make every other channel idempotent.
 LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
-HIGHEST="$(printf '%s\n%s\n' "$NPM_LATEST" "$NEW_VERSION" | sort -V | tail -1)"
-{ [[ "$HIGHEST" == "$NEW_VERSION" && "$NEW_VERSION" != "$NPM_LATEST" ]]; } \
-  || die "new version $NEW_VERSION must be greater than npm-latest ($NPM_LATEST)"
-ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
+# MAALT 11/9 (Astra, efterproevet): her stoppede scriptet naar NEW_VERSION == npm-latest.
+# Men npm koerer som trin 5 og MCP-registret EFTER npm. Fejlede registret, kunne udgivelsen
+# ikke genoptages, selvom npm-trinnet selv springer en allerede udgivet version over.
+# Lighed betyder derfor "genoptag"; kun en aeldre version stopper.
+versions_tjek() {
+  local ny="$1" npm="$2"
+  if [[ "$ny" == "$npm" ]]; then echo genoptag; return 0; fi
+  [[ "$(printf '%s\n%s\n' "$npm" "$ny" | sort -V | tail -1)" == "$ny" ]] || return 1
+  echo ny
+}
+VERSIONS_TILSTAND="$(versions_tjek "$NEW_VERSION" "$NPM_LATEST")" \
+  || die "new version $NEW_VERSION must be greater than or equal to npm-latest ($NPM_LATEST)"
+if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then
+  warn "v$NEW_VERSION er allerede paa npm: genoptager en halv udgivelse. npm springes over; brug --skip-cws hvis butikken allerede har versionen (den afviser samme version igen)"
+else
+  ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
+fi
 
 # Every path this release touches/stages. Anything dirty OUTSIDE this set is a
 # stray (likely another chat's WIP) and must not be swept into the release commit.
@@ -313,14 +326,12 @@ else
   ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
   ( cd "$SMOKE_DIR" && tar xzf agent360-browser-mcp-*.tgz ) || die "kunne ikke pakke tarballen ud"
   ( cd "$SMOKE_DIR/package" && npm install --silent --no-audit --no-fund >/dev/null 2>&1 ) || die "npm install i tarballen fejlede"
-  SMOKE_INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}'
-  SMOKE_UD="$(cd "$SMOKE_DIR/package" && printf '%s\n' "$SMOKE_INIT" | node bin/cli.js 2>&1 | head -20 || true)"
-  if grep -qE "ERR_MODULE_NOT_FOUND|Cannot find module|SyntaxError" <<<"$SMOKE_UD"; then
-    printf '%s\n' "$SMOKE_UD" >&2
-    die "tarballen kan ikke starte — UDGIV IKKE. Mangler der en fil i package.json files?"
-  fi
-  grep -q "server running" <<<"$SMOKE_UD" || warn "pakken startede, men sagde ikke 'server running'"
-  ok "tarballen starter"
+  # MAALT 11/9 (Astra): her grep'ede tjekket kun efter modul- og syntaksfejl, og en manglende
+  # "server running"-linje gav kun en advarsel. En pakke der crashede af enhver anden grund
+  # blev godkendt. Nu kraeves et gyldigt svar paa MCP-haandtrykket (scripts/pakke-roegtest.mjs).
+  node "$REPO_ROOT/scripts/pakke-roegtest.mjs" "$SMOKE_DIR/package" \
+    || die "tarballen svarer ikke paa MCP-haandtrykket — UDGIV IKKE. Se fejlen ovenfor (mangler der en fil i package.json files?)"
+  ok "tarballen starter og svarer paa initialize"
   rm -rf "$SMOKE_DIR"
 fi
 
