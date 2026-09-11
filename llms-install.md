@@ -75,6 +75,6 @@ return to Step 2.
 
 ## Notes
 
-- 100% local: the extension talks to the local MCP server over a localhost WebSocket; nothing
-  leaves the machine.
+- Runs on your machine: the extension talks to the local MCP server over a localhost WebSocket.
+  Nothing is sent to Agent360; what the agent reads goes to your AI client, as with any tool.
 - Full docs: https://browsermcp.dev · Troubleshooting: https://browsermcp.dev/docs/troubleshooting/

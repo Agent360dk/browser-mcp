@@ -130,7 +130,7 @@ No - Browser MCP is an independent, open-source MCP server built by [Agent360](h
 No. `codex mcp add` writes straight to Codex's own `~/.codex/config.toml` - nothing about this path touches Claude Code at all.
 
 **Is my browsing data safe? What does the extension see?**
-Everything stays local. The extension talks to an MCP server on `127.0.0.1` on your own machine - nothing is sent to any external server, no telemetry, no analytics. Cookies and tokens are only pulled when your agent explicitly asks for them, one call at a time. Source is [open and auditable on GitHub](https://github.com/Agent360dk/browser-mcp).
+It runs on your machine. The extension talks to an MCP server on `127.0.0.1` that you started - nothing is sent to Agent360, and there is no telemetry or analytics. What your agent reads goes to your AI client and its model provider, like anything else you show it. Cookies and tokens are only pulled when your agent explicitly asks for them, one call at a time. Source is [open and auditable on GitHub](https://github.com/Agent360dk/browser-mcp).
 
 **How does CAPTCHA assistance actually work?**
 Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes, (2) AI-vision-guided grid solving for image challenges, (3) `browser_ask_user` shows you the challenge to solve by hand if the first two miss - then the agent continues. Nothing is routed through a third-party CAPTCHA-solving service. We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one.

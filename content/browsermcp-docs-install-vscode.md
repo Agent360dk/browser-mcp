@@ -216,13 +216,13 @@ Workspace (`.vscode/mcp.json`) if you want the server scoped to one project and 
 That's VS Code's own convention - Claude Code and Cursor use `mcpServers` as the root key, VS Code uses `servers`. Same server, same package (`@agent360/browser-mcp`), different config wrapper. Don't copy a Claude Code config block into `.vscode/mcp.json` verbatim - swap the root key.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives VS Code's Copilot agent mode - or any MCP client, including Claude Code and Cursor - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives VS Code's Copilot agent mode - or any MCP client, including Claude Code and Cursor - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier. (GitHub Copilot's free tier is enough to use Agent mode.)
 
 **Does my browsing data leave my machine?**
-No. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. Nothing is sent to a remote server.
+Not to us. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. What your agent reads goes to your AI client and on to its model provider, like anything else you show it - there is no Agent360 server.
 
 **How do I update it?**
 The MCP server updates itself - every session runs `npx @agent360/browser-mcp@latest`, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.

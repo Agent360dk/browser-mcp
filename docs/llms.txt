@@ -13,7 +13,7 @@
   Codex: `codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest` ·
   Cursor/VS Code/other: add `{"command": "npx", "args": ["@agent360/browser-mcp@latest"]}` under `mcpServers` in that client's config.
 - Install the extension: https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl
-- 40 tools · MIT licensed · 100% local (nothing leaves your machine, no cloud relay, no API key)
+- 40 tools · MIT licensed · runs on your machine (no cloud relay, no API key, nothing sent to Agent360)
 - Works with: Claude Code, Cursor, VS Code agent mode, and any MCP client
 - Homepage: https://browsermcp.dev
 - Source: https://github.com/Agent360dk/browser-mcp

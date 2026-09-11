@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Privacy Policy - Browser MCP by Agent360</title>
-  <meta name="description" content="Browser MCP runs 100% locally with no telemetry, no analytics, and no account. This policy explains exactly what the extension accesses and why nothing is sent to us.">
+  <meta name="description" content="Browser MCP runs on your own machine with no telemetry, no analytics and no account. This policy explains what the extension accesses, what it keeps locally, and what leaves your machine through your AI client.">
   <link rel="canonical" href="https://browsermcp.dev/privacy.html">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Privacy Policy - Browser MCP by Agent360">
-  <meta property="og:description" content="Browser MCP runs 100% locally with no telemetry, no analytics, and no account.">
+  <meta property="og:description" content="Browser MCP runs on your own machine with no telemetry, no analytics and no account. Nothing is sent to Agent360.">
   <meta property="og:url" content="https://browsermcp.dev/privacy.html">
   <meta property="og:image" content="https://browsermcp.dev/og-image.jpg">
   <meta name="twitter:card" content="summary_large_image">
@@ -25,28 +25,29 @@
 </head>
 <body>
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: April 6, 2026</p>
+  <p class="updated">Last updated: September 11, 2026</p>
 
   <p><strong>Browser MCP</strong> is an open source Chrome extension + MCP server by <a href="https://agent360.dk">Agent360</a>. We take your privacy seriously.</p>
 
   <h2>Data Collection</h2>
-  <p>Browser MCP does <strong>not</strong> collect, store, or transmit any personal data. Specifically:</p>
+  <p>Browser MCP does <strong>not</strong> send any personal data to Agent360 or to anyone else. Specifically:</p>
   <ul>
     <li>No browsing history is collected or sent anywhere</li>
     <li>No cookies or login credentials are read by our servers</li>
     <li>No analytics, tracking, or telemetry is included</li>
     <li>Nothing is sent to Agent360 - there is no server of ours to receive it</li>
+    <li>The extension keeps a short log on your own machine of which tools ran (time, tool name and session), shown in its popup. From version 1.29.1 it does not keep what the agent typed, cookie values or page addresses, and clears those from older entries when it updates. You can empty the log from the popup</li>
   </ul>
 
   <h2>How Browser MCP Works</h2>
-  <p>Browser MCP operates entirely on your local machine:</p>
+  <p>Browser MCP runs on your own machine:</p>
   <ul>
     <li>The Chrome extension communicates with a local MCP server via WebSocket (localhost only)</li>
     <li>The MCP server communicates with Claude Code (or other MCP clients) via stdio</li>
     <li>Browser MCP itself contacts no server of ours or any third party. What does leave your machine: the pages your agent reads go to your AI client and on to its model provider; the browser visits the sites your agent opens; and <code>npx @agent360/browser-mcp@latest</code> looks the package up on npm once when the server starts</li>
   </ul>
 
-  <p>The localhost WebSocket bridge is not password-protected - it trusts connections from your own machine. That means the extension is only as private as your computer: any software already running on it could, in principle, connect to the same local port. Browser MCP never exposes this bridge beyond <code>localhost</code>, and nothing is transmitted off your machine. If you share your computer with untrusted software, disable or remove the extension when you are not using it.</p>
+  <p>The localhost WebSocket bridge is not password-protected - it trusts connections from your own machine. That means the extension is only as private as your computer: any software already running on it could, in principle, connect to the same local port. Browser MCP never exposes this bridge beyond <code>localhost</code>, and the bridge itself sends nothing off your machine. If you share your computer with untrusted software, disable or remove the extension when you are not using it.</p>
 
   <h2>Permissions</h2>
   <p>Browser MCP requests the following Chrome permissions. Each is required for browser automation functionality:</p>

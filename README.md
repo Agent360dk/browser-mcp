@@ -4,7 +4,7 @@
 
 It is the browser you are already signed into. No login step to fail, no API key to wire up,
 no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
-in its own colour-coded tab group. 40 tools, MIT, 100% local.
+in its own colour-coded tab group. 40 tools, MIT, runs on your machine.
 
 → **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** - every
 wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones we have not fixed.

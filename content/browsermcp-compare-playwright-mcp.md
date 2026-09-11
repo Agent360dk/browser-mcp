@@ -57,7 +57,7 @@ No. It is a Chrome extension using the Chrome Debugger API on your running brows
 Yes - they register as separate MCP servers and many setups use Playwright MCP for CI and Browser MCP for logged-in interactive work.
 
 **Which is safer for credentials?**
-Both run locally. Browser MCP never sees your passwords - it operates a browser where you are already signed in; sessions never leave your machine.
+Both run locally. Browser MCP never asks for your passwords - it operates a browser where you are already signed in, and your cookies stay in that browser unless your agent explicitly reads them.
 
 **Is Playwright MCP really maintained by Microsoft?**
 Yes - the repository lives under the `microsoft` GitHub organization (checked 2026-07-21).

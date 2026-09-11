@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** removing Browser MCP is two steps - delete the Chrome extension and drop the MCP server from your client's config. And the question behind the question - "what did it have access to?" - has a short answer too: the extension holds broad Chrome permissions because driving your real browser requires them, but it runs 100% locally and transmits nothing. There is no account, no server of ours, and no telemetry. Uninstalling leaves nothing behind on our side because there was never anything on our side.
+**Short answer:** removing Browser MCP is two steps - delete the Chrome extension and drop the MCP server from your client's config. And the question behind the question - "what did it have access to?" - has a short answer too: the extension holds broad Chrome permissions because driving your real browser requires them, but it runs on your own machine and sends nothing to Agent360. There is no account, no server of ours, and no telemetry. Uninstalling leaves nothing behind on our side because there was never anything on our side.
 
 ## Uninstall in two steps
 

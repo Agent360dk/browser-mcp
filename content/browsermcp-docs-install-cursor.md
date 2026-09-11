@@ -197,7 +197,7 @@ Each conversation gets its own MCP server on its own port (9876–9895), and the
 Add a `browser-mcp` entry to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` in a project (project-only) - the block is at the top of this page. Or use the UI: Cursor Settings → Tools & MCP → New MCP Server. Reload the window or restart Cursor afterward so it picks up the new server.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives Cursor - or any MCP client, including Claude Code and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, 100% local.
+An MCP (Model Context Protocol) server that gives Cursor - or any MCP client, including Claude Code and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.
@@ -212,7 +212,7 @@ Global (`~/.cursor/mcp.json`) if you want Browser MCP available in every Cursor 
 Chrome blocks extensions from self-installing from npm or any script - that's a Chrome security boundary, not a Browser MCP limitation. Loading unpacked once, or installing from the Chrome Web Store, are the only two ways in.
 
 **Does my browsing data leave my machine?**
-No. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. Nothing is sent to a remote server.
+Not to us. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. What your agent reads goes to your AI client and on to its model provider, like anything else you show it - there is no Agent360 server.
 
 **How do I update it?**
 The MCP server updates itself - every run uses `npx @agent360/browser-mcp`, so there's nothing to pin or bump. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.

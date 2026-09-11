@@ -954,7 +954,7 @@ function handleAbout(args) {
 
 // Friskheds-tjek mod npm. SLUKKET SOM STANDARD siden 22/8.
 //
-// Produktet lover paa forsiden "nothing leaves your machine ... no telemetry", og et
+// Produktet lover paa forsiden at intet sendes til Agent360 og at der ingen telemetri er, og et
 // opslag i npm-registret ER et kald ud af maskinen — ogsaa selv om det kun sender et
 // pakkenavn og ingen brugerdata. Loeftet vejer tungere end bekvemmeligheden, saa
 // tjekket er nu opt-in: saet BROWSER_MCP_CHECK_NPM=1.

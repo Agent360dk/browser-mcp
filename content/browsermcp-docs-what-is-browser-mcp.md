@@ -53,7 +53,7 @@ Because Browser MCP drives your real, already-authenticated Chrome, an agent usi
 
 ## Is Browser MCP free, and where does my data go?
 
-Browser MCP is MIT-licensed, free, and 100% local. There is no cloud relay, no hosted backend, and no API key - the MCP server runs on your own machine and talks to your own Chrome extension over a local WebSocket connection. Source is public on [GitHub](https://github.com/Agent360dk/browser-mcp).
+Browser MCP is MIT-licensed, free, and runs on your own machine. There is no cloud relay, no hosted backend, and no API key - the MCP server runs on your own machine and talks to your own Chrome extension over a local WebSocket connection. Source is public on [GitHub](https://github.com/Agent360dk/browser-mcp).
 
 ## How do I install it?
 

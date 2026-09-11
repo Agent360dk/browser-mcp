@@ -398,7 +398,7 @@ export const MarqueeTile: React.FC = () => (
         Your AI drives your real,<br />signed-in Chrome.
       </div>
       <div style={{ fontSize: 22, color: DIM, marginTop: 20 }}>
-        Twenty agents, one browser. 40 tools. MIT, 100% local.
+        Twenty agents, one browser. 40 tools. MIT, runs on your machine.
       </div>
     </div>
     <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 330 }}>
