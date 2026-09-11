@@ -67,6 +67,49 @@ test('get_cookies MED domaene virker uaendret', async () => {
   assert.match(u.__filter || '', /a\.example/, 'domaenet skal naa Chrome');
 });
 
+// MAALT 11/9 af Astra (R5 F7), reproduceret: sessionen staar paa https://a.example.com/, og kaldet beder om
+// domain "example.com". En cookie med Domain=.example.com; Path=/api kom med i 1.29.0 men manglede i HEAD:
+// {url} giver kun cookies til sidens egen sti, og {domain: vaert} holdt kun cookies hvis domaene ER vaertsnavnet.
+// Stubben filtrerer som Chrome: {url} efter vaert og sti, {domain} efter domaene og underdomaener.
+function cookieSele(cookies) {
+  const fane = { id: 1, url: 'https://a.example.com/', windowId: 1, active: true };
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': fane, 'tabs.query': [fane],
+    'cookies.getAllCookieStores': [],
+    'cookies.getAll': (f) => cookies.filter((c) => {
+      const cd = c.domain.replace(/^\./, '');
+      if (f.url) {
+        const a = new URL(f.url);
+        const vaertPasser = c.hostOnly ? a.hostname === cd : (a.hostname === cd || a.hostname.endsWith('.' + cd));
+        return vaertPasser && a.pathname.startsWith(c.path);
+      }
+      if (f.domain) return cd === f.domain || cd.endsWith('.' + f.domain);
+      return true;
+    }),
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  return u;
+}
+
+test('get_cookies: overdomaenets cookie paa en anden sti kommer med (F7)', async () => {
+  const u = cookieSele([{ name: 'api', value: 'v', domain: '.example.com', path: '/api' }]);
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
+  assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), ['api'], `overdomaenets /api-cookie mangler: ${JSON.stringify(r)}`);
+});
+
+test('get_cookies: en soeskendevaerts cookie kommer IKKE med', async () => {
+  // Positiv kontrol mod en rettelse der bare returnerer alt under det domaene der blev bedt om.
+  const u = cookieSele([
+    { name: 'api', value: 'v', domain: '.example.com', path: '/api' },
+    { name: 'bank', value: 'hemmelig', domain: 'bank.example.com', path: '/' },
+    // En host-only-cookie paa example.com sendes kun til example.com selv - aldrig til a.example.com.
+    { name: 'kunVaert', value: 'hemmelig', domain: 'example.com', hostOnly: true, path: '/' },
+  ]);
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
+  assert.deepEqual(Array.from(r.cookies || [], (c) => c.name).sort(), ['api'], `en anden vaerts cookie slap med: ${JSON.stringify(r)}`);
+});
+
 test('upload-stien er indesluttet i arbejdsmappen — samme vagt som skaermbilledets path', () => {
   const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
   const i = srv.indexOf("if (method === 'upload_file' || method === 'drop_file')");

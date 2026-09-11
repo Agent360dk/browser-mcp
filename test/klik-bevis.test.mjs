@@ -31,6 +31,36 @@ function sele(sendCommand, executeScript, tabsGet) {
 }
 const erSettle = (p) => String(p?.expression || '').includes('foerAftryk');
 
+// ── select_option: det FAKTISKE svar, ikke kildeteksten ────────────────────
+// MAALT 11/9 af Astra (R5 T1): vagten i vagter.test.mjs laeser kildeteksten, og mutationen
+// `ok: klikLandede(valgKlik), ...{ok:true}` gav stadig 42/42 groenne. Her kaldes handleren, og klikket paa
+// muligheden styres direkte, saa svaret skal foelge det klik.
+async function vaelgICustomDropdown(valgKlik) {
+  const u = sele(() => ({}));
+  u.ctx.debuggerEval = async () => false;                   // ikke en native <select>
+  u.ctx.resolveElement = async () => ({ x: 5, y: 5 });
+  let klik = 0;
+  u.ctx.debuggerClick = async () => (++klik === 1 ? { landed: true } : valgKlik);   // 1: aabn, 2: vaelg
+  return u.hent('dispatch')(9876, 'select_option', { selector: '#dd', option: 'Roed', wait: 1 });
+}
+
+test('select_option: et valg-klik der ikke landede giver ok:false', async () => {
+  const svar = await vaelgICustomDropdown({ landed: false, fallbackFired: true });
+  assert.equal(svar.ok, false, `svaret sagde ok paa et klik der ikke landede: ${JSON.stringify(svar)}`);
+  assert.match(String(svar.error), /ikke taget imod/);
+});
+
+test('select_option: et uvist valg-klik giver ikke ok:true', async () => {
+  const svar = await vaelgICustomDropdown({ landed: null, uverificeret: true });
+  assert.equal(svar.ok, false, `et uvist klik blev til succes: ${JSON.stringify(svar)}`);
+});
+
+test('select_option: et valg-klik der landede giver ok:true (positiv kontrol)', async () => {
+  const svar = await vaelgICustomDropdown({ landed: true, fallbackFired: false });
+  assert.equal(svar.ok, true, JSON.stringify(svar));
+  assert.equal(svar.error, undefined);
+});
+
 test('et settle-opslag der fejler fordi siden NAVIGEREDE, er et landet klik', async () => {
   const u = sele((_m, metode, p) => {
     if (metode === 'Runtime.evaluate' && erSettle(p)) throw new Error('Cannot find context with specified id');

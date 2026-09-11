@@ -62,6 +62,9 @@ test('et felt der formaterer vaerdien, meldes ikke som fordobling - men med den 
   // Fjerde runde (Astra): formatering kan ikke skelnes sikkert fra en aendret vaerdi - den meldes med den faktiske tekst.
   assert.notEqual(svar.error, 'feltet-fordoblet', 'formatering er ikke en fordobling');
   assert.equal(svar.faktisk, '+45 12 34 56 78', 'kalderen skal se hvad feltet viser');
+  // Femte runde (Astra R5 F1): 1.29.0 svarede ok:true her, og det er feltets egen formatering. ok:false er et tilbageslag.
+  assert.equal(svar.ok, true, `korrekt formatering blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.equal(svar.afviger, true, 'kalderen skal kunne se at feltet viser noget andet end det skrevne');
 });
 
 test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling', async () => {
@@ -71,6 +74,8 @@ test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
   assert.notEqual(svar.error, 'feltet-fordoblet', `et beloebsfelt der formaterer blev kaldt fordoblet: ${JSON.stringify(svar)}`);
   assert.equal(svar.faktisk, '5,00 kr', 'kalderen skal se hvad feltet viser');
+  assert.equal(svar.ok, true, `korrekt formatering blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.equal(svar.afviger, true);
 });
 
 test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async () => {
@@ -93,24 +98,47 @@ test('en vaerdi siden afviste ("OLD" blev staaende) meldes - den kaldes ikke for
   assert.equal(svar.error, 'feltet-viser-andet');
 });
 
-// ── Tredje runde (Astra): formatering er et tal eller et nummer - ikke "tegnene staar et sted" ─────
+// ── Tredje/fjerde runde (Astra) + femte runde (R5 F1) ──────────────────────────────────────────
+// Tredje og fjerde runde viste at enhver regel for "det er bare formatering" har huller. Femte runde viste at
+// ok:false paa enhver afvigelse ogsaa melder korrekt formatering som fejl (1.29.0 sagde ok). Skellet maales nu
+// i stedet for at gaettes: feltet laeses FOER reserveloesningen skriver. Stod det stille, afviste siden vaerdien
+// (ok:false). Aendrede det sig til noget andet end det skrevne, meldes ok:true med afviger:true og den faktiske
+// vaerdi, saa kalderen selv kan se forskellen - aldrig en tavs succes.
 for (const [navn, laesninger, vaerdi, skalOk] of [
-  ['et tal der blev til et ANDET tal ("5" -> "15") er ikke formatering', ['', '15'], '5', false],
-  ['et fortegn der forsvandt ("-5" -> "5") er ikke formatering', ['', '5'], '-5', false],
-  ['tegn der forsvandt fra tekst ("A!b" -> "ab") meldes', ['', 'ab'], 'A!b', false],
+  ['et tal der blev til et ANDET tal ("5" -> "15") er ikke formatering', ['', '15'], '5', 'afviger'],
+  ['et fortegn der forsvandt ("-5" -> "5") er ikke formatering', ['', '5'], '-5', 'afviger'],
+  ['tegn der forsvandt fra tekst ("A!b" -> "ab") meldes', ['', 'ab'], 'A!b', 'afviger'],
   ['et felt der skulle toemmes men beholdt "OLD", meldes', ['OLD', 'OLD'], '', false],
-  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") meldes med den faktiske vaerdi', ['', '5'], '5.00', false],
+  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") meldes med den faktiske vaerdi', ['', '5'], '5.00', 'afviger'],
   // Fjerde runde (Astra): hver 'bare formatering'-regel blev omgaaet.
-  ['et decimaltal der mistede kommaet ("1.5" -> "15") meldes', ['', '15'], '1.5', false],
-  ['et beloeb der blev negativt med Unicode-minus ("5" -> "\u22125") meldes', ['', '\u22125'], '5', false],
-  ['to store tal der afrundes ens i JavaScript meldes', ['', '9007199254740993'], '9007199254740992', false],
-  ['en ekstra landekode foran et internationalt nummer meldes', ['', '+1 45 12345678'], '+45 12345678', false],
+  ['et decimaltal der mistede kommaet ("1.5" -> "15") meldes', ['', '15'], '1.5', 'afviger'],
+  ['et beloeb der blev negativt med Unicode-minus ("5" -> "\u22125") meldes', ['', '\u22125'], '5', 'afviger'],
+  ['to store tal der afrundes ens i JavaScript meldes', ['', '9007199254740993'], '9007199254740992', 'afviger'],
+  ['en ekstra landekode foran et internationalt nummer meldes', ['', '+1 45 12345678'], '+45 12345678', 'afviger'],
 ]) {
   test(navn, async () => {
     const saet = [], taster = [];
     const u = sele(laesninger, saet, taster);
     const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: vaerdi });
     assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
-    assert.equal(svar.ok, skalOk, `"${vaerdi}" -> "${laesninger[laesninger.length - 1]}" gav ${JSON.stringify(svar)}`);
+    const faktisk = laesninger[laesninger.length - 1];
+    if (skalOk === 'afviger') {
+      assert.equal(svar.ok, true, `"${vaerdi}" -> "${faktisk}" gav ${JSON.stringify(svar)}`);
+      assert.equal(svar.afviger, true, 'en afvigelse maa aldrig vaere en tavs succes');
+      assert.equal(svar.faktisk, faktisk, 'kalderen skal se den faktiske vaerdi');
+      assert.equal(svar.forventet, vaerdi);
+    } else {
+      assert.equal(svar.ok, skalOk, `"${vaerdi}" -> "${faktisk}" gav ${JSON.stringify(svar)}`);
+    }
   });
 }
+
+// Femte runde (Fable, falsifikation af F1-planen): feltet har allerede maalvaerdien foer reserveloesningen
+// (gentaget fill, standardvaerdi). "Stod stille" maa ikke blive til en afvisning, naar det der staar ER det oenskede.
+test('et felt der allerede viste maalvaerdien er ikke en afvisning', async () => {
+  const saet = [], taster = [];
+  const u = sele(['NY', 'NY'], saet, taster);
+  const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NY' });
+  assert.equal(svar.ok, true, JSON.stringify(svar));
+  assert.equal(svar.afviger, undefined);
+});

@@ -61,6 +61,23 @@ test('tocifret aar i placeholderen skrives med to cifre', () => {
   assert.equal(udv.hent('isoToFormat')('2026-01-02', fmt), '02/01/26');
 });
 
+// ── Femte runde (Astra R5) ──────────────────────────────────────────────────
+// F2: readonly DD/MM/YYYY, oensket 2020-01-02, feltet viste "02/01 20:26". Timen 20 blev aaret 2020,
+// og set_date svarede ok:true,picker. 1.29.0 afviste.
+test('et numerisk klokkeslaet uden aar bliver ikke til aaret (F2)', () => {
+  assert.equal(ligner('02/01 20:26', '2020-01-02', DMY), false, 'timen 20 er ikke aaret 2020');
+  assert.equal(ligner('02/01 20:26', '2020-01-02'), false);
+});
+
+// F3: oensket 2026-01-02, feltet normaliserede til "02/01/2026 12:00 GMT". Bogstavkontrollen saa "GMT",
+// og en korrekt dato blev afvist - med et ekstra kalenderklik oveni. 1.29.0 godkendte.
+test('en korrekt dato med klokkeslaet og tidszone godkendes (F3)', () => {
+  assert.equal(ligner('02/01/2026 12:00 GMT', '2026-01-02', DMY), true, 'det er den rigtige dato');
+  assert.equal(ligner('02/01/2026 12:00 PM', '2026-01-02', DMY), true);
+  assert.equal(ligner('02/01/2026 23:59:59 UTC', '2026-01-02', DMY), true);
+  assert.equal(ligner('20/12/2026 12:00 GMT', '2026-01-02', DMY), false, 'tidszonen maa ikke goere en anden dato rigtig');
+});
+
 test('alle tre aflaesninger i set_date kender feltets format - ogsaa kalender-grenen', () => {
   const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
   const i = kilde.indexOf("case 'set_date'");

@@ -1764,13 +1764,22 @@ function parseMonthYearText(text) {
   return null;
 }
 
-function valueLooksLikeIso(value, iso, fmt) {
-  if (!value || !iso) return false;
+function valueLooksLikeIso(raaVaerdi, iso, fmt) {
+  if (!raaVaerdi || !iso) return false;
   const [y, m, d] = iso.split('-');
   const Y = Number(y), M = Number(m), D = Number(d);
   // Fjerde runde: en aflaesning der BEGYNDER med den oenskede ISO-dato (fx "2026-01-02T12:00:00") er den dato,
   // uanset hvilket format placeholderen lover - ellers blev en korrekt dato afvist og kalenderen proevet oveni.
-  if (value.trim().startsWith(iso) && !/\d/.test(value.trim().charAt(iso.length))) return true;
+  if (raaVaerdi.trim().startsWith(iso) && !/\d/.test(raaVaerdi.trim().charAt(iso.length))) return true;
+  // MAALT 11/9 af Astra (R5): klokkeslaet og tidszone er ikke en del af datoen. F2: "02/01 20:26" gav timen 20
+  // som aaret 2020 og ok:true. F3: "02/01/2026 12:00 GMT" blev afvist af bogstavkontrollen paa "GMT", og
+  // kalenderen blev proevet oveni. Begge fjernes foer datoen laeses.
+  const value = raaVaerdi
+    .replace(/\b\d{1,2}:\d{2}(:\d{2}(\.\d+)?)?(\s*[ap]\.?m\.?)?(?![\d:])/gi, ' ')
+    .replace(/\b(GMT|UTC|UT|CET|CEST|EET|EEST|WET|WEST|BST|EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b([+-]\d{1,2}(:?\d{2})?)?/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!value) return false;
   // Astra, anden runde: tre `value.includes(...)` hver for sig godkendte "20/12/2026" som 2026-01-02.
   // Tredje runde: tre `digits.includes(...)` koerte stadig FOER kontrollen af hele tal, saa
   // "2026-1-1 02:00" blev 2026-11-02. Nu sammenlignes cifre som én streng KUN naar vaerdien udelukkende
@@ -3122,11 +3131,13 @@ async function dispatch(port, method, params) {
           }, [parsed.selector]).catch(() => null);
           return r && !r.cspBlocked ? r.result : null;
         };
-        if (/svarede ikke inden/.test(e?.message || '')) {
-          await new Promise((r) => setTimeout(r, 400));
-          if ((await laesFelt()) === params.value) {
-            return { ok: true, method: 'debugger', note: 'landede trods fristen' };
-          }
+        const fristUdloeb = /svarede ikke inden/.test(e?.message || '');
+        if (fristUdloeb) await new Promise((r) => setTimeout(r, 400));
+        // MAALT 11/9 af Astra (R5 F1): feltet laeses FOER reserveloesningen skriver. Det er det der skiller en
+        // side der afviste vaerdien (feltet stod stille) fra en side der formaterede den (feltet aendrede sig).
+        const foer = await laesFelt();
+        if (fristUdloeb && foer === params.value) {
+          return { ok: true, method: 'debugger', note: 'landede trods fristen' };
         }
         // Fallback to executeScript if debugger fails
         const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
@@ -3160,15 +3171,24 @@ async function dispatch(port, method, params) {
               note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
             };
           }
-          // Anden runde: "OLD" efter fill("NEW") blev kaldt formatering. Tredje runde: "5" -> "15" og "-5" -> "5"
-          // blev godkendt. Fjerde runde: reglerne "samme tal" og "samme cifre" blev ogsaa omgaaet - "1.5" -> "15",
-          // "5" -> "-5" med Unicode-minus, to store tal der afrundes ens, "+45 ..." -> "+1 45 ...".
-          // En regel for "det er bare formatering" bliver ved med at have huller. Et felt der viser noget ANDET
-          // end det der blev skrevet, meldes derfor altid med den faktiske vaerdi. Et nyt fill er ufarligt.
+          // Anden runde: "OLD" efter fill("NEW") blev kaldt formatering. Tredje og fjerde runde: hver regel for
+          // "det er bare formatering" havde huller ("5" -> "15", "1.5" -> "15", Unicode-minus, "+45" -> "+1 45").
+          // Femte runde (R5 F1): at melde ENHVER afvigelse som fejl gjorde korrekt formatering ("1.234,50 kr",
+          // "+45 12 34 56 78") til ok:false, hvor 1.29.0 sagde ok. Skellet maales nu i stedet for at gaettes:
+          //   stod feltet stille (foer === efter)  -> siden afviste vaerdien: ok:false
+          //   aendrede det sig til noget andet     -> ok:true, men afviger:true med den faktiske vaerdi
+          // Kalderen faar altsaa aldrig en tavs succes paa en anden vaerdi end den der blev skrevet.
+          if (typeof foer === 'string' && endelig === foer) {
+            return {
+              ok: false, method: 'fallback', error: 'feltet-viser-andet', forventet: v, faktisk: endelig,
+              note: 'Feltet stod paa det samme foer og efter skrivningen. Siden tog ikke imod vaerdien.',
+            };
+          }
           return {
-            ok: false, method: 'fallback', error: 'feltet-viser-andet', forventet: v, faktisk: endelig,
-            note: 'Feltet viser en anden tekst end den der blev skrevet. Er det blot formatering (fx "5,00 kr" ' +
-                  'eller "+45 12 34 56 78"), er feltet udfyldt; ellers har siden afvist eller aendret vaerdien.',
+            ok: true, method: 'fallback', value: endelig, afviger: true, forventet: v, faktisk: endelig,
+            ...(typeof foer === 'string' ? {} : { foer_ukendt: true }),
+            note: 'Feltet aendrede sig, men viser en anden tekst end den der blev skrevet - fx formatering ' +
+                  '("5,00 kr", "+45 12 34 56 78") eller en afkortning. Tjek `faktisk`, hvis den praecise vaerdi betyder noget.',
           };
         }
         return {
@@ -3896,6 +3916,16 @@ async function dispatch(port, method, params) {
         // vaertsnavnet.
         for (const c of await chrome.cookies.getAll({ domain: side.vaert, ...lager })) {
           if (String(c.domain || '').toLowerCase().replace(/^\./, '') === side.vaert) med(c, side.storeId);
+        }
+        // MAALT 11/9 af Astra (R5 F7): overdomaenets cookie paa en anden sti (Domain=.example.com; Path=/api) kom
+        // med i 1.29.0, men ikke her: {url} giver kun sidens egen sti, og {domain: vaert} holdt kun cookies hvis
+        // domaene ER vaertsnavnet. Chrome spoerges nu ogsaa om det domaene der blev bedt om, og kun cookies som
+        // DENNE vaert ville faa tilsendt paa en eller anden sti beholdes. En host-only-cookie sendes kun til sin
+        // egen vaert, saa den skal passe praecist.
+        for (const c of await chrome.cookies.getAll({ domain: d, ...lager })) {
+          const cd = String(c.domain || '').toLowerCase().replace(/^\./, '');
+          const sendesTilVaerten = c.hostOnly ? side.vaert === cd : (side.vaert === cd || side.vaert.endsWith('.' + cd));
+          if (sendesTilVaerten) med(c, side.storeId);
         }
       }
       return { cookies: [...fundne.values()].map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };

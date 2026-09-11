@@ -64,7 +64,11 @@ await new Promise(r => web.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${web.address().port}`;
 
 // ── MCP-server over stdio ───────────────────────────────────────────────────
-const srv = spawn(process.execPath, [join(rod, 'mcp-server/index.js')], { stdio: ['pipe', 'pipe', 'pipe'] });
+// MAALT 11/9 af Astra (R5 R1): upload- og drop-filerne blev lagt i en tmp-mappe UDEN FOR serverens arbejdsmappe,
+// og den nye vagt afviste dem - gaten der koeres foer butiksudgivelsen, var roed paa korrekt kode. Serveren
+// startes nu i flow-testens egen mappe, og filerne laegges der.
+const flowMappe = mkdtempSync(join(tmpdir(), 'bmcp-flow-'));
+const srv = spawn(process.execPath, [join(rod, 'mcp-server/index.js')], { cwd: flowMappe, stdio: ['pipe', 'pipe', 'pipe'] });
 let stdoutBuf = '', udvidelseKlar = false;
 const venter = new Map();
 srv.stdout.on('data', d => {
@@ -271,7 +275,8 @@ try {
   console.log('\n── Data & lager ──');
   await proev('browser_set_cookies', 'saetter en cookie', () => kald('browser_set_cookies', { url: BASE, name: 'flow', value: 'ja' }));
   await proev('browser_get_cookies', 'laeser cookien tilbage', async () => {
-    const r = await kald('browser_get_cookies', { url: BASE });
+    // R5 R1: get_cookies kraever `domain` - {url} gav nu domain-mangler.
+    const r = await kald('browser_get_cookies', { domain: new URL(BASE).hostname });
     skalVaere(r.tekst.includes('flow'), 'cookien kom ikke tilbage');
   });
   await proev('browser_set_local_storage', 'skriver til localStorage', () => kald('browser_set_local_storage', { key: 'flow', value: 'ja' }));
@@ -288,8 +293,7 @@ try {
   });
 
   console.log('\n── Filer ──');
-  const mappe = mkdtempSync(join(tmpdir(), 'bmcp-flow-'));
-  const fil = join(mappe, 'proeve.txt');
+  const fil = join(flowMappe, 'proeve.txt');
   writeFileSync(fil, 'flow-test');
   await proev('browser_upload_file', 'lægger en fil i et file-input', async () => {
     await kald('browser_upload_file', { selector: '#fil', file: fil });
@@ -335,7 +339,9 @@ try {
   });
   await proev('browser_provide_feedback', 'selv-diagnose svarer med en dom', async () => {
     const r = await kald('browser_provide_feedback', { what_happened: 'flow-test, ingen aegte fejl' });
-    skalVaere(['current', 'outdated', 'conflict', 'disconnected', 'unknown'].includes(r.data?.verdict), 'ingen brugbar dom');
+    // R5 R2: 'outdated' og 'conflict' blev godkendt, saa gaten kunne koere mod en gammel udvidelse eller
+    // en dobbeltinstallation og stadig vaere groen. Flow-testen skal bevise at det er KANDIDATEN der koerer.
+    skalVaere(r.data?.verdict === 'current', `udvidelsen er ikke kandidaten (dom: ${r.data?.verdict}) - indlaes den rigtige og slaa andre Browser MCP-udvidelser fra`);
   });
   await proev('#shadow-dom', 'selektorer naar ind i shadow DOM', async () => {
     await kald('browser_click', { selector: '#ishadow' });
