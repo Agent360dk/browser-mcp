@@ -44,6 +44,7 @@ Every change below was written test-first and checked with a mutation test: the 
 - `llms-install.md` is published on browsermcp.dev (it returned 404).
 - The comparison with browsermcp.io was updated with numbers re-pulled on 2026-09-11.
 - The demo GIF on the npm page uses an absolute address.
+- The picture shown whenever browsermcp.dev is shared said "34 tools" and named the wrong domain, and had done so since June — no text check can read a JPEG. It is now built from source (`demo-video-src`), together with a matching image for GitHub, and a test keeps the numbers in those sources equal to the number of tools in the server.
 - The demo video and GIF were re-rendered from the current build. The old ones were from June, before the tool count and the wording changed; the GIF is also smaller than before (1.8 MB against 2.1 MB).
 
 ## 1.29.0 (2026-09-07)

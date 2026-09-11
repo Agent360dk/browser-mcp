@@ -457,7 +457,7 @@ const TitleCard: React.FC = () => {
         fontSize: 15, color: "#3b82f6", fontFamily: "SF Mono, monospace", marginTop: 6,
         opacity: interpolate(frame, [18, 30], [0, 1], { extrapolateRight: "clamp" }),
       }}>
-        21 tools · Your real logins · CSP bypass · Human-in-the-loop
+        40 tools · Your real logins · CSP bypass · Human-in-the-loop
       </div>
       <div style={{
         display: "flex", gap: 14, marginTop: 20,
