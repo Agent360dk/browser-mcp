@@ -75,15 +75,17 @@ async function settleUdtryk() {
   assert.ok(SETTLE, 'settle-udtrykket blev aldrig sendt');
   return SETTLE;
 }
-function side({ nativeVirker = true, effekt, react = false, maal = 'element' }) {
-  const t = { checked: 0, tekst: 10, react: 0, native: 0 };
+function side({ nativeVirker = true, effekt, react = false, maal = 'element', ripple = false, tekstStreng = null }) {
+  const t = { checked: 0, tekst: 10, react: 0, native: 0, noder: 0, tekstStreng };
   class Ev { constructor(type, o) { this.type = type; Object.assign(this, o || {}); } }
-  const el = { isConnected: true, dispatchEvent: () => true, closest: () => null, getAttribute: () => null,
+  // ripple: som Material/MDC laegger en ripple-node ind paa mousedown - en aendring der ikke er klikkets virkning.
+  const el = { isConnected: true, dispatchEvent: (ev) => { if (ripple && ev?.type === 'mousedown') t.noder++; return true; },
+    closest: () => null, getAttribute: () => null,
     click() { t.native++; if (nativeVirker) effekt(t); } };
   if (react) el['__reactFiber$x'] = { memoizedProps: { onClick: () => { t.react++; effekt(t); } }, return: null };
   const document = {
-    body: { get innerText() { return 'x'.repeat(t.tekst); } },
-    querySelectorAll: (s) => s === '*' ? { length: 20 } : s.includes(':checked') ? { length: t.checked } : s.startsWith('input,textarea') ? [] : { length: 0 },
+    body: { get innerText() { return t.tekstStreng ?? 'x'.repeat(t.tekst); } },
+    querySelectorAll: (s) => s === '*' ? { length: 20 + t.noder } : s.includes(':checked') ? { length: t.checked } : s.startsWith('input,textarea') ? [] : { length: 0 },
     removeEventListener() {},
   };
   const window = { __bmcpClickTarget: maal === 'intet' ? null : el, __bmcpClicked: false, __bmcpClickListener: null };
@@ -113,6 +115,33 @@ test('virkede el.click() IKKE, faar React-fallbacken sin chance', async () => {
   const r = koer(await settleUdtryk());
   assert.equal(t.react, 1);
   assert.equal(r.landed, true);
+});
+
+// MAALT 11/9 af Astra (R5 F5), reproduceret: mousedown laegger en ripple-node ind, el.click() udfoerer
+// ikke handlingen, og React-fallbacken er noedvendig. Aftrykket blev taget FOER mousedown, saa ripplen
+// lignede en virkning af el.click(), React blev sprunget over, og svaret var landed:true med nul handling.
+test('en ripple fra mousedown skjuler ikke at el.click() intet gjorde - React faar sin chance', async () => {
+  const { t, koer } = side({ react: true, nativeVirker: false, ripple: true, effekt: (s) => { s.checked++; } });
+  const r = koer(await settleUdtryk());
+  assert.equal(t.react, 1, `React-handleren blev ${t.react ? 'kaldt ' + t.react + ' gange' : 'sprunget over'} - handlingen skete ${t.checked} gang(e)`);
+  assert.equal(t.checked, 1);
+  assert.equal(r.landed, true);
+});
+
+test('ripple + et el.click() der VIRKEDE: React kaldes stadig ikke en gang til', async () => {
+  // Positiv kontrol mod en rettelse der bare altid kalder React.
+  const { t, koer } = side({ react: true, ripple: true, effekt: (s) => { s.checked++; } });
+  koer(await settleUdtryk());
+  assert.equal(t.react, 0, `onClick koerte oveni et klik der allerede virkede (${t.checked} handlinger)`);
+  assert.equal(t.checked, 1);
+});
+
+// MAALT 11/9 af Astra (R5 F6), reproduceret: ét virkende klik aendrer teksten AAAA -> BBBB. Aftrykket
+// talte kun tekstens LAENGDE, saa aendringen var usynlig og click_xy svarede ok:false paa et klik der virkede.
+test('tekst der skifter indhold men ikke laengde, er en virkning', async () => {
+  const { koer } = side({ tekstStreng: 'AAAA', effekt: (s) => { s.tekstStreng = 'BBBB'; } });
+  const r = koer(await settleUdtryk());
+  assert.equal(r.landed, true, `aftrykket saa ikke AAAA -> BBBB: ${r.aftrykFoer} -> ${r.aftrykEfter}`);
 });
 
 test('intet element under punktet er ikke "elementet forsvandt"', async () => {

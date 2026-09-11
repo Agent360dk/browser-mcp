@@ -953,16 +953,23 @@ async function debuggerClick(tabId, x, y) {
         // Et billigt fingeraftryk af det et klik plejer at aendre: antal noder, synlig tekst,
         // adressen, og om noget er aabnet/valgt. Bevidst groft — det skal kunne tages to gange
         // paa faa millisekunder, ikke beskrive siden.
+        // MAALT 11/9 af Astra (R5 F6): tekst og feltvaerdier blev talt i LAENGDE, saa AAAA -> BBBB var
+        // usynlig, og et klik der virkede blev meldt som fejl. Nu hashes indholdet (FNV-1a, 32 bit).
+        const hash = (s) => {
+          let x = 2166136261;
+          for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); }
+          return (x >>> 0).toString(36);
+        };
         const aftryk = () => {
           try {
             return document.querySelectorAll('*').length + '|' +
-                   (document.body ? document.body.innerText.length : 0) + '|' +
+                   hash(document.body ? String(document.body.innerText) : '') + '|' +
                    location.href + '|' +
                    document.querySelectorAll('[aria-expanded="true"],[aria-selected="true"],[open],.open,.active').length + '|' +
                    // Astra, anden runde: en afkrydsning eller en feltvaerdi aendrer hverken noder, tekst eller
                    // adresse - saa et klik der VIRKEDE blev meldt som fejl, og et nyt klik ville fortryde det.
                    document.querySelectorAll('input:checked,option:checked').length + '|' +
-                   Array.from(document.querySelectorAll('input,textarea,select')).reduce((n, e) => n + String(e.value || '').length, 0);
+                   hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join(' '));
           } catch (e) { return 'aftryk-fejlede'; }
         };
         if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
@@ -983,13 +990,17 @@ async function debuggerClick(tabId, x, y) {
         //   to klik:  aftryk 11|53|…|0 -> 11|53|…|0   (tilbage ved start)
         // el.click() foretraekkes, fordi den ogsaa udloeser elementets aktiverings-adfaerd
         // (foelg link, skift afkrydsning) — det goer en syntetisk MouseEvent ikke paalideligt.
+        // MAALT 11/9 af Astra (R5 F5): aftrykket til afgoerelsen herunder var foerAftryk fra FOER mousedown.
+        // En ripple-node fra mousedown lignede derfor en virkning af el.click(), React blev sprunget over,
+        // og svaret blev landed:true med nul handling. Afgoerelsen maaler nu kun hvad el.click() gjorde.
+        const foerKlik = aftryk();
         if (typeof el.click === 'function') el.click();
         else el.dispatchEvent(new MouseEvent('click', opts));
 
         // MAALT 10/9 af Astra (anden runde): React-fiberens onClick blev kaldt UBETINGET efter el.click() -
         // men el.click() udloeser allerede Reacts handler. To koersler, og en toggle endte hvor den startede.
         // Framework-vejene er til elementer hvor det native klik INGEN virkning gav.
-        if (aftryk() === foerAftryk) {
+        if (aftryk() === foerKlik) {
           // React fiber fallback — find and call onClick handler directly
           const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
           if (fiberKey) {
