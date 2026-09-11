@@ -23,6 +23,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = dirname(__dirname); // mcp-server/
 const command = process.argv[2];
 const skipExtension = process.argv.includes('--skip-extension');
+// Serverdefinitionen alle klienter registreres med. Staar her, fordi install() koeres straks nedenfor.
+const SERVER_NAVN = 'browser-mcp';
+const SERVER_KOMMANDO = 'npx';
+const SERVER_ARGS = ['@agent360/browser-mcp@latest'];
 
 if (command === 'install') {
   install({ skipExtension });
@@ -75,6 +79,75 @@ function registerWithClaudeCode() {
   }
 }
 
+// Plan 8.2 (11/9): Codex, VS Code og Cursor registreres ogsaa. Samme lektie som ovenfor: klientens EGEN kommando hvor den
+// findes, og kun klienter der faktisk er installeret. En klient der ikke findes, roeres ikke og kaldes ikke registreret.
+// (SERVER_NAVN, SERVER_KOMMANDO og SERVER_ARGS staar oeverst: install() koeres foer filens nederste linjer er naaet.)
+
+function registerWithCodex() {
+  try {
+    execFileSync('codex', ['mcp', 'add', SERVER_NAVN, '--', SERVER_KOMMANDO, ...SERVER_ARGS], { stdio: 'pipe' });
+    console.log('✅ Registered with Codex (codex mcp add)');
+    return true;
+  } catch (err) {
+    if (err && err.code === 'ENOENT') return null;   // Codex er ikke installeret
+    const msg = String(err && (err.stderr || err.message) || '');
+    if (/already exists/i.test(msg)) {
+      console.log('✅ Already registered with Codex — nothing to do');
+      return true;
+    }
+    console.log('⚠️  Codex is installed, but registration failed. Run: codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest');
+    return false;
+  }
+}
+
+function registerWithVSCode() {
+  let hjaelp;
+  try {
+    hjaelp = String(execFileSync('code', ['--help'], { stdio: 'pipe' }));
+  } catch {
+    return null;   // VS Code's `code` er ikke paa PATH
+  }
+  // Kun versioner der kender flaget, faar det - en aeldre `code` ville aabne et vindue med JSON'en som filnavn.
+  if (!/--add-mcp/.test(hjaelp)) {
+    console.log('⚠️  VS Code found, but this version cannot add MCP servers from the command line. Use "Add to VS Code" in the README.');
+    return false;
+  }
+  try {
+    execFileSync('code', ['--add-mcp', JSON.stringify({ name: SERVER_NAVN, command: SERVER_KOMMANDO, args: SERVER_ARGS })], { stdio: 'pipe' });
+    console.log('✅ Registered with VS Code (code --add-mcp)');
+    return true;
+  } catch {
+    console.log('⚠️  VS Code registration failed. Use "Add to VS Code" in the README.');
+    return false;
+  }
+}
+
+// Cursor har ingen kommando. Dens globale fil er ~/.cursor/mcp.json; den flettes, og alt andet i den bevares.
+function registerWithCursor() {
+  const mappe = join(homedir(), '.cursor');
+  if (!existsSync(mappe)) return null;   // Cursor er ikke installeret
+  const fil = join(mappe, 'mcp.json');
+  const roerIkke = () => {
+    console.log(`⚠️  Cursor found, but ${fil} could not be read, so it was left untouched. Add browser-mcp there yourself.`);
+    return false;
+  };
+  let cfg = {};
+  if (existsSync(fil)) {
+    try { cfg = JSON.parse(readFileSync(fil, 'utf8')); } catch { return roerIkke(); }
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return roerIkke();
+    if (cfg.mcpServers !== undefined && (!cfg.mcpServers || typeof cfg.mcpServers !== 'object' || Array.isArray(cfg.mcpServers))) return roerIkke();
+  }
+  cfg.mcpServers = cfg.mcpServers || {};
+  if (cfg.mcpServers[SERVER_NAVN]) {
+    console.log('✅ Already registered with Cursor — nothing to do');
+    return true;
+  }
+  cfg.mcpServers[SERVER_NAVN] = { command: SERVER_KOMMANDO, args: SERVER_ARGS };
+  writeFileSync(fil, JSON.stringify(cfg, null, 2) + '\n');
+  console.log(`✅ Registered with Cursor (${fil})`);
+  return true;
+}
+
 function install({ skipExtension = false } = {}) {
   const home = homedir();
   const extensionDir = join(home, '.browser-mcp', 'extension');
@@ -97,8 +170,11 @@ function install({ skipExtension = false } = {}) {
     console.log(`✅ Extension files copied to ${extensionDir}`);
   }
 
-  // 2. Register the server
+  // 2. Register the server with every client that is installed
   registerWithClaudeCode();
+  registerWithCodex();
+  registerWithVSCode();
+  registerWithCursor();
 
   // 3. Print next steps — only the ones that still apply
   if (skipExtension) {
