@@ -76,13 +76,25 @@ test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen succe
 });
 
 // Det injicerede script koeres mod en falsk side, saa det er udvidelsens egen tekst der proeves.
+// reagererPaa: 'click' | 'pointerdown' | 'ingen' | 'senere' (siden opdaterer sig foerst efter klikket, som React 18/Vue 3)
+// | 'dobbelt' (en handler paa pointerdown for ikke-mus-pointere OG en paa click - en rigtig mus udloeser kun click).
 function scriptSide(reagererPaa) {
-  const t = { tekst: 'Menu lukket', haendelser: [] };
+  const t = { tekst: 'Menu lukket', haendelser: [], handlinger: 0 };
   class Ev { constructor(type, o) { this.type = type; Object.assign(this, o || {}); } }
   const el = {
     tagName: 'BUTTON', isConnected: true, scrollIntoView() {},
-    dispatchEvent(ev) { t.haendelser.push(ev.type); if (ev.type === reagererPaa) t.tekst = 'Menu aaben'; return true; },
-    click() { t.haendelser.push('click'); if (reagererPaa === 'click') t.tekst = 'Menu aaben'; },
+    dispatchEvent(ev) {
+      t.haendelser.push(ev.type);
+      if (ev.type === reagererPaa) t.tekst = 'Menu aaben';
+      if (reagererPaa === 'dobbelt' && ev.type === 'pointerdown' && ev.pointerType !== 'mouse') { t.handlinger++; t.tekst = 'aaben ' + t.handlinger; }
+      return true;
+    },
+    click() {
+      t.haendelser.push('click');
+      if (reagererPaa === 'click') t.tekst = 'Menu aaben';
+      if (reagererPaa === 'senere') setTimeout(() => { t.tekst = 'Menu aaben'; }, 10);
+      if (reagererPaa === 'dobbelt') { t.handlinger++; t.tekst = 'aaben ' + t.handlinger; }
+    },
   };
   const document = {
     querySelector: () => el,
@@ -102,17 +114,66 @@ async function scriptKlikKilde() {
 
 test('script-klikket maaler selv: en handler der kraever et aegte klik giver landed:false', { timeout: 20000 }, async () => {
   const { t, koer } = scriptSide('ingen');
-  const r = koer(await scriptKlikKilde(), '#knap');
+  const r = await koer(await scriptKlikKilde(), '#knap');
   assert.ok(t.haendelser.includes('click'), 'klikket blev ikke sendt');
   assert.equal(r.landed, false, `siden reagerede ikke, men svaret var ${JSON.stringify(r)}`);
 });
 
 test('script-klikket maaler selv: en side der reagerede giver landed:true (positiv kontrol)', { timeout: 20000 }, async () => {
   const kilde = await scriptKlikKilde();
-  assert.equal(scriptSide('click').koer(kilde, '#knap').landed, true, 'et klik der virkede blev ikke set');
+  assert.equal((await scriptSide('click').koer(kilde, '#knap')).landed, true, 'et klik der virkede blev ikke set');
   // Radix/shadcn aabner paa pointerdown. Et rigtigt klik sender pointerdown foer mousedown; det goer script-klikket nu ogsaa.
   const radix = scriptSide('pointerdown');
-  assert.equal(radix.koer(kilde, '#knap').landed, true, `pointerdown blev ikke sendt: ${radix.t.haendelser.join(',')}`);
+  assert.equal((await radix.koer(kilde, '#knap')).landed, true, `pointerdown blev ikke sendt: ${radix.t.haendelser.join(',')}`);
+});
+
+// Fable (efterproevning 11/9): aftrykket blev taget i samme oejeblik som klikket. React 18 (createRoot) og Vue 3 opdaterer
+// siden en microtask eller et tick senere, saa et klik der virkede blev meldt "kan vaere landet" - paa netop de sider
+// reserven er til for.
+test('script-klikket ser en side der opdaterer sig lige efter klikket', { timeout: 20000 }, async () => {
+  const { koer } = scriptSide('senere');
+  const r = await koer(await scriptKlikKilde(), '#knap');
+  assert.equal(r.landed, true, `en opdatering et tick efter klikket blev ikke set: ${JSON.stringify(r)}`);
+});
+
+// MAALT 11/9 af Astra (efterproevning af 9814636): siden handler paa pointerdown naar pointerType !== "mouse" og paa click.
+// Script-klikkets PointerEvent havde ingen pointerType (""), saa handlingen skete to gange. 1.29.0: én. En rigtig mus
+// sender pointerType "mouse".
+test('script-klikkets pointerdown er en mus - en side med touch-handler og click-handler handler én gang', { timeout: 20000 }, async () => {
+  const { t, koer } = scriptSide('dobbelt');
+  await koer(await scriptKlikKilde(), '#knap');
+  assert.equal(t.handlinger, 1, `handlingen skete ${t.handlinger} gange: ${t.haendelser.join(',')}`);
+});
+
+// Navigerer klikket siden bort, afvises scriptet ("Frame ... was removed") - klikket VAR sendt. At kaste den oprindelige
+// fristfejl ville invitere agenten til at klikke igen paa en side der allerede har udfoert handlingen.
+function navigationsSele(nyAdresse) {
+  let efterKlik = false;
+  const u = sele(
+    (_m, metode, p) => {
+      if (metode === 'Input.dispatchMouseEvent' && p?.type === 'mouseMoved') return new Promise(() => {});
+      return {};
+    },
+    (o) => {
+      if (String(o.func).includes("reason: 'not_found'")) { efterKlik = true; throw new Error('Frame with ID 0 was removed.'); }
+      return [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }];
+    },
+    () => (efterKlik && nyAdresse ? { ...FANE, url: nyAdresse } : FANE),
+  );
+  return u;
+}
+
+test('navigerede siden bort under script-klikket, er klikket landet', { timeout: 20000 }, async () => {
+  const u = navigationsSele('https://x.example/kvittering');
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.equal(svar.ok, true, `en navigation efter klikket blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.equal(svar.navigerede, true);
+});
+
+test('afvises scriptet uden at adressen skiftede, er det stadig en fejl (positiv kontrol)', { timeout: 20000 }, async () => {
+  const u = navigationsSele(null);
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
+  assert.notEqual(svar.ok, true, `en afvisning uden tegn paa virkning blev kaldt succes: ${JSON.stringify(svar)}`);
 });
 
 test('udloeber selve trykket, klikkes der IKKE via script - det kan vaere landet', { timeout: 20000 }, async () => {
@@ -207,7 +268,11 @@ function side({ nativeVirker = true, effekt, react = false, maal = 'element', ri
   const t = { checked: 0, tekst: 10, react: 0, native: 0, noder: 0, tekstStreng };
   class Ev { constructor(type, o) { this.type = type; Object.assign(this, o || {}); } }
   // ripple: som Material/MDC laegger en ripple-node ind paa mousedown - en aendring der ikke er klikkets virkning.
-  const el = { isConnected: true, dispatchEvent: (ev) => { if (ripple && ev?.type === 'mousedown') t.noder++; return true; },
+  const el = { isConnected: true, dispatchEvent: (ev) => {
+      if (String(ev?.type).startsWith('pointer')) (t.pointerTyper ||= []).push(ev.pointerType);
+      if (ripple && ev?.type === 'mousedown') t.noder++;
+      return true;
+    },
     closest: () => null, getAttribute: () => null,
     click() { t.native++; if (nativeVirker) effekt(t); } };
   if (react) el['__reactFiber$x'] = { memoizedProps: { onClick: () => { t.react++; effekt(t); } }, return: null };
@@ -228,6 +293,14 @@ test('en afkrydsning der blev sat, er et landet klik', async () => {
   assert.equal(t.native, 1, 'reserveloesningen klikkede mere end én gang - en afkrydsning ender hvor den startede');
   assert.equal(t.checked, 1);
   assert.equal(r.landed, true, `aftrykket saa ikke afkrydsningen: ${r.aftrykFoer} -> ${r.aftrykEfter}`);
+});
+
+// Samme moenster som Astras dobbelt-effekt i script-klikket (11/9): en PointerEvent uden pointerType er ikke en mus.
+test('debuggerens reserve sender pointer-haendelser som en mus', async () => {
+  const { t, koer } = side({ effekt: (s) => { s.checked++; } });
+  koer(await settleUdtryk());
+  assert.ok((t.pointerTyper || []).length > 0, 'reserven sendte ingen pointer-haendelser - testen maaler intet');
+  assert.ok(t.pointerTyper.every((p) => p === 'mouse'), `pointerType var ${JSON.stringify(t.pointerTyper)}`);
 });
 
 test('virkede el.click(), kaldes Reacts onClick IKKE en gang til', async () => {

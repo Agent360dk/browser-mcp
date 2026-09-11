@@ -76,6 +76,21 @@ test('efter en frist haeves vinduet ikke, heller ikke naar reserven fejler hurti
   assert.equal(u.optager.antal('windows.update'), 0, 'brugerens vindue blev haevet efter en frist');
 });
 
+// MAALT 11/9 af Astra (efterproevning af f084d1b): standardoptagelsen lykkes efter 11 s, reserven fejler. Foer budgettet:
+// standardbilledet efter 11 s. Med budgettet: fristen paa 10 s kasserede den, og svaret var "image readback failed".
+// Standardoptagelsen maa loebe videre mens reserven proeves - den der lykkes foerst inden for budgettet, vinder.
+test('en langsom standardoptagelse kasseres ikke ved fristen, naar reserven fejler', async () => {
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    if (p?.fromSurface === false) throw new Error('Unable to capture screenshot: image readback failed');
+    return new Promise((ok) => setTimeout(() => ok({ data: 'STANDARD' }), 110));
+  } });
+  // Skaleret 1:100 - standardbilledet kommer efter 11 s, fristen er 10 s, budgettet 26 s.
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 260 });
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.match(String(svar.image), /STANDARD/, `standardbilledet blev kasseret: ${JSON.stringify(svar).slice(0, 160)}`);
+});
+
 test('er budgettet naesten brugt, startes runden med haevet vindue ikke', async () => {
   // Begge optagelser fejler af en anden grund end en frist, men foerst naar tiden er ved at vaere gaaet.
   // En runde mere ville bringe kaeden over serverens 30 s.

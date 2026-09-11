@@ -71,18 +71,20 @@ test('get_cookies MED domaene virker uaendret', async () => {
 // domain "example.com". En cookie med Domain=.example.com; Path=/api kom med i 1.29.0 men manglede i HEAD:
 // {url} giver kun cookies til sidens egen sti, og {domain: vaert} holdt kun cookies hvis domaene ER vaertsnavnet.
 // Stubben filtrerer som Chrome: {url} efter vaert og sti, {domain} efter domaene og underdomaener.
-function cookieSele(cookies) {
-  const fane = { id: 1, url: 'https://a.example.com/', windowId: 1, active: true };
+function cookieSele(cookies, { url = 'https://a.example.com/', incognito = false, lagre = [] } = {}) {
+  const fane = { id: 1, url, windowId: 1, active: true, incognito };
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
     'tabs.get': fane, 'tabs.query': [fane],
-    'cookies.getAllCookieStores': [],
+    'cookies.getAllCookieStores': lagre,
+    // Som Chrome: uden storeId laeses standardlageret ("0"); {url} udelader Secure-cookies for en http-adresse.
     'cookies.getAll': (f) => cookies.filter((c) => {
+      if ((c.storeId ?? '0') !== (f.storeId ?? '0')) return false;
       const cd = c.domain.replace(/^\./, '');
       if (f.url) {
         const a = new URL(f.url);
         const vaertPasser = c.hostOnly ? a.hostname === cd : (a.hostname === cd || a.hostname.endsWith('.' + cd));
-        return vaertPasser && a.pathname.startsWith(c.path);
+        return vaertPasser && a.pathname.startsWith(c.path) && (!c.secure || a.protocol === 'https:');
       }
       if (f.domain) return cd === f.domain || cd.endsWith('.' + f.domain);
       return true;
@@ -108,6 +110,38 @@ test('get_cookies: en soeskendevaerts cookie kommer IKKE med', async () => {
   ]);
   const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
   assert.deepEqual(Array.from(r.cookies || [], (c) => c.name).sort(), ['api'], `en anden vaerts cookie slap med: ${JSON.stringify(r)}`);
+});
+
+// Fable (sign-off 11/9): en session paa http://a.example.com/ fik en Secure-cookie fra .example.com. Chrome sender aldrig
+// en Secure-cookie til en http-side; opslaget paa {domain} kender ikke sidens protokol, saa det skal tjekkes her.
+test('get_cookies: en Secure-cookie leveres ikke til en http-side', async () => {
+  const u = cookieSele([{ name: 'sikker', value: 'hemmelig', domain: '.example.com', path: '/', secure: true }], { url: 'http://a.example.com/' });
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
+  assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), [], `en Secure-cookie slap igennem til http: ${JSON.stringify(r)}`);
+});
+
+test('get_cookies: en Secure-cookie leveres til en https-side (positiv kontrol)', async () => {
+  const u = cookieSele([{ name: 'sikker', value: 'v', domain: '.example.com', path: '/', secure: true }]);
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
+  assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), ['sikker']);
+});
+
+// Astra (sign-off 11/9): fejler getAllCookieStores for en inkognitofane, udelades storeId, og Chrome laeser saa den
+// almindelige profils lager - samme i 1.29.0, men det er brugerens andet liv. Kan lageret ikke findes, laeses intet.
+test('get_cookies: en inkognitofane hvis lager ikke kan findes, laeser ikke den almindelige profils cookies', async () => {
+  const u = cookieSele([{ name: 'profil', value: 'hemmelig', domain: '.example.com', path: '/' }], { incognito: true, lagre: () => { throw new Error('lagre utilgaengelige'); } });
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
+  assert.doesNotMatch(JSON.stringify(r), /hemmelig/, `den almindelige profils cookie blev leveret til en inkognitofane: ${JSON.stringify(r)}`);
+  assert.equal(r.ok, false);
+});
+
+test('get_cookies: en inkognitofane med kendt lager laeser sit eget lager (positiv kontrol)', async () => {
+  const u = cookieSele([
+    { name: 'profil', value: 'hemmelig', domain: '.example.com', path: '/' },
+    { name: 'inkognito', value: 'v', domain: '.example.com', path: '/', storeId: '1' },
+  ], { incognito: true, lagre: [{ id: '0', tabIds: [] }, { id: '1', tabIds: [1] }] });
+  const r = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'example.com' });
+  assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), ['inkognito'], JSON.stringify(r));
 });
 
 test('upload-stien er indesluttet i arbejdsmappen — samme vagt som skaermbilledets path', () => {

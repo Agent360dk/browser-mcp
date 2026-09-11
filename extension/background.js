@@ -991,9 +991,11 @@ async function debuggerClick(tabId, x, y) {
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
         const foerAftryk = aftryk();
         const opts = { bubbles: true, cancelable: true, composed: true, view: window, clientX: ${x}, clientY: ${y} };
-        try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
+        // Samme moenster som script-klikket (Astra 11/9): en PointerEvent uden pointerType er ikke en mus.
+        const mus = { ...opts, pointerType: 'mouse', isPrimary: true, pointerId: 1, button: 0 };
+        try { el.dispatchEvent(new PointerEvent('pointerdown', { ...mus, buttons: 1 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mousedown', opts));
-        try { el.dispatchEvent(new PointerEvent('pointerup', opts)); } catch (e) {}
+        try { el.dispatchEvent(new PointerEvent('pointerup', { ...mus, buttons: 0 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
         // MAALT 10/9 i en rigtig browser: her stod BEGGE — dispatchEvent('click') OG el.click().
         // Det er to klik-haendelser. Paa alt hvad der skifter tilstand (dropdowns, faneblade,
@@ -1267,12 +1269,20 @@ async function scriptingClick(tabId, selector) {
         const foer = aftryk();
         const opts = { bubbles: true, cancelable: true, composed: true, view: window };
         // Et rigtigt klik sender pointerdown foer mousedown; Radix/shadcn aabner paa pointerdown.
-        try { el.dispatchEvent(new PointerEvent('pointerdown', opts)); } catch (e) {}
+        // MAALT 11/9 af Astra (efterproevning af 9814636): uden pointerType ("") handlede en side der reagerer paa ikke-mus-
+        // pointere OG paa click to gange. En rigtig mus sender pointerType "mouse".
+        const mus = { ...opts, pointerType: 'mouse', isPrimary: true, pointerId: 1, button: 0 };
+        try { el.dispatchEvent(new PointerEvent('pointerdown', { ...mus, buttons: 1 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mousedown', opts));
-        try { el.dispatchEvent(new PointerEvent('pointerup', opts)); } catch (e) {}
+        try { el.dispatchEvent(new PointerEvent('pointerup', { ...mus, buttons: 0 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
         el.click();
-        return { ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false };
+        const svar = () => ({ ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false });
+        const straks = svar();
+        if (straks.landed || straks.detached) return straks;
+        // Fable (efterproevning 11/9): React 18 og Vue 3 opdaterer siden et tick efter klikket. Et oejeblik mere, saa et klik
+        // der virkede ikke meldes som "kan vaere landet". chrome.scripting venter selv paa et returneret loefte.
+        return new Promise((ok) => setTimeout(() => ok(svar()), 200));
       },
       args: [selector],
     });
@@ -2858,37 +2868,47 @@ async function dispatch(port, method, params) {
       const budgetSlut = Date.now() + samletMs;
       const tryCapture = async () => {
         await debuggerAttach(tab.id);
-        const optag = async (p, ms) => {
-          let ur;
+        const optag = (p) => {
           const kald = cdpSend(tab.id, 'Page.captureScreenshot', p);
-          kald.catch(() => {});   // svarer det foerst efter fristen, er svaret ligegyldigt
+          kald.catch(() => {});   // et svar efter budgettet er ligegyldigt
+          return kald;
+        };
+        const medFrist = async (loefte, ms) => {
+          let ur;
           try {
             return await Promise.race([
-              kald,
+              loefte,
               new Promise((_, afvis) => {
                 const frist = Math.max(0, ms);
                 ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: Page.captureScreenshot`)), frist);
               }),
             ]);
           } catch (e) {
-            if (e && /svarede ikke inden/.test(e.message || '')) e.ingenNyRunde = true;
+            if (e && typeof e === 'object' && /svarede ikke inden/.test(e.message || '')) e.ingenNyRunde = true;
             throw e;
           } finally {
             clearTimeout(ur);
           }
         };
+        const standard = optag({ format: 'png' });
         try {
-          const shot = await optag({ format: 'png' }, Math.min(foersteMs, budgetSlut - Date.now()));
+          const shot = await medFrist(standard, Math.min(foersteMs, budgetSlut - Date.now()));
           return { image: 'data:image/png;base64,' + shot.data };
         } catch (foersteFejl) {
           // fromSurface:false proeves ogsaa efter en frist: i 1.29.0 var det netop fristen der naaede hertil, og den
           // leverede billedet. Men efter en frist startes ingen runde mere, uanset hvordan reserven fejler.
+          // MAALT 11/9 af Astra (efterproevning af f084d1b): standardoptagelsen lykkedes efter 11 s, reserven fejlede, og
+          // fristen paa 10 s havde kasseret standardbilledet. Standardoptagelsen loeber derfor videre efter sin frist, og
+          // den af de to der lykkes foerst inden for budgettet, vinder.
+          const reserve = optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
+          const kandidater = foersteFejl?.ingenNyRunde ? [standard, reserve] : [reserve];
           try {
-            const shot = await optag({ format: 'png', fromSurface: false, captureBeyondViewport: false }, budgetSlut - Date.now());
+            const shot = await medFrist(Promise.any(kandidater), budgetSlut - Date.now());
             return { image: 'data:image/png;base64,' + shot.data };
           } catch (andenFejl) {
-            if (foersteFejl?.ingenNyRunde) andenFejl.ingenNyRunde = true;
-            throw andenFejl;
+            const fejl = andenFejl instanceof AggregateError ? andenFejl.errors[andenFejl.errors.length - 1] : andenFejl;
+            if (foersteFejl?.ingenNyRunde && fejl && typeof fejl === 'object') fejl.ingenNyRunde = true;
+            throw fejl;
           }
         }
       };
@@ -3153,7 +3173,20 @@ async function dispatch(port, method, params) {
         // trykket er sendt. Intet klik kan vaere landet (trykSendt er falsk, se ovenfor), saa script-klikket er sikkert.
         const inputFristFoerTryk = /svarede ikke inden \d+ ms: Input\./.test(e?.message || '');
         if (inputFristFoerTryk || /Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
+          const urlFoer = (await chrome.tabs.get(tab.id).catch(() => null))?.url ?? tab.url;
           const r = await scriptingClick(tab.id, params.selector);
+          // Afvises scriptet ("Frame ... was removed") og har fanen faaet en ny adresse, navigerede klikket siden bort -
+          // det VAR sendt. Den oprindelige fristfejl ville invitere agenten til at klikke igen. Samme bevis som
+          // tolkManglendeSettle: en ny adresse, ikke selve afvisningen.
+          if (!r.ok && r.reason === 'exception' && inputFristFoerTryk) {
+            const fane = await chrome.tabs.get(tab.id).catch(() => null);
+            if (fane?.url && urlFoer && fane.url !== urlFoer) {
+              return {
+                ok: true, method: 'scripting-fallback', landed: true, navigerede: true, url: fane.url,
+                note: 'Fanen var i baggrunden, saa klikket blev udfoert med et script, og siden navigerede bort bagefter.',
+              };
+            }
+          }
           if (r.ok && !inputFristFoerTryk) {
             // Debuggeren var blokeret eller afkoblet: samme svar som 1.29.0, nu med maalingen vedlagt.
             return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: klikLandede(r) };
@@ -3971,16 +4004,28 @@ async function dispatch(port, method, params) {
       try { lagre = await chrome.cookies.getAllCookieStores(); } catch {}
       const lagerFor = (tabId) => (lagre || []).find((l) => (l.tabIds || []).includes(tabId))?.id;
       const sider = [];
+      let ukendtLager = false;
       for (const id of session.tabIds) {
         const t = await chrome.tabs.get(id).catch(() => null);
         try {
           const u = new URL(t?.url || '');
           if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) {
+            const storeId = lagerFor(id);
+            // Astra (sign-off 11/9): fejlede getAllCookieStores for en inkognitofane, blev storeId udeladt, og Chrome
+            // laeste den almindelige profils lager. Kan en inkognitofanes lager ikke findes, laeses intet for den.
+            if (t.incognito && !storeId) { ukendtLager = true; continue; }
             // Fanens vaertsnavn er altid ASCII (punycode). Et afsluttende punktum er en ANDEN cookie-vaert i
             // Chromium (Astra, fjerde runde: x.example. fik cookies fra x.example) - saa det bevares.
-            sider.push({ u, vaert: u.hostname.toLowerCase(), storeId: lagerFor(id) });
+            sider.push({ u, vaert: u.hostname.toLowerCase(), storeId });
           }
         } catch {}
+      }
+      if (!sider.length && ukendtLager) {
+        return {
+          ok: false, error: 'cookie-lager-ukendt',
+          hint: 'Fanen er et inkognitovindue, og Chrome oplyste ikke dens cookie-lager. Intet blev laest - ellers ville ' +
+                'den almindelige profils cookies blive leveret i stedet.',
+        };
       }
       const vaertsnavne = sider.map((x) => x.vaert);
       // Argumentet normaliseres som fanens adresse - "bücher.example" ER xn--bcher-kva.example.
@@ -4002,13 +4047,16 @@ async function dispatch(port, method, params) {
       };
       for (const side of sider) {
         const lager = side.storeId ? { storeId: side.storeId } : {};
+        // Fable (sign-off 11/9): en session paa http:// fik en Secure-cookie fra overdomaenet. {url} udelader dem selv,
+        // men opslagene paa {domain} kender ikke sidens protokol. Chrome sender aldrig en Secure-cookie til http.
+        const sendesOverProtokollen = (c) => !c.secure || side.u.protocol === 'https:';
         // De cookies Chrome ville SENDE til siden - inklusive overdomaenets ...
         for (const c of await chrome.cookies.getAll({ url: side.u.href, ...lager })) med(c, side.storeId);
         // ... plus sidens EGNE cookies paa alle stier (Path=/api kom ikke med ovenfor). {domain} giver
         // ogsaa underdomaener og, for et public suffix, hele suffixet - saa kun cookies hvis domaene ER
         // vaertsnavnet.
         for (const c of await chrome.cookies.getAll({ domain: side.vaert, ...lager })) {
-          if (String(c.domain || '').toLowerCase().replace(/^\./, '') === side.vaert) med(c, side.storeId);
+          if (String(c.domain || '').toLowerCase().replace(/^\./, '') === side.vaert && sendesOverProtokollen(c)) med(c, side.storeId);
         }
         // MAALT 11/9 af Astra (R5 F7): overdomaenets cookie paa en anden sti (Domain=.example.com; Path=/api) kom
         // med i 1.29.0, men ikke her: {url} giver kun sidens egen sti, og {domain: vaert} holdt kun cookies hvis
@@ -4018,7 +4066,7 @@ async function dispatch(port, method, params) {
         for (const c of await chrome.cookies.getAll({ domain: d, ...lager })) {
           const cd = String(c.domain || '').toLowerCase().replace(/^\./, '');
           const sendesTilVaerten = c.hostOnly ? side.vaert === cd : (side.vaert === cd || side.vaert.endsWith('.' + cd));
-          if (sendesTilVaerten) med(c, side.storeId);
+          if (sendesTilVaerten && sendesOverProtokollen(c)) med(c, side.storeId);
         }
       }
       return { cookies: [...fundne.values()].map(c => ({ name: c.name, value: c.value, domain: c.domain, path: c.path })) };
