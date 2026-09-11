@@ -155,13 +155,13 @@ test('get_cookies: en inkognitofane med kendt lager laeser sit eget lager (posit
 // MAALT 11/9 af Opus og Fable (e2e-review): get_cookies er begraenset til sessionens egne sider, men set_cookies satte
 // cookies paa ETHVERT domaene - ogsaa banker sessionen aldrig har aabnet. Butikkens egen begrundelse lovede det modsatte.
 // Samme regel som laesningen: kun de http(s)-sider sessionen har aabne.
-function saetSele(cookies = []) {
-  const fane = { id: 1, url: 'https://a.example.com/', windowId: 1, active: true };
+function saetSele(cookies = [], { url = 'https://a.example.com/', incognito = false, lagre = [] } = {}) {
+  const fane = { id: 1, url, windowId: 1, active: true, incognito };
   const satte = [];
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
     'tabs.get': fane, 'tabs.query': [fane],
-    'cookies.getAllCookieStores': [],
+    'cookies.getAllCookieStores': lagre,
     'cookies.set': (c) => { satte.push(c); return { ...c }; },
     'cookies.getAll': () => cookies,
   } });
@@ -187,6 +187,42 @@ test('set_cookies: et overdomaene sessionens side faar tilsendt, er lovligt (pos
   const { u, satte } = saetSele();
   await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: '.example.com' }] });
   assert.equal(satte.length, 1, 'overdomaenet til sessionens egen side blev afvist');
+});
+
+// MAALT 11/9 af Astra (e2e runde 2): sessionen har kun https://a.example.com/ aaben, men en cookie til det UAABNEDE
+// underdomaene bank.example.com slap igennem, fordi slaegtskabet blev laest begge veje. get_cookies afviser netop det,
+// og CHANGELOG lover "samme regel". Reglen er nu laesningens: cookiens domaene skal vaere vaerten selv eller et
+// overdomaene, som sidens vaert faar cookies fra.
+test('set_cookies: et underdomaene sessionen ikke har aabnet, afvises', async () => {
+  const { u, satte } = saetSele([], { url: 'https://example.com/' });   // Astras scenarie: sessionen staar paa selve example.com
+  const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'bank.example.com' }] });
+  assert.equal(satte.length, 0, `cookien blev sat paa et uaabnet underdomaene: ${JSON.stringify(satte)}`);
+  assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
+});
+
+// MAALT samme runde af Opus: vagten tjekkede `domain`, men sendte kalderens egen `url` videre utjekket. Adressen bygges nu
+// af sessionens egen side, saa Chrome selv haandhaever sine domaeneregler (bl.a. public suffix).
+test('set_cookies: adressen kommer fra sessionens side, ikke fra kalderen', async () => {
+  const { u, satte } = saetSele();
+  await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'a.example.com', url: 'https://bank.example.dk/andet' }] });
+  assert.equal(satte.length, 1, 'en lovlig cookie blev afvist');
+  assert.match(String(satte[0].url), /^https:\/\/a\.example\.com\//, `adressen kom fra kalderen: ${satte[0].url}`);
+});
+
+// MAALT samme runde af Opus: fra en inkognitofane skrev set_cookies uden storeId - altsaa i den ALMINDELIGE profils lager.
+// get_cookies blev rettet her; skrivningen skal foelge samme regel.
+test('set_cookies: en inkognitofane skriver i sit eget lager', async () => {
+  const { u, satte } = saetSele([], { incognito: true, lagre: [{ id: '0', tabIds: [] }, { id: '1', tabIds: [1] }] });
+  await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'a.example.com' }] });
+  assert.equal(satte.length, 1, 'en lovlig cookie blev afvist');
+  assert.equal(satte[0].storeId, '1', `skrev i lager ${satte[0].storeId ?? 'uden storeId'} - altsaa den almindelige profil`);
+});
+
+test('set_cookies: en inkognitofane uden kendt lager skriver ingenting', async () => {
+  const { u, satte } = saetSele([], { incognito: true, lagre: () => { throw new Error('lagre utilgaengelige'); } });
+  const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'a.example.com' }] });
+  assert.equal(satte.length, 0, `skrev i et ukendt lager: ${JSON.stringify(satte)}`);
+  assert.match(JSON.stringify(r), /cookie-lager-ukendt|domaene-ikke-i-sessionen/, JSON.stringify(r));
 });
 
 test('upload-stien er indesluttet i arbejdsmappen — samme vagt som skaermbilledets path', () => {

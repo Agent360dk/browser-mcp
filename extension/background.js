@@ -4142,33 +4142,55 @@ async function dispatch(port, method, params) {
       // MAALT 11/9 af Opus og Fable (e2e-review): laesningen er begraenset til sessionens egne sider, men skrivningen satte
       // cookies paa ETHVERT domaene - ogsaa sider sessionen aldrig har aabnet (og butikkens begrundelse lovede det modsatte).
       // Samme regel begge veje: kun de http(s)-vaerter sessionen har aabne.
+      // MAALT 11/9 (e2e runde 2): slaegtskabet blev laest BEGGE veje, saa en cookie til et uaabnet UNDERdomaene slap
+      // igennem (Astra), adressen kom fra kalderen i stedet for sessionens side (Opus), og en inkognitofane skrev i den
+      // almindelige profils lager (Opus). Reglen er nu laesningens: cookiens domaene skal vaere vaerten selv eller et
+      // overdomaene vaerten faar cookies fra, adressen bygges af sidens egen oprindelse (saa Chrome haandhaever bl.a.
+      // public suffix), og lageret foelger fanen.
       const saetSession = getSession(port);
-      const saetVaerter = [];
+      let saetUkendtLager = false;
+      let saetLagre = null;
+      try { saetLagre = await chrome.cookies.getAllCookieStores(); } catch {}
+      const saetSider = [];
       for (const id of saetSession.tabIds) {
         const t = await chrome.tabs.get(id).catch(() => null);
         try {
           const u = new URL(t?.url || '');
-          if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) saetVaerter.push(u.hostname.toLowerCase());
+          if ((u.protocol !== 'https:' && u.protocol !== 'http:') || !u.hostname) continue;
+          const storeId = (saetLagre || []).find((l) => (l.tabIds || []).includes(id))?.id;
+          if (t.incognito && !storeId) { saetUkendtLager = true; continue; }
+          saetSider.push({ u, vaert: u.hostname.toLowerCase(), storeId });
         } catch {}
       }
-      const saetSlaegt = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
+      if (!saetSider.length && saetUkendtLager) {
+        return {
+          ok: false, error: 'cookie-lager-ukendt',
+          hint: 'Fanen er et inkognitovindue, og Chrome oplyste ikke dens cookie-lager. Intet blev skrevet - ellers ville ' +
+                'cookien lande i den almindelige profil i stedet.',
+        };
+      }
+      // Sidens vaert faar cookies fra sig selv og fra sine overdomaener - ikke fra et underdomaene den ikke har aabnet.
+      const saetSideFor = (cd) => saetSider.find((s) => s.vaert === cd || s.vaert.endsWith('.' + cd));
       const results = [];
       const cookieList = Array.isArray(params.cookies) ? params.cookies : [params];
       for (const c of cookieList) {
         let cd = String(c.domain || '').trim().toLowerCase().replace(/^\.+/, '');
         if (!cd && c.url) { try { cd = new URL(c.url).hostname.toLowerCase(); } catch {} }
         try { if (cd) cd = new URL('http://' + cd + '/').hostname; } catch {}
-        if (!cd || !saetVaerter.some((h) => saetSlaegt(h, cd))) {
+        const side = cd ? saetSideFor(cd) : null;
+        if (!side) {
           results.push({
-            ok: false, name: c.name, error: 'domaene-ikke-i-sessionen', domain: cd || null, aabne: saetVaerter,
-            hint: 'Cookies kan kun saettes for http(s)-sider denne session har aabne. Naviger til siden foerst - ' +
-                  'saa kan agenten ikke skrive en session-cookie paa et sted den ikke arbejder med.',
+            ok: false, name: c.name, error: 'domaene-ikke-i-sessionen', domain: cd || null,
+            aabne: saetSider.map((s) => s.vaert),
+            hint: 'Cookies kan kun saettes for http(s)-sider denne session har aabne, og kun for sidens eget domaene ' +
+                  'eller et overdomaene den faar cookies fra. Naviger til siden foerst.',
           });
           continue;
         }
         try {
           const cookie = await chrome.cookies.set({
-            url: c.url || `https://${c.domain}`,
+            // Adressen bygges af sessionens egen side - saa Chrome selv haandhaever sine domaeneregler (public suffix osv.).
+            url: side.u.origin + (typeof c.path === 'string' && c.path.startsWith('/') ? c.path : '/'),
             name: c.name,
             value: c.value,
             domain: c.domain,
@@ -4176,6 +4198,7 @@ async function dispatch(port, method, params) {
             secure: c.secure !== false,
             httpOnly: c.httpOnly || false,
             sameSite: c.sameSite || 'lax',
+            ...(side.storeId ? { storeId: side.storeId } : {}),
           });
           results.push({ ok: true, name: c.name });
         } catch (e) {
