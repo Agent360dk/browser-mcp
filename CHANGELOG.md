@@ -26,9 +26,13 @@ Every change below was written test-first and checked with a mutation test: the 
 - `browser_set_date`: a clock time could be read as the year (`02/01 20:26` accepted as 2020), and a correct date with a time zone (`02/01/2026 12:00 GMT`) was rejected.
 - `browser_get_cookies`: a parent-domain cookie on another path (`Domain=.example.com; Path=/api`) was missing. Secure cookies are returned only for https pages and localhost, and an incognito tab whose cookie store cannot be identified reads nothing.
 - `browser_upload_file`, `browser_drop_file` and the screenshot `path`: with the working directory `/`, every ordinary file was refused.
+- `browser_set_cookies` could set a cookie on any domain, including sites the session had never opened, while `browser_get_cookies` was already limited to the session's own pages. Both now follow the same rule.
 - The server's instructions now explain `maaske_landet`, `landed`, `afviger` and `uaendret`, so an agent does not repeat an action that may already have happened.
+- `browser_provide_feedback` told users with an outdated extension to reload it. For a Chrome Web Store install that does nothing until Google approves the new version, so the advice now covers both cases and says the 1-3 day wait is expected.
 
 **Install**
+- `install.sh` (for people who clone the repo) told you to add the server to a config file Claude Code does not read, so it looked right and did nothing. It now runs the package's own install.
+- The extension popup without a server showed only the Claude Code command. It now also shows Codex and points to `npx @agent360/browser-mcp install` for Cursor, VS Code and the rest.
 - `npx @agent360/browser-mcp install` now also registers the server with Codex (`codex mcp add`), VS Code (`code --add-mcp`, when that version supports it) and Cursor (`~/.cursor/mcp.json`, keeping the servers already there). Clients that are not installed are left alone.
 
 **Release process**

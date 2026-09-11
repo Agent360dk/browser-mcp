@@ -152,6 +152,43 @@ test('get_cookies: en inkognitofane med kendt lager laeser sit eget lager (posit
   assert.deepEqual(Array.from(r.cookies || [], (c) => c.name), ['inkognito'], JSON.stringify(r));
 });
 
+// MAALT 11/9 af Opus og Fable (e2e-review): get_cookies er begraenset til sessionens egne sider, men set_cookies satte
+// cookies paa ETHVERT domaene - ogsaa banker sessionen aldrig har aabnet. Butikkens egen begrundelse lovede det modsatte.
+// Samme regel som laesningen: kun de http(s)-sider sessionen har aabne.
+function saetSele(cookies = []) {
+  const fane = { id: 1, url: 'https://a.example.com/', windowId: 1, active: true };
+  const satte = [];
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': fane, 'tabs.query': [fane],
+    'cookies.getAllCookieStores': [],
+    'cookies.set': (c) => { satte.push(c); return { ...c }; },
+    'cookies.getAll': () => cookies,
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  return { u, satte };
+}
+
+test('set_cookies: en cookie til et domaene sessionen ikke har aabnet, saettes ikke', async () => {
+  const { u, satte } = saetSele();
+  const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'bank.example.dk' }] });
+  assert.equal(satte.length, 0, `cookien blev sat paa et fremmed domaene: ${JSON.stringify(satte)}`);
+  assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
+});
+
+test('set_cookies: sessionens eget domaene virker uaendret (positiv kontrol)', async () => {
+  const { u, satte } = saetSele();
+  const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'a.example.com' }] });
+  assert.equal(satte.length, 1, `en lovlig cookie blev afvist: ${JSON.stringify(r)}`);
+  assert.equal(r.results?.[0]?.ok, true, JSON.stringify(r));
+});
+
+test('set_cookies: et overdomaene sessionens side faar tilsendt, er lovligt (positiv kontrol)', async () => {
+  const { u, satte } = saetSele();
+  await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: '.example.com' }] });
+  assert.equal(satte.length, 1, 'overdomaenet til sessionens egen side blev afvist');
+});
+
 test('upload-stien er indesluttet i arbejdsmappen — samme vagt som skaermbilledets path', () => {
   const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
   const i = srv.indexOf("if (method === 'upload_file' || method === 'drop_file')");

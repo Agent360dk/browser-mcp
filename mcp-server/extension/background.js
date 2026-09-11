@@ -4124,9 +4124,33 @@ async function dispatch(port, method, params) {
     }
 
     case 'set_cookies': {
+      // MAALT 11/9 af Opus og Fable (e2e-review): laesningen er begraenset til sessionens egne sider, men skrivningen satte
+      // cookies paa ETHVERT domaene - ogsaa sider sessionen aldrig har aabnet (og butikkens begrundelse lovede det modsatte).
+      // Samme regel begge veje: kun de http(s)-vaerter sessionen har aabne.
+      const saetSession = getSession(port);
+      const saetVaerter = [];
+      for (const id of saetSession.tabIds) {
+        const t = await chrome.tabs.get(id).catch(() => null);
+        try {
+          const u = new URL(t?.url || '');
+          if ((u.protocol === 'https:' || u.protocol === 'http:') && u.hostname) saetVaerter.push(u.hostname.toLowerCase());
+        } catch {}
+      }
+      const saetSlaegt = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
       const results = [];
       const cookieList = Array.isArray(params.cookies) ? params.cookies : [params];
       for (const c of cookieList) {
+        let cd = String(c.domain || '').trim().toLowerCase().replace(/^\.+/, '');
+        if (!cd && c.url) { try { cd = new URL(c.url).hostname.toLowerCase(); } catch {} }
+        try { if (cd) cd = new URL('http://' + cd + '/').hostname; } catch {}
+        if (!cd || !saetVaerter.some((h) => saetSlaegt(h, cd))) {
+          results.push({
+            ok: false, name: c.name, error: 'domaene-ikke-i-sessionen', domain: cd || null, aabne: saetVaerter,
+            hint: 'Cookies kan kun saettes for http(s)-sider denne session har aabne. Naviger til siden foerst - ' +
+                  'saa kan agenten ikke skrive en session-cookie paa et sted den ikke arbejder med.',
+          });
+          continue;
+        }
         try {
           const cookie = await chrome.cookies.set({
             url: c.url || `https://${c.domain}`,

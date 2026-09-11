@@ -1100,8 +1100,12 @@ async function handleProvideFeedback(args) {
           'det er forventet og gaar over af sig selv. Alt andet virker imens. ' +
           'Er den indlaest som "unpacked": koer `npx @agent360/browser-mcp install` og derefter ' +
           'chrome://extensions → Agent360 Browser MCP → ↻ reload.'
-        : 'Opdatér udvidelsen: chrome://extensions → Agent360 Browser MCP → ↻ reload. ' +
-          'Er den indlaest som "unpacked", saa koer `npx @agent360/browser-mcp install` foerst.',
+        // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
+        // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
+        : 'Er udvidelsen indlaest som "unpacked": koer `npx @agent360/browser-mcp install` og derefter ' +
+          'chrome://extensions → Agent360 Browser MCP → ↻ reload. Kommer den fra Chrome Web Store: den nye version ' +
+          'ligger sandsynligvis i review (1-3 dage efter en udgivelse), og ↻ reload henter den IKKE foer Google har ' +
+          'godkendt — det er forventet og gaar over af sig selv. Alt andet virker imens.',
     );
   }
 

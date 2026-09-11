@@ -106,6 +106,19 @@ test('gammel udvidelse mod ny server → outdated med reload-anvisning', async (
   assert.ok(r.fix_steps.some(s => s.includes('chrome://extensions')));
 });
 
+// MAALT 11/9 af Fable (e2e-review): butiksbrugere faar "↻ reload" som eneste raad, naar deres udvidelse oplyser sin version.
+// Efter en udgivelse ligger butikkens version i review i 1-3 dage, saa reload henter ingenting - raadet foerer i ring.
+// Serveren kan ikke se hvilken slags installation det er, saa begge tilfaelde skal staa der, ogsaa med kendt version.
+test('gammel udvidelse med kendt version: raadet naevner ogsaa butikkens ventetid', async () => {
+  const r = await byg({ serverVersion: '1.29.1', npmLatest: '1.29.1', udvidelser: [ext('1.29.0', 'a')] })(
+    { what_happened: 'klik virker ikke' });
+  assert.equal(r.verdict, 'outdated');
+  const tekst = r.fix_steps.join(' ');
+  assert.match(tekst, /chrome:\/\/extensions/, 'reload-vejen skal stadig staa der');
+  assert.match(tekst, /Chrome Web Store|butik/i, 'butiksbrugeren faar et raad der foerer i ring');
+  assert.match(tekst, /1-3 dage|review/i, 'ventetiden skal siges, saa den ikke ligner en fejl');
+});
+
 test('udvidelse uden haandtryk regnes som for gammel', async () => {
   const r = await byg({ udvidelser: [ext(null, null)] })({ what_happened: 'noget gik galt' });
   assert.equal(r.verdict, 'outdated');
@@ -283,9 +296,15 @@ test('butiks-brugere faar et raad der kan foelges i review-vinduet', async () =>
   assert.match(raad, /unpacked/, 'den anden installationstype er faldet ud');
 });
 
-test('en kendt version faar det korte raad, ikke butiks-forklaringen', async () => {
+// 22/8 stod her det modsatte: "en kendt version faar det korte raad, ikke butiks-forklaringen". Antagelsen var at en
+// udvidelse der oplyser sin version, ikke kan komme fra butikken. MAALT 11/9 (Fable, e2e-review): butikkens udgave oplyser
+// sin version, og 781 af brugerne har netop den - de fik derfor "↻ reload", som ikke henter noget foer Google har godkendt.
+// Serveren kan ikke se installationstypen, saa begge veje skal staa der uanset om versionen er kendt.
+test('en kendt version faar baade unpacked-vejen og butikkens ventetid', async () => {
   const r = await byg({ serverVersion: '1.28.0', udvidelser: [ext('1.26.0', 'a')] })({ what_happened: 'x' });
-  assert.ok(!r.fix_steps.join(' ').includes('review'), 'butiks-forklaringen gives til en der ikke skal have den');
+  const raad = r.fix_steps.join(' ');
+  assert.match(raad, /unpacked/, 'unpacked-vejen mangler');
+  assert.match(raad, /review/, 'butikkens ventetid mangler, og raadet foerer i ring for en butiksbruger');
 });
 
 // ── "endnu ikke brugt" er ikke "i stykker" ─────────────────────────────────
