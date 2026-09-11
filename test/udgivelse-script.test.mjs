@@ -32,7 +32,9 @@ function pakke(cliKilde) {
   return d;
 }
 
-function koer(mappe, frist = '2000') {
+// Standardfristen er rummelig: den skal kun faelde en pakke der ALDRIG svarer, og den test giver sin egen korte frist.
+// MAALT 11/9 i fuld suite: med 2000 ms naaede en korrekt falsk pakke ikke at svare under belastning (6 s brugt) - alene 3/3 groen.
+function koer(mappe, frist = '15000') {
   return spawnSync(process.execPath, [roegtest, mappe], {
     encoding: 'utf8',
     env: { ...process.env, PAKKE_ROEGTEST_FRIST_MS: frist },
