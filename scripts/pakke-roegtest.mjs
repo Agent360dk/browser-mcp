@@ -45,23 +45,40 @@ function slut(kode, besked) {
 
 const ur = setTimeout(() => slut(1, `pakken svarede ikke paa initialize inden for ${frist} ms`), frist);
 
+// MAALT 11/9 af Astra (sign-off): {id:1,result:{serverInfo:{name:"broken"}}} efterfulgt af crash gav exit 0. Svaret skal
+// nu have vores servers form (mcp-server/index.js: name 'agent360-browser', capabilities.tools), og pakken skal stadig
+// koere et oejeblik efter svaret - et svar beviser ikke at den lever videre.
+const SERVERNAVN = 'agent360-browser';
+const eftertid = Number(process.env.PAKKE_ROEGTEST_EFTERTID_MS || 1500);
+let svaret = false;
+
 barn.stdout.setEncoding('utf8');
 barn.stderr.setEncoding('utf8');
 barn.stderr.on('data', (c) => { fejl += c; });
 barn.stdout.on('data', (c) => {
   ud += c;
+  if (svaret) return;
   for (const linje of ud.split('\n')) {
     let m;
     try { m = JSON.parse(linje); } catch { continue; }
     if (m?.id !== 1) continue;
-    if (m.result?.serverInfo?.name) {
-      return slut(0, `pakken svarer: ${m.result.serverInfo.name} ${m.result.serverInfo.version ?? ''}`.trim());
-    }
     if (m.error) return slut(1, `pakken svarede med fejl paa initialize: ${JSON.stringify(m.error)}`);
+    const r = m.result || {};
+    const forkert = [];
+    if (typeof r.protocolVersion !== 'string' || !r.protocolVersion) forkert.push('protocolVersion mangler');
+    if (!r.capabilities || typeof r.capabilities.tools !== 'object' || r.capabilities.tools === null) forkert.push('capabilities.tools mangler');
+    if (r.serverInfo?.name !== SERVERNAVN) forkert.push(`serverInfo.name er ${JSON.stringify(r.serverInfo?.name)}, ikke ${SERVERNAVN}`);
+    if (forkert.length) return slut(1, `pakken svarede, men ikke som vores server: ${forkert.join('; ')}`);
+    svaret = true;
+    clearTimeout(ur);
+    setTimeout(() => slut(0, `pakken svarer og koerer stadig efter ${eftertid} ms: ${r.serverInfo.name} ${r.serverInfo.version ?? ''}`.trim()), eftertid);
+    return;
   }
 });
 barn.on('error', (e) => slut(1, `pakken kunne ikke startes: ${e.message}`));
-barn.on('exit', (kode, signal) => slut(1, `pakken stoppede foer den svarede (exit ${kode ?? signal})`));
+barn.on('exit', (kode, signal) => slut(1, svaret
+  ? `pakken stoppede lige efter sit svar (exit ${kode ?? signal})`
+  : `pakken stoppede foer den svarede (exit ${kode ?? signal})`));
 barn.stdin.on('error', () => {});
 barn.stdin.write(`${JSON.stringify({
   jsonrpc: '2.0',

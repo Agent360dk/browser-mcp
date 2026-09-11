@@ -57,20 +57,61 @@ test('pakketjek: en pakke der siger "server running" men aldrig svarer afvises',
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
-test('pakketjek: en pakke der besvarer haandtrykket godkendes', () => {
-  const d = pakke(`process.stdin.setEncoding('utf8');
+// En falsk pakke der besvarer initialize med `result` og derefter goer `efter` (fx crasher).
+function svarendePakke(result, efter = '') {
+  return pakke(`import { homedir } from 'node:os';
+process.stdin.setEncoding('utf8');
 let buf = '';
 process.stdin.on('data', (c) => {
   buf += c;
   const i = buf.indexOf('\\n');
   if (i < 0) return;
   const m = JSON.parse(buf.slice(0, i));
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'falsk', version: '9.9.9' } } }) + '\\n');
+  const result = ${JSON.stringify(result)};
+  if (result.serverInfo && result.serverInfo.version === 'HJEM') result.serverInfo.version = 'hjem=' + homedir();
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\\n');
+  ${efter}
 });
 `);
+}
+const GYLDIGT = { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } };
+
+test('pakketjek: en pakke der besvarer haandtrykket godkendes', () => {
+  const d = svarendePakke(GYLDIGT);
   try {
     const r = koer(d);
     assert.equal(r.status, 0, `en korrekt pakke blev afvist: ${r.stderr}`);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+// MAALT 11/9 af Astra (sign-off): {id:1,result:{serverInfo:{name:"broken"}}} efterfulgt af crash gav exit 0.
+// Protokol og capabilities blev ikke valideret, og en pakke der doede lige efter svaret blev godkendt.
+test('pakketjek: et svar uden protokol og vaerktoejer, efterfulgt af crash, afvises', () => {
+  const d = svarendePakke({ serverInfo: { name: 'broken' } }, 'setTimeout(() => process.exit(1), 50);');
+  try {
+    assert.notEqual(koer(d).status, 0, 'et defekt svar efterfulgt af crash blev godkendt');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pakketjek: et gyldigt svar efterfulgt af crash afvises', () => {
+  const d = svarendePakke(GYLDIGT, 'setTimeout(() => process.exit(1), 100);');
+  try {
+    const r = koer(d);
+    assert.notEqual(r.status, 0, 'en pakke der doede lige efter svaret blev godkendt');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pakketjek: et gyldigt svar uden vaerktoejs-capability afvises', () => {
+  const d = svarendePakke({ ...GYLDIGT, capabilities: {} });
+  try {
+    assert.notEqual(koer(d).status, 0, 'en server uden tools-capability blev godkendt');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('pakketjek: et gyldigt svar fra en anden server afvises', () => {
+  const d = svarendePakke({ ...GYLDIGT, serverInfo: { name: 'en-anden-server', version: '1' } });
+  try {
+    assert.notEqual(koer(d).status, 0, 'en anden servers svar blev godkendt som vores pakke');
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -84,17 +125,7 @@ test('pakketjek: repoets egen server besvarer haandtrykket', () => {
 // ~/.browser-mcp/extension hvis den er nyere. En "test" af en kandidat der endnu ikke er udgivet, skrev altsaa i
 // brugerens rigtige udvidelsesmappe.
 test('pakketjek: pakken koeres med et midlertidigt hjem, ikke brugerens', () => {
-  const d = pakke(`import { homedir } from 'node:os';
-process.stdin.setEncoding('utf8');
-let buf = '';
-process.stdin.on('data', (c) => {
-  buf += c;
-  const i = buf.indexOf('\\n');
-  if (i < 0) return;
-  const m = JSON.parse(buf.slice(0, i));
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'hjem=' + homedir(), version: '1' } } }) + '\\n');
-});
-`);
+  const d = svarendePakke({ ...GYLDIGT, serverInfo: { name: 'agent360-browser', version: 'HJEM' } });
   try {
     const r = koer(d);
     assert.equal(r.status, 0, r.stderr);
