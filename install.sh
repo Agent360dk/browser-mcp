@@ -1,25 +1,29 @@
 #!/bin/bash
-# Agent360 Browser MCP — opsaetning fra et klonet repo.
+# Browser MCP by Agent360 — setup from a cloned repo.
 #
-# MAALT 11/9-2026 (Fable, e2e-review): den gamle udgave bad brugeren skrive serveren ind i en konfigurationsfil under
-# ~/.claude som Claude Code ikke laeser (se mcp-server/bin/cli.js), saa opskriften saa rigtig ud og gjorde ingenting. Nu koeres pakkens egen
-# install, som registrerer serveren hos de klienter der faktisk er installeret (Claude Code, Codex, VS Code, Cursor).
+# MEASURED 2026-09-11 (Fable, e2e review): the old version told you to add the server to a config file under ~/.claude
+# that Claude Code does not read (see mcp-server/bin/cli.js), so the recipe looked right and did nothing. It now runs the
+# package's own install, which registers the server with the clients you actually have (Claude Code, Codex, VS Code, Cursor).
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== Agent360 Browser MCP ==="
+echo "=== Browser MCP by Agent360 ==="
 echo ""
-echo "1. Henter serverens afhaengigheder..."
+echo "1. Installing the server's dependencies..."
 (cd "$SCRIPT_DIR/mcp-server" && npm install --silent)
-echo "   Faerdig."
+echo "   Done."
 echo ""
 
-echo "2. Laegger udvidelsen paa plads og registrerer serveren hos dine klienter..."
+echo "2. Putting the extension in place and registering the server with your clients..."
 node "$SCRIPT_DIR/mcp-server/bin/cli.js" install
 echo ""
 
-echo "3. Vil du koere udvidelsen fra dette repo i stedet for ~/.browser-mcp/extension:"
+echo "Note: that registers the published server (npx @agent360/browser-mcp@latest)."
+echo "To run THIS clone's code instead, register it directly:"
+echo "  claude mcp add --scope user browser-mcp-dev -- node \"$SCRIPT_DIR/mcp-server/index.js\""
+echo ""
+echo "3. To load the extension from this clone rather than ~/.browser-mcp/extension:"
 echo "   chrome://extensions → Developer mode → Load unpacked → $SCRIPT_DIR/extension"
 echo ""
-echo "Genstart din AI-klient, saa den henter serveren."
+echo "Restart your AI client so it picks up the server."
