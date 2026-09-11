@@ -2969,9 +2969,10 @@ async function dispatch(port, method, params) {
           diag.isolated_error = r.message;
         }
       } catch (e) {
-        const m = String(e?.message || e);
-        if (sidenForsvandt(m)) return maaskeKoert('ISOLATED', m);
-        diag.isolated_throw = m;
+        // Ingen maybe_ran her. MAALT 11/9 i Chrome for Testing 153: `new Function` i ISOLATED afvises af udvidelsens
+        // CSP ('unsafe-eval'), saa brugerens kode kan aldrig have koert i denne verden. Sign-off (Astra): en afvisning
+        // med "Frame with ID 0 was removed." foer start gav maybe_ran og nul koersler, hvor 1.29.0 koerte koden via MAIN.
+        diag.isolated_throw = String(e?.message || e);
       }
 
       // Step 2: try MAIN world

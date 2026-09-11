@@ -90,6 +90,36 @@ test('forsvinder siden mens koden koerer, koeres den ikke igen via debuggeren', 
   assert.equal(svar.maybe_ran, true, 'kalderen skal have at vide at koden kan have koert');
 });
 
+// MAALT 11/9 i sign-off (Astra, reproduceret): ISOLATED-injektionen blev afvist med "Frame with ID 0 was removed." FOER
+// koden koerte; naeste dokument kunne koere den. 1.29.0: resultatet via MAIN, én koersel. HEAD: maybe_ran, nul koersler.
+// MAALT samme dag i Chrome for Testing 153 (scratchpad/f4-isolated-proeve.mjs): `new Function` i ISOLATED afvises af
+// udvidelsens CSP ("'unsafe-eval' is not an allowed source"), mens MAIN koerte den (42). Brugerens kode kan altsaa aldrig
+// have koert i ISOLATED, uanset hvornaar afvisningen kom - saa MAIN maa proeve.
+test('afvises ISOLATED fordi siden forsvandt, koeres koden én gang via MAIN', async () => {
+  const taeller = { isolated: 0, main: 0, cdp: 0 };
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: true },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: true }],
+    'scripting.executeScript': async (o) => {
+      if (o.world === 'ISOLATED') { taeller.isolated++; throw new Error('Frame with ID 0 was removed.'); }
+      taeller.main++;
+      return [{ result: { __ok: true, value: 2 } }];
+    },
+    'debugger.sendCommand': (_m, metode) => {
+      if (metode === 'Runtime.evaluate') { taeller.cdp++; return { result: { type: 'number', value: 2 } }; }
+      return {};
+    },
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  const svar = await u.hent('dispatch')(9876, 'execute_script', { code: '1 + 1' });
+  assert.equal(svar.result, 2, `koden koerte aldrig: ${JSON.stringify(svar)}`);
+  assert.equal(svar.method, 'scripting-main');
+  assert.equal(taeller.main, 1);
+  assert.equal(taeller.cdp, 0, 'koden maa ikke ogsaa koeres via debuggeren');
+});
+
 test('kunne koden slet ikke indsproejtes, faar debuggeren stadig lov at proeve', async () => {
   // Positiv kontrol: ellers ville en vagt der aldrig bruger debuggeren bestaa testen ovenfor.
   const { u, taeller } = seleHvorSidenForsvinder('Cannot access contents of the page. Extension manifest must request permission to access the respective host.');
