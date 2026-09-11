@@ -31,7 +31,7 @@ jobs:
       SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
       SENDGRID_FROM_EMAIL: ${{ secrets.SENDGRID_FROM_EMAIL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Run dominans-audit
         id: audit

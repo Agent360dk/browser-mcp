@@ -12,19 +12,47 @@ on:
     branches: [main]
   pull_request:
 
+# MAALT 11/9: pakken lover Node 18+ ("engines"), men kun Node 20 blev testet, og aldrig paa macOS
+# eller Windows. README'en giver Windows-instruktioner. actions/*@v4 koerer paa Node 20, som GitHub
+# udfaser (advarsel i hver koersel).
 jobs:
   static:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Generatoren udleder datePublished/dateModified med 'git log', og
           # release-coherence-testen laeser 'git tag'. En shallow klon har hverken
           # historik eller tags — saa begge porte fejlede paa noget der var i orden.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
+      - name: install
+        run: npm install --prefix mcp-server --no-audit --no-fund
+      - name: node --test
+        run: npm --prefix mcp-server test
+
+  # Andre platforme MAALES, men blokerer ikke endnu: Windows er aldrig koert, og testene bruger
+  # symlinks og hardlinks. Naar jobbet er groent, flyttes det ind i matrixen ovenfor.
+  andre-platforme:
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
       - name: install
         run: npm install --prefix mcp-server --no-audit --no-fund
       - name: node --test
