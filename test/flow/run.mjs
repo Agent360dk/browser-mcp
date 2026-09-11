@@ -341,7 +341,14 @@ try {
     const r = await kald('browser_provide_feedback', { what_happened: 'flow-test, ingen aegte fejl' });
     // R5 R2: 'outdated' og 'conflict' blev godkendt, saa gaten kunne koere mod en gammel udvidelse eller
     // en dobbeltinstallation og stadig vaere groen. Flow-testen skal bevise at det er KANDIDATEN der koerer.
-    skalVaere(r.data?.verdict === 'current', `udvidelsen er ikke kandidaten (dom: ${r.data?.verdict}) - indlaes den rigtige og slaa andre Browser MCP-udvidelser fra`);
+    // Maalt 11/9 i Chrome for Testing: dommen er 'unknown' naar alt er i orden men npm-tjekket er slukket (standard),
+    // og 'current' kun med npm-opslag. Beviset for kandidaten er derfor: ingen konflikt eller foraeldelse, praecis
+    // én forbundet udvidelse, og dens version er serverens.
+    const miljoe = r.data?.environment || {};
+    const aktiv = (miljoe.extensions_connected || []).filter((e) => e.active);
+    skalVaere(['current', 'unknown'].includes(r.data?.verdict), `forkert dom: ${r.data?.verdict} - udvidelsen er foraeldet, i konflikt eller ikke forbundet`);
+    skalVaere((miljoe.extensions_connected || []).length === 1, `${(miljoe.extensions_connected || []).length} Browser MCP-udvidelser forbundet - slaa de andre fra, ellers testes ikke kandidaten`);
+    skalVaere(aktiv.length === 1 && aktiv[0].version === miljoe.mcp_server_version, `udvidelsen er ${aktiv[0]?.version}, serveren er ${miljoe.mcp_server_version} - indlaes kandidaten`);
   });
   await proev('#shadow-dom', 'selektorer naar ind i shadow DOM', async () => {
     await kald('browser_click', { selector: '#ishadow' });
