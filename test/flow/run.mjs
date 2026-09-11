@@ -17,6 +17,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -349,6 +350,12 @@ try {
     skalVaere(['current', 'unknown'].includes(r.data?.verdict), `forkert dom: ${r.data?.verdict} - udvidelsen er foraeldet, i konflikt eller ikke forbundet`);
     skalVaere((miljoe.extensions_connected || []).length === 1, `${(miljoe.extensions_connected || []).length} Browser MCP-udvidelser forbundet - slaa de andre fra, ellers testes ikke kandidaten`);
     skalVaere(aktiv.length === 1 && aktiv[0].version === miljoe.mcp_server_version, `udvidelsen er ${aktiv[0]?.version}, serveren er ${miljoe.mcp_server_version} - indlaes kandidaten`);
+    // Plan 1.10 / R2 (Astra): versionsnummeret beviser ikke hvilken KODE der koerer. Udvidelsen sender et fingeraftryk af
+    // sin egen background.js i haandtrykket; her sammenlignes det med repoets fil, saa gaten ikke kan passere mod en
+    // gammel kopi med samme nummer.
+    const repoAftryk = createHash('sha256').update(readFileSync(join(rod, 'extension', 'background.js'))).digest('hex').slice(0, 12);
+    skalVaere(aktiv[0]?.code === repoAftryk,
+      `udvidelsens kode-aftryk er ${aktiv[0]?.code ?? 'ukendt'}, repoets er ${repoAftryk} - Chrome koerer ikke kandidatens kode (genindlaes udvidelsen)`);
   });
   await proev('#shadow-dom', 'selektorer naar ind i shadow DOM', async () => {
     await kald('browser_click', { selector: '#ishadow' });

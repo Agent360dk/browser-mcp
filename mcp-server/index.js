@@ -306,6 +306,10 @@ function createWSS(port = BASE_PORT) {
         }
         conn.version = typeof msg.version === 'string' ? msg.version : null;
         conn.name = typeof msg.name === 'string' ? msg.name : null;
+        // Fingeraftryk af udvidelsens egen background.js (plan 1.10 / R2): versionsnummeret siger ikke hvilken KODE der
+        // koerer. Udgivelsens flowtest sammenligner det med repoets fil, saa en gammel kopi med samme nummer ikke kan
+        // passere som kandidaten.
+        conn.kode = typeof msg.kode === 'string' ? msg.kode : null;
         advarOmKonflikt(conn);
         return;
       }
@@ -1138,6 +1142,8 @@ async function handleProvideFeedback(args) {
       name: c.name,
       version: c.version,
       extension_id: c.extensionId,
+      // Fingeraftryk af udvidelsens background.js - det er KODEN, ikke versionsnummeret, udgivelsens gate skal se.
+      code: c.kode ?? null,
       active: c === active,
     })),
     extension_up_to_date: extOutdated === null ? null : !extOutdated,

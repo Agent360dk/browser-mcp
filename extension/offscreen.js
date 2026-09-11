@@ -14,6 +14,22 @@
 // samtidig den rigtige semantik: et dokument oprettet af en aeldre udgave baerer
 // den aeldre version, saa `offscreenSvarer()` kan se forskel paa "svarer" og
 // "er den udgave vi koerer nu".
+// Plan 1.10 / R2 (Astra): versionsnummeret beviser ikke hvilken KODE der koerer - to kopier med samme nummer kan vaere
+// forskellige, og udgivelsens flowtest kunne derfor godkendes mod gammel kode. Udvidelsen sender derfor et fingeraftryk af
+// sin egen background.js. Kun et hash, og kun til 127.0.0.1: ingen kode forlader maskinen.
+let kodeAftrykCache = null;
+async function kodeAftryk() {
+  if (kodeAftrykCache) return kodeAftrykCache;
+  try {
+    const svar = await fetch(chrome.runtime.getURL('background.js'));
+    const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', await svar.arrayBuffer()));
+    kodeAftrykCache = Array.from(bytes.slice(0, 6)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) {
+    console.warn('[Offscreen] kunne ikke beregne kode-aftrykket:', e?.message || e);
+  }
+  return kodeAftrykCache;
+}
+
 function minVersion() {
   try { return new URLSearchParams(location.search).get('v') || null; } catch { return null; }
 }
@@ -122,7 +138,7 @@ function tryConnect(port) {
     if (ws.readyState !== WebSocket.OPEN) ws.close();
   }, 8000);
 
-  ws.onopen = () => {
+  ws.onopen = async () => {
     clearTimeout(connectTimeout);
     connections.set(port, ws);   // stadig vores? scanPorts har ikke lavet en nyere
 
@@ -141,9 +157,10 @@ function tryConnect(port) {
     // To rettelser: haandtrykket sendes nu UANSET om manifest-opslaget lykkes (det er
     // selve beskeden serveren har brug for, ikke felterne i den), og en fejl bliver
     // logget i stedet for at forsvinde.
-    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null };
+    const kode = await kodeAftryk();
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
     try {
-      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null };
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };
     } catch (e) {
       console.warn('[Offscreen] kunne ikke bygge haandtrykket:', e?.message || e);
     }
