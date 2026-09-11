@@ -46,7 +46,30 @@ test('heller ikke naar agentens fane ER den synlige - et skift imellem kan ikke 
     'captureVisibleTab maa ikke bruges: to tjek beviser ikke hvilken fane der var synlig ved optagelsen');
 });
 
-test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - men ingen tredje runde og intet vindue haevet', async () => {
+// MAALT 11/9 af Fable (e2e-review): haenger BEGGE optagelser, haevede 1.29.0 vinduet og leverede et billede efter 16,7 s.
+// HEAD gav op efter 26 s uden at proeve, fordi en frist afskar den sidste udvej. Budgettet reserverer nu plads til én
+// haevet runde (haevMs), saa den kan naa at levere inden for serverens 30 s.
+test('haenger begge optagelser: vinduet haeves som sidste udvej, og billedet naar frem', async () => {
+  let haevet = false;
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    // Kompositoren svarer foerst naar vinduet er haevet - som paa en tildaekket skaerm.
+    return haevet ? { data: 'HAEVET' } : new Promise(() => {});
+  } });
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 60, samletMs: 260, haevMs: 80 });
+  const opdater = u.chrome.windows.update;
+  u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
+  const t0 = Date.now();
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const brugt = Date.now() - t0;
+  assert.match(String(svar.image), /HAEVET/, `intet billede fra den haevede runde: ${JSON.stringify(svar).slice(0, 160)}`);
+  // Tiden er skaleret 1:100, men pausen paa 250 ms der lader siden tegne efter haevningen er et fast tal i koden.
+  // Budgettet i rigtige tal: 10 s + 8 s + 0,25 s + optagelsen = under 26 s, altsaa under serverens 30 s.
+  assert.ok(brugt < 600, `billedet kom efter ${brugt} ms (skaleret + 250 ms uskaleret pause)`);
+  assert.ok(u.optager.antal('windows.update') >= 1, 'vinduet blev aldrig haevet');
+});
+
+test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - og hoejst én runde med haevet vindue', async () => {
   // Sign-off 11/9 (Astra, R5 F8): HEAD sprang fromSurface:false over efter en frist. I 1.29.0 var det netop fristen
   // der sendte kaldet videre til den, og den leverede billedet. Reserven proeves; en ny runde med haevet vindue ikke.
   const kald = [];
@@ -59,21 +82,28 @@ test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - men inge
   } });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl, `en frist er ingen succes: ${JSON.stringify(svar).slice(0, 120)}`);
-  assert.deepEqual(kald, ['standard', 'reserve'], 'efter en frist skal fromSurface:false proeves - og intet derudover');
-  assert.equal(u.optager.antal('windows.update'), 0, 'og brugerens vindue maa ikke haeves for ingenting');
+  assert.deepEqual(kald.slice(0, 2), ['standard', 'reserve'], 'efter en frist skal fromSurface:false proeves');
+  // 11/9 (Fable): den haevede runde er sidste udvej og gav i 1.29.0 et billede paa en tildaekket skaerm. Den maa koere
+  // ÉN gang inden for budgettet - ikke flere.
+  assert.ok(kald.length <= 4, `for mange optagelser: ${kald.join(', ')}`);
+  assert.ok(u.optager.antal('windows.update') <= 2, 'hoejst én haevning (plus gendannelsen af brugerens vindue)');
 });
 
-test('efter en frist haeves vinduet ikke, heller ikke naar reserven fejler hurtigt af en anden grund', async () => {
-  // Uden markeringen ville en hurtig "readback failed" fra reserven ligne et tildaekket vindue og starte runden med
-  // haevet vindue - oven paa en standardoptagelse der allerede havde brugt sin frist.
+// 10/9 (Astra, R2) stod her at vinduet ALDRIG maatte haeves efter en frist. MAALT 11/9 af Fable: paa en tildaekket skaerm er
+// haevningen netop den vej der virker (1.29.0 leverede dér efter 16,7 s). Nu er det budgettet der holder kaeden under
+// serverens 30 s - og den haevede runde koerer ÉN gang, ikke flere.
+test('efter en frist koeres den haevede runde én gang - og ikke flere', async () => {
+  const kald = [];
   const u = sele({ agentFaneAktiv: true, cdp: (_m, metode, p) => {
     if (metode !== 'Page.captureScreenshot') return {};
+    kald.push(p?.fromSurface === false ? 'reserve' : 'standard');
     if (p?.fromSurface === false) throw new Error('Unable to capture screenshot: image readback failed');
     throw new Error('CDP svarede ikke inden 10000 ms: Page.captureScreenshot');
   } });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
-  assert.ok(svar.fejl);
-  assert.equal(u.optager.antal('windows.update'), 0, 'brugerens vindue blev haevet efter en frist');
+  assert.ok(svar.fejl, 'alle veje fejlede - der er intet billede');
+  assert.deepEqual(kald, ['standard', 'reserve', 'standard', 'reserve'], `optagelserne var: ${kald.join(', ')}`);
+  assert.ok(u.optager.antal('windows.update') <= 2, 'hoejst én haevning plus gendannelsen af brugerens vindue');
 });
 
 // MAALT 11/9 af Astra (efterproevning af f084d1b): standardoptagelsen lykkes efter 11 s, reserven fejler. Foer budgettet:
@@ -98,7 +128,8 @@ test('er budgettet naesten brugt, startes runden med haevet vindue ikke', async 
     if (metode !== 'Page.captureScreenshot') return {};
     return new Promise((_, afvis) => setTimeout(() => afvis(new Error('Unable to capture screenshot: image readback failed')), 60));
   } });
-  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 260 });
+  // Budgettet er saa lille at der intet er tilbage naar begge optagelser har fejlet.
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 110, haevMs: 0 });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl);
   assert.equal(u.optager.antal('windows.update'), 0, 'vinduet blev haevet uden tid tilbage til en optagelse');

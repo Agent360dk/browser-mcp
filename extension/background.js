@@ -577,8 +577,10 @@ function cdpFrist(method, params) {
 // fordi den staar som sikker at gentage, og billedet kom efter ca. 38 s - serveren havde opgivet ved 30 s. I 1.29.0
 // sendte en frist paa 8 s kaldet videre til fromSurface:false, som svarede paa et halvt sekund.
 // Standardoptagelsen faar derfor 10 s. Reserven faar resten op til 26 s, saa svaret naar frem foer serverens 30 s.
+// MAALT 11/9 af Fable (e2e-review): haenger BEGGE optagelser, haevede 1.29.0 vinduet og leverede et billede efter 16,7 s.
+// En frist afskar den sidste udvej her, saa der kom intet billede. Budgettet reserverer derfor haevMs til den haevede runde.
 function skaermbilledeFrister() {
-  return { foersteMs: 10000, samletMs: 26000 };
+  return { foersteMs: 10000, samletMs: 26000, haevMs: 8000 };
 }
 
 // wait_for_network har samme loft hos serveren (30 s). MAALT 11/9 af Astra (e2e-review): svaret kom efter 13 s, body-kaldet
@@ -2876,7 +2878,7 @@ async function dispatch(port, method, params) {
       // igen), og kaeden kom over serverens 30 s. En frist markeres nu, og saa proeves der ikke igen.
       // Sign-off 11/9 (Astra, R5 F8): hele kaeden har ét budget (skaermbilledeFrister). Fristen gaelder ogsaa mens
       // cdpSend gentager et kald efter en afkobling - det var den gentagelse der bar kaeden over 30 s.
-      const { foersteMs, samletMs } = skaermbilledeFrister();
+      const { foersteMs, samletMs, haevMs = 0 } = skaermbilledeFrister();
       const budgetSlut = Date.now() + samletMs;
       const tryCapture = async () => {
         await debuggerAttach(tab.id);
@@ -2915,7 +2917,9 @@ async function dispatch(port, method, params) {
           const reserve = optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
           const kandidater = foersteFejl?.ingenNyRunde ? [standard, reserve] : [reserve];
           try {
-            const shot = await medFrist(Promise.any(kandidater), budgetSlut - Date.now());
+            // Den haevede runde er sidste udvej paa en tildaekket skaerm og skal have tid tilbage (haevMs) - ellers naar
+            // 1.29.0's eneste virkende vej aldrig frem (Fable, e2e 11/9).
+            const shot = await medFrist(Promise.any(kandidater), budgetSlut - haevMs - Date.now());
             return { image: 'data:image/png;base64,' + shot.data };
           } catch (andenFejl) {
             const fejl = andenFejl instanceof AggregateError ? andenFejl.errors[andenFejl.errors.length - 1] : andenFejl;
@@ -2929,11 +2933,13 @@ async function dispatch(port, method, params) {
       try {
         return await tryCapture();
       } catch (firstErr) {
-        // En frist er et svar: kompositoren svarede ikke. At haeve vinduet og optage igen
-        // fordobler kun ventetiden og tager brugerens fokus for ingenting.
-        if (firstErr?.ingenNyRunde) throw firstErr;
-        // Er budgettet brugt, er der ikke tid til en runde med haevet vindue foer serverens 30 s.
-        if (budgetSlut - Date.now() < 1000) throw firstErr;
+        // 10/9 (Astra, R2) stod her: en frist betyder at kompositoren ikke svarede, saa en ny runde fordobler kun
+        // ventetiden. MAALT 11/9 af Fable: paa en TILDAEKKET skaerm haenger begge optagelser netop indtil vinduet haeves -
+        // 1.29.0 leverede dér et billede efter 16,7 s, hvor HEAD gav op. Budgettet (haevMs) holder kaeden under serverens
+        // 30 s, saa den sidste udvej maa proeves uanset om fejlen var en frist.
+        // Er budgettet brugt, er der ikke tid til en runde med haevet vindue foer serverens 30 s. (haevMs ovenfor er netop
+        // den tid der blev holdt fri til den her runde.)
+        if (budgetSlut - Date.now() <= 0) throw firstErr;
         // Both methods failed → the window is genuinely OCCLUDED (covered by other windows),
         // so Chrome's compositor produced no frames. LAST RESORT ONLY: raise the window to
         // de-occlude it, capture, then RESTORE the user's previously-focused window. This

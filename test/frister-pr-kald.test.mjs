@@ -108,6 +108,10 @@ test('skaermbilledet proever ikke to gange paa en frist der allerede loeb ud', (
   const i = kilde.indexOf("case 'screenshot'");
   const blok = kilde.slice(i, kilde.indexOf("case 'execute_script'", i));
   assert.match(blok, /e\.ingenNyRunde = true/, 'en frist skal markeres');
-  assert.match(blok, /if \(firstErr\?\.ingenNyRunde\) throw firstErr;/, 'og den ydre runde skal respektere markeringen');
+  // 11/9 (Fable, e2e): "ingen ny runde efter en frist" kostede 1.29.0's eneste virkende vej paa en tildaekket skaerm.
+  // Nu er det BUDGETTET der holder kaeden under serverens 30 s: den haevede runde faar haevMs holdt fri, og koeres kun
+  // hvis der er tid tilbage.
+  assert.match(blok, /haevMs/, 'der reserveres ikke tid til den haevede runde');
+  assert.match(blok, /if \(budgetSlut - Date\.now\(\) <= 0\) throw firstErr;/, 'der koeres en runde uden tid tilbage');
   assert.doesNotMatch(blok, /chrome\.tabs\.captureVisibleTab\(/, 'reserveloesningen fotograferer den synlige fane, ikke agentens');
 });
