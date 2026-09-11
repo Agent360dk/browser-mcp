@@ -77,3 +77,16 @@ test('instruktionerne indeholder faktisk det agenten skal styres af', () => {
     assert.ok(blok.includes(emne), `INSTRUCTIONS naevner ikke ${emne}`);
   }
 });
+
+// MAALT 11/9 (Fable, bekraeftet i den udgivne 1.29.0-pakke): instruksen sagde til hver agent
+// "The MCP server auto-pulls the latest code from git on every new session startup". Det
+// blev fjernet 22/8; serveren opdateres via npm (@latest) og kopierer selv nye udvidelsesfiler.
+// En agent der tror paa git-saetningen, forklarer brugeren noget der ikke sker.
+test('instruktionerne lover ikke at serveren henter kode fra git', () => {
+  const i = kilde.indexOf('const INSTRUCTIONS = `');
+  const blok = kilde.slice(i, kilde.indexOf('`;', i));
+  assert.doesNotMatch(blok, /auto-pulls?|from git|git pull/i,
+    'INSTRUCTIONS paastaar igen at serveren henter kode fra git');
+  assert.match(blok, /## Extension updates[\s\S]*npm[\s\S]*chrome:\/\/extensions/,
+    'afsnittet om opdateringer skal forklare den rigtige vej: npm-versionen og genindlaesning i chrome://extensions');
+});

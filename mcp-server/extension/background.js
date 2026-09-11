@@ -1527,22 +1527,39 @@ async function ensureOffscreen() {
 
 const SENSITIVE = new Set(['get_cookies', 'get_local_storage', 'execute_script', 'extract_token']);
 
-function logAction(port, method, params) {
+// MAALT 11/9 (Astra, efterproevet): her stod `params: JSON.stringify(params).slice(0, 200)`.
+// De foerste 200 tegn af ALLE parametre — ogsaa vaerdien til fill (adgangskoder), cookie-
+// vaerdier og adresser med login-tokens — laa i klartekst i chrome.storage.local. Popuppen
+// viser kun tid, vaerktoej og session, saa parametrene tjente intet. De gemmes ikke laengere,
+// og poster gemt af aeldre udgaver renses ved opdatering (rensHandlingslog i onInstalled).
+async function logAction(port, method) {
   const category = SENSITIVE.has(method) ? 'sensitive' : 'safe';
   const session = sessions.get(port);
   const entry = {
     time: Date.now(),
     method,
-    params: JSON.stringify(params).slice(0, 200),
     category,
     session: session?.label || `Port ${port}`,
     color: session?.color || 'grey',
   };
-  chrome.storage.local.get({ actionLog: [] }, ({ actionLog }) => {
+  try {
+    const { actionLog = [] } = await chrome.storage.local.get({ actionLog: [] });
     actionLog.unshift(entry);
     if (actionLog.length > 50) actionLog.length = 50;
-    chrome.storage.local.set({ actionLog });
-  });
+    await chrome.storage.local.set({ actionLog });
+  } catch (e) {
+    console.warn('[BG] handlingslog kunne ikke skrives:', e?.message || e);
+  }
+}
+
+async function rensHandlingslog() {
+  try {
+    const { actionLog } = await chrome.storage.local.get({ actionLog: [] });
+    if (!Array.isArray(actionLog) || !actionLog.some((p) => p && 'params' in p)) return;
+    await chrome.storage.local.set({ actionLog: actionLog.map(({ params, ...resten }) => resten) });
+  } catch (e) {
+    console.warn('[BG] gammel handlingslog kunne ikke renses:', e?.message || e);
+  }
 }
 
 // ── Message Handler — receives commands from offscreen.js ──────────────────
@@ -1550,7 +1567,7 @@ function logAction(port, method, params) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'mcp_command') {
     const port = msg.port;
-    logAction(port, msg.method, msg.params);
+    logAction(port, msg.method);
     // Restore sessions from storage (service worker may have restarted), then take over any
     // session orphaned by an unclean disconnect so navigate→click keeps hitting the same tab.
     restoreSessions()
@@ -4532,6 +4549,8 @@ chrome.runtime.onStartup.addListener(() => ensureOffscreen().catch(console.error
 // MAALT 22/8: uden tvangen slog en genindlaesning aldrig igennem til broen, og
 // udvikling krævede en fuld genstart af Chrome hver gang.
 chrome.runtime.onInstalled.addListener(async () => {
+  // Foerst: aeldre udgaver gemte parametre (adgangskoder, cookie-vaerdier) i historikken.
+  await rensHandlingslog();
   try {
     if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
   } catch (e) {

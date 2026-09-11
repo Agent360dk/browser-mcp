@@ -647,9 +647,9 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 
 ## Extension updates
-The MCP server auto-pulls the latest code from git on every new session startup.
-If the extension files were updated, ask the user to reload it:
-"The Browser MCP extension was updated. Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄) to apply the update."
+The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.
+If browser_provide_feedback reports that the extension is older than this server, or that more than one Browser MCP extension is connected, ask the user:
+"Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄). If two Browser MCP extensions are listed, turn one of them off."
 You cannot navigate to chrome:// pages — the user must do this manually.
 
 ## When Browser MCP itself is the obstacle — call browser_provide_feedback
