@@ -393,14 +393,22 @@ test('spaerren koerer FOER versionsbumpet - ellers doer foerste ship-pas altid',
 
 test('tilbagerulnings-raadet peger paa den forrige version, ikke paa den braekkede', () => {
   const k = script();
-  const blok = k.slice(k.indexOf('5c. Koldt tjek'), k.indexOf('5b. MCP registry'));
+  // Forankret i step-linjerne, ikke i de bare tal: scriptets overskrift naevner nu de samme trin, og en
+  // indexOf paa "5b. MCP registry" ramte overskriften i stedet for trinnet - saa blev blokken TOM og proeven
+  // groen uanset hvad koden gjorde. (MAALT 13/9: den fejl ramte to proever paa én gang.)
+  const blok = k.slice(k.indexOf('step "5c.'), k.indexOf('step "5b.'));
+  assert.ok(blok.length > 0, 'trin 5c kunne ikke findes i scriptet');
   assert.match(blok, /NPM_LATEST/, 'raadet bruger CUR_PKG, som paa en genkoersel ER den braekkede version');
   assert.doesNotMatch(blok, /dist-tag add[^\n]*CUR_PKG/, 'dist-tag peger stadig paa CUR_PKG');
 });
 
 test('et fejlet koldt tjek stopper udgivelsen i stedet for at fortsaette', () => {
   const k = script();
-  const blok = k.slice(k.indexOf('5c. Koldt tjek'), k.indexOf('5b. MCP registry'));
+  // Forankret i step-linjerne, ikke i de bare tal: scriptets overskrift naevner nu de samme trin, og en
+  // indexOf paa "5b. MCP registry" ramte overskriften i stedet for trinnet - saa blev blokken TOM og proeven
+  // groen uanset hvad koden gjorde. (MAALT 13/9: den fejl ramte to proever paa én gang.)
+  const blok = k.slice(k.indexOf('step "5c.'), k.indexOf('step "5b.'));
+  assert.ok(blok.length > 0, 'trin 5c kunne ikke findes i scriptet');
   assert.match(blok, /gate |die "/, 'det kolde tjek advarer kun - saa udgives registret mod en pakke der lige dumpede');
   // MAALT 13/9 af Astra: den foerste udgave matchede paa en blok der STARTER med kommentaren - og kommentaren
   // indeholder selv ordet "forsoeg". Hun fjernede loekken helt og fik samme resultat som baseline. Proeven maa
@@ -410,3 +418,72 @@ test('et fejlet koldt tjek stopper udgivelsen i stedet for at fortsaette', () =>
   assert.match(kode, /sleep \d+/, 'der ventes ikke mellem forsoegene');
 });
 
+
+// ── Noedudgangen ──────────────────────────────────────────────────────────────
+// MAALT 13/9, af Astra og Fable uafhaengigt af hinanden: `--skip-flow` var ikke en noedudgang. Trin 2b sprang over
+// uden at sige det videre, saa butikstrinnet koerte sin EGEN flow-test EFTER versionsbumpet og doede paa den
+// versionsforskel bumpet lige havde lavet. Flaget lovede "udgiv i blinde" og standsede koerslen - efter at seks
+// filer var skrevet. Proeven koerer den AEGTE gren, ikke en beskrivelse af den.
+function skipGrenen() {
+  const k = script();
+  const start = k.indexOf('if [[ "$SKIP_FLOW" == 1');
+  const slut = k.indexOf('\nelse', start);
+  assert.ok(start > -1 && slut > start, 'skip-grenen i trin 2b findes ikke laengere');
+  return `${k.slice(start, slut)}\nfi`;
+}
+
+test('--skip-flow giver fritagelsen videre til butikstrinnet i stedet for at draebe det', () => {
+  const gren = skipGrenen().replace(/^\s*warn .*$/m, ':');
+  const r = spawnSync('bash', ['-c', `set -eu\nSKIP_FLOW=1\n${gren}\nprintenv SPRING_FLOW_OVER || echo TOM`], {
+    encoding: 'utf8', env: { PATH: process.env.PATH },
+  });
+  assert.equal(r.status, 0, `skip-grenen kunne ikke koere: ${r.stderr}`);
+  const ud = r.stdout.trim();
+  assert.equal(ud, '1',
+    'skip-grenen sender ikke fritagelsen videre. Butikstrinnet koerer saa sin egen flow-test efter bumpet og ' +
+    'doer paa en forskel scriptet selv lavede - midt i udgivelsen, efter at versionsfilerne er skrevet.');
+});
+
+test('beviset for en groen browser kan ikke arves fra skallen', () => {
+  // MAALT 13/9: min foerste udgave af denne proeve brugte indexOf paa selve strengen - og en mutation der
+  // kommenterede linjen UD forblev groen, fordi strengen stadig stod dér, nu bare i en kommentar. Praecis den
+  // fejl Astra fandt i 5c-proeven samme dag. Proeven ser nu kun paa kode.
+  const kode = script().split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+  const nulstil = kode.indexOf('unset BMCP_FLOW_OK');
+  assert.ok(nulstil > -1,
+    'flaget nulstilles ikke ved start. En eksporteret variabel fra en tidligere koersel - eller fra en anden ' +
+    'chat i samme skal - kunne saa slukke flow-spaerren for kode ingen har set koere i en browser.');
+  assert.ok(nulstil < kode.indexOf('step "2b.'), 'flaget nulstilles efter trin 2b - saa nulstiller det trinnets eget bevis');
+});
+
+// Butikstrinnet kan koeres alene (`npm run publish:cws`). Saa er der ingen trin 2b til at give det et bevis, og
+// spaerren SKAL koere. Proeven koerer den aegte beslutningskaede i tre miljoeer i stedet for at laese den.
+function flowBeslutningen() {
+  const c = readFileSync(new URL('../scripts/publish-cws.sh', import.meta.url), 'utf8');
+  const start = c.indexOf('if [[ "${BMCP_FLOW_OK:-}" == "1" ]]; then');
+  assert.ok(start > -1, 'beslutningskaeden i publish-cws.sh findes ikke laengere');
+  const slut = c.indexOf('\nfi', c.indexOf('npm --prefix mcp-server run flow', start));
+  const blok = c.slice(start, slut);
+  // else-grenen erstattes af ét ord, saa vi maaler HVILKEN gren der vaelges uden at koere flow-testen.
+  const linjer = blok.split('\n');
+  const iElse = linjer.findIndex((l) => l === 'else');
+  assert.ok(iElse > -1, 'else-grenen findes ikke - saa er der ingen gren der faktisk koerer flow-testen');
+  return `${linjer.slice(0, iElse + 1).join('\n')}\n  echo KOERER_TESTEN\nfi`;
+}
+
+test('butikstrinnet alene koerer stadig flow-spaerren - beviset kommer kun fra trin 2b', () => {
+  const kaede = flowBeslutningen();
+  const koer = (env) => {
+    const r = spawnSync('bash', ['-c', `set -eu\n${kaede}`], { encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+    assert.equal(r.status, 0, `beslutningskaeden kunne ikke koere: ${r.stderr}`);
+    return r.stdout;
+  };
+  assert.match(koer({}), /KOERER_TESTEN/,
+    'uden bevis og uden fritagelse springer butikstrinnet flow-testen over - saa kan en udgivelse koeres alene ' +
+    'uden at nogen har set koden virke i en browser');
+  assert.doesNotMatch(koer({ BMCP_FLOW_OK: '1' }), /KOERER_TESTEN/,
+    'beviset fra trin 2b bliver ikke respekteret - saa koerer spaerren igen EFTER bumpet og doer paa den ' +
+    'versionsforskel scriptet selv lavede');
+  assert.doesNotMatch(koer({ SPRING_FLOW_OVER: '1' }), /KOERER_TESTEN/,
+    'fritagelsen bliver ikke respekteret - saa er --skip-flow stadig en doedsfaelde i trin 3');
+});

@@ -2,17 +2,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # runbrowsermcpupdate.sh — one-command release for Agent360 Browser MCP
 #
-# Ships a single version across EVERY channel, in sync:
-#   0. Test-gate     → node --test test/*.test.mjs (ingen Chrome noedvendig)
-#   1. Version-bump  → extension/manifest.json, mcp-server/extension/manifest.json,
-#                      mcp-server/package.json, mcp-server/server.json (×2 fields)
-#   2. Sync          → extension/  →  mcp-server/extension/  (the npm-bundled copy)
-#   3. README        → bump the download-zip link to the new version
-#   4. npm           → npm publish (server + bundled extension) — KOERER SIDST
-#   4b. MCP registry → mcp-publisher publish (what MCP clients/directories discover)
-#   5. Chrome Web Store → scripts/publish-cws.sh (review queue, 1-3 days)
-#   6. GitHub        → commit, tag vX.Y.Z, push, gh release create + zip asset
-#   7. Local install → refresh ~/.browser-mcp/extension/ (then reload chrome://extensions)
+# Ships a single version across EVERY channel, in sync. The steps run in THIS order - the two gates sit where
+# they do on purpose, and moving either one breaks the release (measured 13/9, twice):
+#   Pre-flight       → clean tree, tags, npm token, gh auth, docs in sync, node --test test/*.test.mjs
+#   2b. Flow gate    → npm run flow against a real Chrome. BEFORE the bump, because the bump writes the new
+#                      version into the manifest on disk while the LOADED extension still answers the old one.
+#                      Proves the code being shipped: the bump touches no file the fingerprint hashes.
+#   1. Version-bump  → extension/manifest.json, mcp-server/extension/manifest.json, mcp-server/package.json,
+#                      mcp-server/server.json (×2 fields), sync extension/ → mcp-server/extension/, README link
+#   2. Pack check    → npm pack → unpack → start the packed server and talk to it
+#   3. Chrome Web Store → scripts/publish-cws.sh (Google review queue, 1-3 days)
+#   4. GitHub        → commit, tag vX.Y.Z, push, gh release create + zip asset
+#   5. npm           → npm publish  ← LAST irreversible step
+#   5c. Cold check   → npx the PUBLISHED package from the registry and talk to it (3 tries, 15s apart)
+#   5b. MCP registry → mcp-publisher publish (what MCP clients/directories discover)
+#   6. Local install → refresh ~/.browser-mcp/extension/ (then reload chrome://extensions)
 #
 # SAFE BY DEFAULT: runs as a DRY-RUN unless you pass --ship.
 #
@@ -25,7 +29,7 @@
 #   --skip-npm        Don't publish to npm (e.g. token expired — fix with `npm login`)
 #   --skip-registry   Don't publish to the MCP registry (needs mcp-publisher + gh read:org)
 #   --skip-cws        Don't publish to Chrome Web Store
-#   --skip-flow       Skip the live browser gate (you publish blind — see step 2b)
+#   --skip-flow       Skip the live browser gate in step 2b AND step 3 (you publish blind)
 #   --skip-github     Don't commit/tag/push/release on GitHub
 #   --skip-local      Don't refresh ~/.browser-mcp/extension/
 #   --cws-draft       Upload to CWS but leave as draft (no auto-submit for review)
@@ -37,6 +41,10 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
+
+# Beviset for at koden er set koere i en browser maa KUN kunne komme fra trin 2b i denne koersel. Arvede vi
+# flaget fra skallen, kunne en tidligere koersels bevis slukke spaerren for kode den aldrig har set.
+unset BMCP_FLOW_OK
 
 # ── colours ──────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -292,6 +300,12 @@ TOOL_COUNT="$(grep -oE "name: ['\"]browser_[a-z_]+" mcp-server/tools.js | sort -
 step "2b. Flow-spaerre mod en aegte Chrome"
 if [[ "$SKIP_FLOW" == 1 || "${SPRING_FLOW_OVER:-}" == "1" ]]; then
   warn "sprunget over — du udgiver i blinde: ingen har set koden koere i en browser"
+  # MAALT 13/9 af Astra og Fable, uafhaengigt: uden den her linje var --skip-flow ikke en noedudgang, men en
+  # doedsfaelde. Butikstrinnet (trin 3) koerer sin EGEN flow-test, og efter versionsbumpet fejler den altid paa
+  # en forskel scriptet selv har lavet (manifestet bumpet, den indlaeste udvidelse ikke). Flaget lovede
+  # "udgiv i blinde" og standsede i stedet koerslen — efter at seks filer var bumpet. Kun miljoevariablen
+  # arves af barnet, saa den er den der skal saettes.
+  export SPRING_FLOW_OVER=1
 else
   # Kendte, accepterede fejl. Samme liste-mekanik som scripts/publish-cws.sh, og den skal helst blive tom:
   # hver linje her er en roed lampe nogen har vaennet sig til. Tilfoej kun med dato og grund.
