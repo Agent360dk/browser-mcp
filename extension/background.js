@@ -576,11 +576,19 @@ function cdpFrist(method, params) {
 // MAALT 11/9 af Astra (sign-off, R5 F8): standardoptagelsen hang og koblede foerst fra efter 19 s. cdpSend gentog den,
 // fordi den staar som sikker at gentage, og billedet kom efter ca. 38 s - serveren havde opgivet ved 30 s. I 1.29.0
 // sendte en frist paa 8 s kaldet videre til fromSurface:false, som svarede paa et halvt sekund.
-// Standardoptagelsen faar derfor 10 s. Reserven faar resten op til 26 s, saa svaret naar frem foer serverens 30 s.
+// Standardoptagelsen faar derfor 10 s. Reserven faar resten af budgettet, saa svaret naar frem foer serverens frist.
 // MAALT 11/9 af Fable (e2e-review): haenger BEGGE optagelser, haevede 1.29.0 vinduet og leverede et billede efter 16,7 s.
 // En frist afskar den sidste udvej her, saa der kom intet billede. Budgettet reserverer derfor haevMs til den haevede runde.
+//
+// MAALT 12/9 af Astra (tredje runde paa samme sted): en gentilslutning paa 12,5 s betoed at kandidaten opgav efter 26,9 s,
+// hvor 1.29.0 leverede et billede efter 29,2 s. Aarsagen var ikke logikken, men TALLET: 26 s var valgt frit, ikke udledt.
+// Hver runde fandt et nyt scenarie i de 4 sekunder vi gav bort. Budgettet er derfor nu udledt af det eneste tal der
+// betyder noget - serverens egen frist pr. kald (sendToExtension i mcp-server/index.js) - minus den tid svaret skal
+// bruge paa at komme tilbage gennem broen. Aendrer serverens frist sig, foelger budgettet med.
+const SERVER_FRIST_MS = 30000;      // sendToExtension(..., timeoutMs = 30000) i mcp-server/index.js
+const SVARETS_HJEMREJSE_MS = 1500;  // udvidelse -> offscreen -> WebSocket -> server; rigeligt for et lokalt hop
 function skaermbilledeFrister() {
-  return { foersteMs: 10000, samletMs: 26000, haevMs: 8000 };
+  return { foersteMs: 10000, samletMs: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS, haevMs: 8000 };
 }
 
 // wait_for_network har samme loft hos serveren (30 s). MAALT 11/9 af Astra (e2e-review): svaret kom efter 13 s, body-kaldet

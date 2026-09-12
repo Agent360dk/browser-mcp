@@ -10,6 +10,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 function sele({ agentFaneAktiv, cdp } = {}) {
@@ -228,6 +229,38 @@ test('haenger standardoptagelsen og kobler foerst fra sent, naar reserven frem f
   assert.match(String(svar.image), /RESERVE/, `intet billede fra reserven: ${JSON.stringify(svar).slice(0, 160)}`);
   assert.equal(u.optager.antal('windows.update'), 0, 'reserven svarede - der er ingen grund til at haeve vinduet');
 });
+
+// MAALT 12/9 af Astra, TREDJE runde paa samme sted: en gentilslutning paa 12,5 s fik kandidaten til at opgive efter
+// 26,9 s, hvor 1.29.0 leverede et billede efter 29,2 s. De to foregaaende runder fandt hver sit scenarie i netop de
+// sekunder budgettet gav bort - fordi 26 s var et frit valgt tal. Reglen der lukkes her: budgettet maa aldrig vaere
+// aarsagen til at vi leverer mindre end 1.29.0. Det er serverens egen frist minus svarets hjemrejse, intet andet.
+test('budgettet er udledt af serverens frist - ikke et frit valgt tal', () => {
+  const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+
+  const serverensFrist = Number(/sendToExtension\([^)]*timeoutMs = (\d+)/.exec(srv)?.[1]);
+  assert.ok(serverensFrist > 0, 'serverens frist pr. kald kunne ikke laeses');
+
+  const udvidelsensTal = Number(/const SERVER_FRIST_MS = (\d+)/.exec(kilde)?.[1]);
+  assert.equal(udvidelsensTal, serverensFrist,
+    `udvidelsen tror serveren venter ${udvidelsensTal} ms, men den venter ${serverensFrist} ms`);
+
+  assert.match(kilde, /samletMs: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS/,
+    'budgettet er ikke udledt af serverens frist - saa kan det igen glide vaek fra den uden at nogen opdager det');
+
+  const hjemrejse = Number(/const SVARETS_HJEMREJSE_MS = (\d+)/.exec(kilde)?.[1]);
+  const { samletMs, haevMs, foersteMs } = ctxFrister();
+  assert.equal(samletMs, serverensFrist - hjemrejse);
+  assert.ok(samletMs < serverensFrist, 'budgettet er ikke under serverens frist - svaret kan naa frem for sent');
+  assert.ok(hjemrejse <= 2000, `${hjemrejse} ms sat af til et lokalt hop er for meget - det er tid vi giver bort`);
+  assert.ok(haevMs < samletMs - foersteMs, 'reserven til den haevede runde aeder foerste rundes egen frist');
+});
+
+/** Laeser de AEGTE frister ud af udvidelsen (ikke en kopi af tallene her i proeven). */
+function ctxFrister() {
+  const u = sele({ agentFaneAktiv: true });
+  return u.ctx.skaermbilledeFrister();
+}
 
 test('fristen rammer ikke kald der lovligt tager tid', async () => {
   const u = sele({ agentFaneAktiv: true });
