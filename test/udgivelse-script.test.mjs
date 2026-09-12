@@ -284,3 +284,28 @@ test('release-scriptet stopper paa versionstjekket og ikke paa den gamle lighed'
   assert.doesNotMatch(s, /"\$NEW_VERSION" != "\$NPM_LATEST"/, 'den gamle lighedsbetingelse er tilbage');
   assert.match(s, /versions_tjek "\$NEW_VERSION" "\$NPM_LATEST"/);
 });
+
+// MAALT 12/9 af Fable (e2e runde 3): CHANGELOG-afsnittet staar som "## X.Y.Z (not released yet)" mens der arbejdes,
+// og INTET trin skrev overskriften om. Den gik derfor offentlig i den pushede CHANGELOG.md - i en fil der selv lover
+// at "Dates are when the version was published".
+test('udgivelsen skriver CHANGELOG-overskriften om fra "not released yet" til datoen', () => {
+  assert.match(script(), /not released yet/, 'overskriften skrives ikke om - den gaar offentlig som "not released yet"');
+  assert.match(script(), /CHANGELOG\.md/, 'CHANGELOG.md roeres ikke af versionsbumpet');
+  assert.match(script(), /die "CHANGELOG still says/, 'der er ingen gate: glider regexen, opdager ingen det');
+});
+
+// MAALT samme runde: fejler koerslen EFTER butiks-uploaden men FOER npm, afviser butikken den samme version ved en
+// genkoersel, og scriptet doer foer GitHub. Hintet om --skip-cws stod kun paa genoptag-stien, som ligger efter npm.
+test('butikstrinnet siger selv hvad man goer, hvis koerslen fejler efter det', () => {
+  const i = script().indexOf('3. Chrome Web Store publish');
+  assert.ok(i > -1, 'butikstrinnet findes');
+  const blok = script().slice(i, i + 900);
+  assert.match(blok, /warn "fejler koerslen EFTER dette trin, saa koer igen med --skip-cws/,
+    'butikstrinnet advarer ikke selv om at en genkoersel afvises - hintet stod kun paa genoptag-stien, efter npm');
+});
+
+// MAALT samme runde: udgivelsestitlen var "vX.Y.Z - Chrome extension + MCP server", mens kladden til Gustav lovede
+// "Browser MCP X.Y.Z". Titlen er det foerste mennesker ser paa udgivelsessiden.
+test('GitHub-udgivelsen har den titel kladden lover', () => {
+  assert.match(script(), /--title "Browser MCP \$\{NEW_VERSION\}"/, 'udgivelsestitlen matcher ikke kladden');
+});

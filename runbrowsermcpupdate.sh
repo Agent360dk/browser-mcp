@@ -333,6 +333,18 @@ if [[ "$SHIP" == 1 ]]; then
     || die "docs/index.html softwareVersion did not update to ${NEW_VERSION} — JSON-LD format changed; fix the regex"
 fi
 
+# 1d-3. CHANGELOG-overskriften. MAALT 12/9 af Fable (e2e runde 3): afsnittet staar som
+#        "## X.Y.Z (not released yet)" mens der arbejdes - og INTET trin skrev den om. Den
+#        gik derfor offentlig i den pushede CHANGELOG.md, i en fil der selv lover at
+#        "Dates are when the version was published". Udgivelsesnoterne til GitHub rammes
+#        ikke (awk springer overskriften over), men filen i repoet gjorde.
+say "CHANGELOG: '## ${NEW_VERSION} (not released yet)' -> '## ${NEW_VERSION} ($(date +%Y-%m-%d))'"
+run perl -0pi -e "s/^## \Q${NEW_VERSION}\E \(not released yet\)\$/## ${NEW_VERSION} ($(date +%Y-%m-%d))/m" CHANGELOG.md
+if [[ "$SHIP" == 1 ]]; then
+  grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md \
+    && die "CHANGELOG still says '(not released yet)' for ${NEW_VERSION} — the heading moved; fix the regex"
+fi
+
 # 1e. FJERNET 22/8: her stod en perl-erstatning + en grep-gate paa `browser-mcp-vX.Y.Z.zip`.
 #     Den streng findes ikke laengere i nogen README — begge linker nu til
 #     `releases/latest` med pladsholderen `agent360-browser-mcp-<version>.zip`. Perl'en
@@ -370,6 +382,10 @@ fi
 step "3. Chrome Web Store publish"
 if [[ "$SKIP_CWS" == 1 ]]; then warn "skipped (--skip-cws)"
 else
+  # MAALT 12/9 af Fable: fejler koerslen EFTER butiks-uploaden men FOER npm, afviser butikken den samme version
+  # ved en genkoersel - og saa doer scriptet foer GitHub. Alt andet (tag, push, release, npm, register) taaler en
+  # genkoersel. Hintet stod kun paa genoptag-stien, hvor man allerede var forbi npm.
+  warn "fejler koerslen EFTER dette trin, saa koer igen med --skip-cws: butikken afviser den samme version to gange"
   CWS_ARGS=(); [[ "$CWS_DRAFT" == 1 ]] && CWS_ARGS+=(--draft)
   say "scripts/publish-cws.sh ${CWS_ARGS[*]:-} (reads extension/manifest.json = $NEW_VERSION)"
   run ./scripts/publish-cws.sh ${CWS_ARGS[@]+"${CWS_ARGS[@]}"}
@@ -423,7 +439,7 @@ else
       udgivelsesnoter "$NEW_VERSION" "$REPO_ROOT/CHANGELOG.md"
     } > "$NOTER_FIL"
     run gh release create "v${NEW_VERSION}" "$ZIP" \
-      --title "v${NEW_VERSION} - Chrome extension + MCP server" \
+      --title "Browser MCP ${NEW_VERSION}" \
       --notes-file "$NOTER_FIL"
   fi
 fi
