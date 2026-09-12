@@ -252,8 +252,18 @@ test('budgettet er udledt af serverens frist - ikke et frit valgt tal', () => {
   const { samletMs, haevMs, foersteMs } = ctxFrister();
   assert.equal(samletMs, serverensFrist - hjemrejse);
   assert.ok(samletMs < serverensFrist, 'budgettet er ikke under serverens frist - svaret kan naa frem for sent');
-  assert.ok(hjemrejse <= 2000, `${hjemrejse} ms sat af til et lokalt hop er for meget - det er tid vi giver bort`);
+  // MAALT 12/9 af Astra: hjemrejsen er 84-154 ms for en skaermbillede-stor nyttelast. Loftet her er tre gange det
+  // oevre maal med rundt op - hoejere er ikke margin, det er tid vi giver bort i det baand hvor 1.29.0 leverer.
+  assert.ok(hjemrejse <= 500, `${hjemrejse} ms sat af til et lokalt hop er for meget - maalt er 84-154 ms`);
   assert.ok(haevMs < samletMs - foersteMs, 'reserven til den haevede runde aeder foerste rundes egen frist');
+
+  // Samme regel gaelder BEGGE budgetter. Stod netvaerkFrister tilbage med sit eget frie tal, var reglen kun lukket
+  // dér hvor den blev fundet - praecis den halve rettelse der er kostet tid foer.
+  const u = sele({ agentFaneAktiv: true });
+  assert.equal(u.ctx.netvaerkFrister().budgetMs, serverensFrist - hjemrejse,
+    'wait_for_networks budget er ikke udledt af serverens frist');
+  assert.match(kilde, /budgetMs: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS/,
+    'wait_for_networks budget staar stadig som et frit valgt tal');
 });
 
 /** Laeser de AEGTE frister ud af udvidelsen (ikke en kopi af tallene her i proeven). */

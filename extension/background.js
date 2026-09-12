@@ -586,7 +586,10 @@ function cdpFrist(method, params) {
 // betyder noget - serverens egen frist pr. kald (sendToExtension i mcp-server/index.js) - minus den tid svaret skal
 // bruge paa at komme tilbage gennem broen. Aendrer serverens frist sig, foelger budgettet med.
 const SERVER_FRIST_MS = 30000;      // sendToExtension(..., timeoutMs = 30000) i mcp-server/index.js
-const SVARETS_HJEMREJSE_MS = 1500;  // udvidelse -> offscreen -> WebSocket -> server; rigeligt for et lokalt hop
+// MAALT 12/9 af Astra: hjemrejsen for en skaermbillede-stor nyttelast over den lokale WebSocket er 84-154 ms
+// (0,5 / 2 / 8 MB, tre maalinger hver). 1500 ms var 10x det - altsaa endnu et frit valgt tal i den regel der lige var
+// lukket. 500 ms er tre gange det maalte og krymper baandet, hvor 1.29.0 leverer og vi ikke goer, fra ~1,35 s til ~0,35 s.
+const SVARETS_HJEMREJSE_MS = 500;   // udvidelse -> offscreen -> WebSocket -> server
 function skaermbilledeFrister() {
   return { foersteMs: 10000, samletMs: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS, haevMs: 8000 };
 }
@@ -596,8 +599,10 @@ function skaermbilledeFrister() {
 // Hele vaerktoejet har derfor ét budget, og body-kaldet faar kun det der er tilbage.
 // Astra (efterproevning af c826f63): budgettet skar en body over der kom efter 27 s + 2 s, som 1.29.0 leverede efter 29 s.
 // Body-kaldet faar derfor aldrig kortere tid end 1.29.0's frist (CDP_FRIST_MS) og aldrig mere end CDP_FRIST_TUNG_MS.
+// MAALT 12/9 af Astra: her stod 28000 haardkodet - det SAMME frie tal som skaermbilledets budget lige var sluppet af med.
+// Begge budgetter udledes nu af serverens egen frist, saa reglen gaelder hele vejen og ikke kun dér hvor den blev fundet.
 function netvaerkFrister() {
-  return { budgetMs: 28000, bodyMinMs: CDP_FRIST_MS, bodyMaxMs: CDP_FRIST_TUNG_MS };
+  return { budgetMs: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS, bodyMinMs: CDP_FRIST_MS, bodyMaxMs: CDP_FRIST_TUNG_MS };
 }
 
 function cdpMedFrist(tabId, method, params) {
