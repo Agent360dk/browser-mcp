@@ -149,6 +149,41 @@ test('serverens instruks forklarer ogsaa uverificeret', async () => {
   assert.match(srv, /uverificeret/, 'INSTRUCTIONS naevner ikke uverificeret');
 });
 
+// MAALT 12/9 af Astra (N2, hul i MIT instrument): vagten `r.landed !== null` - selve det der goer rettelsen til et
+// MOENSTER og ikke et fund - var den eneste del ingen proeve kunne se. Fjernes den, blev suiten groen.
+// Den gaelder noget konkret: et svar der ER landet, maa ikke faa en advarsel paahaeftet.
+test('et klik der ER landet, faar ingen uvisheds-advarsel - heller ikke hvis flaget er sat', async () => {
+  for (const vaerktoej of ['click', 'click_xy']) {
+    const u = medSession(selePaaKlik({ landed: true, uvist: true, fallbackFired: true }));
+    const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
+    const svar = await u.hent('dispatch')(9876, vaerktoej, p);
+    assert.equal(svar.ok, true, `${vaerktoej}: et landet klik blev meldt som fejl: ${JSON.stringify(svar)}`);
+    assert.notEqual(svar.maaske_landet, true,
+      `${vaerktoej}: advarsel paahaeftet et klik der ER landet: ${JSON.stringify(svar)}`);
+  }
+});
+
+// MAALT samme runde (N3): den generiske note - daekningen for en fremtidig tredje uvisheds-kanal - var utestet.
+// Den er uopnaaelig i dag, men den kan proeves direkte ved at lade settle svare med uvished uden et kendt flag.
+test('en uvished uden kendt aarsag faar stadig en advarsel, ikke et bart nej', async () => {
+  const u = medSession(selePaaKlik({ landed: null, fallbackFired: true }));
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#noget' });
+  assert.equal(svar.maaske_landet, true, `en ukendt uvished blev til et bart nej: ${JSON.stringify(svar)}`);
+  assert.ok(svar.note, 'ingen forklaring fulgte med');
+});
+
+// MAALT samme runde (N1): `ok:` stod stadig FOER settle-vaerdien i click og click_xy, hvor select_option er immun.
+// Plantes `ok` i settle-svaret, vandt siden over vaerktoejets egen vurdering. Ikke naabart i dag, men det er praecis den
+// klasse der lige blev lukket for noten - og de tre steder var indbyrdes uens.
+test('et settle-svar kan ikke overskrive vaerktoejets egen ok-vurdering', async () => {
+  for (const vaerktoej of ['click', 'click_xy']) {
+    const u = medSession(selePaaKlik({ landed: false, ok: true, fallbackFired: true }));
+    const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
+    const svar = await u.hent('dispatch')(9876, vaerktoej, p);
+    assert.equal(svar.ok, false, `${vaerktoej}: siden bestemte vaerktoejets ok: ${JSON.stringify(svar)}`);
+  }
+});
+
 // MAALT samme runde: `note` og `maaske_landet` blev spredt FOER settle-vaerdien i click, men EFTER i de to andre.
 // Baerer et settle-svar en dag de noegler, vinder de i det ene vaerktoej og taber i de to andre. Samme drift som teksten
 // blev samlet ét sted for at undgaa.

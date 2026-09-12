@@ -3206,14 +3206,6 @@ async function dispatch(port, method, params) {
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
         const clickResult = await debuggerClick(tab.id, el.x, el.y);
         return {
-          // MAALT 9/9 (issue #19, fjerde gang samme fejlklasse efter select_option og fill):
-          // `ok: true` stod hardkodet, og `landed` blev spredt ind bagefter. Klikket svarede
-          // altsaa ja og nej i samme aandedrag, og en agent laeser `ok`.
-          // Et element der forsvandt ER en virkning — derfor tæller `detached` som landet.
-          ok: klikLandede(clickResult),
-          // MAALT 12/9 af Astra: `uvist` blev regnet ud i settle-udtrykket og spredt ud i svaret - men INTET sted
-          // oversatte det til maaske_landet, og instruksen naevner det ikke. Agenten fik et bart ok:false, hvor 1.29.0
-          // gav ok:true - og et bart nej er netop dét der faar en agent til at klikke igen. Klik nummer to lukker menuen.
           method: el.method || 'debugger',
           tag: el.tag,
           text: el.text,
@@ -3221,7 +3213,14 @@ async function dispatch(port, method, params) {
           // saa `click` svarede ok:true selv naar siden slet ikke reagerede. Nu foelger den med:
           // landed=false betyder "eventet blev sendt, men intet handler tog imod det".
           ...(clickResult || {}),
-          // Vurderingen staar EFTER settle-vaerdien: ellers kunne et svar fra siden overskrive vaerktoejets egen note.
+          // MAALT 9/9 (issue #19, fjerde gang samme fejlklasse efter select_option og fill):
+          // `ok: true` stod hardkodet, og `landed` blev spredt ind bagefter. Klikket svarede
+          // altsaa ja og nej i samme aandedrag, og en agent laeser `ok`.
+          // Et element der forsvandt ER en virkning — derfor tæller `detached` som landet.
+          // MAALT 12/9 af Astra (N1): `ok` stod FOER settle-vaerdien her og i click_xy, hvor select_option var immun -
+          // saa et svar fra siden kunne bestemme vaerktoejets egen dom. Ikke naabart i dag, men det er samme klasse som
+          // lige blev lukket for noten, og de tre steder var indbyrdes uens. Vaerktoejets vurdering staar nu sidst.
+          ok: klikLandede(clickResult),
           ...(uvisVurdering(clickResult) || {}),
         };
       } catch (e) {
@@ -3775,10 +3774,10 @@ async function dispatch(port, method, params) {
         throw e;
       }
       return {
-        ok: klikLandede(klik),
         clicked_at: { x: params.x, y: params.y },
         ...(klik || {}),
-        // Samme som click: et uvist klik maa ikke se ud som et afvist klik.
+        // Samme som click: vaerktoejets egen dom og et uvist klik staar sidst, saa siden ikke kan overskrive dem.
+        ok: klikLandede(klik),
         ...(uvisVurdering(klik) || {}),
       };
     }
