@@ -23,6 +23,9 @@ claude mcp add browser-mcp -- node "$(pwd)/mcp-server/index.js"
 
 # Test it
 npm --prefix mcp-server test     # the full suite, no Chrome needed — runs in CI and before every release
+#                                  Run ONE suite at a time: some tests bind real ports (9876-9895), so two
+#                                  concurrent runs fail each other. Measured 2026-09-12: solo 4x green,
+#                                  two at once produced 1-6 unrelated-looking failures.
 npm --prefix mcp-server run flow # every tool against a REAL Chrome (needs the extension loaded)
 
 # Or by hand
