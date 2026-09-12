@@ -508,6 +508,31 @@ fi
 # wired into this script, so every release left it behind — it sat 3 months on v1.16.1 once,
 # and v1.24.0 shipped to npm while the registry still advertised v1.23.0. Runs after npm
 # because the registry entry points at the published npm package.
+# ── 5c. Koldt tjek af den UDGIVNE pakke ───────────────────────────────────────
+# MAALT 12/9 af Astra: roegtesten (scripts/pakke-roegtest.mjs) koerer paa TARBALLEN, foer npm. Intet tjekkede at det
+# brugerne faktisk henter, kan installeres og svare paa et MCP-haandtryk. Det er den eneste kontrol der ser registret
+# som en fremmed maskine ser det - og den koster to minutter.
+step "5c. Koldt tjek: henter den udgivne pakke og taler med den"
+if [[ "$SKIP_NPM" == 1 ]]; then warn "sprunget over (--skip-npm: der blev ikke udgivet noget)"
+elif [[ "$SHIP" != 1 ]]; then say "ville hente @agent360/browser-mcp@${NEW_VERSION} med npx og sende initialize"
+else
+  KOLD_HJEM="$(mktemp -d)"
+  say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, saa intet cache-genbrug skjuler en fejl)"
+  KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
+    | HOME="$KOLD_HJEM" npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>/dev/null | head -1 || true)"
+  rm -rf "$KOLD_HJEM" 2>/dev/null || true
+  if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
+    ok "den udgivne pakke svarer paa MCP-haandtrykket"
+  else
+    warn "den udgivne pakke svarede ikke som ventet paa initialize:"
+    echo "    ${KOLD_SVAR:0:200}"
+    warn "TILBAGERULNING — og den er smal:"
+    warn "  npm unpublish @agent360/browser-mcp@${NEW_VERSION}   # virker KUN i 72 timer"
+    warn "  Versionsnummeret er braendt for evigt. Ellers: udgiv en rettelse, og flyt latest tilbage med"
+    warn "  npm dist-tag add @agent360/browser-mcp@${CUR_PKG} latest"
+  fi
+fi
+
 step "5b. MCP registry publish"
 if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
 elif ! command -v mcp-publisher >/dev/null 2>&1; then

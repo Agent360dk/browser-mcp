@@ -335,3 +335,20 @@ test('spaerren kan kun springes over med et eksplicit flag', () => {
   assert.match(k, /udgiver i blinde/, 'flaget siger ikke hvad det koster');
 });
 
+// MAALT 12/9 af Astra: roegtesten koerer paa TARBALLEN foer npm (pakke-roegtest.mjs). Intet tjekkede at den
+// UDGIVNE pakke kan installeres koldt og svare paa et MCP-haandtryk. Og der stod ikke ét ord om tilbagerulning -
+// npm kan kun traekkes inden for 72 timer, og versionsnummeret er braendt for altid.
+test('den udgivne pakke tjekkes koldt EFTER npm', () => {
+  const k = script();
+  const iNpm = k.indexOf('5. npm publish');
+  const iKold = k.indexOf('5c. Koldt tjek');
+  assert.ok(iKold > -1, 'intet tjekker den pakke brugerne faktisk faar');
+  assert.ok(iKold > iNpm, 'det kolde tjek skal koere EFTER npm - ellers tjekker det tarballen igen');
+  assert.match(k, /npx[^\n]*@agent360\/browser-mcp@/, 'det kolde tjek henter ikke pakken fra registret');
+});
+
+test('scriptet siger hvad man goer, hvis udgivelsen var forkert', () => {
+  assert.match(script(), /72 timer|npm unpublish/,
+    'der staar intet om tilbagerulning - og en sikkerhedsudgivelse er netop den man kan faa brug for at traekke');
+});
+
