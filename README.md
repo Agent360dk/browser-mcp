@@ -369,7 +369,7 @@ Browser MCP has two parts, and they update independently - how the **extension**
 | Part | Install method | How it updates |
 |------|----------------|----------------|
 | **MCP server** | any | **Automatic.** Runs via `npx @agent360/browser-mcp@latest`, so every Claude Code session pulls the newest from npm. Nothing to do. |
-| **Extension** | **Chrome Web Store** | **Automatic.** Chrome updates it in the background (usually within a few hours). Nothing to do. |
+| **Extension** | **Chrome Web Store** | **Automatic, but not immediate.** A new version first has to pass Google's review, which usually takes 1-3 days; Chrome then picks it up in the background within hours. Nothing to do, but a fix published today does not reach you today. |
 | **Extension** | **Unpacked** (`npx … install` or manual zip) | **Manual.** Chrome never auto-updates a load-unpacked extension. Re-run `npx @agent360/browser-mcp install`, then open `chrome://extensions` → Browser MCP → **↻ reload**. |
 
 **Not sure which you have?** Open `chrome://extensions` and find Browser MCP. If it shows a **"Loaded from /path/…"** line, it's unpacked (manual updates). If there's no such line, it came from the Chrome Web Store (auto-updates).
