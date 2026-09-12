@@ -69,7 +69,8 @@ for (const vaerktoej of ['click', 'click_xy']) {
     const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
     const svar = await u.hent('dispatch')(9876, vaerktoej, p);
     assert.equal(svar.maaske_landet, true, `agenten faar et bart nej og klikker igen: ${JSON.stringify(svar)}`);
-    assert.ok(svar.note, 'der er ingen note der forklarer hvorfor svaret er uvist');
+    assert.match(String(svar.note || ''), /mousedown/,
+      `noten beskriver ikke DENNE uvished - en tekst om den anden kanal er en forkert forklaring: ${svar.note}`);
   });
 }
 
@@ -94,6 +95,71 @@ test('select_option paastaar ikke at klikket blev afvist, naar den ikke ved det'
   assert.doesNotMatch(String(svar.error || ''), /ikke taget imod/,
     `koden ved ikke om klikket landede, men skriver en benaegtelse: ${JSON.stringify(svar)}`);
   assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
+});
+
+// MAALT 12/9 af Astra (efterproevning af 0c5f1f9): der er TO uvisheds-kanaler, og rettelsen roerte kun den ene.
+// `tolkManglendeSettle` svarer {landed: null, uverificeret: true} naar settle-opslaget fejler UDEN at siden navigerede -
+// museknappen ER sendt. Den kanal havde praecis samme hul: bart ok:false hvor 1.29.0 gav ok:true, og select_option skrev
+// endda sin skarpe benaegtelse oven paa en uvished koden selv lige havde navngivet.
+// Ret moenstret, ikke fundet: betingelsen spoerger nu paa landed === null, ikke paa ét flag.
+function seleUdenSettle() {
+  return indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://example.com', windowId: 1 },
+    'tabs.query': [{ id: 1, url: 'https://example.com', windowId: 1, active: true }],
+    'debugger.sendCommand': (_maal, metode, p) => {
+      if (metode !== 'Runtime.evaluate') return {};
+      // Ikke navigation: fanen lever, adressen er uaendret. Altsaa uverificeret, ikke detached.
+      const udtryk = String(p?.expression || '');
+      if (udtryk.includes("tagName === 'SELECT'")) return { result: { value: false } };
+      // KUN settle-opslaget fejler. De oevrige Runtime.evaluate-kald (fx opsamlingen af klik-maalet) skal virke,
+      // ellers kaster koden foer den naar tolkManglendeSettle - og proeven ville maale en helt anden gren.
+      if (udtryk.includes('foerAftryk')) throw new Error('Runtime.evaluate blev afvist af maalet');
+      return { result: { value: { found: true, x: 10, y: 10, tag: 'DIV', text: 'Roed' } } };
+    },
+    'scripting.executeScript': [{ result: { found: true, x: 10, y: 10, tag: 'DIV', text: 'Roed', method: 'debugger' } }],
+  } });
+}
+
+for (const vaerktoej of ['click', 'click_xy']) {
+  test(`${vaerktoej}: et klik hvor opslaget fejlede uden navigation, siger ogsaa at det KAN vaere landet`, async () => {
+    const u = medSession(seleUdenSettle());
+    const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
+    const svar = await u.hent('dispatch')(9876, vaerktoej, p);
+    assert.equal(svar.uverificeret, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
+    assert.equal(svar.maaske_landet, true, `museknappen er sendt, men agenten faar et bart nej: ${JSON.stringify(svar)}`);
+    assert.match(String(svar.note || ''), /kunne ikke laeses bagefter/,
+      `noten forklarer den FORKERTE uvished - her aendrede intet sig paa mousedown: ${svar.note}`);
+    assert.doesNotMatch(String(svar.note || ''), /mousedown/, `uvist-noten blev brugt paa uverificeret: ${svar.note}`);
+  });
+}
+
+test('select_option benaegter heller ikke, naar opslaget fejlede uden navigation', async () => {
+  const u = medSession(seleUdenSettle());
+  const svar = await u.hent('dispatch')(9876, 'select_option', { selector: '#drop', value: 'Roed' });
+  assert.equal(svar.uverificeret, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
+  assert.doesNotMatch(String(svar.error || ''), /ikke taget imod/,
+    `benaegtelse oven paa en uvished koden selv har navngivet: ${JSON.stringify(svar)}`);
+  assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
+});
+
+test('serverens instruks forklarer ogsaa uverificeret', async () => {
+  const { readFileSync } = await import('node:fs');
+  const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
+  assert.match(srv, /uverificeret/, 'INSTRUCTIONS naevner ikke uverificeret');
+});
+
+// MAALT samme runde: `note` og `maaske_landet` blev spredt FOER settle-vaerdien i click, men EFTER i de to andre.
+// Baerer et settle-svar en dag de noegler, vinder de i det ene vaerktoej og taber i de to andre. Samme drift som teksten
+// blev samlet ét sted for at undgaa.
+test('et settle-svar kan ikke overskrive vaerktoejets egen note', async () => {
+  for (const vaerktoej of ['click', 'click_xy']) {
+    const u = medSession(selePaaKlik({ landed: null, uvist: true, maaske_landet: false, note: 'plantet af siden' }));
+    const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
+    const svar = await u.hent('dispatch')(9876, vaerktoej, p);
+    assert.equal(svar.maaske_landet, true, `${vaerktoej}: settle-svaret overskrev vaerktoejets vurdering`);
+    assert.notEqual(svar.note, 'plantet af siden', `${vaerktoej}: settle-svaret overskrev noten`);
+  }
 });
 
 // Serverens instruks forklarer maaske_landet, landed, afviger og uaendret. Naevner den ikke uvist, staar agenten med et

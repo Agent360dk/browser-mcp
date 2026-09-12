@@ -888,6 +888,19 @@ function klikLandede(r) {
 // Teksten der foelger med et uvist klik. Staar ét sted, fordi den skal vaere ens for click, click_xy og select_option -
 // tre kaldesteder med den samme regel har foer drevet fra hinanden (select_option havde den gamle i to udgaver).
 const UVIST_NOTE = 'Klikket blev sendt, og siden aendrede sig paa mousedown - men ikke af selve klikket. Det kan vaere en ripple, og det kan vaere en menu der aabner paa mousedown. Tjek tilstanden foer du klikker igen: et klik nummer to lukker en menu der allerede er aaben.';
+const UVERIFICERET_NOTE = 'Museknappen blev sendt, men siden kunne ikke laeses bagefter (opslaget fejlede, og siden navigerede ikke). ' +
+  'Klikket kan vaere landet. Tjek tilstanden foer du klikker igen.';
+
+// MAALT 12/9 af Astra: der er TO uvisheds-kanaler - `uvist` (kun mousedown aendrede noget) og `uverificeret`
+// (settle-opslaget fejlede uden navigation, men museknappen ER sendt). Rettelsen roerte kun den foerste, saa den anden
+// gav stadig et bart ok:false hvor 1.29.0 gav ok:true - og et bart nej faar agenten til at klikke igen.
+// Betingelsen spoerger derfor paa landed === null, ikke paa ét flag: en fremtidig tredje kanal er daekket fra dag ét.
+function uvisVurdering(r) {
+  if (!r || r.landed !== null) return null;
+  if (r.uvist) return { maaske_landet: true, note: UVIST_NOTE };
+  if (r.uverificeret) return { maaske_landet: true, note: UVERIFICERET_NOTE };
+  return { maaske_landet: true, note: 'Handlingen blev sendt, men virkningen kunne ikke bekraeftes. Tjek tilstanden foer du gentager den.' };
+}
 
 // MAALT 10/9 af Astra (anden runde): et settle-opslag der FEJLEDE gav null, og null blev til ok:true.
 // Men den hyppigste grund til at opslaget fejler er at klikket navigerede - det er en virkning, og agenten
@@ -3201,7 +3214,6 @@ async function dispatch(port, method, params) {
           // MAALT 12/9 af Astra: `uvist` blev regnet ud i settle-udtrykket og spredt ud i svaret - men INTET sted
           // oversatte det til maaske_landet, og instruksen naevner det ikke. Agenten fik et bart ok:false, hvor 1.29.0
           // gav ok:true - og et bart nej er netop dét der faar en agent til at klikke igen. Klik nummer to lukker menuen.
-          ...(clickResult?.uvist ? { maaske_landet: true, note: UVIST_NOTE } : {}),
           method: el.method || 'debugger',
           tag: el.tag,
           text: el.text,
@@ -3209,6 +3221,8 @@ async function dispatch(port, method, params) {
           // saa `click` svarede ok:true selv naar siden slet ikke reagerede. Nu foelger den med:
           // landed=false betyder "eventet blev sendt, men intet handler tog imod det".
           ...(clickResult || {}),
+          // Vurderingen staar EFTER settle-vaerdien: ellers kunne et svar fra siden overskrive vaerktoejets egen note.
+          ...(uvisVurdering(clickResult) || {}),
         };
       } catch (e) {
         // Fallback: synthetic click via chrome.scripting for anti-automation sites
@@ -3765,7 +3779,7 @@ async function dispatch(port, method, params) {
         clicked_at: { x: params.x, y: params.y },
         ...(klik || {}),
         // Samme som click: et uvist klik maa ikke se ud som et afvist klik.
-        ...(klik?.uvist ? { maaske_landet: true, note: UVIST_NOTE } : {}),
+        ...(uvisVurdering(klik) || {}),
       };
     }
 
@@ -3917,11 +3931,10 @@ async function dispatch(port, method, params) {
         selected: oensket,
         // MAALT 12/9 af Astra: her stod fejlteksten paa ALT der ikke var bevist landet - ogsaa naar koden lige havde
         // regnet ud at den IKKE ved det. En skarp benaegtelse oven paa en uvished er mindre aerlig end ingen tekst.
-        ...(valgKlik?.uvist
-          ? { maaske_landet: true, note: UVIST_NOTE }
-          : !klikLandede(valgKlik)
+        ...(uvisVurdering(valgKlik)
+          || (!klikLandede(valgKlik)
             ? { error: 'Klikket paa muligheden blev ikke taget imod af siden: ' + oensket }
-            : {}),
+            : {})),
       };
     }
 
