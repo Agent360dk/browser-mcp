@@ -9,6 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +18,13 @@ import { createContext, runInContext } from 'node:vm';
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const laes = (p) => readFileSync(join(rod, p), 'utf8');
 
-// Samme regnestykke som udvidelsen og flowtesten skal bruge: SHA-256 af background.js, de foerste 6 bytes som hex.
-function aftryk(fil) {
-  return createHash('sha256').update(readFileSync(join(rod, fil))).digest('hex').slice(0, 12);
+// Samme regnestykke som udvidelsen og flowtesten skal bruge: SHA-256 af udvidelsens kodefiler i fast raekkefoelge,
+// de foerste 6 bytes som hex.
+const KODEFILER = ['background.js', 'offscreen.js'];
+function aftryk(mappe) {
+  const h = createHash('sha256');
+  for (const f of KODEFILER) h.update(readFileSync(join(rod, mappe, f)));
+  return h.digest('hex').slice(0, 12);
 }
 
 test('udvidelsen sender et fingeraftryk af sin egen background.js i haandtrykket', () => {
@@ -48,9 +53,9 @@ function broen({ aftrykEfterMs = 0, aftrykFejler = false } = {}) {
     location: { search: '?v=1.29.1' },
     WebSocket: Object.assign(function () { return ws; }, { OPEN: 1, CONNECTING: 0 }),
     fetch: async (u) => {
-      if (String(u).includes('background.js')) {
+      if (KODEFILER.some((f) => String(u).endsWith(f))) {
         if (aftrykFejler) throw new Error('hentningen fejlede');
-        await new Promise((ok) => setTimeout(ok, aftrykEfterMs));
+        if (String(u).endsWith(KODEFILER[0])) await new Promise((ok) => setTimeout(ok, aftrykEfterMs));
         return { arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
       }
       throw new Error('ingen server');   // harServer -> ingen porte at skanne
@@ -91,7 +96,7 @@ test('et aftryk der tager laengere end et sekund, eftersendes - hilsenen venter 
   assert.equal(b.sendt.length, 1, 'hilsenen ventede paa aftrykket i stedet for at blive sendt med det samme');
   assert.equal(b.sendt[0]?.type, 'hello');
   await aabner;
-  await new Promise((ok) => setTimeout(ok, 1600));
+  await new Promise((ok) => setTimeout(ok, 2000));
   const medKode = b.sendt.find((m) => typeof m.kode === 'string');
   assert.ok(medKode, `aftrykket naaede aldrig frem: ${JSON.stringify(b.sendt)}`);
   assert.equal(medKode.kode, 'abcdef012345', JSON.stringify(medKode));
@@ -111,12 +116,34 @@ test('serveren gemmer aftrykket fra haandtrykket og viser det i selv-diagnosen',
 test('flowtesten sammenligner udvidelsens aftryk med repoets egen background.js', () => {
   const flow = laes('test/flow/run.mjs');
   assert.match(flow, /createHash\('sha256'\)/, 'flowtesten beregner ikke aftrykket');
-  assert.match(flow, /extension\/background\.js|extension', 'background\.js'/, 'flowtesten laeser ikke repoets background.js');
+  assert.match(flow, /'background\.js', 'offscreen\.js'/, 'flowtesten laeser ikke repoets egne kodefiler');
   assert.match(flow, /\.slice\(0, 12\)/, 'flowtesten bruger ikke samme laengde som udvidelsen');
   assert.match(flow, /aktiv\[0\]\?\.code|\.code\b/, 'flowtesten sammenligner ikke med det udvidelsen oplyste');
 });
 
 test('de to kopier af udvidelsen har samme aftryk - ellers maaler gaten den forkerte fil', () => {
-  assert.equal(aftryk('extension/background.js'), aftryk('mcp-server/extension/background.js'));
-  assert.match(aftryk('extension/background.js'), /^[0-9a-f]{12}$/);
+  assert.equal(aftryk('extension'), aftryk('mcp-server/extension'));
+  assert.match(aftryk('extension'), /^[0-9a-f]{12}$/);
+});
+
+// MAALT 12/9: aftrykket daekkede KUN background.js. Samme dag aendrede jeg offscreen.js (eftersendelsen af aftrykket),
+// og den aendring var usynlig for udgivelsens spaerre - en gammel kopi af broen kunne passere som kandidaten.
+// Aftrykket daekker nu begge kodefiler. Det er stadig en byggekontrol, ikke et vaern: filerne laeses fra den indlaeste
+// udvidelses egen mappe, saa det beviser hvilke FILER der er indlaest, ikke hvilken kode der koerer i et gammelt dokument.
+test('aftrykket daekker ogsaa offscreen.js - ellers er broen usynlig for gaten', () => {
+  const off = laes('extension/offscreen.js');
+  assert.match(off, /KODEFILER|offscreen\.js/, 'udvidelsen hasher ikke offscreen.js med');
+  const flow = laes('test/flow/run.mjs');
+  assert.match(flow, /offscreen\.js/, 'flowtesten hasher ikke offscreen.js med');
+});
+
+test('aendres EN af kodefilerne, aendres aftrykket', () => {
+  const h = (indhold) => {
+    const c = createHash('sha256');
+    for (const [i, f] of KODEFILER.entries()) c.update(indhold[i] ?? readFileSync(join(rod, 'extension', f)));
+    return c.digest('hex').slice(0, 12);
+  };
+  const nu = h([]);
+  assert.notEqual(h([Buffer.from('aendret background')]), nu, 'en aendret background.js aendrer ikke aftrykket');
+  assert.notEqual(h([null, Buffer.from('aendret offscreen')]), nu, 'en aendret offscreen.js aendrer ikke aftrykket');
 });

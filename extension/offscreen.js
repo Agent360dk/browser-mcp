@@ -17,12 +17,24 @@
 // Plan 1.10 / R2 (Astra): versionsnummeret beviser ikke hvilken KODE der koerer - to kopier med samme nummer kan vaere
 // forskellige, og udgivelsens flowtest kunne derfor godkendes mod gammel kode. Udvidelsen sender derfor et fingeraftryk af
 // sin egen background.js. Kun et hash, og kun til 127.0.0.1: ingen kode forlader maskinen.
+// MAALT 12/9: aftrykket daekkede kun background.js. Samme dag aendrede offscreen.js sig, og den aendring var USYNLIG for
+// udgivelsens spaerre - en gammel kopi af broen kunne passere som kandidaten. Begge kodefiler taeller nu med, i fast
+// raekkefoelge. Det er stadig en byggekontrol: filerne laeses fra den indlaeste udvidelses egen mappe, saa aftrykket
+// beviser hvilke FILER der er indlaest - ikke hvilken kode der koerer i et gammelt offscreen-dokument.
+const KODEFILER = ['background.js', 'offscreen.js'];
 let kodeAftrykCache = null;
 async function kodeAftryk() {
   if (kodeAftrykCache) return kodeAftrykCache;
   try {
-    const svar = await fetch(chrome.runtime.getURL('background.js'));
-    const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', await svar.arrayBuffer()));
+    const dele = [];
+    for (const fil of KODEFILER) {
+      const svar = await fetch(chrome.runtime.getURL(fil));
+      dele.push(new Uint8Array(await svar.arrayBuffer()));
+    }
+    const samlet = new Uint8Array(dele.reduce((n, d) => n + d.length, 0));
+    let i = 0;
+    for (const d of dele) { samlet.set(d, i); i += d.length; }
+    const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', samlet));
     kodeAftrykCache = Array.from(bytes.slice(0, 6)).map((b) => b.toString(16).padStart(2, '0')).join('');
   } catch (e) {
     console.warn('[Offscreen] kunne ikke beregne kode-aftrykket:', e?.message || e);

@@ -353,7 +353,9 @@ try {
     // Plan 1.10 / R2 (Astra): versionsnummeret beviser ikke hvilken KODE der koerer. Udvidelsen sender et fingeraftryk af
     // sin egen background.js i haandtrykket; her sammenlignes det med repoets fil, saa gaten ikke kan passere mod en
     // gammel kopi med samme nummer.
-    const repoAftryk = createHash('sha256').update(readFileSync(join(rod, 'extension', 'background.js'))).digest('hex').slice(0, 12);
+    const repoHash = createHash('sha256');
+    for (const fil of ['background.js', 'offscreen.js']) repoHash.update(readFileSync(join(rod, 'extension', fil)));
+    const repoAftryk = repoHash.digest('hex').slice(0, 12);
     // Aftrykket eftersendes af udvidelsen, saa "ukendt" kan betyde "endnu ikke ankommet". MAALT 12/9 af Astra: en langsom
     // hentning gjorde aftrykket til null, og gaten afviste sin egen kandidat. Et UKENDT aftryk proeves derfor igen; et
     // aftryk der er ankommet og IKKE passer, afvises med det samme - det er hele pointen med gaten.
