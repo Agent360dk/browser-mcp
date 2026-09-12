@@ -124,6 +124,25 @@ def clean_lines(md):
     lines=[x for x in lines if not NOTE.search(x)]
     while lines and lines[0].strip()=='': lines.pop(0)
     return lines
+def split_tabelrække(linje):
+    """Deler en markdown-tabelrække paa | og respekterer escapet \\|.
+
+    MAALT 13/9 af Astra: raekken "Custom dropdown that opens on a plain click" i
+    capability-matrix indeholder en maaling skrevet som 11\\|53\\|...\\|0. Et bart split('|')
+    hakkede den i ni celler i en tabel med tre kolonner, saa den laa i stykker paa den
+    offentlige side - med synlige backslashes - fra 10/9. Docs-spaerren saa det ikke,
+    fordi den sammenligner genereret output med sig selv og ikke tjekker tabelform.
+    """
+    celler = [];  aktuel = '';  i = 0
+    while i < len(linje):
+        if linje[i] == '\\' and i + 1 < len(linje) and linje[i+1] == '|':
+            aktuel += '|'; i += 2; continue
+        if linje[i] == '|':
+            celler.append(aktuel); aktuel = ''; i += 1; continue
+        aktuel += linje[i]; i += 1
+    celler.append(aktuel)
+    return [c.strip() for c in celler]
+
 def md_to_html(lines):
     out=[];i=0;n=len(lines)
     while i<n:
@@ -133,8 +152,8 @@ def md_to_html(lines):
             while i<n and not lines[i].strip().startswith('```'): code.append(lines[i]);i+=1
             i+=1;out.append('<div class="code"><pre>'+html.escape('\n'.join(code))+'</pre><button class="copy">Copy</button></div>');continue
         if '|' in line and i+1<n and re.match(r'^\s*\|?[\s:|-]+\|?\s*$',lines[i+1]) and '-' in lines[i+1]:
-            hd=[c.strip() for c in line.strip().strip('|').split('|')];i+=2;rows=[]
-            while i<n and '|' in lines[i] and lines[i].strip(): rows.append([c.strip() for c in lines[i].strip().strip('|').split('|')]);i+=1
+            hd=split_tabelrække(line.strip().strip('|'));i+=2;rows=[]
+            while i<n and '|' in lines[i] and lines[i].strip(): rows.append(split_tabelrække(lines[i].strip().strip('|')));i+=1
             t='<div class="scroll"><table><tr>'+''.join('<th>%s</th>'%inline(h) for h in hd)+'</tr>'
             for r in rows: t+='<tr>'+''.join('<td>%s</td>'%inline(c) for c in r)+'</tr>'
             out.append(t+'</table></div>');continue

@@ -161,6 +161,23 @@ for loc in locs:
     if not resolves(path):
         fail('sitemap URL does not resolve locally: %s' % loc)
 
+# ---- 6. tabelform -----------------------------------------------------------
+# MAALT 13/9 af Astra: generatoren delte tabelraekker paa | uden at forstaa escapet \|, saa raekken med
+# maalingen "11\|53\|...\|0" blev til ni celler i en tabel med tre kolonner. Den laa i stykker paa den
+# offentlige capability-matrix fra 10/9, med synlige backslashes. Spaerren saa det ikke: regen-diff
+# sammenligner output med sig selv, og en ensartet forkert tabel er stadig ensartet.
+for path in glob.glob(DOCS + '/**/*.html', recursive=True):
+    txt = open(path, encoding='utf-8').read()
+    for tbl in re.findall(r'<table>.*?</table>', txt, re.S):
+        kolonner = len(re.findall(r'<th>', tbl))
+        if not kolonner:
+            continue
+        for nr, row in enumerate(re.findall(r'<tr>(.*?)</tr>', tbl, re.S)[1:], start=1):
+            celler = len(re.findall(r'<td>', row))
+            if celler and celler != kolonner:
+                fail('%s: table row %d has %d cells, header has %d columns (escaped pipe?)'
+                     % (os.path.relpath(path, ROOT), nr, celler, kolonner))
+
 # -----------------------------------------------------------------------------
 if fails:
     print('DOCS GATE: %d failure(s)' % len(fails))
