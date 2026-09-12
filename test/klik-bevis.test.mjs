@@ -364,6 +364,26 @@ test('en ripple fra mousedown skjuler ikke at el.click() intet gjorde - React fa
   assert.equal(r.landed, true);
 });
 
+// MAALT 12/9 af Fable (e2e runde 3): rettelsen af R5 F5 blev kun halvt anvendt. `foerKlik` afgjorde om
+// React-fallbacken skulle koere, men det ENDELIGE svar sammenlignede stadig med aftrykket fra FOER mousedown.
+// Uden en framework-vej at falde tilbage paa gav en ripple derfor stadig landed:true med nul handling - en falsk
+// succes, og CHANGELOG'en lovede at netop den var lukket.
+test('en ripple alene er ikke et landet klik - uden bevis siges der ikke ja', async () => {
+  const { t, koer } = side({ ripple: true, nativeVirker: false, effekt: (s) => { s.checked++; } });
+  const r = koer(await settleUdtryk());
+  assert.equal(t.checked, 0, 'proeven maaler forkert: der SKETE noget');
+  assert.notEqual(r.landed, true, `en ripple blev meldt som et landet klik: ${r.aftrykFoer} -> ${r.aftrykEfter}`);
+  assert.equal(r.uvist, true, 'svaret siger ikke at klikket KAN vaere landet - agenten faar et bart nej');
+});
+
+// Den anden side af samme moent: en menu der aabner paa mousedown ER klikkets virkning. Sammenlignes der KUN fra
+// efter mousedown, bliver et klik der virkede meldt som fejl - og agenten klikker igen og lukker menuen.
+test('en menu der aabner paa mousedown, meldes ikke som en fejl', async () => {
+  const { t, koer } = side({ ripple: true, nativeVirker: false, effekt: (s) => { s.checked++; } });
+  const r = koer(await settleUdtryk());
+  assert.notEqual(r.landed, false, `et klik der aabnede noget paa mousedown blev meldt som fejl: ${JSON.stringify(r)}`);
+});
+
 test('ripple + et el.click() der VIRKEDE: React kaldes stadig ikke en gang til', async () => {
   // Positiv kontrol mod en rettelse der bare altid kalder React.
   const { t, koer } = side({ react: true, ripple: true, effekt: (s) => { s.checked++; } });

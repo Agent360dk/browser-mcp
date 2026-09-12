@@ -63,9 +63,15 @@ test('alle tre udgange fra settle-udtrykket rapporterer landed', () => {
   assert.doesNotMatch(blok, /const efter = window\.__bmcpClicked === true;/,
     'lytteren maa IKKE bruges efter reserveloesningen — den er sand fordi vi selv dispatcher');
   assert.match(blok, /const foerAftryk = aftryk\(\)/, 'der skal tages et aftryk FOER fallbacken');
-  assert.match(blok, /const reagerede = efterAftryk !== foerAftryk/,
-    'landed skal komme af at noget aendrede sig, ikke af at vi sendte noget');
-  assert.match(blok, /return \{ landed: reagerede, fallbackFired: true/, 'framework-fallback fyrede');
+  // 12/9 (Fable): her stod `efterAftryk !== foerAftryk` - aftrykket fra FOER mousedown. En ripple lagt ind af
+  // mousedown blev derfor talt som klikkets virkning, og svaret var landed:true med nul handling. Svaret maales nu
+  // fra foerKlik (taget lige foer el.click()), og aendrede KUN mousedown noget, siges der hverken ja eller nej.
+  assert.match(blok, /const klikketVirkede = efterAftryk !== foerKlik/,
+    'landed skal komme af hvad KLIKKET gjorde, ikke af hvad mousedown lagde ind');
+  assert.match(blok, /const kunMousedown = !klikketVirkede && foerKlik !== foerAftryk/,
+    'det tredje udfald mangler - saa er en ripple enten et ja eller et nej, og begge dele er et gaet');
+  assert.match(blok, /landed: kunMousedown \? null : klikketVirkede/, 'framework-fallback fyrede');
+  assert.match(blok, /uvist: true/, 'et uvist klik skal sige at det KAN vaere landet');
 });
 
 test('click videregiver debuggerClick-resultatet i sit svar', () => {

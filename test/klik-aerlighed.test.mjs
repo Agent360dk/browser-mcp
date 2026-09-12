@@ -67,6 +67,8 @@ test('reserveløsningen maaler om den selv virkede — den gaetter ikke', async 
   const efterFallback = blok.slice(blok.indexOf('fiberKey'));
   // 10/9: at laese lytteren igen VAR rettelsen om morgenen — og den var forkert. Lytteren
   // udloeses af vores egen dispatch. Nu skal der maales et aftryk af siden i stedet.
-  assert.match(efterFallback.slice(0, 1600), /efterAftryk !== foerAftryk/,
-    'efter reserveloesningen skal SIDENS reaktion maales, ikke vores egen dispatch');
+  // 12/9 (Fable): aftrykket blev maalt fra FOER mousedown, saa en ripple talte som klikkets virkning.
+  // Nu maales der fra foerKlik - taget lige foer el.click() - og aendrede kun mousedown noget, siges der uvist.
+  assert.match(efterFallback.slice(0, 2400), /efterAftryk !== foerKlik/,
+    'efter reserveloesningen skal SIDENS reaktion paa KLIKKET maales, ikke vores egen dispatch');
 });

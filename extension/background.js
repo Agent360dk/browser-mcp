@@ -1065,10 +1065,21 @@ async function debuggerClick(tabId, x, y) {
         // nogen handler: foer=false, efter=true.
         // Derfor maales sidens REAKTION i stedet, med samme aftryks-greb som select_option
         // allerede bruger: aendrede noget sig af det et klik plejer at aendre?
+        // MAALT 12/9 af Fable (e2e runde 3): her sammenlignedes med aftrykket fra FOER mousedown.
+        // Rettelsen af R5 F5 ovenfor gjaldt kun HVILKEN vej der blev proevet, ikke hvad vi SVAREDE. Uden en framework-vej
+        // at falde tilbage paa gav en ripple derfor stadig landed:true med nul handling.
+        // Tre udfald, ikke to: aendrede klikket (eller framework-vejen) noget, er det landet. Aendrede kun mousedown
+        // noget, ved vi det ikke - det kan vaere en ripple, men ogsaa en menu der aabner paa mousedown. Saa siges der
+        // hverken ja eller nej: landed null bliver til maaske_landet hos kalderen, med den maalte tilstand.
         const efterAftryk = aftryk();
-        const reagerede = efterAftryk !== foerAftryk;
+        const klikketVirkede = efterAftryk !== foerKlik;
+        const kunMousedown = !klikketVirkede && foerKlik !== foerAftryk;
         ryd();
-        return { landed: reagerede, fallbackFired: true, aftrykFoer: foerAftryk, aftrykEfter: efterAftryk };
+        return {
+          landed: kunMousedown ? null : klikketVirkede,
+          ...(kunMousedown ? { uvist: true } : {}),
+          fallbackFired: true, aftrykFoer: foerAftryk, aftrykEfter: efterAftryk,
+        };
       })()`,
     });
     const vaerdi = settle?.result?.value ?? null;
