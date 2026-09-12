@@ -159,7 +159,10 @@ function tryConnect(port) {
     // logget i stedet for at forsvinde.
     // MAALT 11/9 af Astra (e2e runde 2): haenger hentningen af background.js, blev haandtrykket ALDRIG sendt - og
     // serveren saa en forbindelse uden version. Aftrykket er en bekvemmelighed for udgivelsens gate; hilsenen er ikke.
-    const kode = await Promise.race([kodeAftryk(), new Promise((ok) => setTimeout(() => ok(null), 1000))]);
+    // MAALT 12/9 af Astra (efterproevning): fristen paa 1 s var et kaploeb. Tog hentningen 1,3 s, sendte vi `kode: null`,
+    // og udgivelsens gate afviste sin EGEN kandidat - et langsomt svar er ikke et forkert svar. Hilsenen sendes derfor
+    // med det aftryk der allerede ER beregnet (som regel intet ved foerste forbindelse), og aftrykket EFTERSENDES.
+    const kode = kodeAftrykCache;
     let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
     try {
       hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };
@@ -170,6 +173,15 @@ function tryConnect(port) {
       ws.send(JSON.stringify(hilsen));
     } catch (e) {
       console.warn('[Offscreen] kunne ikke sende haandtrykket:', e?.message || e);
+    }
+
+    // Eftersendelsen: naar aftrykket er beregnet, faar serveren det - uanset hvor lang tid hentningen tog.
+    if (!kode) {
+      kodeAftryk().then((k) => {
+        if (!k || ws.readyState !== WebSocket.OPEN) return;
+        try { ws.send(JSON.stringify({ type: 'kode', kode: k })); }
+        catch (e) { console.warn('[Offscreen] kunne ikke eftersende kode-aftrykket:', e?.message || e); }
+      });
     }
 
     console.log(`[Offscreen] Connected to MCP server on port ${port} (${connections.size} total)`);

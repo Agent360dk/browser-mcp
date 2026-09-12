@@ -354,8 +354,17 @@ try {
     // sin egen background.js i haandtrykket; her sammenlignes det med repoets fil, saa gaten ikke kan passere mod en
     // gammel kopi med samme nummer.
     const repoAftryk = createHash('sha256').update(readFileSync(join(rod, 'extension', 'background.js'))).digest('hex').slice(0, 12);
-    skalVaere(aktiv[0]?.code === repoAftryk,
-      `udvidelsens kode-aftryk er ${aktiv[0]?.code ?? 'ukendt'}, repoets er ${repoAftryk} - Chrome koerer ikke kandidatens kode (genindlaes udvidelsen)`);
+    // Aftrykket eftersendes af udvidelsen, saa "ukendt" kan betyde "endnu ikke ankommet". MAALT 12/9 af Astra: en langsom
+    // hentning gjorde aftrykket til null, og gaten afviste sin egen kandidat. Et UKENDT aftryk proeves derfor igen; et
+    // aftryk der er ankommet og IKKE passer, afvises med det samme - det er hele pointen med gaten.
+    let kode = aktiv[0]?.code ?? null;
+    for (let i = 0; i < 10 && kode === null; i++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      const igen = await kald('browser_provide_feedback', { what_happened: 'flow-test, venter paa kode-aftrykket' });
+      kode = (igen.data?.environment?.extensions_connected || []).filter((e) => e.active)[0]?.code ?? null;
+    }
+    skalVaere(kode === repoAftryk,
+      `udvidelsens kode-aftryk er ${kode ?? 'ukendt efter 5 s'}, repoets er ${repoAftryk} - Chrome koerer ikke kandidatens kode (genindlaes udvidelsen)`);
   });
   await proev('#shadow-dom', 'selektorer naar ind i shadow DOM', async () => {
     await kald('browser_click', { selector: '#ishadow' });

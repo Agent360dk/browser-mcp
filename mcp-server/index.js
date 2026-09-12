@@ -314,6 +314,14 @@ function createWSS(port = BASE_PORT) {
         return;
       }
 
+      // Aftrykket eftersendes, hvis udvidelsen ikke havde beregnet det da den hilste. MAALT 12/9 af Astra: en frist paa
+      // 1 s i udvidelsen gjorde et langsomt aftryk til `null`, og gaten afviste sin egen kandidat. Nu venter hilsenen
+      // ikke, og aftrykket kommer naar det er klart.
+      if (msg.type === 'kode') {
+        if (typeof msg.kode === 'string') conn.kode = msg.kode;
+        return;
+      }
+
       if (msg.type === 'terminate') {
           // terminate lukker serveren for ALLE chats paa porten, saa den har to gates.
           //
