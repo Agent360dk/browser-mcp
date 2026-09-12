@@ -18,7 +18,7 @@
 code --add-mcp "{\"name\":\"browser-mcp\",\"command\":\"npx\",\"args\":[\"@agent360/browser-mcp@latest\"]}"
 ```
 
-**3 - Start the server, then switch Copilot Chat to Agent mode.** Command Palette → **MCP: List Servers** → **Start**, then set the chat mode dropdown to **Agent** (MCP tools only run there). The extension icon turns green.
+**3 - Start the server, then switch Copilot Chat to Agent mode.** Command Palette → **MCP: List Servers** → **Start**, then set the chat mode dropdown to **Agent** (MCP tools only run there). The extension icon stays grey until step 4 - the server only takes a port the first time your agent actually uses the browser, so grey here is normal.
 
 **4 - Say this, to check it worked.** Paste it to Copilot Chat:
 

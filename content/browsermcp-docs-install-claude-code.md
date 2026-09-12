@@ -14,7 +14,7 @@
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-**3 - Restart Claude Code.** That is what starts the server. The extension icon turns green.
+**3 - Restart Claude Code.** That is what starts the server. The extension icon stays grey until step 4 - the server only takes a port the first time your agent actually uses the browser, so grey here is normal.
 
 **4 - Say this, to check it worked.** Paste it to Claude Code:
 

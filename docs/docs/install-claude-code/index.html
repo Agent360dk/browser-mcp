@@ -24,7 +24,7 @@
 <p><b>1 - Install the Chrome extension.</b> One click from the <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Chrome Web Store</a>; Chrome keeps it updated. No store? The unpacked install is further down.</p>
 <p><b>2 - Add the MCP server.</b> Paste this in a terminal. Required - the extension does nothing on its own:</p>
 <div class="code"><pre>claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</pre><button class="copy">Copy</button></div>
-<p><b>3 - Restart Claude Code.</b> That is what starts the server. The extension icon turns green.</p>
+<p><b>3 - Restart Claude Code.</b> That is what starts the server. The extension icon stays grey until step 4 - the server only takes a port the first time your agent actually uses the browser, so grey here is normal.</p>
 <p><b>4 - Say this, to check it worked.</b> Paste it to Claude Code:</p>
 <blockquote>Take a screenshot of my current Chrome tab.</blockquote>
 <p>You get an image back instead of <i>"I don't have browser access"</i>. <b>That's it - you're running.</b></p>

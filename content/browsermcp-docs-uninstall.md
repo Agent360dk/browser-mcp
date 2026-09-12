@@ -22,10 +22,10 @@ Browser MCP requests broad permissions for one reason: its whole job is to opera
 | Permission | Why it's needed |
 |---|---|
 | `tabs`, `tabGroups`, `activeTab` | See and switch between your tabs; group concurrent sessions |
-| `scripting`, `debugger` | Click, type and read pages via trusted events (works on React/Angular and CSP-strict sites) |
-| `cookies` | Act inside sites you're already logged into - the entire point |
-| `webNavigation` | Know when a page has actually finished loading before acting |
-| `storage`, `alarms`, `offscreen`, `notifications` | Local extension state, the WebSocket bridge, and status prompts |
+| `scripting`, `debugger` | Click, type, read pages, run scripts and read network responses via trusted events (works on React/Angular and CSP-strict sites) |
+| `cookies` | Act inside sites you're already logged into - the entire point. Only for the http(s) sites the session has open |
+| `webNavigation` | List a page's frames, so a tool can reach into an iframe |
+| `storage`, `alarms`, `offscreen`, `notifications` | Local extension state, two timers (keep the bridge alive; release a port when a session's last tab closes), the WebSocket bridge, and status prompts |
 | `<all_urls>` (host access) | So the agent can work on whatever site *you* point it at - not a fixed list |
 
 This is a lot of access, and we won't pretend otherwise. It is the same access any tool would need to do what this one does. What makes it safe is not a short permission list - it's where the data goes.

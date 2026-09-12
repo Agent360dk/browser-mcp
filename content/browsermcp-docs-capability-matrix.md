@@ -13,7 +13,7 @@ brochure, and you cannot plan against a brochure.
 | Mark | Means |
 |---|---|
 | **Measured** | We ran it against the released version and watched it work. Date in the note. |
-| **Fixed on main** | Broken in the released version (v1.29.0), fixed and tested on the main branch, not in a release yet. Until it ships, you have the broken behaviour. |
+| **Fixed in 1.29.1** | Broken in v1.29.0, fixed and tested, and shipped in v1.29.1. Update the extension and the npm package to get it. |
 | **By design** | The mechanism is there and reviewed, but we have no dated measurement. Treat as likely, not proven. |
 | **Not yet** | We ran it and it did not work. Open, with the reason. |
 | **Won't** | A deliberate non-goal. The reason is given, not hidden. |
@@ -37,16 +37,16 @@ brochure, and you cannot plan against a brochure.
 | Content Security Policy blocks injected script | **By design** | The debugger path does not go through `eval`, so CSP-strict pages (Google Cloud, Stripe, Angular Material) work where script injection is refused. |
 | Content inside an iframe | **By design** | `browser_list_frames` and `browser_select_frame`. |
 | Shadow DOM | **By design** | The click path resolves through shadow roots before dispatching. |
-| React / Vue controlled input that "resets itself" | **Fixed on main** | In v1.29.0 `browser_fill` could append instead of replacing. Fixed 2026-09-08: it now reads the field back after clearing it. |
+| React / Vue controlled input that "resets itself" | **Fixed in 1.29.1** | In v1.29.0 `browser_fill` could append instead of replacing. Fixed 2026-09-08: it now reads the field back after clearing it. |
 | Native `<select>` | **Measured** | `browser_select_option`, 9 ms, 2026-09-09. |
-| A `<select>` whose framework stores the value elsewhere | **Fixed on main** | In v1.29.0 the guard could call a working choice a rollback. Fixed 2026-09-08: it fingerprints the page and only reports a rollback when nothing else changed. |
+| A `<select>` whose framework stores the value elsewhere | **Fixed in 1.29.1** | In v1.29.0 the guard could call a working choice a rollback. Fixed 2026-09-08: it fingerprints the page and only reports a rollback when nothing else changed. |
 | Custom combobox / autocomplete (div + listbox) | **By design** | `browser_set_combobox` types a prefix, waits for options, clicks the match. |
-| **Custom dropdown that opens on a plain `click`** | **Fixed on main** | In v1.29.0 the click fallback fired *two* click events, so anything that toggles opened and closed again. Measured 2026-09-10 in a real page: one click 11\|53\|…\|0 → 11\|69\|…\|1, two clicks unchanged. It now fires one, and judges success by whether the page changed. The tool itself has not been re-run live since. |
+| **Custom dropdown that opens on a plain `click`** | **Fixed in 1.29.1** | In v1.29.0 the click fallback fired *two* click events, so anything that toggles opened and closed again. Measured 2026-09-10 in a real page: one click 11\|53\|…\|0 → 11\|69\|…\|1, two clicks unchanged. It now fires one, and judges success by whether the page changed. The tool itself has not been re-run live since. |
 | Date picker | **By design** | `browser_set_date`. |
 | File upload, including drag-and-drop targets | **By design** | `browser_upload_file`, `browser_drop_file`. |
 | Cookie banner or modal in the way | **By design** | `browser_dismiss_overlays`, with a veto list so it never clicks something dangerous. |
 | `alert` / `confirm` freezing the page | **Measured** | `browser_handle_dialog` arms the listener first; a frozen renderer is reported as frozen instead of hanging. |
-| Content that only loads on scroll | **Fixed on main** | In v1.29.0 pixel scrolling hit a 30-second timeout on every call, on every page. Fixed 2026-09-09/10: the fallback is now reachable, scrolls to a target position instead of adding a second scroll, and reports failure when it fails. |
+| Content that only loads on scroll | **Fixed in 1.29.1** | In v1.29.0 pixel scrolling hit a 30-second timeout on every call, on every page. Fixed 2026-09-09/10: the fallback is now reachable, scrolls to a target position instead of adding a second scroll, and reports failure when it fails. |
 | Page needs a real keystroke, not a synthetic one | **By design** | Debugger key events carry `isTrusted`. |
 | Endless page, need the network to settle | **By design** | `browser_wait_for_network`. |
 

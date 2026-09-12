@@ -18,9 +18,9 @@ anything once the extension is loaded **and Chrome is running**. Tell the user t
 
 ## Step 1 — register the MCP server with the client
 
-Use the client's own MCP-registration command. **Do not use `npx @agent360/browser-mcp install`
-for this** — that command copies extension files and writes `~/.claude/mcp.json`, which Claude
-Code does not read. Registering must go through the client.
+Either use the client's own MCP-registration command below, or run
+`npx @agent360/browser-mcp install`, which since 1.29.1 registers with Claude Code, Codex, VS Code
+and Cursor through each client's own mechanism and leaves clients you do not have alone.
 
 Claude Code:
 
@@ -58,8 +58,8 @@ path; recommend it.
 
 **Option B — load unpacked (no Chrome Web Store):**
 1. Run `npx @agent360/browser-mcp install` to copy the extension files to
-   `~/.browser-mcp/extension/`. (Ignore its "Claude Code configured" line — Step 1 already
-   handled registration, correctly.)
+   `~/.browser-mcp/extension/`. It also registers the server; if Step 1 already did that, the
+   second registration is harmless.
 2. Open `chrome://extensions`, toggle **Developer mode** ON (top right).
 3. Click **Load unpacked** and select `~/.browser-mcp/extension/`.
 
