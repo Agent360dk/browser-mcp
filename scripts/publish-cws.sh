@@ -79,7 +79,13 @@ fi
 grep -E "^# (pass|fail)" /tmp/bmcp-unit.log | sed 's/^/  /'
 echo "  ✅ alle groenne"
 
-if [[ "${SPRING_FLOW_OVER:-}" == "1" ]]; then
+if [[ "${BMCP_FLOW_OK:-}" == "1" ]]; then
+  # MAALT 13/9 af Astra: udgivelsesscriptet koerer nu spaerren som trin 2b, FOER versionsbumpet. Koerte vi den
+  # igen her, ville den fejle hver gang: bumpet skriver den nye version i manifestet paa disken, mens den
+  # INDLAESTE udvidelse stadig svarer den gamle - og flow-testen kraever at de to stemmer. Beviset er
+  # allerede fremskaffet paa praecis den kode der udgives (bumpet roerer ingen fil i aftrykket).
+  echo "→ Flow-spaerren er allerede koert groent i trin 2b paa den kode der udgives"
+elif [[ "${SPRING_FLOW_OVER:-}" == "1" ]]; then
   echo "⚠  Flow-spaerren sprunget over (SPRING_FLOW_OVER=1) — du udgiver i blinde"
 else
   echo "→ Flow-test mod en aegte Chrome (spaerre foer udgivelse)"
@@ -98,7 +104,10 @@ else
     navn="$(echo "$linje" | sed 's/^  //; s/:.*//')"
     [[ -z "$navn" ]] && continue
     kendt=0
-    for k in "${KENDTE_FEJL[@]}"; do [[ "$navn" == "$k" ]] && kendt=1; done
+    # MAALT 13/9 af Astra: uguarderet svarer bash 3.2 (maskinens) "KENDTE_FEJL[@]: unbound variable" under
+    # set -u naar listen er TOM - altsaa netop i den tilstand vi vil have den i. Udgivelsen doede med en
+    # besked der ikke navngav noget.
+    for k in ${KENDTE_FEJL[@]+"${KENDTE_FEJL[@]}"}; do [[ "$navn" == "$k" ]] && kendt=1; done
     if [[ $kendt -eq 1 ]]; then
       echo "  ◦ kendt fejl, accepteret: $navn"
     else

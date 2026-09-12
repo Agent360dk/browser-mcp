@@ -154,20 +154,19 @@ test('de to kopier af udvidelsen er stadig byte-identiske', () => {
 // Skaden ved en fremtidig divergens er den STILLE slags: background haefter et bredt spaend paa adressen, offscreen
 // afviser det og falder tilbage til 9876-9895 - saa tror testbrowseren den er isoleret, mens den ligger paa praecis
 // det spaend alle andre chats bruger. Det er den skade isolationen findes for.
-test('de to vagter doemmer ens - ellers tror en testbrowser den er isoleret uden at vaere det', () => {
-  const maksBg = Number(/const PORTE_MAX_SPAEND = (\d+);/.exec(kilde)?.[1]);
-  assert.ok(maksBg > 0, 'PORTE_MAX_SPAEND kunne ikke laeses i background.js');
-  const maksOff = Number(/til - fra < (\d+)\)/.exec(offKilde)?.[1]);
-  assert.ok(maksOff > 0, 'graensen kunne ikke laeses i offscreen.js');
-  assert.equal(maksOff, maksBg,
-    `background accepterer spaend under ${maksBg}, offscreen under ${maksOff} - i forskellen falder isolationen tavst tilbage til faellesspaendet`);
-
-  // Og ikke kun tallet: de skal doemme ens paa de samme vaerdier.
-  for (const [fra, til] of [[19970, 19974], [1024, 1223], [1024, 1024 + maksBg - 1], [1024, 1024 + maksBg], [80, 90], [60000, 70000]]) {
-    const bgOk = fra >= 1024 && til <= 65535 && til >= fra && til - fra < maksBg;
-    const offSvar = portomraadeFor(`?porte=${fra}-${til}`);
-    const offOk = offSvar[0] === fra && offSvar[1] === til;
-    assert.equal(offOk, bgOk, `de to vagter er uenige om ${fra}-${til}: background=${bgOk}, offscreen=${offOk}`);
+test('de to vagter doemmer ens - ellers tror en testbrowser den er isoleret uden at vaere det', async () => {
+  // MAALT 13/9 af Astra: min foerste udgave sammenlignede offscreen mod en HAANDSKREVET KOPI af backgrounds regel.
+  // Hun muterede den AEGTE background (`fra < 1024` -> `fra < 2048`) og fik 16/16 groenne: kopien fulgte ikke med.
+  // Nu koeres den AEGTE `portOmraadeFraLager` (gennem opretMed, som allerede loefter den) mod den AEGTE `portOmraade`.
+  for (const [fra, til] of [[19970, 19974], [1024, 1223], [2048, 2247], [1024, 1024 + 199], [1024, 1024 + 200],
+                            [80, 90], [60000, 70000], [9876, 9895]]) {
+    const url = await opretMed(`${fra}-${til}`);
+    const bgOk = /[?&]porte=/.test(String(url));                    // hvad background FAKTISK gjorde
+    const off = portomraadeFor(`?porte=${fra}-${til}`);             // hvad offscreen FAKTISK gjorde
+    const offOk = off[0] === fra && off[1] === til;
+    assert.equal(offOk, bgOk,
+      `de to vagter er uenige om ${fra}-${til}: background=${bgOk ? 'accepterer' : 'afviser'}, ` +
+      `offscreen=${offOk ? 'accepterer' : 'afviser'}. I forskellen falder isolationen TAVST tilbage til ` +
+      `faellesspaendet, og testbrowseren ligger dér hvor alle andre chats er.`);
   }
 });
-

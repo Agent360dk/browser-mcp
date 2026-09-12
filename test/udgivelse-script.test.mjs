@@ -402,6 +402,11 @@ test('et fejlet koldt tjek stopper udgivelsen i stedet for at fortsaette', () =>
   const k = script();
   const blok = k.slice(k.indexOf('5c. Koldt tjek'), k.indexOf('5b. MCP registry'));
   assert.match(blok, /gate |die "/, 'det kolde tjek advarer kun - saa udgives registret mod en pakke der lige dumpede');
-  assert.match(blok, /for |while |forsoeg/, 'der er ingen gentagelse - registret indekserer forsinket, saa ét forsoeg giver falsk alarm');
+  // MAALT 13/9 af Astra: den foerste udgave matchede paa en blok der STARTER med kommentaren - og kommentaren
+  // indeholder selv ordet "forsoeg". Hun fjernede loekken helt og fik samme resultat som baseline. Proeven maa
+  // kun se paa KODEN, ikke paa forklaringen af den.
+  const kode = blok.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+  assert.match(kode, /for forsoeg in 1 2 3/, 'der er ingen gentagelse i koden - registret indekserer forsinket, saa ét forsoeg giver falsk alarm');
+  assert.match(kode, /sleep \d+/, 'der ventes ikke mellem forsoegene');
 });
 

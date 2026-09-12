@@ -182,7 +182,8 @@ function install({ skipExtension = false } = {}) {
 📋 Last step:
   1. Make sure the Agent360 Browser MCP extension is enabled at chrome://extensions
   2. Restart your AI client so it picks up the server
-  3. Click the extension icon — it should turn green`);
+  3. Ask your agent to use the browser once — the extension icon turns green the first
+     time it is actually used, not on restart. Grey before that is normal.`);
   } else {
     console.log(`
 📋 Load the extension in Chrome (one time only):
@@ -201,11 +202,12 @@ function install({ skipExtension = false } = {}) {
   }
 
   console.log(`
-🔄 Auto-updates (fully automatic):
+🔄 Auto-updates:
    - MCP server: always fetches latest from npm (npx @latest)
-   - Extension files: auto-copied when npm version is newer
-   - Extension reload: auto-triggered via WebSocket
-   - You don't need to do anything — updates happen on every session start
+   - Chrome Web Store extension: Chrome updates it after Google approves each
+     version (usually 1-3 days). Nothing here can speed that up.
+   - Unpacked extension in ~/.browser-mcp/extension/: files are refreshed when the
+     npm version is newer, and the bridge reloads itself
 
 💡 Help shape Browser MCP:
    - Public wishlist:  https://github.com/Agent360dk/browser-mcp/blob/main/WISHLIST.md

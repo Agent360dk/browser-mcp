@@ -317,6 +317,9 @@ else
       gate "$FLOW_UVENTEDE uventede fejl i flow-testen. Er det musehaendelser, ligger fanen i baggrunden — giv Chrome et synligt vindue og koer igen. Er det selv-diagnosen, koerer Chrome ikke kandidatens kode"
     else
       ok "flow-spaerren er groen: nul uventede fejl paa den kode der udgives"
+      # Butikstrinnet koerer samme flow-test. Efter versionsbumpet ville den fejle paa en forskel scriptet
+      # selv har lavet (manifest bumpet, indlaest udvidelse ikke). Beviset er fremskaffet her, foer bumpet.
+      export BMCP_FLOW_OK=1
     fi
   fi
 fi
