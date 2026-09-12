@@ -146,3 +146,28 @@ test('de to kopier af udvidelsen er stadig byte-identiske', () => {
     assert.equal(h(`../extension/${f}`), h(`../mcp-server/extension/${f}`), `${f} er ikke spejlet`);
   }
 });
+
+// MAALT 12/9 af Astra (F1): de to vagter deler en graense, men ikke en kilde. `PORTE_MAX_SPAEND` staar i background.js,
+// og `200` staar haardkodet i offscreen.js' portOmraade. Hun muterede BEGGE veje (200 -> 5000) og fik 45/45 groenne:
+// ingen proeve saa forskellen.
+//
+// Skaden ved en fremtidig divergens er den STILLE slags: background haefter et bredt spaend paa adressen, offscreen
+// afviser det og falder tilbage til 9876-9895 - saa tror testbrowseren den er isoleret, mens den ligger paa praecis
+// det spaend alle andre chats bruger. Det er den skade isolationen findes for.
+test('de to vagter doemmer ens - ellers tror en testbrowser den er isoleret uden at vaere det', () => {
+  const maksBg = Number(/const PORTE_MAX_SPAEND = (\d+);/.exec(kilde)?.[1]);
+  assert.ok(maksBg > 0, 'PORTE_MAX_SPAEND kunne ikke laeses i background.js');
+  const maksOff = Number(/til - fra < (\d+)\)/.exec(offKilde)?.[1]);
+  assert.ok(maksOff > 0, 'graensen kunne ikke laeses i offscreen.js');
+  assert.equal(maksOff, maksBg,
+    `background accepterer spaend under ${maksBg}, offscreen under ${maksOff} - i forskellen falder isolationen tavst tilbage til faellesspaendet`);
+
+  // Og ikke kun tallet: de skal doemme ens paa de samme vaerdier.
+  for (const [fra, til] of [[19970, 19974], [1024, 1223], [1024, 1024 + maksBg - 1], [1024, 1024 + maksBg], [80, 90], [60000, 70000]]) {
+    const bgOk = fra >= 1024 && til <= 65535 && til >= fra && til - fra < maksBg;
+    const offSvar = portomraadeFor(`?porte=${fra}-${til}`);
+    const offOk = offSvar[0] === fra && offSvar[1] === til;
+    assert.equal(offOk, bgOk, `de to vagter er uenige om ${fra}-${til}: background=${bgOk}, offscreen=${offOk}`);
+  }
+});
+

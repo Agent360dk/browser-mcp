@@ -366,3 +366,42 @@ test('spaerren stopper paa ENHVER fejl i selv-diagnosen, ikke kun paa aftrykket'
     'spaerren hviler stadig paa én formulering af fejlen i stedet for paa tjekket');
 });
 
+// MAALT 12/9 af Fable: fem fund i de tre commits jeg selv skrev en time foer. De to vaerste er mine egne usande linjer.
+test('spaerren siger kun GROENT naar der ikke er uventede fejl - ikke naar aftrykket tilfaeldigvis passer', () => {
+  const k = script();
+  const blok = k.slice(k.indexOf('2b. Flow-spaerre'), k.indexOf('Chrome Web Store publish'));
+  // Fable: den rapport jeg kaldte "groen" har 5 FEJL. Mit trin sagde GROENT, fordi provide_feedback ikke var blandt dem.
+  // publish-cws.sh stopper paa praecis samme rapport (KENDTE_FEJL er tom). To spaerrer med to forskellige barer er én spaerre.
+  assert.match(blok, /KENDTE_FEJL/, 'spaerren bruger ikke samme kendte-fejl-liste som butikstrinnet');
+  assert.match(blok, /UVENTEDE/, 'spaerren taeller ikke uventede fejl - saa vinker den roede vaerktoejer igennem');
+});
+
+test('spaerren doer ikke i toerloeb - planen skal kunne ses hele vejen', () => {
+  const k = script();
+  const blok = k.slice(k.indexOf('2b. Flow-spaerre'), k.indexOf('Chrome Web Store publish'));
+  assert.doesNotMatch(blok, /\n\s*die "/, 'trin 2b bruger die i stedet for gate - saa viser toerloebet ikke trin 3-6');
+  assert.match(blok, /gate /, 'trin 2b bruger ikke gate()');
+});
+
+test('spaerren koerer FOER versionsbumpet - ellers doer foerste ship-pas altid', () => {
+  const k = script();
+  // Fable: trin 1 bumper manifest.json til den nye version, men den INDLAESTE udvidelse svarer stadig den gamle.
+  // Flowets server laeser den nye. Koerer spaerren efter bumpet, fejler den paa versionsforskellen hver eneste gang.
+  assert.ok(k.indexOf('2b. Flow-spaerre') < k.indexOf('step "1. Version'),
+    'spaerren ligger efter versionsbumpet - saa doer foerste --ship-pas altid paa en forskel scriptet selv lavede');
+});
+
+test('tilbagerulnings-raadet peger paa den forrige version, ikke paa den braekkede', () => {
+  const k = script();
+  const blok = k.slice(k.indexOf('5c. Koldt tjek'), k.indexOf('5b. MCP registry'));
+  assert.match(blok, /NPM_LATEST/, 'raadet bruger CUR_PKG, som paa en genkoersel ER den braekkede version');
+  assert.doesNotMatch(blok, /dist-tag add[^\n]*CUR_PKG/, 'dist-tag peger stadig paa CUR_PKG');
+});
+
+test('et fejlet koldt tjek stopper udgivelsen i stedet for at fortsaette', () => {
+  const k = script();
+  const blok = k.slice(k.indexOf('5c. Koldt tjek'), k.indexOf('5b. MCP registry'));
+  assert.match(blok, /gate |die "/, 'det kolde tjek advarer kun - saa udgives registret mod en pakke der lige dumpede');
+  assert.match(blok, /for |while |forsoeg/, 'der er ingen gentagelse - registret indekserer forsinket, saa ét forsoeg giver falsk alarm');
+});
+

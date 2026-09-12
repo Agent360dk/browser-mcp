@@ -274,6 +274,53 @@ fi
 # tool-count: single source of truth = tools.js (don't hardcode — derive it)
 TOOL_COUNT="$(grep -oE "name: ['\"]browser_[a-z_]+" mcp-server/tools.js | sort -u | wc -l | tr -d ' ')"
 
+# ── 2b. Flow-spaerre mod en aegte Chrome ──────────────────────────────────────
+# MAALT 12/9 (Astra + Fable): spaerren laa KUN inde i butikstrinnet, saa `--skip-cws` sprang ogsaa spaerren over -
+# og npm og GitHub fik koden uden at nogen levende kontrol havde koert. Astra maalte desuden at en GAMMEL service
+# worker kan koere videre selv om ny kode ligger paa disken; aftrykket hasher FILER og kan ikke se det. Kun en
+# levende koersel kan.
+#
+# Fable, samme dag, paa min foerste udgave af dette trin - tre fejl jeg selv lavede:
+#   1. Trinnet sagde GROENT saa laenge `browser_provide_feedback` ikke var i FEJL-listen, og ignorerede ALLE andre
+#      fejl. Butikstrinnet stopper paa praecis samme rapport (KENDTE_FEJL er tom). To spaerrer med to forskellige
+#      barer er én spaerre. Baren er nu den samme.
+#   2. Trinnet brugte `die` ogsaa i toerloeb, saa planen ikke kunne ses hele vejen. Nu `gate`.
+#   3. Trinnet laa EFTER versionsbumpet. Bumpet skriver den nye version i manifestet paa disken, mens den INDLAESTE
+#      udvidelse stadig svarer den gamle - saa foerste --ship-pas doede altid paa en forskel scriptet selv havde
+#      lavet. Spaerren ligger nu FOER trin 1. Den beviser stadig koden: bumpet roerer ingen af de filer aftrykket
+#      hasher (background.js, offscreen.js).
+step "2b. Flow-spaerre mod en aegte Chrome"
+if [[ "$SKIP_FLOW" == 1 || "${SPRING_FLOW_OVER:-}" == "1" ]]; then
+  warn "sprunget over — du udgiver i blinde: ingen har set koden koere i en browser"
+else
+  # Kendte, accepterede fejl. Samme liste-mekanik som scripts/publish-cws.sh, og den skal helst blive tom:
+  # hver linje her er en roed lampe nogen har vaennet sig til. Tilfoej kun med dato og grund.
+  KENDTE_FEJL=()
+  FLOW_UD="$(mktemp)"
+  say "npm --prefix mcp-server run flow"
+  npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
+  if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
+    tail -20 "$FLOW_UD" | sed 's/^/    /'
+    gate "flow-testen kunne ikke koere faerdig. Er Chrome aaben med PRAECIS én udvidelse indlaest — repoets extension/? (--skip-flow udgiver i blinde)"
+  else
+    grep -E "^DAEKNING:" "$FLOW_UD" | sed 's/^/  /'
+    FLOW_UVENTEDE=0
+    while IFS= read -r linje; do
+      navn="$(echo "$linje" | sed 's/^  //; s/:.*//')"
+      [[ -z "$navn" ]] && continue
+      kendt=0
+      for k in ${KENDTE_FEJL[@]+"${KENDTE_FEJL[@]}"}; do [[ "$navn" == "$k" ]] && kendt=1; done
+      if [[ $kendt -eq 1 ]]; then echo "  ◦ kendt fejl, accepteret: $navn"
+      else echo "  ✗ $navn"; FLOW_UVENTEDE=$((FLOW_UVENTEDE+1)); fi
+    done < <(sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | sed '1d; /^====/d')
+    if [[ $FLOW_UVENTEDE -gt 0 ]]; then
+      gate "$FLOW_UVENTEDE uventede fejl i flow-testen. Er det musehaendelser, ligger fanen i baggrunden — giv Chrome et synligt vindue og koer igen. Er det selv-diagnosen, koerer Chrome ikke kandidatens kode"
+    else
+      ok "flow-spaerren er groen: nul uventede fejl paa den kode der udgives"
+    fi
+  fi
+fi
+
 # ── 1. sync + version bump + tool-count + readme (only written under --ship) ──
 step "1. Version → ${NEW_VERSION} · tool-count → ${TOOL_COUNT} · sync extension + README"
 
@@ -385,37 +432,6 @@ else
 fi
 
 
-# ── 2b. Flow-spaerre mod en aegte Chrome ──────────────────────────────────────
-# MAALT 12/9 (Astra + Fable, konsultation): spaerren laa KUN inde i butikstrinnet, saa `--skip-cws` sprang ogsaa
-# spaerren over - og npm og GitHub fik koden uden at nogen levende kontrol havde koert. Astra maalte desuden at en
-# GAMMEL service worker kan koere videre selv om ny kode ligger paa disken; kode-aftrykket hasher FILER og kan ikke
-# se det. Kun en levende koersel kan. Derfor har spaerren nu sit eget trin, foer alt uigenkaldeligt.
-# (Butikstrinnet koerer sin egen spaerre bagefter. At den koerer to gange er harmloest - at den slet ikke koerer er ikke.)
-step "2b. Flow-spaerre mod en aegte Chrome"
-if [[ "$SKIP_FLOW" == 1 || "${SPRING_FLOW_OVER:-}" == "1" ]]; then
-  warn "sprunget over — du udgiver i blinde: ingen har set koden koere i en browser"
-else
-  FLOW_UD="$(mktemp)"
-  say "npm --prefix mcp-server run flow"
-  npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
-  if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
-    tail -20 "$FLOW_UD" | sed 's/^/    /'
-    die "flow-testen kunne slet ikke koere. Er Chrome aaben med PRAECIS én udvidelse indlaest — repoets extension/? (--skip-flow udgiver i blinde)"
-  fi
-  grep -E "^DAEKNING:" "$FLOW_UD" | sed 's/^/  /'
-  # browser_provide_feedback ER beviset for at det er KANDIDATEN der koerer: praecis én forbundet udvidelse, hvis
-  # version er serverens, og hvis kode-aftryk er repoets. Fejler DET tjek - uanset hvordan fejlen er formuleret -
-  # er alt andet ligegyldigt.
-  # MAALT 12/9, min egen fejl: her stod et tjek paa ÉN streng (ordet for aftrykket). Koert mod en Chrome med to udvidelser fejlede
-  # flowtesten med "forkert dom: conflict ...", som ikke indeholder den streng - og spaerren sagde GROENT paa en
-  # konflikt. En spaerre der hviler paa én formulering af fejlen, er ingen spaerre.
-  if sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | grep -q "browser_provide_feedback"; then
-    sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | grep "browser_provide_feedback" | head -2 | sed 's/^/    /'
-    die "selv-diagnosen siger at det ikke er kandidaten der koerer (foraeldet, i konflikt, eller forkert kode-aftryk). Slaa de andre Browser MCP-udvidelser fra, indlaes repoets extension/, og koer igen"
-  fi
-  ok "flow-spaerren er groen paa den kode der udgives"
-fi
-
 # ── 3. Chrome Web Store ───────────────────────────────────────────────────────
 step "3. Chrome Web Store publish"
 if [[ "$SKIP_CWS" == 1 ]]; then warn "skipped (--skip-cws)"
@@ -516,25 +532,40 @@ fi
 # ── 5c. Koldt tjek af den UDGIVNE pakke ───────────────────────────────────────
 # MAALT 12/9 af Astra: roegtesten (scripts/pakke-roegtest.mjs) koerer paa TARBALLEN, foer npm. Intet tjekkede at det
 # brugerne faktisk henter, kan installeres og svare paa et MCP-haandtryk. Det er den eneste kontrol der ser registret
-# som en fremmed maskine ser det - og den koster to minutter.
+# som en fremmed maskine ser det.
+#
+# Fable, samme dag, to fejl i min foerste udgave:
+#   - Den advarede kun, og scriptet fortsatte - saa registret (5b) blev udgivet mod en pakke der lige var dumpet.
+#   - Ét forsoeg. Registret indekserer forsinket (5b poller selv 20x3 s), saa en netop udgivet version kan mangle et
+#     oejeblik - og saa ville den raade til unpublish paa en fuldstaendig god udgivelse.
 step "5c. Koldt tjek: henter den udgivne pakke og taler med den"
 if [[ "$SKIP_NPM" == 1 ]]; then warn "sprunget over (--skip-npm: der blev ikke udgivet noget)"
 elif [[ "$SHIP" != 1 ]]; then say "ville hente @agent360/browser-mcp@${NEW_VERSION} med npx og sende initialize"
 else
-  KOLD_HJEM="$(mktemp -d)"
-  say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, saa intet cache-genbrug skjuler en fejl)"
-  KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
-    | HOME="$KOLD_HJEM" npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>/dev/null | head -1 || true)"
-  rm -rf "$KOLD_HJEM" 2>/dev/null || true
-  if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
+  KOLD_OK=0
+  for forsoeg in 1 2 3; do
+    KOLD_HJEM="$(mktemp -d)"
+    say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, forsoeg ${forsoeg}/3)"
+    KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
+      | HOME="$KOLD_HJEM" npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
+    if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
+      KOLD_OK=1; rm -rf "$KOLD_HJEM" 2>/dev/null || true; break
+    fi
+    [[ -s "$KOLD_HJEM/fejl.log" ]] && tail -5 "$KOLD_HJEM/fejl.log" | sed 's/^/    /'
+    rm -rf "$KOLD_HJEM" 2>/dev/null || true
+    [[ $forsoeg -lt 3 ]] && { say "registret har maaske ikke indekseret endnu — venter 15 s"; sleep 15; }
+  done
+  if [[ $KOLD_OK -eq 1 ]]; then
     ok "den udgivne pakke svarer paa MCP-haandtrykket"
   else
-    warn "den udgivne pakke svarede ikke som ventet paa initialize:"
-    echo "    ${KOLD_SVAR:0:200}"
+    echo "    sidste svar: ${KOLD_SVAR:0:200}"
     warn "TILBAGERULNING — og den er smal:"
-    warn "  npm unpublish @agent360/browser-mcp@${NEW_VERSION}   # virker KUN i 72 timer"
-    warn "  Versionsnummeret er braendt for evigt. Ellers: udgiv en rettelse, og flyt latest tilbage med"
-    warn "  npm dist-tag add @agent360/browser-mcp@${CUR_PKG} latest"
+    warn "  npm unpublish @agent360/browser-mcp@${NEW_VERSION}   # kun inden for 72 timer, og kun uden dependents"
+    warn "  Versionsnummeret er braendt for evigt. Vaelg ÉN vej:"
+    warn "    a) unpublish (tagget latest falder selv tilbage), eller"
+    warn "    b) udgiv en rettelse — og flyt kun latest tilbage hvis du IKKE udgiver en ny:"
+    warn "       npm dist-tag add @agent360/browser-mcp@${NPM_LATEST} latest"
+    die "den udgivne pakke svarede ikke paa initialize efter tre forsoeg — registret udgives IKKE mod den"
   fi
 fi
 
