@@ -19,11 +19,11 @@ cd mcp-server && npm install && cd ..
 # 4. Select the extension/ folder
 
 # Add to Claude Code
-claude mcp add browser-mcp node mcp-server/index.js
+claude mcp add browser-mcp -- node "$(pwd)/mcp-server/index.js"
 
 # Test it
-npm --prefix mcp-server test     # 79 tests, no Chrome needed — runs in CI and before every release
-npm --prefix mcp-server run flow # 43-tool flow-test against a REAL Chrome (needs the extension loaded)
+npm --prefix mcp-server test     # the full suite, no Chrome needed — runs in CI and before every release
+npm --prefix mcp-server run flow # every tool against a REAL Chrome (needs the extension loaded)
 
 # Or by hand
 # Open Claude Code and try: browser_navigate("https://example.com")
@@ -52,7 +52,7 @@ extension/           # Chrome extension (Manifest V3)
 
 mcp-server/          # MCP server (Node.js)
   index.js           # MCP server + WebSocket client
-  tools.js           # 34 tool definitions
+  tools.js           # 40 tool definitions
   bin/cli.js         # CLI installer
   package.json       # npm config
 

@@ -19,8 +19,13 @@ import { fileURLToPath } from 'node:url';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 
+// MAALT 12/9 af Fable (e2e runde 3): WISHLIST.md og CONTRIBUTING.md stod uden for vagtens raekkevidde, og begge er
+// offentlige paa GitHub. WISHLIST sagde "MIT, local, no telemetry"; CONTRIBUTING stod med tre foraeldede tal.
 const STIER = ['docs', 'content', 'README.md', 'mcp-server/README.md', 'mcp-server/index.js', 'mcp-server/tools.js',
-  'llms-install.md', 'USE_CASES.md', 'demo-video-src/src', 'extension/popup.html', 'glama.json', 'server.json', 'mcp-server/server.json'];
+  'llms-install.md', 'USE_CASES.md', 'demo-video-src/src', 'extension/popup.html', 'glama.json', 'server.json',
+  'mcp-server/server.json', 'WISHLIST.md', 'CONTRIBUTING.md', 'SECURITY.md'];
+// CHANGELOG.md staar bevidst UDENFOR: den CITERER de gamle formuleringer og tal for at forklare hvad der blev rettet
+// ("Several pages promised that 'nothing leaves your machine'"). Samme grund som revisionsdokumentet nedenfor.
 // Revisionsdokumentet citerer den gamle butikstekst for at forklare hvorfor den skal ud.
 const UNDTAGET = new Set(['docs/CWS_LISTING_TEXT.md']);
 const ENDELSER = /\.(md|html|txt|js|mjs|ts|tsx|json)$/;
@@ -35,9 +40,14 @@ const LOEFTER = [
   [/nothing is transmitted off/i, 'intet sendes ud af maskinen'],
   [/transmits nothing/i, 'sender intet'],
   [/\bNo\. The MCP server runs locally/, 'nej til at data forlader maskinen'],
+  // MAALT 12/9 af Fable: sammenligningstabellen sagde "Data exposure: Stays local" om lokale MCP-servere. Serveren
+  // koerer lokalt, men det den returnerer gaar videre til AI-klienten og dens modeludbyder - samme loefte, nye ord.
+  [/data exposure[^|\n]*\|\s*stays local/i, 'data bliver lokalt'],
+  [/\bMIT, local\b/i, 'local uden at sige hvad der er lokalt'],
 ];
 const FORKERTE_TAL = [
-  [/\b(29|34) (browser )?tools\b/i, 'gammelt vaerktoejstal'],
+  // 12/9: moenstret krævede flertal, saa "34 tool definitions" i CONTRIBUTING slap igennem i otte udgaver.
+  [/\b(29|34) (browser )?tools?\b/i, 'gammelt vaerktoejstal'],
   [/up to 10 concurrent/i, 'gammelt sessionstal'],
   [/\d+% (pass|solve) rate/i, 'opfundet CAPTCHA-procent'],
   // MAALT 11/9 af Fable (e2e runde 2): READMEen sagde "51 checks, 0 failures" fra 1.29.0 og blev kopieret uaendret til

@@ -52,12 +52,12 @@
   <h2>Permissions</h2>
   <p>Browser MCP requests the following Chrome permissions. Each is required for browser automation functionality:</p>
   <ul>
-    <li><strong>tabs, tabGroups, activeTab</strong> - See and switch between tabs, and group each session's tabs by color</li>
-    <li><strong>cookies</strong> - Read/write cookies for the browser_get_cookies / browser_set_cookies tools</li>
+    <li><strong>tabs, tabGroups, activeTab</strong> - See and switch between the session's own tabs, and group them by colour. The agent acts only on tabs the session opened, never on a tab you opened yourself</li>
+    <li><strong>cookies</strong> - Read and write cookies for browser_get_cookies / browser_set_cookies, and only for the http(s) sites the session has open</li>
     <li><strong>scripting</strong> - Execute JavaScript in page context for content reading and interaction</li>
-    <li><strong>debugger</strong> - Chrome DevTools Protocol for reliable mouse/keyboard events on CSP-strict sites</li>
-    <li><strong>webNavigation</strong> - Detect when a page has finished loading before acting on it</li>
-    <li><strong>storage, alarms, offscreen</strong> - Local extension state, the keep-alive timer, and the offscreen document that hosts the WebSocket bridge</li>
+    <li><strong>debugger</strong> - Chrome DevTools Protocol for reliable mouse and keyboard events, screenshots, running scripts on CSP-strict sites, and reading network responses for browser_wait_for_network</li>
+    <li><strong>webNavigation</strong> - List a page's frames, so a tool can reach into an iframe</li>
+    <li><strong>storage, alarms, offscreen</strong> - Local extension state, two timers (one keeps the bridge alive, one releases a port when a session's last tab closes), and the offscreen document that hosts the WebSocket bridge</li>
     <li><strong>notifications</strong> - Alert you when a human-in-the-loop action is needed</li>
     <li><strong>&lt;all_urls&gt; (host permission)</strong> - Browser automation requires access to whatever website you navigate to</li>
   </ul>

@@ -134,7 +134,7 @@ Things we've intentionally decided **not** to do (so you don't have to ask twice
   meaningful CDP compatibility, the answer changes.
 
 - **Usage monetization via a third-party SDK** ([#9](https://github.com/Agent360dk/browser-mcp/issues/9)).
-  MIT, local, no telemetry. That stays.
+  MIT, runs on your machine, no telemetry. That stays.
 
 ## 📋 TODO - samlet, tages løbende
 

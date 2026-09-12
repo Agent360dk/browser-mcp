@@ -26,7 +26,7 @@ Two things follow from that, and they're the ones worth internalising:
 | Runs on | Your machine | Someone else's |
 | Can reach | Your files, your network, your logged-in sessions | Only what you send it |
 | Typical use | Filesystem, git, databases, your browser | Hosted SaaS APIs |
-| Data exposure | Stays local | Leaves your machine |
+| Data exposure | The server runs on your machine; what it returns still goes to your AI client and its model provider | The server itself sees what you send it, and so does your AI client |
 
 If a capability needs *your* environment - your files, your VPN, the browser you're signed into - it has to be local. That's not a preference, it's a constraint.
 
