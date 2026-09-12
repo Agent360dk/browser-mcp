@@ -352,3 +352,17 @@ test('scriptet siger hvad man goer, hvis udgivelsen var forkert', () => {
     'der staar intet om tilbagerulning - og en sikkerhedsudgivelse er netop den man kan faa brug for at traekke');
 });
 
+// MAALT 12/9, min egen fejl: trin 2b's spaerre tjekkede kun for ordet "kode-aftryk". Koert mod Gustavs rigtige Chrome
+// fejlede flowtesten med "forkert dom: conflict - udvidelsen er foraeldet, i konflikt eller ikke forbundet" - og den
+// streng indeholder ikke "kode-aftryk", saa spaerren sagde GROENT paa en konflikt. Beviset for at det er KANDIDATEN
+// der koerer, er hele provide_feedback-tjekket, ikke én formulering af det.
+test('spaerren stopper paa ENHVER fejl i selv-diagnosen, ikke kun paa aftrykket', () => {
+  const k = script();
+  const i = k.indexOf('2b. Flow-spaerre');
+  const blok = k.slice(i, k.indexOf('3. Chrome Web Store publish'));
+  assert.match(blok, /provide_feedback/,
+    'spaerren ser ikke paa selv-diagnosen som helhed - en konflikt eller en foraeldet udvidelse slipper igennem');
+  assert.doesNotMatch(blok, /grep -q "kode-aftryk"/,
+    'spaerren hviler stadig paa én formulering af fejlen i stedet for paa tjekket');
+});
+

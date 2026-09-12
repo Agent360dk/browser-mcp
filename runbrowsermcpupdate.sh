@@ -403,10 +403,15 @@ else
     die "flow-testen kunne slet ikke koere. Er Chrome aaben med PRAECIS én udvidelse indlaest — repoets extension/? (--skip-flow udgiver i blinde)"
   fi
   grep -E "^DAEKNING:" "$FLOW_UD" | sed 's/^/  /'
-  # Aftrykket er det ene tjek der beviser at det er DENNE kode der koerer. Fejler det, er alt andet ligegyldigt.
-  if grep -q "kode-aftryk" "$FLOW_UD"; then
-    grep "kode-aftryk" "$FLOW_UD" | head -2 | sed 's/^/    /'
-    die "Chrome koerer ikke den kode der udgives. Genindlaes repoets extension/ og koer igen"
+  # browser_provide_feedback ER beviset for at det er KANDIDATEN der koerer: praecis én forbundet udvidelse, hvis
+  # version er serverens, og hvis kode-aftryk er repoets. Fejler DET tjek - uanset hvordan fejlen er formuleret -
+  # er alt andet ligegyldigt.
+  # MAALT 12/9, min egen fejl: her stod et tjek paa ÉN streng (ordet for aftrykket). Koert mod en Chrome med to udvidelser fejlede
+  # flowtesten med "forkert dom: conflict ...", som ikke indeholder den streng - og spaerren sagde GROENT paa en
+  # konflikt. En spaerre der hviler paa én formulering af fejlen, er ingen spaerre.
+  if sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | grep -q "browser_provide_feedback"; then
+    sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | grep "browser_provide_feedback" | head -2 | sed 's/^/    /'
+    die "selv-diagnosen siger at det ikke er kandidaten der koerer (foraeldet, i konflikt, eller forkert kode-aftryk). Slaa de andre Browser MCP-udvidelser fra, indlaes repoets extension/, og koer igen"
   fi
   ok "flow-spaerren er groen paa den kode der udgives"
 fi
