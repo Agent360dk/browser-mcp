@@ -155,17 +155,20 @@ test('get_cookies: en inkognitofane med kendt lager laeser sit eget lager (posit
 // MAALT 11/9 af Opus og Fable (e2e-review): get_cookies er begraenset til sessionens egne sider, men set_cookies satte
 // cookies paa ETHVERT domaene - ogsaa banker sessionen aldrig har aabnet. Butikkens egen begrundelse lovede det modsatte.
 // Samme regel som laesningen: kun de http(s)-sider sessionen har aabne.
-function saetSele(cookies = [], { url = 'https://a.example.com/', incognito = false, lagre = [] } = {}) {
-  const fane = { id: 1, url, windowId: 1, active: true, incognito };
+function saetSele(cookies = [], { url = 'https://a.example.com/', urls = null, incognito = false, lagre = [] } = {}) {
+  const adresser = urls || [url];
+  const faner = adresser.map((a, i) => ({ id: i + 1, url: a, windowId: 1, active: i === 0, incognito }));
   const satte = [];
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
-    'tabs.get': fane, 'tabs.query': [fane],
+    'tabs.get': (id) => faner.find((f) => f.id === id) || faner[0], 'tabs.query': faner,
     'cookies.getAllCookieStores': lagre,
     'cookies.set': (c) => { satte.push(c); return { ...c }; },
     'cookies.getAll': () => cookies,
   } });
-  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  u.hent('sessions').set(9876, {
+    tabIds: new Set(faner.map((f) => f.id)), activeTabId: 1, groupId: 1, label: 't', color: 'blue',
+  });
   return { u, satte };
 }
 
@@ -197,6 +200,28 @@ test('set_cookies: et underdomaene sessionen ikke har aabnet, afvises', async ()
   const { u, satte } = saetSele([], { url: 'https://example.com/' });   // Astras scenarie: sessionen staar paa selve example.com
   const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'bank.example.com' }] });
   assert.equal(satte.length, 0, `cookien blev sat paa et uaabnet underdomaene: ${JSON.stringify(satte)}`);
+  assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
+});
+
+// MAALT 12/9 af Astra (efterproevning af 19d036a): sessionen har baade a.example.com og example.com aabne. Et kald med
+// url https://example.com/login og UDEN domain blev skrevet paa a.example.com - fordi slaegtskabs-tjekket tog den
+// foerste fane der ENDTE paa domaenet, og adressen derefter blev bygget af netop den side. Svaret var ok:true, saa
+// hverken agenten eller brugeren kunne se at cookien landede paa en anden vaert. Uden `domain` er en cookie host-only
+// (Chromes cookies.set), saa vaerten ER hele betydningen.
+test('set_cookies: en vaert sessionen HAR aabnet, vinder over et underdomaene der blot ender paa den', async () => {
+  const { u, satte } = saetSele([], { urls: ['https://a.example.com/', 'https://example.com/'] });
+  const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', url: 'https://example.com/login' }] });
+  assert.equal(satte.length, 1, `cookien blev ikke sat: ${JSON.stringify(r)}`);
+  assert.match(String(satte[0].url), /^https:\/\/example\.com\//,
+    `cookien landede paa en anden vaert end den der blev bedt om: ${satte[0].url}`);
+});
+
+// Samme fund, den anden halvdel: er den noejagtige vaert IKKE aaben, og kalderen ikke selv har sagt `domain`, saa kan
+// oensket (en host-only cookie paa example.com) slet ikke opfyldes. Foer landede den paa underdomaenet med ok:true.
+test('set_cookies: en host-only cookie til en vaert sessionen ikke har aabnet, afvises', async () => {
+  const { u, satte } = saetSele([], { url: 'https://a.example.com/' });
+  const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', url: 'https://example.com/login' }] });
+  assert.equal(satte.length, 0, `cookien landede paa en anden vaert: ${JSON.stringify(satte)}`);
   assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
 });
 

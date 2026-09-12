@@ -2886,10 +2886,12 @@ async function dispatch(port, method, params) {
       const igangvaerende = [];   // alle optagelser der stadig kan svare, paa tvaers af runder
       const tryCapture = async ({ sidsteUdvej = false } = {}) => {
         const reserveret = sidsteUdvej ? 0 : haevMs;   // kun foerste runde holder tid fri til haevningen
+        const denneRunde = [];
         const optag = (p) => {
           const kald = cdpSend(tab.id, 'Page.captureScreenshot', p);
           kald.catch(() => {});   // et svar efter budgettet er ligegyldigt
           igangvaerende.push(kald);
+          denneRunde.push(kald);
           return kald;
         };
         const medFrist = async (loefte, ms) => {
@@ -2922,13 +2924,21 @@ async function dispatch(port, method, params) {
           // fristen paa 10 s havde kasseret standardbilledet. Standardoptagelsen loeber derfor videre efter sin frist, og
           // den af de to der lykkes foerst inden for budgettet, vinder.
           optag({ format: 'png', fromSurface: false, captureBeyondViewport: false });
-          // Alle optagelser der stadig kan svare, taeller med - ogsaa dem fra en tidligere runde. Promise.any ser bort fra
-          // dem der allerede er fejlet, saa den foerste der lykkes inden for budgettet vinder.
-          const kandidater = igangvaerende.slice();
           try {
             // Den haevede runde er sidste udvej paa en tildaekket skaerm og skal have tid tilbage (haevMs) - ellers naar
             // 1.29.0's eneste virkende vej aldrig frem (Fable, e2e 11/9).
-            const shot = await medFrist(Promise.any(kandidater), budgetSlut - reserveret - Date.now());
+            // MAALT 12/9 af Astra: alle igangvaerende optagelser laa i den SAMME Promise.any, saa et gammelt billede fra
+            // foer haevningen kunne svare foerst og vinde - selv om siden havde aendret sig imens. Rundens EGNE optagelser
+            // afgoer nu svaret; de aeldre taeller stadig med, men kun hvis rundens egne ikke naar frem.
+            let shot;
+            try {
+              shot = await medFrist(Promise.any(denneRunde), budgetSlut - reserveret - Date.now());
+            } catch (rundeFejl) {
+              const aeldre = igangvaerende.filter((k) => !denneRunde.includes(k));
+              if (!aeldre.length) throw rundeFejl;
+              // Et aeldre billede der ALLEREDE er kommet, svarer i samme oejeblik - ogsaa naar budgettet er brugt op.
+              shot = await medFrist(Promise.any(aeldre), budgetSlut - Date.now());
+            }
             return { image: 'data:image/png;base64,' + shot.data };
           } catch (andenFejl) {
             const fejl = andenFejl instanceof AggregateError ? andenFejl.errors[andenFejl.errors.length - 1] : andenFejl;
@@ -4170,20 +4180,26 @@ async function dispatch(port, method, params) {
         };
       }
       // Sidens vaert faar cookies fra sig selv og fra sine overdomaener - ikke fra et underdomaene den ikke har aabnet.
-      const saetSideFor = (cd) => saetSider.find((s) => s.vaert === cd || s.vaert.endsWith('.' + cd));
+      // MAALT 12/9 af Astra: `find` tog den FOERSTE fane der endte paa domaenet, saa en aaben a.example.com vandt over en
+      // lige saa aaben example.com - og adressen blev derefter bygget af den forkerte vaert. Den noejagtige vaert vinder nu.
+      // Slaegtskabs-stien (sidens vaert faar cookies fra sit overdomaene) kraever at kalderen SELV har sagt `domain`:
+      // uden `domain` er cookien host-only, og saa kan oensket ikke opfyldes fra et underdomaene.
+      const saetSideFor = (cd, eksplicitDomaene) =>
+        saetSider.find((s) => s.vaert === cd)
+        || (eksplicitDomaene ? saetSider.find((s) => s.vaert.endsWith('.' + cd)) : undefined);
       const results = [];
       const cookieList = Array.isArray(params.cookies) ? params.cookies : [params];
       for (const c of cookieList) {
         let cd = String(c.domain || '').trim().toLowerCase().replace(/^\.+/, '');
         if (!cd && c.url) { try { cd = new URL(c.url).hostname.toLowerCase(); } catch {} }
         try { if (cd) cd = new URL('http://' + cd + '/').hostname; } catch {}
-        const side = cd ? saetSideFor(cd) : null;
+        const side = cd ? saetSideFor(cd, Boolean(String(c.domain || '').trim())) : null;
         if (!side) {
           results.push({
             ok: false, name: c.name, error: 'domaene-ikke-i-sessionen', domain: cd || null,
             aabne: saetSider.map((s) => s.vaert),
             hint: 'Cookies kan kun saettes for http(s)-sider denne session har aabne, og kun for sidens eget domaene ' +
-                  'eller et overdomaene den faar cookies fra. Naviger til siden foerst.',
+                  'eller - hvis du selv angiver domain - et overdomaene den faar cookies fra. Naviger til siden foerst.',
           });
           continue;
         }

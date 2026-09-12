@@ -47,7 +47,10 @@ function caseBlok(kilde, navn) {
   const start = kilde.indexOf(`case '${navn}'`);
   if (start < 0) return '';
   const naeste = kilde.indexOf("\n      case '", start + 10);
-  return kilde.slice(start, naeste > start ? naeste : start + 8000);
+  // Er der ingen naeste case, er det switchens SIDSTE - og saa er blokken resten. Loftet paa 8000 tegn stod her foer, og
+  // det gjorde proeven blind: 12/9 gled 'screenshot'-casens fokus-linje ud paa tegn 8493, og proeven blev roed uden at
+  // linjen var vaek. En for lille rude er et blindt instrument.
+  return naeste > start ? kilde.slice(start, naeste) : kilde.slice(start);
 }
 
 test('screenshot fotograferer uden at skifte fane', () => {

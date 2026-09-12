@@ -123,6 +123,28 @@ test('den haevede runde: en optagelse der allerede loeb, taeller stadig med', as
   assert.match(String(svar.image), /FOERSTE-(STANDARD|RESERVE)/, `billedet fra de igangvaerende optagelser blev smidt vaek: ${JSON.stringify(svar).slice(0, 200)}`);
 });
 
+// MAALT 12/9 af Astra (efterproevning af 19d036a): de igangvaerende optagelser blev baaret med over i den HAEVEDE runde,
+// og Promise.any tog den foerste der svarede. Aendrede siden sig ved haevningen, vandt det gamle, forsinkede billede:
+// baseline leverede sidens nye indhold efter 17,2 s, kandidaten det gamle efter 18,4 s. Et forældet skaermbillede er
+// vaerre end ingen: agenten handler paa noget der ikke staar der mere.
+// De igangvaerende taeller stadig med (proeven ovenfor) - men kun som reserve, hvis den friske optagelse ikke naar frem.
+test('den haevede runde: et frisk billede slaar et gammelt, forsinket et', async () => {
+  let haevet = false;
+  const svarPaaFoerste = [];
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    if (haevet) return new Promise((ok) => setTimeout(() => ok({ data: 'EFTER-HAEVNINGEN' }), 200));
+    return new Promise((ok) => svarPaaFoerste.push(() => ok({ data: 'FOER-HAEVNINGEN' })));
+  } });
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 4000, haevMs: 1500 });
+  const opdater = u.chrome.windows.update;
+  // Haevningen aendrer hvad der staar paa skaermen - og lige dér svarer de gamle optagelser med det GAMLE indhold.
+  u.chrome.windows.update = (...a) => { haevet = true; svarPaaFoerste.forEach((f) => f()); return opdater(...a); };
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.match(String(svar.image), /EFTER-HAEVNINGEN/,
+    `et forældet billede fra foer haevningen blev leveret: ${JSON.stringify(svar).slice(0, 200)}`);
+});
+
 test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - og hoejst én runde med haevet vindue', async () => {
   // Sign-off 11/9 (Astra, R5 F8): HEAD sprang fromSurface:false over efter en frist. I 1.29.0 var det netop fristen
   // der sendte kaldet videre til den, og den leverede billedet. Reserven proeves; en ny runde med haevet vindue ikke.
