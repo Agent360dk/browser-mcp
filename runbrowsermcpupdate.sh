@@ -176,6 +176,11 @@ MANAGED=(
   mcp-server/README.md
   README.md
   docs/index.html
+  # MAALT 12/9 af Astra: trin 1d-3 skriver CHANGELOG-overskriften om fra "(not released yet)" til datoen - men filen stod
+  # hverken her eller i `git add` nedenfor. Aendringen blev derfor aldrig committet: den PUSHEDE CHANGELOG.md sagde
+  # fortsat "not released yet", altsaa praecis det trinnet skulle lukke. Og filen stod beskidt bagefter, saa NAESTE
+  # koersels stray-tjek doede paa den.
+  CHANGELOG.md
 )
 is_managed() { # path → 0 if under a managed prefix
   local p="$1" m
@@ -401,7 +406,8 @@ else
   # ("files" i package.json). npm kunne faa en version der ikke fandtes i noget commit.
   run git add extension mcp-server/extension mcp-server/index.js mcp-server/tools.js mcp-server/bin \
               mcp-server/package.json mcp-server/package-lock.json \
-              mcp-server/server.json server.json mcp-server/README.md README.md docs/index.html
+              mcp-server/server.json server.json mcp-server/README.md README.md docs/index.html \
+              CHANGELOG.md
 
   # commit only if something is staged — a resumed run (already committed) must
   # NOT abort here under set -e and strand the tag/push/release that follow.

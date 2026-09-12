@@ -885,6 +885,10 @@ function klikLandede(r) {
   return r?.landed === true || r?.detached === true;
 }
 
+// Teksten der foelger med et uvist klik. Staar ét sted, fordi den skal vaere ens for click, click_xy og select_option -
+// tre kaldesteder med den samme regel har foer drevet fra hinanden (select_option havde den gamle i to udgaver).
+const UVIST_NOTE = 'Klikket blev sendt, og siden aendrede sig paa mousedown - men ikke af selve klikket. Det kan vaere en ripple, og det kan vaere en menu der aabner paa mousedown. Tjek tilstanden foer du klikker igen: et klik nummer to lukker en menu der allerede er aaben.';
+
 // MAALT 10/9 af Astra (anden runde): et settle-opslag der FEJLEDE gav null, og null blev til ok:true.
 // Men den hyppigste grund til at opslaget fejler er at klikket navigerede - det er en virkning, og agenten
 // maa ikke faa at vide at den skal klikke igen.
@@ -3194,6 +3198,10 @@ async function dispatch(port, method, params) {
           // altsaa ja og nej i samme aandedrag, og en agent laeser `ok`.
           // Et element der forsvandt ER en virkning — derfor tæller `detached` som landet.
           ok: klikLandede(clickResult),
+          // MAALT 12/9 af Astra: `uvist` blev regnet ud i settle-udtrykket og spredt ud i svaret - men INTET sted
+          // oversatte det til maaske_landet, og instruksen naevner det ikke. Agenten fik et bart ok:false, hvor 1.29.0
+          // gav ok:true - og et bart nej er netop dét der faar en agent til at klikke igen. Klik nummer to lukker menuen.
+          ...(clickResult?.uvist ? { maaske_landet: true, note: UVIST_NOTE } : {}),
           method: el.method || 'debugger',
           tag: el.tag,
           text: el.text,
@@ -3756,6 +3764,8 @@ async function dispatch(port, method, params) {
         ok: klikLandede(klik),
         clicked_at: { x: params.x, y: params.y },
         ...(klik || {}),
+        // Samme som click: et uvist klik maa ikke se ud som et afvist klik.
+        ...(klik?.uvist ? { maaske_landet: true, note: UVIST_NOTE } : {}),
       };
     }
 
@@ -3905,9 +3915,13 @@ async function dispatch(port, method, params) {
         ok: klikLandede(valgKlik),
         type: 'custom_dropdown',
         selected: oensket,
-        ...(!klikLandede(valgKlik)
-          ? { error: 'Klikket paa muligheden blev ikke taget imod af siden: ' + oensket }
-          : {}),
+        // MAALT 12/9 af Astra: her stod fejlteksten paa ALT der ikke var bevist landet - ogsaa naar koden lige havde
+        // regnet ud at den IKKE ved det. En skarp benaegtelse oven paa en uvished er mindre aerlig end ingen tekst.
+        ...(valgKlik?.uvist
+          ? { maaske_landet: true, note: UVIST_NOTE }
+          : !klikLandede(valgKlik)
+            ? { error: 'Klikket paa muligheden blev ikke taget imod af siden: ' + oensket }
+            : {}),
       };
     }
 

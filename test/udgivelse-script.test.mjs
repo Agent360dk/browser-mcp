@@ -292,6 +292,12 @@ test('udgivelsen skriver CHANGELOG-overskriften om fra "not released yet" til da
   assert.match(script(), /not released yet/, 'overskriften skrives ikke om - den gaar offentlig som "not released yet"');
   assert.match(script(), /CHANGELOG\.md/, 'CHANGELOG.md roeres ikke af versionsbumpet');
   assert.match(script(), /die "CHANGELOG still says/, 'der er ingen gate: glider regexen, opdager ingen det');
+  // MAALT 12/9 af Astra: omskrivningen skete i arbejdstraeet, men CHANGELOG.md stod hverken i MANAGED eller i `git add`.
+  // Den pushede fil sagde derfor fortsat "not released yet" - og filen stod beskidt, saa naeste koersel doede paa den.
+  const forvaltet = script().slice(script().indexOf('MANAGED=('), script().indexOf('is_managed()'));
+  assert.match(forvaltet, /^\s*CHANGELOG\.md\s*$/m, 'CHANGELOG.md er ikke forvaltet - saa staar den beskidt efter koerslen');
+  const stage = script().slice(script().indexOf('run git add '), script().indexOf('run git add ') + 420);
+  assert.match(stage, /CHANGELOG\.md/, 'CHANGELOG.md stages ikke - omskrivningen naar aldrig ud i pushet');
 });
 
 // MAALT samme runde: fejler koerslen EFTER butiks-uploaden men FOER npm, afviser butikken den samme version ved en
