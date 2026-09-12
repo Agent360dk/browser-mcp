@@ -315,3 +315,23 @@ test('butikstrinnet siger selv hvad man goer, hvis koerslen fejler efter det', (
 test('GitHub-udgivelsen har den titel kladden lover', () => {
   assert.match(script(), /--title "Browser MCP \$\{NEW_VERSION\}"/, 'udgivelsestitlen matcher ikke kladden');
 });
+
+// MAALT 12/9: flow-spaerren laa INDE i butikstrinnet, saa `--skip-cws` sprang ogsaa SPAERREN over - og npm og GitHub
+// fik koden uden at den levende kontrol havde koert. Astra: "uden den udgiver du reelt i blinde". Spaerren har nu sit
+// eget trin FOER alt uigenkaldeligt, og den kan kun springes over med et eksplicit flag der siger hvad det koster.
+test('flow-spaerren har sit eget trin FOER butik, GitHub og npm', () => {
+  const k = script();
+  const iFlow = k.indexOf('2b. Flow-spaerre');
+  assert.ok(iFlow > -1, 'der er intet selvstaendigt flow-trin - saa forsvinder spaerren sammen med --skip-cws');
+  const iButik = k.indexOf('3. Chrome Web Store publish');
+  const iGitHub = k.indexOf('4. GitHub: commit');
+  assert.ok(iFlow < iButik && iFlow < iGitHub,
+    'flow-trinnet ligger EFTER en uigenkaldelig kanal - det er for sent at opdage at koden ikke koerer');
+});
+
+test('spaerren kan kun springes over med et eksplicit flag', () => {
+  const k = script();
+  assert.match(k, /--skip-flow/, 'der er ingen maade at springe spaerren over bevidst');
+  assert.match(k, /udgiver i blinde/, 'flaget siger ikke hvad det koster');
+});
+

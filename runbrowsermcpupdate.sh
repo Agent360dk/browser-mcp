@@ -25,6 +25,7 @@
 #   --skip-npm        Don't publish to npm (e.g. token expired — fix with `npm login`)
 #   --skip-registry   Don't publish to the MCP registry (needs mcp-publisher + gh read:org)
 #   --skip-cws        Don't publish to Chrome Web Store
+#   --skip-flow       Skip the live browser gate (you publish blind — see step 2b)
 #   --skip-github     Don't commit/tag/push/release on GitHub
 #   --skip-local      Don't refresh ~/.browser-mcp/extension/
 #   --cws-draft       Upload to CWS but leave as draft (no auto-submit for review)
@@ -52,7 +53,7 @@ step() { echo; echo "${B}━━ $* ━━${Z}"; }
 # ── arg parse ────────────────────────────────────────────────────────────────
 NEW_VERSION=""
 SHIP=0
-SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0
+SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
   case "$arg" in
@@ -60,6 +61,7 @@ for arg in "$@"; do
     --skip-npm)    SKIP_NPM=1 ;;
     --skip-registry) SKIP_REGISTRY=1 ;;
     --skip-cws)    SKIP_CWS=1 ;;
+    --skip-flow)   SKIP_FLOW=1 ;;
     --skip-github) SKIP_GITHUB=1 ;;
     --skip-local)  SKIP_LOCAL=1 ;;
     --cws-draft)   CWS_DRAFT=1 ;;
@@ -382,6 +384,32 @@ else
   rm -rf "$SMOKE_DIR"
 fi
 
+
+# ── 2b. Flow-spaerre mod en aegte Chrome ──────────────────────────────────────
+# MAALT 12/9 (Astra + Fable, konsultation): spaerren laa KUN inde i butikstrinnet, saa `--skip-cws` sprang ogsaa
+# spaerren over - og npm og GitHub fik koden uden at nogen levende kontrol havde koert. Astra maalte desuden at en
+# GAMMEL service worker kan koere videre selv om ny kode ligger paa disken; kode-aftrykket hasher FILER og kan ikke
+# se det. Kun en levende koersel kan. Derfor har spaerren nu sit eget trin, foer alt uigenkaldeligt.
+# (Butikstrinnet koerer sin egen spaerre bagefter. At den koerer to gange er harmloest - at den slet ikke koerer er ikke.)
+step "2b. Flow-spaerre mod en aegte Chrome"
+if [[ "$SKIP_FLOW" == 1 || "${SPRING_FLOW_OVER:-}" == "1" ]]; then
+  warn "sprunget over — du udgiver i blinde: ingen har set koden koere i en browser"
+else
+  FLOW_UD="$(mktemp)"
+  say "npm --prefix mcp-server run flow"
+  npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
+  if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
+    tail -20 "$FLOW_UD" | sed 's/^/    /'
+    die "flow-testen kunne slet ikke koere. Er Chrome aaben med PRAECIS én udvidelse indlaest — repoets extension/? (--skip-flow udgiver i blinde)"
+  fi
+  grep -E "^DAEKNING:" "$FLOW_UD" | sed 's/^/  /'
+  # Aftrykket er det ene tjek der beviser at det er DENNE kode der koerer. Fejler det, er alt andet ligegyldigt.
+  if grep -q "kode-aftryk" "$FLOW_UD"; then
+    grep "kode-aftryk" "$FLOW_UD" | head -2 | sed 's/^/    /'
+    die "Chrome koerer ikke den kode der udgives. Genindlaes repoets extension/ og koer igen"
+  fi
+  ok "flow-spaerren er groen paa den kode der udgives"
+fi
 
 # ── 3. Chrome Web Store ───────────────────────────────────────────────────────
 step "3. Chrome Web Store publish"
