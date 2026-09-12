@@ -46,8 +46,22 @@ function minVersion() {
   try { return new URLSearchParams(location.search).get('v') || null; } catch { return null; }
 }
 
-const BASE_PORT = 9876;
-const MAX_PORT = 9895;
+// Portomraadet kommer fra dokumentets egen adresse, sat af background.js ud fra chrome.storage.local.
+// Standarden er 9876-9895. En isoleret testbrowser kan flytte den UDEN at repoets filer aendrer sig, saa
+// kode-aftrykket - og dermed udgivelsens spaerre - er uroert. Vagten staar begge steder: en vaerdi er kun gyldig
+// hvis den er to tal i et fornuftigt spaend. (Astra 12/9.)
+function portOmraade() {
+  try {
+    const v = new URLSearchParams(location.search).get('porte');
+    const m = /^(\d{4,5})-(\d{4,5})$/.exec(v || '');
+    if (m) {
+      const fra = Number(m[1]), til = Number(m[2]);
+      if (fra >= 1024 && til <= 65535 && til >= fra && til - fra < 200) return [fra, til];
+    }
+  } catch {}
+  return [9876, 9895];
+}
+const [BASE_PORT, MAX_PORT] = portOmraade();
 const connections = new Map(); // port → WebSocket
 
 // ── Hvorfor porte foerst PROBES med fetch, og ikke bare aabnes (MAALT 22/8) ──────

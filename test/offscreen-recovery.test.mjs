@@ -69,6 +69,10 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
   const src = [
     udklip('MAX_OFFSCREEN_GENSKAB', false),
     udklip('OFFSCREEN_PAUSE_MS', false),
+    // 12/9: ensureOffscreen laeser nu et alternativt portomraade fra chrome.storage, saa en testbrowser kan
+    // isoleres uden at repoets filer aendrer sig. Hjaelperen skal med, ellers maaler selen en anden funktion.
+    udklip('PORTE_MAX_SPAEND', false),
+    udklip('portOmraadeFraLager'),
     udklip('offscreenSvarer'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',

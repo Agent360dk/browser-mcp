@@ -60,14 +60,20 @@ test('portspaendet tillader lige saa mange sessioner som loftet tillader faner',
   // Ikke et krav i sig selv, men det er begrundelsen for tallet 20. Driver de fra
   // hinanden, er én af de to steder blevet aendret uden den anden.
   const off = readFileSync(join(rod, 'extension/offscreen.js'), 'utf8');
-  const base = Number(off.match(/const BASE_PORT = (\d+);/)[1]);
-  const maks = Number(off.match(/const MAX_PORT = (\d+);/)[1]);
+  // 12/9: konstanterne blev til en standard inde i portOmraade(), saa en testbrowser kan isoleres uden at
+  // repoets filer aendrer sig. Vagtens hensigt er uaendret - den laeser bare standarden dér hvor den nu staar.
+  const std = off.match(/return \[(\d+), (\d+)\];/);
+  assert.ok(std, 'standard-portomraadet kunne ikke laeses i offscreen.js - er formen aendret?');
+  const base = Number(std[1]);
+  const maks = Number(std[2]);
   assert.equal(maks - base + 1, LOFT, `portspaend ${base}-${maks} = ${maks - base + 1} sessioner, men fane-loftet er ${LOFT}`);
 });
 
 test('serveren scanner det samme portspaend som udvidelsen', () => {
   const srv = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
   const off = readFileSync(join(rod, 'extension/offscreen.js'), 'utf8');
+  const std = off.match(/return \[(\d+), (\d+)\];/);
+  assert.ok(std, 'standard-portomraadet kunne ikke laeses i offscreen.js');
   // Serveren fik 7/9 en env-override paa spaendet, saa port-testen kan koere uden at
   // beslaglaegge brugerens rigtige porte. STANDARDEN — tallet efter `||` — skal stadig
   // vaere den samme som udvidelsens, ellers findes der servere den aldrig forbinder til.
@@ -76,8 +82,8 @@ test('serveren scanner det samme portspaend som udvidelsen', () => {
     assert.ok(m, `${navn} kunne ikke laeses — er formen aendret?`);
     return m[1];
   };
-  assert.equal(tal(srv, 'BASE_PORT'), tal(off, 'BASE_PORT'));
-  assert.equal(tal(srv, 'MAX_PORT'), tal(off, 'MAX_PORT'),
+  assert.equal(tal(srv, 'BASE_PORT'), std[1]);
+  assert.equal(tal(srv, 'MAX_PORT'), std[2],
     'driver spaendene fra hinanden, findes servere som udvidelsen aldrig forbinder til');
 });
 

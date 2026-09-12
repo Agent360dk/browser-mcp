@@ -1568,6 +1568,20 @@ async function offscreenSvarer() {
 const MAX_OFFSCREEN_GENSKAB = 3;
 const OFFSCREEN_PAUSE_MS = 10 * 60 * 1000;
 
+// Et omraade paa mere end dette ville faa HVER brugers browser til at probe tusindvis af porte hvert andet sekund.
+const PORTE_MAX_SPAEND = 200;
+/** Laeser et alternativt portomraade fra chrome.storage.local. Ugyldigt = standarden (9876-9895) staar. */
+async function portOmraadeFraLager() {
+  try {
+    const { bmcpPorte } = await chrome.storage.local.get({ bmcpPorte: null });
+    const m = /^(\d{4,5})-(\d{4,5})$/.exec(String(bmcpPorte ?? ''));
+    if (!m) return null;
+    const fra = Number(m[1]), til = Number(m[2]);
+    if (fra < 1024 || til > 65535 || til < fra || til - fra >= PORTE_MAX_SPAEND) return null;
+    return fra + '-' + til;
+  } catch { return null; }
+}
+
 async function ensureOffscreen() {
   const findes = await chrome.offscreen.hasDocument();
 
@@ -1625,8 +1639,15 @@ async function ensureOffscreen() {
   // baerer den aeldre version, hvilket er praecis den skelnen tjekket skal bruge.
   let minVersion = '';
   try { minVersion = chrome.runtime.getManifest().version; } catch {}
+  // Portomraadet foelger samme vej som versionen. MAALT 12/9 af Astra: serveren sender kun til den NYESTE forbundne
+  // udvidelse, saa en testbrowser paa de samme porte bliver "nyeste" for hver eneste koerende chats server. Et
+  // omraade i chrome.storage.local lader én profil koere isoleret - og fordi det er en VAERDI og ikke en kodeaendring,
+  // er repoets filer byte-identiske, og udgivelsens kode-aftryk er uroert. (Mit foerste forslag, at flytte portene
+  // til manifestet, ville have fjernet dem fra aftrykket - Astra maalte at de ligger i offscreen.js, som hashes.)
+  const porteParam = await portOmraadeFraLager();
   await chrome.offscreen.createDocument({
-    url: 'offscreen.html' + (minVersion ? '?v=' + encodeURIComponent(minVersion) : ''),
+    url: 'offscreen.html' + (minVersion ? '?v=' + encodeURIComponent(minVersion) : '')
+         + (porteParam ? (minVersion ? '&' : '?') + 'porte=' + porteParam : ''),
     reasons: ['WORKERS'],
     justification: 'Maintain persistent WebSocket connection to local MCP server',
   });
