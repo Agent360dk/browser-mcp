@@ -14,7 +14,7 @@
 
 **2 - Add the MCP server in ZCode.** **Settings → MCP Servers → New MCP Server** - scope `User`, name `browser-mcp`, type `stdio`, command `npx`, argument `@agent360/browser-mcp@latest`. Required - the extension does nothing on its own.
 
-**3 - Restart ZCode.** That is what starts the server. The extension icon stays grey until step 4 - the server only takes a port the first time your agent actually uses the browser, so grey here is normal.
+**3 - Restart ZCode.** That is what starts the server. The extension shows no badge until step 4 - the server only takes a port the first time your agent actually uses the browser. A green badge with the number of connected agents appears then; nothing on the icon before that is normal. (The icon itself never changes colour - it is the badge that turns green.)
 
 **4 - Say this, to check it worked.** Paste it to your ZCode agent:
 

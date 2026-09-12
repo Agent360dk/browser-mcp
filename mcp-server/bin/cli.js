@@ -182,7 +182,7 @@ function install({ skipExtension = false } = {}) {
 📋 Last step:
   1. Make sure the Agent360 Browser MCP extension is enabled at chrome://extensions
   2. Restart your AI client so it picks up the server
-  3. Ask your agent to use the browser once — the extension icon turns green the first
+  3. Ask your agent to use the browser once — a green badge appears on the extension icon the first
      time it is actually used, not on restart. Grey before that is normal.`);
   } else {
     console.log(`

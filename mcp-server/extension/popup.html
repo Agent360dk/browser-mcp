@@ -68,7 +68,8 @@
   </div>
 
   <div class="setup" id="setup">
-    <p><b>This extension is only half of Browser MCP.</b> It needs a local MCP server to talk to - the Chrome Web Store cannot install that part. Register it once, then restart your agent. Claude Code:</p>
+    <p><b>Already registered the server?</b> Then this is normal: the server only takes a port the first time your agent actually uses the browser. Ask it for a screenshot once, and this turns into "Connected".</p>
+    <p><b>Otherwise: this extension is only half of Browser MCP.</b> It needs a local MCP server to talk to - the Chrome Web Store cannot install that part. Register it once, then restart your agent. Claude Code:</p>
     <code id="setupCmd">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
     <p class="clients">Codex: <code>codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest</code><br>
       Cursor, VS Code and the rest: run <code>npx @agent360/browser-mcp install</code> — it registers with the clients you have.</p>

@@ -14,7 +14,7 @@
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-**3 - Restart Claude Code.** That is what starts the server. The extension icon stays grey until step 4 - the server only takes a port the first time your agent actually uses the browser, so grey here is normal.
+**3 - Restart Claude Code.** That is what starts the server. The extension shows no badge until step 4 - the server only takes a port the first time your agent actually uses the browser. A green badge with the number of connected agents appears then; nothing on the icon before that is normal. (The icon itself never changes colour - it is the badge that turns green.)
 
 **4 - Say this, to check it worked.** Paste it to Claude Code:
 
@@ -154,7 +154,7 @@ claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 
 That registers the server and leaves your store-installed extension alone. Restart Claude Code afterwards.
 
-**Installed from the store and the icon says "Not connected"?** That is Step 1 missing - not a bug. Run the command above, restart Claude Code, and it goes green.
+**Installed from the store and the icon says "Not connected"?** That is Step 1 missing - not a bug. Run the command above and restart Claude Code. It still says "Not connected" until you ask Claude to use the browser once - that first call is what starts the connection.
 
 ---
 

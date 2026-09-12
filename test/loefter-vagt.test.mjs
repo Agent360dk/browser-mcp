@@ -21,7 +21,9 @@ const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 
 // MAALT 12/9 af Fable (e2e runde 3): WISHLIST.md og CONTRIBUTING.md stod uden for vagtens raekkevidde, og begge er
 // offentlige paa GitHub. WISHLIST sagde "MIT, local, no telemetry"; CONTRIBUTING stod med tre foraeldede tal.
-const STIER = ['docs', 'content', 'README.md', 'mcp-server/README.md', 'mcp-server/index.js', 'mcp-server/tools.js',
+const STIER = ['docs', 'content', 'README.md', 'mcp-server/README.md', 'mcp-server/index.js', 'mcp-server/tools.js', 'mcp-server/bin/cli.js',
+  // MAALT 13/9: cli.js laa uden for vagten, selvom den skriver installationsvejledningen til HVER ny bruger.
+  // Den bar bade den falske groenne-ikon-paastand og et loefte om helt automatiske opdateringer.
   'llms-install.md', 'USE_CASES.md', 'demo-video-src/src', 'extension/popup.html', 'glama.json', 'server.json',
   'mcp-server/server.json', 'WISHLIST.md', 'CONTRIBUTING.md', 'SECURITY.md'];
 // CHANGELOG.md staar bevidst UDENFOR: den CITERER de gamle formuleringer og tal for at forklare hvad der blev rettet
@@ -44,6 +46,16 @@ const LOEFTER = [
   // koerer lokalt, men det den returnerer gaar videre til AI-klienten og dens modeludbyder - samme loefte, nye ord.
   [/data exposure[^|\n]*\|\s*stays local/i, 'data bliver lokalt'],
   [/\bMIT, local\b/i, 'local uden at sige hvad der er lokalt'],
+  // MAALT 13/9 af Astra og Fable i den faelles runde: "genstart, saa bliver ikonet groent" var falsk fra 1.29.0,
+  // hvor serveren begyndte at tage sin port ved foerste browserkald i stedet for ved opstart. Jeg rettede den i
+  // haanden 13 steder - og missede tre, fordi jeg soegte paa "turns green" og ikke paa "goes green". De tre stod
+  // paa forsidens FAQ, paa den mest laeste installationsside og i popup'en der foelger med i butikspakken.
+  // Vagten var bygget til praecis dette og manglede bare reglen.
+  [/(restart|reload)[^.\n]{0,80}(turns?|goes?|go|is) green/i, 'lover groent efter en genstart'],
+  [/(turns?|goes?) green[^.\n]{0,60}(after|when you|once you) (you )?(restart|reload)/i, 'lover groent efter en genstart'],
+  // Ikonet skifter aldrig farve - der er ét PNG-saet og intet kald til chrome.action.setIcon. Det groenne er et
+  // BADGE med antallet af forbundne agenter. En bruger der leder efter et groent ikon finder aldrig et.
+  [/icon[^.\n]{0,30}(turns?|goes?|is) green/i, 'siger at ikonet bliver groent - det er badgen'],
 ];
 const FORKERTE_TAL = [
   // 12/9: moenstret krævede flertal, saa "34 tool definitions" i CONTRIBUTING slap igennem i otte udgaver.

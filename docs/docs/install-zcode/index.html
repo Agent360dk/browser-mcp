@@ -24,7 +24,7 @@
 <h2 id="the-whole-thing-in-four-steps">The whole thing, in four steps</h2>
 <p><b>1 - Install the Chrome extension.</b> One click from the <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Chrome Web Store</a>; Chrome keeps it updated. No store? The unpacked install is further down.</p>
 <p><b>2 - Add the MCP server in ZCode.</b> <b>Settings → MCP Servers → New MCP Server</b> - scope <code>User</code>, name <code>browser-mcp</code>, type <code>stdio</code>, command <code>npx</code>, argument <code>@agent360/browser-mcp@latest</code>. Required - the extension does nothing on its own.</p>
-<p><b>3 - Restart ZCode.</b> That is what starts the server. The extension icon stays grey until step 4 - the server only takes a port the first time your agent actually uses the browser, so grey here is normal.</p>
+<p><b>3 - Restart ZCode.</b> That is what starts the server. The extension shows no badge until step 4 - the server only takes a port the first time your agent actually uses the browser. A green badge with the number of connected agents appears then; nothing on the icon before that is normal. (The icon itself never changes colour - it is the badge that turns green.)</p>
 <p><b>4 - Say this, to check it worked.</b> Paste it to your ZCode agent:</p>
 <blockquote>Take a screenshot of my current Chrome tab.</blockquote>
 <p>You get an image back instead of <i>"I don't have browser access"</i>. <b>That's it - you're running.</b> → <a href="#now-what-things-to-actually-say">What else to say</a></p>

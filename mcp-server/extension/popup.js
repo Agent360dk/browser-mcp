@@ -6,7 +6,7 @@
 function paintStatus(connected, count, sessionCount) {
   document.getElementById('dot').className = `dot ${connected ? 'on' : 'off'}`;
   document.getElementById('label').textContent = !connected
-    ? 'Not connected - no MCP server found'
+    ? 'Not connected - nothing on ports 9876-9895 yet'
     : sessionCount > 0
       ? `Connected - ${sessionCount} active session${sessionCount === 1 ? '' : 's'}`
       : `Connected - ready (${count} agent${count === 1 ? '' : 's'} listening)`;

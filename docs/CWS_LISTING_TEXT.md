@@ -77,7 +77,7 @@ is no server for it to talk to. The other half is one command.
 
    Per-client guides: https://browsermcp.dev/docs/install-claude-code/
 
-3. Restart your AI client, then ask it to use the browser once. The extension's icon turns green the first time
+3. Restart your AI client, then ask it to use the browser once. A green badge appears on the extension's icon the first time
    it is actually used - grey before that is normal.
 
 Why two steps? Chrome does not allow an extension to install itself from npm, and
