@@ -3,6 +3,26 @@
 Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" in the Chrome Web Store).
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
+## 1.29.2 (not released yet)
+
+One class of bug, found an hour after 1.29.1 shipped and closed completely. Every fix below was written test-first and checked with a mutation test.
+
+**Six tools answered yes because Chrome acknowledged the command, not because the page received it**
+
+`browser_press_key` was the one that lied. In a tab you are not looking at, Chrome accepts `Input.dispatchKeyEvent` and returns without an error, but never delivers the key. The tool reported `ok:true` on a key that never arrived. Measured live against a known-true control: in a visible tab the Enter landed, in a background tab nothing landed and the answer was still yes. That is the exact bug class 1.29.1 was released to remove, and it was in the tool itself. Session tabs are created in the background, so it was the default state.
+
+The mouse is different, and that is why it escaped: in a background tab mouse events *hang*, so the 1.5 second deadline made the answer honest by accident. Keys are acknowledged, and nothing caught them.
+
+- `browser_press_key` now measures delivery. A one-shot listener is placed in the extension's own world before the key is sent, so the page can neither see nor remove it, and a page that stops event propagation cannot hide the delivery. Three answers instead of one: the key landed, it could not be read (`maybe_landed`), or nothing received it, with the remedy in the message. There is deliberately no script fallback: an event dispatched from a script is not trusted by the browser, so Enter would not submit a form and Space would not scroll. Half an Enter is worse than none.
+- `browser_hover`, `browser_double_click` and `browser_right_click` returned `ok:true` unconditionally. They now measure whether `mouseover`, `dblclick` and `contextmenu` actually reached the page, and `double_clicked` is no longer claimed when it did not.
+- `browser_fill` with a `text=` selector typed and returned success without reading the field. It now reads it back: an empty field is a failure, a different value says the page reformatted it.
+- `browser_scroll` reported the numbers it was *asked* for. On a page that cannot scroll it claimed 600 pixels. It now reports the position the page is actually on, and says so when nothing moved.
+
+**Release process**
+- The check that downloads the published package gave npm 45 seconds. npm itself says a publish "may take a few minutes to become available", and that killed a release that had in fact succeeded: it stopped before the MCP registry with npm and GitHub already out. Now six attempts over three minutes.
+- One test changed colour with the speed of the machine it ran on, and failed on the fast ones. The Windows job had never been able to run at all.
+- `gemini-extension.json` is in the repo, so the Gemini CLI gallery can pick the server up. It carries a version and a tool count, so it is swept by the same two passes that keep every other file honest, and a test compares both against the source.
+
 ## 1.29.1 (2026-09-13)
 
 Every code change below was written test-first and checked with a mutation test: the fix is removed on purpose, and the test must turn red. The dependency bump, the re-rendered video and GIF, and the wording changes in the READMEs and on the site are not covered by tests - they were checked by hand.
