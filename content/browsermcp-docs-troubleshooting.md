@@ -15,16 +15,17 @@ agent runs.
 
 **Cause.** Chrome does not deliver mouse and keyboard events to a tab that is not the visible one in
 its window. In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts,
-fill fields and click, but key presses, hover, double-click, coordinate clicks and combobox typing
-fail. The tools say so rather than pretend, and the agent then calls `browser_switch_tab`, which
-brings that tab forward. Measured across 160 real sessions: roughly one call in forty, most often on
-Enter.
+click, and fill a field it finds by CSS selector. Key presses, hover, double-click, right-click,
+coordinate clicks, combobox typing and filling a field found by its *text* all fail. Since 1.29.2
+those tools measure whether the page actually received the event instead of trusting Chrome's
+acknowledgement, so you get an honest failure rather than a silent one, and the agent then calls
+`browser_switch_tab`, which brings that tab forward.
 
 **What you can do today.** Give the agent its own Chrome window and leave that window in the
 background of another window rather than another tab: the limit is which tab is visible in *its*
 window, not whether the window has focus. Reading, screenshots and scripts keep working either way.
 
-**Fix status: fully hands-off background work is planned for 1.30.** Some of it cannot be solved at
+**Fix status: fully hands-off background work is the goal for 1.30.** Some of it cannot be solved at
 all - CSS `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event
 is never `isTrusted`, and a real double-click's text selection is browser behaviour rather than an
 event.

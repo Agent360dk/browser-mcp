@@ -172,14 +172,17 @@ not in front, and the tools say so instead of reporting success. What the test c
 
 ### Known limitation: working in a tab you are not looking at
 
-In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, fill
-fields and click. Chrome does not deliver mouse and keyboard events to a tab that is not the
-visible one in its window, so key presses, hover, double-click, coordinate clicks and combobox
-typing fail with an error that says so, and the agent will then call `browser_switch_tab`, which
-brings that tab and its window in front of you.
+In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, click,
+and fill a field it finds by CSS selector. Chrome does not deliver mouse and keyboard events to a
+tab that is not the visible one in its window, so key presses, hover, double-click, right-click,
+coordinate clicks, combobox typing, and filling a field found by its *text* all fail with an error
+that says so. The agent will then call `browser_switch_tab`, which brings that tab and its window
+in front of you.
 
-Measured across 160 real sessions: that happens on roughly one call in forty, most often on Enter.
-Fully hands-off background work is planned for 1.30. Some of it cannot be solved at all: CSS
+Since 1.29.2 those tools measure whether the page actually received the event rather than trusting
+Chrome's acknowledgement, so a background tab produces an honest failure instead of a silent one.
+
+Fully hands-off background work is the goal for 1.30. Some of it cannot be solved at all: CSS
 `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
 never `isTrusted`, `elementFromPoint` stops at a cross-origin iframe, and the text selection a
 real double-click makes is browser behaviour rather than an event.
