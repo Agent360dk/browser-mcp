@@ -1,5 +1,5 @@
 /**
- * Felter, faner og sessioner — koert mod den rigtige kode.
+ * Felter, faner og sessioner - koert mod den rigtige kode.
  *
  * Hver test svarer til en fejl der har kostet tid:
  *   - `fill` tilfoejede i stedet for at erstatte (maalt igen 31/8: feltet blev
@@ -20,7 +20,7 @@ const CDP_OK = {
 
 // ── fill: erstatter, tilfoejer ikke ──────────────────────────────────────────
 
-test('fill rydder feltet foer den skriver — ellers hober vaerdier sig op', async () => {
+test('fill rydder feltet foer den skriver - ellers hober vaerdier sig op', async () => {
   // MAALT 31/8 under npm-udgivelsen: to fill-kald efter hinanden gav
   // "browser-mcpbrowser-mcp". Denne test holder rydningen paa plads i den
   // debugger-baserede sti.
@@ -59,7 +59,7 @@ test('text= bygger en exact-match, ikke en substring', () => {
 test('en bar tekst-streng er IKKE en tekst-selektor', () => {
   // MAALT 31/8: browser_click({selector: "Use security key"}) gav "Element not found".
   // Knappen fandtes med praecis den innerText. Tekstmatch kraever praefiks; uden det
-  // bliver det ugyldig CSS. Dokumentationen er rigtig — fejlbeskeden er ikke.
+  // bliver det ugyldig CSS. Dokumentationen er rigtig - fejlbeskeden er ikke.
   const u = indlaesUdvidelse();
   const byg = u.hent('buildTextFinderJS');
   if (typeof byg !== 'function') return;
@@ -79,7 +79,7 @@ test('hver port faar sin egen session', () => {
   assert.equal(get(9876), a, 'samme port giver samme session igen');
 });
 
-test('sessioner faar forskellige navne — "alt hedder Claude 1" var en fejl', () => {
+test('sessioner faar forskellige navne - "alt hedder Claude 1" var en fejl', () => {
   const u = indlaesUdvidelse();
   const get = u.hent('getSession');
   if (typeof get !== 'function') return;

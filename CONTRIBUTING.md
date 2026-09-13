@@ -22,7 +22,7 @@ cd mcp-server && npm install && cd ..
 claude mcp add browser-mcp -- node "$(pwd)/mcp-server/index.js"
 
 # Test it
-npm --prefix mcp-server test     # the full suite, no Chrome needed — runs in CI and before every release
+npm --prefix mcp-server test     # the full suite, no Chrome needed - runs in CI and before every release
 #                                  Run ONE suite at a time: some tests bind real ports (9876-9895), so two
 #                                  concurrent runs fail each other. Measured 2026-09-12: solo 4x green,
 #                                  two at once produced 1-6 unrelated-looking failures.
@@ -41,14 +41,14 @@ safe in CI. The release script gates on it.
 
 `npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 40 tools
 for real, reporting OK / FEJL / SPRUNGET per tool. It cannot run in CI. Run it before a release
-and whenever you touch `extension/background.js` — it is the only layer that catches a tool that
+and whenever you touch `extension/background.js` - it is the only layer that catches a tool that
 answers `ok: true` while the page did nothing.
 
 ## Project Structure
 
 ```
 extension/           # Chrome extension (Manifest V3)
-  background.js      # Service worker — all browser automation logic
+  background.js      # Service worker - all browser automation logic
   manifest.json      # Extension config + permissions
   offscreen.js       # WebSocket bridge to MCP server
   popup.html/js      # Status UI
@@ -59,7 +59,7 @@ mcp-server/          # MCP server (Node.js)
   bin/cli.js         # CLI installer
   package.json       # npm config
 
-docs/                # browsermcp.dev site — BUILD OUTPUT, never hand-edit page HTML
+docs/                # browsermcp.dev site - BUILD OUTPUT, never hand-edit page HTML
 content/             # Markdown sources for /docs + /compare pages (source of truth)
 scripts/             # generate-docs.py (content/ → docs/ HTML) + release tooling
 assets/              # Demo video + GIF
@@ -68,17 +68,17 @@ assets/              # Demo video + GIF
 ## How to Contribute
 
 ### Bug Reports
-Open a [🐛 Bug Report](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml) — the template guides you through expected/actual/repro/version/OS.
+Open a [🐛 Bug Report](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml) - the template guides you through expected/actual/repro/version/OS.
 
 Or, in any Claude Code session with browser-mcp installed, say *"report a browser-mcp bug: …"* and Claude will draft + offer the submit link via the `browser_about` tool.
 
 ### Feature Requests
-Open a [💡 Feature Wish](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml) — describe what you want it to do, why (your use case), and an optional example call. Wishes are curated into [WISHLIST.md](WISHLIST.md) and move to **✅ Shipped** when implemented.
+Open a [💡 Feature Wish](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml) - describe what you want it to do, why (your use case), and an optional example call. Wishes are curated into [WISHLIST.md](WISHLIST.md) and move to **✅ Shipped** when implemented.
 
 Or, in any Claude Code session, say *"I wish browser-mcp could …"* and Claude will draft + offer the submit link.
 
 ### Share a Use-Case
-Built something cool with Browser MCP? [🎯 Share it](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml) — fill in what you built, how, and (optionally) why Browser MCP was the right tool. Approved use-cases land in [USE_CASES.md](USE_CASES.md).
+Built something cool with Browser MCP? [🎯 Share it](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml) - fill in what you built, how, and (optionally) why Browser MCP was the right tool. Approved use-cases land in [USE_CASES.md](USE_CASES.md).
 
 ### Code Contributions
 
@@ -90,12 +90,12 @@ Built something cool with Browser MCP? [🎯 Share it](https://github.com/Agent3
 6. Push: `git push origin my-feature`
 7. Open a Pull Request
 
-**What happens on our side — so you know what you're walking into.**
+**What happens on our side - so you know what you're walking into.**
 
 If a PR is pointing at a real problem, we merge it and fix what needs fixing *on top*,
 rather than closing it and rewriting the same change ourselves. You keep the credit for
 finding it. We only close a PR outright when the change would make something worse, and
-when we do, you get the measurement that says so — not an opinion.
+when we do, you get the measurement that says so - not an opinion.
 
 We have not always been good at this. Two PRs in this repo waited 46 and 59 days for a
 first reply, and both were then closed rather than merged, even though one of them was
@@ -136,7 +136,7 @@ browser_my_tool: 'my_tool',
 
 ### Editing the docs site (browsermcp.dev)
 
-The HTML under `docs/docs/` and `docs/compare/` is **generated** — never edit it
+The HTML under `docs/docs/` and `docs/compare/` is **generated** - never edit it
 directly. Edit the markdown source in `content/`, then regenerate and commit both:
 
 ```bash
@@ -144,9 +144,9 @@ python3 scripts/generate-docs.py   # deterministic; unchanged sources → clean 
 ```
 
 To schedule a page for a future date, add front matter at the very top of its
-markdown file — the generator skips the page (and drops it from sidebars/related
+markdown file - the generator skips the page (and drops it from sidebars/related
 links) until that date, then a regen run on/after the date publishes it. No
-database, no scheduler — a date in a file is the whole mechanism:
+database, no scheduler - a date in a file is the whole mechanism:
 
 ```markdown
 ---
@@ -155,7 +155,7 @@ publish_date: 2026-08-01
 ```
 
 Leading `// ...` lines and `*Suggested URL/title/meta … Last verified …*` lines in
-the sources are editorial provenance — the generator strips them from rendered HTML.
+the sources are editorial provenance - the generator strips them from rendered HTML.
 The page registry (filename → section/label/URL) is `PAGES` in `scripts/generate-docs.py`;
 new pages must be added there.
 
@@ -169,7 +169,7 @@ These are equally valuable:
 
 ## Code Style
 
-- No build step — plain JavaScript (ES modules)
+- No build step - plain JavaScript (ES modules)
 - `const` over `let`, `let` over `var`
 - Async/await over callbacks
 - Error messages should be helpful (include what went wrong + how to fix)

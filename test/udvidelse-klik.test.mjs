@@ -1,5 +1,5 @@
 /**
- * Klik-stien i udvidelsen — koert, ikke grepped.
+ * Klik-stien i udvidelsen - koert, ikke grepped.
  *
  * Hver test her svarer til en fejl der KOSTEDE tid, fordi ingen test daekkede den:
  *   - dialog-deadlocken (browser_click hang 30 sek og meldte falsk fejl)
@@ -29,7 +29,7 @@ test('settle-opslaget svarer inden for fristen naar rendereren er rask', async (
   assert.ok(Date.now() - t0 < 500, 'et rask svar maa ikke vente paa fristen');
 });
 
-test('settle-opslaget giver op naar rendereren er frossen — og lyver ikke', async () => {
+test('settle-opslaget giver op naar rendereren er frossen - og lyver ikke', async () => {
   // En aaben ja/nej-boks fryser rendereren: CDP-kaldet svarer ALDRIG.
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
@@ -45,7 +45,7 @@ test('settle-opslaget giver op naar rendereren er frossen — og lyver ikke', as
   assert.equal(r.result.value.fallbackFired, false, 'framework-fallbacken maa ikke fyre oveni');
 });
 
-test('fristen er betingelsesloes — ogsaa uden armeret dialog', async () => {
+test('fristen er betingelsesloes - ogsaa uden armeret dialog', async () => {
   // Foerste rettelse gjorde kuren betinget af at vi kunne SE en dialog. Den
   // betingelse holdt ikke: dispatchen naar at blive kvitteret, og lytteren naar at
   // afvaebne, FOER rendereren gaar i staa. Saa faldt vi tilbage i det ubeskyttede
@@ -55,10 +55,10 @@ test('fristen er betingelsesloes — ogsaa uden armeret dialog', async () => {
     'debugger.getTargets': [{ tabId: 7, attached: true }],
     'debugger.sendCommand': () => new Promise(() => {}),
   } });
-  assert.equal(u.hent('armeredeDialoger').size, 0, 'ingen dialog armeret — netop pointen');
+  assert.equal(u.hent('armeredeDialoger').size, 0, 'ingen dialog armeret - netop pointen');
   const t0 = Date.now();
   const r = await u.hent('evaluerTaalmodigt')(7, { expression: '1' }, 250);
-  assert.ok(Date.now() - t0 < 2000, 'skal STADIG give op — fristen maa ikke vaere betinget');
+  assert.ok(Date.now() - t0 < 2000, 'skal STADIG give op - fristen maa ikke vaere betinget');
   assert.equal(r.result.value.rendererSvarede, false);
 });
 
@@ -105,12 +105,12 @@ test('afvaebning med grund giver kalderen et svar i stedet for tavshed', async (
   assert.equal(u.hent('armeredeDialoger').has(9), false, 'armeringen skal vaere ryddet');
 });
 
-test('afvaebning UDEN grund tier — vi svarer selv lige efter', () => {
+test('afvaebning UDEN grund tier - vi svarer selv lige efter', () => {
   const u = indlaesUdvidelse();
   let kaldt = false;
   u.hent('armeredeDialoger').set(4, { listener() {}, timer: null, action: 'accept', opfyld: () => { kaldt = true; } });
   u.hent('afvaebnDialog')(4);
-  assert.equal(kaldt, false, 'uden grund maa loeftet ikke opfyldes — lytteren svarer selv');
+  assert.equal(kaldt, false, 'uden grund maa loeftet ikke opfyldes - lytteren svarer selv');
   assert.equal(u.hent('armeredeDialoger').has(4), false);
 });
 
@@ -140,7 +140,7 @@ test('lukkes fanen, faar en ventende dialog-kalder besked', async () => {
 // Chrome fyrer Page.javascriptDialogOpening.
 //
 // MAALT 31/8: flow-testen mod en aegte Chrome fejler stadig paa browser_handle_dialog.
-// Disse tests viser at LOGIKKEN er hel — armering, lytter, Page.enable, svar og
+// Disse tests viser at LOGIKKEN er hel - armering, lytter, Page.enable, svar og
 // oprydning sker alle korrekt. Fejlen i flow-testen er altsaa miljoebetinget, ikke i
 // koden her. Uden dem ville vi ikke kunne skelne de to ting.
 
@@ -159,11 +159,11 @@ const kald = (u, method, params = {}) => new Promise((res) => {
   u.lyttere.get('runtime.onMessage')[0]({ type: 'mcp_command', port: 9876, method, params }, {}, res);
 });
 
-test('handle_dialog armer: lytter, Page.enable, loefte — alle fire', async () => {
+test('handle_dialog armer: lytter, Page.enable, loefte - alle fire', async () => {
   const u = opsaet();
   const svar = await kald(u, 'handle_dialog', { action: 'accept' });
   assert.equal(svar.ok, true);
-  assert.equal(svar.armed, true, 'den skal svare STRAKS og armere — ikke blokere');
+  assert.equal(svar.armed, true, 'den skal svare STRAKS og armere - ikke blokere');
   assert.equal(u.hent('armeredeDialoger').has(77), true, 'armeringen skal staa paa fanen');
   assert.equal(u.hent('dialogLoefter').has(77), true, 'loeftet skal vaere sat, saa klikket kan vente paa det');
   assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 1, 'praecis EN lytter');
@@ -181,7 +181,7 @@ test('naar dialogen aabner, bliver den besvaret og armeringen ryddet', async () 
   const svar = u.optager.til('debugger.sendCommand').find((k) => k.args[1] === 'Page.handleJavaScriptDialog');
   assert.ok(svar, 'dialogen skal besvares');
   assert.equal(svar.args[2].accept, true, 'action:accept skal give accept:true');
-  assert.equal(u.hent('armeredeDialoger').has(77), false, 'armeringen er engangs — den skal ryddes');
+  assert.equal(u.hent('armeredeDialoger').has(77), false, 'armeringen er engangs - den skal ryddes');
 });
 
 test('action:dismiss afviser i stedet for at acceptere', async () => {

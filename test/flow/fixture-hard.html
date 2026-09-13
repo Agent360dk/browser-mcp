@@ -1,10 +1,10 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Browser MCP — haard fixture</title>
+<title>Browser MCP - haard fixture</title>
 <!--
   Denne side serveres MED en stram Content-Security-Policy (script-src 'self').
-  Det betyder at extensionens saedvanlige vej — chrome.scripting med en funktion
-  bygget af en streng — afvises af siden. Koden har en hel fallback til det
+  Det betyder at extensionens saedvanlige vej - chrome.scripting med en funktion
+  bygget af en streng - afvises af siden. Koden har en hel fallback til det
   (cspBlocked → debuggerEval, 8 kaldesteder), og den blev aldrig afproevet.
   Derfor ligger sidens eget script i en ekstern fil: saa virker SIDEN under CSP,
   og det er alene extensionens vej der bliver sat paa proeve.

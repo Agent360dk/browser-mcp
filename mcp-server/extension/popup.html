@@ -37,7 +37,7 @@
     .color-purple { border-color: #a855f7; } .color-purple .session-header { color: #a855f7; }
     .color-cyan { border-color: #06b6d4; } .color-cyan .session-header { color: #06b6d4; }
     .color-orange { border-color: #f97316; } .color-orange .session-header { color: #f97316; }
-    /* Shown only while the MCP server is missing — the store can't install it for you */
+    /* Shown only while the MCP server is missing - the store can't install it for you */
     .setup { display: none; background: #1e293b; border: 1px solid #334155; border-left: 3px solid #f59e0b; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
     .setup.show { display: block; }
     .setup p { font-size: 11px; line-height: 1.5; color: #94a3b8; margin-bottom: 8px; }
@@ -48,7 +48,7 @@
     .setup .row { display: flex; gap: 6px; }
     .setup .row button, .setup .row a { flex: 1; margin: 0; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-align: center; text-decoration: none; border: none; cursor: pointer; }
     .setup .row a:hover, .setup .row button:hover { background: #475569; }
-    /* Shown once both halves are up but the agent has not touched a tab yet — the
+    /* Shown once both halves are up but the agent has not touched a tab yet - the
        moment a new user checks "did it work?" and needs to know what to say next. */
     .try { display: none; background: #1e293b; border: 1px solid #334155; border-left: 3px solid #22c55e; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
     .try.show { display: block; }
@@ -72,7 +72,7 @@
     <p><b>Otherwise: this extension is only half of Browser MCP.</b> It needs a local MCP server to talk to - the Chrome Web Store cannot install that part. Register it once, then restart your agent. Claude Code:</p>
     <code id="setupCmd">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
     <p class="clients">Codex: <code>codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest</code><br>
-      Cursor, VS Code and the rest: run <code>npx @agent360/browser-mcp install</code> — it registers with the clients you have.</p>
+      Cursor, VS Code and the rest: run <code>npx @agent360/browser-mcp install</code> - it registers with the clients you have.</p>
     <div class="row">
       <button id="copyCmd">Copy command</button>
       <a href="https://browsermcp.dev/docs/install-claude-code/" target="_blank" rel="noopener">Setup guide</a>

@@ -1,4 +1,4 @@
-# Browser MCP by Agent360 — browsermcp.dev
+# Browser MCP by Agent360 - browsermcp.dev
 # We welcome AI crawlers, including for training. Our users are AI agents;
 # we want current and future models to know this product exists.
 

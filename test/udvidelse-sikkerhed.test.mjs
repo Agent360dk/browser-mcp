@@ -2,7 +2,7 @@
  * Sikkerhed og overlays i udvidelsen.
  *
  * Den dyreste fejl i hele projektet laa her: vaerktoejet trykkede paa "Close account"
- * mens det troede det lukkede et cookie-banner. Veto-listen kom bagefter — men var
+ * mens det troede det lukkede et cookie-banner. Veto-listen kom bagefter - men var
  * indtil nu kun daekket af kilde-inspektion. Det her kalder koden.
  */
 
@@ -33,7 +33,7 @@ test('veto-listen rammer ikke almindelige accept-knapper', () => {
 
 // ── debugger-vedhaeftning ───────────────────────────────────────────────────
 
-test('attach er idempotent — en allerede vedhaeftet fane vedhaeftes ikke igen', async () => {
+test('attach er idempotent - en allerede vedhaeftet fane vedhaeftes ikke igen', async () => {
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 5, attached: true }],
@@ -54,7 +54,7 @@ test('"Already attached" fra Chrome er ikke en fejl', async () => {
   } });
   const attach = u.hent('debuggerAttach');
   await assert.doesNotReject(() => attach(6),
-    'Chrome siger "Already attached" naar vi ALLEREDE har sessionen — det er success');
+    'Chrome siger "Already attached" naar vi ALLEREDE har sessionen - det er success');
 });
 
 test('en fane der aldrig kan vedhaeftes giver en brugbar fejl', async () => {
@@ -102,7 +102,7 @@ test('et laesekald gentages derimod gerne', async () => {
 
 // ── chrome://-sider ─────────────────────────────────────────────────────────
 
-test('chrome://-sider afvises — udvidelsen har ingen adgang der', () => {
+test('chrome://-sider afvises - udvidelsen har ingen adgang der', () => {
   const u = indlaesUdvidelse();
   const kilde = Object.keys(u.ctx)
     .filter((k) => typeof u.ctx[k] === 'function')

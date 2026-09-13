@@ -83,12 +83,12 @@
     .install-cws:hover { transform: translateY(-1px); text-decoration: none; color: #fff; }
     /* Hvid skive under Chrome-maerket: knappen er selv en farvet gradient, og de fire
        Chrome-farver drukner i den uden en neutral baggrund. Skiven er lige stor nok til
-       at maerket kan aande — 4px luft hele vejen rundt. */
+       at maerket kan aande - 4px luft hele vejen rundt. */
     .install-cws .cws-mark { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: #fff; flex: 0 0 auto; }
     .install-cws .cws-mark svg { width: 18px; height: 18px; display: block; }
     .install-lead { text-align: center; font-size: 15px; color: var(--muted); margin-bottom: 4px; }
     .install-lead b { color: var(--fg); }
-    /* Four numbered steps in one block — the whole path from nothing to working */
+    /* Four numbered steps in one block - the whole path from nothing to working */
     .steps { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; }
     .steps > li { counter-increment: step; position: relative; padding-left: 46px; }
     .steps > li::before { content: counter(step); position: absolute; left: 0; top: 2px; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; }
@@ -117,7 +117,7 @@
     .feature p { font-size: 14px; color: var(--muted); }
 
     /* Screenshots */
-    /* "Now what?" — the step nobody documents: what to actually say once it's installed */
+    /* "Now what?" - the step nobody documents: what to actually say once it's installed */
     .try-list { max-width: 760px; margin: 0 auto 80px; padding: 0 24px; display: flex; flex-direction: column; gap: 12px; }
     .try-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
     .try-item .say { display: block; font-size: 16px; color: var(--fg); line-height: 1.5; }
@@ -190,10 +190,10 @@
       .steps > li::before { width: 26px; height: 26px; font-size: 13px; }
       .steps .what { font-size: 16px; }
       /* Store-knappen lander ~2px fra kanten paa 390px efter at trinnene fik
-         indrykning — lad teksten krympe i stedet for at risikere overflow. */
+         indrykning - lad teksten krympe i stedet for at risikere overflow. */
       .install-cws { font-size: 14px; padding: 14px 12px; max-width: 100%; }
       .install { font-size: 13px; flex-direction: column; gap: 10px; padding: 14px; }
-      /* overflow-wrap: anywhere (ovenfor) braekker allerede — break-all ville tvinge
+      /* overflow-wrap: anywhere (ovenfor) braekker allerede - break-all ville tvinge
          brud midt i ord selv naar der er et mellemrum eller en bindestreg lige ved siden af. */
       .video-wrap { margin: 0 16px 40px; border-radius: 8px; }
       .section-head h2 { font-size: 24px; }

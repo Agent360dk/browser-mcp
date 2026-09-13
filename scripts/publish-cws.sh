@@ -34,15 +34,15 @@ if [[ -f .env ]]; then
 fi
 
 # Required env vars
-: "${CWS_CLIENT_ID:?missing in .env — see docs/CWS_PUBLISH_SETUP.md}"
+: "${CWS_CLIENT_ID:?missing in .env - see docs/CWS_PUBLISH_SETUP.md}"
 : "${CWS_CLIENT_SECRET:?missing in .env}"
 : "${CWS_REFRESH_TOKEN:?missing in .env}"
-: "${CWS_EXTENSION_ID:?missing in .env — find at chrome.google.com/webstore/devconsole}"
+: "${CWS_EXTENSION_ID:?missing in .env - find at chrome.google.com/webstore/devconsole}"
 
 # ── Flow-spaerre (30/8) ─────────────────────────────────────────────────────
 #
 # Flow-testen stod kun i CONTRIBUTING.md. Man kunne udgive uden nogensinde at have
-# roert en browser — og det var praecis saadan en klik-fejl naaede GitHub.
+# roert en browser - og det var praecis saadan en klik-fejl naaede GitHub.
 #
 # Den kan ikke koere i CI (kraever Chrome + udvidelsen indlaest), saa den hoerer til
 # her, hvor udgivelsen faktisk sker.
@@ -50,7 +50,7 @@ fi
 # KENDTE FEJL staar navngivet nedenfor. En spaerre der er roed ved foedslen bliver
 # slaaet fra foerste gang den er i vejen; en der kun reagerer paa NYE fejl bliver
 # staaende. Luk en kendt fejl -> slet den fra listen, saa den ikke kan komme igen.
-# TOM 31/8 — og saadan skal den helst blive.
+# TOM 31/8 - og saadan skal den helst blive.
 #
 # Her stod browser_handle_dialog som accepteret undtagelse. Den er vaek, fordi
 # flow-testen nu maaler det den faktisk kan bevise (at klikket ikke haenger) i stedet
@@ -58,21 +58,21 @@ fi
 # dialog-logikken er daekket af fem tests i udvidelse-klik.test.mjs.
 #
 # Hver linje her er en roed lampe nogen har vaennet sig til. Tilfoej kun en med en
-# dato og en grund — og slet den saa snart den kan lukkes.
+# dato og en grund - og slet den saa snart den kan lukkes.
 KENDTE_FEJL=()
 
 # ── Automatiske tests (30/8) ────────────────────────────────────────────────
 #
 # Spaerren nedenfor koerer flow-testen mod en aegte Chrome. Den koerte IKKE `npm test`
-# — og det var et hul: `release-coherence` (som bl.a. tjekker at mcp-server/extension/
+# - og det var et hul: `release-coherence` (som bl.a. tjekker at mcp-server/extension/
 # er en tro kopi af extension/) ligger netop der. MAALT 31/8: traeet stod roedt paa
-# praecis den test, mens spaerren ville have sagt groent lys — og npm-pakken ville
+# praecis den test, mens spaerren ville have sagt groent lys - og npm-pakken ville
 # have faaet en foraeldet udvidelse med.
 #
 # En port med en aaben doer ved siden af er ingen port.
 echo "→ Automatiske tests"
 if ! npm --prefix mcp-server test > /tmp/bmcp-unit.log 2>&1; then
-  echo "  ⛔ automatiske tests fejler — udgivelsen er stoppet:"
+  echo "  ⛔ automatiske tests fejler - udgivelsen er stoppet:"
   grep -E "^not ok|^# (pass|fail)" /tmp/bmcp-unit.log | head -12 | sed 's/^/     /'
   exit 1
 fi
@@ -86,12 +86,12 @@ if [[ "${BMCP_FLOW_OK:-}" == "1" ]]; then
   # allerede fremskaffet paa praecis den kode der udgives (bumpet roerer ingen fil i aftrykket).
   echo "→ Flow-spaerren er allerede koert groent i trin 2b paa den kode der udgives"
 elif [[ "${SPRING_FLOW_OVER:-}" == "1" ]]; then
-  echo "⚠  Flow-spaerren sprunget over (SPRING_FLOW_OVER=1) — du udgiver i blinde"
+  echo "⚠  Flow-spaerren sprunget over (SPRING_FLOW_OVER=1) - du udgiver i blinde"
 else
   echo "→ Flow-test mod en aegte Chrome (spaerre foer udgivelse)"
   FLOW_UD="$(mktemp)"
   # Flow-testen returnerer en fejlkode naar der ER fejl. Det er IKKE det samme som at
-  # den ikke kunne koere — den skelnen kostede en blokeret udgivelse 30/8. DAEKNING-
+  # den ikke kunne koere - den skelnen kostede en blokeret udgivelse 30/8. DAEKNING-
   # linjen er beviset paa at den naaede hele vejen igennem.
   npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
   if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
@@ -116,12 +116,12 @@ else
   done < <(sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | sed '1d; /^====/d')
   if [[ $UVENTEDE -gt 0 ]]; then
     echo ""
-    echo "⛔ $UVENTEDE ny(e) fejl i flow-testen — udgivelsen er stoppet."
+    echo "⛔ $UVENTEDE ny(e) fejl i flow-testen - udgivelsen er stoppet."
     echo "   Ret dem, eller tilfoej dem bevidst til KENDTE_FEJL i dette script."
     echo "   Hastesag: SPRING_FLOW_OVER=1 $0 $*"
     exit 1
   fi
-  echo "  ✅ ingen nye fejl — spaerren giver groent lys"
+  echo "  ✅ ingen nye fejl - spaerren giver groent lys"
 fi
 
 # Read version from extension manifest
@@ -168,7 +168,7 @@ echo "  Upload SUCCESS"
 # Step 3: publish (unless --draft)
 if [[ "$DRAFT_ONLY" == "1" ]]; then
   echo "→ --draft flag set; leaving in draft (manual publish via dashboard required)"
-  echo "✓ Done — view at https://chrome.google.com/webstore/devconsole/"
+  echo "✓ Done - view at https://chrome.google.com/webstore/devconsole/"
   exit 0
 fi
 
@@ -183,10 +183,10 @@ PUBLISH_STATUS=$(echo "$PUBLISH_RESP" | node -e "const d=JSON.parse(require('fs'
 
 case "$PUBLISH_STATUS" in
   OK)
-    echo "  Publish OK — review queue entered"
+    echo "  Publish OK - review queue entered"
     ;;
   ITEM_PENDING_REVIEW)
-    echo "  Already pending review — uploaded version replaced previous draft"
+    echo "  Already pending review - uploaded version replaced previous draft"
     ;;
   *)
     echo "✗ Publish status: $PUBLISH_STATUS"

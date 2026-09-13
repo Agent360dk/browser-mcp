@@ -1,8 +1,8 @@
-# Browser-MCP — Upgrades & Reliability Issues
+# Browser-MCP - Upgrades & Reliability Issues
 
 **Author:** Real-world Claude Code session 2026-05-19
 **Context:** 6+ timer continuous use across Railway, Sentry, win.forbrugeragenten.dk, localhost dev-servers, Expo, admin UIs
-**Severity:** Workflow-blocking — forces fallback to "user clicks manually" pattern
+**Severity:** Workflow-blocking - forces fallback to "user clicks manually" pattern
 
 ---
 
@@ -15,7 +15,7 @@ Efter at have skrevet dette doc prøvede jeg yderligere:
 2. browser_execute_script("'test: ' + window.location.href") → FAIL "Debugger is not attached"
 ```
 
-**Dette er ikke "detach efter første action" — debugger attacher SLET IKKE på Sentry-tabs.**
+**Dette er ikke "detach efter første action" - debugger attacher SLET IKKE på Sentry-tabs.**
 
 Sandsynlig årsag:
 - Sentry's CSP-header `default-src 'self'` blokker injected scripts
@@ -24,7 +24,7 @@ Sandsynlig årsag:
 
 **Implication:** Browser-MCP fungerer ikke til at automatisere Sentry-konfiguration. Brugeren MÅ klikke manuelt eller bruge Sentry REST API direkte.
 
-Bruger sad ved siden af og kunne SE at tabben var loadet korrekt med form synlig — så det er ikke en page-load-issue, det er specifically debugger-attach der fejler.
+Bruger sad ved siden af og kunne SE at tabben var loadet korrekt med form synlig - så det er ikke en page-load-issue, det er specifically debugger-attach der fejler.
 
 ---
 
@@ -49,10 +49,10 @@ Browser-MCP er **funktionelt brugbart for read-only flows** (navigate + screensh
 ```
 
 **Reproducerbart på:**
-- `sentry.io/settings/account/api/auth-tokens/new-token/` — efter 1 fill, alle subsequent actions fejler
-- `agent360-group-aps.sentry.io/projects/new/` — efter 0 clicks, projektplatform-tiles ikke klikbar
-- `railway.com/dashboard` — efter 2-3 modal-clicks (open project → open service → open Variables tab)
-- `win.forbrugeragenten.dk/admin/users` — efter klik på user row + Impersonate-knap
+- `sentry.io/settings/account/api/auth-tokens/new-token/` - efter 1 fill, alle subsequent actions fejler
+- `agent360-group-aps.sentry.io/projects/new/` - efter 0 clicks, projektplatform-tiles ikke klikbar
+- `railway.com/dashboard` - efter 2-3 modal-clicks (open project → open service → open Variables tab)
+- `win.forbrugeragenten.dk/admin/users` - efter klik på user row + Impersonate-knap
 
 **Workaround forsøgt:**
 - `browser_navigate(same_URL)` → re-attacher debugger, men state nulstilles (form-fields cleared)
@@ -70,7 +70,7 @@ Browser-MCP er **funktionelt brugbart for read-only flows** (navigate + screensh
 
 **Sekvens:**
 ```javascript
-// Dette fejler med "Error: Uncaught" — ingen detail
+// Dette fejler med "Error: Uncaught" - ingen detail
 const r = await fetch('http://localhost:8002/api/v1/refund/signup-session', {
   method: 'POST', headers: {'Content-Type': 'application/json'},
   body: JSON.stringify({...})
@@ -80,7 +80,7 @@ JSON.stringify({status: r.status, body});
 ```
 
 **Hvad jeg endte med:**
-Fald-back til `Bash curl ...` udenfor browser-konteksten. Det betyder cookies + auth + origin headers ikke længere matcher browser-context — løste mit problem (curl med eksplicit headers virkede), men tabte fordel ved at køre i browser.
+Fald-back til `Bash curl ...` udenfor browser-konteksten. Det betyder cookies + auth + origin headers ikke længere matcher browser-context - løste mit problem (curl med eksplicit headers virkede), men tabte fordel ved at køre i browser.
 
 **Forventet adfærd:** `browser_execute_script` burde understøtte top-level await uden problemer (Chrome DevTools console gør det).
 
@@ -159,7 +159,7 @@ Sub-modal har Variables-tab synlig i screenshot, men click finder den ikke. Sand
 
 ### #3: Top-level `await` support i execute_script
 
-**Problem:** `await fetch(...)` fejler med "Uncaught" — ingen async-context.
+**Problem:** `await fetch(...)` fejler med "Uncaught" - ingen async-context.
 
 **Fix:** Wrap user script i async IIFE før eval, så top-level await fungerer:
 ```javascript
@@ -176,7 +176,7 @@ const result = await (async () => {
 **Fix:**
 1. Pre-click: `await element.scrollIntoView({block: 'center'})`
 2. Wait for element to be stable (no layout-shift i 200ms)
-3. Click — hvis fails, retry én gang efter element re-found
+3. Click - hvis fails, retry én gang efter element re-found
 
 ### #5: Visible "debugger health" status
 
@@ -217,7 +217,7 @@ Claude kan så pre-check før dyre operations.
 
 **Problem:** Cookies + auth-state tabes når jeg navigerer til ny URL.
 
-**Status:** Faktisk OK i den session jeg lavede — cookies persisted efter login. Men værd at dokumentere i README.
+**Status:** Faktisk OK i den session jeg lavede - cookies persisted efter login. Men værd at dokumentere i README.
 
 ---
 
@@ -225,11 +225,11 @@ Claude kan så pre-check før dyre operations.
 
 For context, browser-MCP virkede perfekt på:
 
-1. **Screenshot for visual verification** — alle screenshots returnerede instant + accurate
-2. **Navigate + read content** — alle URLs loaded korrekt, `get_page_content` returnerede usable text/HTML
-3. **One-shot fill on simple forms** — første fill virkede konsistent
-4. **`browser_list_tabs`** — pålideligt
-5. **`browser_console_logs`** — returnerede actuelle React warnings/errors
+1. **Screenshot for visual verification** - alle screenshots returnerede instant + accurate
+2. **Navigate + read content** - alle URLs loaded korrekt, `get_page_content` returnerede usable text/HTML
+3. **One-shot fill on simple forms** - første fill virkede konsistent
+4. **`browser_list_tabs`** - pålideligt
+5. **`browser_console_logs`** - returnerede actuelle React warnings/errors
 6. **CSS-selector navigation til specifikke elements via simple selectors**
 
 ---
@@ -243,7 +243,7 @@ For context, browser-MCP virkede perfekt på:
 
 ### Incident 2: Sentry project creation (blocked)
 - Mål: Klik FastAPI-platform-tile på /projects/new/
-- Hvad faktisk skete: 4 forskellige selector-strategies (text=, role=, JS click via execute_script) — alle failed med debugger-detach.
+- Hvad faktisk skete: 4 forskellige selector-strategies (text=, role=, JS click via execute_script) - alle failed med debugger-detach.
 
 ### Incident 3: Railway dashboard navigation (forced manual)
 - Mål: Find SENTRY_DSN env-var værdi
@@ -285,7 +285,7 @@ Tre ting: tilføj **#7: Retry-loop med backoff** så transient errors håndteres
 
 ## 💬 Spurgte spørgsmål
 
-For at hjælpe prioritering — hvor mange af jer:
+For at hjælpe prioritering - hvor mange af jer:
 
 1. Kører multi-step workflows (10+ actions) på samme tab?
 2. Bruger Sentry/Railway/admin-UIs (modal-heavy SPAs)?
@@ -295,7 +295,7 @@ Hvis svaret er "alle 3" → upgrades ovenfor er kritiske, ikke nice-to-have.
 
 ---
 
-**Session-data:** /Users/gl/forbrugeragent — Claude Code session 2026-05-19, Wave 1 prod-deploy + Sentry-setup. Brugte 6+ timer hvoraf ~1 time blev spildt på workarounds for browser-MCP-issues.
+**Session-data:** /Users/gl/forbrugeragent - Claude Code session 2026-05-19, Wave 1 prod-deploy + Sentry-setup. Brugte 6+ timer hvoraf ~1 time blev spildt på workarounds for browser-MCP-issues.
 
 ---
 
@@ -319,7 +319,7 @@ Hvis svaret er "alle 3" → upgrades ovenfor er kritiske, ikke nice-to-have.
 **Den definitive fejl-meddelelse (ny i denne session):**
 
 ```
-Error: Debugger detached during Input.dispatchMouseEvent — not auto-retried (side-effect risk).
+Error: Debugger detached during Input.dispatchMouseEvent - not auto-retried (side-effect risk).
 Original: Debugger is not attached to the tab with id: 338877576.
 ```
 
@@ -329,7 +329,7 @@ Chrome viser auto-banner ved enhver debugger-attach: *"An extension is debugging
 - Browser-MCP får revoked debugger-permission
 - Alle interactive actions (`click`, `fill`, `execute_script`, `press_key`) fejler
 - Read-only actions (`navigate`, `screenshot`, `get_page_content`) virker stadig (de bruger Extension API, ikke Debugger API)
-- Re-navigate genaktiverer ikke debugger — Chrome husker beslutningen for resten af session
+- Re-navigate genaktiverer ikke debugger - Chrome husker beslutningen for resten af session
 
 **Hvorfor det rammer ofte:**
 
@@ -346,7 +346,7 @@ I stedet for `Debugger is not attached to the tab with id: XXX` (cryptic) → re
 ```json
 {
   "error": "DEBUGGER_DETACHED_BY_USER",
-  "message": "Chrome debugger blev detached — sandsynligvis fordi brugeren klikkede 'Cancel' på debugger-banner.",
+  "message": "Chrome debugger blev detached - sandsynligvis fordi brugeren klikkede 'Cancel' på debugger-banner.",
   "fix": {
     "primary": "Genstart Chrome (alle interactive actions vil fungere igen)",
     "alternative": "Chrome → Extensions → Browser-MCP → klik Refresh-ikonet",
@@ -380,7 +380,7 @@ Når debugger detacher mid-operation, prøv ÉN gang at re-attach (Chrome suppor
 **4. Documentation update:**
 
 I extension-README + tool-descriptions: tilføj prominent advarsel:
-> ⚠️ **VIGTIGT:** Hvis du ser Chrome's gule banner "An extension is debugging this browser" — IKKE klik Cancel. Det breaker Browser-MCP for hele session. Banner kan ignoreres sikkert.
+> ⚠️ **VIGTIGT:** Hvis du ser Chrome's gule banner "An extension is debugging this browser" - IKKE klik Cancel. Det breaker Browser-MCP for hele session. Banner kan ignoreres sikkert.
 
 **Konkret session-impact (denne incident):**
 
@@ -425,16 +425,16 @@ async function debuggerAttach(tabId) {
 
 ### Hvorfor cache drifter fra Chrome-truth (3 scenarier observeret)
 
-**Scenarie A — Service worker dør, onDetach når aldrig at fyre:**
+**Scenarie A - Service worker dør, onDetach når aldrig at fyre:**
 
 1. SW alive, attach til tab X succeeder, `Set.add(X)`
 2. SW idle >30 sek → Chrome terminerer SW (MV3 lifecycle)
 3. Chrome auto-detacher debugger → `onDetach`-listener fyrer
-4. **MEN SW er væk — listener kan ikke køre — Set er reset til empty på next SW-spawn**
+4. **MEN SW er væk - listener kan ikke køre - Set er reset til empty på next SW-spawn**
 5. Næste command kommer ind, SW wake'er op, `Set` er empty → attach prøver fresh → Chrome accepterer ELLER returnerer "Already attached" hvis ghost-session
 6. sendCommand fejler: "Debugger is not attached"
 
-**Scenarie B — User clicker "Cancel" på Chrome's debugger-banner:**
+**Scenarie B - User clicker "Cancel" på Chrome's debugger-banner:**
 
 1. Chrome viser banner "An extension is debugging this browser" når attach kører
 2. Bruger klikker "Cancel" (intuitivt)
@@ -443,7 +443,7 @@ async function debuggerAttach(tabId) {
 5. `debuggerAttach()` set'er `debuggerAttached.add(tabId)` → state-load er nu løgn
 6. sendCommand fejler: "Debugger is not attached"
 
-**Scenarie C — Anti-automation site evicter debugger:**
+**Scenarie C - Anti-automation site evicter debugger:**
 
 Sites som Apple ASC, Salesforce, Sentry har detection der trigger Chrome's debugger-eviction. Self-healing eksisterer for click (`scriptingClick`-fallback) men ikke for execute_script. Cache fortæller forkert.
 
@@ -457,7 +457,7 @@ Sites som Apple ASC, Salesforce, Sentry har detection der trigger Chrome's debug
 
 Alle 3 så ud som SAMME fejl-meddelelse → umuligt at diagnose uden code-analyse.
 
-### Applied patch — v1.21.1 (2026-05-20)
+### Applied patch - v1.21.1 (2026-05-20)
 
 Patched `/Users/gl/browser-mcp/extension/background.js`:
 
@@ -507,9 +507,9 @@ async function debuggerAttach(tabId) {
 
 | Scenarie | Før (v1.21.0) | Efter (v1.21.1) |
 |---|---|---|
-| A — SW-death cache-drift | "Debugger is not attached" cryptic | Verify-with-Chrome catches stale cache, re-attaches fresh |
-| B — User-cancel-banner | Silent ghost-attach state, all actions fail | Explicit `DEBUGGER_BLOCKED_BY_USER` error med præcis fix-instruktion |
-| C — Anti-automation evict | "Debugger is not attached" på 2nd action | Verify catches eviction, attach kan retry eller propagate clear error |
+| A - SW-death cache-drift | "Debugger is not attached" cryptic | Verify-with-Chrome catches stale cache, re-attaches fresh |
+| B - User-cancel-banner | Silent ghost-attach state, all actions fail | Explicit `DEBUGGER_BLOCKED_BY_USER` error med præcis fix-instruktion |
+| C - Anti-automation evict | "Debugger is not attached" på 2nd action | Verify catches eviction, attach kan retry eller propagate clear error |
 
 ### Hvad patchen IKKE løser (kræver follow-up commits)
 
@@ -554,13 +554,13 @@ Click og fill har scripting-fallback, execute_script har ingen. Tilføj samme pa
 - **MIDDEL** at patch fixer Scenarie B (afhænger af om Chrome consistently returnerer no-op vs throw på cancelled-state)
 - **LAVT** at Scenarie B genvinder uden Chrome-restart selv med patch (Chrome's persistent permission-deny er sandsynligvis ikke recovery-able fra extension-niveau)
 
-### Real-world test result — CONFIRMED 2026-05-20 13:45
+### Real-world test result - CONFIRMED 2026-05-20 13:45
 
 Efter installering af v1.21.1 + test:
 
 ```
 Error: DEBUGGER_BLOCKED_BY_USER: Cannot attach debugger to tab 338877645.
-Chrome blocks debugger attach — user likely clicked "Cancel" on debugger banner
+Chrome blocks debugger attach - user likely clicked "Cancel" on debugger banner
 earlier this session.
 Fix: chrome://extensions/ → Browser MCP → reload (↻) icon. Or restart Chrome.
 Original error: DEBUGGER_GHOST_ATTACH: chrome.debugger.attach returned success
@@ -571,12 +571,12 @@ but Chrome state shows tab 338877645 not attached.
 fejl-besked giver præcis recovery-instruktion. Scenarie B (user-canceled-banner)
 **BEKRÆFTET** som faktisk root cause for denne session.
 
-**Recovery requirement:** Extension-reload er IKKE tilstrækkeligt — Chrome husker
+**Recovery requirement:** Extension-reload er IKKE tilstrækkeligt - Chrome husker
 "Cancel"-beslutningen for hele browser-sessionen. **Krav til recovery:**
 
 1. Quit Chrome helt (⌘+Q på macOS)
 2. Genåbn Chrome
-3. Browser-MCP banner vises igen ved første action — IGNORER, klik ikke Cancel
+3. Browser-MCP banner vises igen ved første action - IGNORER, klik ikke Cancel
 
 Dette er en Chrome-side limitation der ikke kan løses fra extension. Den eneste
 forbedring fra extension-niveau er det vi har gjort: **eksplicit fejl-besked så
@@ -587,7 +587,7 @@ brugeren ved hvad de skal gøre** (i stedet for cryptic "Debugger is not attache
 Nu hvor Scenarie B er bekræftet som hyppigste root cause, er disse follow-ups
 højere prioritet:
 
-1. **README warning** om debugger-banner: "IKKE klik Cancel på Chrome's gule banner — det breaker extension for hele Chrome session"
+1. **README warning** om debugger-banner: "IKKE klik Cancel på Chrome's gule banner - det breaker extension for hele Chrome session"
 2. **First-time-install onboarding popup** der eksplicit advarer
 3. **Status-indicator i extension popup** der viser hvis debugger er user-blocked
 4. **Auto-detect på install:** ved første attach, check om Chrome har user-blocked-state → vis instruktioner straight up
@@ -598,15 +598,15 @@ stadig laves, men efter README-fix.
 
 ---
 
-# Session 2026-08-10 — Microsoft 365 admin-flader (ny evidens)
+# Session 2026-08-10 - Microsoft 365 admin-flader (ny evidens)
 
 **Kontekst:** ~2 døgns arbejde med Exchange admin center, Microsoft Bookings, Azure-portalen,
 OWA og Namecheap. Opgave: flytte et domænes mail til Office 365.
 **Udfald:** Læsning virkede stort set overalt. **Skrivning fejlede konsistent på Microsofts flader.**
-Arbejdet måtte gennemføres med PowerShell + device-code i stedet — ~10 manuelle kodeindtastninger
+Arbejdet måtte gennemføres med PowerShell + device-code i stedet - ~10 manuelle kodeindtastninger
 af brugeren, hvor 0 var nødvendige hvis klik havde virket.
 
-## 🆕 Fund 1 — session-id roterer mellem kald (ikke dokumenteret før)
+## 🆕 Fund 1 - session-id roterer mellem kald (ikke dokumenteret før)
 
 Hvert `browser_navigate` kunne lande i en **anden session** end det foregående kald:
 
@@ -626,16 +626,16 @@ kræver debugger) virker mens klik fejler i samme sekvens.
 **Foreslået fix:** enten sticky session pr. opgave, eller lad attach acceptere ethvert
 session-id der allerede ejer fanen.
 
-## 🆕 Fund 2 — `label.click()` virker hvor alt andet fejler
+## 🆕 Fund 2 - `label.click()` virker hvor alt andet fejler
 
 På Namecheaps auto-renew-toggle fejlede i rækkefølge:
 
 | Forsøg | Resultat |
 |---|---|
 | `browser_click` (rigtige museklik) | debugger attach failed |
-| `element.click()` på den stylede `div.toggle` | ingen effekt — tilstand uændret efter reload |
+| `element.click()` på den stylede `div.toggle` | ingen effekt - tilstand uændret efter reload |
 | Fuld `MouseEvent`-sekvens (pointerdown/mousedown/pointerup/mouseup/click) | ingen effekt |
-| **`row.querySelector('label').click()`** | **virkede — persisterede efter reload** |
+| **`row.querySelector('label').click()`** | **virkede - persisterede efter reload** |
 
 Samme mønster i Microsoft Bookings: markering af elementet via `data-`-attribut og derefter
 `element.click()` virkede, hvor `browser_click` på tekstselector fejlede.
@@ -645,7 +645,7 @@ Samme mønster i Microsoft Bookings: markering af elementet via `data-`-attribut
 af Fluent-UI/Bootstrap-toggles hvor den synlige kontrol er et `div` og den funktionelle er
 en skjult `input`.
 
-## 🆕 Fund 3 — Azure-portalen kan ikke læses
+## 🆕 Fund 3 - Azure-portalen kan ikke læses
 
 `get_page_content` returnerer kun skallen. Indholdet renderes i en sandkasset ramme:
 
@@ -665,13 +665,13 @@ Extension-reload gav **midlertidig** bedring (klik virkede i Bookings i ~10 minu
 samme fejl vendte tilbage. Det matcher jeres egen konklusion: reload er utilstrækkeligt, kun
 fuld Chrome-genstart rydder tilstanden.
 
-**Forslag til README/onboarding:** gør recovery-trinnet til én linje øverst i fejlbeskeden —
+**Forslag til README/onboarding:** gør recovery-trinnet til én linje øverst i fejlbeskeden -
 *"Quit Chrome helt (⌘Q) og åbn igen. Extension-reload er ikke nok."* Fejlbeskeden nævner
 i dag reload før Chrome-genstart, hvilket sender folk på den forkerte kur først.
 
 ## Prioritering fra denne session
 
-1. **Session-sticky tab-ejerskab** (Fund 1) — den enkeltfejl der kostede mest
-2. **`label`-fallback i klik-kæden** (Fund 2) — lille ændring, hel klasse af UI'er løses
-3. **Frame-traversal i `get_page_content`** (Fund 3) — åbner Azure og lignende portaler
-4. **Ombyt rækkefølgen i recovery-beskeden** — Chrome-quit før extension-reload
+1. **Session-sticky tab-ejerskab** (Fund 1) - den enkeltfejl der kostede mest
+2. **`label`-fallback i klik-kæden** (Fund 2) - lille ændring, hel klasse af UI'er løses
+3. **Frame-traversal i `get_page_content`** (Fund 3) - åbner Azure og lignende portaler
+4. **Ombyt rækkefølgen i recovery-beskeden** - Chrome-quit før extension-reload

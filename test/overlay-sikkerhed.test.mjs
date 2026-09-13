@@ -8,14 +8,14 @@
  *     "Afvis betalingen permanent"  ·  enhver knap med aria-label="Close account"
  *
  * Det skete i DEFAULT-scope, ikke kun aggressive. Aarsagen: "close" og "luk" er
- * lovlige luk-ord, og matchningen havde ingen ord-graense — "Close account"
+ * lovlige luk-ord, og matchningen havde ingen ord-graense - "Close account"
  * indeholder "close". Kommentaren i koden sagde endda at aria-label-stien var
  * "always safe".
  *
  * Og INSTRUCTIONS beder agenten kalde dismiss_overlays FOER hvert stoerre skridt.
  * Det ville altsaa ske paa hver eneste side hvor saadan en knap findes.
  *
- * Vetoet er en NEGATIV regel: findes et farligt ord, klikkes der aldrig — uanset hvor
+ * Vetoet er en NEGATIV regel: findes et farligt ord, klikkes der aldrig - uanset hvor
  * godt resten matcher. Et overlay der ikke bliver lukket koster ét ekstra skridt;
  * en lukket konto koster brugeren penge eller adgang.
  */
@@ -25,7 +25,7 @@ import { readFileSync } from 'node:fs';
 
 const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
 
-// Genskab vetoet fra kilden — ikke en kopi, den AEGTE liste.
+// Genskab vetoet fra kilden - ikke en kopi, den AEGTE liste.
 const i = kilde.indexOf('const VETO = [');
 assert.ok(i > -1, 'VETO-listen findes ikke i background.js');
 const veto = [...kilde.slice(i, kilde.indexOf('];', i)).matchAll(/'([^']+)'/g)].map((m) => m[1]);
@@ -60,16 +60,16 @@ const LEGITIME = [
 test('ingen destruktiv knap kan blive klikket', () => {
   for (const [tekst, aria] of FARLIGE) {
     assert.ok(erFarlig(tekst) || erFarlig(aria),
-      `"${tekst}"${aria ? ` (aria="${aria}")` : ''} slipper gennem vetoet — ` +
+      `"${tekst}"${aria ? ` (aria="${aria}")` : ''} slipper gennem vetoet - ` +
       'vaerktoejet ville trykke paa den, og instruktionerne beder agenten kalde ' +
       'dismiss_overlays foer hvert stoerre skridt');
   }
 });
 
-test('legitime luk-knapper virker stadig — vetoet maa ikke doede vaerktoejet', () => {
+test('legitime luk-knapper virker stadig - vetoet maa ikke doede vaerktoejet', () => {
   for (const [tekst, aria] of LEGITIME) {
     assert.ok(!erFarlig(tekst) && !erFarlig(aria),
-      `"${tekst}"${aria ? ` (aria="${aria}")` : ''} blev blokeret af vetoet — ` +
+      `"${tekst}"${aria ? ` (aria="${aria}")` : ''} blev blokeret af vetoet - ` +
       'et veto der ogsaa rammer almindelige luk-knapper goer vaerktoejet ubrugeligt');
   }
 });
@@ -78,7 +78,7 @@ test('vetoet daekker baade dansk og engelsk paa de dyre ord', () => {
   for (const par of [['account', 'konto'], ['subscription', 'abonnement'],
                      ['payment', 'betaling'], ['delete', 'slet'], ['remove', 'fjern']]) {
     for (const ord of par) {
-      assert.ok(veto.includes(ord), `"${ord}" mangler i vetoet — sider er paa begge sprog`);
+      assert.ok(veto.includes(ord), `"${ord}" mangler i vetoet - sider er paa begge sprog`);
     }
   }
 });
@@ -93,6 +93,6 @@ test('vetoet koeres paa ALLE fire prioriteter, ikke kun én', () => {
   const blok = kilde.slice(j, slut);
   const kald = (blok.match(/erFarlig\(/g) || []).length;
   assert.ok(kald >= 6,
-    `kun ${kald} veto-tjek i dismissOverlays — der er fire prioriteter (aria-label, ` +
+    `kun ${kald} veto-tjek i dismissOverlays - der er fire prioriteter (aria-label, ` +
     'eksakt tekst, delstreng, ×-tegn), og springes én over, er hullet aabent dér');
 });

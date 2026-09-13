@@ -1,5 +1,5 @@
 /**
- * Besked-kontrakten mellem broen og service-workeren — koert, ikke grepped.
+ * Besked-kontrakten mellem broen og service-workeren - koert, ikke grepped.
  *
  * MAALT 22/8: mutationen `return true` -> `return false` i chrome.runtime.onMessage
  * slap igennem HELE suiten. Den er katastrofal: Chromes kontrakt er at `true` holder
@@ -58,7 +58,7 @@ async function send(besked, { dispatchSvar = { ok: true }, dispatchFejler = null
 }
 
 // ── DEN KATASTROFALE. Mutations-verificeret: `return true` -> `return false` gav roed.
-test('mcp_command holder kanalen aaben — ellers haenger HVERT vaerktoejskald', async () => {
+test('mcp_command holder kanalen aaben - ellers haenger HVERT vaerktoejskald', async () => {
   const { retur } = await send({ type: 'mcp_command', port: 9877, method: 'list_tabs', params: {} });
   assert.equal(retur, true,
     'Chromes kontrakt: kun `return true` holder beskedkanalen aaben til et asynkront ' +
@@ -71,7 +71,7 @@ test('svaret naar faktisk frem til kalderen', async () => {
     { type: 'mcp_command', port: 9877, method: 'list_tabs', params: {} },
     { dispatchSvar: { tabs: [], session: 'Claude 1' } },
   );
-  assert.equal(svarKaldt, 1, 'praecis ét svar — hverken nul eller to');
+  assert.equal(svarKaldt, 1, 'praecis ét svar - hverken nul eller to');
   assert.deepEqual(svar, { tabs: [], session: 'Claude 1' });
 });
 
@@ -83,7 +83,7 @@ test('en fejl i dispatch bliver til et svar, ikke til stilhed', async () => {
   );
   assert.equal(svarKaldt, 1, 'en fejl maa ALDRIG efterlade kalderen uden svar');
   assert.match(svar.__error, /element ikke fundet/,
-    'fejlen skal med tilbage — ellers ser agenten en timeout i stedet for aarsagen');
+    'fejlen skal med tilbage - ellers ser agenten en timeout i stedet for aarsagen');
 });
 
 // ── Mutations-verificeret: den ydre .catch fjernet gav roed.
@@ -93,6 +93,6 @@ test('fejler selv sessions-gendannelsen, faar kalderen stadig svar', () => {
   const blok = kilde.slice(i, kilde.indexOf('return true;', i));
   const catches = (blok.match(/\.catch\(/g) || []).length;
   assert.ok(catches >= 3,
-    `kun ${catches} fangster i mcp_command-stien — hver asynkron gren skal kunne svare, ` +
+    `kun ${catches} fangster i mcp_command-stien - hver asynkron gren skal kunne svare, ` +
     'ellers haenger kalderen tavst paa den gren der fejler');
 });

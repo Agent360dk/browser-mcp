@@ -24,7 +24,7 @@ developer Agent360 Group ApS, category Developer Tools).
 ### The three numbers, verified 2026-09-08 - re-run before re-publishing
 
 - **40 tools** - `mcp-server/tools.js` exports 40. The listing says 29 (two generations stale).
-- **20 concurrent sessions** - port range 9876–9895 (`mcp-server/index.js:45-46`) is 20 ports, so 20
+- **20 concurrent sessions** - port range 9876-9895 (`mcp-server/index.js:45-46`) is 20 ports, so 20
   sessions can hold one at a time. The listing says 10, which was true before v1.29.0.
   Do **not** confuse this with `MAX_TABS_PER_SESSION = 20` (`extension/background.js:195`) - that is
   20 *tabs* per session and is a different 20.

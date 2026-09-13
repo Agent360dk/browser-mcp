@@ -75,14 +75,14 @@ const Scene1Navigate: React.FC = () => {
       <SceneLabel number={1} text="Navigate" subtext="Open any URL in your real Chrome" />
       <Takeaway text="Your real browser. Already logged in. No re-auth needed." startFrame={130} />
       <SplitLayout
-        label="Uses your real cookies & logins — no re-authentication needed"
+        label="Uses your real cookies & logins - no re-authentication needed"
         terminal={
           <Terminal
             lines={[
               { text: 'browser_navigate("https://dashboard.stripe.com/apikeys")', type: "command", delay: 10 },
               { text: "→ Navigating...", type: "info", delay: 25 },
-              { text: '✓ "API keys — Stripe Dashboard"', type: "success", delay: 60 },
-              { text: "  Already logged in — real Chrome session", type: "info", delay: 66 },
+              { text: '✓ "API keys - Stripe Dashboard"', type: "success", delay: 60 },
+              { text: "  Already logged in - real Chrome session", type: "info", delay: 66 },
               { text: "", type: "output", delay: 74 },
               { text: "browser_get_page_content()", type: "command", delay: 78 },
               { text: '✓ Found: sk_live_••••4242', type: "success", delay: 105 },
@@ -132,9 +132,9 @@ const Scene2ClickFill: React.FC = () => {
   return (
     <>
       <SceneLabel number={2} text="Click + Fill" subtext="Works on Google, Stripe, Slack (CSP bypass)" />
-      <Takeaway text="Chrome Debugger API bypasses CSP. Text selectors — no CSS needed." startFrame={160} />
+      <Takeaway text="Chrome Debugger API bypasses CSP. Text selectors - no CSS needed." startFrame={160} />
       <SplitLayout
-        label='text selectors: click("text=Get started") — no CSS selectors needed'
+        label='text selectors: click("text=Get started") - no CSS selectors needed'
         terminal={
           <Terminal
             lines={[
@@ -184,10 +184,10 @@ const Scene3HumanInLoop: React.FC = () => {
 
   return (
     <>
-      <SceneLabel number={3} text="Human-in-the-loop" subtext="2FA, CAPTCHA, OAuth — the agent asks, you answer" />
+      <SceneLabel number={3} text="Human-in-the-loop" subtext="2FA, CAPTCHA, OAuth - the agent asks, you answer" />
       <Takeaway text="Agent pauses for 2FA/CAPTCHA. You answer, it continues." startFrame={155} />
       <SplitLayout
-        label="browser_ask_user — overlay with sound notification"
+        label="browser_ask_user - overlay with sound notification"
         terminal={
           <Terminal
             lines={[
@@ -205,7 +205,7 @@ const Scene3HumanInLoop: React.FC = () => {
               { text: "✓ Logged in!", type: "success", delay: 125 },
               { text: "", type: "output", delay: 132 },
               { text: "browser_get_page_content()", type: "command", delay: 135 },
-              { text: '✓ "HubSpot Dashboard — Contacts"', type: "success", delay: 148 },
+              { text: '✓ "HubSpot Dashboard - Contacts"', type: "success", delay: 148 },
             ]}
           />
         }
@@ -222,7 +222,7 @@ const Scene3HumanInLoop: React.FC = () => {
             </div>
             <AskUserOverlay
               message="Enter the 2FA code from your authenticator app"
-              title="HubSpot — 2FA Required"
+              title="HubSpot - 2FA Required"
               fieldLabel="2FA Code"
               fieldValue={showCode ? "847291" : showTypingDots ? "84..." : ""}
               visible={showOverlay && !overlayDismissed}
@@ -234,7 +234,7 @@ const Scene3HumanInLoop: React.FC = () => {
                 fontSize: 18, fontWeight: 600, fontFamily: "system-ui",
                 boxShadow: "0 4px 24px rgba(34,197,94,0.5)",
               }}>
-                ✓ Authenticated — Dashboard Loading
+                ✓ Authenticated - Dashboard Loading
               </div>
             )}
           </Browser>
@@ -248,7 +248,7 @@ const Scene3HumanInLoop: React.FC = () => {
 
 const Scene4LinkedIn: React.FC = () => {
   const frame = useCurrentFrame();
-  const messageText = "Hi Lars — saw your post about AI in sales. We built a voice agent that books 20+ meetings/month for teams like yours. Got 15 min for a demo?";
+  const messageText = "Hi Lars - saw your post about AI in sales. We built a voice agent that books 20+ meetings/month for teams like yours. Got 15 min for a demo?";
   const typingStart = 42;
   const visibleChars = Math.min(Math.floor((frame - typingStart) * 2.0), messageText.length);
   const typedMessage = frame >= typingStart ? messageText.slice(0, Math.max(0, visibleChars)) : "";
@@ -256,15 +256,15 @@ const Scene4LinkedIn: React.FC = () => {
 
   return (
     <>
-      <SceneLabel number={4} text="Rich Text Editors" subtext="LinkedIn, Slack, Notion — contenteditable" />
-      <Takeaway text="Types in LinkedIn, Slack, Notion — human-like cadence, no detection." startFrame={140} />
+      <SceneLabel number={4} text="Rich Text Editors" subtext="LinkedIn, Slack, Notion - contenteditable" />
+      <Takeaway text="Types in LinkedIn, Slack, Notion - human-like cadence, no detection." startFrame={140} />
       <SplitLayout
-        label="Types via execCommand — rich editors update correctly"
+        label="Types via execCommand - rich editors update correctly"
         terminal={
           <Terminal
             lines={[
               { text: 'navigate("linkedin.com/in/lars-hansen")', type: "command", delay: 10 },
-              { text: '✓ "Lars Hansen — VP Sales"', type: "success", delay: 28 },
+              { text: '✓ "Lars Hansen - VP Sales"', type: "success", delay: 28 },
               { text: "", type: "output", delay: 33 },
               { text: 'click("text=Message")', type: "command", delay: 35 },
               { text: "✓ Composer opened", type: "success", delay: 42 },
@@ -312,10 +312,10 @@ const Scene5Network: React.FC = () => {
 
   return (
     <>
-      <SceneLabel number={5} text="Network Monitoring" subtext="Wait for API calls — no race conditions" />
+      <SceneLabel number={5} text="Network Monitoring" subtext="Wait for API calls - no race conditions" />
       <Takeaway text="Monitors real network traffic. No more 'element not found' race conditions." startFrame={145} />
       <SplitLayout
-        label="wait_for_network — real Chrome DevTools Protocol"
+        label="wait_for_network - real Chrome DevTools Protocol"
         terminal={
           <Terminal
             lines={[
@@ -324,14 +324,14 @@ const Scene5Network: React.FC = () => {
               { text: "", type: "output", delay: 30 },
               { text: 'wait_for_network("deployments")', type: "command", delay: 33 },
               { text: "⏳ Monitoring...", type: "info", delay: 45 },
-              { text: "  → POST /create — 202", type: "output", delay: 55 },
-              { text: "  → GET /status — 200", type: "output", delay: 75 },
-              { text: "  → GET /logs — 200", type: "output", delay: 95 },
-              { text: "  → GET /health — 200", type: "output", delay: 115 },
+              { text: "  → POST /create - 202", type: "output", delay: 55 },
+              { text: "  → GET /status - 200", type: "output", delay: 75 },
+              { text: "  → GET /logs - 200", type: "output", delay: 95 },
+              { text: "  → GET /health - 200", type: "output", delay: 115 },
               { text: "✓ Deploy complete!", type: "success", delay: 120 },
               { text: "", type: "output", delay: 125 },
               { text: "browser_get_page_content()", type: "command", delay: 128 },
-              { text: '✓ "Deploy successful — service healthy"', type: "success", delay: 138 },
+              { text: '✓ "Deploy successful - service healthy"', type: "success", delay: 138 },
             ]}
           />
         }
@@ -378,7 +378,7 @@ const Scene6MultiSession: React.FC = () => {
               { text: "  🟢 Claude 2 → HubSpot: CRM", type: "output", delay: 25 },
               { text: "  🟡 Claude 3 → Slack: alerts", type: "output", delay: 32 },
               { text: "", type: "output", delay: 42 },
-              { text: "Isolated — no interference", type: "info", delay: 45 },
+              { text: "Isolated - no interference", type: "info", delay: 45 },
               { text: "", type: "output", delay: 52 },
               { text: "✓ Stripe: key saved to vault", type: "success", delay: 55 },
               { text: "✓ HubSpot: CRM connected", type: "success", delay: 85 },
@@ -401,15 +401,15 @@ const Scene6MultiSession: React.FC = () => {
   );
 };
 
-// ── Hook — 2 beats before title card ─────────────────────────────────────
+// ── Hook - 2 beats before title card ─────────────────────────────────────
 
 const Hook: React.FC = () => {
   const frame = useCurrentFrame();
 
-  // Beat 1: "Your AI can't use a browser." (frame 0-50) — instant visible
+  // Beat 1: "Your AI can't use a browser." (frame 0-50) - instant visible
   const beat1Opacity = interpolate(frame, [0, 3, 42, 50], [0, 1, 1, 0], { extrapolateRight: "clamp" });
 
-  // Beat 2: "Until now." (frame 48-92) — quick in, clean out
+  // Beat 2: "Until now." (frame 48-92) - quick in, clean out
   const beat2Opacity = interpolate(frame, [48, 53, 82, 92], [0, 1, 1, 0], { extrapolateRight: "clamp" });
 
   return (

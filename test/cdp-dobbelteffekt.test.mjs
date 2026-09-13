@@ -7,7 +7,7 @@
  * listen over metoder der er sikre at gentage.
  *
  * Den antagelse holder ikke: vi kan ikke se paa metodenavnet om udtrykket muterer, og
- * flere af vores egne goer det — settle-udtrykket FYRER reserveloesnings-klikket, scroll'ens
+ * flere af vores egne goer det - settle-udtrykket FYRER reserveloesnings-klikket, scroll'ens
  * reserveloesning kalder window.scrollBy, og fill skriver i feltet.
  *
  * Fire klik paa en knap der bestiller noget, er vaerre end ét klik der fejler.
@@ -32,10 +32,10 @@ test('Runtime.evaluate koeres ÉN gang naar debuggeren falder af', async () => {
   const u = seleDerFalderAf(t);
   await assert.rejects(() => u.hent('cdpSend')(1, 'Runtime.evaluate', { expression: 'window.tael++' }));
   assert.equal(t['Runtime.evaluate'], 1,
-    `udtrykket blev koert ${t['Runtime.evaluate']} gange — et muterende udtryk maa aldrig gentages`);
+    `udtrykket blev koert ${t['Runtime.evaluate']} gange - et muterende udtryk maa aldrig gentages`);
 });
 
-test('et ægte laesekald gentages stadig — resiliensen er ikke smidt vaek', async () => {
+test('et ægte laesekald gentages stadig - resiliensen er ikke smidt vaek', async () => {
   const t = {};
   const u = seleDerFalderAf(t);
   await assert.rejects(() => u.hent('cdpSend')(1, 'DOM.getDocument', {}));

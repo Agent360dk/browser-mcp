@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# generate-docs.py — regenerates the /docs and /compare HTML pages on browsermcp.dev
+# generate-docs.py - regenerates the /docs and /compare HTML pages on browsermcp.dev
 # from their markdown sources in content/. The committed HTML under docs/ is BUILD OUTPUT:
-# never hand-edit it — edit the markdown source (or this generator) and re-run:
+# never hand-edit it - edit the markdown source (or this generator) and re-run:
 #   python3 scripts/generate-docs.py
 # Output is deterministic; a clean run leaves `git status` unchanged.
 import re, html, os, json, datetime, pathlib, subprocess
@@ -34,7 +34,7 @@ PAGES=[
 ]
 
 # Antallet af vaerktoejer udledes af kilden. Stod det haardkodet her, paastod hver
-# eneste genererede side "34 browser tools" laenge efter at der var 43 — og
+# eneste genererede side "34 browser tools" laenge efter at der var 43 - og
 # check-docs.py faldt paa det ved hver eneste koersel.
 TOOL_COUNT=len(set(re.findall(r"name:\s*['\"](browser_[a-z0-9_]+)['\"]",
     (pathlib.Path(__file__).resolve().parent.parent/'mcp-server'/'tools.js').read_text(encoding='utf-8'))))
@@ -102,7 +102,7 @@ def inline(t):
     t=re.sub(r'(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)',r'<i>\1</i>',t)
     # Sitet serverer hver side paa en adresse der ender paa skraastreg; uden den svarer
     # serveren 301 og sender laeser og crawler et ekstra hop. Maalt 8/9-2026: 18 links paa
-    # 22 sider ramte forbi. "Related"-blokken nedenfor har altid haft skraastregen —
+    # 22 sider ramte forbi. "Related"-blokken nedenfor har altid haft skraastregen -
     # markdown-links fra kildefilerne kom aldrig forbi den, og det var halvdelen af fejlen.
     def _sti(m):
         tekst, adr = m.group(1), m.group(2)
@@ -187,7 +187,7 @@ def title_of(lines):
     return 'Browser MCP'
 def meta_desc(lines, raw=''):
     # A source may state its own meta description in the front-matter line
-    # (*Suggested ... meta description: "..."*). Honour it — it is hand-written for
+    # (*Suggested ... meta description: "..."*). Honour it - it is hand-written for
     # search snippets, and clean_lines() has already dropped that line from `lines`,
     # so it must be read from the raw source. Otherwise fall back to the first real
     # paragraph after the H1 (which is whatever the page happens to open with).
@@ -243,7 +243,7 @@ def head(title, desc, url):
     return '\n'.join(h)
 
 # Datoer til TechArticle og sitemap udledes af kildefilens historik. Uden dem skrev
-# generatoren INGEN dato, og haandindsatte datoer forsvandt ved hver koersel — det skete
+# generatoren INGEN dato, og haandindsatte datoer forsvandt ved hver koersel - det skete
 # 8/9-2026, hvor 20 sider mistede deres datePublished og sitemappets lastmod ved en
 # regenerering. Nu er de udledt, saa de overlever og altid passer til indholdet.
 _DATO_CACHE = {}

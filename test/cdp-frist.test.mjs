@@ -3,12 +3,12 @@
  *
  * MAALT 8/9-2026: `browser_scroll` med pixels ramte 30-sekunders-loftet HVER gang,
  * paa baade en kort og en lang side, 6 kald ud af 6. Det var hverken siden eller
- * den dobbelte udvidelse — `press_key` og `reattach_debugger` gik gennem SAMME
+ * den dobbelte udvidelse - `press_key` og `reattach_debugger` gik gennem SAMME
  * debugger paa SAMME fane paa 128 og 161 ms i samme session.
  *
  * Aarsagen: `cdpSend` afventede `chrome.debugger.sendCommand` uden frist.
  * `Input.dispatchMouseEvent` med mouseWheel indfrier aldrig sit loefte, og den
- * `window.scrollBy` der er skrevet til netop det tilfaelde ligger i et `catch` —
+ * `window.scrollBy` der er skrevet til netop det tilfaelde ligger i et `catch` -
  * saa den kunne aldrig naas. En haenger er ikke en exception.
  *
  * Testen bruger et sendCommand der ALDRIG svarer. Det er praecis hvad Chrome gjorde.
@@ -48,9 +48,9 @@ test('et raskt CDP-kald venter ikke paa fristen', async () => {
 });
 
 // Det her er den vagt der faktisk daekker BRUGERENS oplevelse. De to ovenfor beviser at
-// cdpSend afviser; kun den her beviser at scroll saa NAAR sin reserveloesning — og det var
+// cdpSend afviser; kun den her beviser at scroll saa NAAR sin reserveloesning - og det var
 // jo hele pointen. Maalt 9/9: 1.504 ms i stedet for 30.007, og window.scrollBy koert.
-test('scroll ender med at rulle — reserveloesningen naas, og svaret siger hvorfor', async () => {
+test('scroll ender med at rulle - reserveloesningen naas, og svaret siger hvorfor', async () => {
   const kald = [];
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
@@ -78,15 +78,15 @@ test('scroll ender med at rulle — reserveloesningen naas, og svaret siger hvor
   const svar = await u.hent('dispatch')(9876, 'scroll', { y: 300 });
   const brugt = Date.now() - t0;
 
-  assert.equal(svar.ok, true, 'siden blev rullet — via reserveloesningen');
+  assert.equal(svar.ok, true, 'siden blev rullet - via reserveloesningen');
   assert.equal(svar.method, 'fallback', 'svaret skal sige AT det var reserveloesningen');
   assert.match(svar.fallback_reason || '', /svarede ikke/, 'og HVORFOR, saa fejlen kan foelges');
   assert.ok(brugt < 5000, `maa ikke koste 30 sekunder, brugte ${brugt} ms`);
   // 10/9: vagten kraevede scrollBy. Den blev udskiftet med scrollTo mod en beregnet
-  // maal-position, fordi scrollBy lagde sig oveni det hjulet allerede havde naaet —
+  // maal-position, fordi scrollBy lagde sig oveni det hjulet allerede havde naaet -
   // reproduceret: 900 px faktisk, 600 rapporteret. Vagten skal foelge mekanismen.
   assert.ok(kald.some((k) => /window\.scrollTo\(\d+ \+ 0, \d+ \+ 300\)/.test(k.expression || '')),
-    'siden blev aldrig rullet — reserveloesningen skal ramme en beregnet maal-position');
+    'siden blev aldrig rullet - reserveloesningen skal ramme en beregnet maal-position');
 });
 
 test('cdpSend giver op naar hjulet tier, saa en reserveloesning KAN naas (selve scroll-reserveloesningen proeves i scroll-uvist)', async () => {
@@ -109,5 +109,5 @@ test('cdpSend giver op naar hjulet tier, saa en reserveloesning KAN naas (selve 
   const svar = await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseWheel', deltaY: 300 })
     .then(() => 'kom igennem', (e) => e.message);
   assert.match(String(svar), /svarede ikke|timeout|frist/i,
-    'hjul-afsendelsen skal afvises, ikke haenge — ellers naar scroll aldrig sin reserveloesning');
+    'hjul-afsendelsen skal afvises, ikke haenge - ellers naar scroll aldrig sin reserveloesning');
 });

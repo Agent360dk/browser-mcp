@@ -10,11 +10,11 @@ import {
 import { AnimatedCursor, ClickRipple, GlowHighlight } from "./components/Effects";
 
 /**
- * Hero loop — "Where headless dies."
+ * Hero loop - "Where headless dies."
  * Muted, seamless ~15s autoplay-hero loop. Split-screen:
- *   LEFT  = a headless browser (Playwright/Puppeteer) — hits a login wall, fails
+ *   LEFT  = a headless browser (Playwright/Puppeteer) - hits a login wall, fails
  *           the SAME captcha, gets BLOCKED.
- *   RIGHT = Browser MCP driving your REAL, already-logged-in Chrome — beats the
+ *   RIGHT = Browser MCP driving your REAL, already-logged-in Chrome - beats the
  *           captcha challenge, fills a field, extracts data LOCALLY.
  *
  * v2 changes (review-driven):
@@ -25,7 +25,7 @@ import { AnimatedCursor, ClickRipple, GlowHighlight } from "./components/Effects
  *  - Open-source / build-with-us signal on the end-card.
  */
 
-export const HERO_DURATION = 1108; // ~37s @ 30fps — split → email-auth → no-API → multi-session → mission
+export const HERO_DURATION = 1108; // ~37s @ 30fps - split → email-auth → no-API → multi-session → mission
 
 // ---- shared color language -------------------------------------------------
 const C = {
@@ -55,7 +55,7 @@ const T = {
   capTile1: 150,
   capTile2: 162,
   capTile3: 174,
-  capResolve: 185, // RIGHT goes green / LEFT goes red — the decisive frame
+  capResolve: 185, // RIGHT goes green / LEFT goes red - the decisive frame
   capHide: 232, // right grid fades after holding the green state
   fieldFocus: 238,
   typeStart: 244,
@@ -88,7 +88,7 @@ const fadeWindow = (
 };
 
 // ===========================================================================
-// Top instruction bar — anchors that Claude is driving both browsers.
+// Top instruction bar - anchors that Claude is driving both browsers.
 // Pre-filled ~55% so the open is fast (review P2-B).
 // ===========================================================================
 const InstructionBar: React.FC = () => {
@@ -159,7 +159,7 @@ const PanelLabel: React.FC<{ text: string; sub: string; color: string; icon: str
 );
 
 // ===========================================================================
-// CAPTCHA challenge — checkbox -> 3x3 image grid -> verified(green)/failed(red)
+// CAPTCHA challenge - checkbox -> 3x3 image grid -> verified(green)/failed(red)
 // Rendered identically in both panels; `mode` decides the outcome.
 // Internal layout is fixed (W=340) so cursor waypoints can be aligned.
 // ===========================================================================
@@ -362,7 +362,7 @@ const CaptchaChallenge: React.FC<{ mode: "pass" | "fail" }> = ({ mode }) => {
 };
 
 // ===========================================================================
-// LEFT — headless browser that fails the same captcha
+// LEFT - headless browser that fails the same captcha
 // ===========================================================================
 const HeadlessPanel: React.FC = () => {
   const frame = useCurrentFrame();
@@ -388,7 +388,7 @@ const HeadlessPanel: React.FC = () => {
         filter: blocked ? "saturate(0.8)" : "none",
       }}
     >
-      {/* headless chrome — cold, robotic */}
+      {/* headless chrome - cold, robotic */}
       <div
         style={{
           background: "#161b22",
@@ -436,7 +436,7 @@ const HeadlessPanel: React.FC = () => {
           </div>
         </div>
 
-        {/* same captcha — fails */}
+        {/* same captcha - fails */}
         <CaptchaChallenge mode="fail" />
 
         {/* blocked banner */}
@@ -458,7 +458,7 @@ const HeadlessPanel: React.FC = () => {
               opacity: clampInterp(frame, [blockedAt, blockedAt + 8], [0, 1]),
             }}
           >
-            ⛔ Blocked — bot detected
+            ⛔ Blocked - bot detected
           </div>
         )}
       </div>
@@ -467,7 +467,7 @@ const HeadlessPanel: React.FC = () => {
 };
 
 // ===========================================================================
-// ChromeFrame — one realistic, reusable Chrome window (used by S1/S2/S3)
+// ChromeFrame - one realistic, reusable Chrome window (used by S1/S2/S3)
 // ===========================================================================
 const NavIcon: React.FC<{ d: string; poly?: string }> = ({ d, poly }) => (
   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5f6368" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -578,7 +578,7 @@ const ChromeFrame: React.FC<{
   );
 };
 
-// Floating "tool running" badge — names the tool as the browser performs it
+// Floating "tool running" badge - names the tool as the browser performs it
 const ToolBadge: React.FC<{ name: string; done?: boolean }> = ({ name, done }) => (
   <div
     style={{
@@ -605,7 +605,7 @@ const ToolBadge: React.FC<{ name: string; done?: boolean }> = ({ name, done }) =
 );
 
 // ===========================================================================
-// RIGHT — Browser MCP driving your real Chrome (success)
+// RIGHT - Browser MCP driving your real Chrome (success)
 // ===========================================================================
 const ChromePanel: React.FC = () => {
   const frame = useCurrentFrame();
@@ -825,7 +825,7 @@ const Captions: React.FC = () => {
 };
 
 // ===========================================================================
-// End lockup — product name + open-source/build-with-us signal
+// End lockup - product name + open-source/build-with-us signal
 // ===========================================================================
 const SceneClose: React.FC = () => {
   const frame = useCurrentFrame();
@@ -893,7 +893,7 @@ const SceneClose: React.FC = () => {
             opacity: clampInterp(frame, [start + 28, start + 42], [0, 1]),
           }}
         >
-          <span style={{ color: C.amber }}>★</span> MIT · free · yours to fork — build it with us · github.com/Agent360dk/browser-mcp
+          <span style={{ color: C.amber }}>★</span> MIT · free · yours to fork - build it with us · github.com/Agent360dk/browser-mcp
         </div>
       </div>
     </AbsoluteFill>
@@ -903,7 +903,7 @@ const SceneClose: React.FC = () => {
 // ===========================================================================
 // Hero
 // ===========================================================================
-// Scene 1 — the proven split-screen (headless dies + captcha). Local frames = absolute (Sequence from=0).
+// Scene 1 - the proven split-screen (headless dies + captcha). Local frames = absolute (Sequence from=0).
 const SceneSplit: React.FC = () => {
   const frame = useCurrentFrame();
   const vis = fadeWindow(frame, 0, 12, 348, 372); // fade in from black, crossfade out into Scene 2
@@ -953,7 +953,7 @@ const SceneCaption: React.FC<{ text: string; color: string; appear: number }> = 
   );
 };
 
-// Scene (email-auth) — the strongest "doesn't stop": reads the emailed code from your Gmail and continues the login
+// Scene (email-auth) - the strongest "doesn't stop": reads the emailed code from your Gmail and continues the login
 const SceneEmailAuth: React.FC = () => {
   const frame = useCurrentFrame();
   const vis = fadeWindow(frame, 0, 12, 188, 206); // dur 208
@@ -971,12 +971,12 @@ const SceneEmailAuth: React.FC = () => {
   const active = tools.find((t) => frame >= t.in && frame < t.out);
 
   const tabs = [
-    { label: "Acme — Sign in", color: "#3b82f6", active: !onGmail },
-    { label: "Gmail — Inbox", color: "#ea4335", active: onGmail },
+    { label: "Acme - Sign in", color: "#3b82f6", active: !onGmail },
+    { label: "Gmail - Inbox", color: "#ea4335", active: onGmail },
   ];
 
   const inbox = [
-    { from: "Acme Security", subj: "Your verification code", snip: "Your code is 729481 — expires in 10 minutes", hot: true },
+    { from: "Acme Security", subj: "Your verification code", snip: "Your code is 729481 - expires in 10 minutes", hot: true },
     { from: "GitHub", subj: "[browser-mcp]", snip: "someone starred your repository", hot: false },
     { from: "Figma", subj: "Weekly digest", snip: "3 files updated in your team", hot: false },
   ];
@@ -1021,7 +1021,7 @@ const SceneEmailAuth: React.FC = () => {
                   <div style={{ width: 190, flexShrink: 0, fontFamily: SANS, fontSize: 16, fontWeight: m.hot ? 700 : 500, color: "#202124" }}>{m.from}</div>
                   <div style={{ fontFamily: SANS, fontSize: 16, color: "#202124", whiteSpace: "nowrap", overflow: "hidden" }}>
                     <span style={{ fontWeight: m.hot ? 700 : 600 }}>{m.subj}</span>
-                    <span style={{ color: "#5f6368" }}> — {m.snip}</span>
+                    <span style={{ color: "#5f6368" }}> - {m.snip}</span>
                   </div>
                 </div>
               ))}
@@ -1056,7 +1056,7 @@ const SceneEmailAuth: React.FC = () => {
               </div>
               {signedIn && (
                 <div style={{ marginTop: 30, display: "flex", alignItems: "center", gap: 10, fontFamily: SANS, fontSize: 18, fontWeight: 700, color: C.green }}>
-                  <span>✓</span> Signed in — without you lifting a finger
+                  <span>✓</span> Signed in - without you lifting a finger
                 </div>
               )}
             </div>
@@ -1080,7 +1080,7 @@ const SceneEmailAuth: React.FC = () => {
   );
 };
 
-// Scene 2 — the case APIs CAN'T do: a legacy portal with NO public API, driven like a human
+// Scene 2 - the case APIs CAN'T do: a legacy portal with NO public API, driven like a human
 const SceneBreadth: React.FC = () => {
   const frame = useCurrentFrame();
   const vis = fadeWindow(frame, 0, 12, 190, 206); // dur 208
@@ -1187,7 +1187,7 @@ const SceneBreadth: React.FC = () => {
                   <div style={{ fontFamily: SANS, fontSize: 13, color: "#8b949e", lineHeight: 1.5 }}>
                     This portal has no API, no webhook, no connector.
                     <br />
-                    The agent just used it — like you would.
+                    The agent just used it - like you would.
                   </div>
                 </div>
               </div>
@@ -1203,7 +1203,7 @@ const SceneBreadth: React.FC = () => {
   );
 };
 
-// Scene 3 — multi-session flex: many isolated, color-coded sessions in one Chrome
+// Scene 3 - multi-session flex: many isolated, color-coded sessions in one Chrome
 const SceneMultiSession: React.FC = () => {
   const frame = useCurrentFrame();
   const vis = fadeWindow(frame, 0, 12, 146, 162); // dur 164
@@ -1220,7 +1220,7 @@ const SceneMultiSession: React.FC = () => {
   return (
     <AbsoluteFill style={{ alignItems: "center", justifyContent: "center", opacity: vis }}>
       <div style={{ width: 1340, height: 560, marginBottom: 40 }}>
-        <ChromeFrame url="chrome — 3 logged-in tools · no integrations" tabs={groups} profile>
+        <ChromeFrame url="chrome - 3 logged-in tools · no integrations" tabs={groups} profile>
           <div style={{ display: "flex", height: "100%" }}>
             {tasks.map((t, i) => {
               const done = frame >= t.doneAt;
@@ -1265,7 +1265,7 @@ const SceneMultiSession: React.FC = () => {
 };
 
 // ===========================================================================
-// Hero — master timeline: split → breadth → multi-session → mission close
+// Hero - master timeline: split → breadth → multi-session → mission close
 // ===========================================================================
 export const Hero: React.FC = () => {
   const frame = useCurrentFrame();

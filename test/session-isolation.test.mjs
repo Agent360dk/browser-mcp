@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 /**
- * Session-isolation — regressionstest for browser-mcp
+ * Session-isolation - regressionstest for browser-mcp
  *
  * BAGGRUND (16/8-2026)
  * Parallelle Claude-chats endte alle sammen som "Claude 1", og kun én kunne
  * bruge browseren ad gangen. Aarsagen laa i adoptOrphanedSession(): den
  * adopterede den STOERSTE session uanset hvem den tilhoerte. En helt ny chat
- * ejer ingenting — saa den stjal den aktive chats faner OG dens identitet,
+ * ejer ingenting - saa den stjal den aktive chats faner OG dens identitet,
  * hvorefter donorens port blev slettet. Donoren adopterede saa tilbage ved
  * naeste kald. To chats byttede den samme ene session i det uendelige.
  *
  * Rettelsen: adoptér kun fra en session med samme pid (Claude Code-processen).
  *
  * Testen laeser den RIGTIGE funktion ud af extension/background.js og koerer
- * den mod stubbede chrome-API'er. Den tester altsaa kildekoden, ikke en kopi —
+ * den mod stubbede chrome-API'er. Den tester altsaa kildekoden, ikke en kopi -
  * hvis nogen fjerner pid-gaten igen, fejler den her.
  *
  * Kør:  node test/session-isolation.test.mjs
@@ -51,7 +51,7 @@ function byg() {
       tabs: { get: async (id) => { if (!levendeFaner.has(id)) throw new Error('vaek'); return { id }; } },
       // mcpPorts = de porte broen har forbindelse til lige nu. Den liste er anden
       // halvdel af gaten: er donorens port stadig i live, er det en ANDEN chat der
-      // arbejder — ikke en genstartet server.
+      // arbejder - ikke en genstartet server.
       storage: { local: { get: async (d) => ({ ...d, mcpPorts: [...levendePorte] }) } },
     },
     () => { gemtKald++; },
@@ -159,7 +159,7 @@ await test('tre chats: kun den med matchende pid roeres', async () => {
 //
 // MAALT 21/8 med seks samtidige sessioner: foraelder-processen er IKKE en unik
 // identitet. Starter en klient flere MCP-servere fra den samme proces, deler de
-// pid — og saa adopterede de hinandens faner paa stribe. Alle fik navnet
+// pid - og saa adopterede de hinandens faner paa stribe. Alle fik navnet
 // "Claude 3", de aeldste mistede deres fane, og en session kunne skifte til en
 // andens. Altsaa "alt hedder Claude 1", med kun én udvidelse indlaest.
 //

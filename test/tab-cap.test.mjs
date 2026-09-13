@@ -1,14 +1,14 @@
-// Fane-loftet pr. session — 10 → 20 (21/8).
+// Fane-loftet pr. session - 10 → 20 (21/8).
 //
 // Hver session har et loft for hvor mange faner den maa holde aabne. Naar loftet
 // naas, lukker evictOldestTabs() den AELDSTE fane. Ti var for lavt til reelle
 // flows: et forloeb der aabner en fane pr. udbyder ramte loftet midtvejs, og
-// evictionen lukkede faner arbejdet stadig byggede paa — tavst, for eviction
+// evictionen lukkede faner arbejdet stadig byggede paa - tavst, for eviction
 // rapporterer ingenting tilbage. Nu er loftet 20, samme antal som portspaendet
 // (9876-9895) tillader samtidige sessioner.
 //
 // Testen koerer den RIGTIGE evictOldestTabs() ud af extension/background.js mod
-// stubbede chrome-API'er, saa den ogsaa daekker adfaerden — ikke kun tallet.
+// stubbede chrome-API'er, saa den ogsaa daekker adfaerden - ikke kun tallet.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -53,7 +53,7 @@ const session = (ids, aktiv = null) => ({ tabIds: new Set(ids), activeTabId: akt
 const spænd = (n, fra = 1) => Array.from({ length: n }, (_, i) => fra + i);
 
 test('loftet er 20', () => {
-  assert.equal(LOFT, 20, 'MAX_TABS_PER_SESSION skal vaere 20 — 10 lukkede faner midt i et forloeb');
+  assert.equal(LOFT, 20, 'MAX_TABS_PER_SESSION skal vaere 20 - 10 lukkede faner midt i et forloeb');
 });
 
 test('portspaendet tillader lige saa mange sessioner som loftet tillader faner', () => {
@@ -75,11 +75,11 @@ test('serveren scanner det samme portspaend som udvidelsen', () => {
   const std = off.match(/return \[(\d+), (\d+)\];/);
   assert.ok(std, 'standard-portomraadet kunne ikke laeses i offscreen.js');
   // Serveren fik 7/9 en env-override paa spaendet, saa port-testen kan koere uden at
-  // beslaglaegge brugerens rigtige porte. STANDARDEN — tallet efter `||` — skal stadig
+  // beslaglaegge brugerens rigtige porte. STANDARDEN - tallet efter `||` - skal stadig
   // vaere den samme som udvidelsens, ellers findes der servere den aldrig forbinder til.
   const tal = (kilde, navn) => {
     const m = kilde.match(new RegExp(`const ${navn} = (?:[^;]*\\|\\| )?(\\d+);`));
-    assert.ok(m, `${navn} kunne ikke laeses — er formen aendret?`);
+    assert.ok(m, `${navn} kunne ikke laeses - er formen aendret?`);
     return m[1];
   };
   assert.equal(tal(srv, 'BASE_PORT'), std[1]);
@@ -106,13 +106,13 @@ test('over loftet lukkes de aeldste foerst, og kun ned til loftet', async () => 
   assert.equal(s.tabIds.size, LOFT);
 });
 
-test('den aktive fane lukkes aldrig — heller ikke naar den er den aeldste', async () => {
+test('den aktive fane lukkes aldrig - heller ikke naar den er den aeldste', async () => {
   const antal = LOFT + 2;
   const levende = new Set(spænd(antal));
   const { evict, lukket } = byg(levende);
   const s = session(spænd(antal), 1);       // aeldste fane ER den aktive
   await evict(s, antal);
-  assert.ok(!lukket.includes(1), 'den aktive fane blev lukket — brugeren ville se sin side forsvinde');
+  assert.ok(!lukket.includes(1), 'den aktive fane blev lukket - brugeren ville se sin side forsvinde');
   assert.ok(s.tabIds.has(1));
   assert.equal(s.tabIds.size, LOFT);
 });
@@ -121,7 +121,7 @@ test('den netop tilfoejede fane lukkes aldrig', async () => {
   const antal = LOFT + 2;
   const levende = new Set(spænd(antal));
   const { evict, lukket } = byg(levende);
-  const s = session(spænd(antal), null);    // ingen aktiv — kun just-added beskytter
+  const s = session(spænd(antal), null);    // ingen aktiv - kun just-added beskytter
   await evict(s, antal);
   assert.ok(!lukket.includes(antal), 'den fane vi lige aabnede blev lukket igen');
   assert.ok(s.tabIds.has(antal));
@@ -142,7 +142,7 @@ test('addTabToSession udloeser kun eviction over loftet', () => {
   const i = kilde.indexOf('async function addTabToSession(');
   const blok = kilde.slice(i, i + 500);
   assert.match(blok, /if \(session\.tabIds\.size > MAX_TABS_PER_SESSION\)/,
-    'eviction skal vaere betinget — ellers koeres tab-oprydning ved hver eneste ny fane');
+    'eviction skal vaere betinget - ellers koeres tab-oprydning ved hver eneste ny fane');
   assert.match(blok, /await evictOldestTabs\(session, tabId\)/,
     'den netop tilfoejede fane skal gives videre, ellers kan den blive lukket igen');
 });

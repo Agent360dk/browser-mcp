@@ -2,11 +2,11 @@ name: docs-gate
 
 # Structural guard for browsermcp.dev (GitHub Pages serves docs/ from main).
 # Two steps:
-#   1. regen-diff — scripts/generate-docs.py must reproduce the committed HTML
+#   1. regen-diff - scripts/generate-docs.py must reproduce the committed HTML
 #      byte-for-byte. Kills hand-edit drift (sources in content/ are the truth).
 #      Note: a page whose front-matter publish_date has just passed will fail
-#      this step on purpose — that is the "content is due, regen + commit" signal.
-#   2. check-docs — tool-count vs tools.js, leak markers, internal links,
+#      this step on purpose - that is the "content is due, regen + commit" signal.
+#   2. check-docs - tool-count vs tools.js, leak markers, internal links,
 #      canonical/og meta, sitemap coverage (scripts/check-docs.py, stdlib only).
 
 on:
@@ -36,7 +36,7 @@ jobs:
         with:
           # Generatoren udleder datePublished/dateModified med 'git log', og
           # release-coherence-testen laeser 'git tag'. En shallow klon har hverken
-          # historik eller tags — saa begge porte fejlede paa noget der var i orden.
+          # historik eller tags - saa begge porte fejlede paa noget der var i orden.
           fetch-depth: 0
 
       - name: regen-diff (generator output == committed HTML)
@@ -45,7 +45,7 @@ jobs:
           # --porcelain catches BOTH modified tracked files AND untracked new pages;
           # `git diff --exit-code` silently ignores untracked files (a new page 404s in prod but passes CI).
           if [ -n "$(git status --porcelain -- docs/)" ]; then
-            echo '::error::docs/ HTML differs from generator output — edit content/*.md and re-run scripts/generate-docs.py (never hand-edit docs/ HTML)'
+            echo '::error::docs/ HTML differs from generator output - edit content/*.md and re-run scripts/generate-docs.py (never hand-edit docs/ HTML)'
             git status --porcelain -- docs/
             exit 1
           fi

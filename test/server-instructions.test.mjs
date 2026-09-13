@@ -1,16 +1,16 @@
 // Naar serverens instruktioner rent faktisk naar frem til agenten.
 //
 // MAALT 21/8 ved at laese initialize-svaret fra den koerende server: det indeholdt
-// protocolVersion, capabilities og serverInfo — og INGEN instructions. Blokken paa
+// protocolVersion, capabilities og serverInfo - og INGEN instructions. Blokken paa
 // 7.000 tegn i index.js var doed vaegt.
 //
 // Aarsagen: `instructions` blev givet som et TREDJE argument til Server-konstruktoeren.
 // Den tager kun to (serverInfo, options), saa JavaScript smed objektet vaek i tavshed.
-// Ingen fejl, ingen advarsel — bare en agent der aldrig fik at vide at den skal lukke
+// Ingen fejl, ingen advarsel - bare en agent der aldrig fik at vide at den skal lukke
 // sine faner, hvordan CAPTCHA loeses, eller hvornaar tekst-selektorer slaar CSS.
 //
 // Testen bygger konstruktoerkaldet af den RIGTIGE kilde og kalder den RIGTIGE SDK-klasse,
-// saa den maaler leveringen — ikke bare at ordet "instructions" staar et sted i filen.
+// saa den maaler leveringen - ikke bare at ordet "instructions" staar et sted i filen.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -57,7 +57,7 @@ test('instructions leveres til klienten via SDK-serveren', () => {
   );
   // _instructions er det felt SDK'en laeser naar den bygger initialize-svaret.
   assert.equal(srv._instructions, INSTRUCTIONS,
-    'instructions naaede ikke ind i serveren — ligger den i et tredje argument igen?');
+    'instructions naaede ikke ind i serveren - ligger den i et tredje argument igen?');
 });
 
 test('instructions ligger i samme options-objekt som capabilities', () => {
@@ -76,7 +76,7 @@ test('instructions ligger i samme options-objekt som capabilities', () => {
     return ud.map(x => x.trim()).filter(Boolean);
   })();
   assert.equal(argumenter.length, 2,
-    `new Server() kaldes med ${argumenter.length} argumenter — konstruktoeren tager to, resten smides tavst vaek`);
+    `new Server() kaldes med ${argumenter.length} argumenter - konstruktoeren tager to, resten smides tavst vaek`);
   assert.match(src, /capabilities:[\s\S]*instructions:|instructions:[\s\S]*capabilities:/,
     'capabilities og instructions skal ligge i det SAMME objekt');
 });
@@ -84,7 +84,7 @@ test('instructions ligger i samme options-objekt som capabilities', () => {
 test('instruktionerne indeholder faktisk det agenten skal styres af', () => {
   const i = kilde.indexOf('const INSTRUCTIONS = `');
   const blok = kilde.slice(i, kilde.indexOf('`;', i));
-  assert.ok(blok.length > 2000, `INSTRUCTIONS er kun ${blok.length} tegn — er blokken blevet toemt?`);
+  assert.ok(blok.length > 2000, `INSTRUCTIONS er kun ${blok.length} tegn - er blokken blevet toemt?`);
   for (const emne of ['browser_ask_user', 'browser_close_tab', 'browser_provide_feedback', 'browser_solve_captcha']) {
     assert.ok(blok.includes(emne), `INSTRUCTIONS naevner ikke ${emne}`);
   }

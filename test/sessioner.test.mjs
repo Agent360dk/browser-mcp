@@ -1,11 +1,11 @@
 /**
- * Adfaerdstests for sessions-modellen — svaret paa "smelter chats sammen?".
+ * Adfaerdstests for sessions-modellen - svaret paa "smelter chats sammen?".
  *
  * MAALT 22/8, og det er derfor filen findes: min egen live-maaling af det her
  * spoergsmaal var VAERDILOES. Jeg spurgte ti porte uden pid og uden faner, fik
  * "10/10 unikke sessioner" og kaldte det et bevis. Men adoptOrphanedSession
  * returnerer null paa foerste linje naar pid mangler, og springer enhver session
- * over der ikke ejer faner. Testen kunne matematisk ikke give andet end 10/10 —
+ * over der ikke ejer faner. Testen kunne matematisk ikke give andet end 10/10 -
  * ogsaa hvis hele gaten var pillet ud. En maaling der ikke kan fejle maaler intet.
  *
  * Her koeres den AEGTE adoptOrphanedSession mod stubbede chrome-API'er, med faner,
@@ -61,7 +61,7 @@ const S = (pid, faner) => ({ pid, tabIds: faner, activeTabId: faner[0] ?? null }
 //    `session.pid !== pid` filtrerede den fra alligevel, og resultatet blev null med
 //    ELLER uden gaten. Testen maalte altsaa ikke gaten. Nu er donorens pid ogsaa null,
 //    saa gaten er det eneste der staar mellem en pid-loes server og en andens faner.
-test('uden pid adopteres der ALDRIG — hellere en frisk session end en stjaalet', async () => {
+test('uden pid adopteres der ALDRIG - hellere en frisk session end en stjaalet', async () => {
   const medFremmedDonor = await adoptér({
     port: 9880, pid: undefined,
     sessioner: [[9877, S(4242, [11, 12])]],
@@ -77,7 +77,7 @@ test('uden pid adopteres der ALDRIG — hellere en frisk session end en stjaalet
     levende: [9880],
   });
   assert.equal(medPidLoesDonor.resultat, null,
-    'uden pid-gaten ville to pid-loese sessioner adoptere hinandens faner paa stribe — ' +
+    'uden pid-gaten ville to pid-loese sessioner adoptere hinandens faner paa stribe - ' +
     'det var praecis den fejl der gjorde at alt hed "Claude 1"');
 });
 
@@ -101,7 +101,7 @@ test('samme pid, men donoren ARBEJDER stadig → haenderne vaek', async () => {
     levende: [9877, 9880],                        // donorens port er stadig forbundet
   });
   assert.equal(resultat, null,
-    'to chats fra samme Claude Code-proces har samme pid — pid alene er ikke identitet');
+    'to chats fra samme Claude Code-proces har samme pid - pid alene er ikke identitet');
   assert.ok(sessions.has(9877), 'donoren maa ikke miste sin session');
   assert.equal(sessions.get(9877).tabIds.size, 2, 'og heller ikke sine faner');
 });
@@ -111,7 +111,7 @@ test('samme pid, og donorens port er DOED → sessionen genfindes', async () => 
   const { resultat, sessions } = await adoptér({
     port: 9880, pid: 4242,
     sessioner: [[9877, S(4242, [11, 12])]],
-    levende: [9880],                              // 9877 er vaek — serveren er genstartet
+    levende: [9880],                              // 9877 er vaek - serveren er genstartet
   });
   assert.ok(resultat, 'en genstartet server SKAL kunne genfinde sine egne faner');
   assert.ok(!sessions.has(9877), 'den doede port ryddes');
@@ -164,7 +164,7 @@ test('den stoerste kandidat vinder naar flere er gyldige', async () => {
 
 // ── Fane-loftet. Mutations-verificeret: 20 -> 1 gav roed (allerede daekket i
 //    tab-cap.test.mjs, gentages ikke her).
-test('loftet matcher portspaendet — en session kan holde lige saa mange faner som der kan koere chats', () => {
+test('loftet matcher portspaendet - en session kan holde lige saa mange faner som der kan koere chats', () => {
   const loft = Number(kilde.match(/const MAX_TABS_PER_SESSION = (\d+);/)[1]);
   const porte = 9895 - 9876 + 1;
   assert.equal(loft, porte, `loftet (${loft}) skal matche antallet af porte (${porte})`);
@@ -172,7 +172,7 @@ test('loftet matcher portspaendet — en session kan holde lige saa mange faner 
 
 // ── Mutations-verificeret: agentLukkedeFaner-saettet neutraliseret gav roed.
 test('agentens eget close_tab draeber ikke sessionen', () => {
-  // Erklaeringen skal findes med samme navn som brugen — omdoebes den ene, refererer
+  // Erklaeringen skal findes med samme navn som brugen - omdoebes den ene, refererer
   // den anden til noget der ikke eksisterer, og vaernet er tavst vaek ved koersel.
   assert.match(kilde, /const agentLukkedeFaner = new Set\(\);/,
     'saettet skal erklaeres med praecis det navn brugsstederne refererer til');
@@ -189,17 +189,17 @@ test('agentens eget close_tab draeber ikke sessionen', () => {
 });
 
 /**
- * getSession — pid'en SKAL stemples, ellers er hele adoptions-gaten uden virkning.
+ * getSession - pid'en SKAL stemples, ellers er hele adoptions-gaten uden virkning.
  * Uden stemplet er session.pid altid null, `session.pid !== pid` er altid sandt, og
  * en genstartet server kan aldrig genfinde sine egne faner. Fejlen ville vise sig som
- * "mine faner forsvandt efter en genstart" — ikke som noget der ligner en pid-fejl.
+ * "mine faner forsvandt efter en genstart" - ikke som noget der ligner en pid-fejl.
  */
 function rejsGetSession() {
   const sessions = new Map();
   const src = [
     "const SESSION_COLORS = ['blue','green','yellow','red'];",
     // getSession husker nu hvilken plads en chat havde, paa dens pid (#17). Det er en
-    // aegte afhaengighed, saa den injiceres her ligesom farvelisten — i stedet for at
+    // aegte afhaengighed, saa den injiceres her ligesom farvelisten - i stedet for at
     // gemme funktionen bag en attrap der ikke ville maale den rigtige adfaerd.
     "const pladsPrPid = new Map();",
     udklip('husketPlads'),
@@ -211,7 +211,7 @@ function rejsGetSession() {
 }
 
 // ── Mutations-verificeret: stemplingen fjernet gav roed.
-test('pid stemples paa sessionen — ellers virker adoptions-gaten aldrig', () => {
+test('pid stemples paa sessionen - ellers virker adoptions-gaten aldrig', () => {
   const { getSession } = rejsGetSession();
   const s1 = getSession(9877, 4242);
   assert.equal(s1.pid, 4242, 'pid skal saettes ved oprettelsen');
@@ -229,13 +229,13 @@ test('pid stemples paa sessionen — ellers virker adoptions-gaten aldrig', () =
 test('hver ny port faar sit eget navn og sin egen farve', () => {
   const { getSession } = rejsGetSession();
   const navne = [9877, 9878, 9879].map((p) => getSession(p, 4242).label);
-  assert.equal(new Set(navne).size, 3, 'to chats maa aldrig hedde det samme — ' +
+  assert.equal(new Set(navne).size, 3, 'to chats maa aldrig hedde det samme - ' +
     'det var netop symptomet: "alt hedder Claude 1"');
   assert.deepEqual(navne, ['Claude 1', 'Claude 2', 'Claude 3']);
 });
 
 // ── TO CHATS MAA ALDRIG HEDDE DET SAMME ───────────────────────────────────────
-// MAALT 22/8, og det er en TREDJE mekanisme bag "alt hedder Claude 1" — uafhaengig
+// MAALT 22/8, og det er en TREDJE mekanisme bag "alt hedder Claude 1" - uafhaengig
 // af de to andre (to udvidelser om samme socket, og adoption uden live-port-gate).
 // Navnet blev sat til `Claude ${sessions.size + 1}`. Lukker en chat, falder taellingen,
 // og den naeste chat genbruger et nummer der allerede er i brug:
@@ -244,7 +244,7 @@ test('hver ny port faar sit eget navn og sin egen farve', () => {
 // der hoerer til hvad. Den her rammer ogsaa naar alt andet er rigtigt.
 
 // ── Mutations-verificeret: `while (brugte.has(nummer)) nummer++` fjernet gav roed.
-test('en lukket chats plads genbruges — men aldrig et navn der er i brug', () => {
+test('en lukket chats plads genbruges - men aldrig et navn der er i brug', () => {
   const { getSession, sessions } = rejsGetSession();
   [9877, 9878, 9879].forEach((p) => getSession(p, 1));
   sessions.delete(9877);                       // chat 1 lukker
@@ -254,7 +254,7 @@ test('en lukket chats plads genbruges — men aldrig et navn der er i brug', () 
 
   const navne = [...sessions.values()].map((s) => s.label);
   assert.equal(new Set(navne).size, navne.length,
-    `to chats deler navn: ${navne.join(', ')} — brugeren kan ikke se hvilken fanegruppe der er hvis`);
+    `to chats deler navn: ${navne.join(', ')} - brugeren kan ikke se hvilken fanegruppe der er hvis`);
 });
 
 // ── Mutations-verificeret: farven sat tilbage til sessions.size gav roed.
@@ -276,20 +276,20 @@ test('numrene bliver smaa og laesbare, ogsaa efter mange aabninger og lukninger'
     if (i % 2 === 1) sessions.delete(9876 + i - 1);
   }
   const numre = [...sessions.values()].map((s) => s.nummer);
-  assert.ok(Math.max(...numre) <= 12, `hoejeste nummer er ${Math.max(...numre)} — pladser genbruges ikke`);
+  assert.ok(Math.max(...numre) <= 12, `hoejeste nummer er ${Math.max(...numre)} - pladser genbruges ikke`);
   assert.equal(new Set(numre).size, numre.length, 'og ingen dubletter');
 });
 
 // ── Navnet er dét brugeren ser ────────────────────────────────────────────────
 // MAALT 22/8: gendannelses-stien satte `data.label || \`Claude ${nummer}\``. Bumpede
-// kollisionsloekken nummeret, fulgte navnet IKKE med — det blev gendannet ordret fra
+// kollisionsloekken nummeret, fulgte navnet IKKE med - det blev gendannet ordret fra
 // lageret. To sessioner kunne saa have hvert sit nummer og stadig begge hedde
 // "Claude 1" i samme farve. Nummeret var unikt; navnet var ikke.
 test('navn og farve foelger nummeret, ogsaa naar det bumpes ved gendannelse', () => {
   const i = kilde.indexOf('sessions.set(Number(port), {');
   const blok = kilde.slice(i, i + 700);
   assert.ok(!/label: data\.label/.test(blok),
-    'navnet maa ikke gendannes ordret — bumpes nummeret, skal navnet med');
+    'navnet maa ikke gendannes ordret - bumpes nummeret, skal navnet med');
   assert.ok(!/color: data\.color/.test(blok),
     'samme for farven: to fanegrupper i samme farve er lige saa forvirrende');
   assert.match(blok, /label: `Claude \$\{nummer\}`/, 'navnet skal udledes af nummeret');
@@ -298,7 +298,7 @@ test('navn og farve foelger nummeret, ogsaa naar det bumpes ved gendannelse', ()
 
 // ── #17: identiteten skal foelge chatten, ikke porten ───────────────────────
 //
-// Siden porten slippes naar en session er faerdig, slettes sessionen — og naar chatten
+// Siden porten slippes naar en session er faerdig, slettes sessionen - og naar chatten
 // kommer tilbage, faar den det laveste LEDIGE nummer. En chat der var "Claude 3" kommer
 // altsaa tilbage som "Claude 1" i en anden farve. Kosmetisk, men det er praecis det
 // symptom der kostede tre commits i august: brugeren kan ikke genkende sin egen gruppe.
@@ -314,15 +314,15 @@ test('en chat der slipper sin port og kommer igen beholder navn og farve', () =>
   // Alle tre bliver faerdige og slipper deres porte.
   sessions.delete(9876); sessions.delete(9877); sessions.delete(9878);
 
-  // Chat 103 kommer tilbage — paa en ny port, som den vil efter en frigivelse.
+  // Chat 103 kommer tilbage - paa en ny port, som den vil efter en frigivelse.
   const igen = get(9880, 103);
   assert.equal(igen.label, 'Claude 3',
-    `chatten skiftede navn til "${igen.label}" — brugeren kan ikke genkende sin gruppe`);
+    `chatten skiftede navn til "${igen.label}" - brugeren kan ikke genkende sin gruppe`);
   assert.equal(igen.color, farveC, 'farven fulgte ikke med navnet');
 });
 
 test('men en optaget plads vinder over hukommelsen', () => {
-  // Garantien er "dit gamle nummer hvis det er ledigt" — aldrig to sessioner med samme
+  // Garantien er "dit gamle nummer hvis det er ledigt" - aldrig to sessioner med samme
   // navn. Det var netop kollisionen som lavest-ledige-nummer blev indfoert for at loese.
   const { getSession: get, sessions } = rejsGetSession();
   get(9876, 201);

@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for sharing what you'd like Browser MCP to do! Your wish helps shape the roadmap.
 
-        Tip: you can also ask Claude in your session to draft and submit this for you — just say *"submit a wish for browser-mcp to do X"*.
+        Tip: you can also ask Claude in your session to draft and submit this for you - just say *"submit a wish for browser-mcp to do X"*.
 
   - type: textarea
     id: what

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Opstart under samtidighed — det instrument der manglede.
+ * Opstart under samtidighed - det instrument der manglede.
  *
  * MAALT 22/8: 116 gruene tests, og ingen af dem kunne se den fejl Gustav faktisk
  * meldte. De maaler at sessioner er ADSKILTE naar de foerst er der. De maaler ikke
@@ -15,7 +15,7 @@
  * 2. sekund, saa hvert blindt forsoeg puster den ventetid op: chat nr. 8 venter
  * laengere end nr. 2, og nr. 15 kommer maaske aldrig.
  *
- * Koeres mod en RIGTIG Chrome med udvidelsen indlaest — derfor flow-laget og ikke
+ * Koeres mod en RIGTIG Chrome med udvidelsen indlaest - derfor flow-laget og ikke
  * `npm test`. Den er roed indtil fejlen er rettet. Det er meningen: en test der er
  * groen mens fejlen lever, er ikke et instrument.
  *
@@ -77,7 +77,7 @@ const andel = indenFrist / brug.length;
 const unikke = new Set(navn.values()).size;
 
 console.log(`\n  oppe inden fristen: ${indenFrist}/${brug.length} (${Math.round(andel * 100)}%)`);
-console.log(`  langsomste: ${oppe.size ? Math.max(...oppe.values()).toFixed(1) + 's' : '—'}`);
+console.log(`  langsomste: ${oppe.size ? Math.max(...oppe.values()).toFixed(1) + 's' : '-'}`);
 console.log(`  aldrig oppe: ${brug.length - oppe.size}`);
 console.log(`  unikke sessioner: ${unikke}/${navn.size} svar`);
 

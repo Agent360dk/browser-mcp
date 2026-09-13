@@ -188,7 +188,7 @@ export const GoogleOAuthForm: React.FC<{
           fontWeight: 500,
         }}
       >
-        ☁ Google Cloud Console — OAuth Consent Screen
+        ☁ Google Cloud Console - OAuth Consent Screen
       </div>
 
       <div style={{ padding: "24px 32px" }}>
@@ -256,7 +256,7 @@ export const HubSpotDashboard: React.FC = () => (
         fontWeight: 600,
       }}
     >
-      HubSpot — Settings → Integrations → Private Apps
+      HubSpot - Settings → Integrations → Private Apps
     </div>
     <div style={{ padding: 24 }}>
       <div
@@ -342,7 +342,7 @@ export const SlackPage: React.FC = () => (
           <strong style={{ color: "#fff" }}>JesperAI Bot</strong>{" "}
           <span style={{ color: "#616061", fontSize: 11 }}>2:14 PM</span>
         </div>
-        <div>🎉 Møde booket: Lars Hansen, Novo Nordisk — torsdag kl 10</div>
+        <div>🎉 Møde booket: Lars Hansen, Novo Nordisk - torsdag kl 10</div>
       </div>
     </div>
   </div>

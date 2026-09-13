@@ -1,7 +1,7 @@
 /**
  * `ok` maa ikke sige ja naar `landed` siger nej. (issue #19)
  *
- * MAALT 9/9-2026 paa en div-baseret dropdown — den slags naesten alle rigtige sider bruger:
+ * MAALT 9/9-2026 paa en div-baseret dropdown - den slags naesten alle rigtige sider bruger:
  *   browser_click -> { ok: true, fallbackFired: true, landed: false }   og menuen aabnede ikke.
  * En agent laeser `ok` og gaar videre. Kun én der laeser `landed` ved besked.
  *
@@ -43,7 +43,7 @@ function medSession(u, port = 9876) {
 // Mutationsbevist 9/9: da jeg satte `ok: true` haardkodet tilbage i koden, blev de ved med at
 // vaere groenne. En test der ikke kan fange sin egen fejl er ikke et instrument.
 // Nu kaldes den rigtige kommando-vej, `dispatch(port, 'click', ...)`, saa det er VAERKTOEJETS
-// svar der proeves — ikke min egen aritmetik.
+// svar der proeves - ikke min egen aritmetik.
 
 test('klik der hverken landede eller flyttede elementet svarer ok:false', async () => {
   const u = medSession(selePaaKlik({ landed: false, fallbackFired: true }));
@@ -205,14 +205,14 @@ test('serverens instruks forklarer ogsaa uvist', async () => {
   assert.match(srv, /uvist/, 'INSTRUCTIONS naevner ikke uvist, saa agenten kan ikke tolke feltet');
 });
 
-test('reserveløsningen maaler om den selv virkede — den gaetter ikke', async () => {
+test('reserveløsningen maaler om den selv virkede - den gaetter ikke', async () => {
   // Efter det syntetiske klik skal koden laese lytteren IGEN. Goer den ikke det,
-  // er `landed:false` en antagelse, ikke en maaling — og saa er `ok` uden vaerdi.
+  // er `landed:false` en antagelse, ikke en maaling - og saa er `ok` uden vaerdi.
   const kilde = await import('node:fs').then((fs) =>
     fs.readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8'));
   const blok = kilde.slice(kilde.indexOf('const landed = window.__bmcpClicked === true;'));
   const efterFallback = blok.slice(blok.indexOf('fiberKey'));
-  // 10/9: at laese lytteren igen VAR rettelsen om morgenen — og den var forkert. Lytteren
+  // 10/9: at laese lytteren igen VAR rettelsen om morgenen - og den var forkert. Lytteren
   // udloeses af vores egen dispatch. Nu skal der maales et aftryk af siden i stedet.
   // 12/9 (Fable): aftrykket blev maalt fra FOER mousedown, saa en ripple talte som klikkets virkning.
   // Nu maales der fra foerKlik - taget lige foer el.click() - og aendrede kun mousedown noget, siges der uvist.

@@ -75,7 +75,7 @@ No - read the "Where browsermcp.io genuinely wins" section above. The scale numb
 ## Try it yourself
 
 ```bash
-# 1. the Chrome extension: chromewebstore.google.com — search "Agent360 Browser MCP"
+# 1. the Chrome extension: chromewebstore.google.com - search "Agent360 Browser MCP"
 # 2. the MCP server (Claude Code):
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```

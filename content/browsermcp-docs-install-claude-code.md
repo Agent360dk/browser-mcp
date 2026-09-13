@@ -194,7 +194,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 
 ### Running more than one Claude Code conversation at once
 
-Each conversation gets its own MCP server on its own port (9876–9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one conversation can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
+Each conversation gets its own MCP server on its own port (9876-9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one conversation can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
 
 ---
 
@@ -225,7 +225,7 @@ Not to us. The MCP server runs locally over stdio, talks to the extension over a
 The MCP server updates itself - every Claude Code session runs `npx @agent360/browser-mcp@latest` (note the `@latest` in your config), so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" - what do I check?**
-First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added the server to your MCP config, that is the whole problem - the extension has nothing to connect to. Run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` and restart Claude Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds - it scans ports 9876–9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
+First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added the server to your MCP config, that is the whole problem - the extension has nothing to connect to. Run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` and restart Claude Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2-3 seconds - it scans ports 9876-9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
 
 **Is this the same as browsermcp.io?**
 No - different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.

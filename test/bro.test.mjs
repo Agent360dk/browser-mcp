@@ -2,8 +2,8 @@
  * Adfaerdstests for broen (extension/offscreen.js).
  *
  * MAALT 22/8: broen havde INGEN adfaerdstest. Jeg erstattede hele dens videresendelse
- * til background med `{ __muteret: true }` — altsaa en udvidelse der ikke gjorde
- * noget som helst — og suiten var 116/116 groen. Det er den fejl denne fil lukker.
+ * til background med `{ __muteret: true }` - altsaa en udvidelse der ikke gjorde
+ * noget som helst - og suiten var 116/116 groen. Det er den fejl denne fil lukker.
  *
  * Funktionerne klippes ud af den aegte kilde og koeres mod stubbede globaler.
  * Hver test er mutations-verificeret: koden er braekket, testen set blive roed,
@@ -31,7 +31,7 @@ async function koerSkan({ levende = [], fremmede = [], allerede = new Map() } = 
   const log = { probet: [], forbundet: [] };
 
   // `fremmede` er porte hvor der sidder en HELT anden HTTP-server. De svarer altsaa
-  // paent — bare ikke 426. Uden dem i stubben kunne testen ikke se forskel paa
+  // paent - bare ikke 426. Uden dem i stubben kunne testen ikke se forskel paa
   // "tjekker status" og "tjekker at der kom et svar overhovedet".
   const fetchStub = async (url) => {
     const port = Number(url.match(/:(\d+)/)[1]);
@@ -66,7 +66,7 @@ async function koerSkan({ levende = [], fremmede = [], allerede = new Map() } = 
 // ── Mutations-verificeret: `svar.status === 426` -> `true` gav roed.
 test('der aabnes KUN WebSockets mod porte hvor der faktisk sidder en server', async () => {
   const r = await koerSkan({ levende: [9878, 9881] });
-  assert.equal(r.probet.length, 20, 'alle 20 porte skal probes — det er gratis i Chromes regnskab');
+  assert.equal(r.probet.length, 20, 'alle 20 porte skal probes - det er gratis i Chromes regnskab');
   assert.deepEqual(r.forbundet.sort(), [9878, 9881],
     'en WebSocket mod en doed port taeller som et mislykket haandtryk og goer Chromes bremse haardere');
 });
@@ -93,7 +93,7 @@ test('ingen levende porte betyder ingen WebSockets overhovedet', async () => {
 
 // ── Mutations-verificeret: `svar.status === 426` -> `true` gav roed FOERST efter
 //    at stubben kunne svare 200. Med en stub der bare kastede, slap mutationen
-//    igennem — testen maalte "kom der et svar", ikke "var det en ws-server".
+//    igennem - testen maalte "kom der et svar", ikke "var det en ws-server".
 test('en fremmed HTTP-server paa porten forveksles ikke med en MCP-server', async () => {
   const r = await koerSkan({ levende: [9878], fremmede: [9880, 9884] });
   assert.deepEqual(r.forbundet, [9878],
@@ -103,13 +103,13 @@ test('en fremmed HTTP-server paa porten forveksles ikke med en MCP-server', asyn
 
 // ── Den vigtigste taerskel. Chromes bremse kan lovligt holde et haandtryk i op til
 //    5000 ms (services/network/websocket_throttler.cc). Lukker vi foer, taeller det
-//    som en FEJL der goer bremsen haardere — en spiral vi selv driver.
+//    som en FEJL der goer bremsen haardere - en spiral vi selv driver.
 //    MAALT 22/8: med 2000 ms var den 10. chat 15,5 sek om at komme op.
 test('afbryderen ligger OVER Chromes 5-sekunders bremse', () => {
   const m = kilde.match(/const connectTimeout = setTimeout\([\s\S]{0,120}?\},\s*(\d+)\);/);
   assert.ok(m, 'connectTimeout skal findes');
   assert.ok(Number(m[1]) > 5000,
-    `afbryderen er ${m[1]} ms — under Chromes maksimale bremse paa 5000 ms. ` +
+    `afbryderen er ${m[1]} ms - under Chromes maksimale bremse paa 5000 ms. ` +
     'Hver for tidlig lukning taeller som et mislykket haandtryk og forlaenger den naeste.');
 });
 
@@ -120,13 +120,13 @@ test('broen videresender faktisk kommandoer til background', () => {
   assert.ok(i > 0, 'onmessage-handleren skal findes');
   const blok = kilde.slice(i, kilde.indexOf('ws.onclose', i));
   assert.match(blok, /chrome\.runtime\.sendMessage\(/,
-    'uden det her kald er udvidelsen fuldstaendig stum — den modtager kommandoer og goer intet');
+    'uden det her kald er udvidelsen fuldstaendig stum - den modtager kommandoer og goer intet');
   assert.match(blok, /port/, 'porten skal med, ellers ved background ikke hvilken session der ejer fanen');
 });
 
 // ── Mutations-verificeret: fjernet hello-blokken gav roed.
 test('identitets-haandtrykket sendes naar forbindelsen aabner', () => {
-  // Grænsen er den naeste handler, ikke et fast antal tegn — ellers braekker testen
+  // Grænsen er den naeste handler, ikke et fast antal tegn - ellers braekker testen
   // naar en kommentar vokser, og det er ikke det den skal maale.
   const i = kilde.indexOf('ws.onopen');
   const blok = kilde.slice(i, kilde.indexOf('ws.onmessage', i));
@@ -134,14 +134,14 @@ test('identitets-haandtrykket sendes naar forbindelsen aabner', () => {
   assert.match(blok, /type: 'hello'/, 'uden hello kan serveren ikke se at to udvidelser slaas om den');
   assert.match(blok, /extensionId/);
   assert.match(blok, /version/);
-  // At beskeden BYGGES er ikke nok — den skal sendes. Foerste udgave af denne test
+  // At beskeden BYGGES er ikke nok - den skal sendes. Foerste udgave af denne test
   // greppede kun efter objektet, saa en mutation der droppede selve ws.send() slap
   // igennem. MAALT 22/8 i en mutations-gennemgang.
   assert.match(blok, /ws\.send\(JSON\.stringify\(hilsen\)\)/,
     'haandtrykket skal faktisk sendes over forbindelsen');
-  // Og det maa ikke ligge i en tom fangst — det var praecis derfor det forsvandt
+  // Og det maa ikke ligge i en tom fangst - det var praecis derfor det forsvandt
   // usynligt i en aegte Chrome, mens fetch-probet i samme fil virkede.
-  // Kommentarer strippes foerst — ellers matcher tjekket den kommentar der FORKLARER
+  // Kommentarer strippes foerst - ellers matcher tjekket den kommentar der FORKLARER
   // fejlen, i stedet for fejlen selv. (Det gjorde det, foerste gang jeg skrev den.)
   const udenKommentar = blok.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
   assert.ok(!/catch\s*\{\s*\}/.test(udenKommentar),
@@ -149,7 +149,7 @@ test('identitets-haandtrykket sendes naar forbindelsen aabner', () => {
 });
 
 // ── Mutations-verificeret: flyttet connections.set ned i onopen gav roed.
-test('forbindelsen registreres FOER onopen — ellers laver naeste skan en dublet', () => {
+test('forbindelsen registreres FOER onopen - ellers laver naeste skan en dublet', () => {
   const iSet = kilde.indexOf('connections.set(port, ws)');
   const iOpen = kilde.indexOf('ws.onopen');
   assert.ok(iSet > -1 && iOpen > -1);

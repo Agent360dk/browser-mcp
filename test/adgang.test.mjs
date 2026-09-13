@@ -5,17 +5,17 @@
  *
  *   1. En klient der simpelthen UDELOD Origin-headeren blev accepteret.
  *   2. Med `hello version 99.0.0` vandt den rollen som aktiv udvidelse og fik
- *      `browser_get_cookies` leveret — den kunne baade laese hvad agenten spurgte om
+ *      `browser_get_cookies` leveret - den kunne baade laese hvad agenten spurgte om
  *      og svare med opdigtet indhold.
  *   3. Den kunne lukke serveren med `terminate` (exit 0).
  *
- * Serveren lytter kun paa 127.0.0.1, saa angriberen skal koere lokalt — men det goer
+ * Serveren lytter kun paa 127.0.0.1, saa angriberen skal koere lokalt - men det goer
  * enhver anden app og ethvert npm-postinstall-script. Og hvad den kan er ikke
  * smaating: laese alt agenten sender til browseren (kodeord fra ask_user, cookies,
  * sidetekst), fodre agenten med opdigtet sideindhold, og slukke browser-adgangen i
  * alle aabne chats paa én gang.
  *
- * Ikke en regression mod 1.25.0 — den havde slet ingen gate. Men koden HAR nu en
+ * Ikke en regression mod 1.25.0 - den havde slet ingen gate. Men koden HAR nu en
  * Origin at validere paa.
  */
 import { test } from 'node:test';
@@ -30,7 +30,7 @@ const iVerify = srv.indexOf('verifyClient:');
 assert.ok(iVerify > -1, 'verifyClient findes ikke i index.js');
 // Byg moenstret af kildens EGEN tekst, saa testen ikke gentager det og dermed kunne
 // bestaa selv hvis serveren brugte et andet. Slicen gaar fra "^chrome-extension" til
-// "$" — kan ikke bruge [^/]+, for moenstret indeholder selv escapede skraastreger.
+// "$" - kan ikke bruge [^/]+, for moenstret indeholder selv escapede skraastreger.
 const blokV = srv.slice(iVerify, iVerify + 900);
 const fra = blokV.indexOf('^chrome-extension');
 const til = blokV.indexOf('$', fra);
@@ -42,11 +42,11 @@ test('kun en aegte chrome-extension-Origin slipper ind', () => {
     'chrome-extension://ddmedkniibandegeflklbmhfifbikega',
     'chrome-extension://kbdpjpbbkniolomhhddbnonpcajcpepn',
   ]) {
-    assert.ok(moenster.test(god), `${god} burde vaere godkendt — det er en rigtig udvidelse`);
+    assert.ok(moenster.test(god), `${god} burde vaere godkendt - det er en rigtig udvidelse`);
   }
 });
 
-test('alt andet afvises — ogsaa naar headeren helt mangler', () => {
+test('alt andet afvises - ogsaa naar headeren helt mangler', () => {
   const onde = [
     ['ingen header', ''],
     ['ingen header (undefined)', undefined],
@@ -82,14 +82,14 @@ test('terminate kraever baade haandtryk OG at afsenderen er den aktive', () => {
   assert.match(blok, /conn\.harHilst/, 'uden haandtryks-gaten kan en forbindelse der lige har ' +
     'vundet rollen som aktiv slukke browser-adgangen med én besked');
   assert.match(blok, /conn\.helloId !== conn\.extensionId/,
-    'haandtrykkets id skal stemme med Origin — ellers er identiteten selvoplyst');
+    'haandtrykkets id skal stemme med Origin - ellers er identiteten selvoplyst');
   assert.match(blok, /activeConnection\(\) !== conn/, 'og afsenderen skal vaere den aktive');
 });
 
 // ── Mutations-verificeret: `conn.extensionId = msg.extensionId` genindfoert gav roed.
 test('haandtrykket kan ikke overskrive afsenderens identitet', () => {
   const i = srv.indexOf("msg.type === 'hello'");
-  // Kommentarer strippes foerst — ellers matcher tjekket den kommentar der FORKLARER
+  // Kommentarer strippes foerst - ellers matcher tjekket den kommentar der FORKLARER
   // fejlen i stedet for fejlen selv. (Det gjorde det, foerste gang jeg skrev den.)
   const blok = srv.slice(i, i + 1400).split('\n')
     .filter((l) => !l.trim().startsWith('//')).join('\n');

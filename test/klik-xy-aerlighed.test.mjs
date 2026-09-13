@@ -3,7 +3,7 @@
  *
  * MAALT 10/9: `click` fik rettet sin aerlighed (klik-aerlighed.test.mjs), men click_xy kalder
  * den SAMME debuggerClick, smed dens svar vaek og returnerede `ok: true` hardkodet. Fundet ved
- * at soege hele filen efter mønstret — ikke kun det ene sted issue #19 pegede paa.
+ * at soege hele filen efter mønstret - ikke kun det ene sted issue #19 pegede paa.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

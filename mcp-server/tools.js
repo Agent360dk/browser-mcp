@@ -1,5 +1,5 @@
 /**
- * Agent360 Browser MCP — Tool Definitions
+ * Agent360 Browser MCP - Tool Definitions
  *
  * Defines all MCP tools exposed to Claude Code.
  */

@@ -1,5 +1,5 @@
 /**
- * Dialog-armeringen — lytteren koeres, ikke greppes.
+ * Dialog-armeringen - lytteren koeres, ikke greppes.
  *
  * MAALT 22/8: fem mutationer af handle_dialog slap igennem hele suiten. To af dem er
  * aegte korrekthedsfejl:
@@ -48,7 +48,7 @@ test('en armering roerer ALDRIG en anden fanes dialog', async () => {
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(log.cdp.length, 0,
     'alle sessioner deler den samme debugger-haendelsesstroem. Uden tabId-gaten ' +
-    'svarer den foerste armering paa enhver dialog i hele browseren — ogsaa dem der ' +
+    'svarer den foerste armering paa enhver dialog i hele browseren - ogsaa dem der ' +
     'hoerer til en anden chats arbejde.');
   assert.equal(log.opfyldt.length, 0, 'og den maa slet ikke melde succes');
 });
@@ -66,13 +66,13 @@ test('den rigtige fanes dialog haandteres', async () => {
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(log.cdp.length, 1, 'dialogen skal faktisk besvares');
   assert.equal(log.cdp[0].metode, 'Page.handleJavaScriptDialog');
-  assert.equal(log.afvaebnet[0], 42, 'armeringen skal ryddes — én dialog pr. armering');
+  assert.equal(log.afvaebnet[0], 42, 'armeringen skal ryddes - én dialog pr. armering');
   assert.equal(log.opfyldt[0].ok, true);
   assert.equal(log.opfyldt[0].message, 'Er du sikker?', 'beskeden skal med tilbage til agenten');
 });
 
 // ── Mutations-verificeret: `accept: action === 'accept'` -> `accept: true` gav roed.
-test('dismiss AFVISER — den maa aldrig acceptere', async () => {
+test('dismiss AFVISER - den maa aldrig acceptere', async () => {
   const { listener, log } = rejsLytter({ tabId: 42, action: 'dismiss' });
   listener({ tabId: 42 }, DIALOG, HAENDELSE);
   await new Promise((r) => setTimeout(r, 10));

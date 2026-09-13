@@ -1,11 +1,11 @@
-// To udvidelser, én server — regressionstest.
+// To udvidelser, én server - regressionstest.
 //
 // MAALT 21/8 med lsof: paa hver af de fire aktive porte stod der 2 ESTABLISHED
 // forbindelser. Chrome havde to Browser MCP-udvidelser indlaest samtidig (to
 // "load unpacked"-kopier i ~/Downloads), og begge scanner det samme portspaend,
 // saa begge forbandt til hver eneste MCP-server.
 //
-// Serveren havde kun én variabel — `let extensionSocket = null` — som hver ny
+// Serveren havde kun én variabel - `let extensionSocket = null` - som hver ny
 // forbindelse overskrev. Kommandoerne gik derfor til den udvidelse der forbandt
 // SIDST, vilkaarligt hvilken, mens den anden koerte videre med sit eget sessions-
 // kort og sine egne fane-grupper. Det saa ud som faner der forsvandt og sessioner
@@ -41,7 +41,7 @@ function byg() {
     .map(udtraek).join('\n\n');
   // laastForbindelse og harSendtKommando er modul-variable i index.js. De erklaeres
   // her i den omsluttende scope, saa den udtrukne kildekode muterer PRAECIS de samme
-  // variable som i produktionen — ikke en kopi.
+  // variable som i produktionen - ikke en kopi.
   const fabrik = new Function('connections', `
     let laastForbindelse = null, harSendtKommando = false;
     ${src}
@@ -65,7 +65,7 @@ const forbind = (connections, { version = null, id = null, state = AABEN, since 
 
 
 // Afgraenser `if (msg.type === '<type>') { ... }` med klamme-matchning i stedet for et
-// fast tegnantal. MAALT 23/8: faste vinduer blev roede hver gang en kommentar voksede —
+// fast tegnantal. MAALT 23/8: faste vinduer blev roede hver gang en kommentar voksede -
 // altsaa af korrekte aendringer. Tre gange paa én aften.
 function blokFor(kilde, type) {
   const i = kilde.indexOf(`msg.type === '${type}'`);
@@ -98,7 +98,7 @@ test('cmpVersion behandler manglende version som aeldst', () => {
 
 // ── activeConnection ────────────────────────────────────────────────────────
 
-test('med to udvidelser vinder den nyeste — uanset hvem der forbandt sidst', () => {
+test('med to udvidelser vinder den nyeste - uanset hvem der forbandt sidst', () => {
   const { connections, activeConnection } = byg();
   const gammel = forbind(connections, { version: '1.27.0', id: 'kmbhc' });
   const ny = forbind(connections, { version: '1.27.1', id: 'hajof' });
@@ -116,7 +116,7 @@ test('en udvidelse uden haandtryk taber til en der har ét', () => {
   assert.equal(activeConnection(), ny);
 });
 
-test('er der kun en gammel udvidelse, bruges den — ellers virker intet', () => {
+test('er der kun en gammel udvidelse, bruges den - ellers virker intet', () => {
   const { connections, activeConnection } = byg();
   const kun = forbind(connections, { version: null, id: null });
   assert.equal(activeConnection(), kun);
@@ -136,7 +136,7 @@ test('lukkede sockets vaelges aldrig', () => {
   assert.equal(activeConnection(), levende, 'en doed socket med hoejere version maa ikke vinde');
 });
 
-test('uden forbindelser er der ingen aktiv — og det maa ikke kaste', () => {
+test('uden forbindelser er der ingen aktiv - og det maa ikke kaste', () => {
   const { activeConnection } = byg();
   assert.equal(activeConnection(), null);
 });
@@ -175,7 +175,7 @@ test('doede forbindelser taeller ikke med i konflikten', () => {
 
 test('serveren holder ikke laengere én enkelt socket-variabel', () => {
   assert.ok(!/^let extensionSocket = null;$/m.test(kilde),
-    'extensionSocket er tilbage — hver ny forbindelse overskriver den igen');
+    'extensionSocket er tilbage - hver ny forbindelse overskriver den igen');
   assert.match(kilde, /const connections = new Set\(\)/, 'forbindelses-registret mangler');
 });
 
@@ -207,12 +207,12 @@ test('serveren laeser haandtrykket og tjekker for konflikt bagefter', () => {
   assert.match(blok, /advarOmKonflikt\(conn\)/, 'konflikten tjekkes ikke naar versionen bliver kendt');
 });
 
-test('konflikten opdages allerede ved opkoblingen — uden haandtryk', () => {
+test('konflikten opdages allerede ved opkoblingen - uden haandtryk', () => {
   // Alle udgivne udgaver af udvidelsen er fra foer haandtrykket. Ventede serveren
-  // paa hello, ville konflikten foerst kunne ses efter at brugeren havde opdateret —
+  // paa hello, ville konflikten foerst kunne ses efter at brugeren havde opdateret -
   // altsaa aldrig, for det er netop det de ikke har gjort.
   // Vinduet afgraenses af handleren selv, ikke af et fast tegnantal. MAALT 23/8:
-  // med slice(i, i + 2400) blev testen roed saa snart Origin-gaten blev tilfoejet —
+  // med slice(i, i + 2400) blev testen roed saa snart Origin-gaten blev tilfoejet -
   // altsaa af en KORREKT sikkerhedsrettelse.
   const i = kilde.indexOf("server.on('connection'");
   let d = 0, slut = i;
@@ -254,7 +254,7 @@ test('samme konflikt gentages ikke ved hvert hello', () => {
 // udvidelse EFTER foerste kommando. navigate aabnede en fane hos udvidelse A;
 // et oejeblik senere overtog B, som ikke kendte fanen og lavede en about:blank.
 // 21 af 43 vaerktoejer faldt med "Cannot access contents of url about:blank".
-// Faner hoerer til den udvidelse der aabnede dem — skifter man, strander de.
+// Faner hoerer til den udvidelse der aabnede dem - skifter man, strander de.
 
 test('den aktive udvidelse skifter ikke naar en anden forbinder bagefter', () => {
   const b = byg();
@@ -263,7 +263,7 @@ test('den aktive udvidelse skifter ikke naar en anden forbinder bagefter', () =>
   b.sendKommando();                                   // navigate → fane aabnet hos A
   forbind(b.connections, { version: '9.9.9', id: 'B' }); // B forbinder og er "nyere"
   assert.equal(b.activeConnection(), foerste,
-    'B overtog efter at A havde aabnet en fane — fanen strander og alt derefter rammer about:blank');
+    'B overtog efter at A havde aabnet en fane - fanen strander og alt derefter rammer about:blank');
 });
 
 test('foer foerste kommando maa en bedre udvidelse godt komme til', () => {
@@ -272,7 +272,7 @@ test('foer foerste kommando maa en bedre udvidelse godt komme til', () => {
   b.activeConnection();          // laasen saettes
   b.nyForbindelse();               // ny forbindelse, ingen kommando sendt endnu
   const bedre = forbind(b.connections, { version: '1.28.0', id: 'B' });
-  assert.equal(b.activeConnection(), bedre, 'ingen faner i spil endnu — den bedre skal vinde');
+  assert.equal(b.activeConnection(), bedre, 'ingen faner i spil endnu - den bedre skal vinde');
 });
 
 test('doer den laaste forbindelse, vaelges der forfra', () => {
@@ -306,7 +306,7 @@ test('BROWSER_MCP_EXTENSION_ID binder serveren til én bestemt udvidelse', () =>
   assert.match(blok, /if \(PINNET_UDVIDELSE && fraOrigin && fraOrigin !== PINNET_UDVIDELSE\)/,
     'pinnen tjekkes ikke ved opkobling');
   assert.match(blok, /ws\.close\(/, 'en afvist udvidelse skal lukkes ned, ikke bare ignoreres');
-  // Uden pin maa INTET afvises — ellers braekker den normale enkelt-udvidelses-sti.
+  // Uden pin maa INTET afvises - ellers braekker den normale enkelt-udvidelses-sti.
   const gate = blok.slice(blok.indexOf('if (PINNET_UDVIDELSE'));
   assert.ok(gate.indexOf('PINNET_UDVIDELSE &&') < gate.indexOf('!=='),
     'pin-tjekket skal kortslutte naar ingen pin er sat');
@@ -314,7 +314,7 @@ test('BROWSER_MCP_EXTENSION_ID binder serveren til én bestemt udvidelse', () =>
 
 test('pin-gaten ligger FOER forbindelsen registreres', () => {
   // Vinduet afgraenses af handleren selv, ikke af et fast tegnantal. MAALT 23/8:
-  // med slice(i, i + 2400) blev testen roed saa snart Origin-gaten blev tilfoejet —
+  // med slice(i, i + 2400) blev testen roed saa snart Origin-gaten blev tilfoejet -
   // altsaa af en KORREKT sikkerhedsrettelse.
   const i = kilde.indexOf("server.on('connection'");
   let d = 0, slut = i;
@@ -324,7 +324,7 @@ test('pin-gaten ligger FOER forbindelsen registreres', () => {
   }
   const blok = kilde.slice(i, slut);
   assert.ok(blok.indexOf('PINNET_UDVIDELSE &&') < blok.indexOf('connections.add(conn)'),
-    'en afvist udvidelse maa aldrig naa ind i registret — saa ville den taelle som en konflikt');
+    'en afvist udvidelse maa aldrig naa ind i registret - saa ville den taelle som en konflikt');
 });
 
 // ── Skaev-vinduet: serveren opdateres straks, udvidelsen tager 1-3 dage ──────
@@ -333,8 +333,8 @@ test('pin-gaten ligger FOER forbindelsen registreres', () => {
 // (click_xy, double_click, right_click, extract_list, reattach_debugger + de tre
 // udklipsholder-vaerktoejer, alle fra v1.26.0). Udvidelsen svarer `Unknown method: X`,
 // og det er ALT brugeren ser. Vinduet er garanteret: npm er oejeblikkeligt, Chrome Web
-// Store tager 1-3 dages review. Serveren VED at udvidelsen er gammel — den sendte intet
-// haandtryk — saa den kan forklare i stedet for at forvirre.
+// Store tager 1-3 dages review. Serveren VED at udvidelsen er gammel - den sendte intet
+// haandtryk - saa den kan forklare i stedet for at forvirre.
 
 function bygForklaring(version) {
   const a = kilde.indexOf('const ERSTATNINGER');

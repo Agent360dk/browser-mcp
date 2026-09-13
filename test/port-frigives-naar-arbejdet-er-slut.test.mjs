@@ -1,15 +1,15 @@
 /**
- * Naar arbejdet er slut, skal porten tilbage i puljen — ogsaa naar det var AGENTEN
+ * Naar arbejdet er slut, skal porten tilbage i puljen - ogsaa naar det var AGENTEN
  * der ryddede op.
  *
  * MAALT 7/9-2026: `tabs.onRemoved` sprang nedlukningen over hvis fanen var lukket af
- * agenten (`&& !lukketAfAgenten`). Undtagelsen var med vilje — en agent midt i et
+ * agenten (`&& !lukketAfAgenten`). Undtagelsen var med vilje - en agent midt i et
  * forloeb maa ikke miste browseren. Men serverens EGEN instruks siger til hver agent:
  * "ALWAYS close tabs when done". Enhver velopdragen chat holdt derfor sin port indtil
  * 4-timers-tomgangen udloeb. Den dokumenterede god-praksis slog oprydningen ihjel.
  *
  * Rettelsen er ikke at fjerne undtagelsen, men at give den en frist: fem minutter uden
- * faner, saa slippes PORTEN — processen lever videre, saa chatten kan hente browseren
+ * faner, saa slippes PORTEN - processen lever videre, saa chatten kan hente browseren
  * tilbage naar som helst.
  */
 import { test } from 'node:test';
@@ -42,7 +42,7 @@ test('agenten lukker sin sidste fane: ingen oejeblikkelig nedlukning, men en fri
   assert.equal(alarmer[0].args[1].delayInMinutes, 5, 'fristen er ikke fem minutter');
 });
 
-test('brugeren lukker den sidste fane: uaendret — serveren faar besked med det samme', async () => {
+test('brugeren lukker den sidste fane: uaendret - serveren faar besked med det samme', async () => {
   const { u } = medSession(43);
   await u.fyr('tabs.onRemoved', 43);
   assert.equal(terminates(u).length, 1, 'brugerens lukning skal stadig virke med det samme');
@@ -56,7 +56,7 @@ test('faar sessionen en ny fane inden fristen, aflyses frigivelsen', async () =>
 
   await u.hent('addTabToSession')(PORT, 77);
   const ryd = u.optager.til('alarms.clear').filter((b) => String(b.args[0]) === `frigiv-${PORT}`);
-  assert.equal(ryd.length, 1, 'en ny fane aflyste ikke fristen — porten ville forsvinde under arbejdet');
+  assert.equal(ryd.length, 1, 'en ny fane aflyste ikke fristen - porten ville forsvinde under arbejdet');
 });
 
 test('fyrer fristen mens sessionen stadig er tom, bedes serveren slippe porten', async () => {
@@ -78,18 +78,18 @@ test('fyrer fristen mens sessionen arbejder igen, sker der ingenting', async () 
   // traf en beslutning. Uden den her kunne testen bestaa fordi sessionen var vaek, fordi
   // en afvisning blev slugt af .catch, eller fordi kaeden slet ikke naaede frem.
   assert.ok(u.hent('sessions').get(PORT)?.tabIds.size > 0,
-    'sessionen var ikke arbejdende da beslutningen blev taget — testen maaler noget andet');
+    'sessionen var ikke arbejdende da beslutningen blev taget - testen maaler noget andet');
   assert.equal(terminates(u).length, 0, 'en arbejdende session fik sin port revet vaek');
 });
 
-test('serveren SLIPPER porten paa terminate — den lukker ikke processen ned', () => {
+test('serveren SLIPPER porten paa terminate - den lukker ikke processen ned', () => {
   const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
   const i = srv.indexOf("msg.type === 'terminate'");
   assert.ok(i > -1, 'terminate-haandteringen findes');
   const blok = srv.slice(i, i + 2600);
   assert.match(blok, /frigivPort\(/, 'terminate slipper ikke porten');
   assert.ok(!/gracefulShutdown\(/.test(blok),
-    'terminate lukker stadig processen ned — saa mister en faerdig chat browseren for altid');
+    'terminate lukker stadig processen ned - saa mister en faerdig chat browseren for altid');
 });
 
 // ── Den sti der faktisk sker i praksis ──────────────────────────────────────
@@ -99,7 +99,7 @@ test('serveren SLIPPER porten paa terminate — den lukker ikke processen ned', 
 // MV3-service-worker suspenderes efter ~30 sekunder uden arbejde, og fristen er paa
 // FEM MINUTTER. Naar alarmen fyrer, er workeren derfor naesten altid frisk startet med
 // et TOMT sessions-kort. Og `restoreSessions()` gendanner kun sessioner der har
-// gyldige faner (`if (validTabIds.size > 0)`) — hvilket en tom session per definition
+// gyldige faner (`if (validTabIds.size > 0)`) - hvilket en tom session per definition
 // ikke har. Alarmen fandt derfor ingen session, returnerede, og porten blev holdt
 // indtil 4-timers-tomgangen. Altsaa praecis den fejl frigivelsen skulle fjerne.
 //
@@ -117,7 +117,7 @@ test('service-workeren er genstartet naar fristen fyrer: porten slippes alligeve
   await u.fyr('alarms.onAlarm', { name: `frigiv-${PORT}` });
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(terminates(u).length, 1,
-    'porten holdes til 4-timers-tomgangen efter en service-worker-genstart — frigivelsen er reelt doed');
+    'porten holdes til 4-timers-tomgangen efter en service-worker-genstart - frigivelsen er reelt doed');
 });
 
 test('genstartet worker, men sessionen har faaet faner igen: der sker ingenting', async () => {
@@ -126,7 +126,7 @@ test('genstartet worker, men sessionen har faaet faner igen: der sker ingenting'
   await u.fyr('alarms.onAlarm', { name: `frigiv-${PORT}` });
   await new Promise((r) => setTimeout(r, 50));
   assert.ok(u.optager.antal('storage.local.get') >= 1,
-    'lytteren naaede aldrig frem — nul terminates er saa intet bevis');
+    'lytteren naaede aldrig frem - nul terminates er saa intet bevis');
   assert.equal(terminates(u).length, 0, 'en arbejdende session fik sin port revet vaek');
 });
 
@@ -161,7 +161,7 @@ test('en fane der dukker op midt i en frivillig frigivelse bliver IKKE lukket', 
     'agentens nye fane blev lukket af en frigivelse der var besluttet foer den fandtes');
 });
 
-test('en UVENTET afbrydelse rydder stadig op — faner lukkes', async () => {
+test('en UVENTET afbrydelse rydder stadig op - faner lukkes', async () => {
   // Modstykket til testen ovenfor. Skelnen mellem frivillig og uventet frigivelse maa
   // ikke goere den aegte oprydning tavs: doer chatten, skal dens faner stadig lukkes.
   const { u } = medSession(80);
@@ -188,7 +188,7 @@ test('en session der slippes rydder sin egen frist', async () => {
 test('ogsaa en chat der bare DOER rydder sin frist', async () => {
   // Modstykket til testen ovenfor: dér blev porten sluppet frivilligt. Her forsvinder
   // chatten uden varsel, hvilket er praecis den vej hvor en frist ellers ville blive
-  // efterladt — og senere fyre mod den naeste chat der tager porten.
+  // efterladt - og senere fyre mod den naeste chat der tager porten.
   const { u } = medSession(91);
   u.optager.ryd();
   await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
@@ -206,18 +206,18 @@ test('fejler en fane-lukning under oprydning, beholdes sessionen i stedet for at
   await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: PORT }, {}, () => {});
   await new Promise((r) => setTimeout(r, 30));
   assert.ok(u.hent('sessions').has(PORT),
-    'sessionen blev slettet mens dens fane stadig var aaben — fanen ligger nu i en gruppe ingen ejer');
+    'sessionen blev slettet mens dens fane stadig var aaben - fanen ligger nu i en gruppe ingen ejer');
 });
 
 // ── #15: brugerens lukning naar baggrundsprocessen sover ────────────────────
 //
 // `tabs.onRemoved` loeb `sessions` SYNKRONT. Vaekker eventet en suspenderet
-// MV3-service-worker, er kortet tomt, loekken koerer nul gange — og hverken den
+// MV3-service-worker, er kortet tomt, loekken koerer nul gange - og hverken den
 // oejeblikkelige nedlukning (brugerens lukning) eller 5-minutters-fristen bliver sat.
 // Porten holdes saa til 4-timers-tomgangen. Det er halvdelen af hele frigivelsens
 // praemis, og den halvdel virkede kun naar workeren tilfaeldigvis var vaagen.
 //
-// Faelden: `restoreSessions()` kan ikke bruges her — den dropper sessioner uden
+// Faelden: `restoreSessions()` kan ikke bruges her - den dropper sessioner uden
 // GYLDIGE faner, og fanen vi lige har mistet er netop den der goer sessionen ugyldig.
 function friskWorkerMedLager(gemt) {
   return indlaesUdvidelse({ svar: { 'storage.local.get': { sessions: { [String(PORT)]: gemt } } } });
@@ -240,5 +240,5 @@ test('agenten lukker sidste fane paa en sovende worker: fristen saettes stadig',
   await u.fyr('tabs.onRemoved', 78);
   await new Promise((r) => setTimeout(r, 40));
   const alarmer = u.optager.til('alarms.create').filter((b) => String(b.args[0]) === `frigiv-${PORT}`);
-  assert.equal(alarmer.length, 1, 'fristen blev aldrig sat — porten frigives aldrig');
+  assert.equal(alarmer.length, 1, 'fristen blev aldrig sat - porten frigives aldrig');
 });

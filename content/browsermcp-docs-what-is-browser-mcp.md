@@ -15,14 +15,14 @@ The full specification is maintained at [modelcontextprotocol.io](https://modelc
 Browser MCP is an MCP server for **browser automation through your real Chrome profile**. Concretely, it is two cooperating pieces:
 
 - A **Chrome extension** (Manifest V3), which holds the tab groups, reads cookies/localStorage, and executes actions through Chrome's own APIs (including Chrome's `debugger` API / DevTools Protocol, so it can act on tabs that aren't in focus).
-- A **local MCP server** (`npx @agent360/browser-mcp`) that your MCP client talks to over stdio, and that bridges to the extension over a local WebSocket connection (ports 9876–9895, one per concurrent session).
+- A **local MCP server** (`npx @agent360/browser-mcp`) that your MCP client talks to over stdio, and that bridges to the extension over a local WebSocket connection (ports 9876-9895, one per concurrent session).
 
 An AI agent connected to it can navigate pages, read and fill forms, click by CSS or by visible text, take screenshots, run JavaScript in page context, manage tabs and iframes, read cookies and localStorage, make CORS-free fetch calls from the extension, wait for a specific network call to finish, attempt CAPTCHA solves, pull an API token straight off a provider's dashboard (zero-config shortcuts for common ones like Stripe, HubSpot, or Slack - and general-purpose navigate-and-read support for any provider that isn't preconfigured), and hand control back to you mid-task for anything that needs a human (2FA code, a password, a judgment call). The full list of the 40 tools, grouped by category, is in the [tools reference](/docs/tools).
 
 ## How does Browser MCP work, mechanically?
 
 1. Your MCP client - Claude Code, Cursor, VS Code agent mode, or any other MCP-compatible client - starts a conversation and spawns the Browser MCP server as a subprocess over stdio.
-2. That server binds to the first free port in its 9876–9895 range.
+2. That server binds to the first free port in its 9876-9895 range.
 3. The Chrome extension's offscreen document polls that port range every ~2 seconds and opens a WebSocket connection once it finds a live server.
 4. From then on, tool calls flow: **your AI client → MCP server → Chrome extension → Chrome's extension/debugger APIs → the page.**
 5. Each conversation gets its own color-coded Chrome tab group and can only see and act on tabs it opened - so several agent sessions can run against the same Chrome instance without stepping on each other (up to 20 concurrent sessions).

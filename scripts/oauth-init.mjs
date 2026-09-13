@@ -38,7 +38,7 @@ if (!CLIENT_ID || !CLIENT_SECRET) {
 }
 
 if (env.CWS_REFRESH_TOKEN) {
-  console.log('CWS_REFRESH_TOKEN already in .env — skipping. Delete the line if you want to redo.');
+  console.log('CWS_REFRESH_TOKEN already in .env - skipping. Delete the line if you want to redo.');
   process.exit(0);
 }
 

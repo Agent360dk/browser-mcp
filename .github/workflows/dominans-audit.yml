@@ -4,11 +4,11 @@ name: dominans-audit
 # Runs entirely on GitHub's infrastructure (no AI vendor, no machine to keep awake).
 #
 # Two signals, deliberately:
-#   1. A monthly ISSUE with the full report — so the run reaches a human every month,
+#   1. A monthly ISSUE with the full report - so the run reaches a human every month,
 #      including the reminder to run the manual AI-citations panel. Without this, a
 #      green month is silent and the reminder never lands.
 #   2. A FAILED run on any 🔴 finding (registry drift, catalog regression, or the dead
-#      twin browsermcp.io resurrecting) — GitHub emails the repo owner.
+#      twin browsermcp.io resurrecting) - GitHub emails the repo owner.
 #
 # Manual run any time from the Actions tab (workflow_dispatch).
 
@@ -56,15 +56,15 @@ jobs:
           import os, json, urllib.request
           green = os.environ.get("AUDIT_STATUS", "0") == "0"
           report = open("/tmp/audit-report.txt", encoding="utf-8").read()
-          subject = ("✅ Browser MCP — månedstjek OK (husk citations-måling)" if green
-                     else "\U0001F534 Browser MCP — handling påkrævet (drift fundet)")
+          subject = ("✅ Browser MCP - månedstjek OK (husk citations-måling)" if green
+                     else "\U0001F534 Browser MCP - handling påkrævet (drift fundet)")
           citations_kit = (
               "─────────────────────────────────────────\n"
-              "AI-CITATIONS — den ene ting der ikke kan køre automatisk\n"
+              "AI-CITATIONS - den ene ting der ikke kan køre automatisk\n"
               "─────────────────────────────────────────\n"
               "Den kræver din indloggede browser (ChatGPT/Perplexity/Claude kan ikke\n"
               "køres headless). Åbn hver, indsæt prompten, notér om browsermcp.dev\n"
-              "nævnes/citeres — verificér ejerskab via URL (browsermcp.dev = os,\n"
+              "nævnes/citeres - verificér ejerskab via URL (browsermcp.dev = os,\n"
               "browsermcp.io = tvillingen). Læs ChatGPT via screenshot, ikke kopieret tekst.\n\n"
               "Kør disse 6 (15 min):\n"
               "  1. best MCP server for browser automation\n"
@@ -79,10 +79,10 @@ jobs:
               "Vil du have målingen KØRT for dig: bed en Claude-chat med browser-mcp\n"
               "drive den i din browser (kan ikke automatiseres via denne cron).\n"
               "─────────────────────────────────────────\n\n")
-          intro = ("Månedstjekket for browsermcp.dev kørte — ingen drift eller regression.\n\n"
+          intro = ("Månedstjekket for browsermcp.dev kørte - ingen drift eller regression.\n\n"
                    + citations_kit
                    if green else
-                   "Månedstjekket for browsermcp.dev fandt et problem — se rapporten nedenfor.\n\n")
+                   "Månedstjekket for browsermcp.dev fandt et problem - se rapporten nedenfor.\n\n")
           payload = {
               "personalizations": [{"to": [{"email": os.environ["MAIL_TO"]}]}],
               "from": {"email": os.environ["SENDGRID_FROM_EMAIL"]},
@@ -119,11 +119,11 @@ jobs:
           } > /tmp/issue-body.md
           gh issue create \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Dominans-audit — $MONTH" \
+            --title "Dominans-audit - $MONTH" \
             --body-file /tmp/issue-body.md
 
       - name: Fail the run if the audit found a 🔴
         if: steps.audit.outputs.status != '0'
         run: |
-          echo "::error::dominans-audit reported a 🔴 finding — see the report (email or issue)"
+          echo "::error::dominans-audit reported a 🔴 finding - see the report (email or issue)"
           exit 1

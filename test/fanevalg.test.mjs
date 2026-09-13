@@ -1,5 +1,5 @@
 /**
- * getSessionTab — hvilken fane rammer et kald? Koert, ikke grepped.
+ * getSessionTab - hvilken fane rammer et kald? Koert, ikke grepped.
  *
  * MAALT 22/8: fem mutationer af den her funktion slap igennem hele suiten. Den er
  * det led hvert eneste vaerktoej gaar igennem, saa en fejl her rammer alt paa én gang:
@@ -26,7 +26,7 @@ function udklip(navn) {
 }
 
 /**
- * @param faner    { id: url } — faner der findes i browseren
+ * @param faner    { id: url } - faner der findes i browseren
  * @param session  { activeTabId, tabIds }
  */
 async function vaelg({ faner = {}, session = {}, aktivér = undefined } = {}) {
@@ -68,13 +68,13 @@ test('en chrome://-side vaelges ALDRIG som arbejdsfane', async () => {
     session: { activeTabId: 11, tabIds: [11] },
   });
   assert.ok(!tab.url.startsWith('chrome://'),
-    'ingen udvidelse kan koere script paa Chromes egne sider — vaelges en, fejler ' +
+    'ingen udvidelse kan koere script paa Chromes egne sider - vaelges en, fejler ' +
     'hvert eneste vaerktoej med "Cannot interact with chrome:// pages"');
   assert.equal(log.oprettet.length, 1, 'der skal laves en brugbar fane i stedet');
 });
 
 // ── Mutations-verificeret: blankFallback-grenen fjernet gav roed (FIX-4).
-test('vores egen tomme fane genbruges — ikke én ny pr. kald', async () => {
+test('vores egen tomme fane genbruges - ikke én ny pr. kald', async () => {
   const foerste = await vaelg({ faner: {}, session: {} });
   assert.equal(foerste.log.oprettet.length, 1, 'foerste kald laver én');
 
@@ -91,7 +91,7 @@ test('vores egen tomme fane genbruges — ikke én ny pr. kald', async () => {
 // ── Mutations-verificeret: fallback-loekken fjernet gav roed.
 //
 //    MEN en aerlig note om FIX-17 (at fange id'et FOER activeTabId nulstilles):
-//    jeg proevede at mutere den — `const dead = null` — og suiten forblev groen.
+//    jeg proevede at mutere den - `const dead = null` - og suiten forblev groen.
 //    Det er ikke et hul i testen. Det er fordi FIX-17 ikke har nogen OBSERVERBAR
 //    effekt: naar den aktive fane er doed, loeber fallback-loekken lige nedenfor
 //    alligevel hen over tabIds, faar samme fejl paa samme id, og sletter den dér.
@@ -103,7 +103,7 @@ test('en doed aktiv fane ryddes ud af sessionen', async () => {
     session: { activeTabId: 11, tabIds: [11, 22] },
   });
   assert.ok(!session.tabIds.has(11),
-    'nulstilles activeTabId FOER id\'et fanges, sletter koden `null` i stedet — ' +
+    'nulstilles activeTabId FOER id\'et fanges, sletter koden `null` i stedet - ' +
     'og sessionen fyldes langsomt med spoegelsesfaner der taeller mod loftet');
   assert.equal(session.activeTabId, 22, 'og den skal falde tilbage paa en brugbar fane');
 });
@@ -142,13 +142,13 @@ test('bedes der eksplicit om det, aktiveres den', async () => {
  * switch_tab skal ogsaa goere VINDUET forrest.
  *
  * MAALT 31/8-2026: `chrome.tabs.update(id, {active:true})` alene goer fanen aktiv
- * inde i sit vindue. document.hasFocus() bliver sand — men visibilityState
+ * inde i sit vindue. document.hasFocus() bliver sand - men visibilityState
  * forbliver 'hidden' saa laenge vinduet ligger bagved. Chrome struber timere i
  * skjulte faner, saa Angular-apps (Google Ads, GA4, Search Console) aldrig
  * renderer faerdigt.
  *
  * Konsekvensen var ikke "klik virker ikke". Den var VAERRE: sider blev laest
- * halvt bygget, og der blev draget forkerte konklusioner af dem — bl.a. at tre
+ * halvt bygget, og der blev draget forkerte konklusioner af dem - bl.a. at tre
  * GA4-ejendomme laa paa en utilgaengelig konto. De laa lige for.
  */
 test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
@@ -159,7 +159,7 @@ test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
   assert.match(blok, /chrome\.tabs\.update\([^)]*active:\s*true/,
     'fanen skal stadig goeres aktiv');
   assert.match(blok, /chrome\.windows\.update\(/,
-    'VINDUET skal ogsaa fokuseres — ellers forbliver siden hidden og renderer ikke');
+    'VINDUET skal ogsaa fokuseres - ellers forbliver siden hidden og renderer ikke');
   assert.match(blok, /focused:\s*true/,
     'vinduet skal fokuseres med focused:true');
 });
@@ -168,7 +168,7 @@ test('switch_tab: et vindue der ikke kan fokuseres vaelter ikke kaldet', () => {
   const i = kilde.indexOf("case 'switch_tab'");
   const blok = kilde.slice(i, i + 1600);
   // Vinduet kan vaere lukket eller paa et andet Space. Fanen er stadig aktiv,
-  // saa kaldet skal lykkes — men svaret skal sige aerligt at synligheden ikke
+  // saa kaldet skal lykkes - men svaret skal sige aerligt at synligheden ikke
   // kunne sikres, i stedet for at lade kalderen tro at siden er synlig.
   assert.match(blok, /try\s*\{[\s\S]*chrome\.windows\.update[\s\S]*\}\s*catch/,
     'vinduesfokus skal vaere i try/catch');

@@ -187,7 +187,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 
 ### Running more than one Cursor conversation at once
 
-Each conversation gets its own MCP server on its own port (9876–9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one conversation can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
+Each conversation gets its own MCP server on its own port (9876-9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one conversation can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
 
 ---
 
@@ -218,7 +218,7 @@ Not to us. The MCP server runs locally over stdio, talks to the extension over a
 The MCP server updates itself - every run uses `npx @agent360/browser-mcp`, so there's nothing to pin or bump. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" - what do I check?**
-First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to your `mcp.json`, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart Cursor. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds - it scans ports 9876–9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
+First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to your `mcp.json`, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart Cursor. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2-3 seconds - it scans ports 9876-9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
 
 **I already run several other MCP servers in Cursor - will Browser MCP's 40 tools be a problem?**
 Cursor limits how many tools can be active across all your MCP servers combined, so if you're already close to that ceiling, disable tools you don't need from **Settings → Tools & MCP** (you can toggle individual tools per server, not just whole servers).

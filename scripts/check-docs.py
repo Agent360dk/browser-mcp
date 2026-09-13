@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Docs-site gate for browsermcp.dev — run locally or in CI (stdlib only).
+"""Docs-site gate for browsermcp.dev - run locally or in CI (stdlib only).
 
 Checks the COMMITTED site files (docs/) against the sources of truth:
-  1. tool count   — every "N browser tools" claim equals the count in mcp-server/tools.js
-  2. leak markers — editorial/drafting notes must never appear in rendered HTML
-  3. links        — every internal href/src resolves to a file in docs/
-  4. head meta    — canonical/og/twitter/description present + correct on generated pages
-  5. sitemap      — every generated page is listed; every sitemap URL resolves locally
+  1. tool count   - every "N browser tools" claim equals the count in mcp-server/tools.js
+  2. leak markers - editorial/drafting notes must never appear in rendered HTML
+  3. links        - every internal href/src resolves to a file in docs/
+  4. head meta    - canonical/og/twitter/description present + correct on generated pages
+  5. sitemap      - every generated page is listed; every sitemap URL resolves locally
 
 The companion check (regen-diff: generator output == committed HTML) runs as its
 own CI step: `python3 scripts/generate-docs.py && git diff --exit-code -- docs/`.
@@ -31,13 +31,13 @@ TOOLCOUNT = len(re.findall(r"""name: ['\"]browser_""", open(os.path.join(ROOT, '
 claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \
               glob.glob(os.path.join(ROOT, 'content', '*.md')) + [os.path.join(ROOT, 'README.md')]
 claim_files = [f for f in claim_files if os.path.isfile(f)]
-# MAALT 21/8: moenstret var kun "N browser tools". Formen "N tools" — som er den
-# der bruges paa naesten hver side — slap forbi, saa 45 paastande om "40 tools"
+# MAALT 21/8: moenstret var kun "N browser tools". Formen "N tools" - som er den
+# der bruges paa naesten hver side - slap forbi, saa 45 paastande om "40 tools"
 # stod paa sitet mens gaten meldte alt groent. Baade "N tools" og "N tool
 # definitions" taelles nu med.
 TOOL_CLAIM = re.compile(r'(\d+)\s+(?:browser\s+)?tools?\b')
 # MAALT 9/9: moenstret ovenfor kraever ordet "tools" LIGE efter tallet. Fire udgivne sider
-# slap forbi med "We document 34.", "34 of them" og "41 tools" i en tabelcelle — mens gaten
+# slap forbi med "We document 34.", "34 of them" og "41 tools" i en tabelcelle - mens gaten
 # meldte groent. Formerne herunder er dem der faktisk blev brugt. En vagt der kun kender én
 # formulering, vogter én formulering.
 TOOL_CLAIM_EKSTRA = [
@@ -45,24 +45,24 @@ TOOL_CLAIM_EKSTRA = [
     re.compile(r'(\d+) of them\b'),
     # Kun en raekke der HANDLER om vaerktoejer. Foerste udgave matchede enhver sidste
     # tabelcelle og roedmarkerede stjerner, downloads og issue-tal. En vagt der raaber ulv
-    # paa noget lovligt, bliver slaaet fra — saa den er snaevret ind til raekkens emne.
+    # paa noget lovligt, bliver slaaet fra - saa den er snaevret ind til raekkens emne.
     re.compile(r'^\|\s*Tools?\s*\|.*\|\s*(\d+)\s*\|\s*$', re.I),
 ]
 # MAALT 9/9: forsidens tal stod i en tabel hvor etiketten "Tool count" er paa ÉN linje og
 # tallet paa den naeste. Ingen linje-baseret vagt kan se det, saa raekken tjekkes for sig.
 TOOLCOUNT_RAEKKE = re.compile(r'Tool count', re.I)
-# Overskrifter undtages. Vaerktoejssiden grupperer efter kategori — "Interaction — 14
+# Overskrifter undtages. Vaerktoejssiden grupperer efter kategori - "Interaction - 14
 # tools" er et AFSNITS-tal og skal ikke vaere lig totalen. Alt andet er en paastand om
 # hvor mange vaerktoejer produktet har, og den skal passe.
 HEADING = re.compile(r'^\s{0,3}#{1,6}\s|<h[1-6][^>]*>', re.I)
-# Sammenlignings-sider naevner ANDRE produkters tal — Playwright MCP har 69
+# Sammenlignings-sider naevner ANDRE produkters tal - Playwright MCP har 69
 # vaerktoejer, Chrome DevTools MCP har 52. De tal er rigtige og skal ikke rettes til
 # vores. En paastand springes over hvis linjen ELLER den naermeste overskrift over den
 # naevner et andet produkt. Kommer der en ny konkurrent til, fejler gaten én gang og
-# navnet tilfoejes her — stoejende frem for tavst forkert.
+# navnet tilfoejes her - stoejende frem for tavst forkert.
 ANDRE = re.compile(r'playwright|chrome devtools mcp|mcp-chrome|browsermcp\.io|puppeteer|selenium', re.I)
 # MAALT 9/9: at springe HELE linjen over var det andet hul. En sammenligningsraekke
-# indeholder BEGGE tal — "| Tools | 69 documented | 34 |" — saa undtagelsen beskyttede
+# indeholder BEGGE tal - "| Tools | 69 documented | 34 |" - saa undtagelsen beskyttede
 # praecis det sted hvor vores eget forkerte tal stod. Nu springes kun de tal over der er
 # verificeret som andres. Kommer der et nyt, fejler gaten én gang og tallet skrives her.
 KONKURRENT_TAL = {

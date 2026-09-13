@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Browser MCP CLI — put the extension on disk + register the MCP server
+ * Browser MCP CLI - put the extension on disk + register the MCP server
  *
  * Usage:
- *   npx @agent360/browser-mcp install                     — extension files + register server
- *   npx @agent360/browser-mcp install --skip-extension    — register the server only
- *   npx @agent360/browser-mcp                             — start MCP server (the client calls this)
+ *   npx @agent360/browser-mcp install                     - extension files + register server
+ *   npx @agent360/browser-mcp install --skip-extension    - register the server only
+ *   npx @agent360/browser-mcp                             - start MCP server (the client calls this)
  *
  * Registration goes through `claude mcp add`, i.e. Claude Code's own command. An earlier
- * version wrote ~/.claude/mcp.json directly — Claude Code does not read that path, so the
+ * version wrote ~/.claude/mcp.json directly - Claude Code does not read that path, so the
  * install silently did nothing while printing success.
  */
 
@@ -37,7 +37,7 @@ if (command === 'install') {
   await import('../index.js');
 } else {
   console.log(`
-Browser MCP by Agent360 — control your real Chrome from Claude Code
+Browser MCP by Agent360 - control your real Chrome from Claude Code
 
 Usage:
   npx @agent360/browser-mcp install                   Extension files + register the server
@@ -63,16 +63,16 @@ function registerWithClaudeCode() {
   } catch (err) {
     const msg = String(err && (err.stderr || err.message) || '');
     if (/already exists/i.test(msg)) {
-      console.log('✅ Already registered with Claude Code — nothing to do');
+      console.log('✅ Already registered with Claude Code - nothing to do');
       return true;
     }
     // `claude` not on PATH, or a different client entirely. Do not pretend it worked.
     console.log('⚠️  Could not register automatically (the `claude` command was not found).');
-    console.log('   Register the server yourself — Claude Code:');
+    console.log('   Register the server yourself - Claude Code:');
     console.log('     claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest');
     console.log('   Codex:');
     console.log('     codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest');
-    console.log('   Cursor / VS Code / other — add to that client\'s MCP config:');
+    console.log('   Cursor / VS Code / other - add to that client\'s MCP config:');
     console.log('     {"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}');
     console.log('   Guides: https://browsermcp.dev/docs/install-claude-code/');
     return false;
@@ -92,7 +92,7 @@ function registerWithCodex() {
     if (err && err.code === 'ENOENT') return null;   // Codex er ikke installeret
     const msg = String(err && (err.stderr || err.message) || '');
     if (/already exists/i.test(msg)) {
-      console.log('✅ Already registered with Codex — nothing to do');
+      console.log('✅ Already registered with Codex - nothing to do');
       return true;
     }
     console.log('⚠️  Codex is installed, but registration failed. Run: codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest');
@@ -139,7 +139,7 @@ function registerWithCursor() {
   }
   cfg.mcpServers = cfg.mcpServers || {};
   if (cfg.mcpServers[SERVER_NAVN]) {
-    console.log('✅ Already registered with Cursor — nothing to do');
+    console.log('✅ Already registered with Cursor - nothing to do');
     return true;
   }
   cfg.mcpServers[SERVER_NAVN] = { command: SERVER_KOMMANDO, args: SERVER_ARGS };
@@ -176,13 +176,13 @@ function install({ skipExtension = false } = {}) {
   registerWithVSCode();
   registerWithCursor();
 
-  // 3. Print next steps — only the ones that still apply
+  // 3. Print next steps - only the ones that still apply
   if (skipExtension) {
     console.log(`
 📋 Last step:
   1. Make sure the Agent360 Browser MCP extension is enabled at chrome://extensions
   2. Restart your AI client so it picks up the server
-  3. Ask your agent to use the browser once — a green badge appears on the extension icon the first
+  3. Ask your agent to use the browser once - a green badge appears on the extension icon the first
      time it is actually used, not on restart. Grey before that is normal.`);
   } else {
     console.log(`
@@ -194,7 +194,7 @@ function install({ skipExtension = false } = {}) {
   5. Navigate to and select this folder:
      ${extensionDir}
   6. The extension "Agent360 Browser MCP" appears with a puzzle icon
-  7. Restart your AI client — the browser tools are now available
+  7. Restart your AI client - the browser tools are now available
 
   Prefer a one-click, auto-updating extension instead of loading unpacked?
   https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl
@@ -212,7 +212,7 @@ function install({ skipExtension = false } = {}) {
 💡 Help shape Browser MCP:
    - Public wishlist:  https://github.com/Agent360dk/browser-mcp/blob/main/WISHLIST.md
    - Use-case gallery: https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md
-   - Got an idea, bug, or cool thing you built? Just ask Claude — it can draft + submit for you.
+   - Got an idea, bug, or cool thing you built? Just ask Claude - it can draft + submit for you.
 
 📖 Docs: https://browsermcp.dev
 `);
@@ -246,7 +246,7 @@ function autoUpdateExtension() {
     const source = JSON.parse(readFileSync(sourceManifest, 'utf8'));
 
     // MAALT 21/8: her stod `if (installed.version !== source.version)`. Den kopierede
-    // naar versionerne var FORSKELLIGE — ikke naar pakkens var NYERE. En installation
+    // naar versionerne var FORSKELLIGE - ikke naar pakkens var NYERE. En installation
     // paa 1.27.1 blev derfor overskrevet af npm-pakkens 1.25.0, og linjen nedenfor
     // meldte det som "auto-updated: 1.27.1 → 1.25.0". Det skete ved hver eneste
     // serveropstart, saa en lokal nyere udgave kunne ikke blive liggende. Det er
@@ -258,8 +258,8 @@ function autoUpdateExtension() {
       // Signal to index.js that extension needs reload
       process.env.BROWSER_MCP_EXTENSION_UPDATED = '1';
     } else if (installed.version !== source.version) {
-      // Den lokale er nyere end pakkens — typisk under udvikling. Sig det, men roer den ikke.
-      process.stderr.write(`[MCP] Extension paa disken (${installed.version}) er nyere end pakkens (${source.version}) — lader den vaere\n`);
+      // Den lokale er nyere end pakkens - typisk under udvikling. Sig det, men roer den ikke.
+      process.stderr.write(`[MCP] Extension paa disken (${installed.version}) er nyere end pakkens (${source.version}) - lader den vaere\n`);
     }
   } catch {}
 }

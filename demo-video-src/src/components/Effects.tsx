@@ -130,7 +130,7 @@ export const ClickRipple: React.FC<{
   );
 };
 
-// Crossfade scene label — overlays on top of content, fades quickly
+// Crossfade scene label - overlays on top of content, fades quickly
 export const SceneLabel: React.FC<{
   text: string;
   subtext?: string;
@@ -202,7 +202,7 @@ export const SceneLabel: React.FC<{
   );
 };
 
-// Takeaway overlay — appears at bottom of scene to reinforce the key point
+// Takeaway overlay - appears at bottom of scene to reinforce the key point
 export const Takeaway: React.FC<{
   text: string;
   startFrame: number;
@@ -253,7 +253,7 @@ export const Takeaway: React.FC<{
   );
 };
 
-// Connection line — visual link between terminal command and browser action
+// Connection line - visual link between terminal command and browser action
 export const ConnectionPulse: React.FC<{
   visible: boolean;
 }> = ({ visible }) => {

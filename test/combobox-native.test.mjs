@@ -3,7 +3,7 @@
  *
  * MAALT 9/9-2026: den klikkede feltet, forsoegte at tomme det med en input-vaerdisaetter,
  * skrev tekst ind, og pollede 30 gange efter en listbox der aldrig kan opstaa paa en
- * <select> — for saa at svare "no-options-rendered". Kapaciteten fandtes hele tiden i
+ * <select> - for saa at svare "no-options-rendered". Kapaciteten fandtes hele tiden i
  * browser_select_option, som klarer samme felt paa 9 ms.
  *
  * Det dyre er ikke sekunderne. Det er at svaret ikke fortalte agenten hvad den skulle

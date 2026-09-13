@@ -1,10 +1,10 @@
 /**
- * En handling der MAASKE er sket, maa ikke gentages — og en halv handling maa ikke efterlades.
+ * En handling der MAASKE er sket, maa ikke gentages - og en halv handling maa ikke efterlades.
  *
  * MAALT 10/9 af Astra, tredje review-runde. Promise.race afbryder ikke det kald den opgiver,
  * saa en frist betyder "vi ved det ikke", ikke "det skete ikke". Tre steder handlede som om:
  *
- *   press_key     keyDown og keyUp i samme try. Timede keyDown ud, blev keyUp aldrig sendt —
+ *   press_key     keyDown og keyUp i samme try. Timede keyDown ud, blev keyUp aldrig sendt -
  *                 en tast der haenger. Reproduceret: Enter sendte formularen, kaldet fejlede.
  *   execute_script  faldt debuggeren af EFTER afsendelsen, koerte loekken BRUGERENS kode igen,
  *                 op til fire gange.
@@ -42,7 +42,7 @@ test('press_key sender keyUp selv naar keyDown ikke kvitteres', async () => {
     return {};
   });
   const svar = await u.hent('dispatch')(9876, 'press_key', { key: 'Enter' });
-  assert.ok(typer.includes('keyUp'), `keyUp blev aldrig sendt — tasten haenger. Sendt: ${typer.join(',')}`);
+  assert.ok(typer.includes('keyUp'), `keyUp blev aldrig sendt - tasten haenger. Sendt: ${typer.join(',')}`);
   assert.equal(svar.ok, false, 'et nedtryk der ikke blev kvitteret, er ikke en bekraeftet succes');
   assert.equal(svar.maaske_landet, true, 'kalderen skal vide at tasten KAN have virket');
 });
@@ -58,7 +58,7 @@ test('execute_script koerer ikke brugerens kode igen efter at den er sendt', asy
   }, { 'scripting.executeScript': () => { throw new Error('blokeret af CSP'); } });
   const svar = await u.hent('dispatch')(9876, 'execute_script', { code: '(() => { window.__BRUGERKODE__ = 1; })()' })
     .then((r) => ({ r }), (e) => ({ fejl: e.message }));
-  assert.equal(evalueringer, 1, `brugerens kode blev koert ${evalueringer} gange — et muterende script maa koere én gang`);
+  assert.equal(evalueringer, 1, `brugerens kode blev koert ${evalueringer} gange - et muterende script maa koere én gang`);
   assert.match(svar.fejl || '', /KAN allerede have koert/, 'fejlen skal sige at scriptet maaske er koert');
 });
 
@@ -67,7 +67,7 @@ test('set_date laeser feltet foer den proever kalender-vejen efter en fejl', () 
   const blok = kilde.slice(i, kilde.indexOf('// Path C: calendar-picker navigation', i));
   const fang = blok.slice(blok.lastIndexOf('} catch (e) {'));
   assert.match(fang, /readBackValue\(tab\.id, params\.selector\)/,
-    'efter en fejl i den maskerede indtastning skal feltet laeses — tastetrykkene kan staa der allerede');
+    'efter en fejl i den maskerede indtastning skal feltet laeses - tastetrykkene kan staa der allerede');
   assert.match(fang, /if \(valueLooksLikeIso\(v, iso, fmt\)\) \{\s*\n\s*return \{ ok: true, method: 'masked'/,
-    'staar datoen der, skal kaldet slutte — ellers saetter kalender-vejen den en gang til');
+    'staar datoen der, skal kaldet slutte - ellers saetter kalender-vejen den en gang til');
 });

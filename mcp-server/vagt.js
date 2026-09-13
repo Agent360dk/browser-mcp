@@ -1,9 +1,9 @@
 /**
- * Foraeldre-vagten — hvornaar er en proces i kaeden faktisk doed?
+ * Foraeldre-vagten - hvornaar er en proces i kaeden faktisk doed?
  *
  * Ligger i sit eget modul UDEN sideeffekter, saa den kan importeres og koeres i en
  * test. `index.js` starter en WebSocket-server, forbinder MCP-transporten og saetter
- * timere op ved import — den kan ikke importeres af en test uden at haenge. Derfor
+ * timere op ved import - den kan ikke importeres af en test uden at haenge. Derfor
  * blev vagt-logikken tidligere kun grepped efter som tekst, og en regex kan ikke se
  * om FORTOLKNINGEN af en fejl er rigtig.
  *
@@ -11,7 +11,7 @@
  *
  *     [MCP] vagt-kaede: 1
  *     [MCP] Chrome extension connected on port 9882
- *     [MCP] Proces 1 i kaeden doede — chatten bag denne server er vaek
+ *     [MCP] Proces 1 i kaeden doede - chatten bag denne server er vaek
  *
  * Pid 1 er launchd. Den doede ikke. `process.kill(1, 0)` kaster EPERM for en
  * almindelig bruger, og koden tolkede ENHVER exception som doed. Vagten der skulle

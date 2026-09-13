@@ -12,7 +12,7 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // resolveElement gaar gennem chrome.scripting.executeScript (ikke debuggeren), saa
 // et element skal svares DER. Uden det falder baade setDatePicker og setCombobox fra
-// med "input-not-found" foer de naar at sende noget — og en test ville tro de var
+// med "input-not-found" foer de naar at sende noget - og en test ville tro de var
 // tavse, hvor de i virkeligheden aldrig kom i gang.
 const FUNDET = { found: true, x: 5, y: 5, tag: 'INPUT', text: '', rect: { w: 100, h: 20 } };
 
@@ -41,10 +41,10 @@ test('datovaelgeren klikker feltet op og giver ikke op i foerste forsoeg', async
     'den skal SPOERGE gentagne gange om kalenderen er aabnet, ikke gaette');
   assert.equal(r?.ok, false, 'aabner kalenderen aldrig, skal den sige det');
   assert.equal(r?.error, 'picker-did-not-open',
-    'og sige HVAD der gik galt — ikke bare fejle');
+    'og sige HVAD der gik galt - ikke bare fejle');
 });
 
-test('datovaelgeren melder fra naar feltet ikke findes — den lyver ikke', async () => {
+test('datovaelgeren melder fra naar feltet ikke findes - den lyver ikke', async () => {
   const u = indlaesUdvidelse({ svar: grund({
     'debugger.sendCommand': (m, metode) =>
       metode === 'Runtime.evaluate' ? { result: { value: { found: false } } } : {},
@@ -58,7 +58,7 @@ test('datovaelgeren melder fra naar feltet ikke findes — den lyver ikke', asyn
 
 // ── setCombobox ─────────────────────────────────────────────────────────────
 
-test('combobox skriver i feltet og rydder foerst — samme fejl som fill havde', async () => {
+test('combobox skriver i feltet og rydder foerst - samme fejl som fill havde', async () => {
   const sendte = [];
   const u = indlaesUdvidelse({ svar: grund({
     'debugger.sendCommand': (m, metode) => { sendte.push(metode); return {}; },
@@ -69,17 +69,17 @@ test('combobox skriver i feltet og rydder foerst — samme fejl som fill havde',
 
   assert.ok(sendte.length > 0, 'der skal faktisk sendes noget til siden');
   assert.ok(sendte.includes('Input.dispatchMouseEvent'),
-    'feltet skal klikkes foer der skrives — ellers aabner forslagene ikke');
+    'feltet skal klikkes foer der skrives - ellers aabner forslagene ikke');
   // Den svarer PR. VAERDI, ikke bare ok/ikke-ok for hele kaldet. Det er kontrakten:
   // saetter man tre vaerdier og den anden fejler, skal kalderen kunne se HVILKEN.
   const r = await f(1, '#by', 'Koebenhavn').catch(() => null);
   assert.ok(Array.isArray(r?.results), 'svaret skal indeholde et resultat pr. vaerdi');
   assert.equal(r.results[0].value, 'Koebenhavn', 'og sige hvilken vaerdi det gaelder');
   assert.equal(typeof r.results[0].ok, 'boolean', 'med et klart ja eller nej');
-  // Rydningen sker via select-all + Backspace som tastetryk — ikke ved at saette
+  // Rydningen sker via select-all + Backspace som tastetryk - ikke ved at saette
   // .value, fordi React-styrede felter ignorerer en direkte tilskrivning.
   assert.match(u.hent('setCombobox').toString(), /clearField|selectAll|Backspace|SELECT_ALL/i,
-    'uden en rydning hober vaerdier sig op — praecis fill-fejlen');
+    'uden en rydning hober vaerdier sig op - praecis fill-fejlen');
 });
 
 test('combobox venter paa at forslagene dukker op', async () => {
@@ -96,7 +96,7 @@ test('filslip saetter filen gennem CDP i stedet for at simulere et drop', async 
   const f = u.hent('dropFileOnTarget');
   assert.equal(typeof f, 'function', 'dropFileOnTarget skal findes');
   const kilde = f.toString();
-  // Den gaar IKKE gennem en syntetisk DataTransfer — den bruger CDP's
+  // Den gaar IKKE gennem en syntetisk DataTransfer - den bruger CDP's
   // DOM.setFileInputFiles, som saetter filen paa det rigtige input i browseren.
   // Det er baade enklere og mere robust: sider kan ikke skelne den fra en aegte valg.
   assert.match(kilde, /setFileInputFiles/, 'filen skal saettes gennem CDP, ikke simuleres');
@@ -104,7 +104,7 @@ test('filslip saetter filen gennem CDP i stedet for at simulere et drop', async 
 });
 
 test('filslip leder ogsaa efter et skjult input i undertraeet', () => {
-  // Mange drop-zoner har et skjult <input type=file> — det er den rigtige vej ind.
+  // Mange drop-zoner har et skjult <input type=file> - det er den rigtige vej ind.
   const u = indlaesUdvidelse();
   const kilde = u.hent('dropFileOnTarget')?.toString() ?? '';
   assert.match(kilde, /input|type=.?file|querySelector/i,

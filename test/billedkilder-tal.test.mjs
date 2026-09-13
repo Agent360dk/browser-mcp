@@ -47,7 +47,7 @@ test('delingsbilledet har en kilde, saa det kan bygges igen naar tallene aendrer
 });
 
 // MAALT 11/9 af Opus og Fable (e2e runde 2): `assets/demo.mp4` blev genrenderet, men sitets egen forsidevideo
-// `docs/demo.mp4` var stadig juni-udgaven - den lover "Extracted — stays on your machine", praecis det loefte CHANGELOG
+// `docs/demo.mp4` var stadig juni-udgaven - den lover "Extracted - stays on your machine", praecis det loefte CHANGELOG
 // offentligt kalder usandt. To kopier af samme video driver fra hinanden i tavshed.
 test('sitets forsidevideo er den samme som repoets demo', () => {
   const a = readFileSync(join(rod, 'assets/demo.mp4'));

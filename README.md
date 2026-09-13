@@ -158,7 +158,7 @@ is the hard part - pages that fight *any* automation because of how they are bui
 
 Every release is gated on a flow test against a real Chrome that has to survive exactly
 those: all 40 tools are exercised, and the gate also checks that the extension Chrome is
-running is the one being released — not another copy with the same version number. The
+running is the one being released - not another copy with the same version number. The
 failures that do show up are honest ones: mouse events are not delivered to a tab that is
 not in front, and the tools say so instead of reporting success. What the test covers
 

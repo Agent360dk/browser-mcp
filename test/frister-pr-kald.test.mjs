@@ -1,10 +1,10 @@
 /**
- * Fristen skal kende KALDET, ikke kun metoden — og reserveløsninger maa ikke lægge sig
+ * Fristen skal kende KALDET, ikke kun metoden - og reserveløsninger maa ikke lægge sig
  * oveni noget der allerede virkede.
  *
  * MAALT 9/9 af reviewet, efter at jeg havde sat ét loft paa alle CDP-kald:
  *   · et skaermbillede paa en tung side: to kald à 8 s, saa kastede laekage-vagten, saa
- *     haevede den ydre catch vinduet — 32.413 ms i alt, over serverens 30 s-loft. Og den
+ *     haevede den ydre catch vinduet - 32.413 ms i alt, over serverens 30 s-loft. Og den
  *     haevning er praecis den fane-aktivering EKSPERIMENT 21/8 bevidst fjernede.
  *   · `execute_script` med awaitPromise venter paa BRUGERENS kode. Serveren giver 30 s;
  *     min frist skar den til 8, og fejlteksten matchede ikke retry-regexet, saa den endte
@@ -23,7 +23,7 @@ const sele = () => indlaesUdvidelse({ svar: {
   'debugger.getTargets': [{ tabId: 1, attached: true }],
 } });
 
-test('brugerens egen kode maa vente — awaitPromise faar den lange frist', () => {
+test('brugerens egen kode maa vente - awaitPromise faar den lange frist', () => {
   const f = sele().hent('cdpFrist');
   assert.ok(f('Runtime.evaluate', { awaitPromise: true }) >= 15000,
     'execute_script venter paa brugerens loefte; 8 s draeber ethvert fetch eller poll');
@@ -38,7 +38,7 @@ test('et skaermbillede paa en tung side maa tage tid', () => {
   assert.ok(f('Network.getResponseBody', {}) >= 15000, 'en stor body kan lovligt tage tid');
 });
 
-test('input-kald beholder den korte frist — det var dem der haengte', () => {
+test('input-kald beholder den korte frist - det var dem der haengte', () => {
   const f = sele().hent('cdpFrist');
   assert.equal(f('Input.dispatchMouseEvent', { type: 'mouseWheel' }), 1500);
   assert.equal(f('Input.dispatchKeyEvent', { type: 'keyDown' }), 1500);
@@ -73,7 +73,7 @@ test('scroll-reserveloesningen ruller mod en maal-position, ikke en gang til', (
 
 // MAALT 10/9 af Astra, i MIN egen rettelse fra samme dag: scroll-reserveloesningen havde
 // `.catch(() => null)` og returnerede derefter `ok: true` ubetinget. Fejlede ogsaa
-// reserveloesningen, svarede vaerktoejet succes med NUL rullede pixels — reproduceret som
+// reserveloesningen, svarede vaerktoejet succes med NUL rullede pixels - reproduceret som
 // "0 pixels faktisk, 600 rapporteret". Femte gang samme fejlklasse paa én dag.
 test('scroll lyver ikke naar ogsaa reserveloesningen fejler', () => {
   const i = kilde.indexOf("case 'scroll'");
@@ -97,7 +97,7 @@ test('scroll opdigter ikke et nulpunkt naar startpositionen ikke kan laeses', ()
     'stod siden paa 500 og laesningen fejlede, ville et opdigtet nulpunkt rulle OP');
   assert.match(blok, /const startKendt = !!start/, 'det skal kunne skelnes om starten er kendt');
   assert.match(blok, /start_ukendt: true/,
-    'er starten ukendt, er rulningen relativ — kalderen skal kunne se det, ikke gaette');
+    'er starten ukendt, er rulningen relativ - kalderen skal kunne se det, ikke gaette');
 });
 
 // MAALT 10/9 af Astra: to captureScreenshot à 20 s koeres SEKVENTIELT = 40.040 ms, mens

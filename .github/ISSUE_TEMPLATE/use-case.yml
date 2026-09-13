@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for sharing! Real use-cases inspire others and help the whole community.
 
-        **What happens next:** approved use-cases land in [USE_CASES.md](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md), and the strongest ones get written up as a full page on **browsermcp.dev** — crediting you, with a link to your site or company if you'd like one.
+        **What happens next:** approved use-cases land in [USE_CASES.md](https://github.com/Agent360dk/browser-mcp/blob/main/USE_CASES.md), and the strongest ones get written up as a full page on **browsermcp.dev** - crediting you, with a link to your site or company if you'd like one.
 
         One rule: we publish legitimate automation on accounts and sites you're authorized to use. We don't showcase defeating bot-detection or accessing things that aren't yours.
 
@@ -39,7 +39,7 @@ body:
     attributes:
       label: Why Browser MCP (vs alternatives)?
       description: Optional, but interesting to others.
-      placeholder: e.g. "It ran in my real, logged-in Chrome, so there was nothing to re-authenticate — an API or headless browser couldn't reach what I was already signed into."
+      placeholder: e.g. "It ran in my real, logged-in Chrome, so there was nothing to re-authenticate - an API or headless browser couldn't reach what I was already signed into."
     validations:
       required: false
 
@@ -56,8 +56,8 @@ body:
     id: company
     attributes:
       label: Company / site to credit + link (optional)
-      description: If you'd like your company named and linked on the published page. Links are marked rel="nofollow ugc" as standard — you still get the referral traffic, the brand mention, and a page that ranks on your name.
-      placeholder: "Acme Inc — https://acme.com"
+      description: If you'd like your company named and linked on the published page. Links are marked rel="nofollow ugc" as standard - you still get the referral traffic, the brand mention, and a page that ranks on your name.
+      placeholder: "Acme Inc - https://acme.com"
     validations:
       required: false
 

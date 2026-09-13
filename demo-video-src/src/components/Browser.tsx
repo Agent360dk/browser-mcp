@@ -178,7 +178,7 @@ interface AskUserOverlayProps {
 
 export const AskUserOverlay: React.FC<AskUserOverlayProps> = ({
   message,
-  title = "Agent360 — Action Required",
+  title = "Agent360 - Action Required",
   fieldLabel,
   fieldValue = "",
   visible,

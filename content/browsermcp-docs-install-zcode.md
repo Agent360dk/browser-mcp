@@ -179,7 +179,7 @@ Browser MCP is a standard stdio MCP server - it has no idea which agent is drivi
 
 ### Running more than one agent session at once
 
-Each session gets its own MCP server on its own port (9876–9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one session can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
+Each session gets its own MCP server on its own port (9876-9895), and the extension keeps every session's tabs in a separate color-coded Chrome tab group - one session can't see or click another's tabs. Idle sessions auto-exit after 4 hours without commands.
 
 ---
 
@@ -207,7 +207,7 @@ Not to us. The MCP server runs locally over stdio, talks to the extension over a
 The MCP server updates itself - `npx @agent360/browser-mcp` always resolves to latest on npm, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **ZCode isn't picking up the browser tools - what do I check?**
-First, confirm `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list (adding it isn't always the same as it being active). Then confirm the Chrome extension is loaded under `chrome://extensions` - click the extension icon → "Reconnect" and give it 2–3 seconds, it scans ports 9876–9895 for the running MCP server. If both check out and it's still not showing, restart ZCode.
+First, confirm `browser-mcp` shows as **Enabled** in ZCode's MCP Servers list (adding it isn't always the same as it being active). Then confirm the Chrome extension is loaded under `chrome://extensions` - click the extension icon → "Reconnect" and give it 2-3 seconds, it scans ports 9876-9895 for the running MCP server. If both check out and it's still not showing, restart ZCode.
 
 **Is this the same as browsermcp.io?**
 No - different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.

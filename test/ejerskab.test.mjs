@@ -1,21 +1,21 @@
 /**
  * Agenten maa kun naa det den selv har aabnet, og kun det domaene den har bedt om.
  *
- * MAALT 10/9, reproduceret i selen foer rettelsen — alle tre var live i 1.29.0:
+ * MAALT 10/9, reproduceret i selen foer rettelsen - alle tre var live i 1.29.0:
  *
  *   get_new_tab  `lastCreatedTabId` blev sat paa HVER onCreated, ogsaa naar brugeren selv
  *                trykkede Cmd+T. Reproduktion: bruger aabner brugerens-netbank.example ->
  *                get_new_tab svarer med den -> fanen staar i sessionens tabIds. Derefter er
  *                skaermbillede, sidetekst og localStorage af BRUGERENS fane lovligt.
  *
- *   get_cookies  Uden `domain` blev filteret til chrome.cookies.getAll `{}` — intet filter,
+ *   get_cookies  Uden `domain` blev filteret til chrome.cookies.getAll `{}` - intet filter,
  *                altsaa hver eneste cookie i profilen, inkl. httpOnly-sessionscookies som
  *                sidens eget JS ikke maa se. Skemaet siger required:['domain'], men serveren
  *                videresender argumenter uvalideret, saa skemaet var en henstilling.
  *
  *   upload_file  Stien gik raat til DOM.setFileInputFiles. Skaermbilledets `path` fik en
  *                indeslutning 23/8 med begrundelsen "argumenterne kommer fra en model der
- *                laeser FREMMEDE websider". Upload fik den aldrig — og DER forlader filen
+ *                laeser FREMMEDE websider". Upload fik den aldrig - og DER forlader filen
  *                faktisk maskinen.
  */
 import { test } from 'node:test';
@@ -43,7 +43,7 @@ test('en fane BRUGEREN aabnede bliver ikke agentens', async () => {
   const r = await u.hent('dispatch')(9876, 'get_new_tab', {});
   assert.equal(r.error, 'not-ours', 'en fane uden opener i sessionen tilhoerer brugeren');
   assert.ok(!u.hent('sessions').get(9876).tabIds.has(99),
-    'og den maa ikke ende i sessionen — saa ville skaermbillede og sidetekst vaere lovligt');
+    'og den maa ikke ende i sessionen - saa ville skaermbillede og sidetekst vaere lovligt');
 });
 
 test('en fane vores egen side aabnede, er vores', async () => {
@@ -53,7 +53,7 @@ test('en fane vores egen side aabnede, er vores', async () => {
   assert.equal(r.error, undefined, `et link med target=_blank fra vores egen fane skal virke: ${r.hint || ''}`);
 });
 
-test('get_cookies uden domaene afvises — ellers er filteret hele krukken', async () => {
+test('get_cookies uden domaene afvises - ellers er filteret hele krukken', async () => {
   const u = sele({ id: 1, url: 'https://a.example', windowId: 1, active: true });
   const r = await u.hent('dispatch')(9876, 'get_cookies', {});
   assert.equal(r.error, 'domain-mangler');
@@ -250,7 +250,7 @@ test('set_cookies: en inkognitofane uden kendt lager skriver ingenting', async (
   assert.match(JSON.stringify(r), /cookie-lager-ukendt|domaene-ikke-i-sessionen/, JSON.stringify(r));
 });
 
-test('upload-stien er indesluttet i arbejdsmappen — samme vagt som skaermbilledets path', () => {
+test('upload-stien er indesluttet i arbejdsmappen - samme vagt som skaermbilledets path', () => {
   const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
   const i = srv.indexOf("if (method === 'upload_file' || method === 'drop_file')");
   assert.ok(i > -1, 'vagten mod stier uden for arbejdsmappen er vaek fra upload');

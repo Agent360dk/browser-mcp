@@ -191,7 +191,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 
 ### Multi-session support
 
-Each running MCP server - whether spawned by VS Code, Claude Code, or Cursor - binds to its own port in the 9876–9895 range, and the Chrome extension keeps every session's tabs in a separate, color-coded tab group, so one session can't see or click another's tabs. Up to 20 concurrent sessions are supported; idle ones auto-exit after 4 hours without commands. That means a VS Code window and a Claude Code conversation can drive Chrome side by side without colliding.
+Each running MCP server - whether spawned by VS Code, Claude Code, or Cursor - binds to its own port in the 9876-9895 range, and the Chrome extension keeps every session's tabs in a separate, color-coded tab group, so one session can't see or click another's tabs. Up to 20 concurrent sessions are supported; idle ones auto-exit after 4 hours without commands. That means a VS Code window and a Claude Code conversation can drive Chrome side by side without colliding.
 
 ---
 
@@ -228,10 +228,10 @@ Not to us. The MCP server runs locally over stdio, talks to the extension over a
 The MCP server updates itself - every session runs `npx @agent360/browser-mcp@latest`, so there's nothing to do. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" - what do I check?**
-First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to VS Code's MCP config, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart VS Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2–3 seconds - it scans ports 9876–9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
+First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to VS Code's MCP config, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart VS Code. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2-3 seconds - it scans ports 9876-9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
 
 **Is this the same as browsermcp.io?**
 No - different project, same underlying idea (MCP + your real Chrome), separate codebase. If you found this page searching generically for "browser mcp," make sure you're grabbing the one you meant: this one is `@agent360/browser-mcp` on npm, `github.com/Agent360dk/browser-mcp` on GitHub.
 
 **Can I run it in more than one VS Code window at once?**
-Yes - each running server instance gets its own port (9876–9895) and its own color-coded Chrome tab group, so concurrent windows or clients don't see or control each other's tabs.
+Yes - each running server instance gets its own port (9876-9895) and its own color-coded Chrome tab group, so concurrent windows or clients don't see or control each other's tabs.

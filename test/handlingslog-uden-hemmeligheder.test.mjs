@@ -2,7 +2,7 @@
  * Handlingshistorikken maa aldrig gemme hvad agenten skrev.
  *
  * MAALT 11/9 (Astra, efterproevet i koden): logAction gemte `JSON.stringify(params).slice(0, 200)`
- * i chrome.storage.local for HVERT kald — ogsaa vaerdien til browser_fill (adgangskoder),
+ * i chrome.storage.local for HVERT kald - ogsaa vaerdien til browser_fill (adgangskoder),
  * cookie-vaerdier til set_cookies og adresser med login-tokens. Det laa i klartekst paa
  * brugerens maskine, i strid med privatlivssiden. Popuppen viser kun tid, vaerktoej og
  * session, saa parametrene tjente intet.

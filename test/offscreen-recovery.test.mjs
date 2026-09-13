@@ -2,12 +2,12 @@
  * Beviser at broen ALTID kommer tilbage af sig selv.
  *
  * Testene her koerer den AEGTE `ensureOffscreen` fra extension/background.js mod
- * en stubbet chrome-API og maaler HVAD DER SKER — de matcher ikke paa kildetekst.
+ * en stubbet chrome-API og maaler HVAD DER SKER - de matcher ikke paa kildetekst.
  *
  * MAALT 22/8, og det er grunden til omskrivningen: den tidligere udgave af denne
  * fil bestod af regex mod kildeteksten plus to tests der skrev deres EGEN kopi af
  * rettelsen og testede kopien. De ville have bestaaet hvis background.js var
- * slettet. Ti mutationer af produktionskoden forblev groenne i den gamle suite —
+ * slettet. Ti mutationer af produktionskoden forblev groenne i den gamle suite -
  * blandt andet at fjerne hjerteslags-alarmen og at goere broen fuldstaendig stum.
  *
  * Hver test her er mutations-verificeret: produktionskoden er braekket, testen er
@@ -107,7 +107,7 @@ test('mangler dokumentet helt, oprettes det', async () => {
 });
 
 // ── Mutations-verificeret: taelleren flyttet til en modul-variabel gav roed.
-test('taelleren ligger i storage — ikke i en variabel der doer med service-workeren', async () => {
+test('taelleren ligger i storage - ikke i en variabel der doer med service-workeren', async () => {
   const r = await koer({ findes: true, pingSvarer: false, lager: { offscreenGenskabt: 2 } });
   assert.equal(r.gemt.offscreenGenskabt, 3, 'skal taelle videre fra den gemte vaerdi, ikke fra 0');
 });
@@ -123,7 +123,7 @@ test('efter graensen rives broen ikke ned igen med det samme', async () => {
 // ── DEN VIGTIGE. Mutations-verificeret: `return` i stedet for pause-nulstillingen
 //    (altsaa den gamle, permanente graense) gjorde denne test roed.
 //    MAALT 22/8: graensen VAR permanent, og en aegte doed bro laa doed for evigt.
-test('naar pausen er ovre, proeves der igen — graensen maa ALDRIG vaere endelig', async () => {
+test('naar pausen er ovre, proeves der igen - graensen maa ALDRIG vaere endelig', async () => {
   const r = await koer({
     findes: true,
     pingSvarer: false,
@@ -150,14 +150,14 @@ test('hjerteslags-alarmen nulstilles ikke ved hver opvaagning', () => {
   const iGet = kilde.indexOf("chrome.alarms.get('ensure-offscreen'");
   const iCreate = kilde.indexOf("chrome.alarms.create('ensure-offscreen'");
   assert.ok(iGet > -1 && iCreate > -1, 'baade get og create skal findes');
-  assert.ok(iGet < iCreate, 'create skal ligge INDE i get-tilbagekaldet — ellers ' +
+  assert.ok(iGet < iCreate, 'create skal ligge INDE i get-tilbagekaldet - ellers ' +
     'nulstilles nedtaellingen hver gang service-workeren vaagner, og alarmen fyrer aldrig');
   assert.equal((kilde.match(/chrome\.alarms\.create\('ensure-offscreen'/g) || []).length, 1);
 });
 
 // ── I LIVE ER IKKE DET SAMME SOM OPDATERET ────────────────────────────────────
 // MAALT 22/8 mod en aegte Chrome, og det kostede en halv dag: broen svarede villigt
-// paa ping, saa ensureOffscreen regnede den for rask og udskiftede den ALDRIG — selv
+// paa ping, saa ensureOffscreen regnede den for rask og udskiftede den ALDRIG - selv
 // om dens kode var flere udgaver gammel. Hverken "Genindlaes" paa chrome://extensions
 // eller skydeknappen rev den ned. Mine kode-aendringer slog derfor slet ikke igennem
 // uden en fuld genstart af Chrome, og jeg maalte i timevis paa gammel kode uden at
@@ -179,7 +179,7 @@ test('en bro der slet ikke oplyser sin version er fra foer 1.27.1 og udskiftes',
 
 test('en bro med samme version faar fred', async () => {
   const r = await koer({ findes: true, pingSvarer: true, broVersion: '1.27.1', vores: '1.27.1' });
-  assert.equal(r.lukket, 0, 'en frisk bro maa ikke rives ned — det var hele grunden til graensen');
+  assert.equal(r.lukket, 0, 'en frisk bro maa ikke rives ned - det var hele grunden til graensen');
   assert.equal(r.oprettet, 0);
 });
 
@@ -189,7 +189,7 @@ test('en genindlaesning tvinger altid en frisk bro', () => {
   assert.ok(i > -1, 'onInstalled skal haandteres');
   const blok = kilde.slice(i, i + 700);
   assert.match(blok, /closeDocument\(\)/,
-    'onInstalled fyrer ved installation, opdatering OG "Genindlaes" — i alle tre er koden ' +
+    'onInstalled fyrer ved installation, opdatering OG "Genindlaes" - i alle tre er koden ' +
     'aendret, saa en overlevende bro er per definition forældet, uanset hvad den svarer');
   assert.match(blok, /offscreenGenskabt: 0/, 'og taelleren skal nulstilles, ellers arver den nye bro en gammel pause');
 });

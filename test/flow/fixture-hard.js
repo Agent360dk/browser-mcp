@@ -3,7 +3,7 @@ document.getElementById('klik').addEventListener('click', function () {
 });
 
 // React-agtigt styret felt. React lytter paa 'input' og skriver sin egen state
-// tilbage i feltet. Saetter man .value direkte, ruller den aendringen tilbage —
+// tilbage i feltet. Saetter man .value direkte, ruller den aendringen tilbage -
 // medmindre man bruger den native value-setter, som er praecis hvad
 // background.js goer (nativeInputValueSetter). Det efterligner vi her.
 (function () {

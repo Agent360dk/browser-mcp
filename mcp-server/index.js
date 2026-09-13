@@ -21,7 +21,7 @@ import { homedir } from 'os';
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
-// Read version from package.json — single source of truth, never drifts
+// Read version from package.json - single source of truth, never drifts
 const PKG_VERSION = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'package.json'), 'utf8')
 ).version;
@@ -32,26 +32,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoDir = dirname(__dirname); // parent of mcp-server/
 
 // FJERNET 22/8: her koerte `git pull --ff-only` + `npm install` ved hver serveropstart,
-// med cwd = pakkens foraeldremappe. I en npm-installation er det node_modules/@agent360/ —
+// med cwd = pakkens foraeldremappe. I en npm-installation er det node_modules/@agent360/ -
 // og git soeger OPAD, saa kaldet landede i BRUGERENS EGET repo. Maalt: fra
 // node_modules/@agent360 opløser git toplevel til det omkringliggende projekt.
 // En agent-session maatte altsaa ikke mutere brugerens git-trae uden samtykke.
 // `npx @agent360/browser-mcp@latest` opdaterer allerede serveren; blokken var overfloedig.
 let extensionUpdated = false;
 
-// Spaendet kan flyttes med env — ellers ville en test af port-udsultning skulle
+// Spaendet kan flyttes med env - ellers ville en test af port-udsultning skulle
 // beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.
 // Uden env er vaerdierne uaendrede. (Samme moenster som BROWSER_MCP_EXTENSION_ID.)
 const BASE_PORT = Number(process.env.BROWSER_MCP_BASE_PORT) || 9876;
-const MAX_PORT = Number(process.env.BROWSER_MCP_MAX_PORT) || 9895; // 20 ports instead of 10 — zombies die within 5s via parent check
+const MAX_PORT = Number(process.env.BROWSER_MCP_MAX_PORT) || 9895; // 20 ports instead of 10 - zombies die within 5s via parent check
 
 // ── Extension connections ───────────────────────────────────────────────────
 // FEJL MAALT 21/8: her stod `let extensionSocket = null`, og hver ny forbindelse
-// overskrev den. Er der to udgaver af udvidelsen indlaest i den samme Chrome —
-// fx en "load unpacked"-kopi ved siden af en anden — scanner BEGGE de samme porte
+// overskrev den. Er der to udgaver af udvidelsen indlaest i den samme Chrome -
+// fx en "load unpacked"-kopi ved siden af en anden - scanner BEGGE de samme porte
 // og forbinder til hver eneste server. Maalt med lsof: 2 ESTABLISHED forbindelser
 // paa hver af de fire aktive porte. Kommandoerne gik til den der forbandt sidst,
-// mens den anden holdt sit eget sessions-kort og sine egne fane-grupper — og et
+// mens den anden holdt sit eget sessions-kort og sine egne fane-grupper - og et
 // `terminate` fra den forkerte kopi lukkede serveren ned under den rigtige.
 //
 // Nu holdes alle forbindelser med deres identitet, kommandoer sendes kun til den
@@ -60,9 +60,9 @@ const MAX_PORT = Number(process.env.BROWSER_MCP_MAX_PORT) || 9895; // 20 ports i
 const connections = new Set(); // { ws, seq, extensionId, version, name, since }
 let connSeq = 0;
 let activePort = null;
-let alleePorteOptaget = false;   // hele spaendet i brug — se createWSS
+let alleePorteOptaget = false;   // hele spaendet i brug - se createWSS
 let bindFejl = null;             // bind fejlede af en ANDEN grund end optaget port
-let portBundetTid = 0;           // hvornaar porten sidst blev aaben — se sendToExtension
+let portBundetTid = 0;           // hvornaar porten sidst blev aaben - se sendToExtension
 
 function cmpVersion(a, b) {
   const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
@@ -78,13 +78,13 @@ let sidsteKonfliktNoegle = '';
 function advarOmKonflikt(conn) {
   const alle = distinctExtensions();
   if (alle.length < 2) return;
-  // Samme konflikt maa ikke skrige ved hver eneste hello — kun naar billedet aendrer sig.
+  // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
   const noegle = alle.map(c => `${c.extensionId || 'ukendt'}@${c.version || '?'}`).sort().join('|');
   if (noegle === sidsteKonfliktNoegle) return;
   sidsteKonfliktNoegle = noegle;
   const aktiv = activeConnection();
   // Oplyser INGEN af dem en version (alle udgivne udgaver er fra foer haandtrykket),
-  // er der intet grundlag for at vaelge. Det skal staa der — ellers laeser man
+  // er der intet grundlag for at vaelge. Det skal staa der - ellers laeser man
   // "kommandoer sendes kun til X" som om X var det rigtige valg.
   const kanVaelge = alle.some(c => c.version);
   process.stderr.write(
@@ -106,14 +106,14 @@ function liveConnections() {
 //
 // MAALT 21/8 i flow-harnessen: uden laasen skiftede den aktive udvidelse MIDT i en
 // koersel. Foerste kommando (navigate) gik til udvidelse A, som aabnede fanen. Et
-// oejeblik senere forbandt udvidelse B og overtog, fordi den var nyere i raekken —
+// oejeblik senere forbandt udvidelse B og overtog, fordi den var nyere i raekken -
 // men B kendte ikke A's fane og lavede en frisk about:blank. Alt derefter fejlede med
 // "Cannot access contents of url about:blank". 21 af 43 vaerktoejer faldt paa det, og
 // symptomet lignede praecis "faner forsvinder" og "kun én session virker".
 //
 // Faner hoerer til den udvidelse der aabnede dem. Skifter man udvidelse, strander de.
 // Derfor: vaelg én gang, og bliv ved den saa laenge dens forbindelse lever. Doer den,
-// vaelges der forfra — det er en aegte genopretning, ikke et vilkaarligt skift.
+// vaelges der forfra - det er en aegte genopretning, ikke et vilkaarligt skift.
 let laastForbindelse = null;
 let harSendtKommando = false;
 const PINNET_UDVIDELSE = (process.env.BROWSER_MCP_EXTENSION_ID || '').trim() || null;
@@ -122,7 +122,7 @@ function activeConnection() {
   if (laastForbindelse && laastForbindelse.ws.readyState === 1) return laastForbindelse;
 
   // Nyeste udvidelse vinder. Ved uafgjort: den der forbandt sidst. En udvidelse fra
-  // foer haandtrykket har ingen version og taber til en der har én — haandtrykket kom
+  // foer haandtrykket har ingen version og taber til en der har én - haandtrykket kom
   // med den nyere udgave.
   let best = null;
   for (const c of liveConnections()) {
@@ -157,13 +157,13 @@ let tomgangsvagt = null;
 // ── 4-timers-tomgangen bor paa modul-niveau, ikke i hjerteslaget ────────────
 //
 // FUNDET AF REVIEW 7/9. Tjekket laa INDE i `heartbeat`, som kun findes mens serveren
-// har en port — og som `frigivPort` rydder. Da porten blev doven, betoed det at en
+// har en port - og som `frigivPort` rydder. Da porten blev doven, betoed det at en
 // proces der ALDRIG binder (en chat der ikke roerer browseren) heller aldrig faar
 // sin tomgang tjekket. Det var den eneste vej hvor en browser-inaktiv server gav sine
 // ~35 MB tilbage; med mange samtidige chats er det maalbart. Nu koerer vagten altid.
 // Graensen staar som literal, ikke bag en konstant: `vagter.test.mjs` laeser tallet
 // direkte ud af kilden for at haandhaeve at den aldrig bliver kort. En kort graense
-// ville lade en aaben chat miste browseren permanent — vaerre end en port der staar
+// ville lade en aaben chat miste browseren permanent - vaerre end en port der staar
 // optaget lidt for laenge.
 tomgangsvagt = setInterval(() => {
   if (Date.now() - lastActivity > 4 * 60 * 60 * 1000) gracefulShutdown('Idle timeout (4h)');
@@ -181,7 +181,7 @@ function createWSS(port = BASE_PORT) {
     // ingen socket overhovedet.
     //
     // Chrome saetter ALTID Origin: chrome-extension://<32 tegn> paa en WebSocket fra
-    // en udvidelse — verificeret mod den koerende. Alt andet er per definition ikke
+    // en udvidelse - verificeret mod den koerende. Alt andet er per definition ikke
     // en udvidelse, saa gaten koster aegte brugere ingenting.
     verifyClient: ({ origin }, godkend) => {
       if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin || '')) return godkend(true);
@@ -202,7 +202,7 @@ function createWSS(port = BASE_PORT) {
       } else {
           // MAALT 22/8: her stod KUN denne stderr-linje. Ingen laeser stderr fra en
           // MCP-server, saa udtoemte porte var en helt tavs fejl. Hvert vaerktoejskald
-          // fejlede bagefter med "extension not connected" — en tekst der oven i koebet
+          // fejlede bagefter med "extension not connected" - en tekst der oven i koebet
           // siger at serveren koerer og sender brugeren til Chrome Web Store. Begge dele
           // er forkerte naar sandheden er at vi aldrig fik en port. Flaget laeses i
           // sendToExtension, saa agenten kan give brugeren den rigtige forklaring.
@@ -213,7 +213,7 @@ function createWSS(port = BASE_PORT) {
     } else {
       // FUNDET AF REVIEW 7/9. Her stod KUN stderr-linjen. Foer porten blev doven, var
       // det harmloest: en opstartsfejl man kunne se i loggen. Nu venter `sikrePort()`
-      // paa et loefte der aldrig blev indfriet — og `sendToExtension` goer
+      // paa et loefte der aldrig blev indfriet - og `sendToExtension` goer
       // `await sikrePort()` UDEN timeout. Enhver anden bind-fejl end EADDRINUSE
       // (EACCES paa en privilegeret port, EADDRNOTAVAIL, en restriktiv firewall)
       // ville derfor faa hvert eneste browser-kald til at haenge tavst for evigt.
@@ -228,7 +228,7 @@ function createWSS(port = BASE_PORT) {
     // WebSocket-handshaket fra en udvidelse baerer Origin: chrome-extension://<id>.
     // Den identificerer afsenderen UDEN at udvidelsen behoever at kende haandtrykket,
     // saa en konflikt mellem to indlaeste udvidelser kan opdages ogsaa naar begge er
-    // gamle udgaver — hvilket er praecis den situation konflikten opstaar i.
+    // gamle udgaver - hvilket er praecis den situation konflikten opstaar i.
     // Maalt 21/8: to distinkte origins ringede op til hver eneste server.
     const origin = req?.headers?.origin || '';
     const fraOrigin = /^chrome-extension:\/\/([a-p]{32})$/.exec(origin)?.[1] || null;
@@ -240,14 +240,14 @@ function createWSS(port = BASE_PORT) {
     // udvidelse med `hello version 99.0.0`, fik `browser_get_cookies` leveret, og
     // kunne lukke serveren med `terminate`. Alle tre trin lykkedes.
     //
-    // Serveren lytter kun paa 127.0.0.1, saa angriberen skal koere lokalt — men det
+    // Serveren lytter kun paa 127.0.0.1, saa angriberen skal koere lokalt - men det
     // goer enhver anden app og ethvert npm-postinstall-script. Og hvad den kan er
     // ikke smaating: laese alt agenten sender til browseren (kodeord fra ask_user,
     // cookies, sidetekst), fodre agenten med opdigtet sideindhold, og slukke
     // browser-adgangen i alle aabne chats.
     //
     // Chrome saetter ALTID `Origin: chrome-extension://<id>` paa en WebSocket fra en
-    // udvidelse — verificeret mod den koerende udvidelse. En manglende header er
+    // udvidelse - verificeret mod den koerende udvidelse. En manglende header er
     // derfor ikke en aeldre udgave; det er noget andet end en udvidelse.
     if (!fraOrigin) {
       process.stderr.write(
@@ -262,7 +262,7 @@ function createWSS(port = BASE_PORT) {
     // slaa dem fra: BROWSER_MCP_EXTENSION_ID=<id> binder serveren til én bestemt.
     // Uden den er valget vilkaarligt naar ingen af dem oplyser en version.
     if (PINNET_UDVIDELSE && fraOrigin && fraOrigin !== PINNET_UDVIDELSE) {
-      process.stderr.write(`[MCP] Afviser udvidelse ${fraOrigin} — bundet til ${PINNET_UDVIDELSE}\n`);
+      process.stderr.write(`[MCP] Afviser udvidelse ${fraOrigin} - bundet til ${PINNET_UDVIDELSE}\n`);
       try { ws.close(1008, 'not the pinned extension'); } catch {}
       return;
     }
@@ -279,7 +279,7 @@ function createWSS(port = BASE_PORT) {
     // If extension was auto-updated, trigger reload
     if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1') {
       process.env.BROWSER_MCP_EXTENSION_UPDATED = '';
-      process.stderr.write('[MCP] Extension files updated — triggering auto-reload\n');
+      process.stderr.write('[MCP] Extension files updated - triggering auto-reload\n');
       setTimeout(() => {
         sendToExtension('reload_extension', {}, 5000).catch(() => {});
       }, 1000);
@@ -291,7 +291,7 @@ function createWSS(port = BASE_PORT) {
 
       // Identitets-haandtryk fra offscreen-dokumentet (v1.28+).
       if (msg.type === 'hello') {
-        // MAALT 23/8: her stod `conn.extensionId = msg.extensionId` — altsaa lod
+        // MAALT 23/8: her stod `conn.extensionId = msg.extensionId` - altsaa lod
         // haandtrykket afsenderen OVERSKRIVE sin egen identitet med hvad som helst.
         // Origin-headeren er den eneste kilde Chrome selv saetter og som afsenderen
         // ikke kan forfalske, saa den vinder. Beskedens id gemmes separat: stemmer de
@@ -300,7 +300,7 @@ function createWSS(port = BASE_PORT) {
         conn.harHilst = true;
         if (conn.helloId && conn.helloId !== conn.extensionId) {
           process.stderr.write(
-            `[MCP] Haandtryk oplyser ${conn.helloId} men Origin siger ${conn.extensionId} — ` +
+            `[MCP] Haandtryk oplyser ${conn.helloId} men Origin siger ${conn.extensionId} - ` +
             'bruger Origin\n',
           );
         }
@@ -325,12 +325,12 @@ function createWSS(port = BASE_PORT) {
       if (msg.type === 'terminate') {
           // terminate lukker serveren for ALLE chats paa porten, saa den har to gates.
           //
-          // Om id-sammenligningen: ORIGIN er autoriteten — Chrome saetter den, og
+          // Om id-sammenligningen: ORIGIN er autoriteten - Chrome saetter den, og
           // afsenderen kan ikke forfalske den. Haandtrykkets id er kun et ekstra
           // signal. MAALT 23/8 mod den AEGTE udvidelse: den sender hello med id null,
           // fordi chrome.runtime.getManifest() kan fejle i offscreen-dokumentet.
           // Kraevede vi lighed ubetinget, kunne en HELT legitim udvidelse aldrig lukke
-          // sin session ned — en fejl jeg selv indfoerte samme aften. Derfor: et id der
+          // sin session ned - en fejl jeg selv indfoerte samme aften. Derfor: et id der
           // MANGLER er fint (Origin har allerede bevist hvem det er), mens et id der er
           // TIL STEDE og peger et ANDET sted afvises.
           //
@@ -341,15 +341,15 @@ function createWSS(port = BASE_PORT) {
           //    kopi, der lukkede sin sidste fane, rive serveren vaek under den
           //    udvidelse der reelt loeste opgaven.
           if (!conn.harHilst || (conn.helloId && conn.helloId !== conn.extensionId)) {
-          process.stderr.write('[MCP] terminate ignoreret — intet gyldigt haandtryk\n');
+          process.stderr.write('[MCP] terminate ignoreret - intet gyldigt haandtryk\n');
           return;
           }
         if (activeConnection() !== conn) {
-          process.stderr.write('[MCP] terminate ignoreret — kom fra en inaktiv udvidelses-forbindelse\n');
+          process.stderr.write('[MCP] terminate ignoreret - kom fra en inaktiv udvidelses-forbindelse\n');
           return;
         }
         // AENDRET 7/9: her stod `gracefulShutdown`. En chat der var faerdig med browseren
-        // mistede altsaa browseren HELT — og porten blev alligevel hverken frigivet hurtigt
+        // mistede altsaa browseren HELT - og porten blev alligevel hverken frigivet hurtigt
         // nok til andre (processen doede foerst efter oprydning) eller genvundet af chatten
         // selv. Nu slippes kun porten; naeste browser-kald tager en ny (se sikrePort).
         frigivPort('udvidelsen meldte: sidste fane lukket');
@@ -367,11 +367,11 @@ function createWSS(port = BASE_PORT) {
 
     // ── En doed socket skal AFVISE de kald der var undervejs (MAALT 23/8) ──────
     // Foer roerte close-handleren ikke `pending`. Maalt: en socket der doede 300 ms
-    // inde i et kald gav foerst svar efter 30.011 ms — og med den FORKERTE
+    // inde i et kald gav foerst svar efter 30.011 ms - og med den FORKERTE
     // forklaring, "kommandoen tog for lang tid". For extract_list er timeouten 180
     // sekunder, altsaa tre minutters tavshed hvor sandheden var kendt med det samme.
     const afvisVentende = (grund) => {
-      // Kun naar ingen anden levende forbindelse kan svare — ellers ville et helt
+      // Kun naar ingen anden levende forbindelse kan svare - ellers ville et helt
       // normalt skift mellem to udvidelser afbryde kald der er fuldt i orden.
       if (!pending.size || liveConnections().length) return;
       const antal = pending.size;
@@ -380,16 +380,16 @@ function createWSS(port = BASE_PORT) {
         pending.delete(id);
         p.reject(new Error(
           `Forbindelsen til Chrome-udvidelsen forsvandt mens kommandoen koerte (${grund}). ` +
-          'Kommandoen naaede maaske at blive udfoert i browseren — tjek tilstanden foer du ' +
+          'Kommandoen naaede maaske at blive udfoert i browseren - tjek tilstanden foer du ' +
           'proever igen. Er udvidelsen slaaet fra eller Chrome lukket, saa start den og proev forfra.',
         ));
       }
-      process.stderr.write(`[MCP] ${antal} ventende kald afvist — ${grund}\n`);
+      process.stderr.write(`[MCP] ${antal} ventende kald afvist - ${grund}\n`);
     };
 
     // MAALT 23/8: der fandtes INGEN error-handler. Et ugyldigt WebSocket-frame (fx
     // RSV1 sat) faar 'ws' til at emitte 'error' paa socketen, og en uhaandteret
-    // 'error' paa en EventEmitter kaster og draeber hele processen — altsaa alle
+    // 'error' paa en EventEmitter kaster og draeber hele processen - altsaa alle
     // chats paa den port. Tre linjer lukker det.
     ws.on('error', (e) => {
       process.stderr.write(`[MCP] WebSocket-fejl paa forbindelsen: ${e?.message || e}\n`);
@@ -410,7 +410,7 @@ function createWSS(port = BASE_PORT) {
     loesPortLoefte(true);
   });
 
-  // Heartbeat + idle timeout (4 hours) — hoisted to module scope so gracefulShutdown can clear it
+  // Heartbeat + idle timeout (4 hours) - hoisted to module scope so gracefulShutdown can clear it
   // Ryddes foerst: porten kan bindes flere gange i samme proces (se sikrePort), og uden
   // det her ville hver ny binding efterlade en ekstra timer der aldrig blev stoppet.
   if (heartbeat) clearInterval(heartbeat);
@@ -422,13 +422,13 @@ function createWSS(port = BASE_PORT) {
 // ── Porten tages ved BRUG, ikke ved opstart ─────────────────────────────────
 //
 // MAALT 7/9-2026 paa Gustavs maskine: 37 koerende servere, 20 porte i spaendet, 17 chats
-// helt uden browser. Hver Claude Code-chat starter en server ved opstart — ogsaa de mange
-// chats der aldrig roerer browseren — og her stod `createWSS()` paa modul-niveau. Porten
+// helt uden browser. Hver Claude Code-chat starter en server ved opstart - ogsaa de mange
+// chats der aldrig roerer browseren - og her stod `createWSS()` paa modul-niveau. Porten
 // blev altsaa reserveret af en chat der maaske aldrig fik brug for den, og holdt indtil
 // chatten doede eller 4-timers-tomgangen udloeb.
 //
 // Konsekvensen var ensidigt slem: chat nr. 21 fik `alleePorteOptaget = true` ÉN gang og
-// proevede aldrig igen — dens browser var doed hele chattens levetid, selv naar en port
+// proevede aldrig igen - dens browser var doed hele chattens levetid, selv naar en port
 // blev fri et minut senere.
 //
 // Nu bindes porten foerste gang et vaerktoej faktisk skal bruge udvidelsen, og HVERT kald
@@ -437,7 +437,7 @@ function createWSS(port = BASE_PORT) {
 //
 // Bemaerk hvorfor det ikke er en 5-minutters timer der draeber processen: en chat der
 // foerst skal bruge browseren efter en halv time ville saa staa uden. Processen lever
-// videre — det er kun PORTEN der ikke holdes reserveret til noget der ikke sker.
+// videre - det er kun PORTEN der ikke holdes reserveret til noget der ikke sker.
 let portResolver = null;
 let bindLoefte = null;
 
@@ -451,11 +451,11 @@ function loesPortLoefte(fik) {
 
 // Slip porten, men BLIV I LIVE. Forskellen er hele pointen: lukkede vi processen ned,
 // ville en chat der er faerdig med browseren kl. 10 og skal bruge den igen kl. 10:40 staa
-// uden — og Claude Code genstarter ikke en MCP-server midt i en samtale. Processen koster
+// uden - og Claude Code genstarter ikke en MCP-server midt i en samtale. Processen koster
 // ~35 MB og ingen port; det er porten der er den knappe ressource.
 function frigivPort(grund) {
   if (activePort === null) return;
-  process.stderr.write(`[MCP] frigiver port ${activePort} — ${grund}\n`);
+  process.stderr.write(`[MCP] frigiver port ${activePort} - ${grund}\n`);
   if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
   const gammel = wss;
   wss = null;
@@ -481,7 +481,7 @@ function sikrePort() {
   const vagthund = setTimeout(() => {
     if (!portResolver) return;
     bindFejl = bindFejl || 'bindingen svarede ikke inden for 10 sekunder';
-    process.stderr.write('[MCP] port-bindingen svarede aldrig — opgiver dette forsoeg\n');
+    process.stderr.write('[MCP] port-bindingen svarede aldrig - opgiver dette forsoeg\n');
     loesPortLoefte(false);
   }, 10000);
   bindLoefte.finally(() => clearTimeout(vagthund));
@@ -493,9 +493,9 @@ function sikrePort() {
 
 async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
   // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
-  // Fik vi ingen (hele spaendet optaget), proever naeste kald igen — derfor ingen kast her.
+  // Fik vi ingen (hele spaendet optaget), proever naeste kald igen - derfor ingen kast her.
   await sikrePort();
-  // Spoergsmaalet er om doeren var NYAABNET da kaldet begyndte — ikke om den stadig er
+  // Spoergsmaalet er om doeren var NYAABNET da kaldet begyndte - ikke om den stadig er
   // "ny" efter at vi selv har brugt femten sekunder paa at proeve igen. Derfor maales det
   // ved indgangen og baeres med gennem gentagelserne.
   const doerAabnetNu = _doerAabnetNu !== null
@@ -515,7 +515,7 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // udvidelsens naeste port-scanning -> probe -> WS-haandtryk, som udvidelsens egen
     // bremse lovligt kan holde i flere sekunder. Budgettet er 5 x 1500 ms.
     //
-    // Paa en maskine med mange samtidige chats er marginen tynd — og beskeden nedenfor
+    // Paa en maskine med mange samtidige chats er marginen tynd - og beskeden nedenfor
     // er den vaerst mulige: den sender en bruger hen for at reparere en installation der
     // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
     // ekstra budget, og siger sandheden hvis den stadig er tom.
@@ -527,18 +527,18 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
         `Porten ${activePort} blev aabnet for ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
         'sekunder siden, og udvidelsen har ikke naaet at forbinde endnu. Den scanner hvert ' +
         '2. sekund, saa det tager normalt under fem.\n' +
-        'Det er sandsynligvis IKKE en manglende installation — proev kommandoen igen om et ' +
+        'Det er sandsynligvis IKKE en manglende installation - proev kommandoen igen om et ' +
         'oejeblik. Bliver den ved, saa tjek at Chrome koerer og at udvidelsen er slaaet til.\n' +
         'Sig det til brugeren i den raekkefoelge. Bed IKKE om en geninstallation foerst.',
       );
     }
     // This is the other half of the two-part setup: the server is clearly running (it is
     // throwing this), so what is missing is the extension, Chrome itself, or the connection
-    // between them. Say which, and where to get it — the agent relays this text to the user.
+    // between them. Say which, and where to get it - the agent relays this text to the user.
     if (bindFejl) {
       throw new Error(
         `Serveren kunne ikke aabne en port paa 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bindFejl}\n` +
-        'Det er IKKE Chrome eller udvidelsen — det er operativsystemet eller en firewall der ' +
+        'Det er IKKE Chrome eller udvidelsen - det er operativsystemet eller en firewall der ' +
         'afviser bindingen. Tjek om noget blokerer loopback-porte.\n' +
         'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
       );
@@ -546,9 +546,9 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     if (alleePorteOptaget) {
       throw new Error(
         `Alle porte ${BASE_PORT}-${MAX_PORT} er optaget lige nu, saa dette kald fik ingen port. ` +
-        'Det er IKKE et problem med Chrome eller udvidelsen — de virker fint.\n' +
+        'Det er IKKE et problem med Chrome eller udvidelsen - de virker fint.\n' +
         `${MAX_PORT - BASE_PORT + 1} andre chats bruger browseren i oejeblikket. ` +
-        'Luk en af dem, eller vent til en bliver faerdig — og proev saa kommandoen igen. ' +
+        'Luk en af dem, eller vent til en bliver faerdig - og proev saa kommandoen igen. ' +
         'Denne chat skal IKKE genstartes: hvert kald proever selv at faa en port.\n' +
         'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
       );
@@ -559,7 +559,7 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       'Chrome extension (apparently not reachable).\n' +
       'Check, in order:\n' +
       '  1. Chrome is actually open and running.\n' +
-      '  2. The extension is installed and enabled at chrome://extensions — install it from\n' +
+      '  2. The extension is installed and enabled at chrome://extensions - install it from\n' +
       '     https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n' +
       '  3. Click the extension icon -> Reconnect, and wait 2-3 seconds.\n' +
       'Still stuck: https://browsermcp.dev/docs/troubleshooting/'
@@ -585,14 +585,14 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 
 ## Key behaviors
 - **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens.
-- **ALWAYS close tabs when done** with browser_close_tab after completing each task. Don't leave tabs open — close them immediately after extracting the data you need. Use browser_list_tabs to find and close all session tabs when a task is complete.
-- **Check existing tabs first** with browser_list_tabs before navigating — reuse tabs instead of opening duplicates.
-- **One task per tab** — navigate to a URL, do your work, then close or move on.
+- **ALWAYS close tabs when done** with browser_close_tab after completing each task. Don't leave tabs open - close them immediately after extracting the data you need. Use browser_list_tabs to find and close all session tabs when a task is complete.
+- **Check existing tabs first** with browser_list_tabs before navigating - reuse tabs instead of opening duplicates.
+- **One task per tab** - navigate to a URL, do your work, then close or move on.
 - **Tell the user what you're doing** in the browser. "I'm navigating to Stripe to find the API key" not just silently calling tools.
 
 ## Tab management
 - navigate creates tabs in your session's tab group (visible in Chrome as colored groups)
-- list_tabs only shows YOUR session's tabs — other Claude sessions have their own
+- list_tabs only shows YOUR session's tabs - other Claude sessions have their own
 - switch_tab lets you jump between your tabs
 - close_tab cleans up when you're done
 
@@ -613,23 +613,23 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
   If the whole window is covered, it may be raised briefly as a last resort
 
 ## Text-based selectors (preferred for dynamic sites)
-- browser_click("text=Get started") — clicks any element containing "Get started"
-- browser_click("button:text(Submit)") — clicks a button containing "Submit"
-- browser_fill("text=Email", "user@example.com") — fills input near "Email" label
-- browser_wait("text=Success") — waits for text to appear
+- browser_click("text=Get started") - clicks any element containing "Get started"
+- browser_click("button:text(Submit)") - clicks a button containing "Submit"
+- browser_fill("text=Email", "user@example.com") - fills input near "Email" label
+- browser_wait("text=Success") - waits for text to appear
 - These work on ALL sites including Google Cloud, Stripe, Slack (CSP-strict)
 
 ## Keyboard
-- browser_press_key("Enter") — submit forms
-- browser_press_key("Tab") — navigate between fields
-- browser_press_key("Escape") — close dialogs
-- browser_press_key("ArrowDown") — navigate dropdowns
-- browser_press_key("a", ctrl=true) — select all
+- browser_press_key("Enter") - submit forms
+- browser_press_key("Tab") - navigate between fields
+- browser_press_key("Escape") - close dialogs
+- browser_press_key("ArrowDown") - navigate dropdowns
+- browser_press_key("a", ctrl=true) - select all
 
 ## CAPTCHA handling
 Use browser_solve_captcha to detect and solve CAPTCHAs automatically:
-1. Call browser_solve_captcha() — detects CAPTCHA type on page
-2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") — auto-clicks; often passes when signed into Google
+1. Call browser_solve_captcha() - detects CAPTCHA type on page
+2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") - auto-clicks; often passes when signed into Google
 3. If image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
 4. If all else fails → call browser_solve_captcha(action="ask_human") to show overlay to user
 5. After solving, retry the action that was blocked
@@ -645,7 +645,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - If a standard selector fails, the extension recursively searches shadow roots
 - Text-based selectors ("text=Submit") also traverse shadow DOM
 
-## Hard inputs — use the specialised tools first
+## Hard inputs - use the specialised tools first
 - **Date inputs** → use browser_set_date (NOT browser_fill). Handles native date inputs, masked text inputs (MM/DD/YYYY etc.), AND calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). 3-path fallback with read-back verification.
 - **Autocomplete / combobox** (Languages on Meta Ads, country selects, async dropdowns) → use browser_set_combobox (NOT browser_select_option). Types partial query, waits for filtered listbox, clicks option. Supports multi-value chips.
 - **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). Finds hidden input in subtree/parent.
@@ -665,21 +665,21 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.
 If browser_provide_feedback reports that the extension is older than this server, or that more than one Browser MCP extension is connected, ask the user:
 "Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄). If two Browser MCP extensions are listed, turn one of them off."
-You cannot navigate to chrome:// pages — the user must do this manually.
+You cannot navigate to chrome:// pages - the user must do this manually.
 
-## When Browser MCP itself is the obstacle — call browser_provide_feedback
-Before you tell the user "browser-mcp can't do X", or give up on a tool that errored, timed out, or did something other than what it promised: call **browser_provide_feedback** with what_happened. Do it yourself, without asking. It checks the install first — the extension against this server, whether more than one Browser MCP extension is connected at once, and (only when BROWSER_MCP_CHECK_NPM=1) this server against the latest on npm — because those explain most "it's broken" moments, and none of them are visible to you otherwise. Read the verdict:
-- **outdated** or **disconnected** → relay fix_steps to the user, then retry the action. An outdated install explains most failures, so try the fix first — but if the behaviour still looks wrong after that, report it anyway. A release window is not a reason to stay silent about a real bug.
+## When Browser MCP itself is the obstacle - call browser_provide_feedback
+Before you tell the user "browser-mcp can't do X", or give up on a tool that errored, timed out, or did something other than what it promised: call **browser_provide_feedback** with what_happened. Do it yourself, without asking. It checks the install first - the extension against this server, whether more than one Browser MCP extension is connected at once, and (only when BROWSER_MCP_CHECK_NPM=1) this server against the latest on npm - because those explain most "it's broken" moments, and none of them are visible to you otherwise. Read the verdict:
+- **outdated** or **disconnected** → relay fix_steps to the user, then retry the action. An outdated install explains most failures, so try the fix first - but if the behaviour still looks wrong after that, report it anyway. A release window is not a reason to stay silent about a real bug.
 - **conflict** → more than one extension is loaded; tabs and sessions will keep behaving randomly until the user disables the extras at chrome://extensions. Say so plainly.
 - **current** → the install is fine, so this is a genuine gap. Offer the returned submit_url as a clickable link.
 - **unknown** → nothing local looks wrong, but the npm comparison was skipped (it is opt-in via BROWSER_MCP_CHECK_NPM=1). Treat it like **current**.
 Call it once per distinct obstacle, not once per retry.
 
 ## Sharing wishes / use-cases / bugs
-Browser MCP is community-shaped. Whenever the user (a) says "I wish browser-mcp could…" or expresses a missing feature, (b) hits something broken or unexpected that looks like a bug in browser-mcp itself, or (c) describes something cool they built with it — call **browser_about** with the matching intent ("wish" / "use_case" / "bug") and a short title + body, then offer the returned submit_url to the user as a clickable link. Don't ask permission, just draft + offer the link. This is the user's path to contribute back, and they usually don't know it exists.`;
+Browser MCP is community-shaped. Whenever the user (a) says "I wish browser-mcp could…" or expresses a missing feature, (b) hits something broken or unexpected that looks like a bug in browser-mcp itself, or (c) describes something cool they built with it - call **browser_about** with the matching intent ("wish" / "use_case" / "bug") and a short title + body, then offer the returned submit_url to the user as a clickable link. Don't ask permission, just draft + offer the link. This is the user's path to contribute back, and they usually don't know it exists.`;
 
 // FEJL MAALT 21/8: `instructions` laa i et TREDJE argument. Server-konstruktoeren
-// tager kun to (serverInfo, options), saa JavaScript smed objektet vaek i tavshed —
+// tager kun to (serverInfo, options), saa JavaScript smed objektet vaek i tavshed -
 // og hele blokken ovenfor naaede aldrig frem til nogen klient. Verificeret ved at
 // laese initialize-svaret: det havde kun protocolVersion, capabilities og serverInfo.
 // Det betyder at "luk altid faner naar du er faerdig", CAPTCHA-fremgangsmaaden,
@@ -758,7 +758,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // MAALT 10/9: skaermbilledets `path` fik en indeslutning 23/8, med begrundelsen
     // "argumenterne kommer fra en model der laeser FREMMEDE websider". Praecis samme
-    // argument gaelder upload — og DER forlader filen faktisk maskinen. Stien gik raat
+    // argument gaelder upload - og DER forlader filen faktisk maskinen. Stien gik raat
     // videre til DOM.setFileInputFiles, saa upload_file({files:["~/.ssh/id_rsa"]}) paa en
     // vilkaarlig side med et filfelt lagde noeglen i en upload. Vagten manglede netop hvor
     // konsekvensen var stoerst.
@@ -892,7 +892,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-// Naar udvidelsen er aeldre end serveren, svarer den `Unknown method: X` — og det er
+// Naar udvidelsen er aeldre end serveren, svarer den `Unknown method: X` - og det er
 // alt brugeren ser. Det sker GARANTERET: serveren kommer fra npm og opdateres straks,
 // mens udvidelsen skal gennem Chrome Web Stores review paa 1-3 dage. I det vindue
 // findes otte vaerktoejer i serveren som en 1.25.0-udvidelse ikke kender
@@ -900,7 +900,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 // udklipsholder-vaerktoejer, alle fra v1.26.0).
 //
 // Serveren VED at udvidelsen er gammel: den sendte intet haandtryk. Saa i stedet for
-// en gaadefuld fejl faar brugeren at vide hvorfor — og hvad de kan goere imens.
+// en gaadefuld fejl faar brugeren at vide hvorfor - og hvad de kan goere imens.
 const ERSTATNINGER = {
   double_click: 'kald `browser_click` to gange',
   right_click: 'brug `browser_execute_script` med et contextmenu-event',
@@ -919,7 +919,7 @@ function forklarSkaevhed(besked) {
   const alt = ERSTATNINGER[m[1]];
   return `Error: browser_${m[1]} findes i denne server, men ikke i din Chrome-udvidelse.\n\n` +
     'Udvidelsen opdateres via Chrome Web Store og kan vaere 1-3 dage bagud efter en ' +
-    'udgivelse — serveren opdateres med det samme via npm. Alt andet virker imens.\n' +
+    'udgivelse - serveren opdateres med det samme via npm. Alt andet virker imens.\n' +
     (alt ? `\nIndtil da: ${alt}.\n` : '') +
     '\nTjek om en opdatering venter: chrome://extensions → Agent360 Browser MCP. ' +
     'Er den indlaest som "unpacked", saa koer `npx @agent360/browser-mcp install`.';
@@ -941,11 +941,11 @@ function handleAbout(args) {
 
   const instruction =
     intent === 'wish'
-      ? `Share this exact submission link with the user as a clickable link, with a short note like "Click to submit your wish — it'll open a pre-filled GitHub issue you can review before submitting": ${submit_url}`
+      ? `Share this exact submission link with the user as a clickable link, with a short note like "Click to submit your wish - it'll open a pre-filled GitHub issue you can review before submitting": ${submit_url}`
       : intent === 'use_case'
-      ? `Share this exact submission link with the user as a clickable link, with a short note like "Click to share your use-case — pre-filled, you can edit before submitting": ${submit_url}`
+      ? `Share this exact submission link with the user as a clickable link, with a short note like "Click to share your use-case - pre-filled, you can edit before submitting": ${submit_url}`
       : intent === 'bug'
-      ? `Share this exact bug-report link with the user as a clickable link, with a short note like "Click to report — pre-filled, please add reproduction steps before submitting": ${submit_url}`
+      ? `Share this exact bug-report link with the user as a clickable link, with a short note like "Click to report - pre-filled, please add reproduction steps before submitting": ${submit_url}`
       : `Browser MCP is community-shaped. Open wishlist: ${REPO_URL}/blob/main/WISHLIST.md · Use-cases: ${REPO_URL}/blob/main/USE_CASES.md · Submit anything: ${REPO_URL}/issues/new/choose`;
 
   return {
@@ -967,13 +967,13 @@ function handleAbout(args) {
 // ── Selv-diagnose: er installationen overhovedet frisk? ─────────────────────
 // Baggrund (21/8): den udgave der koerte lokalt var npm 1.25.0, mens rettelserne
 // laa uudgivet i repoet. Fejlen viste sig som "sessioner opfoerer sig underligt",
-// ikke som "du koerer en gammel version" — og der fandtes ingen maade at spoerge
+// ikke som "du koerer en gammel version" - og der fandtes ingen maade at spoerge
 // paa. Derfor spoerger vaerktoejet selv, foer det konkluderer noget som helst.
 
 // Friskheds-tjek mod npm. SLUKKET SOM STANDARD siden 22/8.
 //
 // Produktet lover paa forsiden at intet sendes til Agent360 og at der ingen telemetri er, og et
-// opslag i npm-registret ER et kald ud af maskinen — ogsaa selv om det kun sender et
+// opslag i npm-registret ER et kald ud af maskinen - ogsaa selv om det kun sender et
 // pakkenavn og ingen brugerdata. Loeftet vejer tungere end bekvemmeligheden, saa
 // tjekket er nu opt-in: saet BROWSER_MCP_CHECK_NPM=1.
 //
@@ -1007,7 +1007,7 @@ function npmLatestVersion() {
 // rettes. Logbogen ligger LOKALT og forlader ikke maskinen.
 //
 // Bevidst ikke auto-indsendelse til et offentligt GitHub-issue: rapporten baerer URL og
-// fejltekst fra den side agenten stod paa — og det er ofte en annoncekonto, en indbakke
+// fejltekst fra den side agenten stod paa - og det er ofte en annoncekonto, en indbakke
 // eller et kundesystem. Et offentligt issue kan ikke tages tilbage.
 const FEEDBACK_LOG = join(homedir(), '.browser-mcp', 'feedback.jsonl');
 const setteFingeraftryk = new Set();   // samme graense logges én gang pr. serverliv
@@ -1023,7 +1023,7 @@ function fingeraftryk(kind, tool, what) {
 }
 
 // URL'en reduceres til oprindelse + sti. Query og fragment baerer tokens, sessions-id'er
-// og soegetermer — de har intet at goere i en logbog nogen senere kopierer ind i et issue.
+// og soegetermer - de har intet at goere i en logbog nogen senere kopierer ind i et issue.
 function afkortUrl(u) {
   if (!u) return null;
   try { const x = new URL(u); return x.origin + x.pathname; } catch { return '(ulaeselig url)'; }
@@ -1079,12 +1079,12 @@ async function handleProvideFeedback(args) {
     );
     fix_steps.push(
       'Aabn chrome://extensions og slaa alle Browser MCP-udvidelser fra paa naer én. ' +
-      'Det skal brugeren selv goere — chrome:// kan ikke styres herfra. Behold den nyeste.',
+      'Det skal brugeren selv goere - chrome:// kan ikke styres herfra. Behold den nyeste.',
     );
   }
   if (!active && activePort === null) {
     // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
-    // i stykker, og et fix-skridt her ville vaere en falsk alarm — se verdict 'idle'.
+    // i stykker, og et fix-skridt her ville vaere en falsk alarm - se verdict 'idle'.
     findings.push('Browseren er ikke taget i brug i denne chat endnu, saa der er ingen forbindelse at maale paa. Det er ikke en fejl.');
   } else if (!active) {
     findings.push('Ingen Chrome-udvidelse er forbundet til denne MCP-server lige nu.');
@@ -1092,7 +1092,7 @@ async function handleProvideFeedback(args) {
   }
   if (serverOutdated) {
     findings.push(`MCP-serveren koerer v${PKG_VERSION}, men npm har v${npmLatest}. Fejlen kan allerede vaere rettet.`);
-    fix_steps.push(`Genstart klienten — den henter selv @agent360/browser-mcp@latest (v${npmLatest}).`);
+    fix_steps.push(`Genstart klienten - den henter selv @agent360/browser-mcp@latest (v${npmLatest}).`);
   }
   if (extOutdated) {
     findings.push(
@@ -1101,14 +1101,14 @@ async function handleProvideFeedback(args) {
         : `Udvidelsen er v${extVersion}, serveren er v${PKG_VERSION}. Udvidelsen mangler rettelser fra de mellemliggende udgaver.`,
     );
     // MAALT 22/8: "↻ reload" er ubrugeligt for en Chrome Web Store-bruger. Butikken
-    // skubber paa Googles tidsplan efter et review paa 1-3 dage — der er ingen nyere
+    // skubber paa Googles tidsplan efter et review paa 1-3 dage - der er ingen nyere
     // version at hente endnu, saa raadet foerer i ring. Serveren kan ikke se hvilken
     // slags installation det er (den gamle udvidelse oplyser intet), saa begge tilfaelde
-    // skal staa der — og det skal siges at ventetiden er forventet, ikke en fejl.
+    // skal staa der - og det skal siges at ventetiden er forventet, ikke en fejl.
     fix_steps.push(
       extVersion === null
         ? 'Kommer udvidelsen fra Chrome Web Store: der er sandsynligvis en nyere version i review ' +
-          '(1-3 dage efter en udgivelse). ↻ reload henter den IKKE foer Google har godkendt — ' +
+          '(1-3 dage efter en udgivelse). ↻ reload henter den IKKE foer Google har godkendt - ' +
           'det er forventet og gaar over af sig selv. Alt andet virker imens. ' +
           'Er den indlaest som "unpacked": koer `npx @agent360/browser-mcp install` og derefter ' +
           'chrome://extensions → Agent360 Browser MCP → ↻ reload.'
@@ -1117,23 +1117,23 @@ async function handleProvideFeedback(args) {
         : 'Er udvidelsen indlaest som "unpacked": koer `npx @agent360/browser-mcp install` og derefter ' +
           'chrome://extensions → Agent360 Browser MCP → ↻ reload. Kommer den fra Chrome Web Store: den nye version ' +
           'ligger sandsynligvis i review (1-3 dage efter en udgivelse), og ↻ reload henter den IKKE foer Google har ' +
-          'godkendt — det er forventet og gaar over af sig selv. Alt andet virker imens.',
+          'godkendt - det er forventet og gaar over af sig selv. Alt andet virker imens.',
     );
   }
 
   // ── "ingen forbindelse" og "ingen port endnu" er IKKE det samme ────────────
   //
   // FUNDET AF REVIEW 7/9. Foer porten blev doven, bandt hver server ved opstart, saa
-  // udvidelsen var altid forbundet naar dette vaerktoej blev kaldt — og `!active`
+  // udvidelsen var altid forbundet naar dette vaerktoej blev kaldt - og `!active`
   // betoed derfor paalideligt "udvidelsen kan ikke naas". Nu binder en chat foerst en
   // port naar den bruger browseren, saa en HELT SUND chat der ikke har roert den kan
   // staa uden forbindelse. Uden det her skel fik den `disconnected` + fix_steps der
-  // bad brugeren geninstallere — og INSTRUCTIONS beder agenten viderebringe dem.
+  // bad brugeren geninstallere - og INSTRUCTIONS beder agenten viderebringe dem.
   // Vi ville altsaa fortaelle folk at deres installation var i stykker, fordi vi selv
   // endnu ikke havde aabnet doeren.
   //
   // Loesningen er ikke at binde en port her (et diagnose-vaerktoej skal ikke aendre
-  // tilstand for at kunne maale den) — det er at sige praecis hvad der er tilfaeldet.
+  // tilstand for at kunne maale den) - det er at sige praecis hvad der er tilfaeldet.
   const ingenPortEndnu = activePort === null;
   const verdict =
     exts.length > 1 ? 'conflict'
@@ -1164,7 +1164,7 @@ async function handleProvideFeedback(args) {
     what && `**What happened**\n${what}`,
     tool && `\n**Tool**: \`${tool}\``,
     // MAALT 22/8 ved sikkerhedsreview: her stod den RAA url, mens den lokale logbog
-    // nedenfor bruger afkortUrl(). Query-strengen — hvor tokens bor — blev altsaa
+    // nedenfor bruger afkortUrl(). Query-strengen - hvor tokens bor - blev altsaa
     // strippet fra filen paa disken, men sendt uredigeret ind i et link til et
     // OFFENTLIGT GitHub-issue. Praecis den forkerte vej rundt.
     url && `\n**URL**: ${afkortUrl(url)}`,
@@ -1181,14 +1181,14 @@ async function handleProvideFeedback(args) {
 
   const instruction =
     verdict === 'idle'
-      ? 'Browseren er ikke taget i brug i denne chat endnu, saa der er intet at diagnosticere paa forbindelsen — ' +
+      ? 'Browseren er ikke taget i brug i denne chat endnu, saa der er intet at diagnosticere paa forbindelsen - ' +
         'det er IKKE en fejl i installationen, og du maa ikke sige det til brugeren. ' +
         'Er der en aegte mangel, saa tilbyd submit_url som et klikbart link.'
     : verdict === 'conflict' || verdict === 'outdated' || verdict === 'disconnected'
       ? 'Fortael brugeren hvad der blev fundet, og giv fix_steps som konkrete skridt. Proev derefter handlingen igen. ' +
-        'Del KUN submit_url hvis problemet stadig staar efter at fix_steps er fulgt — det er sandsynligvis installationen, ikke en fejl i Browser MCP.'
+        'Del KUN submit_url hvis problemet stadig staar efter at fix_steps er fulgt - det er sandsynligvis installationen, ikke en fejl i Browser MCP.'
       : 'Installationen er frisk, saa det her er sandsynligvis en aegte mangel eller fejl. Fortael brugeren kort hvad der ikke kunne lade sig goere, ' +
-        'og tilbyd submit_url som et klikbart link ("forudfyldt — du kan rette i den foer du sender"). Spoerg ikke om lov foerst.';
+        'og tilbyd submit_url som et klikbart link ("forudfyldt - du kan rette i den foer du sender"). Spoerg ikke om lov foerst.';
 
   const logbog = skrivTilLogbog({
     at: new Date().toISOString(),
@@ -1240,14 +1240,14 @@ async function handleExtractToken(args) {
 
 // ── Graceful shutdown ──────────────────────────────────────────────────────
 // All shutdown paths funnel through gracefulShutdown so the cleanup chain runs
-// deterministically — even on abrupt parent-exit. Without this, process.exit(0)
+// deterministically - even on abrupt parent-exit. Without this, process.exit(0)
 // was racing against WS close-handshake, leaving zombie tabs in Chrome.
 
 let shuttingDown = false;
 function gracefulShutdown(reason, code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
-  process.stderr.write(`[MCP] ${reason} — shutting down\n`);
+  process.stderr.write(`[MCP] ${reason} - shutting down\n`);
 
   // Stop timers so they can't re-enter gracefulShutdown
   if (parentCheck) clearInterval(parentCheck);
@@ -1280,7 +1280,7 @@ process.on('exit', () => {
 //     Claude Code  →  wrapper  →  npm exec  →  denne server
 //
 // `process.ppid` er `npm exec`, ikke Claude Code. Doer chatten, kan `npm exec`
-// blive haengende som foraeldreloes — og saa ser tjekket en levende foraelder for
+// blive haengende som foraeldreloes - og saa ser tjekket en levende foraelder for
 // evigt. Porten blev holdt i op til fire timer (idle-graensen), og med flere
 // forladte chats loeb spaendet fuldt.
 //
@@ -1290,7 +1290,7 @@ process.on('exit', () => {
 //
 // Kaeden hentes én gang ved opstart (én ps-kommando), og derefter koster tjekket
 // kun et signal 0 pr. led hvert 5. sekund. Kan kaeden ikke laeses (Windows, eller
-// ps mangler), falder vi tilbage til det gamle enkelt-tjek — daarligere, men aldrig
+// ps mangler), falder vi tilbage til det gamle enkelt-tjek - daarligere, men aldrig
 // vaerre end foer.
 
 // ps-opslaget bor her (det er en sideeffekt); selve kaede-logikken og doeds-dommen
@@ -1311,7 +1311,7 @@ function laesPpid(pid) {
 const parentPid = process.ppid;
 
 // MAALT 22/8: doer den naermeste foraelder FOER serveren er bootet (~2 sek node+SDK),
-// laeser process.ppid vaerdien 1 — altsaa launchd. Kaeden blev saa [1], og pid 1 er
+// laeser process.ppid vaerdien 1 - altsaa launchd. Kaeden blev saa [1], og pid 1 er
 // baade udoedelig og ejet af root, saa vagten var enten inert eller draebte os selv
 // paa EPERM. En kaede der kun bestaar af pid 1 vogter ingenting og skal ikke bruges.
 let vagtKaede = parentPid > 1 ? [parentPid] : [];
@@ -1321,7 +1321,7 @@ try {
 } catch {}
 if (!vagtKaede.length) {
   process.stderr.write('[MCP] ingen brugbar foraelder-kaede (ppid=' + parentPid +
-    ') — falder tilbage paa idle-graensen alene\n');
+    ') - falder tilbage paa idle-graensen alene\n');
 }
 process.stderr.write(`[MCP] vagt-kaede: ${vagtKaede.join(' → ')}\n`);
 
@@ -1332,14 +1332,14 @@ parentCheck = setInterval(() => {
   // ── Et doedt led betyder ikke automatisk at chatten er vaek (MAALT 23/8) ──────
   //
   // Kaeden blev frosset ved opstart. Men et MELLEMLED kan afslutte helt normalt
-  // mens ejeren koerer videre — maalt to gange paa denne maskine, hvor kaeden gaar
+  // mens ejeren koerer videre - maalt to gange paa denne maskine, hvor kaeden gaar
   // npm exec → wrapper → claude → Code Helper (Plugin) → Code. Et forbigaaende led
   // der lukkede pænt udloeste "chatten bag denne server er vaek", mens chatten var
   // uroert. Og risikoen er ensrettet vaerre end 1.25.0, som vogtede ét pid: nu er
   // hvert af 5-6 led en ny doedsaarsag.
   //
   // Derfor genlaeses kaeden foerst naar noget SER doedt ud. Kan vi stadig gaa fra
-  // vores egen foraelder op til en rod, er vi ikke foraeldreloese — vi er bare blevet
+  // vores egen foraelder op til en rod, er vi ikke foraeldreloese - vi er bare blevet
   // reparented, og den nye kaede overtager. Kun naar den vej ogsaa er vaek, lukker vi.
   //
   // Prisen er nul i normal drift: genlaesningen koerer kun i det tik hvor et led er
@@ -1352,14 +1352,14 @@ parentCheck = setInterval(() => {
   if (frisk.length) {
     process.stderr.write(
       `[MCP] led ${doede.join(', ')} er vaek, men kaeden gaar stadig op: ` +
-      `${frisk.join(' → ')} — fortsaetter\n`,
+      `${frisk.join(' → ')} - fortsaetter\n`,
     );
     vagtKaede = frisk;
     return;
   }
 
   gracefulShutdown(
-    `Proces ${doede[0]} i kaeden doede, og der er ingen levende vej op — ` +
+    `Proces ${doede[0]} i kaeden doede, og der er ingen levende vej op - ` +
     'chatten bag denne server er vaek',
   );
 }, 5000); // hvert 5. sekund

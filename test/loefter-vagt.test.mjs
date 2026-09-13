@@ -25,7 +25,10 @@ const STIER = ['docs', 'content', 'README.md', 'mcp-server/README.md', 'mcp-serv
   // MAALT 13/9: cli.js laa uden for vagten, selvom den skriver installationsvejledningen til HVER ny bruger.
   // Den bar bade den falske groenne-ikon-paastand og et loefte om helt automatiske opdateringer.
   'llms-install.md', 'USE_CASES.md', 'demo-video-src/src', 'extension/popup.html', 'glama.json', 'server.json',
-  'mcp-server/server.json', 'WISHLIST.md', 'CONTRIBUTING.md', 'SECURITY.md'];
+  'mcp-server/server.json', 'WISHLIST.md', 'CONTRIBUTING.md', 'SECURITY.md',
+  // MAALT 13/9 af Astra: begge laa uden for vagten og bar hver sin streg. install.sh er det foerste en
+  // klon-bruger koerer; package.json's beskrivelse ER npm-sidens undertekst.
+  'install.sh', 'mcp-server/package.json'];
 // CHANGELOG.md staar bevidst UDENFOR: den CITERER de gamle formuleringer og tal for at forklare hvad der blev rettet
 // ("Several pages promised that 'nothing leaves your machine'"). Samme grund som revisionsdokumentet nedenfor.
 // Revisionsdokumentet citerer den gamle butikstekst for at forklare hvorfor den skal ud.
@@ -56,6 +59,12 @@ const LOEFTER = [
   // Ikonet skifter aldrig farve - der er ét PNG-saet og intet kald til chrome.action.setIcon. Det groenne er et
   // BADGE med antallet af forbundne agenter. En bruger der leder efter et groent ikon finder aldrig et.
   [/icon[^.\n]{0,30}(turns?|goes?|is) green/i, 'siger at ikonet bliver groent - det er badgen'],
+  // Gustav 13/9: den lange tankestreg er AI-fingeraftrykket. Kun almindelig bindestreg i det vi udgiver.
+  // ⚠️ KUN U+2014 og U+2013 maa matches - ALDRIG en tegnklasse for "streg-agtige" tegn. Repoet har 8.468
+  // rammetegn (U+2500) i kommentar-bannere, og en bredere regel ville rive hver eneste banner i stykker.
+  // MAALT 13/9 af Astra: nul af de 1.353 streger var baerende - ingen stod i et regex, en delimiter,
+  // et split eller en streng der sammenlignes. Sweepen kunne derfor koeres uden at adfaerden skiftede.
+  [/[\u2014\u2013]/, 'lang tankestreg (AI-aftryk)'],
 ];
 const FORKERTE_TAL = [
   // 12/9: moenstret krævede flertal, saa "34 tool definitions" i CONTRIBUTING slap igennem i otte udgaver.
@@ -116,8 +125,13 @@ test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   const regel = (navn) => LOEFTER.find(([, n]) => n === navn)[0];
   const eksempel = 'MIT, free, and 100% local - nothing leaves your machine.';
   assert.ok(regel('intet forlader maskinen').test(eksempel) && regel('100% local').test(eksempel));
-  assert.ok(regel('bliver paa maskinen').test('Extracted — stays on your machine'));
+  assert.ok(regel('bliver paa maskinen').test('Extracted - stays on your machine'));
   assert.ok(regel('intet forlader maskinen').test('the one thing that matters most: nothing it reads ever leaves your machine'), 'ord imellem maa ikke skjule loeftet');
   assert.ok(regel('sender aldrig data nogen steder').test('never sends your browsing data anywhere'));
   assert.ok(FORKERTE_TAL[0][0].test('Restart Claude Code - 29 browser tools are now available'));
+  assert.ok(regel('lang tankestreg (AI-aftryk)').test('Your Chrome — driven by your agent'),
+    'vagten kan ikke se en em-streg');
+  assert.ok(regel('lang tankestreg (AI-aftryk)').test('ports 9876–9895'), 'vagten kan ikke se en en-streg');
+  assert.ok(!regel('lang tankestreg (AI-aftryk)').test('\u2500\u2500 banner \u2500\u2500'),
+    'vagten rammer rammetegn - saa river den kommentar-bannerne i stykker');
 });

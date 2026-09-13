@@ -1,5 +1,5 @@
 #!/bin/bash
-# Browser MCP by Agent360 — setup from a cloned repo.
+# Browser MCP by Agent360 - setup from a cloned repo.
 #
 # MEASURED 2026-09-11 (Fable, e2e review): the old version told you to add the server to a config file under ~/.claude
 # that Claude Code does not read (see mcp-server/bin/cli.js), so the recipe looked right and did nothing. It now runs the

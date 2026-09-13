@@ -3,16 +3,16 @@
  * Livscyklus-test: mange sessioner side om side i ÉN Chrome.
  *
  * Hvorfor den findes (21/8): flowtesten koerer én session. session-isolation-testen
- * koerer én funktion mod stubbe. releaseSession() — den der lukker en sessions faner
- * naar serveren doer — havde NUL tests. Det samme havde terminate-signalet. Altsaa var
- * hele det omkringliggende — at ti chats kan arbejde samtidig, at de ikke ser hinandens
- * faner, og at der ryddes op efter dem — helt udaekket.
+ * koerer én funktion mod stubbe. releaseSession() - den der lukker en sessions faner
+ * naar serveren doer - havde NUL tests. Det samme havde terminate-signalet. Altsaa var
+ * hele det omkringliggende - at ti chats kan arbejde samtidig, at de ikke ser hinandens
+ * faner, og at der ryddes op efter dem - helt udaekket.
  *
  * Det er ikke en detalje. Praecis den slags fejl kostede en hel dag: to udvidelser der
  * delte sessions-tilstand fik alt til at hedde "Claude 1", og kun én ting kunne koere.
  *
  * MAALEMETODEN: hver fane kalder hjem til fixture-serveren hvert 800 ms. Serveren ved
- * derfor hvilke faner der er I LIVE — ikke hvad extensionen PAASTAAR. Lukkes en fane,
+ * derfor hvilke faner der er I LIVE - ikke hvad extensionen PAASTAAR. Lukkes en fane,
  * stopper hjerteslaget. Det er den eneste maade udefra at se om oprydningen faktisk sker.
  *
  * Kan ikke koere i CI (kraever Chrome + udvidelsen). Koer i haanden:
@@ -61,11 +61,11 @@ const levende = (ider) => ider.filter(lever);
 function startSession(navn) {
   // Hver server faar sin EGEN foraelder-proces. Uden det deler alle servere den
   // samme ppid (harnessen), og extensionens pid-gate kan saa ikke skelne dem ad.
-  // Med `sh -c` uden exec bliver sh staaende som foraelder — praecis som en rigtig
+  // Med `sh -c` uden exec bliver sh staaende som foraelder - praecis som en rigtig
   // klient der spawner sin egen server.
   // Servere spawnes med SAMME foraelder med vilje. Det er den haarde situation:
   // foraelder-pid'en er da ens for dem alle, og indtil 21/8 fik det sessionerne til at
-  // adoptere hinandens faner — alle hed "Claude 3", de aeldste mistede deres fane.
+  // adoptere hinandens faner - alle hed "Claude 3", de aeldste mistede deres fane.
   // (Vil man se det modsatte, saa tilfoej "; true" i kommandoen: sh forker da og hver
   // server faar sin egen foraelder. Uden det exec-optimerer sh sig selv vaek.)
   const p = spawn('sh', ['-c', `"${process.execPath}" "${join(rod, 'mcp-server/index.js')}"`], {
@@ -163,11 +163,11 @@ try {
     return `${d.length} faner`;
   });
 
-  await proev('sessionerne faar hver sit navn — ikke alle "Claude 1"', () => {
+  await proev('sessionerne faar hver sit navn - ikke alle "Claude 1"', () => {
     const navne = alle.map(s => s.label).filter(Boolean);
     skal(navne.length === ANTAL, `kun ${navne.length} sessioner oplyste et navn`);
     skal(new Set(navne).size === ANTAL,
-      `${new Set(navne).size} distinkte navne af ${ANTAL} — det er praecis "alt hedder Claude 1"-fejlen: ${[...new Set(navne)].join(', ')}`);
+      `${new Set(navne).size} distinkte navne af ${ANTAL} - det er praecis "alt hedder Claude 1"-fejlen: ${[...new Set(navne)].join(', ')}`);
     return [...new Set(navne)].slice(0, 4).join(' · ') + (ANTAL > 4 ? ' …' : '');
   });
 
@@ -176,7 +176,7 @@ try {
       const t = (await kald(s, 'browser_list_tabs', {})).data?.tabs || [];
       const fremmede = t.map(x => x.id).filter(id => id !== s.fane);
       skal(fremmede.length === 0,
-        `${s.navn} ser ${fremmede.length} fane(r) der ikke er dens egne — sessionerne laekker ind i hinanden`);
+        `${s.navn} ser ${fremmede.length} fane(r) der ikke er dens egne - sessionerne laekker ind i hinanden`);
     }
     return 'ingen laekage';
   });
@@ -188,31 +188,31 @@ try {
       const r = await kald(a, 'browser_switch_tab', { tab_id: b.fane });
       afvist = r.data?.ok === false || /not (in|found)|ikke|denied|owned/i.test(r.tekst);
     } catch { afvist = true; }
-    skal(afvist, `${a.navn} fik lov at skifte til ${b.navn}s fane — isolationen holder ikke`);
+    skal(afvist, `${a.navn} fik lov at skifte til ${b.navn}s fane - isolationen holder ikke`);
     return 'afvist som den skal';
   });
 
   console.log('\n── Oprydning ──');
   const offer = alle[2];
-  await proev('en doed session lukker SINE faner — og kun dem', async () => {
+  await proev('en doed session lukker SINE faner - og kun dem', async () => {
     const andre = alle.filter(s => s !== offer).map(s => s.navn);
     skal(lever(offer.navn), 'offerets fane levede ikke inden testen');
     offer.p.kill('SIGTERM');
     await vent(5000);
-    skal(!lever(offer.navn), 'fanen kalder stadig hjem — den blev ikke lukket, den blev efterladt');
+    skal(!lever(offer.navn), 'fanen kalder stadig hjem - den blev ikke lukket, den blev efterladt');
     const stadig = levende(andre);
     skal(stadig.length === andre.length,
-      `${andre.length - stadig.length} andre faner blev ogsaa lukket — oprydningen ramte for bredt`);
+      `${andre.length - stadig.length} andre faner blev ogsaa lukket - oprydningen ramte for bredt`);
     return `${offer.navn} lukket, ${stadig.length} uroerte`;
   });
 
   // ── terminate: serveren skal lukke sig selv naar sidste fane lukkes ────────
   //
   // Nul dækning indtil nu. Fyrer den ikke, bliver hver afsluttet chat til en
-  // zombie-server der holder en port besat — og spaendet er kun 20 bredt.
+  // zombie-server der holder en port besat - og spaendet er kun 20 bredt.
   console.log('\n── Selvafslutning ──');
   await proev('sidste fane lukkes → serveren afslutter sig selv', async () => {
-    // Tag den SIDSTE levende — alle[0] bruges af fane-loft-testen bagefter.
+    // Tag den SIDSTE levende - alle[0] bruges af fane-loft-testen bagefter.
     const s = [...alle].reverse().find(x => !x.p.killed && x !== offer && x !== alle[0]);
     skal(!!s, 'ingen levende session at teste med');
     const faner = (await kald(s, 'browser_list_tabs', {})).data?.tabs || [];
@@ -221,7 +221,7 @@ try {
     // Serveren faar besked via terminate og skal lukke ned af sig selv.
     for (let i = 0; i < 20 && s.p.exitCode === null && !s.p.killed; i++) await vent(500);
     const sagdeOp = s.log.join('').includes('Terminate signal') || s.p.exitCode !== null;
-    skal(sagdeOp, 'serveren koerer videre uden faner — porten forbliver besat af en zombie');
+    skal(sagdeOp, 'serveren koerer videre uden faner - porten forbliver besat af en zombie');
     s.doedAfTerminate = true;
     return `${s.navn} lukkede sig selv`;
   });
@@ -229,7 +229,7 @@ try {
   // ── popup: en side der aabner et vindue skal fanges af sessionen ───────────
   //
   // Det er OAuth-stien: Google/Microsoft/GitHub aabner et popup-vindue, og agenten
-  // skal kunne naa det. Koden fanger nye faner (lastCreatedTabId) — men det var
+  // skal kunne naa det. Koden fanger nye faner (lastCreatedTabId) - men det var
   // aldrig afproevet.
   console.log('\n── Popup-opfangning ──');
   await proev('en popup fanges af sessionen der aabnede den', async () => {
@@ -237,27 +237,27 @@ try {
     skal(!!s, 'ingen levende session at teste med');
     const maerke = `${s.navn}-popup`;
     // Popup'en skal aabnes af et AEGTE klik. Chrome blokerer window.open uden en
-    // brugerhandling, og det er browserens ret — ikke en fejl i browser-mcp. Sådan
+    // brugerhandling, og det er browserens ret - ikke en fejl i browser-mcp. Sådan
     // sker det ogsaa i virkeligheden: agenten klikker "Log ind med Google".
     const v = await kald(s, 'browser_navigate', { url: `${BASE}/?id=${s.navn}-pop-vaert&popup=${encodeURIComponent(maerke)}` });
-    // MAALT 21/8: et museklik i en BAGGRUNDSFANE lander aldrig som aegte klik —
+    // MAALT 21/8: et museklik i en BAGGRUNDSFANE lander aldrig som aegte klik -
     // fanen komponerer ikke, saa hit-testet fejler, og der falles tilbage til et
     // syntetisk event. Et syntetisk event baerer ingen brugerhandling, og Chrome
     // blokerer derfor window.open. Popup'en aabner altsaa aldrig.
-    // Fanen aktiveres foerst, saa det er OAuth-opfangningen der maales — ikke
+    // Fanen aktiveres foerst, saa det er OAuth-opfangningen der maales - ikke
     // baggrunds-begraensningen.
     await kald(s, 'browser_switch_tab', { tab_id: v.data.tab_id });
     await vent(700);
     const klik = await kald(s, 'browser_click', { selector: '#aabn-popup' });
     skal(klik.data?.landed === true,
-      `det aegte klik landede ikke (landed=${klik.data?.landed}) — uden det er der ingen brugerhandling, og popup'en blokeres`);
+      `det aegte klik landede ikke (landed=${klik.data?.landed}) - uden det er der ingen brugerhandling, og popup'en blokeres`);
     await vent(3000);
     skal(lever(maerke), 'popup-fanen blev aldrig aabnet');
     const ny = await kald(s, 'browser_get_new_tab', {});
     skal(ny.data?.id != null, `get_new_tab fandt ingen ny fane: ${ny.tekst.slice(0, 120)}`);
     const faner = (await kald(s, 'browser_list_tabs', {})).data?.tabs || [];
     skal(faner.some(f => f.id === ny.data.id),
-      'popup\'en blev fundet, men hoerer ikke til sessionen — den kan ikke styres bagefter');
+      'popup\'en blev fundet, men hoerer ikke til sessionen - den kan ikke styres bagefter');
     return 'fanget og ejet af sessionen';
   });
 
@@ -273,18 +273,18 @@ try {
     await vent(4500);
     const d = levende(maerker);
     skal(d.length <= FANE_LOFT,
-      `${d.length} faner i live — loftet paa ${FANE_LOFT} holdes ikke, faner hober sig op`);
+      `${d.length} faner i live - loftet paa ${FANE_LOFT} holdes ikke, faner hober sig op`);
     skal(d.length >= FANE_LOFT - 3,
-      `kun ${d.length} faner tilbage — der blev lukket for mange, arbejdet under dem forsvinder`);
+      `kun ${d.length} faner tilbage - der blev lukket for mange, arbejdet under dem forsvinder`);
     const nyeste = maerker.slice(-3);
-    skal(nyeste.every(lever), 'en af de nyeste faner blev lukket — evictionen rammer den forkerte ende');
+    skal(nyeste.every(lever), 'en af de nyeste faner blev lukket - evictionen rammer den forkerte ende');
     return `${d.length} i live, de nyeste beholdt`;
   });
 
   console.log('\n── Portspaend ──');
   await proev('spaendet fyldes helt op, og den overskydende siger paent fra', async () => {
     // Maskinen kan i forvejen have rigtige Claude-sessioner koerende. Testen maa maale
-    // hvor mange porte der er LEDIGE, ikke antage at alle 20 er frie — ellers fejler den
+    // hvor mange porte der er LEDIGE, ikke antage at alle 20 er frie - ellers fejler den
     // paa brugerens eget arbejde i stedet for paa produktet.
     const iBrugFoer = Number(execSync(
       "lsof -iTCP:9876-9895 -sTCP:LISTEN -n -P 2>/dev/null | grep -c LISTEN || true").toString().trim()) || 0;
@@ -301,9 +301,9 @@ try {
     const uden = ekstra.filter(s => s.udenPort).length;
     for (const s of ekstra) { try { s.p.kill('SIGKILL'); } catch {} }
     skal(fikPort === ledige,
-      `${fikPort} af ${ledige} ledige porte blev taget — spaendet udnyttes ikke fuldt`);
+      `${fikPort} af ${ledige} ledige porte blev taget - spaendet udnyttes ikke fuldt`);
     skal(uden >= 1,
-      'den overskydende server fik ogsaa en port — spaendet er ikke det man tror');
+      'den overskydende server fik ogsaa en port - spaendet er ikke det man tror');
     return `${mine} mine + ${fremmede} fremmede + ${fikPort} nye = 20 · nr. 21 afvist`;
   });
 
@@ -316,7 +316,7 @@ try {
   console.log('\n✗ harness kastede:', e.message);
   kode = 3;
 } finally {
-  // Luk alt ned — og se om oprydningen ogsaa virker i flok.
+  // Luk alt ned - og se om oprydningen ogsaa virker i flok.
   const tilbage = alle.filter(s => !s.p.killed).map(s => s.navn);
   for (const s of alle) { try { s.p.kill('SIGTERM'); } catch {} }
   await vent(5000);

@@ -1,8 +1,8 @@
-// browser_provide_feedback — selv-diagnose foer feedback.
+// browser_provide_feedback - selv-diagnose foer feedback.
 //
 // Hvorfor vaerktoejet findes (21/8): den udgave der koerte lokalt var npm 1.25.0,
 // mens rettelserne laa uudgivet i repoet, OG der var to udvidelser indlaest i
-// Chrome samtidig. Begge dele viste sig som "browseren opfoerer sig maerkeligt" —
+// Chrome samtidig. Begge dele viste sig som "browseren opfoerer sig maerkeligt" -
 // ikke som "din installation er gammel" og ikke som "du har to udvidelser". Der
 // fandtes ingen maade at spoerge paa, saa en hel nat gik med at lede i den forkerte
 // ende. Vaerktoejet spoerger nu selv, foer det konkluderer noget.
@@ -40,7 +40,7 @@ const ext = (version, id) => ({ ws: { readyState: AABEN }, seq: ++seq, extension
 function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')], activePort = 9876 } = {}) {
   const connections = new Set(udvidelser);
   // fingeraftryk/afkortUrl/skrivTilLogbog hentes ud af den RIGTIGE kilde. Kun
-  // filsystemet stubbes — ellers ville testen maale sin egen attrap i stedet for
+  // filsystemet stubbes - ellers ville testen maale sin egen attrap i stedet for
   // dedup-logikken, som er hele pointen.
   const src = [
     udtraek('cmpVersion'), udtraek('liveConnections'),
@@ -133,7 +133,7 @@ test('to udvidelser → conflict, og det slaar alt andet', async () => {
   assert.equal(r.environment.extensions_connected.filter(e => e.active).length, 1, 'praecis én skal vaere aktiv');
   assert.equal(r.environment.extensions_connected.find(e => e.active).version, '1.27.1', 'den nyeste er den aktive');
   assert.ok(r.fix_steps.some(s => s.includes('chrome://extensions')));
-  // Den gamle server naevnes stadig — konflikten skjuler ikke det andet fund.
+  // Den gamle server naevnes stadig - konflikten skjuler ikke det andet fund.
   assert.ok(r.findings.some(f => f.includes('1.25.0')));
 });
 
@@ -161,7 +161,7 @@ test('submit_url er forudfyldt og peger paa den rigtige skabelon', async () => {
   const body = u.searchParams.get('body');
   assert.ok(body.includes('browser_click'), 'vaerktoejet skal med i rapporten');
   assert.ok(body.includes('https://eksempel.dk/side'), 'URL\'en skal med');
-  assert.ok(body.includes('mcp_server_version'), 'miljoeet skal med — ellers starter enhver issue med tre afklarende spoergsmaal');
+  assert.ok(body.includes('mcp_server_version'), 'miljoeet skal med - ellers starter enhver issue med tre afklarende spoergsmaal');
 });
 
 test('kind styrer skabelonen', async () => {
@@ -207,9 +207,9 @@ test('beskrivelsen beder modellen kalde det af sig selv', async () => {
 
 test('friskheds-tjekket maa ikke kunne braekke vaerktoejet', () => {
   const blok = kilde.slice(kilde.indexOf('function npmLatestVersion('), kilde.indexOf('async function handleProvideFeedback('));
-  assert.match(blok, /timeout: \d+/, 'npm-opslaget skal have en timeout — ellers haenger vaerktoejet offline');
+  assert.match(blok, /timeout: \d+/, 'npm-opslaget skal have en timeout - ellers haenger vaerktoejet offline');
   assert.match(blok, /if \(err\) return resolve\(null\)/, 'en fejl skal give null, ikke kaste');
-  assert.match(blok, /NPM_LATEST_TTL_MS/, 'svaret skal caches — ellers et netvaerkskald pr. kald');
+  assert.match(blok, /NPM_LATEST_TTL_MS/, 'svaret skal caches - ellers et netvaerkskald pr. kald');
 });
 
 
@@ -223,10 +223,10 @@ test('hver graense skrives til den lokale logbog', async () => {
   const post = h.skrevet[0];
   assert.equal(post.tool, 'browser_click');
   assert.equal(post.verdict, r.verdict);
-  assert.ok(post.at, 'tidsstempel mangler — uden det kan man ikke se om en graense stadig gaelder');
+  assert.ok(post.at, 'tidsstempel mangler - uden det kan man ikke se om en graense stadig gaelder');
 });
 
-test('query-strengen ryger — den baerer tokens og soegetermer', async () => {
+test('query-strengen ryger - den baerer tokens og soegetermer', async () => {
   const h = byg();
   await h({ what_happened: 'x', url: 'https://mail.example.com/u/0/inbox?token=HEMMELIG#tr=abc' });
   const u = h.skrevet[0].url;
@@ -249,7 +249,7 @@ test('den samme graense i loekke fylder ikke logbogen', async () => {
   const r2 = await h(to);
   assert.equal(r1.logged_locally.logged, true);
   assert.equal(r2.logged_locally.logged, false,
-    'fane-id\'et gjorde to ens haendelser forskellige — en loekke ville skrive tusind linjer');
+    'fane-id\'et gjorde to ens haendelser forskellige - en loekke ville skrive tusind linjer');
   assert.equal(h.skrevet.length, 1);
 });
 
@@ -260,18 +260,18 @@ test('to forskellige graenser logges hver for sig', async () => {
   assert.equal(h.skrevet.length, 2);
 });
 
-test('logbogen sender intet — den skriver kun lokalt', () => {
+test('logbogen sender intet - den skriver kun lokalt', () => {
   const i = kilde.indexOf('function skrivTilLogbog(');
   const blok = kilde.slice(i, i + 900);
   assert.match(blok, /appendFileSync/, 'logbogen skrives ikke');
   assert.ok(!/fetch\(|https:\/\/api\.github|axios/.test(blok),
-    'logbogen sender data ud — rapporten baerer URL\'er fra sider agenten stod paa');
+    'logbogen sender data ud - rapporten baerer URL\'er fra sider agenten stod paa');
   assert.match(blok, /catch \(e\)/, 'en ubeskrivelig logbog maa aldrig braekke vaerktoejet');
 });
 
 test('submit_url laekker ikke det logbogen redigerer vaek', async () => {
   // MAALT 22/8 ved sikkerhedsreview: issueBody brugte den RAA url, mens logbogen
-  // brugte afkortUrl(). Query-strengen — hvor tokens bor — blev strippet fra filen
+  // brugte afkortUrl(). Query-strengen - hvor tokens bor - blev strippet fra filen
   // paa disken, men sendt uredigeret ind i et link til et OFFENTLIGT issue. Der
   // fandtes en test for logbogen og INGEN for linket. Den forkerte vej rundt.
   const h = byg();
@@ -282,12 +282,12 @@ test('submit_url laekker ikke det logbogen redigerer vaek', async () => {
   assert.ok(!r.submit_url.includes('HEMMELIG123'), 'et token naaede ind i det offentlige issue-link');
   assert.ok(!decodeURIComponent(r.submit_url).includes('access_token'), 'query-strengen naaede med');
   assert.ok(decodeURIComponent(r.submit_url).includes('https://mail.example.com/u/0/inbox'),
-    'selve siden skal stadig med — ellers er rapporten ubrugelig');
+    'selve siden skal stadig med - ellers er rapporten ubrugelig');
 });
 
 test('butiks-brugere faar et raad der kan foelges i review-vinduet', async () => {
   // MAALT 22/8: fix-skridtet sagde "↻ reload" til ALLE. For en Chrome Web Store-bruger
-  // henter reload ingenting foer Google har godkendt — raadet foerte i ring i 1-3 dage.
+  // henter reload ingenting foer Google har godkendt - raadet foerte i ring i 1-3 dage.
   const r = await byg({ udvidelser: [ext(null, 'a')] })({ what_happened: 'et vaerktoej fejlede' });
   const raad = r.fix_steps.join(' ');
   assert.match(raad, /Chrome Web Store/, 'butiks-tilfaeldet naevnes ikke');
@@ -310,7 +310,7 @@ test('en kendt version faar baade unpacked-vejen og butikkens ventetid', async (
 // ── "endnu ikke brugt" er ikke "i stykker" ─────────────────────────────────
 //
 // FUNDET AF REVIEW 7/9. Da porten blev doven (den bindes nu ved foerste browser-kald
-// i stedet for ved opstart), kunne en HELT SUND chat staa uden forbindelse — og
+// i stedet for ved opstart), kunne en HELT SUND chat staa uden forbindelse - og
 // verdict'et var `disconnected` med fix_steps der bad brugeren geninstallere.
 // INSTRUCTIONS beder agenten viderebringe netop de skridt, saa vi ville fortaelle
 // folk at deres installation var i stykker fordi vi selv ikke havde aabnet doeren.

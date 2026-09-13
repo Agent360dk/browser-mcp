@@ -1,5 +1,5 @@
 /**
- * fill maa ikke skrive oveni et forsinket tastetryk — og maa ikke kalde en fordobling succes.
+ * fill maa ikke skrive oveni et forsinket tastetryk - og maa ikke kalde en fordobling succes.
  *
  * MAALT 10/9 af Astra: debugger-vejen timede ud, reserveloesningen skrev hele vaerdien med den
  * native setter, og tastetrykkene fra debugger-forsoeget landede bagefter. "X" blev "XX", og
@@ -35,11 +35,11 @@ function sele(laesninger, saetKald, naaedeTaster = []) {
   return u;
 }
 
-test('en fordobling efter reserveloesningen meldes — den kaldes ikke succes', async () => {
+test('en fordobling efter reserveloesningen meldes - den kaldes ikke succes', async () => {
   const saet = [], taster = [];
   const u = sele(['gammel', 'XX'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'X' });
-  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, false, `"X" blev til "XX", og vaerktoejet sagde ${JSON.stringify(svar)}`);
   assert.equal(svar.error, 'feltet-fordoblet');
   assert.equal(svar.faktisk, 'XX', 'kalderen skal se hvad der faktisk staar i feltet');
@@ -49,7 +49,7 @@ test('staar vaerdien der allerede efter fristen, skrives den ikke en gang til', 
   const saet = [], taster = [];
   const u = sele(['X'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'X' });
-  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, true);
   assert.equal(saet.length, 0, `reserveloesningen skrev ${saet.length} gang(e) oveni en vaerdi der allerede var landet`);
 });
@@ -58,7 +58,7 @@ test('et felt der formaterer vaerdien, meldes ikke som fordobling - men med den 
   const saet = [], taster = [];
   const u = sele(['', '+45 12 34 56 78'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '12345678' });
-  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   // Fjerde runde (Astra): formatering kan ikke skelnes sikkert fra en aendret vaerdi - den meldes med den faktiske tekst.
   assert.notEqual(svar.error, 'feltet-fordoblet', 'formatering er ikke en fordobling');
   assert.equal(svar.faktisk, '+45 12 34 56 78', 'kalderen skal se hvad feltet viser');
@@ -71,7 +71,7 @@ test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling
   const saet = [], taster = [];
   const u = sele(['', '5,00 kr'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '5' });
-  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.notEqual(svar.error, 'feltet-fordoblet', `et beloebsfelt der formaterer blev kaldt fordoblet: ${JSON.stringify(svar)}`);
   assert.equal(svar.faktisk, '5,00 kr', 'kalderen skal se hvad feltet viser');
   assert.equal(svar.ok, true, `korrekt formatering blev meldt som fejl: ${JSON.stringify(svar)}`);
@@ -82,7 +82,7 @@ test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async
   const saet = [], taster = [];
   const u = sele(['', ''], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'abc' });
-  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene — den tester ikke fristen');
+  assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, false, `feltet endte tomt og vaerktoejet sagde ${JSON.stringify(svar)}`);
   assert.equal(svar.error, 'feltet-toemt');
 });

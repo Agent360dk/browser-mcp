@@ -62,7 +62,7 @@ export const Social: React.FC<{ bredde?: number }> = ({ bredde = 1200 }) => {
           Until now.
         </div>
         <div style={{ fontSize: 26 * skala, color: DIM, marginTop: 18 * skala }}>
-          Your real, signed-in Chrome — driven by Claude Code, Codex, Cursor or VS Code.
+          Your real, signed-in Chrome - driven by Claude Code, Codex, Cursor or VS Code.
         </div>
       </div>
 

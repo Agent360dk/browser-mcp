@@ -33,7 +33,7 @@
 <p>Then <b>restart your agent</b> so it launches the server, and click the extension icon again. Per-client walkthroughs: <a href="/docs/install-claude-code/">Claude Code</a> · <a href="/docs/install-cursor/">Cursor</a> · <a href="/docs/install-vscode/">VS Code</a> · <a href="/docs/install-codex/">Codex</a>.</p>
 <p><b>Note on <code>npx @agent360/browser-mcp install</code>:</b> that command copies the extension files to <code>~/.browser-mcp/extension/</code>, which is useful for an unpacked install - but do not rely on it to register the server with Claude Code. Use <code>claude mcp add</code> above.</p>
 <p><b>How to tell this apart from a real fault:</b> if you have never run an <code>npx @agent360/browser-mcp …</code> command on this machine, this is your problem - not the sections below. A quick check that a server is running at all:</p>
-<div class="code"><pre>lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux — expect one line per active agent session</pre><button class="copy">Copy</button></div>
+<div class="code"><pre>lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux - expect one line per active agent session</pre><button class="copy">Copy</button></div>
 <p>Nothing listed means no server, which means nothing for the extension to find. (The server is not a daemon: it starts when your agent starts and exits when it disconnects, so an empty list while no agent is running is also normal.)</p>
 <h2 id="chrome-extension-not-connected-after-5-retries">"Chrome extension not connected after 5 retries"</h2>
 <p><b>Symptom:</b> every tool call fails with this error even though Chrome is open and the extension is installed.</p>

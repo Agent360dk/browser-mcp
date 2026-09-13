@@ -2,8 +2,8 @@
  * Test-sele for extension/background.js
  *
  * Hvorfor den findes: 3.858 linjer udvidelseskode havde NUL automatisk daekning.
- * Hver eneste fejl vi har jagtet manuelt — dialog-deadlocken, `fill` der tilfoejer i
- * stedet for at erstatte, klik der ikke lander, switch_tab der glemte vinduet — laa
+ * Hver eneste fejl vi har jagtet manuelt - dialog-deadlocken, `fill` der tilfoejer i
+ * stedet for at erstatte, klik der ikke lander, switch_tab der glemte vinduet - laa
  * her. De blev alle fundet ved at snuble over dem.
  *
  * Grunden til at det aldrig er sket foer: filen ER en service worker. Den kan ikke
@@ -11,7 +11,7 @@
  *
  * MAALT 31/8: der er praecis 8 bivirkninger paa topniveau, og de er ALLE
  * `chrome.*.addListener` eller `chrome.alarms`. Giver man filen et chrome-stub, kan
- * hele den evalueres i en VM — uden at flytte en eneste linje kode. Ingen refaktor,
+ * hele den evalueres i en VM - uden at flytte en eneste linje kode. Ingen refaktor,
  * ingen ny arkitektur. Bare en sele.
  *
  * Selen giver:
@@ -99,7 +99,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
     scripting: { executeScript: kald('scripting.executeScript') },
     // storage.local.get destruktureres af kalderen ({ sessions } = await get(...)),
     // saa den skal svare et OBJEKT som standard. Svarer den undefined, kaster
-    // udvidelsen med "Cannot destructure property 'sessions'" — og fejlen ligner en
+    // udvidelsen med "Cannot destructure property 'sessions'" - og fejlen ligner en
     // produktfejl, selvom det er selen der er for tynd. Kaldes get med et objekt af
     // standardvaerdier (Chromes egen konvention), gives de tilbage.
     storage: {
@@ -162,14 +162,14 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
   ctx.globalThis = ctx;
   ctx.self = ctx;
 
-  // `const`/`let` paa topniveau bliver IKKE egenskaber paa globalThis — kun `var` og
+  // `const`/`let` paa topniveau bliver IKKE egenskaber paa globalThis - kun `var` og
   // funktions-erklaeringer goer. Udvidelsens tilstand (armeredeDialoger, sessions,
   // debuggerAttached ...) ligger i const'er, saa uden det her kan en test se
   // funktionerne men ikke det de arbejder paa.
   //
   // Loesningen roerer ikke produktionskoden: vi haefter en linje BAGEFTER kilden, i
   // samme scope, der loefter de navne vi kender frem. Findes et navn ikke, springes
-  // det over — saa selen ikke gaar i stykker naar filen aendrer sig.
+  // det over - saa selen ikke gaar i stykker naar filen aendrer sig.
   const loeft = [
     'armeredeDialoger', 'dialogLoefter', 'sessions', 'debuggerAttached',
     'agentLukkedeFaner', 'SELECT_ALL_MODS', 'CDP_CHAR_CODES', 'RETRYABLE_CDP_METHODS',

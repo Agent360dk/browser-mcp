@@ -2,7 +2,7 @@
  * Upload-vagten skal se hvad en sti PEGER paa, ikke kun hvordan den ser ud.
  *
  * MAALT 10/9 af Astra: vagten var leksikalsk. Et symlink inde i arbejdsmappen der peger ud af
- * den — fx `noegle -> ~/.ssh/id_rsa` — passerede, fordi stien saa rigtig ud som tekst. Og upload
+ * den - fx `noegle -> ~/.ssh/id_rsa` - passerede, fordi stien saa rigtig ud som tekst. Og upload
  * er netop dér hvor filen forlader maskinen. Testen starter en aegte server i en midlertidig
  * mappe; vagten svarer foer serveren overhovedet roerer en port eller en browser.
  */

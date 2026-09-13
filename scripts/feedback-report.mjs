@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Hvad rendte agenterne ind i? — loekken der goer feedback til rettelser.
+ * Hvad rendte agenterne ind i? - loekken der goer feedback til rettelser.
  *
  * Laeser ~/.browser-mcp/feedback.jsonl (skrevet af browser_provide_feedback, lokalt,
  * aldrig sendt nogen steder) og grupperer efter fingeraftryk, saa de samme graenser
@@ -10,7 +10,7 @@
  *        npm --prefix mcp-server run feedback -- --issues   # udkast til GitHub-issues
  *
  * --issues skriver KUN udkast til skaermen. Der sendes intet. Rapporten kan baere
- * URL'er og fejltekst fra sider agenten stod paa — laes den foer noget deles.
+ * URL'er og fejltekst fra sider agenten stod paa - laes den foer noget deles.
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -56,14 +56,14 @@ const skriv = (liste, overskrift) => {
   for (const g of liste) {
     const e = g.eksempel;
     const d = g.domaener.size ? ` · ${[...g.domaener].slice(0, 3).join(', ')}` : '';
-    console.log(`  ${String(g.antal).padStart(3)}×  ${(e.tool || '—').padEnd(26)} ${e.kind}${d}`);
+    console.log(`  ${String(g.antal).padStart(3)}×  ${(e.tool || '-').padEnd(26)} ${e.kind}${d}`);
     console.log(`       ${String(e.what_happened).replace(/\s+/g, ' ').slice(0, 110)}`);
   }
   console.log('');
 };
 
-skriv(aegte, 'Aegte graenser — installationen var frisk, saa det her er vaerktoejet');
-skriv(install, 'Meldt paa en gammel eller konfliktende installation — tjek at de stadig gaelder');
+skriv(aegte, 'Aegte graenser - installationen var frisk, saa det her er vaerktoejet');
+skriv(install, 'Meldt paa en gammel eller konfliktende installation - tjek at de stadig gaelder');
 
 if (udkast) {
   console.log('── Issue-udkast (intet er sendt) ──\n');
@@ -74,7 +74,7 @@ if (udkast) {
     if (e.attempted) console.log(`Allerede proevet: ${e.attempted}`);
     console.log(`Server ${e.server_version} · udvidelse ${e.extension_version || 'ukendt'}\n`);
   }
-  console.log('Laes dem igennem foer noget deles — de kan baere URL\'er fra sider agenten stod paa.');
+  console.log('Laes dem igennem foer noget deles - de kan baere URL\'er fra sider agenten stod paa.');
 } else if (aegte.length) {
   console.log('Udkast til issues:  npm --prefix mcp-server run feedback -- --issues');
 }
