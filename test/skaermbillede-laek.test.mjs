@@ -203,10 +203,20 @@ test('er budgettet naesten brugt, startes runden med haevet vindue ikke', async 
   // En runde mere ville bringe kaeden over serverens 30 s.
   const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
     if (metode !== 'Page.captureScreenshot') return {};
-    return new Promise((_, afvis) => setTimeout(() => afvis(new Error('Unable to capture screenshot: image readback failed')), 60));
+    return new Promise((_, afvis) => setTimeout(() => afvis(new Error('Unable to capture screenshot: image readback failed')), 300));
   } });
   // Budgettet er saa lille at der intet er tilbage naar begge optagelser har fejlet.
-  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 110, haevMs: 0 });
+  //
+  // MAALT 13/9 i CI: foerste udgave brugte 60 ms fejl mod 110 ms budget. Runden koerer begge
+  // optagelser PARALLELT, saa der var gaaet ~60 ms naar de begge havde fejlet - og om de
+  // resterende ~50 ms talte som "tid tilbage" afhang af maskinens hastighed. Proeven faldt paa
+  // Node 24 i én koersel og Node 22 i den naeste, med samme kode. En proeve der skifter farve
+  // efter hvor hurtig koereren er, er ikke en vagt.
+  //
+  // Nu: fejlen kommer efter 300 ms, budgettet er 200 ms. Elapsed kan kun VOKSE paa en langsom
+  // maskine, saa den ene side af paastanden kan ikke vendes. Og 300 ms ligger 700 ms fra
+  // foerste frist, saa fejl-vejen tages, ikke frist-vejen.
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 1000, samletMs: 200, haevMs: 0 });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl);
   assert.equal(u.optager.antal('windows.update'), 0, 'vinduet blev haevet uden tid tilbage til en optagelse');

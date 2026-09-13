@@ -53,7 +53,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
+      # MAALT 13/9: `npm install --prefix mcp-server` doede paa Windows med
+      # "ENOENT ... D:\a\browser-mcp\browser-mcp\package.json". npm laeser roden foerst,
+      # og der ER ingen package.json i roden - pakken ligger i mcp-server/. Paa Linux og macOS
+      # tolereres det; paa Windows goer det ikke. `working-directory` undgaar roden helt.
       - name: install
-        run: npm install --prefix mcp-server --no-audit --no-fund
+        working-directory: mcp-server
+        run: npm install --no-audit --no-fund
       - name: node --test
-        run: npm --prefix mcp-server test
+        working-directory: mcp-server
+        run: npm test
