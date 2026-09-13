@@ -103,7 +103,54 @@ const kald = async (navn, args = {}, ms) => {
   // Et vaerktoej der selv siger ok:false skal fejle her. Ellers ser man kun DOM-forskellen
   // bagefter og leder det forkerte sted - det var praecis det der skete med drop_file.
   if (data && data.ok === false) throw new Error(`vaerktoejet svarede ok:false - ${data.error || tekst.slice(0, 200)}`);
+  // MAALT 13/9 af Astra og Fable, uafhaengigt: sessionens faner FOEDES i baggrunden
+  // (background.js:388 og :2807, begge `active:false`), og fanen aktiveres i 2 af 32 kald.
+  // Chrome leverer ikke Input.* til en fane der ikke er den viste i sit vindue, saa de fem
+  // museskridt maalte hvilken fane Gustav tilfaeldigvis havde forrest - ikke om koden virker.
+  // Det er ikke et to-skaerms-artefakt: det er den dokumenterede baggrundsfane-adfaerd, og
+  // vaerktoejerne siger aerligt fra med remedien i teksten ("kald browser_switch_tab").
+  // Selen goer nu selv det, brugeren instrueres i. Saa maaler spaerren det vi lover.
+  if (navn === 'browser_navigate' && data && data.tab_id != null) {
+    fokusFane = data.tab_id;
+    // Kun ved new_tab skiftes der HER. En navigation i den fane vi allerede staar i, behoever
+    // det ikke - og et ekstra kald midt i en proeve stjaeler tidsvinduet: foerste forsoeg
+    // 13/9 gjorde det ved hver navigation, og saa var kaldet til /langsom forbi, foer
+    // wait_for_network naaede at lytte. En ny fane fodes derimod ALTID i baggrunden
+    // (background.js:2807), saa den skal frem med det samme.
+    if (args && args.new_tab) {
+      await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } }).catch(() => {});
+    }
+  }
   return { data, tekst };
+};
+let fokusFane = null;
+// MAALT 13/9: spaerren var groen i én koersel og roed i den naeste med PRAECIS samme kode.
+// Aarsagen var ikke koden og ikke to skaerme: fire agenter delte den samme Chrome (portene
+// 9876-9879 optaget, fanegrupperne Claude 1-4). Museskridtene kraever at proevens fane er den
+// viste, og en anden chats `switch_tab` stjaeler forgrunden midt i koerslen. En maaling under
+// de forhold er ugyldig, og en ugyldig maaling maa ikke se ud som et resultat.
+async function andreAgenter() {
+  const { createConnection } = await import('node:net');
+  const optagne = [];
+  await Promise.all(Array.from({ length: 20 }, (_, i) => 9876 + i).map((port) => new Promise((slut) => {
+    const s = createConnection({ port, host: '127.0.0.1' });
+    const luk = (aaben) => { if (aaben) optagne.push(port); s.destroy(); slut(); };
+    s.setTimeout(300);
+    s.once('connect', () => luk(true));
+    s.once('error', () => luk(false));
+    s.once('timeout', () => luk(false));
+  })));
+  return optagne;
+}
+// Belt og seler: proever der ikke selv navigerer, skal ogsaa have en synlig fane.
+const forrest = async () => {
+  if (fokusFane == null) return;
+  await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } }).catch(() => {});
+  // MAALT 13/9: switch_tab svarer naar Chrome har SAGT ja, ikke naar fanen er tegnet. Uden
+  // denne pause var spaerren groen i én koersel og roed i den naeste med praecis samme kode -
+  // museskridtet naaede frem foer fanen var den viste. En spaerre der skifter farve uden at
+  // koden goer det, er ikke en spaerre.
+  await new Promise((r) => setTimeout(r, 250));
 };
 
 // ── rapportering ────────────────────────────────────────────────────────────
@@ -111,6 +158,7 @@ const resultat = new Map();
 async function proev(vaerktoej, beskrivelse, fn) {
   const t0 = Date.now();
   try {
+    await forrest();
     await fn();
     resultat.set(vaerktoej, { status: 'OK', beskrivelse, ms: Date.now() - t0 });
     console.log(`  ✓ ${vaerktoej.padEnd(30)} ${beskrivelse}`);
@@ -174,6 +222,12 @@ try {
     skalVaere(r.tekst.includes('raekke 60'), 'naaede ikke til sidste raekke - kun en sliver blev laest');
   });
 
+  const delt = await andreAgenter();
+  if (delt.length > 1) {
+    console.log(`\n⚠️  ${delt.length} agenter deler denne Chrome (porte ${delt.join(', ')}).`);
+    console.log('   Museskridtene kraever en synlig fane, og en anden chats fane-skift stjaeler den midt i');
+    console.log('   koerslen. Et roedt resultat herunder beviser INTET om koden. Luk de andre chats og koer igen.');
+  }
   console.log('\n── Interaktion ──');
   const status = async () => (await kald('browser_execute_script', { script: 'document.getElementById("status").textContent' })).tekst;
   await proev('browser_click', 'klikker og siden reagerer FAKTISK', async () => {
@@ -463,8 +517,16 @@ try {
 
   await proev('#klik-aerlighed', 'click siger til naar eventet ikke blev taget imod', async () => {
     // Et klik paa et element uden handler skal rapportere landed:false, ikke bare ok:true.
-    const r = await kald('browser_click', { selector: '#tekst' });
-    skalVaere(r.data && 'landed' in r.data, 'svaret oplyser ikke om klikket blev taget imod');
+    //
+    // MAALT 13/9: denne proeve brugte `kald`, som kaster paa ETHVERT ok:false (se ovenfor).
+    // Den ene kontrol hvis emne ER aerlighed, kunne derfor ikke bestaa naar vaerktoejet
+    // svarede aerligt nej - baggrundsstien returnerer {ok:false, landed:false,
+    // maaske_landet:true} (background.js:3298-3303), og `landed` ER med. Kontrakten var
+    // opfyldt; det var selen der ikke kunne laese den. Nu laeses det raa svar.
+    const raa = await rpc('tools/call', { name: 'browser_click', arguments: { selector: '#tekst' } });
+    const t = raa.result?.content?.map((c) => c.text ?? '').join('\n') ?? '';
+    let d = null; try { d = JSON.parse(t); } catch {}
+    skalVaere(d && 'landed' in d, `svaret oplyser ikke om klikket blev taget imod: ${t.slice(0, 160)}`);
   });
 
   // ── haard fixture: stram CSP + React-styret felt + cross-origin iframe ────
