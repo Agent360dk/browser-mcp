@@ -1395,6 +1395,10 @@ async function laesHaendelsesBevis(tabId, bevis) {
   try {
     svar = await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
+      // Uden den her venter Chrome paa at hver ramme bliver idle. En annonce-ramme der
+      // long-poller bliver det aldrig, og saa haenger dommen paa noget der intet har med
+      // haendelsen at goere. Armeringen havde den allerede; laesningen ikke.
+      injectImmediately: true,
       func: (minId) => {
         const p = window.__bmcpHaendelse;
         if (!p || p.id !== minId) return { udskiftet: true };
@@ -1406,12 +1410,21 @@ async function laesHaendelsesBevis(tabId, bevis) {
       args: [id],
     });
   } catch { return { landed: null }; }
-  const r = svar.map((x) => x.result).filter(Boolean);
+  // FUNDET 13/9 af Fable, bevist mod den aegte kode: `udskiftet` betyder kun "maerket er vaek".
+  // En ramme der ALDRIG havde maerket svarer det samme - og der kommer rammer til hele tiden
+  // (annoncer, GTM, reCAPTCHA, indlejret video; hover holder 500 ms, rigeligt). Hovedrammen
+  // sagde `antal:0`, annonce-rammen sagde `udskiftet`, og fire vaerktoejer svarede landed:true.
+  // Det var et falsk JA i selve beviset - den loegn 1.29.2 bliver udgivet for at fjerne.
+  //
+  // Kun HOVEDRAMMENS udskiftning er en navigation. En underrammes er stoej, og den taeller
+  // derfor hverken for eller imod: den er bare en ramme der ikke kunne maales.
+  const r = svar.filter((x) => x && x.result).map((x) => ({ frameId: x.frameId, ...x.result }));
   if (r.some((x) => x.antal > 0)) return { landed: true };
-  if (r.some((x) => x.udskiftet)) return { landed: true, navigeret: true };
-  // Faerre rammer svarede end blev armeret: vi kan ikke se forskel paa "ingen fik den" og
-  // "den ramme der fik den, kunne ikke laeses". Det er UVIST, ikke nej.
-  if (!rammer || r.length < rammer) return { landed: null };
+  if (r.some((x) => x.udskiftet && x.frameId === 0)) return { landed: true, navigeret: true };
+  // Kun rammer der faktisk MAALTE taeller. Faerre maalinger end armeringer betyder at en
+  // armeret ramme ikke kunne laeses - og det kan ikke skelnes fra "ingen fik den". UVIST.
+  const maalte = r.filter((x) => typeof x.antal === 'number');
+  if (!rammer || maalte.length < rammer) return { landed: null };
   return { landed: false };
 }
 
@@ -1469,6 +1482,7 @@ async function laesTastBevis(tabId, bevis) {
   try {
     svar = await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
+      injectImmediately: true,
       func: (minId) => {
         const p = window.__bmcpTast;
         if (!p || p.id !== minId) return { udskiftet: true };  // navigation tog lytteren med
@@ -1480,10 +1494,12 @@ async function laesTastBevis(tabId, bevis) {
       args: [id],
     });
   } catch { return { landed: null }; }     // kunne ikke laeses: uvist, ikke nej
-  const r = svar.map((x) => x.result).filter(Boolean);
+  const r = svar.filter((x) => x && x.result).map((x) => ({ frameId: x.frameId, ...x.result }));
   if (r.some((x) => x.antal > 0 && x.traf)) return { landed: true };
-  if (r.some((x) => x.udskiftet)) return { landed: true, navigeret: true };
-  if (!rammer || r.length < rammer) return { landed: null };
+  // Samme regel som for musen: kun hovedrammens udskiftning er en navigation.
+  if (r.some((x) => x.udskiftet && x.frameId === 0)) return { landed: true, navigeret: true };
+  const maalte = r.filter((x) => typeof x.antal === 'number');
+  if (!rammer || maalte.length < rammer) return { landed: null };
   return { landed: false };
 }
 
@@ -2764,6 +2780,28 @@ async function setCombobox(tabId, selector, values, opts = {}) {
       const query = val.slice(0, Math.min(queryPrefixLen, val.length));
       await debuggerAttach(tabId);
       await cdpSend(tabId, 'Input.insertText', { text: query });
+
+      // FUNDET 13/9 af Astra: naar listen ikke kom, svarede vi 'no-options-rendered' - som
+      // peger paa siden. Men vejen hertil gaar gennem to CDP-kommandoer der KVITTERER uden
+      // at love levering (klikket der aabner feltet, og selve skrivningen). Landede de ikke,
+      // er det ikke siden der mangler muligheder.
+      //
+      // Vi kan ikke maale klikket uden at bygge et bevis til. Feltet KAN vi laese. Og kun paa
+      // et rigtigt inputfelt: peger vaelgeren paa en indpakning, er en tom textContent intet
+      // bevis, saa den sag forbliver uvist og gaar den lange vej som foer.
+      const efterSkrift = await debuggerEval(tabId, `(() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el || !('value' in el)) return null;
+        return el.value;
+      })()`).catch(() => null);
+      if (efterSkrift === '') {
+        results.push({ value: val, ok: false, error: 'soegetekst-blev-ikke-leveret', query,
+          note: 'Feltet stod tomt efter at soegeteksten var sendt, saa den naaede aldrig frem. ' +
+                'Siden mangler ikke muligheder - den blev aldrig spurgt. Fanen er maaske i ' +
+                'baggrunden, hvor Chrome ikke leverer mus og taster. Kald browser_switch_tab ' +
+                'og proev igen.' });
+        continue;
+      }
 
       // Wait for listbox/options to appear
       let ready = false;

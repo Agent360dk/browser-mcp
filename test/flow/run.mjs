@@ -118,12 +118,18 @@ const kald = async (navn, args = {}, ms) => {
     // wait_for_network naaede at lytte. En ny fane fodes derimod ALTID i baggrunden
     // (background.js:2807), saa den skal frem med det samme.
     if (args && args.new_tab) {
-      await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } }).catch(() => {});
+      await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } })
+      .catch((e) => fanesskiftFejl.push(e?.message || String(e)));
     }
   }
   return { data, tekst };
 };
 let fokusFane = null;
+// FUNDET 13/9 af Astra: begge fane-skift slugte deres fejl. `kald()` kaster paa ethvert
+// ok:false, saa fejlede switch_tab tavst, laa alle muse- og tasteskridt i en baggrundsfane -
+// og de nye AERLIGE nej'er lignede en regression i vaerktoejerne. Et instrument hvis
+// forudsaetning kan svigte uden at sige fra, maaler noget andet end det man tror.
+const fanesskiftFejl = [];
 // MAALT 13/9: spaerren var groen i én koersel og roed i den naeste med PRAECIS samme kode.
 // Aarsagen var ikke koden og ikke to skaerme: fire agenter delte den samme Chrome (portene
 // 9876-9879 optaget, fanegrupperne Claude 1-4). Museskridtene kraever at proevens fane er den
@@ -145,7 +151,8 @@ async function andreAgenter() {
 // Belt og seler: proever der ikke selv navigerer, skal ogsaa have en synlig fane.
 const forrest = async () => {
   if (fokusFane == null) return;
-  await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } }).catch(() => {});
+  await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } })
+      .catch((e) => fanesskiftFejl.push(e?.message || String(e)));
   // MAALT 13/9: switch_tab svarer naar Chrome har SAGT ja, ikke naar fanen er tegnet. Uden
   // denne pause var spaerren groen i én koersel og roed i den naeste med praecis samme kode -
   // museskridtet naaede frem foer fanen var den viste. En spaerre der skifter farve uden at
@@ -254,6 +261,22 @@ try {
   await proev('browser_hover', 'hover udloeser mouseover', async () => {
     await kald('browser_hover', { selector: '#hover' });
     skalVaere((await status()).includes('hoveret'), 'mouseover fyrede ikke');
+  });
+  await proev('#hover-igen', 'hover paa et element markoeren ALLEREDE staar paa', async () => {
+    // ⚠️ ANTAGET af Fable 13/9, kunne ikke maales i en Chrome hvor fejlfinderen spoegelses-
+    // fastgjorde sig. Paastanden: Blink fyrer `mouseover` KUN naar elementet under markoeren
+    // skifter. Anden gang giver `mousemove`. Beviset lytter paa `mouseover`, saa en helt
+    // almindelig raekkefoelge - klik paa noget, hover paa det samme - ville svare
+    // `hover-blev-ikke-leveret` og sende agenten til switch_tab uden grund.
+    //
+    // Vi retter ikke paa en antagelse. Vi MAALER den her, hver gang spaerren koerer.
+    await kald('browser_hover', { selector: '#hover' });
+    const svar = await rpc('tools/call', { name: 'browser_hover', arguments: { selector: '#hover' } });
+    const t = svar?.content?.[0]?.text || '';
+    skalVaere(!/hover-blev-ikke-leveret/.test(t),
+      'Fables antagelse holder: anden hover paa SAMME element svarer "ikke leveret", fordi Blink ' +
+      'kun fyrer mouseover naar elementet under markoeren skifter. Beviset skal lytte paa ' +
+      `mousemove ogsaa. Svar: ${t.slice(0, 200)}`);
   });
   await proev('browser_fill', 'skriver i et tekstfelt', async () => {
     await kald('browser_fill', { selector: '#tekstfelt', value: 'flowtest' });
@@ -593,10 +616,15 @@ try {
     console.log('\nFEJL:');
     for (const [v, r] of fejl) console.log(`  ${v}: ${r.fejl?.split('\n')[0]}`);
   }
+  if (fanesskiftFejl.length) {
+    console.log(`\n⚠ UGYLDIG MAALING: ${fanesskiftFejl.length} fane-skift fejlede, saa proeverne kan have`);
+    console.log('  koert i en baggrundsfane. De aerlige "ikke leveret"-svar herover er saa selens');
+    console.log('  skyld, ikke kodens. Foerste fejl: ' + fanesskiftFejl[0].split('\n')[0]);
+  }
   const advarsler = serverLog.join('').split('\n').filter(l => l.includes('ADVARSEL'));
   if (advarsler.length) { console.log('\nSERVER-ADVARSLER:'); advarsler.forEach(a => console.log('  ' + a.replace('[MCP] ', ''))); }
   console.log('='.repeat(72));
-  kode = fejl.length ? 1 : 0;
+  kode = (fejl.length || fanesskiftFejl.length) ? 1 : 0;
 } catch (e) {
   console.log('\n✗ harness kastede:', e.message);
   console.log(serverLog.join('').split('\n').slice(-15).join('\n'));

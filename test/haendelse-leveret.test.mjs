@@ -137,3 +137,70 @@ test('svarer faerre rammer end der blev armeret, er dommen uvist - ikke nej', as
     'og et falsk nej faar agenten til at gentage handlingen');
   assert.equal(svar.ok, true, 'uvist er ikke det samme som mislykket');
 });
+
+// ── En ny iframe maa ikke kunne lyve beviset groent ─────────────────────────
+//
+// FUNDET 13/9 af Fable, bevist mod den aegte kode. `udskiftet` betyder "maerket er vaek",
+// og det blev laest som "siden navigerede, saa haendelsen landede". Men en ramme der aldrig
+// HAVDE maerket svarer praecis det samme - og der kommer rammer til hele tiden: annoncer,
+// GTM, reCAPTCHA, YouTube-indlejringer. hover holder i 500 ms, rigeligt.
+//
+// Resultatet var et falsk JA i selve bevis-apparatet: hovedrammen saa ingen haendelse, en
+// tilkommen annonce-ramme sagde "udskiftet", og fire vaerktoejer svarede landed:true.
+// Det er den loegn 1.29.2 bliver udgivet for at fjerne.
+for (const [vaerktoej, params] of [
+  ['hover', { selector: '#x' }],
+  ['double_click', { selector: '#x' }],
+  ['right_click', { selector: '#x' }],
+  ['press_key', { key: 'Enter' }],
+]) {
+  test(`${vaerktoej} lader sig ikke narre af en iframe der kom til undervejs`, async () => {
+    const u = indlaesUdvidelse({ svar: {
+      'debugger.attach': undefined, 'debugger.detach': undefined,
+      'debugger.getTargets': [{ tabId: 1, attached: true }],
+      'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: false },
+      'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: false }],
+      'debugger.sendCommand': () => ({ result: { value: null } }),
+      'tabs.update': undefined, 'windows.update': undefined,
+    } });
+    u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+    u.ctx.resolveElement = async () => ({ x: 10, y: 10, tag: 'BUTTON', text: 'knap' });
+    u.ctx.chrome.scripting.executeScript = async ({ func }) => {
+      const k = String(func);
+      if (k.includes('addEventListener')) return [{ frameId: 0, result: undefined }];
+      if (k.includes('removeEventListener')) return [
+        { frameId: 0, result: { antal: 0, traf: false } },   // hovedrammen fik intet
+        { frameId: 7, result: { udskiftet: true } },         // annonce-ramme, aldrig armeret
+      ];
+      return [{ result: null }];
+    };
+    const svar = await u.hent('dispatch')(9876, vaerktoej, params);
+    assert.notEqual(svar.landed, true,
+      `${vaerktoej} svarede landed:true fordi en fremmed ramme manglede maerket. ` +
+      'Hovedrammen sagde udtrykkeligt at den intet modtog');
+    assert.doesNotMatch(String(svar.note || ''), /navigerede/,
+      `${vaerktoej} paastaar at siden navigerede, fordi en annonce-iframe kom til`);
+  });
+}
+
+test('kalibrering: hovedrammens EGEN udskiftning betyder stadig at siden navigerede', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: false },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: false }],
+    'debugger.sendCommand': () => ({ result: { value: null } }),
+    'tabs.update': undefined, 'windows.update': undefined,
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  u.ctx.resolveElement = async () => ({ x: 10, y: 10, tag: 'BUTTON', text: 'knap' });
+  u.ctx.chrome.scripting.executeScript = async ({ func }) => {
+    const k = String(func);
+    if (k.includes('addEventListener')) return [{ frameId: 0, result: undefined }];
+    if (k.includes('removeEventListener')) return [{ frameId: 0, result: { udskiftet: true } }];
+    return [{ result: null }];
+  };
+  const svar = await u.hent('dispatch')(9876, 'double_click', { selector: '#x' });
+  assert.equal(svar.landed, true,
+    'hovedrammen mistede maerket, og det sker kun ved en navigation - den dom maa ikke gaa tabt');
+});

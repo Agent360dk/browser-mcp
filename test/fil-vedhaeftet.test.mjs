@@ -94,6 +94,15 @@ test('kan feltet ikke laeses, er svaret UVIST - aldrig et falskt ja eller nej', 
   assert.equal(svar.uvist, true, 'svaret paastaar at vide noget det ikke ved');
 });
 
+// FUNDET 13/9 af Fable: uden en POSITIV drop_file-sag overlever mutationen "svar altid
+// ok:false". En proeve der kun kan se den ene retning, vogter kun den ene retning.
+test('drop_file melder succes naar filen FAKTISK sidder paa det skjulte felt', async () => {
+  const u = sele({ vedhaeftet: ['a.png'] });
+  const svar = await u.hent('dispatch')(9876, 'drop_file', { selector: '#zone', files: ['/tmp/a.png'] });
+  assert.equal(svar.ok, true, `drop_file meldte fejl paa en fil der sad paa feltet: ${JSON.stringify(svar)}`);
+  assert.deepEqual(svar.vedhaeftet, ['a.png'], 'svaret oplyser ikke hvad feltet faktisk staar med');
+});
+
 test('drop_file melder ikke succes paa en fil der aldrig kom paa det skjulte felt', async () => {
   const u = sele({ vedhaeftet: [] });
   const svar = await u.hent('dispatch')(9876, 'drop_file', { selector: '#zone', files: ['/tmp/a.png'] });

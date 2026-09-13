@@ -39,6 +39,8 @@ function sele({ slutVaerdi, ulaeseligt = false }) {
       const udtryk = String(p?.expression || '');
       if (udtryk.includes('isContentEditable')) return { result: { value: false } };
       if (ulaeseligt) return { result: { value: null } };
+      // readBackValue svarer en JSON-streng, ikke en raa vaerdi.
+      if (udtryk.includes('el.value !== undefined')) return { result: { value: JSON.stringify({ value: slutVaerdi }) } };
       // Baade rydningen, "landede noget" og den nye tilbagelaesning gaar gennem value-udtryk.
       if (udtryk.includes("'value' in el") || udtryk.includes('"value" in a') || udtryk.includes("'value' in a")) {
         return { result: { value: slutVaerdi } };
@@ -48,6 +50,7 @@ function sele({ slutVaerdi, ulaeseligt = false }) {
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
   u.ctx.chrome.scripting.executeScript = async () => [{ result: null }];
+  u.ctx.resolveElement = async () => ({ x: 10, y: 10, tag: 'INPUT', text: '' });
   return u;
 }
 
@@ -92,4 +95,32 @@ test('set_combobox svarer ikke ja paa en tom liste af vaerdier', async () => {
   assert.equal(svar.ok, false,
     'set_combobox svarede ja uden at vaelge noget. En tom liste er ikke en udfoert handling');
   assert.match(String(svar.error), /value|vaerdi/i, 'svaret siger ikke hvad der manglede');
+});
+
+// ── set_combobox: "no-options-rendered" var en rigtig fejl med forkert forklaring ──
+//
+// FUNDET 13/9 af Astra. Vejen til en dropdown er: klik feltet -> skriv soegetekst med
+// `Input.insertText` -> vent paa at listen kommer. Baade klikket og skrivningen er
+// CDP-kommandoer der KVITTERER uden at love levering. Lander ingen af dem, kommer listen
+// aldrig - og vaerktoejet svarede `no-options-rendered`, som peger paa siden.
+//
+// Vi kan ikke maale om klikket blev leveret uden at bygge et bevis til. Men vi KAN laese
+// feltet: staar soegeteksten der ikke, naaede den aldrig frem, og saa er det ikke siden
+// der mangler muligheder. Svaret skal sige det vi maalte, ikke det vi gaetter.
+test('set_combobox siger at soegeteksten aldrig naaede feltet - ikke at siden manglede muligheder', async () => {
+  const u = sele({ slutVaerdi: '' });          // feltet staar tomt efter skrivningen
+  const svar = await u.hent('dispatch')(9876, 'set_combobox', { selector: '#by', value: 'Koebenhavn', wait_ms: 200 });
+  const f = svar.results?.[0] || svar;
+  assert.notEqual(f.error, 'no-options-rendered',
+    'svaret giver siden skylden for en soegetekst der aldrig kom frem til feltet');
+  assert.match(String(f.error), /ikke-leveret|tom/,
+    `svaret siger ikke hvad der faktisk blev maalt: ${JSON.stringify(f)}`);
+});
+
+test('set_combobox giver stadig siden skylden naar teksten FAKTISK stod i feltet', async () => {
+  const u = sele({ slutVaerdi: 'Koeb' });      // soegeteksten naaede frem, listen kom bare ikke
+  const svar = await u.hent('dispatch')(9876, 'set_combobox', { selector: '#by', value: 'Koebenhavn', wait_ms: 200 });
+  const f = svar.results?.[0] || svar;
+  assert.equal(f.error, 'no-options-rendered',
+    'teksten stod i feltet, saa det ER siden der ikke viste nogen muligheder - den diagnose skal bevares');
 });

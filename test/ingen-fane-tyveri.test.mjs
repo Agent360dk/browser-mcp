@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 /** Rejser udvidelsen med en fane der IKKE er forrest, og svar nok til at naa igennem. */
-function sele() {
+function sele({ leverer = true } = {}) {
   let armeret = null;
   const fane = { id: 1, url: 'https://x.example', windowId: 1, active: false };
   const u = indlaesUdvidelse({ svar: {
@@ -59,10 +59,10 @@ function sele() {
   u.ctx.resolveElement = async () => ({ x: 10, y: 10, tag: 'BUTTON', text: 'knap' });
   u.ctx.chrome.scripting.executeScript = async ({ func, args }) => {
     const kilde = String(func);
-    if (kilde.includes('addEventListener')) { armeret = args?.[0]; return [{ result: undefined }]; }
+    if (kilde.includes('addEventListener')) { armeret = args?.[0]; return [{ frameId: 0, result: undefined }]; }
     if (kilde.includes('removeEventListener')) {
       if (armeret !== args?.[0]) return [{ result: { udskiftet: true } }];
-      return [{ result: { antal: 1, traf: true } }];
+      return [{ frameId: 0, result: { antal: leverer ? 1 : 0, traf: leverer } }];
     }
     return [{ result: { ok: true, method: 'exact', text: 'valgt' } }];
   };
@@ -133,10 +133,30 @@ test('kalibrering: opdageren ser ogsaa et vindue der tages i fokus', () => {
     'opdageren ser kun fane-skift, ikke at hele Chrome-vinduet rives frem');
 });
 
-test('switch_tab og ask_user MAA aktivere - det er hele deres formaal', () => {
-  // Kontrakten skrevet ned, saa en fremtidig oprydning ikke fjerner den ved en fejl.
-  // switch_tab er agentens remedie naar en baggrundsfane ikke kan modtage mus og taster;
-  // ask_user viser brugeren praecis det den bliver spurgt om.
+test('switch_tab MAA aktivere - det er hele dens formaal', async () => {
+  // FUNDET 13/9 af Fable: her stod `assert.equal(typeof dispatch, 'function')`. Den proeve
+  // kunne ikke gaa roed uanset hvad koden gjorde. Nu er det en RIGTIG positiv kalibrering:
+  // switch_tab er agentens remedie naar en baggrundsfane ikke kan modtage mus og taster, saa
+  // den SKAL aktivere - og gaar den i stykker, skal denne fil sige fra.
   const u = sele();
-  assert.equal(typeof u.hent('dispatch'), 'function');
+  await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 }).catch(() => {});
+  assert.deepEqual(faneTyverier(u.optager), ['tabs.update({active:true})'],
+    'switch_tab aktiverede ikke fanen. Saa har agenten ingen vej ud af en baggrundsfane, ' +
+    'og alle de aerlige "ikke leveret"-svar bliver blindgyder');
 });
+
+// FUNDET 13/9 af Fable: selen ovenfor lader hver haendelse LANDE. Den fristende genvej -
+// "landed:false -> hent fanen frem -> proev igen" - ville netop blive skrevet i den gren
+// proeverne aldrig koerte. Her koeres de samme vaerktoejer med en side der intet modtager.
+for (const [vaerktoej, params] of VAERKTOEJER) {
+  const navn = params.selector?.startsWith('text=') ? `${vaerktoej} (tekstvaelger)` : vaerktoej;
+  test(`${navn} henter heller ikke fanen frem naar handlingen IKKE landede`, async () => {
+    const u = sele({ leverer: false });
+    await u.hent('dispatch')(9876, vaerktoej, params).catch(() => {});
+    assert.ok(u.optager.antal('tabs.get') > 0, `${navn} naaede aldrig frem til fanen`);
+    const tyveri = faneTyverier(u.optager);
+    assert.deepEqual(tyveri, [],
+      `${navn} river brugerens fane frem naar handlingen fejler: ${tyveri.join(', ')}. ` +
+      'Det aerlige svar er remediet - ikke at tage skaermen.');
+  });
+}
