@@ -560,11 +560,17 @@ if [[ "$SKIP_NPM" == 1 ]]; then warn "sprunget over (--skip-npm: der blev ikke u
 elif [[ "$SHIP" != 1 ]]; then say "ville hente @agent360/browser-mcp@${NEW_VERSION} med npx og sende initialize"
 else
   KOLD_OK=0
+  # MAALT 13/9 af Fable: kaldet havde ingen tidsgraense. `npx` henter fra registret, og et haengende
+  # download eller en pakke der aldrig svarer, ville staa her i det uendelige - som SIDSTE spaerre foer
+  # registret, efter at npm er udgivet. `head -1` lukker roeret, men lukker ikke processen.
+  if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD=(timeout 90)
+  elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD=(gtimeout 90)
+  else TIMEOUT_CMD=(); warn "ingen timeout(1) paa maskinen - det kolde tjek kan haenge"; fi
   for forsoeg in 1 2 3; do
     KOLD_HJEM="$(mktemp -d)"
     say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, forsoeg ${forsoeg}/3)"
     KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
-      | HOME="$KOLD_HJEM" npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
+      | HOME="$KOLD_HJEM" "${TIMEOUT_CMD[@]}" npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
     if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
       KOLD_OK=1; rm -rf "$KOLD_HJEM" 2>/dev/null || true; break
     fi

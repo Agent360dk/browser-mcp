@@ -1,4 +1,4 @@
-// Sig kun "Copied" naar det faktisk lykkedes — en knap der lyver sender folk
+// Sig kun "Copied" naar det faktisk lykkedes - en knap der lyver sender folk
 // videre til terminalen med en tom udklipsholder.
 document.querySelectorAll('.copy').forEach(function(b){b.onclick=function(){
   var pre=b.parentElement.querySelector('pre'), t=pre.textContent;

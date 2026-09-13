@@ -416,6 +416,10 @@ test('et fejlet koldt tjek stopper udgivelsen i stedet for at fortsaette', () =>
   const kode = blok.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
   assert.match(kode, /for forsoeg in 1 2 3/, 'der er ingen gentagelse i koden - registret indekserer forsinket, saa ét forsoeg giver falsk alarm');
   assert.match(kode, /sleep \d+/, 'der ventes ikke mellem forsoegene');
+  // MAALT 13/9 af Fable: kaldet havde ingen tidsgraense. Det er SIDSTE spaerre foer registret, og den koerer
+  // EFTER at npm er udgivet - et haengende download ville altsaa standse udgivelsen halvvejs, uden en fejl.
+  // `head -1` lukker roeret, men ikke processen.
+  assert.match(kode, /timeout \d+|TIMEOUT_CMD/, 'det kolde tjek kan haenge i det uendelige - der er ingen tidsgraense paa npx');
 });
 
 
