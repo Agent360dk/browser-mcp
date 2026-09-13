@@ -124,3 +124,30 @@ test('set_combobox giver stadig siden skylden naar teksten FAKTISK stod i feltet
   assert.equal(f.error, 'no-options-rendered',
     'teksten stod i feltet, saa det ER siden der ikke viste nogen muligheder - den diagnose skal bevares');
 });
+
+// ── Aabningsklikket i set_combobox kastede sin egen maaling vaek ────────────
+//
+// FUNDET 13/9 af BAADE Astra og Fable, uafhaengigt. Vejen til en dropdown starter med et
+// klik der aabner den, og `debuggerClick` svarer allerede om det landede - samme maaling
+// som click, click_xy og select_option deler via `klikLandede()`. set_combobox var det ene
+// sted der smed svaret vaek. Landede klikket ikke (et overlay, et cookie-banner), gik
+// soegeteksten i det felt der HAVDE fokus, og vi ventede 3 sekunder for saa at sige
+// "no-options-rendered" - en bivirkning i et fremmed felt, meldt som sidens skyld.
+test('set_combobox siger til naar klikket der skulle aabne listen ikke landede', async () => {
+  const u = sele({ slutVaerdi: 'noget' });
+  u.ctx.debuggerClick = async () => ({ landed: false, fallbackFired: false });
+  const svar = await u.hent('dispatch')(9876, 'set_combobox', { selector: '#by', value: 'Koebenhavn', wait_ms: 200 });
+  const f = svar.results?.[0] || svar;
+  assert.notEqual(f.error, 'no-options-rendered',
+    'svaret giver siden skylden, men klikket der skulle aabne listen naaede aldrig frem');
+  assert.match(String(f.error), /klik/i, `svaret siger ikke at det var klikket: ${JSON.stringify(f)}`);
+});
+
+test('et UVIST klik stopper ikke set_combobox - vi ved ikke at det gik galt', async () => {
+  const u = sele({ slutVaerdi: 'Koeb' });
+  u.ctx.debuggerClick = async () => ({ landed: null, uverificeret: true });
+  const svar = await u.hent('dispatch')(9876, 'set_combobox', { selector: '#by', value: 'Koebenhavn', wait_ms: 200 });
+  const f = svar.results?.[0] || svar;
+  assert.equal(f.error, 'no-options-rendered',
+    'et uvist klik er ikke et mislykket klik - saa skal den gaa hele vejen som foer');
+});

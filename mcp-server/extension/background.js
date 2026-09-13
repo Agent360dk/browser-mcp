@@ -2758,7 +2758,21 @@ async function setCombobox(tabId, selector, values, opts = {}) {
         results.push({ value: val, ok: false, error: 'input-not-found' });
         continue;
       }
-      await debuggerClick(tabId, inputEl.x, inputEl.y);
+      // FUNDET 13/9 af BAADE Astra og Fable, uafhaengigt: her stod `await debuggerClick(...)`
+      // og svaret blev kastet vaek. `klikLandede()` er den faelles regel som click, click_xy
+      // og select_option allerede bruger - set_combobox var det ene sted der ikke spurgte.
+      // Landede klikket ikke, gik soegeteksten i det felt der HAVDE fokus, og vi ventede
+      // wait_ms for saa at sige 'no-options-rendered'. En bivirkning i et fremmed felt,
+      // meldt som sidens skyld. Et UVIST klik stopper os ikke - kun et maalt nej.
+      const aabneKlik = await debuggerClick(tabId, inputEl.x, inputEl.y);
+      if (aabneKlik && aabneKlik.landed === false && !klikLandede(aabneKlik)) {
+        results.push({ value: val, ok: false, error: 'klikket-aabnede-ikke-listen',
+          note: 'Klikket der skulle aabne dropdownen naaede ikke siden, saa listen kan ikke ' +
+                'komme. Noget ligger maaske over feltet (cookie-banner, overlay), eller fanen ' +
+                'er i baggrunden, hvor Chrome ikke leverer mus. Kald browser_dismiss_overlays ' +
+                'eller browser_switch_tab og proev igen.' });
+        continue;
+      }
       await new Promise(r => setTimeout(r, 120));
 
       // Clear input only if non-empty. Backspace on empty multi-select deletes the previous chip
