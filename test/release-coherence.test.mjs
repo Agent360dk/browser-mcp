@@ -206,3 +206,22 @@ test('WISHLIST lover ikke vaerktoejer der ikke findes', () => {
   assert.deepEqual(opfundne, [],
     `WISHLIST lover disse som shipped, men de findes ikke i tools.js: ${opfundne.join(', ')}`);
 });
+
+// MAALT 13/9: Gemini CLI's galleri crawler repoet dagligt og laeser `gemini-extension.json`. Den baerer
+// baade en version og vaerktoejstallet - altsaa praecis de to tal der er raadnet foer: butiksteksten sagde
+// «29 tools» i to generationer, og delebilledet sagde «34 tools» siden juni, fordi ingen proeve laeste dem.
+// En fil et katalog laeser, og ingen holder i takt, er en loegn der venter paa at blive udgivet.
+test('gemini-manifestet baerer samme version og vaerktoejstal som resten', () => {
+  const rod = dirname(dirname(fileURLToPath(import.meta.url)));
+  const g = JSON.parse(readFileSync(join(rod, 'gemini-extension.json'), 'utf8'));
+  const pkg = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8'));
+  assert.equal(g.version, pkg.version,
+    `gemini-manifestet siger ${g.version}, pakken siger ${pkg.version} - galleriet ville vise en version der ikke findes`);
+  const antal = (readFileSync(join(rod, 'mcp-server/tools.js'), 'utf8').match(/name: ['"]browser_/g) || []).length;
+  const paastand = /(\d+) tools/.exec(g.description || '');
+  assert.ok(paastand, 'manifestets beskrivelse naevner intet vaerktoejstal - saa kan intet holde det i takt');
+  assert.equal(Number(paastand[1]), antal,
+    `manifestet lover ${paastand[1]} vaerktoejer, serveren har ${antal}`);
+  assert.equal(g.mcpServers?.['browser-mcp']?.args?.[0], '@agent360/browser-mcp@latest',
+    'manifestet peger ikke paa den udgivne pakke');
+});

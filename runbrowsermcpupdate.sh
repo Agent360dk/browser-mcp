@@ -191,6 +191,10 @@ MANAGED=(
   # fortsat "not released yet", altsaa praecis det trinnet skulle lukke. Og filen stod beskidt bagefter, saa NAESTE
   # koersels stray-tjek doede paa den.
   CHANGELOG.md
+  # MAALT 13/9: Gemini CLI's galleri crawler repoet dagligt og laeser dette manifest. Den baerer
+  # baade en version og vaerktoejstallet, saa den skal med i BEGGE fejekoste - ellers raadner den
+  # praecis som butiksteksten og demo-billedet gjorde.
+  gemini-extension.json
 )
 is_managed() { # path → 0 if under a managed prefix
   local p="$1" m
@@ -356,7 +360,7 @@ run cp README.md mcp-server/README.md
 #     (Kommentaren sagde indtil 7/9 at registret ikke blev udgivet - det var sandt da den
 #     blev skrevet, og forkert fra 23/8. En foraeldet note om en kanal er hvordan kanalen
 #     bliver glemt.)
-JSON_FILES="server.json extension/manifest.json mcp-server/extension/manifest.json mcp-server/package.json mcp-server/package-lock.json mcp-server/server.json"
+JSON_FILES="server.json extension/manifest.json mcp-server/extension/manifest.json mcp-server/package.json mcp-server/package-lock.json mcp-server/server.json gemini-extension.json"
 say "bump .version → $NEW_VERSION in: $JSON_FILES"
 run node -e "
   const fs=require('fs');
@@ -372,7 +376,7 @@ run node -e "
 "
 
 # 1d. tool-count sweep: fix '<n> tools' / '<n> browser tools' everywhere it drifts.
-TOOLCOUNT_FILES="README.md mcp-server/README.md llms-install.md extension/manifest.json mcp-server/extension/manifest.json mcp-server/server.json mcp-server/bin/cli.js docs/index.html"
+TOOLCOUNT_FILES="README.md mcp-server/README.md llms-install.md extension/manifest.json mcp-server/extension/manifest.json mcp-server/server.json mcp-server/bin/cli.js docs/index.html gemini-extension.json"
 say "sweep tool-count → '${TOOL_COUNT} tools' across: $TOOLCOUNT_FILES"
 for f in $TOOLCOUNT_FILES; do
   [[ -f "$f" ]] || continue
