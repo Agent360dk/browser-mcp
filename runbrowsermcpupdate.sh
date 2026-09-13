@@ -566,7 +566,7 @@ else
   if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD=(timeout 90)
   elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD=(gtimeout 90)
   else TIMEOUT_CMD=(); warn "ingen timeout(1) paa maskinen - det kolde tjek kan haenge"; fi
-  for forsoeg in 1 2 3; do
+  for forsoeg in 1 2 3 4 5 6; do
     KOLD_HJEM="$(mktemp -d)"
     say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, forsoeg ${forsoeg}/3)"
     KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
@@ -576,7 +576,12 @@ else
     fi
     [[ -s "$KOLD_HJEM/fejl.log" ]] && tail -5 "$KOLD_HJEM/fejl.log" | sed 's/^/    /'
     rm -rf "$KOLD_HJEM" 2>/dev/null || true
-    [[ $forsoeg -lt 3 ]] && { say "registret har maaske ikke indekseret endnu - venter 15 s"; sleep 15; }
+    # MAALT 13/9 under den AEGTE udgivelse: tre forsoeg a 15 s var for lidt. npm svarede
+    # "+ @agent360/browser-mcp@1.29.1" og skrev selv "may take a few minutes to become
+    # available" - og tjekket doede 45 sekunder senere, saa scriptet stoppede FOER registret
+    # med en udgivelse der i virkeligheden var lykkedes. Seks forsoeg a 30 s giver de tre
+    # minutter npm selv beder om.
+    [[ $forsoeg -lt 6 ]] && { say "registret har maaske ikke indekseret endnu - venter 30 s"; sleep 30; }
   done
   if [[ $KOLD_OK -eq 1 ]]; then
     ok "den udgivne pakke svarer paa MCP-haandtrykket"

@@ -414,7 +414,9 @@ test('et fejlet koldt tjek stopper udgivelsen i stedet for at fortsaette', () =>
   // indeholder selv ordet "forsoeg". Hun fjernede loekken helt og fik samme resultat som baseline. Proeven maa
   // kun se paa KODEN, ikke paa forklaringen af den.
   const kode = blok.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
-  assert.match(kode, /for forsoeg in 1 2 3/, 'der er ingen gentagelse i koden - registret indekserer forsinket, saa ét forsoeg giver falsk alarm');
+  assert.match(kode, /for forsoeg in 1 2 3 4 5 6/,
+    'for faa forsoeg. MAALT 13/9 under den aegte udgivelse: npm svarede ja og skrev selv "may take a few \
+minutes", og tjekket doede efter 45 sekunder - saa scriptet stoppede foer registret paa en udgivelse der lykkedes');
   assert.match(kode, /sleep \d+/, 'der ventes ikke mellem forsoegene');
   // MAALT 13/9 af Fable: kaldet havde ingen tidsgraense. Det er SIDSTE spaerre foer registret, og den koerer
   // EFTER at npm er udgivet - et haengende download ville altsaa standse udgivelsen halvvejs, uden en fejl.
