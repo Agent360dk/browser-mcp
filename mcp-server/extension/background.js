@@ -1277,6 +1277,68 @@ async function debuggerEval(tabId, expression) {
 // Synthetic click via chrome.scripting — fallback when debugger detaches on
 // anti-automation sites (Apple ASC, etc.). Loses isTrusted=true but works for
 // the ~95% of sites that don't check it. Handles text= and :text() selectors.
+async function armerHaendelsesBevis(tabId, type) {
+  // Samme rolle for musen som armerTastBevis har for tasterne, og af samme grund: Chrome
+  // KVITTERER for en CDP-kommando uden at love at siden fik den. For tasterne loej det
+  // (maalt 13/9). For hover, double_click og right_click reddes svaret i dag af 1500 ms-fristen,
+  // altsaa af et uheld og ikke af en maaling - og et uheld er ikke en vagt. Et element der er
+  // daekket af et overlay, eller en side der sluger haendelsen, giver samme falske ja som
+  // press_key gav paa Enter.
+  const id = 'h' + Math.random().toString(36).slice(2, 10);
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    injectImmediately: true,
+    func: (nyId, haendelse) => {
+      const p = (window.__bmcpHaendelse ||= {});
+      if (p.fn) window.removeEventListener(p.type, p.fn, true);
+      p.id = nyId; p.type = haendelse; p.antal = 0;
+      p.fn = () => { p.antal++; };
+      window.addEventListener(haendelse, p.fn, true);
+    },
+    args: [id, type],
+  });
+  return id;
+}
+
+async function laesHaendelsesBevis(tabId, id) {
+  let svar;
+  try {
+    svar = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: (minId) => {
+        const p = window.__bmcpHaendelse;
+        if (!p || p.id !== minId) return { udskiftet: true };
+        if (p.fn) window.removeEventListener(p.type, p.fn, true);
+        const r = { antal: p.antal };
+        p.fn = null; p.id = null;
+        return r;
+      },
+      args: [id],
+    });
+  } catch { return { landed: null }; }
+  const r = svar.map((x) => x.result).filter(Boolean);
+  if (r.some((x) => x.antal > 0)) return { landed: true };
+  if (r.some((x) => x.udskiftet)) return { landed: true, navigeret: true };
+  if (r.length === 0) return { landed: null };
+  return { landed: false };
+}
+
+/** Samme tre-vejs dom som click og press_key. Ét sted, saa de ikke driver fra hinanden. */
+function haendelsesSvar(bevis, grund, ekstra) {
+  if (bevis.landed === true) {
+    return { ok: true, landed: true, ...ekstra,
+      ...(bevis.navigeret ? { note: 'Siden navigerede paa handlingen.' } : {}) };
+  }
+  if (bevis.landed === null) {
+    return { ok: true, landed: null, maaske_landet: true, ...ekstra,
+      note: 'Handlingen blev sendt, men det kunne ikke laeses om siden modtog den. Tjek siden foer du proever igen.' };
+  }
+  return { ok: false, landed: false, ...ekstra, error: grund,
+    note: 'Chrome kvitterede, men ingen lytter i fanen modtog haendelsen. Fanen er sandsynligvis i ' +
+          'baggrunden, og Chrome leverer ikke mus og taster til en fane der ikke er den viste i sit ' +
+          'vindue. Kald browser_switch_tab og proev igen.' };
+}
+
 async function armerTastBevis(tabId) {
   // MAALT 13/9, live og kalibreret mod et kendt-sandt tilfaelde: i en baggrundsfane KVITTERER
   // Chrome for Input.dispatchKeyEvent og leverer ikke tasten. Ingen fejl, ingen frist. Musen
@@ -3370,7 +3432,27 @@ async function dispatch(port, method, params) {
         await debuggerClick(tab.id, el.x, el.y);
         await new Promise(r => setTimeout(r, 100));
         await debuggerType(tab.id, params.value);
-        return { ok: true, method: 'debugger' };
+        // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
+        // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
+        // formateret; tekst-grenen gjorde ikke. Et klik der landede paa noget andet end et
+        // felt, eller en baggrundsfane der slugte tasterne, gav samme ja.
+        const efterTekst = await debuggerEval(tab.id,
+          '(() => { const a = document.activeElement; return a && "value" in a ? String(a.value) : null; })()')
+          .catch(() => undefined);
+        if (efterTekst === undefined || efterTekst === null) {
+          return { ok: true, method: 'debugger', uvist: true,
+            note: 'Teksten blev skrevet, men feltet kunne ikke laeses bagefter, saa det er uvist om ' +
+                  'den landede. Laes feltet med browser_execute_script hvis det betyder noget.' };
+        }
+        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', vaerdi: efterTekst };
+        if (efterTekst === '') {
+          return { ok: false, method: 'debugger', error: 'feltet-er-tomt', vaerdi: efterTekst,
+            note: 'Feltet stod tomt efter skrivningen. Klikket ramte maaske ikke et felt, eller fanen ' +
+                  'er i baggrunden, hvor Chrome ikke leverer taster. Kald browser_switch_tab og proev igen.' };
+        }
+        return { ok: true, method: 'debugger', afviger: true, vaerdi: efterTekst,
+          note: 'Feltet indeholder noget andet end det skrevne. Siden har sandsynligvis formateret ' +
+                'vaerdien - eller der stod noget i forvejen.' };
       }
 
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
@@ -3795,7 +3877,26 @@ async function dispatch(port, method, params) {
           }),
         };
       }
-      return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped' };
+      // MAALT 13/9 (Astras hul-audit): her stod `ok:true, scrolled:{x:dx,y:dy}` - altsaa det
+      // vaerktoejet BAD om, ikke det siden endte paa. Kvitteringen fra hjulet er ikke et bevis;
+      // et element der sluger hjulet, en side der allerede er i bunden, eller en baggrundsfane
+      // giver samme falske ja. Reservevejen laeser allerede positionen; den gode sti gjorde ikke.
+      const slut = await debuggerEval(tab.id, '({x: window.scrollX, y: window.scrollY})').catch(() => null);
+      if (!slut || typeof slut.y !== 'number') {
+        return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped', uvist: true,
+          note: 'Rulningen blev sendt, men positionen kunne ikke laeses bagefter. Laes window.scrollY ' +
+                'med browser_execute_script hvis den praecise position betyder noget.' };
+      }
+      const rykkede = !startKendt || slut.x !== startX || slut.y !== startY;
+      const iMaal = startKendt && slut.x === startX + dx && slut.y === startY + dy;
+      return { ok: true, method: 'mouseWheel-stepped', position: slut,
+        ...(startKendt ? { foer: { x: startX, y: startY } } : {}),
+        ...(rykkede || iMaal ? {} : {
+          uvist: true,
+          note: 'Rulningen blev sendt, men siden stod samme sted da vi svarede: enten er en bloed ' +
+                'rulning stadig i gang, bunden er naaet, eller fanen er i baggrunden. Laes ' +
+                'window.scrollY med browser_execute_script hvis positionen betyder noget.',
+        }) };
     }
 
     // ── v1.26 "superior" tools ──────────────────────────────────────────────
@@ -3809,6 +3910,7 @@ async function dispatch(port, method, params) {
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       await debuggerAttach(tab.id);
+      const dblBevis = await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       const { x, y } = el;
       await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await new Promise(r => setTimeout(r, 30));
@@ -3818,7 +3920,9 @@ async function dispatch(port, method, params) {
       await new Promise(r => setTimeout(r, 40));
       await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
       await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
-      return { ok: true, double_clicked: true, tag: el.tag, text: el.text };
+      const db = dblBevis ? await laesHaendelsesBevis(tab.id, dblBevis) : { landed: null };
+      return haendelsesSvar(db, 'dobbeltklik-blev-ikke-leveret',
+        { double_clicked: db.landed === true, tag: el.tag, text: el.text });
     }
 
     case 'right_click': {
@@ -3827,12 +3931,18 @@ async function dispatch(port, method, params) {
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       await debuggerAttach(tab.id);
+      const hoejreBevis = await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       const { x, y } = el;
       await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await new Promise(r => setTimeout(r, 30));
       await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
       await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
-      return { ok: true, right_clicked: true, tag: el.tag, text: el.text, note: 'contextmenu event fired; native Chrome menu does not open via CDP — page-level menus (OWA, web apps) do' };
+      const hb2 = hoejreBevis ? await laesHaendelsesBevis(tab.id, hoejreBevis) : { landed: null };
+      const svarH = haendelsesSvar(hb2, 'hoejreklik-blev-ikke-leveret',
+        { right_clicked: hb2.landed === true, tag: el.tag, text: el.text });
+      // Den gamle note gaelder stadig naar haendelsen LANDEDE: Chromes egen menu aabner ikke via CDP.
+      if (svarH.landed === true) svarH.note = 'contextmenu-haendelsen landede; Chromes egen menu aabner ikke via CDP - menuer bygget i siden (OWA, webapps) goer';
+      return svarH;
     }
 
     case 'click_xy': {
@@ -3885,6 +3995,7 @@ async function dispatch(port, method, params) {
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       await debuggerAttach(tab.id);
+      const hoverBevis = await armerHaendelsesBevis(tab.id, 'mouseover').catch(() => null);
       try {
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseMoved', x: el.x, y: el.y,
@@ -3894,7 +4005,8 @@ async function dispatch(port, method, params) {
       } finally {
         await debuggerDetach(tab.id);
       }
-      return { ok: true, tag: el.tag, text: el.text };
+      const hb = hoverBevis ? await laesHaendelsesBevis(tab.id, hoverBevis) : { landed: null };
+      return haendelsesSvar(hb, 'hover-blev-ikke-leveret', { tag: el.tag, text: el.text });
     }
 
     case 'select_option': {
