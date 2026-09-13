@@ -272,6 +272,13 @@ Both are optional. Neither is needed for normal use.
 
 Each Claude Code conversation gets its own MCP server on a unique port (9876-9895). The Chrome extension connects to all active servers simultaneously.
 
+**Need more than 20 at once?** The range is a setting, not a hard limit, but both halves have to agree.
+Set `BROWSER_MCP_MAX_PORT` in every chat's MCP config, set `bmcpPorte` to the same range in the
+extension's storage, then reload the extension: it reads the range only when it starts. Change only the
+server side and chat 21 binds a port the extension never looks at, so the browser goes quiet in that chat
+with nothing to explain it. 100 is plenty; the hard cap is 200. Every extra port costs your browser one
+refused connection every two seconds, whether you use it or not, so do not widen it for fun.
+
 ```
 Claude Session 1 ←(stdio)→ MCP :9876 ←(WS)→
 Claude Session 2 ←(stdio)→ MCP :9877 ←(WS)→  Chrome Extension → Browser

@@ -10,7 +10,7 @@
 # returnerede alle 41 værktøjer. Derfor er det her nok til at bestå tjekket og få en score.
 #
 # Hvad billedet IKKE er: en måde at bruge browser-mcp på. Til rigtig brug skal serveren køre
-# på samme maskine som Chrome, så extensionen kan nå WebSocket-porten (9876-9885).
+# på samme maskine som Chrome, så extensionen kan nå WebSocket-porten (9876-9895).
 # Se README for den rigtige installation.
 
 FROM node:20-alpine
