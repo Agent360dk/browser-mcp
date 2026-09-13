@@ -17,8 +17,8 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-live-green)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
 
-[![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-000?logo=cursor)](cursor://anysphere.cursor-deeplink/mcp/install?name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJAYWdlbnQzNjAvYnJvd3Nlci1tY3BAbGF0ZXN0Il19)
-[![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
+[![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-000?logo=cursor)](https://cursor.com/install-mcp?name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyJAYWdlbnQzNjAvYnJvd3Nlci1tY3BAbGF0ZXN0Il19)
+[![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](https://vscode.dev/redirect/mcp/install?name=browser-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
 [![Glama quality](https://glama.ai/mcp/servers/Agent360dk/browser-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Agent360dk/browser-mcp)
 
 [![Browser MCP Demo](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)

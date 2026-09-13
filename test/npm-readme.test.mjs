@@ -32,3 +32,19 @@ test('npm-READMEs billeder paa main peger paa filer der findes i repoet', () => 
   assert.ok(egne.length > 0, 'demo-GIF\'en peger ikke paa repoets main');
   for (const u of egne) assert.ok(existsSync(join(rod, u.slice(RAA.length))), `${u} findes ikke i repoet`);
 });
+
+// MAALT 13/9 af Fable: de to "Add to Cursor"/"Add to VS Code"-knapper oeverst i READMEen pegede paa
+// `cursor://` og `vscode:mcp/`. Hverken GitHub eller npmjs.com renderer de skemaer - begge STRIPPER href'en,
+// saa badget staar tilbage som et rent billede. Maalt paa den renderede repo-side: nul `href="cursor:`,
+// nul `href="vscode:`. De blev indfoert 7/9 EFTER 1.29.0 gik paa npm, saa denne udgivelse ville vaere den
+// foerste der bar dem ud. Det er de eneste ét-kliks-indgange for de to klienter, og de sidder foer
+// foerste afsnit. Begge leverandoerer har en https-form, der svarer (200 og 302, maalt samme dag).
+test('installations-knapperne peger paa adresser GitHub og npm faktisk renderer', () => {
+  for (const fil of ['README.md', 'mcp-server/README.md']) {
+    const md = readFileSync(join(rod, fil), 'utf8');
+    const doede = [...md.matchAll(/\]\((cursor|vscode|windsurf|zed):[^)]*\)/g)].map((m) => m[0].slice(0, 40));
+    assert.deepEqual(doede, [],
+      `${fil}: en knap peger paa et app-skema. GitHub og npm fjerner href'en, saa knappen er et billede ` +
+      `uden funktion - og den, der klikker og intet oplever, laeser ikke videre til npx-kommandoen.`);
+  }
+});
