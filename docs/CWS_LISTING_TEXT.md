@@ -3,7 +3,7 @@
 Rewritten 2026-09-08. The listing lives in the CWS dashboard, **not in this repo**, so none of it
 can be fixed by a commit: <https://chrome.google.com/webstore/devconsole/> → Agent360 Browser MCP.
 
-Live state read the same day from the public page (736 users, 0 ratings, v1.29.0, updated 7 Sept,
+Live state read the same day from the public page (861 users, 0 ratings, v1.29.0, updated 7 Sept,
 developer Agent360 Group ApS, category Developer Tools).
 
 ## What is actually wrong - every field
@@ -19,9 +19,9 @@ developer Agent360 Group ApS, category Developer Tools).
 | **YouTube video** | Empty. `docs/demo.mp4` exists (20 June) but is on no video host, so the listing's video slot is unused | 🟡 §3 |
 | Store icon | Generic blue-gradient sparkle | 🟡 decision - §4 |
 | Privacy: single purpose + permission justifications | Not tracked in this repo | 🟡 §5 |
-| Ratings | 0 reviews at 736 users | 🟡 §6 - this one moves ranking |
+| Ratings | 0 reviews at 861 users | 🟡 §6 - this one moves ranking |
 
-### The three numbers, verified 2026-09-08 - re-run before re-publishing
+### The three numbers, verified 2026-09-13 - re-run before re-publishing
 
 - **40 tools** - `mcp-server/tools.js` exports 40. The listing says 29 (two generations stale).
 - **20 concurrent sessions** - port range 9876-9895 (`mcp-server/index.js:45-46`) is 20 ports, so 20
@@ -243,10 +243,10 @@ describe a 29-tool extension, they carry the same drift as the description.
 
 ---
 
-## §6 Zero reviews at 736 users is a ranking problem
+## §6 Zero reviews at 861 users is a ranking problem
 
 Google ranks store items on a heuristic that includes user ratings and the download-versus-uninstall
-trend. 736 users and no reviews at all means the ratings input is empty. The README already carries
+trend. 861 users and no reviews at all means the ratings input is empty. The README already carries
 an ungated review request; the listing description should not beg, but the popup's connected state
 is the right place to ask once, at the moment it just worked.
 
