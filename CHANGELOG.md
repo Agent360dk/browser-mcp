@@ -3,7 +3,7 @@
 Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" in the Chrome Web Store).
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
-## 1.29.1 (not released yet)
+## 1.29.1 (2026-09-13)
 
 Every code change below was written test-first and checked with a mutation test: the fix is removed on purpose, and the test must turn red. The dependency bump, the re-rendered video and GIF, and the wording changes in the READMEs and on the site are not covered by tests - they were checked by hand.
 
