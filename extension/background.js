@@ -1277,6 +1277,57 @@ async function debuggerEval(tabId, expression) {
 // Synthetic click via chrome.scripting — fallback when debugger detaches on
 // anti-automation sites (Apple ASC, etc.). Loses isTrusted=true but works for
 // the ~95% of sites that don't check it. Handles text= and :text() selectors.
+async function armerTastBevis(tabId) {
+  // MAALT 13/9, live og kalibreret mod et kendt-sandt tilfaelde: i en baggrundsfane KVITTERER
+  // Chrome for Input.dispatchKeyEvent og leverer ikke tasten. Ingen fejl, ingen frist. Musen
+  // haenger og bliver derfor opdaget af 1500 ms-fristen; tasten goer ikke, og press_key svarede
+  // ok:true paa en tast der aldrig kom frem. Det er den fejlklasse 1.29.1 blev udgivet for at
+  // fjerne, og den var tilbage i vaerktoejet selv.
+  //
+  // Musen maaler sidens REAKTION (aftryk foer/efter). En tast maa lovligt ikke aendre noget -
+  // Tab og Escape goer typisk intet synligt - saa reaktion duer ikke. Vi maaler LEVERING.
+  // Lytteren plantes i udvidelsens EGEN verden (ISOLATED): siden kan hverken se eller fjerne
+  // den, og sidens CSP rammer den ikke. Capture paa window er foerste led i kaeden, saa et
+  // stopPropagation i siden kan ikke skjule at tasten blev leveret.
+  const id = 'k' + Math.random().toString(36).slice(2, 10);
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },   // fokus kan staa i en iframe
+    injectImmediately: true,
+    func: (nyId) => {
+      const p = (window.__bmcpTast ||= {});
+      if (p.fn) window.removeEventListener('keydown', p.fn, true);
+      p.id = nyId; p.antal = 0; p.sidst = null;
+      p.fn = (e) => { p.antal++; p.sidst = e.key; };
+      window.addEventListener('keydown', p.fn, true);
+    },
+    args: [id],
+  });
+  return id;
+}
+
+async function laesTastBevis(tabId, id, forventet) {
+  let svar;
+  try {
+    svar = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: (minId, vent) => {
+        const p = window.__bmcpTast;
+        if (!p || p.id !== minId) return { udskiftet: true };  // navigation tog lytteren med
+        if (p.fn) window.removeEventListener('keydown', p.fn, true);
+        const r = { antal: p.antal, traf: p.sidst === vent };
+        p.fn = null; p.id = null;
+        return r;
+      },
+      args: [id, forventet],
+    });
+  } catch { return { landed: null }; }     // kunne ikke laeses: uvist, ikke nej
+  const r = svar.map((x) => x.result).filter(Boolean);
+  if (r.some((x) => x.antal > 0 && x.traf)) return { landed: true };
+  if (r.some((x) => x.udskiftet)) return { landed: true, navigeret: true };
+  if (r.length === 0) return { landed: null };
+  return { landed: false };
+}
+
 async function scriptingClick(tabId, selector) {
   try {
     const [result] = await chrome.scripting.executeScript({
@@ -3587,6 +3638,8 @@ async function dispatch(port, method, params) {
       // sendt. En tast der kun er trykket ned, er en tast der haenger. Nu sendes keyUp altid,
       // og svaret siger om nedtrykket fejlede i stedet for at kaste raat.
       await debuggerAttach(tab.id);
+      // Armeres FOER trykket. Fejler injektionen, bliver svaret uvist - aldrig et falskt ja.
+      const bevisId = await armerTastBevis(tab.id).catch(() => null);
       let tastFejl = null;
       try {
         try {
@@ -3617,10 +3670,24 @@ async function dispatch(port, method, params) {
           ok: false, key, error: tastFejl.message,
           ...(frist ? { maaske_landet: true,
             note: 'Chrome kvitterede ikke inden fristen. Tasten kan alligevel have virket ' +
-                  '(fx en formular der blev sendt) — tjek siden foer du trykker igen.' } : {}),
+                  '(fx en formular der blev sendt) - tjek siden foer du trykker igen.' } : {}),
         };
       }
-      return { ok: true, key };
+      // Vaerktoejets egen dom SIDST, som i click: kvitteringen fra Chrome er ikke et bevis.
+      const bevis = bevisId ? await laesTastBevis(tab.id, bevisId, key) : { landed: null };
+      if (bevis.landed === true) {
+        return { ok: true, key, landed: true,
+          ...(bevis.navigeret ? { note: 'Siden navigerede paa tasten.' } : {}) };
+      }
+      if (bevis.landed === null) {
+        return { ok: true, key, landed: null, maaske_landet: true,
+          note: 'Tasten blev sendt, men det kunne ikke laeses om siden modtog den. ' +
+                'Tjek siden foer du trykker igen.' };
+      }
+      return { ok: false, key, landed: false, error: 'tasten-blev-ikke-leveret',
+        note: 'Chrome kvitterede for tastetrykket, men ingen lytter i fanen modtog det. Fanen er ' +
+              'sandsynligvis i baggrunden, og Chrome leverer ikke mus og taster til en fane der ikke ' +
+              'er den viste i sit vindue. Kald browser_switch_tab og tryk igen.' };
     }
 
     case 'scroll': {
