@@ -170,6 +170,21 @@ not in front, and the tools say so instead of reporting success. What the test c
 - **honesty checks** - `click` refuses a 0×0 element instead of hitting (0,0), and says so
   when the page never took the event
 
+### Known limitation: working in a tab you are not looking at
+
+In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, fill
+fields and click. Chrome does not deliver mouse and keyboard events to a tab that is not the
+visible one in its window, so key presses, hover, double-click, coordinate clicks and combobox
+typing fail with an error that says so, and the agent will then call `browser_switch_tab`, which
+brings that tab and its window in front of you.
+
+Measured across 160 real sessions: that happens on roughly one call in forty, most often on Enter.
+Fully hands-off background work is planned for 1.30. Some of it cannot be solved at all: CSS
+`:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
+never `isTrusted`, `elementFromPoint` stops at a cross-origin iframe, and the text selection a
+real double-click makes is browser behaviour rather than an event.
+
+
 That last group matters most. A tool that quietly reports success is worse than one that
 fails, because you build on the answer. Where we still fall short of it, it is written
 down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).

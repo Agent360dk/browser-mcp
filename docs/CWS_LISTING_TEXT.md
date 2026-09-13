@@ -148,6 +148,14 @@ MIT licensed, source at https://github.com/Agent360dk/browser-mcp
 
 ---
 
+### Known limitation to keep in the listing
+
+In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, fill fields
+and click. Chrome does not deliver mouse and keyboard events to a tab that is not the visible one in
+its window, so key presses, hover, double-click, coordinate clicks and combobox typing fail with an
+error that says so, and the agent then brings that tab in front of you. Roughly one call in forty.
+Fully hands-off background work is planned for 1.30.
+
 ## §2 Images - replace all three, add the two tiles
 
 The three live images are not product screenshots. They are cropped captures of the *old website*,

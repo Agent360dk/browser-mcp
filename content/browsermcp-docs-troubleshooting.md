@@ -8,6 +8,27 @@
 
 **Short answer:** the four issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.24.0** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
 
+## The agent keeps pulling a tab in front of me
+
+**Symptom:** you are working, and Chrome keeps bringing a tab and its window to the front while the
+agent runs.
+
+**Cause.** Chrome does not deliver mouse and keyboard events to a tab that is not the visible one in
+its window. In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts,
+fill fields and click, but key presses, hover, double-click, coordinate clicks and combobox typing
+fail. The tools say so rather than pretend, and the agent then calls `browser_switch_tab`, which
+brings that tab forward. Measured across 160 real sessions: roughly one call in forty, most often on
+Enter.
+
+**What you can do today.** Give the agent its own Chrome window and leave that window in the
+background of another window rather than another tab: the limit is which tab is visible in *its*
+window, not whether the window has focus. Reading, screenshots and scripts keep working either way.
+
+**Fix status: fully hands-off background work is planned for 1.30.** Some of it cannot be solved at
+all - CSS `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event
+is never `isTrusted`, and a real double-click's text selection is browser behaviour rather than an
+event.
+
 ## Brand-new install: the extension says "not connected" and never turns green
 
 **Symptom:** you installed the extension (usually from the Chrome Web Store), clicked the toolbar icon, and it sits on **"Not connected"**. Reconnect does nothing. No tool calls work, and your agent says it has no browser access.
