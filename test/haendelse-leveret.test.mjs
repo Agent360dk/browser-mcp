@@ -103,3 +103,37 @@ test('scroll melder den position siden STAAR paa, ikke den der blev bedt om', as
   assert.equal(svar.uvist, true,
     'siden stod samme sted bagefter, og det blev ikke sagt - en rulning der ikke flyttede noget meldes som succes');
 });
+
+// ── Delvise ramme-svar: UVIST, ikke nej ─────────────────────────────────────
+//
+// FUNDET 13/9 af Astra. Armeringen kastede sit eget resultat vaek, saa antallet af
+// armerede rammer kunne aldrig sammenlignes med antallet der svarede. Svarede
+// hovedrammen ikke, mens én iframe sagde "ingen haendelse", blev dommen `landed:false`.
+//
+// Retningen er det farlige. Et falsk NEJ faar agenten til at GENTAGE handlingen - og et
+// klik der allerede landede, bliver til to. Det er dyrere end det falske ja vi fjernede.
+test('svarer faerre rammer end der blev armeret, er dommen uvist - ikke nej', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: false },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: false }],
+    'debugger.sendCommand': () => ({ result: { value: null } }),
+    'tabs.update': undefined, 'windows.update': undefined,
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  u.ctx.resolveElement = async () => ({ x: 10, y: 10, tag: 'BUTTON', text: 'knap' });
+  u.ctx.chrome.scripting.executeScript = async ({ func }) => {
+    const kilde = String(func);
+    // To rammer armeres (hovedramme + iframe) ...
+    if (kilde.includes('addEventListener')) return [{ result: undefined }, { result: undefined }];
+    // ... men kun den ene kan laeses bagefter, og den saa ingen haendelse.
+    if (kilde.includes('removeEventListener')) return [{ result: { antal: 0 } }];
+    return [{ result: null }];
+  };
+  const svar = await u.hent('dispatch')(9876, 'hover', { selector: '#x' });
+  assert.equal(svar.landed, null,
+    'to rammer blev armeret, én svarede. Det kan ikke skelnes fra "den ramme der fik den, kunne ikke laeses" - ' +
+    'og et falsk nej faar agenten til at gentage handlingen');
+  assert.equal(svar.ok, true, 'uvist er ikke det samme som mislykket');
+});

@@ -112,3 +112,46 @@ test('beviset armeres FOER trykket - ellers maaler det sin egen fortid', async (
     `beviset blev ikke laest EFTER trykket: ${raekke.join(' -> ')}`);
   assert.ok(raekke.includes('tast'), `tasten blev aldrig sendt: ${raekke.join(' -> ')}`);
 });
+
+// ── Brugeren skriver selv i fanen mens agenten trykker ──────────────────────
+//
+// FUNDET 13/9 af Astra. Dommen var `p.sidst === forventet`, og lytteren sidder paa window
+// i capture for HELE fanen. Skrev brugeren et tegn efter agentens Enter, blev `sidst` det
+// tegn - og en Enter der landede og sendte formularen blev meldt som ikke-leveret. Agenten
+// ville trykke igen, og formularen ville blive sendt to gange.
+test('en tast der landede meldes ikke som fejl fordi brugeren skrev bagefter', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: false },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: false }],
+    'debugger.sendCommand': () => ({}),
+    'tabs.update': undefined, 'windows.update': undefined,
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+
+  // Vi koerer den RIGTIGE lytter-funktion fra udvidelsen mod en simuleret hændelsesraekke,
+  // i stedet for at plante svaret. Ellers proever vi vores egen antagelse, ikke koden.
+  let p = null;
+  u.ctx.chrome.scripting.executeScript = async ({ func, args }) => {
+    const vindue = { __bmcpTast: p, addEventListener: () => {}, removeEventListener: () => {} };
+    const kilde = String(func);
+    if (kilde.includes('addEventListener')) {
+      const f = new Function('window', `return (${kilde})`)(vindue);
+      f(args[0], args[1]);
+      p = vindue.__bmcpTast;
+      return [{ result: undefined }];
+    }
+    if (kilde.includes('removeEventListener')) {
+      p.fn({ key: 'Enter' });   // agentens tast landede
+      p.fn({ key: 'g' });       // brugeren skrev et tegn bagefter, i samme fane
+      const f = new Function('window', `return (${kilde})`)({ __bmcpTast: p, removeEventListener: () => {} });
+      return [{ result: f(args[0]) }];
+    }
+    return [{ result: null }];
+  };
+  const svar = await u.hent('dispatch')(9876, 'press_key', { key: 'Enter' });
+  assert.equal(svar.landed, true,
+    'Enter landede, men brugerens naeste tastetryk overskrev beviset. Agenten ville trykke igen ' +
+    'og sende formularen to gange');
+});

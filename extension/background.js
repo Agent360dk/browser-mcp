@@ -1165,6 +1165,30 @@ async function clearFieldAttached(tabId) {
   await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
 }
 
+/**
+ * Tre-vejs dom paa hvad der FAKTISK staar i feltet. Delt af fill's to grene.
+ *
+ * FUNDET 13/9 af Astra: tekst-grenen fik den her dom om formiddagen, CSS-grenen ikke - og
+ * CSS-grenen er den mest brugte. Én funktion, saa de ikke kan drive fra hinanden igen.
+ */
+function fyldSvar(laest, oensket, ekstra) {
+  if (laest === undefined || laest === null) {
+    return { ok: true, ...ekstra, uvist: true,
+      note: 'Teksten blev skrevet, men feltet kunne ikke laeses bagefter, saa det er uvist om ' +
+            'den landede. Laes feltet med browser_execute_script hvis det betyder noget.' };
+  }
+  if (laest === '') {
+    return { ok: false, ...ekstra, error: 'feltet-er-tomt', vaerdi: laest,
+      note: 'Feltet stod tomt efter skrivningen. Chrome kvitterede for baade indsaettelsen og ' +
+            'tastetrykkene, men feltet tog ikke imod. Fanen er sandsynligvis i baggrunden, hvor ' +
+            'Chrome ikke leverer taster. Kald browser_switch_tab og proev igen.' };
+  }
+  if (laest === String(oensket)) return { ok: true, ...ekstra, vaerdi: laest };
+  return { ok: true, ...ekstra, afviger: true, vaerdi: laest,
+    note: 'Feltet indeholder noget andet end det skrevne. Siden har sandsynligvis formateret ' +
+          'vaerdien - eller der stod noget i forvejen.' };
+}
+
 async function debuggerFill(tabId, selector, value) {
   // Check if element is contenteditable (rich text editors: LinkedIn, Slack)
   const isContentEditable = await debuggerEval(tabId, `
@@ -1189,7 +1213,10 @@ async function debuggerFill(tabId, selector, value) {
         document.execCommand('insertText', false, ${JSON.stringify(value)});
       })()
     `);
-    return;
+    return await debuggerEval(tabId, `(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      return el ? (el.textContent ?? null) : null;
+    })()`).catch(() => null);
   }
 
   // Standard input/textarea — focus, clear, fill
@@ -1242,7 +1269,7 @@ async function debuggerFill(tabId, selector, value) {
     // empty. Only an EMPTY field triggers the fallback — a field that transformed
     // the text (phone/date masks reformatting it) did accept the input, and
     // retyping it per character would produce the same transform for no gain.
-    const landed = await evalAttached(tabId, `
+    let landed = await evalAttached(tabId, `
       (function() {
         const el = document.querySelector(${JSON.stringify(selector)});
         if (!el) return null;
@@ -1252,7 +1279,18 @@ async function debuggerFill(tabId, selector, value) {
     if (!landed) {
       await clearFieldAttached(tabId);
       await typeCharsAttached(tabId, value);
+      // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
+      // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
+      // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
+      landed = await evalAttached(tabId, `
+        (function() {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return null;
+          return ('value' in el) ? el.value : el.textContent;
+        })()
+      `).catch(() => null);
     }
+    return landed;
   } finally {
     await debuggerDetach(tabId);
   }
@@ -1277,6 +1315,52 @@ async function debuggerEval(tabId, expression) {
 // Synthetic click via chrome.scripting — fallback when debugger detaches on
 // anti-automation sites (Apple ASC, etc.). Loses isTrusted=true but works for
 // the ~95% of sites that don't check it. Handles text= and :text() selectors.
+/**
+ * Hvad staar der FAKTISK paa filfeltet bagefter?
+ *
+ * MAALT 13/9: `DOM.setFileInputFiles` kvitterer praecis som `Input.dispatchKeyEvent` gjorde -
+ * uden at love at filen kom paa. En sti der ikke findes, et `accept`-filter der afviser
+ * filtypen, eller sidens egen change-lytter der rydder feltet, giver alle en tom FileList,
+ * og baade upload_file og drop_file svarede ok:true paa den.
+ *
+ * Svarer null naar feltet ikke kan laeses. Det er UVIST, ikke nej.
+ */
+async function laesVedhaeftedeFiler(tabId, selector) {
+  try {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (sel) => {
+        const el = document.querySelector(sel);
+        if (!el || !el.files) return null;
+        return { antal: el.files.length, navne: [...el.files].map((f) => f.name) };
+      },
+      args: [selector],
+    });
+    return r?.result ?? null;
+  } catch { return null; }
+}
+
+/** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
+function fildSvar(vedhaeftet, oenskede, ekstra) {
+  if (!vedhaeftet) {
+    return { ok: true, ...ekstra, uvist: true,
+      note: 'Filen blev sendt til feltet, men feltet kunne ikke laeses bagefter, saa det er uvist ' +
+            'om den sidder der. Tjek siden foer du sender igen.' };
+  }
+  if (vedhaeftet.antal === 0) {
+    return { ok: false, ...ekstra, error: 'filen-blev-ikke-vedhaeftet',
+      note: 'Chrome kvitterede for filen, men feltet staar tomt. Stien findes maaske ikke, feltets ' +
+            '`accept` afviser filtypen, eller siden ryddede feltet selv. Filen er IKKE uploadet.' };
+  }
+  const svar = { ok: true, ...ekstra, vedhaeftet: vedhaeftet.navne };
+  if (vedhaeftet.antal !== oenskede.length) {
+    svar.afviger = true;
+    svar.note = `Feltet tog ${vedhaeftet.antal} af ${oenskede.length} filer. Et \`accept\`-filter eller ` +
+                'et felt uden `multiple` kasserer resten.';
+  }
+  return svar;
+}
+
 async function armerHaendelsesBevis(tabId, type) {
   // Samme rolle for musen som armerTastBevis har for tasterne, og af samme grund: Chrome
   // KVITTERER for en CDP-kommando uden at love at siden fik den. For tasterne loej det
@@ -1285,7 +1369,12 @@ async function armerHaendelsesBevis(tabId, type) {
   // daekket af et overlay, eller en side der sluger haendelsen, giver samme falske ja som
   // press_key gav paa Enter.
   const id = 'h' + Math.random().toString(36).slice(2, 10);
-  await chrome.scripting.executeScript({
+  // FUNDET 13/9 af Astra: her stod `await ...; return id;`. Resultatet blev kasseret, saa
+  // antallet af armerede rammer kunne aldrig sammenlignes med antallet der svarede. En
+  // hovedramme der ikke kunne armeres, mens én iframe svarede "ingen haendelse", blev doemt
+  // `landed:false` - og et falsk NEJ er dyrere end det falske ja vi lige fjernede: agenten
+  // gentager handlingen, og en Enter der allerede sendte formularen sender den én gang til.
+  const armet = await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
     injectImmediately: true,
     func: (nyId, haendelse) => {
@@ -1297,10 +1386,11 @@ async function armerHaendelsesBevis(tabId, type) {
     },
     args: [id, type],
   });
-  return id;
+  return { id, rammer: armet.length };
 }
 
-async function laesHaendelsesBevis(tabId, id) {
+async function laesHaendelsesBevis(tabId, bevis) {
+  const { id, rammer } = bevis;
   let svar;
   try {
     svar = await chrome.scripting.executeScript({
@@ -1319,7 +1409,9 @@ async function laesHaendelsesBevis(tabId, id) {
   const r = svar.map((x) => x.result).filter(Boolean);
   if (r.some((x) => x.antal > 0)) return { landed: true };
   if (r.some((x) => x.udskiftet)) return { landed: true, navigeret: true };
-  if (r.length === 0) return { landed: null };
+  // Faerre rammer svarede end blev armeret: vi kan ikke se forskel paa "ingen fik den" og
+  // "den ramme der fik den, kunne ikke laeses". Det er UVIST, ikke nej.
+  if (!rammer || r.length < rammer) return { landed: null };
   return { landed: false };
 }
 
@@ -1339,7 +1431,7 @@ function haendelsesSvar(bevis, grund, ekstra) {
           'vindue. Kald browser_switch_tab og proev igen.' };
 }
 
-async function armerTastBevis(tabId) {
+async function armerTastBevis(tabId, forventet) {
   // MAALT 13/9, live og kalibreret mod et kendt-sandt tilfaelde: i en baggrundsfane KVITTERER
   // Chrome for Input.dispatchKeyEvent og leverer ikke tasten. Ingen fejl, ingen frist. Musen
   // haenger og bliver derfor opdaget af 1500 ms-fristen; tasten goer ikke, og press_key svarede
@@ -1352,41 +1444,46 @@ async function armerTastBevis(tabId) {
   // den, og sidens CSP rammer den ikke. Capture paa window er foerste led i kaeden, saa et
   // stopPropagation i siden kan ikke skjule at tasten blev leveret.
   const id = 'k' + Math.random().toString(36).slice(2, 10);
-  await chrome.scripting.executeScript({
+  // FUNDET 13/9 af Astra: her stod `p.sidst = e.key`, og dommen var `p.sidst === forventet`.
+  // Lytteren sidder paa window i capture for hele fanen, saa skriver brugeren selv mens
+  // agenten trykker, overskrives `sidst` og en tast der LANDEDE meldes som ikke-leveret.
+  // Nu saettes et flag naar den ventede tast ses, og det kan ikke overskrives igen.
+  const armet = await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },   // fokus kan staa i en iframe
     injectImmediately: true,
-    func: (nyId) => {
+    func: (nyId, vent) => {
       const p = (window.__bmcpTast ||= {});
       if (p.fn) window.removeEventListener('keydown', p.fn, true);
-      p.id = nyId; p.antal = 0; p.sidst = null;
-      p.fn = (e) => { p.antal++; p.sidst = e.key; };
+      p.id = nyId; p.antal = 0; p.traf = false;
+      p.fn = (e) => { p.antal++; if (e.key === vent) p.traf = true; };
       window.addEventListener('keydown', p.fn, true);
     },
-    args: [id],
+    args: [id, forventet],
   });
-  return id;
+  return { id, rammer: armet.length };
 }
 
-async function laesTastBevis(tabId, id, forventet) {
+async function laesTastBevis(tabId, bevis) {
+  const { id, rammer } = bevis;
   let svar;
   try {
     svar = await chrome.scripting.executeScript({
       target: { tabId, allFrames: true },
-      func: (minId, vent) => {
+      func: (minId) => {
         const p = window.__bmcpTast;
         if (!p || p.id !== minId) return { udskiftet: true };  // navigation tog lytteren med
         if (p.fn) window.removeEventListener('keydown', p.fn, true);
-        const r = { antal: p.antal, traf: p.sidst === vent };
+        const r = { antal: p.antal, traf: !!p.traf };
         p.fn = null; p.id = null;
         return r;
       },
-      args: [id, forventet],
+      args: [id],
     });
   } catch { return { landed: null }; }     // kunne ikke laeses: uvist, ikke nej
   const r = svar.map((x) => x.result).filter(Boolean);
   if (r.some((x) => x.antal > 0 && x.traf)) return { landed: true };
   if (r.some((x) => x.udskiftet)) return { landed: true, navigeret: true };
-  if (r.length === 0) return { landed: null };
+  if (!rammer || r.length < rammer) return { landed: null };
   return { landed: false };
 }
 
@@ -2803,7 +2900,10 @@ async function dropFileOnTarget(tabId, selector, files) {
           nodeId: queryResult.nodeId,
           files: fileList,
         });
-        result = { ok: true, method: 'hidden-input', files: fileList, accept: inputInfo.accept };
+        // Laeses HER, mens maerket stadig sidder - `finally` nedenfor fjerner det.
+        const vedhaeftet = await laesVedhaeftedeFiler(tabId, taggedSel);
+        result = fildSvar(vedhaeftet, fileList,
+          { method: 'hidden-input', files: fileList, accept: inputInfo.accept });
       }
     } catch (e) {
       caughtError = e?.message || String(e);
@@ -3457,8 +3557,8 @@ async function dispatch(port, method, params) {
 
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
-        await debuggerFill(tab.id, parsed.selector, params.value);
-        return { ok: true, method: 'debugger' };
+        const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
+        return fyldSvar(efterFyld, params.value, { method: 'debugger' });
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
         // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra
@@ -3646,8 +3746,15 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       if (!params.selector) return { ok: false, error: 'selector required' };
-      if (!params.values && !params.value) return { ok: false, error: 'value or values required' };
-      const values = params.values || [params.value];
+      // FUNDET 13/9 af Astra: vagten var `!params.values && !params.value`, og `![]` er falsk.
+      // En tom liste slap igennem, loekken koerte nul gange, og `[].every(...)` er sandt - saa
+      // vaerktoejet svarede ok:true uden at have roert siden overhovedet.
+      const values = Array.isArray(params.values) ? params.values
+        : (params.value !== undefined && params.value !== null && params.value !== '' ? [params.value] : []);
+      if (values.length === 0) {
+        return { ok: false, error: 'value or values required',
+          note: 'Angiv mindst én vaerdi. En tom liste er ikke en udfoert handling.' };
+      }
       const r = await setCombobox(tab.id, params.selector, values, {
         multi: !!params.multi,
         query_chars: params.query_chars,
@@ -3721,7 +3828,7 @@ async function dispatch(port, method, params) {
       // og svaret siger om nedtrykket fejlede i stedet for at kaste raat.
       await debuggerAttach(tab.id);
       // Armeres FOER trykket. Fejler injektionen, bliver svaret uvist - aldrig et falskt ja.
-      const bevisId = await armerTastBevis(tab.id).catch(() => null);
+      const bevisId = await armerTastBevis(tab.id, key).catch(() => null);
       let tastFejl = null;
       try {
         try {
@@ -3756,7 +3863,7 @@ async function dispatch(port, method, params) {
         };
       }
       // Vaerktoejets egen dom SIDST, som i click: kvitteringen fra Chrome er ikke et bevis.
-      const bevis = bevisId ? await laesTastBevis(tab.id, bevisId, key) : { landed: null };
+      const bevis = bevisId ? await laesTastBevis(tab.id, bevisId) : { landed: null };
       if (bevis.landed === true) {
         return { ok: true, key, landed: true,
           ...(bevis.navigeret ? { note: 'Siden navigerede paa tasten.' } : {}) };
@@ -4903,7 +5010,9 @@ async function dispatch(port, method, params) {
         });
 
         await debuggerDetach(tab.id);
-        return { ok: true, files: files, input: info };
+        // Vaerktoejets egen dom SIDST, som i click og press_key: kvitteringen er ikke et bevis.
+        const vedhaeftet = await laesVedhaeftedeFiler(tab.id, selector);
+        return fildSvar(vedhaeftet, files, { files: files, input: info });
       } catch (e) {
         try { await debuggerDetach(tab.id); } catch {}
         return { ok: false, error: e.message };

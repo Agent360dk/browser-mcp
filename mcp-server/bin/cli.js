@@ -28,7 +28,11 @@ const SERVER_NAVN = 'browser-mcp';
 const SERVER_KOMMANDO = 'npx';
 const SERVER_ARGS = ['@agent360/browser-mcp@latest'];
 
-if (command === 'install') {
+if (command === '--version' || command === '-v') {
+  // MAALT 13/9: `--version` faldt igennem til hjaelpeteksten. Det er det foerste en bruger
+  // koerer naar de melder en fejl, og de fik et afsnit uden et eneste tal i.
+  console.log(JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf8')).version);
+} else if (command === 'install') {
   install({ skipExtension });
 } else if (!command) {
   // No subcommand = start MCP server (Claude Code calls this)
@@ -45,6 +49,7 @@ Usage:
                                                       (use this if you installed the
                                                        extension from the Chrome Web Store)
   npx @agent360/browser-mcp                           Start MCP server (called by your client)
+  npx @agent360/browser-mcp --version                 Print the installed version
 
 Docs: https://github.com/Agent360dk/browser-mcp
 `);

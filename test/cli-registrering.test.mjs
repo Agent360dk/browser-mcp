@@ -93,3 +93,24 @@ test('klienter der ikke findes, roeres ikke og kaldes ikke registreret', () => {
   assert.equal(cursorEfter, null, 'en Cursor-fil blev oprettet uden at Cursor findes');
   assert.doesNotMatch(ud, /Registered with (Codex|Cursor|VS Code)/, 'installationen paastod en registrering der ikke skete');
 });
+
+// MAALT 13/9 paa den KOLDE sti, som en ny bruger gaar den: `npx @agent360/browser-mcp --version`
+// faldt igennem til hjaelpeteksten. Det er praecis den kommando en bruger koerer naar de melder
+// en fejl, og de fik et afsnit uden et eneste tal i. Vi bad dem om versionen i fejl-skabelonen
+// og gav dem ingen maade at finde den paa.
+test('--version skriver pakkens version, ikke hjaelpeteksten', () => {
+  const forventet = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).version;
+  for (const flag of ['--version', '-v']) {
+    const r = spawnSync(process.execPath, [cli, flag], { encoding: 'utf8', timeout: 30000 });
+    assert.equal(r.status, 0, `${flag} gav exit ${r.status}`);
+    assert.equal(r.stdout.trim(), forventet,
+      `${flag} skrev ikke versionen. En bruger der skal oplyse sin version, faar ${JSON.stringify(r.stdout.slice(0, 60))}`);
+    assert.doesNotMatch(r.stdout, /Usage:/,
+      `${flag} skriver stadig hele hjaelpeteksten - tallet drukner i den`);
+  }
+});
+
+test('hjaelpeteksten naevner --version, ellers finder ingen den', () => {
+  const r = spawnSync(process.execPath, [cli, 'sludder'], { encoding: 'utf8', timeout: 30000 });
+  assert.match(r.stdout, /--version/, 'hjaelpeteksten fortaeller ikke at flaget findes');
+});

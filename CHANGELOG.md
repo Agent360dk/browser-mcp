@@ -7,7 +7,7 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 One class of bug, found an hour after 1.29.1 shipped and closed completely. Every fix below was written test-first and checked with a mutation test.
 
-**Six tools answered yes because Chrome acknowledged the command, not because the page received it**
+**Nine tools answered yes because Chrome acknowledged the command, not because the page received it**
 
 `browser_press_key` was the one that lied. In a tab you are not looking at, Chrome accepts `Input.dispatchKeyEvent` and returns without an error, but never delivers the key. The tool reported `ok:true` on a key that never arrived. Measured live against a known-true control: in a visible tab the Enter landed, in a background tab nothing landed and the answer was still yes. That is the exact bug class 1.29.1 was released to remove, and it was in the tool itself. Session tabs are created in the background, so it was the default state.
 
@@ -17,6 +17,10 @@ The mouse is different, and that is why it escaped: in a background tab mouse ev
 - `browser_hover`, `browser_double_click` and `browser_right_click` returned `ok:true` unconditionally. They now measure whether `mouseover`, `dblclick` and `contextmenu` actually reached the page, and `double_clicked` is no longer claimed when it did not.
 - `browser_fill` with a `text=` selector typed and returned success without reading the field. It now reads it back: an empty field is a failure, a different value says the page reformatted it.
 - `browser_scroll` reported the numbers it was *asked* for. On a page that cannot scroll it claimed 600 pixels. It now reports the position the page is actually on, and says so when nothing moved.
+- `browser_upload_file` and `browser_drop_file` were found by sweeping every CDP command in the extension that acknowledges without promising delivery. Both returned `ok:true` the moment `DOM.setFileInputFiles` came back, without ever looking at the field. A path that does not exist, an `accept` filter that rejects the file type, or the page's own change handler clearing the field all leave an empty `FileList` behind a reported success. Both now read the field back and report the names actually attached, say so when the field took fewer files than were sent, and fail with the reason when it is empty.
+- `browser_fill` with an ordinary CSS selector - the most used path of the most used tool - never looked at the field at all. It types with `Input.insertText`, reads the field once to decide whether to fall back, and when the fallback types the value character by character with `Input.dispatchKeyEvent` it stops there. If those keys are not delivered either, nothing throws and the caller is told the field was filled. Both branches of `fill` now share one verdict: the value that is actually in the field, an empty field is a failure with the reason, a different value says the page reformatted it, and an unreadable field says so instead of guessing.
+- `browser_set_combobox` answered `ok:true` for an empty list of values, having touched nothing. The guard tested `!params.values`, and an empty array is not falsy.
+- Two fixes point the other way, at false *failures*. A tool that wrongly reports "not delivered" makes the agent repeat the action, and an Enter that already submitted a form submits it twice. The proof now counts how many frames were armed and only reports a definite no when that many answer; fewer means unknown. And the key proof no longer judges on the *last* key seen, so a person typing in the same tab can no longer turn a delivered keystroke into a reported failure.
 
 **Release process**
 - The check that downloads the published package gave npm 45 seconds. npm itself says a publish "may take a few minutes to become available", and that killed a release that had in fact succeeded: it stopped before the MCP registry with npm and GitHub already out. Now six attempts over three minutes.
