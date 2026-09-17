@@ -195,6 +195,9 @@ MANAGED=(
   # baade en version og vaerktoejstallet, saa den skal med i BEGGE fejekoste - ellers raadner den
   # praecis som butiksteksten og demo-billedet gjorde.
   gemini-extension.json
+  # MAALT 17/9: llms-install.md staar i TOOLCOUNT_FILES, saa trin 1 kan skrive i den - men den stod ikke her.
+  # Aendrer vaerktoejstallet sig, bliver filen beskidt og naeste koersels stray-tjek doer paa den.
+  llms-install.md
 )
 is_managed() { # path → 0 if under a managed prefix
   local p="$1" m
@@ -474,10 +477,11 @@ else
   run git reset -q
   # MAALT 22/8: index.js, tools.js og bin/ manglede her - praecis den kode npm udgiver
   # ("files" i package.json). npm kunne faa en version der ikke fandtes i noget commit.
-  run git add extension mcp-server/extension mcp-server/index.js mcp-server/tools.js mcp-server/bin \
-              mcp-server/package.json mcp-server/package-lock.json \
-              mcp-server/server.json server.json mcp-server/README.md README.md docs/index.html \
-              CHANGELOG.md
+  # MAALT 17/9 i en toer-koersel af 1.29.2: her stod en HAANDSKREVET liste ved siden af MANAGED. gemini-extension.json
+  # kom 13/9 i MANAGED og i trin 1's fejekoste, men ikke herind - saa --ship ville bumpe den paa disken og aldrig
+  # committe den, og Gemini CLI's galleri laeser GitHub. Samme fejl som CHANGELOG.md 12/9. To lister der skal
+  # holdes ens, driver fra hinanden; nu stages der fra den ene.
+  run git add "${MANAGED[@]}"
 
   # commit only if something is staged - a resumed run (already committed) must
   # NOT abort here under set -e and strand the tag/push/release that follow.

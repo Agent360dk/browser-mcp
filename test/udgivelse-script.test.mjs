@@ -297,7 +297,9 @@ test('udgivelsen skriver CHANGELOG-overskriften om fra "not released yet" til da
   const forvaltet = script().slice(script().indexOf('MANAGED=('), script().indexOf('is_managed()'));
   assert.match(forvaltet, /^\s*CHANGELOG\.md\s*$/m, 'CHANGELOG.md er ikke forvaltet - saa staar den beskidt efter koerslen');
   const stage = script().slice(script().indexOf('run git add '), script().indexOf('run git add ') + 420);
-  assert.match(stage, /CHANGELOG\.md/, 'CHANGELOG.md stages ikke - omskrivningen naar aldrig ud i pushet');
+  // 17/9: trin 4 stager nu fra MANAGED, saa "forvaltet" ER "staged" - vogtet for alle filer i proeven nederst.
+  assert.ok(/CHANGELOG\.md/.test(stage) || stage.includes('"${MANAGED[@]}"'),
+    'CHANGELOG.md stages ikke - omskrivningen naar aldrig ud i pushet');
 });
 
 // MAALT samme runde: fejler koerslen EFTER butiks-uploaden men FOER npm, afviser butikken den samme version ved en
@@ -492,4 +494,43 @@ test('butikstrinnet alene koerer stadig flow-spaerren - beviset kommer kun fra t
     'versionsforskel scriptet selv lavede');
   assert.doesNotMatch(koer({ SPRING_FLOW_OVER: '1' }), /KOERER_TESTEN/,
     'fritagelsen bliver ikke respekteret - saa er --skip-flow stadig en doedsfaelde i trin 3');
+});
+
+// ── Alt hvad udgivelsen SKRIVER, skal den ogsaa COMMITTE ─────────────────────
+//
+// FUNDET 17/9 i en toer-koersel af 1.29.2. Tre lister i scriptet skal passe sammen:
+//   JSON_FILES + TOOLCOUNT_FILES  - det trin 1 skriver i
+//   MANAGED                       - det stray-tjekket taaler bagefter
+//   `git add` i trin 4            - det der kommer med i commit, tag og push
+// `gemini-extension.json` blev 13/9 sat i de to foerste, men ikke i den tredje. Ved --ship
+// ville den blive bumpet til den nye version paa disken og aldrig naa GitHub - og Gemini
+// CLI's galleri laeser netop GitHub. Praecis den fejl Astra fandt paa CHANGELOG.md 12/9,
+// dengang rettet for den ene fil. Denne proeve vogter MOENSTRET: ingen skrevet fil maa
+// mangle i commit'et, uanset hvad den hedder.
+test('hver fil trin 1 skriver i, er baade forvaltet og kommer med i commit og push', () => {
+  const kode = script().split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  const liste = (navn) => {
+    const m = kode.match(new RegExp(`^${navn}="([^"]+)"`, 'm'));
+    assert.ok(m, `${navn} blev ikke fundet i scriptet - proeven maaler intet`);
+    return m[1].split(/\s+/).filter(Boolean);
+  };
+  const skrevet = [...new Set([...liste('JSON_FILES'), ...liste('TOOLCOUNT_FILES')])];
+  assert.ok(skrevet.length >= 8, `kun ${skrevet.length} skrevne filer fundet - udtraekket er for tyndt`);
+
+  const mStart = kode.indexOf('MANAGED=(');
+  const forvaltet = kode.slice(mStart, kode.indexOf(')', mStart)).split(/\s+/).slice(1).filter(Boolean);
+  const erForvaltet = (f) => forvaltet.some((m) => f === m || f.startsWith(m + '/'));
+
+  const aStart = kode.indexOf('run git add ');
+  const stageLinje = kode.slice(aStart, kode.indexOf('\n\n', aStart));
+  const staged = stageLinje.includes('"${MANAGED[@]}"') ? forvaltet
+    : stageLinje.replace('run git add', '').replace(/\\\n/g, ' ').split(/\s+/).filter(Boolean);
+  const erStaged = (f) => staged.some((m) => f === m || f.startsWith(m + '/'));
+
+  const uforvaltet = skrevet.filter((f) => !erForvaltet(f));
+  const ustaged = skrevet.filter((f) => !erStaged(f));
+  assert.deepEqual(uforvaltet, [],
+    `trin 1 skriver i ${uforvaltet.join(', ')}, men MANAGED kender dem ikke - naeste koersels stray-tjek doer paa dem`);
+  assert.deepEqual(ustaged, [],
+    `trin 1 skriver i ${ustaged.join(', ')}, men trin 4 committer dem ikke - aendringen naar aldrig GitHub`);
 });
