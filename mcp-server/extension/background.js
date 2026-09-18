@@ -3546,9 +3546,23 @@ async function dispatch(port, method, params) {
           // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
           const r = await scriptingClick(tab.id, params.selector);
           if (r.ok && !inputFristFoerTryk) {
-            // Debuggeren var blokeret eller afkoblet: samme svar som 1.29.0. landed vedlaegges kun naar klikket er bevist - Astra
-            // (efterproevning af c826f63): en menu der aabnede paa mousedown, blev ellers meldt som landed:false.
-            return { ok: true, method: 'scripting-fallback', tag: r.tag, ...(klikLandede(r) ? { landed: true } : {}) };
+            if (klikLandede(r)) return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: true };
+            // MAALT 17/9 mod Stripe Dashboard: her stod et bart `ok: true` naar klikket ikke var bevist, med
+            // begrundelsen "samme svar som 1.29.0". Efter en time med "Debugger attach failed ... ghost" svarede
+            // vaerktoejet {ok:true, tag:'DIV'} paa «Create key» - knappen blev aldrig trykket, siden stod uaendret.
+            // Nabogrenen nedenfor kraevede allerede bevis; denne var bare aldrig blevet rettet.
+            //
+            // ⛔ Svaret er IKKE ok:false. Astra maalte 12/9 at en menu der aabner paa mousedown ellers meldes
+            // mislykket, og saa klikker agenten igen og lukker den. Det er det TREDJE udfald, som resten af
+            // klassen bruger: sendt, virkning uvist.
+            const uvist = uvisVurdering(r);
+            return {
+              ok: true, method: 'scripting-fallback', tag: r.tag, landed: null, maaske_landet: true,
+              note: (uvist?.note ? uvist.note + ' ' : '') +
+                    'Fejlfinderen var blokeret, saa klikket blev sendt med et script. Siden viste ingen maalbar ' +
+                    'virkning, saa det er uvist om det virkede - nogle sider kraever et aegte klik. Tjek siden ' +
+                    'foer du klikker igen.',
+            };
           }
           if (r.ok) {
             // Sign-off 11/9 (Astra og Fable): paa en baggrundsfane svarede reserven ok:true, ogsaa naar siden intet gjorde
