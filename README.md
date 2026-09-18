@@ -139,10 +139,10 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.29.1 (2026-09-13) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.29.2 (2026-09-19) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
-| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 73 tools, none that can ask the person (checked 2026-09-19) | None |
+| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 40 tools, none that can ask the person (checked 2026-09-19) | None |
 | **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
@@ -199,7 +199,7 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > belongs to their persistent-profile mode, and their Chrome extension explicitly gives each
 > connected client its own coloured tab group, which is the same mechanism we describe on our own
 > row. We had corrected one page and not the pattern. The row that actually survives is
-> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 73 tools and
+> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 40 tools and
 > none of them can stop and ask the person for a code.
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)

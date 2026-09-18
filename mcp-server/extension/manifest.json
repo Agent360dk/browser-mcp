@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Agent360 Browser MCP",
-  "version": "1.29.1",
+  "version": "1.29.2",
   "description": "Your agent needs a 2FA code? It asks you, then carries on in the tab you were already signed into. 40 tools, any client, MIT.",
   "permissions": [
     "tabs",

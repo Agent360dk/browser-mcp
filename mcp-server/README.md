@@ -139,15 +139,15 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.29.1 (2026-09-13) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.29.2 (2026-09-19) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
-| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Their docs: concurrent clients on one profile *conflict* - each extra client needs `--isolated` or its own `--user-data-dir` | Single session |
-| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None | None |
+| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
+| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 40 tools, none that can ask the person (checked 2026-09-19) | None |
 | **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
-| **CSP-strict sites** | Chrome Debugger API throughout | Works (headless) | Limited |
-| **Custom dropdowns** | Angular Material, React Select support | Works (headless) | Limited |
+| **CSP-strict sites** | Chrome Debugger API throughout | Works | Limited |
+| **Custom dropdowns** | Angular Material, React Select support | Works | Limited |
 | **Install** | `claude mcp add` + extension from the Chrome Web Store | `npx @playwright/mcp` | Manual clone |
 
 ### The pages that defeat everything else
@@ -179,8 +179,9 @@ coordinate clicks, combobox typing, and filling a field found by its *text* all 
 that says so. The agent will then call `browser_switch_tab`, which brings that tab and its window
 in front of you.
 
-Since 1.29.2 those tools measure whether the page actually received the event rather than trusting
-Chrome's acknowledgement, so a background tab produces an honest failure instead of a silent one.
+Those tools measure whether the page actually received the event rather than trusting Chrome's
+acknowledgement, so a background tab produces an honest failure instead of a silent one.
+(Introduced in 1.29.2 - see CHANGELOG.md for which release you are on.)
 
 Fully hands-off background work is the goal for 1.30. Some of it cannot be solved at all: CSS
 `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
@@ -192,14 +193,14 @@ That last group matters most. A tool that quietly reports success is worse than 
 fails, because you build on the answer. Where we still fall short of it, it is written
 down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 
-> **Corrected 2026-09-07.** This table used to say Playwright MCP was headless and made you
-> log in every time. That was wrong, and it had been wrong for a while - Microsoft's own README
-> documents a persistent profile as the default, plus a browser extension for using the Chrome
-> you already have. The row that actually survives is the one above it, and it is their
-> documented limitation, not our claim: *"A persistent profile can only be used by one browser
-> instance at a time, so concurrent MCP clients sharing the same workspace will conflict."*
-> If you run one agent, Playwright MCP will serve you well. The difference shows up when you
-> run twenty against the same logged-in browser.
+> **Corrected 2026-09-07, and again 2026-09-19.** This table used to say Playwright MCP was
+> headless and made you log in every time. That was wrong. The row we then called "the one that
+> survives" - concurrent clients conflicting on one profile - was wrong too: that limitation
+> belongs to their persistent-profile mode, and their Chrome extension explicitly gives each
+> connected client its own coloured tab group, which is the same mechanism we describe on our own
+> row. We had corrected one page and not the pattern. The row that actually survives is
+> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 40 tools and
+> none of them can stop and ask the person for a code.
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
