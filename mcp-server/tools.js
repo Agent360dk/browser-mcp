@@ -19,11 +19,13 @@ export const TOOLS = [
   },
   {
     name: 'browser_get_page_content',
-    description: 'Get the content of the current page as text or HTML.',
+    description: 'Get the content of the current page as text or HTML. Pass `selector` to read one part of a large page instead of all of it - on a big logged-in app the full HTML can run past a million characters. The answer is capped at 30000 characters by default and says so when it had to cut, with the real length, so a truncated page is never mistaken for a whole one.',
     inputSchema: {
       type: 'object',
       properties: {
         format: { type: 'string', enum: ['text', 'html'], description: 'Output format (default: text)' },
+        selector: { type: 'string', description: 'CSS selector. Reads only that element instead of the whole page. If it matches nothing the call fails rather than silently returning the whole page.' },
+        max_chars: { type: 'number', description: 'Cap on returned characters (default: 30000). Over the cap the answer carries truncated: true and total_chars.' },
       },
     },
   },

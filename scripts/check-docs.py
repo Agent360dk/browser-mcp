@@ -179,6 +179,19 @@ for path in glob.glob(DOCS + '/**/*.html', recursive=True):
                      % (os.path.relpath(path, ROOT), nr, celler, kolonner))
 
 # -----------------------------------------------------------------------------
+# 7. Enhver fil i content/ SKAL have en rute i generate-docs.py.
+#
+# MAALT 18/9: en ny side blev skrevet, generatoren koert og porten sagde "all green" - og
+# siden fandtes ikke. Ruterne staar i en eksplicit liste i generate-docs.py, og en fil der
+# ikke staar der bliver tavst sprunget over. Porten sammenlignede kun det der BLEV bygget
+# med sig selv, saa den kunne ikke se det der aldrig blev bygget.
+gen_src = open(os.path.join(ROOT, 'scripts', 'generate-docs.py'), encoding='utf-8').read()
+for md in sorted(glob.glob(os.path.join(ROOT, 'content', '*.md'))):
+    navn = os.path.basename(md)
+    if "'%s'" % navn not in gen_src:
+        fail('content/%s har ingen rute i generate-docs.py - filen bliver tavst ignoreret' % navn)
+
+# -----------------------------------------------------------------------------
 if fails:
     print('DOCS GATE: %d failure(s)' % len(fails))
     for m in fails: print('  ✗', m)

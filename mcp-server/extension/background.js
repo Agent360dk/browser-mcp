@@ -3106,13 +3106,47 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
       const format = params.format || 'text';
-      const scriptResult = await safeExecuteScript(tab.id, (fmt) => fmt === 'html' ? document.documentElement.outerHTML : document.body.innerText, [format]);
+      // MAALT 17/9 mod Stripe Dashboard: `format:'html'` svarede 1.042.782 tegn, og der var
+      // ingen maade at bede om mindre. Vaerktoejet var dermed ubrugeligt praecis paa de store,
+      // indloggede apps hvor det er mest vaerd. To ting mangler: en vej til en DEL af siden,
+      // og en oevre graense der SIGER at den skar. En tavs afkortning er samme fejlklasse som
+      // resten af denne udgivelse: et svar der ser helt ud uden at vaere det.
+      const vaelger = params.selector || null;
+      const maxTegn = Number(params.max_chars) > 0 ? Number(params.max_chars) : 30000;
+      const scriptResult = await safeExecuteScript(tab.id, (fmt, sel) => {
+        const rod = sel ? document.querySelector(sel) : null;
+        if (sel && !rod) return { fundet: false };
+        const n = rod || document.documentElement;
+        return { fundet: true, tekst: fmt === 'html' ? n.outerHTML : (rod ? rod.innerText : document.body.innerText) };
+      }, [format, vaelger]);
+
+      let raa;
       if (!scriptResult.cspBlocked) {
-        return { content: scriptResult.result, url: tab.url, title: tab.title };
+        if (scriptResult.result && scriptResult.result.fundet === false) {
+          return { ok: false, error: 'Element not found: ' + vaelger,
+            note: 'Uden en traeffer ville svaret vaere hele siden, og saa ville du tro du laeste det du bad om.' };
+        }
+        raa = scriptResult.result ? scriptResult.result.tekst : undefined;
+      } else {
+        const udtryk = vaelger
+          ? `(() => { const el = document.querySelector(${JSON.stringify(vaelger)}); if (!el) return null; ` +
+            `return ${format === 'html' ? 'el.outerHTML' : 'el.innerText'}; })()`
+          : (format === 'html' ? 'document.documentElement.outerHTML' : 'document.body.innerText');
+        raa = await debuggerEval(tab.id, udtryk);
+        if (vaelger && raa == null) return { ok: false, error: 'Element not found: ' + vaelger, method: 'debugger' };
       }
-      // CSP fallback
-      const content = await debuggerEval(tab.id, format === 'html' ? 'document.documentElement.outerHTML' : 'document.body.innerText');
-      return { content, url: tab.url, title: tab.title, method: 'debugger' };
+
+      const metode = scriptResult.cspBlocked ? { method: 'debugger' } : {};
+      const tekst = typeof raa === 'string' ? raa : String(raa ?? '');
+      if (tekst.length > maxTegn) {
+        return {
+          content: tekst.slice(0, maxTegn), url: tab.url, title: tab.title, ...metode,
+          afkortet: true, tegn_i_alt: tekst.length,
+          note: `Siden er ${tekst.length} tegn; her er de foerste ${maxTegn}. Hent den del du skal bruge ` +
+                'med `selector`, eller haev `max_chars` hvis du virkelig skal have det hele.',
+        };
+      }
+      return { content: tekst, url: tab.url, title: tab.title, ...metode };
     }
 
     // Read EVERY row of a virtualised list by scrolling its container until the set stops

@@ -31,6 +31,7 @@ PAGES=[
  ('browsermcp-learn-what-is-an-mcp-server.md','Learn','What is an MCP server','/learn/what-is-an-mcp-server'),
  ('browsermcp-learn-check-ai-mentions-brand.md','Learn','Check if AI mentions you','/learn/check-if-ai-mentions-your-brand'),
  ('browsermcp-learn-react-controlled-forms.md','Learn','Automating React forms','/learn/browser-automation-react-forms'),
+ ('browsermcp-learn-tools-that-lie.md','Learn','Tools that said yes','/learn/tools-that-lie'),
 ]
 
 # Antallet af vaerktoejer udledes af kilden. Stod det haardkodet her, paastod hver
@@ -51,7 +52,8 @@ CTX={'/docs/what-is-browser-mcp':'The concept, architecture, and how it works',
  '/compare/playwright-mcp':'Real logged-in Chrome vs managed profiles','/compare/browser-automation-mcp-servers':'The full field, compared and dated','/compare/mcp-chrome':'The closest equivalent - and its activity gap',
  '/use-cases/read-2fa-from-gmail':'The move headless browsers can\'t make','/use-cases/concurrent-sessions':'Several agents in one Chrome, isolated',
  '/learn/model-context-protocol':'The standard, explained plainly','/learn/what-is-an-mcp-server':'What a server is and how to pick one',
- '/learn/check-if-ai-mentions-your-brand':'Measure your visibility in AI answers','/learn/browser-automation-react-forms':'Why value-setting fails, and the fix'}
+ '/learn/check-if-ai-mentions-your-brand':'Measure your visibility in AI answers','/learn/browser-automation-react-forms':'Why value-setting fails, and the fix',
+ '/learn/tools-that-lie':'Nine tools that reported success without doing anything'}
 def front_matter(md):
     # optional leading '---' block of 'key: value' lines; a future publish_date holds a page back until that date
     if md.startswith('---\n'):
@@ -86,7 +88,8 @@ TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io - which is ma
  '/learn/model-context-protocol':'Model Context Protocol (MCP), Explained Simply (2026)',
  '/learn/what-is-an-mcp-server':'What Is an MCP Server? A Practical Explanation (2026)',
  '/learn/check-if-ai-mentions-your-brand':'How to Check if ChatGPT & Perplexity Mention Your Brand (2026)',
- '/learn/browser-automation-react-forms':'Why Browser Automation Fails on React Forms (And How to Fix It)'}
+ '/learn/browser-automation-react-forms':'Why Browser Automation Fails on React Forms (And How to Fix It)',
+ '/learn/tools-that-lie':'Nine Browser Tools That Reported Success Without Doing Anything'}
 def related(url):
     if url=='/docs/what-is-browser-mcp': links=INSTALL+['/docs/tools','/compare/browsermcp-io']
     elif url in INSTALL: links=['/docs/what-is-browser-mcp','/docs/tools','/compare/browsermcp-io']+[u for u in INSTALL if u!=url][:2]
