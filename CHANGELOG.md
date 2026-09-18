@@ -5,7 +5,9 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 ## 1.29.2 (not released yet)
 
-One class of bug, found an hour after 1.29.1 shipped and closed completely. Every fix below was written test-first and checked with a mutation test.
+One class of bug, found an hour after 1.29.1 shipped: tools that answered yes because Chrome had **acknowledged** a command rather than because the page had **received** it. Every route that carries that mistake is closed here - every CDP command in the extension that acknowledges without promising delivery was swept, and there are exactly two. Every fix below was written test-first and checked with a mutation test, and the whole release was verified against a real Chrome: 52 checks, 40 of 40 tools, zero failures.
+
+Two related failures are **not** closed, and are named rather than implied: `browser_fill` can set a value that a React-controlled field does not react to (the open half of #19), and `browser_execute_script` cannot run on a strict-CSP page when the debugger is also unavailable. Both are written down with the measurement attached.
 
 **Nine tools answered yes because Chrome acknowledged the command, not because the page received it**
 
