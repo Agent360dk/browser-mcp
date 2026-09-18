@@ -1377,14 +1377,14 @@ async function armerHaendelsesBevis(tabId, type) {
   const armet = await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
     injectImmediately: true,
-    func: (nyId, haendelse) => {
+    func: (nyId, haendelser) => {
       const p = (window.__bmcpHaendelse ||= {});
-      if (p.fn) window.removeEventListener(p.type, p.fn, true);
-      p.id = nyId; p.type = haendelse; p.antal = 0;
+      if (p.fn) for (const t of [].concat(p.type || [])) window.removeEventListener(t, p.fn, true);
+      p.id = nyId; p.type = haendelser; p.antal = 0;
       p.fn = () => { p.antal++; };
-      window.addEventListener(haendelse, p.fn, true);
+      for (const t of haendelser) window.addEventListener(t, p.fn, true);
     },
-    args: [id, type],
+    args: [id, [].concat(type)],
   });
   return { id, rammer: armet.length };
 }
@@ -1402,7 +1402,7 @@ async function laesHaendelsesBevis(tabId, bevis) {
       func: (minId) => {
         const p = window.__bmcpHaendelse;
         if (!p || p.id !== minId) return { udskiftet: true };
-        if (p.fn) window.removeEventListener(p.type, p.fn, true);
+        if (p.fn) for (const t of [].concat(p.type || [])) window.removeEventListener(t, p.fn, true);
         const r = { antal: p.antal };
         p.fn = null; p.id = null;
         return r;
@@ -4202,7 +4202,12 @@ async function dispatch(port, method, params) {
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       await debuggerAttach(tab.id);
-      const hoverBevis = await armerHaendelsesBevis(tab.id, 'mouseover').catch(() => null);
+      // ANTAGET 13/9 af Fable, MAALT 18/9 i flow-spaerren: Blink fyrer `mouseover` KUN naar
+      // elementet under markoeren SKIFTER. Hover to gange paa det samme, eller klik og hover
+      // saa det samme, og anden gang giver kun `mousemove`. Beviset lyttede kun paa mouseover,
+      // saa en helt almindelig raekkefoelge svarede "ikke leveret" - et falsk NEJ, som faar
+      // agenten til at skifte fane og proeve igen paa noget der virkede.
+      const hoverBevis = await armerHaendelsesBevis(tab.id, ['mouseover', 'mousemove']).catch(() => null);
       try {
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseMoved', x: el.x, y: el.y,

@@ -466,8 +466,11 @@ try {
     }
     const dt = Date.now() - t0;
     skalVaere(dt < 25000, `ventede ${dt} ms paa en frist paa 8000 - fristen holdes ikke`);
+    // MAALT 18/9: her stod `svar.tekst.slice(0, 160)`. Svaret er JSON over flere linjer, saa
+    // rapporten viste kun foerste linje - et bart "{". Et fund man ikke kan laese, er ikke et
+    // fund. Mellemrum klappes sammen, saa hele svaret staar paa den ene linje rapporten viser.
     skalVaere(/timeout|timed out|cancel|no response|ingen svar/i.test(svar.tekst),
-      `svarede uden at et menneske havde svaret - det maa den aldrig: ${svar.tekst.slice(0, 160)}`);
+      `svarede uden at et menneske havde svaret - det maa den aldrig: ${svar.tekst.replace(/\s+/g, ' ').slice(0, 220)}`);
   });
 
   // Dialogen blokerer hele fanen mens den staar aaben. Kommentaren her sagde foer at
