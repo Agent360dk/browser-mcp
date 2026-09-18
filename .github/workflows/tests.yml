@@ -29,7 +29,7 @@ jobs:
           # release-coherence-testen laeser 'git tag'. En shallow klon har hverken
           # historik eller tags - saa begge porte fejlede paa noget der var i orden.
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
       - name: install
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
       # MAALT 13/9: `npm install --prefix mcp-server` doede paa Windows med
