@@ -1024,7 +1024,7 @@ async function debuggerClick(tabId, x, y) {
                    // Astra, anden runde: en afkrydsning eller en feltvaerdi aendrer hverken noder, tekst eller
                    // adresse - saa et klik der VIRKEDE blev meldt som fejl, og et nyt klik ville fortryde det.
                    document.querySelectorAll('input:checked,option:checked').length + '|' +
-                   hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join(' '));
+                   hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join('\0'));
           } catch (e) { return 'aftryk-fejlede'; }
         };
         if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
@@ -4217,8 +4217,15 @@ async function dispatch(port, method, params) {
         // Det er den omvendte udgave af issue #19, og rettelsen er den samme som issuet
         // beder om: maal EFFEKTEN, ikke feltet. Aendrede resten af siden sig, gjorde
         // komponenten sit arbejde — uanset hvad feltet staar paa nu.
+        // FUNDET 17/9 af Hronom paa issue #19: her stod tekstens LAENGDE som bevis. To fejl faldt ud
+        // af det. Et accepteret valg hvis label skifter "Alfa" -> "Beta" er lige saa langt, saa
+        // aftrykket var identisk og svaret blev "rullet tilbage". Og en urelateret status der gik
+        // 9 -> 10 aendrede laengden, saa svaret blev "valget landede". Hash lukker den foerste.
         const aftryk = `(function(el){
-          return el.options.length + '|' + (el.form ? el.form.innerText.length : document.body.innerText.length);
+          const t = el.form ? el.form.innerText : document.body.innerText;
+          let h = 2166136261;
+          for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+          return el.options.length + '|' + (h >>> 0);
         })(document.querySelector(${JSON.stringify(params.selector)}))`;
 
         const valg = await debuggerEval(tab.id, `
@@ -4261,14 +4268,25 @@ async function dispatch(port, method, params) {
         if (e && e.vaerdi === r.wanted) {
           return { ok: true, type: 'native_select', selected: r.text, value: e.vaerdi };
         }
+        // En bedre hash lukker IKKE det andet hul: en urelateret aendring paa siden ser stadig ud
+        // som en reaktion. Derfor er det her det TREDJE udfald og ikke et selvsikkert ja - samme
+        // regel som den custom-gren der ligger 40 linjer nede, og samme ordforraad som resten af
+        // klassen. Hronom bad selv om praecis det: "a distinct unverified outcome".
         if (e && e.aftryk && r.foer && e.aftryk !== r.foer) {
+          const uvist = uvisVurdering({ landed: null, uverificeret: true });
           return {
-            ok: true, type: 'native_select', selected: r.text, value: e.vaerdi,
-            note: `Feltet nulstillede sig selv til "${e.vaerdi}", men siden reagerede — ` +
-                  'et styret felt der gemmer valget et andet sted. Valget landede.',
+            ok: true, type: 'native_select', landed: null, selected: r.text, value: e.vaerdi, ...uvist,
+            note: `Feltet nulstillede sig selv til "${e.vaerdi}", og siden aendrede sig - men aendringen ` +
+                  'beviser ikke at det var valget. ' + uvist.note,
           };
         }
-        return { ok: false, type: 'native_select',
+        // Kunne aftrykket slet ikke laeses, er det ogsaa uvist. Her stod et haardt "rullet tilbage".
+        if (!e || !e.aftryk || !r.foer) {
+          const uvist = uvisVurdering({ landed: null, uverificeret: true });
+          return { ok: true, type: 'native_select', landed: null, selected: r.text,
+                   value: e ? e.vaerdi : r.actual, ...uvist };
+        }
+        return { ok: false, type: 'native_select', landed: false,
           error: `Valget blev rullet tilbage: satte "${r.wanted}", feltet staar paa "${e ? e.vaerdi : r.actual}", ` +
                  'og intet andet paa siden aendrede sig.' };
       }
