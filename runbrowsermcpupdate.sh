@@ -252,6 +252,25 @@ else
   gate "tests fejler - ret dem foer udgivelse"
 fi
 
+# ── konkurrent-vagt ──────────────────────────────────────────────────────────
+# Findes fordi 19/9-2026: ni sider paa browsermcp.dev paastod at Playwright MCP var
+# headless, kraevede login hver gang, blev blokeret paa 2FA-sider og kun kunne koere én
+# session. Alle fire var falske. README'en blev rettet 7/9; de otte andre sider ikke.
+# Ingen vagt gen-laeste deres dokumentation, saa det kunne ligge i ti dage.
+# En udgivelse er praecis det oejeblik vi sender de paastande ud i verden.
+if VAGT_OUT="$(python3 "$REPO_ROOT/scripts/konkurrent-vagt.py" 2>&1)"; then
+  ok "konkurrent-vagt ren - det vi siger om andre passer stadig"
+elif printf '%s' "$VAGT_OUT" | grep -qiE 'urlerror|httperror|http error|timed out|timeout|temporary failure|nodename nor servname|network is unreachable|connection refused|connection reset|ssl|certificate'; then
+  # MAALT 19/9 af reviewet: listen manglede HTTPError. Flytter Microsoft sin README, eller
+  # svarer raw.githubusercontent 429/503, hedder fejlen "HTTP Error 429" - den matchede ikke,
+  # og udgivelsen blev spaerret med diagnosen "en paastand kan vaere blevet usand". Forkert
+  # aarsag paa et netproblem er dyrere end ingen diagnose: man leder det forkerte sted.
+  warn "konkurrent-vagten kunne ikke naa nettet - deres dokumentation er IKKE tjekket"
+else
+  printf '%s\n' "$VAGT_OUT" | tail -20
+  gate "konkurrent-vagt roed - en paastand paa vores sider kan vaere blevet usand. Ret siderne, koer --pin, udgiv derefter"
+fi
+
 # channel auth pre-flight. In SHIP mode a broken channel aborts the whole run;
 # in dry-run it's only a warning so you can still preview the full plan.
 

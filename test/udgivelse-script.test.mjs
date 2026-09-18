@@ -554,9 +554,14 @@ test('pre-flight regner dage til npm-noeglens udloeb ud af .env', () => {
     writeFileSync(join(d, '.env'), indhold);
     return spawnSync('bash', ['-c', `${krop}\ndage_til_udloeb "${d}/.env"`], { encoding: 'utf8' }).stdout.trim();
   };
+  // MAALT 19/9: toISOString() giver UTC-datoen, og scriptet regner i LOKAL tid
+  // (datetime.date.today()). Paa en maskine i UTC+7 er de to datoer forskellige en
+  // stor del af doegnet, saa proeven var groen om formiddagen og roed om aftenen paa
+  // uaendret kode. Byg datoen af lokale felter, ellers maaler proeven tidszonen.
   const om = (dage) => {
     const t = new Date(); t.setDate(t.getDate() + dage);
-    return t.toISOString().slice(0, 10);
+    const to = (n) => String(n).padStart(2, '0');
+    return `${t.getFullYear()}-${to(t.getMonth() + 1)}-${to(t.getDate())}`;
   };
 
   assert.equal(koer(`# token - expires ${om(30)}\nNPM_TOKEN=x\n`), '30', '30 dage frem blev ikke regnet rigtigt');

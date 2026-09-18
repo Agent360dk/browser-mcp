@@ -43,6 +43,24 @@ jobs:
           echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           set -e
 
+      # Konkurrent-vagten koeres i SAMME maanedlige job, ikke som en egen arbejdsgang -
+      # ellers kommer der to mails om den samme maaned. Findes fordi 19/9-2026: ni sider paa
+      # browsermcp.dev paastod noget forkert om Microsofts Playwright MCP i ti dage, fordi
+      # intet gen-laeste deres dokumentation. Den pinner MAENGDEN af deres vaerktoejer, saa
+      # et nyt vaerktoej hos dem - fx ét der kan standse og spoerge mennesket - goer runden
+      # roed. Det er samtidig doedsvarslet paa vores eneste tilbagevaerende position.
+      - name: Konkurrent-vagt
+        id: vagt
+        run: |
+          set +e
+          {
+            echo
+            echo "=== KONKURRENT-VAGT ==="
+          } >> /tmp/audit-report.txt
+          python3 scripts/konkurrent-vagt.py 2>&1 | tee -a /tmp/audit-report.txt
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          set -e
+
       # Preferred delivery: email via SendGrid. Runs only when the key is configured,
       # so the report reaches a human every month (green nudge or red alarm) without
       # creating a GitHub issue to close.
@@ -50,11 +68,16 @@ jobs:
         if: always() && env.SENDGRID_API_KEY != ''
         env:
           AUDIT_STATUS: ${{ steps.audit.outputs.status }}
+          # MAALT 19/9: her stod kun AUDIT_STATUS. Var konkurrent-vagten roed og auditen
+          # groen, sagde emnefeltet "maanedstjek OK" mens rapporten under den var roed.
+          # Et falsk groent er praecis den fejlklasse vagten findes for.
+          VAGT_STATUS: ${{ steps.vagt.outputs.status }}
           MAIL_TO: gustav@agent360.dk
         run: |
           python3 - <<'PY'
           import os, json, urllib.request
-          green = os.environ.get("AUDIT_STATUS", "0") == "0"
+          green = (os.environ.get("AUDIT_STATUS", "0") == "0"
+                   and os.environ.get("VAGT_STATUS", "0") == "0")
           report = open("/tmp/audit-report.txt", encoding="utf-8").read()
           subject = ("✅ Browser MCP - månedstjek OK (husk citations-måling)" if green
                      else "\U0001F534 Browser MCP - handling påkrævet (drift fundet)")
@@ -122,8 +145,13 @@ jobs:
             --title "Dominans-audit - $MONTH" \
             --body-file /tmp/issue-body.md
 
-      - name: Fail the run if the audit found a 🔴
-        if: steps.audit.outputs.status != '0'
+      - name: Fail the run if the audit or the guard found a 🔴
+        if: steps.audit.outputs.status != '0' || steps.vagt.outputs.status != '0'
         run: |
-          echo "::error::dominans-audit reported a 🔴 finding - see the report (email or issue)"
+          if [ "${{ steps.audit.outputs.status }}" != "0" ]; then
+            echo "::error::dominans-audit reported a 🔴 finding - see the report (email or issue)"
+          fi
+          if [ "${{ steps.vagt.outputs.status }}" != "0" ]; then
+            echo "::error::konkurrent-vagten er roed - en paastand paa vores sider kan vaere blevet usand. Ret siderne, koer scripts/konkurrent-vagt.py --pin"
+          fi
           exit 1
