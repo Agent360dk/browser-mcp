@@ -1,7 +1,7 @@
 {
   "name": "@agent360/browser-mcp",
   "version": "1.29.1",
-  "description": "Browser MCP - give your AI agent a real, logged-in Chrome: test authenticated apps, read 2FA codes from Gmail, scrape behind logins, solve CAPTCHAs. 40 tools, multi-session, human-in-the-loop.",
+  "description": "Browser MCP - the browser tool that can stop and ask you. A 2FA code, a CAPTCHA, a choice only you can make: it asks on your own screen, then carries on in the tab you were already signed into. 40 tools, any MCP client, MIT.",
   "mcpName": "io.github.Agent360dk/browser-mcp",
   "type": "module",
   "main": "index.js",

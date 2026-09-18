@@ -1171,7 +1171,7 @@ async function clearFieldAttached(tabId) {
  * FUNDET 13/9 af Astra: tekst-grenen fik den her dom om formiddagen, CSS-grenen ikke - og
  * CSS-grenen er den mest brugte. Én funktion, saa de ikke kan drive fra hinanden igen.
  */
-function fyldSvar(laest, oensket, ekstra) {
+function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
   if (laest === undefined || laest === null) {
     return { ok: true, ...ekstra, uvist: true,
       note: 'Teksten blev skrevet, men feltet kunne ikke laeses bagefter, saa det er uvist om ' +
@@ -1183,7 +1183,21 @@ function fyldSvar(laest, oensket, ekstra) {
             'tastetrykkene, men feltet tog ikke imod. Fanen er sandsynligvis i baggrunden, hvor ' +
             'Chrome ikke leverer taster. Kald browser_switch_tab og proev igen.' };
   }
-  if (laest === String(oensket)) return { ok: true, ...ekstra, vaerdi: laest };
+  if (laest === String(oensket)) {
+    // FUNDET 19/9 (issue #19): her stoppede vi. DOM-vaerdien var rigtig, saa vi svarede ja -
+    // og en React-styret formular opfoerte sig bagefter som om feltet var tomt. Trackeren er
+    // det eneste sted rammens egen opfattelse staar, og den modsiger DOM'en praecis naar
+    // rammen ikke har hoert efter. Det er positivt bevis for at det IKKE landede, ikke uvished.
+    if (rammeHoerte === false) {
+      return { ok: true, ...ekstra, vaerdi: laest, ramme_hoerte_ikke: true,
+        note: 'Feltet VISER den rigtige tekst, men sidens egen tilstand har ikke hoert det: ' +
+              'React\'s vaerdi-tracker staar stadig paa den gamle vaerdi. Formularen vil ' +
+              'sandsynligvis opfoere sig som om feltet er tomt, og vaerdien kan blive kasseret ' +
+              'ved indsendelse. Klik i feltet med browser_click og skriv med browser_press_key, ' +
+              'eller kontrollér resultatet foer du gaar videre.' };
+    }
+    return { ok: true, ...ekstra, vaerdi: laest };
+  }
   return { ok: true, ...ekstra, afviger: true, vaerdi: laest,
     note: 'Feltet indeholder noget andet end det skrevne. Siden har sandsynligvis formateret ' +
           'vaerdien - eller der stod noget i forvejen.' };
@@ -1213,10 +1227,14 @@ async function debuggerFill(tabId, selector, value) {
         document.execCommand('insertText', false, ${JSON.stringify(value)});
       })()
     `);
-    return await debuggerEval(tabId, `(() => {
+    // Samme form som den anden returvej, ellers faar kalderen to forskellige slags svar.
+    // rammeHoerte er null her med vilje: en contenteditable (LinkedIn, Slack) har ingen
+    // _valueTracker, saa teksten i elementet ER hele sandheden.
+    const ceTekst = await debuggerEval(tabId, `(() => {
       const el = document.querySelector(${JSON.stringify(selector)});
       return el ? (el.textContent ?? null) : null;
     })()`).catch(() => null);
+    return { vaerdi: ceTekst, rammeHoerte: null };
   }
 
   // Standard input/textarea — focus, clear, fill
@@ -1269,28 +1287,55 @@ async function debuggerFill(tabId, selector, value) {
     // empty. Only an EMPTY field triggers the fallback — a field that transformed
     // the text (phone/date masks reformatting it) did accept the input, and
     // retyping it per character would produce the same transform for no gain.
-    let landed = await evalAttached(tabId, `
+    // FUNDET 19/9 (issue #19): vi laeste DOM'ens vaerdi og svarede ja. Det er vores egen
+    // fejlklasse ét niveau op - feltet VISER den rigtige tekst, mens React's state aldrig
+    // hoerte det, og appen opfoerer sig som om feltet er tomt. Kvitteringen kom fra DOM'en,
+    // ikke fra rammen.
+    //
+    // Der findes et mekanisk svar. React haenger en `_valueTracker` paa elementet og
+    // opdaterer den NAAR den selv har behandlet aendringen. Stemmer trackeren med feltets
+    // vaerdi, har rammen hoert det. Stemmer den ikke, har den beviseligt ikke. Ingen tracker
+    // = ikke et rammestyret felt, og saa er DOM-vaerdien hele sandheden.
+    // Det er en egenskab, ikke et navn: et omdoebt bibliotek kan ikke skjule at trackeren
+    // og vaerdien er ude af trit.
+    let laesning = await evalAttached(tabId, `
       (function() {
         const el = document.querySelector(${JSON.stringify(selector)});
         if (!el) return null;
-        return ('value' in el) ? el.value : el.textContent;
+        const v = ('value' in el) ? el.value : el.textContent;
+        let ramme = null;
+        try {
+          const t = el._valueTracker;
+          if (t && typeof t.getValue === 'function') ramme = (String(t.getValue()) === String(v));
+        } catch (e) { ramme = null; }
+        return { v: v, ramme: ramme };
       })()
     `);
+    let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
+    let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     if (!landed) {
       await clearFieldAttached(tabId);
       await typeCharsAttached(tabId, value);
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
-      landed = await evalAttached(tabId, `
+      laesning = await evalAttached(tabId, `
         (function() {
           const el = document.querySelector(${JSON.stringify(selector)});
           if (!el) return null;
-          return ('value' in el) ? el.value : el.textContent;
+          const v = ('value' in el) ? el.value : el.textContent;
+          let ramme = null;
+          try {
+            const t = el._valueTracker;
+            if (t && typeof t.getValue === 'function') ramme = (String(t.getValue()) === String(v));
+          } catch (e) { ramme = null; }
+          return { v: v, ramme: ramme };
         })()
       `).catch(() => null);
+      landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
+      rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     }
-    return landed;
+    return { vaerdi: landed, rammeHoerte: rammeHoerte };
   } finally {
     await debuggerDetach(tabId);
   }
@@ -3658,7 +3703,8 @@ async function dispatch(port, method, params) {
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
-        return fyldSvar(efterFyld, params.value, { method: 'debugger' });
+        return fyldSvar(efterFyld?.vaerdi, params.value, { method: 'debugger' },
+                        efterFyld?.rammeHoerte);
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
         // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra
