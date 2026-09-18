@@ -534,3 +534,42 @@ test('hver fil trin 1 skriver i, er baade forvaltet og kommer med i commit og pu
   assert.deepEqual(ustaged, [],
     `trin 1 skriver i ${ustaged.join(', ')}, men trin 4 committer dem ikke - aendringen naar aldrig GitHub`);
 });
+
+// ── npm-noeglens udloeb ──────────────────────────────────────────────────────
+//
+// MAALT 18/9: pre-flight spurgte om noeglen VIRKER, ikke hvor laenge. Noeglen doede to
+// dage efter, og intet i en koersel sagde det. Havde vi ikke opdaget det i haanden, var
+// den foerste besked om sagen en fejlet udgivelse.
+//
+// npm udleverer ikke et tokens udloeb, saa den eneste kilde er kommentaren i .env.
+// Det er skroebeligt, og derfor siger advarslen ogsaa hvor tallet kommer fra.
+test('pre-flight regner dage til npm-noeglens udloeb ud af .env', () => {
+  const fn = script().slice(script().indexOf('dage_til_udloeb()'));
+  const krop = fn.slice(0, fn.indexOf('\n}') + 2);
+  assert.ok(krop.includes('expires'), 'funktionen leder ikke efter udloebs-datoen');
+
+  const d = mkdtempSync(join(tmpdir(), 'udloeb-'));
+  const koer = (indhold) => {
+    if (indhold === null) return spawnSync('bash', ['-c', `${krop}\ndage_til_udloeb "${d}/mangler"`], { encoding: 'utf8' }).stdout.trim();
+    writeFileSync(join(d, '.env'), indhold);
+    return spawnSync('bash', ['-c', `${krop}\ndage_til_udloeb "${d}/.env"`], { encoding: 'utf8' }).stdout.trim();
+  };
+  const om = (dage) => {
+    const t = new Date(); t.setDate(t.getDate() + dage);
+    return t.toISOString().slice(0, 10);
+  };
+
+  assert.equal(koer(`# token - expires ${om(30)}\nNPM_TOKEN=x\n`), '30', '30 dage frem blev ikke regnet rigtigt');
+  assert.equal(koer(`# token - expires ${om(2)}\nNPM_TOKEN=x\n`), '2', 'to dage frem blev ikke regnet rigtigt');
+  assert.equal(koer(`# token - expires ${om(-3)}\nNPM_TOKEN=x\n`), '-3', 'en udloebet noegle gav ikke et negativt tal');
+  assert.equal(koer('NPM_TOKEN=x\n'), 'ukendt', 'uden dato skal svaret vaere uvist, ikke et gaet');
+  assert.equal(koer(null), 'ukendt', 'uden .env skal svaret vaere uvist');
+});
+
+test('pre-flight siger fra naar noeglen er ved at udloebe', () => {
+  const kode = script().split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  const blok = kode.slice(kode.indexOf('NPM_UDLOEB='), kode.indexOf('NPM_UDLOEB=') + 700);
+  assert.match(blok, /NPM_UDLOEB < 14/, 'der advares ikke i god tid foer udloebet');
+  assert.match(blok, /NPM_UDLOEB < 0/, 'en allerede udloebet noegle stopper ikke koerslen');
+  assert.match(blok, /gate /, 'en udloebet noegle giver kun en advarsel, ikke en spaerre');
+});

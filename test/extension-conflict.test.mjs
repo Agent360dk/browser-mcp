@@ -374,3 +374,45 @@ test('almindelige fejl roeres ikke', () => {
       'Error: Command timed out after 30000ms: click');
   }
 });
+
+// ── Fejlfinder-konflikten skal naa AGENTEN, ikke kun stderr ──────────────────
+//
+// MAALT 17/9 mod Stripe Dashboard: en time med "Debugger attach failed after 3 attempts
+// ... attach resolved but Chrome shows tab not attached (ghost)". Aarsagen var kendt - to
+// Browser MCP-udvidelser slaas om fejlfinderen, og Chrome tillader kun én pr. fane - men
+// fejlteksten naevnte den ikke. Den pegede paa siden ("the page may be continuously
+// reloading"), saa den der laeste den ledte det forkerte sted i en time.
+//
+// Udvidelsen KAN ikke vide hvor mange udvidelser der er forbundet. Serveren kan, og den
+// har allerede forklaringen liggende i stderr hvor ingen agent ser den. Derfor hoerer
+// rettelsen her: naar serveren videregiver en fastgoerelses-fejl OG kender konflikten,
+// skal den staa foerst, med begge remedier.
+function forklaringMedUdvidelser(antal) {
+  const a = kilde.indexOf('const ERSTATNINGER');
+  const i = kilde.indexOf('function forklarSkaevhed');
+  let d = 0, j = kilde.indexOf('{', i);
+  for (; j < kilde.length; j++) { if (kilde[j] === '{') d++; else if (kilde[j] === '}' && --d === 0) break; }
+  const liste = Array.from({ length: antal }, (_, n) => ({ extensionId: `udvidelse${n + 1}`, version: '1.29.1' }));
+  return new Function('activeConnection', 'distinctExtensions',
+    kilde.slice(a, j + 1) + '; return forklarSkaevhed;')(
+    () => liste[0] || null, () => liste,
+  );
+}
+
+test('to udvidelser: fastgoerelses-fejlen navngiver konflikten foer siden', () => {
+  const f = forklaringMedUdvidelser(2);
+  const svar = f('Debugger attach failed after 3 attempts (tab 42). Last: attach resolved but Chrome shows tab not attached (ghost - page likely mid-reload).');
+  assert.match(svar, /to|2 Browser MCP|udvidelser/i,
+    'fejlen naevner ikke at der er mere end én udvidelse - den der laeser den, leder i siden');
+  assert.match(svar, /BROWSER_MCP_EXTENSION_ID/,
+    'fejlen giver ikke den vej ud der ikke kraever at man genstarter Chrome');
+  assert.match(svar, /chrome:\/\/extensions/,
+    'fejlen giver ikke den anden remedie: slaa alle paa naer én fra');
+});
+
+test('én udvidelse: samme fejl faar IKKE en konflikt-forklaring paaduttet', () => {
+  const f = forklaringMedUdvidelser(1);
+  const svar = f('Debugger attach failed after 3 attempts (tab 42). Last: attach resolved but Chrome shows tab not attached.');
+  assert.doesNotMatch(svar, /BROWSER_MCP_EXTENSION_ID/,
+    'med kun én udvidelse er konflikten ikke forklaringen, og en falsk forklaring er vaerre end ingen');
+});

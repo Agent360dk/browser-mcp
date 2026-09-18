@@ -39,10 +39,39 @@ npm --prefix mcp-server run flow # every tool against a REAL Chrome (needs the e
 isolation, the tab cap, the extension-conflict logic, release coherence. Fast, no browser,
 safe in CI. The release script gates on it.
 
+**What it does not prove.** The extension sends the page expressions as strings, and in this
+layer the test answers them - they are never executed against a document. So `npm test` proves
+what the extension sends, in what order, with what arguments, and how it judges the answers it
+gets back. It does not prove what those expressions do in a real DOM. A typo inside an injected
+expression can pass the whole suite.
+
+Four tools go further and actually run the generated expression against a hand-written document
+(`test/klik-bevis.test.mjs`, `test/select-aftryk.test.mjs`). That is the pattern to copy when you
+touch a tool that builds a non-trivial page expression, and it is the only layer where you can
+prove a fix without a browser. An outside contributor reproduced a real bug that way in
+September 2026, with no Chrome, no React and nothing installed.
+
 `npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 40 tools
 for real, reporting OK / FEJL / SPRUNGET per tool. It cannot run in CI. Run it before a release
 and whenever you touch `extension/background.js` - it is the only layer that catches a tool that
 answers `ok: true` while the page did nothing.
+
+### Every new test has to be shown failing first
+
+Write the test, run it against the unfixed code, and confirm it goes red for the reason you
+expect. Then fix, and confirm it goes green. Put both in the commit message.
+
+This is not ceremony. Two tests added here in August could not catch the regression they were
+written for, and nobody noticed until the regression came back. A test that has never been red
+is documentation, not a guard. If the bug is already fixed, mutate the fix away, watch the test
+fail, and restore it.
+
+### About the language
+
+Code comments in `extension/background.js` and `mcp-server/` are largely in Danish. That is
+history, not policy - this started as an internal tool. Write yours in English; nobody will ask
+you to change them, and nobody will rewrite the old ones on you either. Issues, pull requests
+and commit messages in English are always fine.
 
 ## Project Structure
 

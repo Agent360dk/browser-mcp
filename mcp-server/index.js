@@ -911,6 +911,27 @@ const ERSTATNINGER = {
 };
 
 function forklarSkaevhed(besked) {
+  // MAALT 17/9 mod Stripe Dashboard: en time med "Debugger attach failed ... ghost".
+  // Aarsagen var kendt - to udvidelser slaas om fejlfinderen, og Chrome tillader kun én
+  // pr. fane - men fejlteksten naevnte den ikke. Den pegede paa siden, saa den der laeste
+  // den, ledte det forkerte sted. Udvidelsen KAN ikke vide hvor mange der er forbundet;
+  // serveren kan, og advarslen laa i stderr hvor ingen agent ser den.
+  if (/Debugger attach failed|not attached|ghost/i.test(besked || '')) {
+    const alle = distinctExtensions();
+    if (alle.length > 1) {
+      const aktiv = activeConnection();
+      return `Error: ${besked}\n\n` +
+        `FOERST: ${alle.length} Browser MCP-udvidelser er forbundet samtidig ` +
+        `(${alle.map((c) => c.extensionId || 'ukendt id').join(', ')}). Chrome tillader kun ÉN ` +
+        'fejlfinder pr. fane, saa de slaas om den, og enhver muse-, taste- eller filhandling ' +
+        'fejler saadan her. Det er sandsynligvis ikke siden.\n\n' +
+        'To veje ud:\n' +
+        '1. Slaa alle paa naer én fra paa chrome://extensions (brugeren skal selv - ' +
+        'chrome:// kan ikke styres herfra).\n' +
+        `2. Uden at roere Chrome: saet BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
+        'i klientens opsaetning, saa taler denne server kun med den ene.';
+    }
+  }
   const m = /Unknown method: ([a-z_]+)/.exec(besked || '');
   if (!m) return `Error: ${besked}`;
   const aktiv = activeConnection();

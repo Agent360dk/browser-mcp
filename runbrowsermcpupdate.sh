@@ -58,6 +58,16 @@ warn() { echo "${Y}!${Z} $*"; }
 die()  { echo "${R}✗ $*${Z}" >&2; exit 1; }
 step() { echo; echo "${B}━━ $* ━━${Z}"; }
 
+# Dage til npm-noeglens udloeb, laest af kommentaren i .env ("expires YYYY-MM-DD").
+# Svarer "ukendt" hvis datoen ikke staar der. Negativt tal betyder at den er udloebet.
+dage_til_udloeb() {
+  local fil="$1" dato
+  [[ -f "$fil" ]] || { echo ukendt; return; }
+  dato="$(grep -m1 -oE 'expires [0-9]{4}-[0-9]{2}-[0-9]{2}' "$fil" | awk '{print $2}')"
+  [[ -n "$dato" ]] || { echo ukendt; return; }
+  python3 -c 'import sys,datetime; d=datetime.date.fromisoformat(sys.argv[1]); print((d-datetime.date.today()).days)' "$dato"
+}
+
 # ── arg parse ────────────────────────────────────────────────────────────────
 NEW_VERSION=""
 SHIP=0
@@ -254,7 +264,19 @@ if [[ "$SKIP_NPM" == 0 ]]; then
   if [[ -n "${NPM_TOKEN:-}" ]]; then
     NPM_WHO="$(curl -s -H "Authorization: Bearer $NPM_TOKEN" https://registry.npmjs.org/-/whoami \
       | python3 -c "import json,sys;print(json.load(sys.stdin).get('username',''))" 2>/dev/null || true)"
-    if [[ -n "$NPM_WHO" ]]; then ok "npm authenticated as $NPM_WHO (NPM_TOKEN fra .env)"
+    if [[ -n "$NPM_WHO" ]]; then
+      ok "npm authenticated as $NPM_WHO (NPM_TOKEN fra .env)"
+      # MAALT 18/9: tjekket ovenfor spoerger om noeglen VIRKER, ikke hvor laenge. Noeglen doede
+      # to dage senere, og intet i koerslen sagde det. npm udleverer ikke udloebet, saa den
+      # eneste kilde er kommentaren i .env - derfor siger advarslen ogsaa hvor den kommer fra.
+      NPM_UDLOEB="$(dage_til_udloeb "$REPO_ROOT/.env")"
+      if [[ "$NPM_UDLOEB" == "ukendt" ]]; then
+        warn "npm-noeglens udloeb staar ikke i .env - skriv 'expires YYYY-MM-DD' over NPM_TOKEN"
+      elif (( NPM_UDLOEB < 0 )); then
+        gate "npm-noeglen UDLOEB for $(( -NPM_UDLOEB )) dage siden ifoelge .env - forny paa npmjs.com/settings/glouv/tokens"
+      elif (( NPM_UDLOEB < 14 )); then
+        warn "npm-noeglen udloeber om $NPM_UDLOEB dage ifoelge .env - forny den foer naeste udgivelse"
+      fi
     else gate "NPM_TOKEN i .env afvises af npm - forny den paa npmjs.com/settings/<bruger>/tokens, eller pass --skip-npm"; fi
   elif npm whoami >/dev/null 2>&1; then ok "npm authenticated as $(npm whoami) (lokal login)"
   else gate "npm not authenticated (E401) - run 'npm login', saet NPM_TOKEN i .env, eller pass --skip-npm"; fi
