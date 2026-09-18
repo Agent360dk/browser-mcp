@@ -446,3 +446,59 @@ Codes egen sikkerhedsklassifikator forsoeg paa at klikke i et 2FA-flow - med ret
 **Hvad der DOG kan automatiseres:** alt frem til porten. Aabne siden, laese den, finde
 knapperne, bekraefte at brugeren er genkendt. Stop der, og sig praecist hvad mennesket
 skal trykke paa.
+
+## Maalt mod Stripe Dashboard (17/9-2026)
+
+Fire fejl ramt paa én opgave: opret en begraenset API-noegle og et webhook-endepunkt.
+Opgaven lykkedes halvt. Det der stoppede den, var vaerktoejet, ikke sitet.
+
+### 1. Fejlfinderen kan ikke haefte sig paa - og fallback siger "ok" alligevel · **hoej**
+
+`Debugger attach failed after 3 attempts ... attach resolved but Chrome shows tab not attached`
+paa hvert `browser_click`, `browser_screenshot` og `browser_press_key` i over en time.
+Aarsagen var kendt (to browser-mcp-udvidelser slaas om fejlfinderen), men intet i
+fejlbeskeden pegede paa DEN aarsag foerst - og der er ingen vej til at vaelge udvidelse
+uden at genstarte Chrome.
+
+Vaerre: klik faldt tilbage til `scripting-fallback`, som svarede `{"ok": true, "tag": "DIV"}`
+**uden at knappen blev trykket**. «Create key» blev "klikket" og siden stod uaendret.
+Et klik der ikke virker, maa ikke svare ok.
+
+**Forslag:** (a) opdag flere udvidelser og navngiv dem i fejlen, med et konkret raad
+(`BROWSER_MCP_EXTENSION_ID=<id>`); (b) lad fallback-klik verificere en virkning
+(DOM-aendring, navigation, fokus) og ellers svare `ok: false, grund: "ingen virkning"`.
+
+### 2. `browser_execute_script` doer paa CSP-straenge sites · **hoej**
+
+Stripe saetter `script-src` uden `unsafe-eval`. Baade ISOLATED og MAIN fejler med
+*"Evaluating a string as JavaScript violates the following Content Security Policy"*.
+Hele scripting-vejen er dermed vaek paa netop de sites hvor man har mest brug for den.
+
+**Forslag:** kald `chrome.scripting.executeScript` med `func` + `args` i stedet for en
+streng. Funktions-varianten rammes ikke af sidens CSP. Streng-varianten kan blive
+faldbag, ikke foerstevalg.
+
+### 3. `browser_fill` saetter vaerdien, men sitet reagerer ikke · **hoej**
+
+Stripes begivenheds-soegefelt viste `Checkout` i feltet og **nul traeffere**. Samme felt
+filtrerer fint naar et menneske taster. Vaerdien saettes aabenbart uden den haendelses-kaede
+React lytter paa (`keydown`/`keypress`/`input` med rigtig `inputType`, `keyup`).
+
+**Forslag:** en `browser_type`, der sender aegte tastetryk tegn for tegn via fejlfinderen,
+og lad `browser_fill` falde tilbage til den paa felter hvor intet aendrer sig bagefter.
+
+### 4. `browser_get_page_content { format: "html" }` sprænger token-loftet · **mellem**
+
+En almindelig indstillingsside gav 1.042.782 tegn og blev skrevet til disk. For at finde
+ÉN raekkes knap skulle hele siden hentes, gemmes og grep'es tre gange.
+Dertil er HTML'en JSON-undvigt (`class=\"...\"`), saa almindelige moenstre ikke rammer.
+
+**Forslag:** `selector`-parameter paa `get_page_content`, saa kun det undertrae hentes -
+og lever HTML uden undvigetegn.
+
+### Hvad der DA virkede
+
+`browser_fill` paa simple felter, `browser_click` med CSS (`tr.db-PermissionRow:nth-of-type(3)
+.db-SegmentedControlOption:last-child` ramte praecis den rigtige raekke), og
+`browser_navigate` + `get_page_content` som tekst. Da den ene udvidelse blev slaaet fra,
+kom baade skaermbilleder og aegte klik tilbage med det samme.
