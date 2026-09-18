@@ -66,6 +66,17 @@ brochure, and you cannot plan against a brochure.
 | `chrome://` pages, the extension gallery, `data:` URLs | Chrome forbids scripting them. Not a gap we can close; the tools say so explicitly rather than failing vaguely. |
 | A second Chrome profile | Not supported today. It is a real request, tracked as issue #10. |
 
+## Frequently asked questions
+
+**Does Browser MCP work on sites with a strict Content Security Policy?**
+Partly. The Chrome Debugger API carries most of the work, but `browser_execute_script` cannot run on pages with a strict CSP when the debugger is also unavailable - both string-evaluation paths are blocked, one by the page and one by the extension's own policy. It is written down rather than hidden.
+
+**Does it work headless, or in CI?**
+No, and it never will. The extension drives a real Chrome on a real desktop. For CI, use Playwright MCP - that is what it was built for.
+
+**What happens on a page it cannot handle?**
+It says so. Since 1.29.2 the tools in this class answer one of three things: it landed, it did not land with the reason and the remedy, or it is unknown. They no longer report success because Chrome accepted the command.
+
 ## If you hit a wall that is not on this list
 
 Ask your agent to call `browser_provide_feedback`. It checks your install first - an outdated

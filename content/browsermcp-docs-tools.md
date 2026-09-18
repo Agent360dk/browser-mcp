@@ -83,6 +83,20 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 |---|---|
 | `browser_ask_user` | Show an overlay asking the user to perform an action or provide input (credentials, 2FA, CAPTCHA, OAuth consent); returns their response. |
 
+## Frequently asked questions
+
+**How many tools are there?**
+40. The number is checked on every release by a gate that counts the tool definitions in the server and fails the build if any page, the README or the store listing says something else.
+
+**What does it mean when a tool answers "unverified"?**
+That the action was sent and the effect could not be read back. It is not a failure and not a success. Repeating the action blindly is the one thing you should not do - read the page instead. Nine tools were changed in 1.29.2 to be able to give this answer rather than a false yes.
+
+**Why do some tools need the tab in front?**
+Chrome accepts mouse and keyboard commands for a background tab and silently drops them. Since 1.29.2 the tools measure whether the page actually received the event, so you get an honest failure with the remedy - call `browser_switch_tab` - instead of a silent one.
+
+**Can a tool ask me something in the middle of a run?**
+Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a CAPTCHA, a choice only you can make - and carries on in the same tab.
+
 ## Meta & Recovery - 3 tools
 
 | Tool | Description |

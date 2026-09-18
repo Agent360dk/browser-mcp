@@ -22,9 +22,11 @@ An agent automating a real task hits a login that sends a one-time code to your 
 
 That's the whole move. No new integration, no secret to store, no code leaving your machine.
 
-## Why headless tools can't do this
+## Why most tools can't do this
 
-Playwright, Puppeteer and other headless setups spawn a fresh browser with none of your sessions. To read a 2FA email they'd need you to hand over Gmail credentials or wire up the Gmail API - which is the friction, not the fix. Browser MCP sidesteps it by never being a stranger to your accounts in the first place.
+Playwright, Puppeteer and other headless setups spawn a fresh browser with none of your sessions. To read a 2FA email they'd need you to hand over Gmail credentials or wire up the Gmail API - which is the friction, not the fix.
+
+Playwright MCP's Chrome extension is the honest exception to the first half: it reaches the Gmail tab you are already signed into. What it has no answer for is the second half. Its 73 tools contain nothing that can stop mid-run and ask you for a code (checked 2026-09-19), so a step that genuinely needs a human ends the run rather than pausing it. Browser MCP sidesteps both: it is never a stranger to your accounts, and `browser_ask_user` can hand the step to you and carry on in the same tab.
 
 ## One honest boundary
 

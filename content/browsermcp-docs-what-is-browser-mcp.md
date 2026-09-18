@@ -30,7 +30,7 @@ An AI agent connected to it can navigate pages, read and fill forms, click by CS
 
 ## Browser MCP vs. headless automation (Playwright, Puppeteer)
 
-Headless frameworks like Playwright and Puppeteer are excellent at what they were built for: fast, disposable, CI-friendly browser instances for testing your own app. They are not built to *be you* on someone else's site. Browser MCP solves a different problem - acting as an authenticated human - which is why the two are usually complementary rather than competing:
+Headless frameworks like Playwright and Puppeteer are excellent at what they were built for: fast, disposable, CI-friendly browser instances for testing your own app. The table below compares that headless mode, because it is still the default. One thing it does not cover: Playwright MCP also ships a Chrome extension that drives the browser you are already signed into, so "only we can use your real session" is not true and this page does not claim it. What stays different is the human - none of its 73 tools can stop and ask you for a code (checked 2026-09-19):
 
 | | Browser MCP | Playwright / Puppeteer (headless) |
 |---|---|---|

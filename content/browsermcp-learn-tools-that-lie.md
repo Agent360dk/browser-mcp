@@ -90,6 +90,20 @@ It does **not** prove what those expressions do in a real DOM - in that layer th
 
 If you want to prove us wrong about a tool, the second paragraph is the cheap way in.
 
+## Frequently asked questions
+
+**How do I tell whether an agent tool is lying to me?**
+Ask what it measured. A tool that reports success because the command was accepted has measured the messenger, not the message. The cheap test: perform the action on a page whose own listener records events, then compare what the tool said with what the page saw.
+
+**Why not just return false more often?**
+Because a wrongly reported failure is expensive in its own way: the agent repeats the action, and an Enter that already submitted the form submits it twice. That is why the third answer - unknown - exists.
+
+**Do other browser automation tools have this bug?**
+We have not measured them, and we are not going to claim it without measuring. That measurement is planned, it will publish its method and raw data, and our own failures will be on the same list.
+
+**What can I check without installing anything?**
+`npm test` runs the extension's real code in a VM against a recorded Chrome stub, so you can prove what it sends and how it judges the answers. Four tools go further and run the generated expression against a hand-written document. That is the cheap way in if you want to prove us wrong.
+
 ## The honest remainder
 
 This class is not finished, and saying otherwise would repeat the exact mistake this page is about. Two known holes, both measured, both public:

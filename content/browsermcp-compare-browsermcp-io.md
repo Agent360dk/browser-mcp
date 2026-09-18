@@ -54,7 +54,7 @@ If you install it and it does what you need, **there is no reason to switch.** A
 
 Chrome ships changes to extension APIs, debugger protocols, and Manifest V3 behavior regularly. A project frozen since April 2025 will, over time, accumulate the kind of breakage that only a live commit history fixes - new Chrome versions changing debugger-attach behavior, CAPTCHA providers updating their challenge markup, sites adding new anti-automation detection. We can't tell you which of `browsermcp.io`'s 130 open issues are that kind of drift versus something else, because we haven't audited them - but the count is public and the "zero commits since April 2025" fact means none of them have been closed by a code change in that time.
 
-## Quick answers
+## Frequently asked questions
 
 **Are these the same product?**
 No. Two separate teams, two separate GitHub orgs (`BrowserMCP` vs. `Agent360dk`), two separate npm packages (`@browsermcp/mcp` vs. `@agent360/browser-mcp`), two separate Chrome extensions. The name overlap ("Browser MCP") is coincidental, not a rebrand or a fork of each other.

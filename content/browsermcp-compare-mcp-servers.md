@@ -2,7 +2,7 @@
 
 # Browser automation MCP servers, compared: Playwright MCP, Chrome DevTools MCP, Browser Use, and the two Browser MCPs
 
-*Suggested URL: `/compare/browser-automation-mcp-servers` · Suggested title tag: "Browser Automation MCP Servers Compared (2026): Playwright, Chrome DevTools, Browser Use, Browser MCP" · Suggested meta description: "Dated, sourced comparison of the five browser automation MCP servers: which browser each one actually drives, maintenance status, tool counts, and when to pick which." · Last verified: July 21, 2026*
+*Suggested URL: `/compare/browser-automation-mcp-servers` · Suggested title tag: "Browser Automation MCP Servers Compared (2026): Playwright, Chrome DevTools, Browser Use, Browser MCP" · Suggested meta description: "Dated, sourced comparison of the five browser automation MCP servers: which browser each one actually drives, maintenance status, tool counts, and when to pick which." · Last verified: September 19, 2026*
 
 ---
 
@@ -12,13 +12,13 @@
 
 | Project | GitHub stars | Last commit | npm downloads/week | Latest release | Drives which browser? |
 |---|---|---|---|---|---|
-| [Playwright MCP](https://github.com/microsoft/playwright-mcp) | 35,458 | 2026-07-24 | 6,369,865 | 0.0.78 (2026-07-09) | Own managed profile (isolated or persistent); real Chrome only via opt-in `--extension` |
-| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 49,398 | 2026-08-19 | 2,211,104 | 1.7.0 | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
-| [Browser Use](https://github.com/browser-use/browser-use) | 109,731 | 2026-08-18 | n/a (Python/PyPI) | 0.13.6 | Own launched instance; real-profile reuse is an opt-in example |
-| [browsermcp.io](https://github.com/BrowserMCP/mcp) | 6,991 | **2025-04-24** | 8,585 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
-| [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 35 | 2026-08-19 | 469 | 1.25.0 (2026-07-24) | **Your real Chrome** (extension) - only mode |
+| [Playwright MCP](https://github.com/microsoft/playwright-mcp) | 37,248 | 2026-09-18 | 5,968,258 | 0.0.81 (2026-09-14) | Own managed profile (isolated or persistent); real Chrome only via opt-in `--extension` |
+| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 52,272 | 2026-09-18 | 1,500,288 | 1.9.0 (2026-09-08) | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
+| [Browser Use](https://github.com/browser-use/browser-use) | 115,128 | 2026-09-15 | n/a (Python/PyPI) | 0.13.6 | Own launched instance; real-profile reuse is an opt-in example |
+| [browsermcp.io](https://github.com/BrowserMCP/mcp) | 7,108 | **2025-04-24** | 9,107 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
+| [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 44 | 2026-09-18 | 1,456 | 1.29.1 (2026-09-13) | **Your real Chrome** (extension) - only mode |
 
-*(All figures fetched 2026-08-19 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
+*(All figures fetched 2026-09-19 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
 
 ## Which browser does each one actually drive?
 
@@ -44,7 +44,7 @@ Every tool on this page loses somewhere. Playwright MCP is the wrong tool if the
 ## FAQ
 
 **Which MCP server should I use for browser automation in CI?**
-Playwright MCP - managed profiles, headless mode, 69 documented tools, and the scale evidence of 6.3M weekly npm downloads (2026-07-21).
+Playwright MCP - managed profiles, headless mode, 73 documented tools, and the scale evidence of 5.97M weekly npm downloads (2026-09-19). It also ships a Chrome extension for using your own logged-in browser, so that is no longer a reason to pick us over it.
 
 **Which MCP server can use my existing Chrome logins?**
 The two "Browser MCP" projects drive your real Chrome by default. Of the two, only Browser MCP by Agent360 has shipped code since April 2025 (checked 2026-07-21).

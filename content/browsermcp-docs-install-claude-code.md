@@ -180,17 +180,25 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
 
-### Why this over Playwright MCP
+### How this differs from Playwright MCP
 
 | | Browser MCP | Playwright MCP |
 |---|---|---|
-| Browser | Your real Chrome | Headless (fresh session) |
-| Logins/cookies | Already authenticated | Must log in every time |
-| 2FA / CAPTCHA-gated sites | Works - it's your session | Frequently blocked |
-| Human-in-the-loop | `browser_ask_user` | None |
-| Multi-session | 20 concurrent sessions, color-coded tab groups | Single session |
+| Browser | Your real Chrome, always | Its own browser by default. Your real Chrome too, via their Chrome extension |
+| Logins/cookies | Your existing session | A persistent profile keeps logins between runs, or your own session via their extension |
+| 2FA / CAPTCHA-gated sites | Works, and `browser_ask_user` can ask you for the code mid-run | Reachable in extension mode, but nothing can ask you for a code |
+| Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 73 tools, none of which can ask the person anything (checked 2026-09-19) |
+| Several agents at once | 20 concurrent, color-coded tab groups | Also supported via their extension: one tab group per connected client |
 | Provider integrations | 9 built-in (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) | None |
 | Install | `npx @agent360/browser-mcp install` | `npx @playwright/mcp` |
+
+
+> **Corrected 2026-09-19.** Four rows in this table used to say Playwright MCP was headless, made
+> you log in every time, was frequently blocked on 2FA sites, and could only run one session. All
+> four were wrong: Microsoft ships a Chrome extension that uses your own logged-in browser, and
+> their own README documents several clients connected at once, each with its own coloured tab
+> group. We had corrected this in the main README on 2026-09-07 and did not carry the fix across
+> to these pages. The row that survives is human-in-the-loop, and it is measured, not assumed.
 
 ### Running more than one Claude Code conversation at once
 

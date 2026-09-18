@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Browser MCP by Agent360 - Give Claude Code Your Real, Logged-In Chrome</title>
+  <title>Browser MCP by Agent360 - The Browser Tool That Stops And Asks You</title>
   <link rel="canonical" href="https://browsermcp.dev/">
-  <meta name="description" content="Your AI agent drives the Chrome you're already signed into. Hits a login wall? It reads the 2FA code from your own Gmail and finishes the job. Free, MIT.">
+  <meta name="description" content="Your agent hits a 2FA code, a CAPTCHA, or a choice only you can make - and asks you on your own screen, then carries on in the tab you were already signed into. Free, MIT, any MCP client.">
   <meta property="og:title" content="Give Claude Code Your Real, Logged-In Chrome">
-  <meta property="og:description" content="Your AI agent drives the Chrome you're already signed into. Hits a login wall? It reads the 2FA code from your own Gmail and finishes the job. Free, MIT.">
+  <meta property="og:description" content="Your agent hits a 2FA code, a CAPTCHA, or a choice only you can make - and asks you on your own screen, then carries on in the tab you were already signed into. Free, MIT, any MCP client.">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Browser MCP">
   <meta property="og:locale" content="en_US">
@@ -18,7 +18,7 @@
   <meta property="og:image:alt" content="Browser MCP by Agent360 - drive your real logged-in Chrome from any AI agent">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Give Claude Code Your Real, Logged-In Chrome">
-  <meta name="twitter:description" content="Your AI agent drives the Chrome you're already signed into. Hits a login wall? It reads the 2FA code from your own Gmail and finishes the job. Free, MIT.">
+  <meta name="twitter:description" content="Your agent hits a 2FA code, a CAPTCHA, or a choice only you can make - and asks you on your own screen, then carries on in the tab you were already signed into. Free, MIT, any MCP client.">
   <meta name="twitter:image" content="https://browsermcp.dev/og-image.jpg">
   <meta name="twitter:image:alt" content="Browser MCP by Agent360 - drive your real logged-in Chrome from any AI agent">
   <link rel="icon" type="image/svg+xml" href="/logo.svg">
@@ -254,7 +254,7 @@
 <section class="hero">
   <img src="/logo.svg" alt="Agent360 Browser MCP" class="hero-logo">
   <div class="badge">Open Source · MIT License · Free</div>
-  <h1>Browser MCP drives your real Chrome.<br><span>Works where headless dies.</span></h1>
+  <h1>Browser MCP drives your real Chrome.<br><span>And when it needs you, it asks.</span></h1>
   <p class="sub"><b>Browser MCP</b> is a free, open-source MCP server and Chrome extension that gives your AI agent your real, already-logged-in Chrome - cookies, sessions, 2FA - and works on login-gated sites where headless tools get blocked. It can even read an emailed login code from your Gmail tab and finish the sign-in. Works with Claude Code, Cursor, and VS Code agent mode. MIT, free, runs on your machine.</p>
 </section>
 
@@ -428,13 +428,13 @@
       <tr>
         <td>Browser</td>
         <td>Your real Chrome</td>
-        <td>Persistent profile, one instance at a time</td>
+        <td>Own profile by default; your real Chrome via their extension</td>
         <td>Your real Chrome</td>
       </tr>
       <tr>
         <td>Already logged in</td>
         <td><span class="check">Yes</span></td>
-        <td><span class="cross">No</span></td>
+        <td><span class="check">Yes, in extension mode</span></td>
         <td><span class="check">Yes</span></td>
       </tr>
       <tr>
@@ -446,7 +446,7 @@
       <tr>
         <td>Multi-session</td>
         <td><span class="check">20 concurrent</span></td>
-        <td><span class="cross">Single</span></td>
+        <td><span class="check">One tab group per client</span></td>
         <td>Not documented</td>
       </tr>
       <tr>
@@ -464,7 +464,7 @@
       <tr>
         <td>Tool count</td>
         <td><span class="check">40</span></td>
-        <td>69</td>
+        <td>73</td>
         <td>Not published</td>
       </tr>
       <tr>
