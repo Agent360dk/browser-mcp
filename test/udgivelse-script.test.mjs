@@ -578,3 +578,26 @@ test('pre-flight siger fra naar noeglen er ved at udloebe', () => {
   assert.match(blok, /NPM_UDLOEB < 0/, 'en allerede udloebet noegle stopper ikke koerslen');
   assert.match(blok, /gate /, 'en udloebet noegle giver kun en advarsel, ikke en spaerre');
 });
+
+test('det kolde tjek maa ikke doe paa en tom timeout-array', () => {
+  // MAALT 19/9 under udgivelsen af 1.29.2: maskinen har ingen timeout(1), saa TIMEOUT_CMD
+  // blev en TOM array - og "${TIMEOUT_CMD[@]}" fejler med "unbound variable" under `set -u`
+  // paa macOS' bash 3.2, hvor tom og usat er samme ting. Seks forsoeg, seks syntaksfejl, og
+  // saa konklusionen "den udgivne pakke svarede ikke" med en opfordring til at afpublicere
+  // en pakke der virkede. Det SIDSTE vaern foer en tilbagerulning var selv i stykker.
+  const s = script();
+  // Den SIKRE form indeholder selv den usikre streng, saa et bart doesNotMatch ville
+  // vaere roedt paa den rigtige kode. Tael i stedet: hver forekomst skal vaere vogtet.
+  const alle = (s.match(/"\$\{TIMEOUT_CMD\[@\]\}"/g) || []).length;
+  const vogtede = (s.match(/\$\{TIMEOUT_CMD\[@\]\+"\$\{TIMEOUT_CMD\[@\]\}"\}/g) || []).length;
+  assert.ok(vogtede >= 1, 'den sikre udvidelse mangler helt');
+  assert.equal(alle, vogtede,
+    'en uvogtet udvidelse af TIMEOUT_CMD er tilbage - det kolde tjek dropper ud paa enhver ' +
+    'maskine uden timeout(1), praecis som det gjorde 19/9');
+
+  // Og egenskaben, ikke bare formuleringen: koer begge former i en rigtig bash.
+  const koer = (udtryk) => spawnSync('bash', ['-c',
+    `set -euo pipefail; A=(); echo ok | ${udtryk} cat`], { encoding: 'utf8' });
+  assert.notEqual(koer('"${A[@]}"').status, 0, 'bash er holdt op med at fejle paa den gamle form - saa maaler proeven intet');
+  assert.equal(koer('${A[@]+"${A[@]}"}').status, 0, 'den sikre form virker ikke i denne bash');
+});

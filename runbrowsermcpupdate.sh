@@ -615,11 +615,17 @@ else
   if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD=(timeout 90)
   elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD=(gtimeout 90)
   else TIMEOUT_CMD=(); warn "ingen timeout(1) paa maskinen - det kolde tjek kan haenge"; fi
+  # MAALT 19/9 ved udgivelsen af 1.29.2: en TOM bash-array udvidet som "${ARR[@]}" fejler med
+  # "unbound variable" under `set -u` paa macOS' bash 3.2 - tom og usat er samme ting der.
+  # Resultatet var at det kolde tjek aldrig koerte paa denne maskine: seks forsoeg, seks
+  # syntaksfejl, og saa konklusionen "den udgivne pakke svarede ikke" - med en opfordring til
+  # at afpublicere en pakke der virkede fint. Det sidste vaern foer en tilbagerulning var
+  # selv i stykker. `${ARR[@]+"${ARR[@]}"}` udvider kun hvis arrayen er sat.
   for forsoeg in 1 2 3 4 5 6; do
     KOLD_HJEM="$(mktemp -d)"
     say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, forsoeg ${forsoeg}/3)"
     KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
-      | HOME="$KOLD_HJEM" "${TIMEOUT_CMD[@]}" npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
+      | HOME="$KOLD_HJEM" ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
     if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
       KOLD_OK=1; rm -rf "$KOLD_HJEM" 2>/dev/null || true; break
     fi
