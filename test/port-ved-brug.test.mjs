@@ -15,6 +15,7 @@
  * Testen bruger sit EGET portspaend via env, saa den ikke beslaglaegger de rigtige porte
  * og sulter brugerens oevrige chats mens den koerer.
  */
+import { createServer } from 'node:net';
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -29,7 +30,35 @@ const SRV = fileURLToPath(new URL('../mcp-server/index.js', import.meta.url));
 //
 // Spaendet udledes nu af processens eget pid, saa to koersler aldrig deler porte. Fem
 // porte er stadig nok til at fylde spaendet hurtigt, som er hele pointen med proeven.
-const BASE = 19000 + (process.pid % 900) * 8;
+// MAALT 19/9 igen: pid-afledningen var ikke nok. Efterladte server-processer fra tidligere
+// koersler holder stadig porte (Fable maalte 30 samtidige `index.js` paa maskinen), og to pid
+// med samme rest rammer samme spaend. Proeven faldt derfor paa uaendret kode - to gange.
+//
+// Nu VAELGES et spaend der beviseligt er frit: vi binder de fem porte selv, slipper dem igen,
+// og bruger dem. Et spaend vi lige har kunnet binde, kan vi ogsaa binde om et oejeblik.
+// Det er ikke vandtaet - en anden proces kan naa at tage dem i mellemtiden - men det fjerner
+// den faktiske aarsag: at spaendet var optaget FOER proeven overhovedet begyndte.
+// ⛔ Foerste udgave af den her funktion var teater: den kaldte `listen()` i en try/catch,
+// men net-modulet KASTER ikke paa en optaget port - det udsender en `error`-haendelse. Loekken
+// «lykkedes» derfor altid, og spaendet var lige saa ubevist som foer. Nu ventes der paa
+// svaret, saa en optaget port faktisk kan ses.
+async function ledigPort(port) {
+  return new Promise((ok) => {
+    const s = createServer();
+    s.once('error', () => ok(false));
+    s.once('listening', () => s.close(() => ok(true)));
+    s.listen(port, '127.0.0.1');
+  });
+}
+async function ledigtSpaend(forsoeg = 40) {
+  for (let i = 0; i < forsoeg; i++) {
+    const base = 19000 + Math.floor(Math.random() * 900) * 8;
+    const svar = await Promise.all([0, 1, 2, 3, 4].map((n) => ledigPort(base + n)));
+    if (svar.every(Boolean)) return base;
+  }
+  throw new Error('fandt intet frit portspaend paa 40 forsoeg');
+}
+const BASE = await ledigtSpaend();
 const MAX = BASE + 4;
 const ENV = { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) };
 
