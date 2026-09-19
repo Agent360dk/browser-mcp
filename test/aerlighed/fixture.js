@@ -86,3 +86,24 @@
     return r;
   };
 })();
+
+// ── Filfelt - tredje sag ──────────────────────────────────────────────────────
+// Her er spoergsmaalet et andet: `DOM.setFileInputFiles` er den ANDEN af de praecis to
+// CDP-kommandoer der kvitterer uden at love levering (den foerste er Input.*). Det var
+// derfor upload_file og drop_file stod paa listen over de ni i 1.29.2. Siden foerer
+// protokol over hvad feltet FAKTISK endte med at baere.
+(function () {
+  var f = document.getElementById('fil');
+  var vis = document.getElementById('filnavn');
+  f.addEventListener('change', function (e) {
+    window.__hoert.push({ type: 'change-fil', isTrusted: e.isTrusted });
+    vis.textContent = f.files && f.files.length ? f.files[0].name : 'ingen';
+  });
+  var gammel = window.__rapport;
+  window.__rapport = function () {
+    var r = gammel();
+    r.fil_antal = f.files ? f.files.length : 0;
+    r.fil_navn = f.files && f.files.length ? f.files[0].name : '';
+    return r;
+  };
+})();

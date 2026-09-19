@@ -99,7 +99,9 @@ Ask what it measured. A tool that reports success because the command was accept
 Because a wrongly reported failure is expensive in its own way: the agent repeats the action, and an Enter that already submitted the form submits it twice. That is why the third answer - unknown - exists.
 
 **Do other browser automation tools have this bug?**
-We measured, on 19 September 2026, and the answer is no - not on either of the two cases we could put to all three identically. A controlled field and a controlled `<select>`, driven by each tool, with the page recording what the component actually heard. Six measurements, no lies: Playwright MCP landed both; Chrome DevTools MCP refused both and said exactly why; we landed the field and honestly failed the select. The harness is in the repo at `test/aerlighed/` and you can run it yourself.
+We measured, on 19 September 2026, and the answer is no - not on any of the three cases we could put to all three identically. A controlled field, a controlled `<select>` and a file input, driven by each tool, with the page recording what it actually received. Nine measurements, no lies: Playwright MCP landed all three; Chrome DevTools MCP refused all three and said exactly why; we landed the field and the file, and honestly failed the select.
+
+One of Chrome DevTools' refusals is worth separating out. Its file upload failed with *"Access denied: path"* - a containment guard, not a missing capability. We have the same guard, and it rejected our own first attempt. Playwright uploaded from that path without comment. Two of three restrict where a file may come from; that is a real difference, and it is not ours alone. The harness is in the repo at `test/aerlighed/` and you can run it yourself.
 
 The uncomfortable line in that table is ours. On the controlled select - the exact case this whole release came from - Playwright lands the choice and we do not. We answer honestly, which is better than the false yes we used to give, but honest and working are not the same thing.
 

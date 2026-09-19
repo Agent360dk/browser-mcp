@@ -25,8 +25,16 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFileSync } from 'node:fs';
 
 const her = dirname(fileURLToPath(import.meta.url));
+// Proevefilen skrives friskt hver koersel, saa maalingen ikke afhaenger af noget paa disken.
+// MAALT 19/9: den laa foerst i tmpdir(), og VORES eget vaerktoej afviste den - "filen skal
+// ligge inden for arbejdsmappen". Det er en indeslutnings-vagt, ikke en mangel, og at maale
+// den som et nej ville have vaeret en loegn om os selv. Filen ligger nu i repoet, saa alle
+// tre faar samme proeve. Om de andre HAR den vagt, er sin egen maaling - se RESULTAT-filen.
+const PROEVEFIL = join(her, 'proevefil.txt');
+writeFileSync(PROEVEFIL, 'aerligheds-maaling\n');
 const VENT_START = Number(process.env.AERLIGHED_START_MS || 30000);
 const VENT_KALD = Number(process.env.AERLIGHED_KALD_MS || 25000);
 
@@ -84,6 +92,7 @@ export const DELTAGERE = {
     navigate: (u) => ['browser_navigate', { url: u }],
     fyld: (v) => ['browser_fill', { selector: '#styret', value: v }],
     vaelg: () => ['browser_select_option', { selector: '#valg', option: 'b' }],
+    upload: (sti) => ['browser_upload_file', { selector: '#fil', files: [sti] }],
     evaluer: (js) => ['browser_execute_script', { script: js }],
   },
   playwright: {
@@ -96,6 +105,12 @@ export const DELTAGERE = {
     // anmodning er vaerdiloes. browser_type er det naermeste modstykke til vores fill.
     fyld: (v) => ['browser_type', { element: 'styret felt', target: '#styret', text: v }],
     vaelg: () => ['browser_select_option', { element: 'styret select', target: '#valg', values: ['b'] }],
+    // MAALT 19/9: Playwrights model er en anden. `browser_file_upload` svarer paa en AABEN
+    // fil-vaelger, ikke paa en selector ("If omitted, file chooser is cancelled"), saa den
+    // skal have et klik paa feltet foerst. Uden det maaler vi vores egen misforstaaelse.
+    foerUpload: (kald) => kald('tools/call', { name: 'browser_click',
+      arguments: { element: 'filfelt', target: '#fil' } }),
+    upload: (sti) => ['browser_file_upload', { paths: [sti] }],
     evaluer: (js) => ['browser_evaluate', { function: `() => { return ${js}; }` }],
   },
   devtools: {
@@ -125,10 +140,17 @@ export const DELTAGERE = {
       const um = linje.match(/uid=?["']?([\w_-]+)/i) || linje.match(/^\s*([\w_-]+)\b/);
       const sl = t.split('\n').find((l) => /valg|select|combobox/i.test(l)) || '';
       const sm = sl.match(/uid=?["']?([\w_-]+)/i) || sl.match(/^\s*([\w_-]+)\b/);
-      return { pageId, uid: um ? um[1] : null, selectUid: sm ? sm[1] : null, snapshot: t.slice(0, 200) };
+      const fl = t.split('\n').find((l) => /\bfil\b|file/i.test(l)) || '';
+      const fm = fl.match(/uid=?["']?([\w_-]+)/i) || fl.match(/^\s*([\w_-]+)\b/);
+      return { pageId, uid: um ? um[1] : null, selectUid: sm ? sm[1] : null,
+               filUid: fm ? fm[1] : null, snapshot: t.slice(0, 200) };
     },
     fyld: (v, h) => ['fill', { pageId: h?.pageId ?? 0, uid: h?.uid || 'styret', value: v }],
     vaelg: (h) => ['fill', { pageId: h?.pageId ?? 0, uid: h?.selectUid || 'valg', value: 'b' }],
+    // MAALT 19/9: feltet hedder `filePaths` (flertal, liste). Tredje adapter-fejl af samme
+    // klasse i denne maaling - `ref` mod `target`, manglende `pageId`, og nu det her. Hver
+    // gang ville et forkert kald have givet et resultat OM konkurrenten, maalt paa min fejl.
+    upload: (sti, h) => ['upload_file', { pageId: h?.pageId ?? 1, uid: h?.filUid || 'fil', filePaths: [sti] }],
     evaluer: (js, h) => ['evaluate_script', { pageId: h?.pageId ?? 0, function: `() => { return ${js}; }` }],
   },
 };
@@ -197,10 +219,34 @@ async function maalEn(noegle, url) {
       selectDom = r2 ? dom(!vFejl, vUvist, r2.select_tilstand === 'b') : 'KUNNE-IKKE-LAESES';
     }
 
+    // Sag 3: filfelt. DOM.setFileInputFiles er den ANDEN CDP-kommando der kvitterer uden
+    // at love levering - derfor stod upload paa listen over de ni i 1.29.2.
+    let uploadDom = 'SPRUNGET', uploadSagde = '';
+    if (d.upload) {
+      if (d.foerUpload) { await d.foerUpload(k.kald).catch(() => {}); }
+      const [un, ua] = d.upload(PROEVEFIL, handtag);
+      const up = await k.kald('tools/call', { name: un, arguments: ua });
+      const uT = tekst(up);
+      const uFejl = !!up?.error || up?.result?.isError === true || /\berror\b|failed|kunne ikke/i.test(uT);
+      const uUvist = /uvist|unverified|maaske_landet|uverificeret/i.test(uT);
+      const [en3, ea3] = d.evaluer('JSON.stringify(window.__rapport ? window.__rapport() : null)', handtag);
+      const rap3 = await k.kald('tools/call', { name: en3, arguments: ea3 });
+      const raa3 = tekst(rap3);
+      let r3 = null;
+      for (const kand of [raa3, raa3.replace(/\\"/g, '"')]) {
+        const m3 = kand.match(/\{[^{}]*"fil_antal"[^{}]*\}/) || kand.match(/\{.*"fil_antal".*\}/s);
+        if (m3) { try { r3 = JSON.parse(m3[0]); break; } catch {} }
+      }
+      uploadDom = r3 ? dom(!uFejl, uUvist, r3.fil_antal > 0) : 'KUNNE-IKKE-LAESES';
+      uploadSagde = uT.replace(/\s+/g, ' ').slice(0, 130);
+    }
+
     return {
       navn: d.navn,
       dom: dom(!fejlede, uvist, hoerte),
       dom_select: selectDom,
+      dom_upload: uploadDom,
+      upload_sagde: uploadSagde,
       dom_viser: r.dom, komponenten_ved: r.tilstand, haendelser: r.hoert, betroede: r.betroet,
       vaerktoejet_sagde: svarTekst.replace(/\s+/g, ' ').slice(0, 150),
     };
@@ -218,8 +264,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       continue;
     }
     const r = await maalEn(n, url);
-    console.log(`  ${r.navn.padEnd(30)} fyld: ${(r.dom||'-').padEnd(18)} select: ${r.dom_select || '-'}`);
-    for (const [k, v] of Object.entries(r)) if (!['navn','dom','dom_select'].includes(k)) console.log(`      ${k}: ${v}`);
+    console.log(`  ${r.navn.padEnd(28)} fyld: ${(r.dom||'-').padEnd(16)} select: ${(r.dom_select||'-').padEnd(16)} upload: ${r.dom_upload || '-'}`);
+    for (const [k, v] of Object.entries(r)) if (!['navn','dom','dom_select','dom_upload'].includes(k)) console.log(`      ${k}: ${v}`);
   }
   s.close();
   console.log('\n  LOEGN = vaerktoejet sagde ja, og komponenten hoerte intet.');
