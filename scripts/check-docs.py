@@ -66,7 +66,9 @@ ANDRE = re.compile(r'playwright|chrome devtools mcp|mcp-chrome|browsermcp\.io|pu
 # praecis det sted hvor vores eget forkerte tal stod. Nu springes kun de tal over der er
 # verificeret som andres. Kommer der et nyt, fejler gaten én gang og tallet skrives her.
 KONKURRENT_TAL = {
-    73,   # microsoft/playwright-mcp, genoptalt 2026-09-19 (unikke browser_*-navne i deres README)
+    72,   # microsoft/playwright-mcp, genoptalt 2026-09-19 EFTER at vagten fyrede: de fjernede
+          # browser_webmcp_call + browser_webmcp_list og tilfoejede browser_emulate_media samme dag
+    73,   # samme, foer den aendring - beholdt saa gamle henvisninger ikke bliver falsk roede
     52,   # ChromeDevTools/chrome-devtools-mcp
     19,   # yolo-chrome-mcp (SeedX), verificeret 2026-09-08
     29,   # chrome-devtools-mcp's egen "29 tools"-formulering i deres README

@@ -6,9 +6,9 @@
 
 ---
 
-**Short answer:** for almost everything, use **Playwright MCP**. It is the category default for good reasons: 73 documented tools, 5.97M npm downloads/week, backed by Microsoft, and a release every few weeks (v0.0.78 through v0.0.81, July-September 2026; all checked 2026-09-19). It also ships a Chrome extension that drives the browser you are already signed into - so **"it uses your real logged-in Chrome" is no longer a reason to pick us**, and this page used to say otherwise.
+**Short answer:** for almost everything, use **Playwright MCP**. It is the category default for good reasons: 72 documented tools, 5.97M npm downloads/week, backed by Microsoft, and a release every few weeks (v0.0.78 through v0.0.81, July-September 2026; all checked 2026-09-19). It also ships a Chrome extension that drives the browser you are already signed into - so **"it uses your real logged-in Chrome" is no longer a reason to pick us**, and this page used to say otherwise.
 
-One difference is left, and it is the only one we will defend: **their 73 tools contain nothing that can stop mid-run and ask you for something.** No 2FA code, no CAPTCHA hand-off, no "which of these three accounts did you mean". That is not an oversight - Playwright MCP grew out of a testing tool, and a test that asks for help is a failed test. **Browser MCP** is built the other way round: `browser_ask_user` pauses, asks you on your own screen, and continues in the tab you were already signed into.
+One difference is left, and it is the only one we will defend: **their 72 tools contain nothing that can stop mid-run and ask you for something.** No 2FA code, no CAPTCHA hand-off, no "which of these three accounts did you mean". That is not an oversight - Playwright MCP grew out of a testing tool, and a test that asks for help is a failed test. **Browser MCP** is built the other way round: `browser_ask_user` pauses, asks you on your own screen, and continues in the tab you were already signed into.
 
 ## The architectural difference (everything else follows from it)
 
@@ -39,7 +39,7 @@ Partly, and it is fair to say so: Playwright MCP has an opt-in `--extension` fla
 - CI/CD pipelines and scheduled jobs - headless, reproducible, no human's browser involved
 - Test suites and scraping that benefit from parallel isolated instances
 - Anything on infrastructure (serverless, containers) rather than a workstation
-- When you want the largest tool surface (73 tools incl. PDF, vision, network interception)
+- When you want the largest tool surface (72 tools incl. PDF, vision, network interception)
 
 We list these plainly in [When NOT to use Browser MCP](/docs/when-not-to-use/) - they are the same list.
 

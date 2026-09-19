@@ -78,6 +78,7 @@
       "browser_cookie_set",
       "browser_drag",
       "browser_drop",
+      "browser_emulate_media",
       "browser_evaluate",
       "browser_file_upload",
       "browser_fill_form",
@@ -137,9 +138,7 @@
       "browser_video_chapter",
       "browser_video_hide_actions",
       "browser_video_show_actions",
-      "browser_wait_for",
-      "browser_webmcp_call",
-      "browser_webmcp_list"
+      "browser_wait_for"
     ]
   },
   "playwright-udvidelse": {

@@ -181,7 +181,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | Browser | Your real Chrome, always | Its own browser by default. Your real Chrome too, via their Chrome extension |
 | Logins/cookies | Your existing session | A persistent profile keeps logins between runs, or your own session via their extension |
 | 2FA / CAPTCHA-gated sites | Works, and `browser_ask_user` can ask you for the code mid-run | Reachable in extension mode, but nothing can ask you for a code |
-| Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 73 tools, none of which can ask the person anything (checked 2026-09-19) |
+| Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 72 tools, none of which can ask the person anything (checked 2026-09-19) |
 | Several agents at once | 20 concurrent, color-coded tab groups | Also supported via their extension: one tab group per connected client |
 | Install | Config block above | `npx @playwright/mcp` |
 

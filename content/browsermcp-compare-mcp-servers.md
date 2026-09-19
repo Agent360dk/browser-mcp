@@ -44,7 +44,7 @@ Every tool on this page loses somewhere. Playwright MCP is the wrong tool if the
 ## FAQ
 
 **Which MCP server should I use for browser automation in CI?**
-Playwright MCP - managed profiles, headless mode, 73 documented tools, and the scale evidence of 5.97M weekly npm downloads (2026-09-19). It also ships a Chrome extension for using your own logged-in browser, so that is no longer a reason to pick us over it.
+Playwright MCP - managed profiles, headless mode, 72 documented tools, and the scale evidence of 5.97M weekly npm downloads (2026-09-19). It also ships a Chrome extension for using your own logged-in browser, so that is no longer a reason to pick us over it.
 
 **Which MCP server can use my existing Chrome logins?**
 The two "Browser MCP" projects drive your real Chrome by default. Of the two, only Browser MCP by Agent360 has shipped code since April 2025 (checked 2026-07-21).
