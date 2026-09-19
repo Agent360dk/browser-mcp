@@ -694,6 +694,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - browser_fill with afviger: true means the field shows something other than what you typed; read faktisk. uaendret: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check faktisk before moving on
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
+- **If the thing being asked for is not in a web page at all** - a desktop application, an OS-level dialog, the native file picker, a menu bar - then no browser tool can reach it, and neither can this one. Say so plainly. If you also have desktop-level tools available in this session (for example an OS automation MCP server such as computer-mcp), that is the right tool for that step; hand it over instead of retrying here. Do not claim this applies to an ordinary page problem: a background tab, a React-controlled field or a CAPTCHA are all solved by the tools above
 
 ## Extension updates
 The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.

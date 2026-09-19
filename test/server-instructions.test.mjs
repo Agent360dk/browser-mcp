@@ -116,3 +116,28 @@ test('instruktionerne lover ikke at serveren henter kode fra git', () => {
   assert.match(blok, /## Extension updates[\s\S]*npm[\s\S]*chrome:\/\/extensions/,
     'afsnittet om opdateringer skal forklare den rigtige vej: npm-versionen og genindlaesning i chrome://extensions');
 });
+
+// ── Naar svaret aerligt er «det her sker ikke i en browser» ─────────────────
+// Gustav 19/9: naar Browser MCP rammer en vaeg, skal brugeren kunne komme videre med et
+// skrivebords-vaerktoej. Foerste forslag var en pop-up i udvidelsen. MAALT foerst: af de
+// 26 vaegge vaerktoejerne svarer med, loeser et skrivebords-vaerktoej ÉN familie - filvaelgeren.
+// Baggrundsfane, React-styret felt, CAPTCHA, CSP og arbejdsmappe-spaerren loeser vi selv.
+// En pop-up paa enhver vaeg ville altsaa vaere usand i naesten alle de tilfaelde den fyrede i.
+//
+// Derfor staar henvisningen i instruktionen i stedet, betinget og med sin egen afgraensning:
+// den gaelder KUN naar det oenskede slet ikke er i en webside. Agenten kan selv se om den har
+// skrivebords-vaerktoejer, saa den behoever ikke spoerge - og der er ingen reklame i et svar.
+test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er sandt', () => {
+  const iStart = kilde.indexOf('## When things fail');
+  const blok = kilde.slice(iStart, kilde.indexOf('`;', iStart));
+  assert.match(blok, /not in a web page at all/,
+    'der er ingen linje om det der slet ikke sker i en browser');
+  assert.match(blok, /computer-mcp/, 'der peges ikke paa et konkret skrivebords-vaerktoej');
+  // Afgraensningen er ikke pynt: uden den bliver henvisningen et svar paa enhver vaeg.
+  const iLinje = blok.indexOf('not in a web page at all');
+  const linje = blok.slice(iLinje, blok.indexOf('\n', iLinje));
+  assert.match(linje, /background tab|React|CAPTCHA/,
+    'linjen siger ikke hvad den IKKE gaelder - saa vil den blive brugt paa almindelige side-problemer');
+  assert.match(linje, /If you also have|if you also have/,
+    'henvisningen er ikke betinget af at agenten faktisk HAR skrivebords-vaerktoejer');
+});
