@@ -19,6 +19,7 @@ PAGES=[
  ('browsermcp-docs-install-copilot.md','Docs','Install for Copilot','/docs/install-copilot'),
  ('browsermcp-docs-install-zed.md','Docs','Install for Zed','/docs/install-zed'),
  ('browsermcp-docs-install-kiro.md','Docs','Install for Kiro','/docs/install-kiro'),
+ ('browsermcp-docs-install-windsurf.md','Docs','Install for Windsurf','/docs/install-windsurf'),
  ('browsermcp-docs-install-continue.md','Docs','Install for Continue.dev','/docs/install-continue'),
  ('browsermcp-docs-install-zcode.md','Docs','ZCode','/docs/install-zcode'),
  ('browsermcp-docs-what-is-browser-mcp.md','Docs','What is Browser MCP','/docs/what-is-browser-mcp'),
@@ -341,6 +342,44 @@ for fn,grp,label,url in LIVE:
 # MAALT 11/9 (SEO-teamet, curl 404): llms-install.md - installationsvejledningen som AI-assistenter laeser - laa i
 # repo-roden og blev aldrig lagt paa sitet. Den kopieres nu hertil ved hver genbygning, saa roden er eneste kilde,
 # og docs-gatens regen-diff fanger en kopi der er kommet ud af takt.
+# ── sitemap.xml ─────────────────────────────────────────────────────────────
+# MAALT 19/9: sitemappet blev vedligeholdt i haanden, og elleve sider der blev skrevet 19/9
+# stod med `lastmod` 2026-08-22 - altsaa AELDRE end de var. Google bruger lastmod til at
+# beslutte hvornaar der skal crawles igen, saa en for gammel dato arbejder direkte imod det
+# sitemappet er der for. Datoen kommer nu fra filens seneste commit, som resten af siden.
+#
+# De to sider der ikke har en markdown-kilde, staar her - og kun her.
+FASTE_URLS = [
+    ('https://browsermcp.dev/', 'weekly', '1.0', 'index.html'),
+    ('https://browsermcp.dev/privacy.html', 'yearly', '0.3', 'privacy.html'),
+]
+
+def _fast_dato(relsti):
+    try:
+        r = subprocess.run(['git','log','-1','--format=%ad','--date=short','--',os.path.join(REPO, relsti)],
+                           capture_output=True, text=True, timeout=10,
+                           cwd=os.path.dirname(os.path.abspath(__file__)))
+        return (r.stdout.strip() or TODAY)
+    except Exception:
+        return TODAY
+
+_sm = ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+for _loc, _freq, _pri, _sti in FASTE_URLS:
+    _sm.append('  <url><loc>%s</loc><lastmod>%s</lastmod><changefreq>%s</changefreq><priority>%s</priority></url>'
+               % (_loc, _fast_dato(_sti), _freq, _pri))
+for _fn, _grp, _label, _url in LIVE:
+    # En noindex-side hoerer ikke hjemme i sitemappet - det ville fortaelle Google to
+    # modsatte ting om samme adresse. Det haandhaever docs-gaten begge veje, og det
+    # haandholdte sitemap havde praecis den fejl staaende.
+    if _url in NOINDEX:
+        continue
+    _sm.append('  <url><loc>https://browsermcp.dev%s/</loc><lastmod>%s</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>'
+               % (_url, git_datoer(_fn)[1]))
+_sm.append('</urlset>')
+open(REPO + 'sitemap.xml', 'w').write('\n'.join(_sm) + '\n')
+print('  sitemap.xml: %d adresser, lastmod fra sidste commit (%d noindex holdt ude)'
+      % (len(FASTE_URLS) + len(LIVE) - len(NOINDEX), len(NOINDEX)))
+
 _llms_kilde = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'llms-install.md')
 open(REPO + 'llms-install.md', 'w').write(open(_llms_kilde).read())
 print('Regenerated %d pages · FAQPage schema on %d' % (len(LIVE), nfaq))
