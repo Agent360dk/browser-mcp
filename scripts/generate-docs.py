@@ -33,6 +33,8 @@ PAGES=[
  ('browsermcp-compare-mcp-servers.md','Compare','All servers compared','/compare/browser-automation-mcp-servers'),
  ('browsermcp-compare-mcp-chrome.md','Compare','vs mcp-chrome','/compare/mcp-chrome'),
  ('browsermcp-usecase-claude-code-loginvaeg.md','Use cases','Claude Code + login wall','/use-cases/claude-code-login-wall'),
+ ('browsermcp-usecase-cursor-captcha.md','Use cases','Cursor + CAPTCHA','/use-cases/cursor-captcha'),
+ ('browsermcp-usecase-vscode-samtidige.md','Use cases','VS Code + concurrent sessions','/use-cases/vscode-concurrent-sessions'),
  ('browsermcp-usecase-codex-2fa.md','Use cases','Codex + 2FA','/use-cases/codex-2fa'),
  ('browsermcp-usecase-2fa-gmail.md','Use cases','Read a 2FA code from Gmail','/use-cases/read-2fa-from-gmail'),
  ('browsermcp-usecase-concurrent-sessions.md','Use cases','Concurrent sessions','/use-cases/concurrent-sessions'),

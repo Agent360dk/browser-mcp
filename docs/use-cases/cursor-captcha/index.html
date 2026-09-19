@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cursor and CAPTCHAs: it tries, then hands it to you &middot; Browser MCP</title>
+<meta name="description" content="Cursor hits a CAPTCHA and the run dies. Browser MCP attempts the checkbox, and when that is not enough it shows you the challenge and carries on after…">
+<link rel="canonical" href="https://browsermcp.dev/use-cases/cursor-captcha/">
+<link rel="icon" type="image/svg+xml" href="/logo.svg"><link rel="icon" type="image/x-icon" href="/favicon.ico">
+<meta property="og:type" content="article"><meta property="og:site_name" content="Browser MCP">
+<meta property="og:title" content="Cursor and CAPTCHAs: it tries, then hands it to you">
+<meta property="og:description" content="Cursor hits a CAPTCHA and the run dies. Browser MCP attempts the checkbox, and when that is not enough it shows you the challenge and carries on after…">
+<meta property="og:url" content="https://browsermcp.dev/use-cases/cursor-captcha/">
+<meta property="og:image" content="https://browsermcp.dev/og-image.jpg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cursor and CAPTCHAs: it tries, then hands it to you">
+<meta name="twitter:description" content="Cursor hits a CAPTCHA and the run dies. Browser MCP attempts the checkbox, and when that is not enough it shows you the challenge and carries on after…">
+<meta name="twitter:image" content="https://browsermcp.dev/og-image.jpg">
+<link rel="stylesheet" href="/assets/docs.css">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://browsermcp.dev/"}, {"@type": "ListItem", "position": 2, "name": "Use cases", "item": "https://browsermcp.dev/compare/browsermcp-io/"}, {"@type": "ListItem", "position": 3, "name": "Cursor and CAPTCHAs: it tries, then hands it to you", "item": "https://browsermcp.dev/use-cases/cursor-captcha/"}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "TechArticle", "headline": "Cursor and CAPTCHAs: it tries, then hands it to you", "description": "Cursor hits a CAPTCHA and the run dies. Browser MCP attempts the checkbox, and when that is not enough it shows you the challenge and carries on after…", "url": "https://browsermcp.dev/use-cases/cursor-captcha/", "datePublished": "2026-09-19", "dateModified": "2026-09-19", "author": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "publisher": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "about": {"@type": "SoftwareApplication", "name": "Browser MCP", "applicationCategory": "DeveloperApplication", "operatingSystem": "Chrome", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does it solve CAPTCHAs for me?", "acceptedAnswer": {"@type": "Answer", "text": "It attempts the checkbox. Anything harder, it hands to you. We are not a solving service and do not use one."}}, {"@type": "Question", "name": "Do you send the challenge anywhere?", "acceptedAnswer": {"@type": "Answer", "text": "No. The server is local, there is no account and no telemetry. The challenge stays in your browser."}}, {"@type": "Question", "name": "Can I skip the attempt and just be asked straight away?", "acceptedAnswer": {"@type": "Answer", "text": "Yes - call browser_ask_user yourself, or tell the agent to show you the page instead of trying."}}, {"@type": "Question", "name": "Which other clients does this work with?", "acceptedAnswer": {"@type": "Answer", "text": "All of them. Claude Code, Codex, VS Code, Cline, Gemini CLI, Zed, Kiro, Continue.dev."}}]}</script>
+</head><body><div class="top"><div class="top-in"><a class="logo" href="/" style="color:inherit"><span class="m">&#10022;</span> Browser MCP</a><a class="star" href="https://github.com/Agent360dk/browser-mcp" style="color:inherit;text-decoration:none">GitHub &#8599;</a></div></div><div class="shell"><nav class="side"><div class="grp">Docs</div><a href="/docs/install-claude-code/">Claude Code</a><a href="/docs/install-codex/">Codex</a><a href="/docs/install-cursor/">Cursor</a><a href="/docs/install-vscode/">VS Code</a><a href="/docs/install-cline/">Install for Cline</a><a href="/docs/install-gemini-cli/">Install for Gemini CLI</a><a href="/docs/install-copilot/">Install for Copilot</a><a href="/docs/install-zed/">Install for Zed</a><a href="/docs/install-kiro/">Install for Kiro</a><a href="/docs/install-continue/">Install for Continue.dev</a><a href="/docs/install-zcode/">ZCode</a><a href="/docs/what-is-browser-mcp/">What is Browser MCP</a><a href="/docs/tools/">Tools</a><a href="/docs/uninstall/">Uninstall & data</a><a href="/docs/when-not-to-use/">When NOT to use</a><a href="/docs/capability-matrix/">What it can get past</a><a href="/docs/troubleshooting/">Troubleshooting</a><div class="grp">Compare</div><a href="/migrate/from-browsermcp-io/">Migrate from browsermcp.io</a><a href="/compare/browsermcp-io/">vs browsermcp.io</a><a href="/compare/playwright-mcp/">vs Playwright MCP</a><a href="/compare/browser-automation-mcp-servers/">All servers compared</a><a href="/compare/mcp-chrome/">vs mcp-chrome</a><div class="grp">Use cases</div><a href="/use-cases/claude-code-login-wall/">Claude Code + login wall</a><a href="/use-cases/cursor-captcha/" class="active">Cursor + CAPTCHA</a><a href="/use-cases/vscode-concurrent-sessions/">VS Code + concurrent sessions</a><a href="/use-cases/codex-2fa/">Codex + 2FA</a><a href="/use-cases/read-2fa-from-gmail/">Read a 2FA code from Gmail</a><a href="/use-cases/concurrent-sessions/">Concurrent sessions</a><div class="grp">Learn</div><a href="/learn/model-context-protocol/">Model Context Protocol</a><a href="/learn/what-is-an-mcp-server/">What is an MCP server</a><a href="/learn/check-if-ai-mentions-your-brand/">Check if AI mentions you</a><a href="/learn/browser-automation-react-forms/">Automating React forms</a><a href="/learn/tools-that-lie/">Tools that said yes</a></nav><main class="content"><h1 id="cursor-and-captchas-it-tries-then-hands-it-to-you">Cursor and CAPTCHAs: it tries, then hands it to you</h1>
+<hr>
+<p><b>The problem in one line:</b> the agent hits a CAPTCHA, and everything after it never happens.</p>
+<p>There is no honest way to automate past a challenge designed to stop automation. So we do not try to. The tool attempts the simple case, and where that is not enough it puts the challenge in front of you and waits.</p>
+<h2 id="what-it-looks-like">What it looks like</h2>
+<div class="code"><pre>You:     Pull the shipping rates from the carrier portal.
+
+Cursor:  [navigates, hits a CAPTCHA]
+         There&#x27;s a challenge on this page. I&#x27;ve brought the tab
+         forward - can you solve it?
+
+You:     [clicks the images, done]
+
+Cursor:  [continues in the same tab]
+         Rates are in - zone 3 went up 4% this month.</pre><button class="copy">Copy</button></div>
+<p><code>browser_solve_captcha</code> attempts the checkbox challenge. When the page escalates to images or a slider, it shows you the tab and waits. <code>browser_ask_user</code> is the same mechanism for anything else only a human can answer.</p>
+<h2 id="setting-it-up">Setting it up</h2>
+<p><b>1 - The Chrome extension.</b> <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">One click from the Chrome Web Store</a>.</p>
+<p><b>2 - The MCP server.</b> Add to <code>~/.cursor/mcp.json</code> (global) or <code>.cursor/mcp.json</code> (one project):</p>
+<div class="code"><pre>{
+  &quot;mcpServers&quot;: {
+    &quot;browser-mcp&quot;: {
+      &quot;command&quot;: &quot;npx&quot;,
+      &quot;args&quot;: [&quot;-y&quot;, &quot;@agent360/browser-mcp@latest&quot;]
+    }
+  }
+}</pre><button class="copy">Copy</button></div>
+<p>Full walkthrough: <a href="/docs/install-cursor/">Install for Cursor</a>.</p>
+<h2 id="what-we-will-not-tell-you">What we will not tell you</h2>
+<p><b>We publish no solve rate.</b> We have not benchmarked it rigorously enough to stand behind a number, and a number without a measurement behind it is worse than no number. What we can say is what the tool does: it tries the checkbox, and where that fails it asks you.</p>
+<p><b>It will not get you past a challenge that is working.</b> If a site has decided you look like a robot, the honest outcome is that you solve it yourself. The value here is that the run does not die - it pauses, you click, it continues in the same tab with the same session.</p>
+<h2 id="two-things-to-know-before-you-rely-on-it">Two things to know before you rely on it</h2>
+<p><b>The tab has to be in front for the challenge to reach you.</b> Chrome does not deliver mouse and keyboard to a tab that is not the visible one in its window, and the tool brings the tab forward before it asks. That is deliberate: the alternative is a prompt for a challenge you cannot see.</p>
+<p><b>Your session is what makes most of this unnecessary.</b> Many CAPTCHAs fire because a fresh headless browser looks like a bot. It is your real Chrome with your real profile, so on a lot of sites the challenge never appears. That is not a guarantee, and it is not unique to us - Playwright MCP's extension and Chrome DevTools MCP can also drive a signed-in browser.</p>
+<h2 id="frequently-asked-questions">Frequently asked questions</h2>
+<p><b>Does it solve CAPTCHAs for me?</b> It attempts the checkbox. Anything harder, it hands to you. We are not a solving service and do not use one.</p>
+<p><b>Do you send the challenge anywhere?</b> No. The server is local, there is no account and no telemetry. The challenge stays in your browser.</p>
+<p><b>Can I skip the attempt and just be asked straight away?</b> Yes - call <code>browser_ask_user</code> yourself, or tell the agent to show you the page instead of trying.</p>
+<p><b>Which other clients does this work with?</b> All of them. <a href="/docs/install-claude-code/">Claude Code</a>, <a href="/docs/install-codex/">Codex</a>, <a href="/docs/install-vscode/">VS Code</a>, <a href="/docs/install-cline/">Cline</a>, <a href="/docs/install-gemini-cli/">Gemini CLI</a>, <a href="/docs/install-zed/">Zed</a>, <a href="/docs/install-kiro/">Kiro</a>, <a href="/docs/install-continue/">Continue.dev</a>.</p><div class="related"><h2>Related</h2><ul><li><a href="/docs/install-claude-code/">Claude Code</a><span>Add Browser MCP to Claude Code</span></li><li><a href="/docs/what-is-browser-mcp/">What is Browser MCP</a><span>The concept, architecture, and how it works</span></li><li><a href="/docs/tools/">Tools</a><span>Full reference for all 40 browser tools</span></li></ul></div></main></div><script src="/assets/docs.js"></script></body></html>
