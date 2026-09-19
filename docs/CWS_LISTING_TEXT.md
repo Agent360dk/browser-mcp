@@ -268,3 +268,55 @@ Not urgent, and not something to fake. Worth one deliberate ask.
 - Do not put a hard tool count in the summary unless the matching npm version ships at the same
   time - the count belongs to the MCP server, not the extension, and the two halves drift apart the
   moment only one publishes. The stale "29" is exactly that drift, twice over.
+
+---
+
+# ⛔ MÅLT PÅ DEN LEVENDE LISTNING 19/9-2026 — fire usandheder står der stadig
+
+Audit'en ovenfor er fra 8/9. **Intet af den detaljerede beskrivelse er rettet siden.** Målt
+direkte på den offentlige butiksside i dag (973 brugere, 0 anmeldelser, v1.29.2):
+
+| Står live | Sandt | Hvorfor det betyder noget |
+|---|---|---|
+| «Restart Claude Code - **29 browser tools** are now available» | **40** | Summary-feltet siger 40. Listningen modsiger sig selv på samme side |
+| «Run **10 concurrent** AI sessions in one Chrome» | **20** | Portspændet 9876-9895 |
+| «Auto-clicks reCAPTCHA checkbox (**~80% pass rate** with Google login)» | **Umålt** | Tallet findes kun her. Ingen måling bag det, nogen steder. Succesrate-påstand om CAPTCHA i det ene område butikkens review behandler som følsomt |
+| «CAPTCHA SOLVING (**UNIQUE** - no other browser MCP has this)» | **Falsk** | Vores egen kapabilitets-tabel siger *Partly* om CAPTCHA, og «ingen andre har det» er en konkurrentpåstand vi ikke kan holde |
+
+## Paste-klar erstatning for de fire afsnit
+
+**Installations-linjen:**
+> 3. Restart your client - 40 browser tools are now available
+
+**Multi-session-linjen:**
+> • Run up to 20 concurrent AI sessions in one Chrome
+> • Each session gets its own colour-coded tab group
+
+**Hele CAPTCHA-afsnittet** (erstat blokken, inklusive overskriften):
+> CAPTCHA AND 2FA - THE PART OTHER TOOLS HAND BACK TO YOU:
+> • Detects reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, FunCaptcha
+> • Tries the reCAPTCHA checkbox first, which often clears it when you are signed in to Google
+> • Hands the image-grid case to the model to look at
+> • If it still cannot be solved, it asks you on your own screen and carries on in the same tab
+>
+> We publish no success rate, because we have not measured one. What the tool does is described
+> above; what it cannot do, it says out loud instead of reporting success.
+
+**Hvorfor ordlyden er ændret og ikke bare tallet:** «~80 %» var det eneste sted i hele produktet
+hvor vi opgav en succesrate uden måling bag. Et nyt tal ville være samme fejl i ny indpakning.
+Beskrivelsen af mekanikken er både sand og mere overbevisende - og den er den eneste af de fire
+rettelser der også fjerner en risiko i butikkens review.
+
+## Hvad der IKKE kan rettes herfra
+
+Listningen bor i CWS-dashboardet. Ingen commit og intet script rører den - heller ikke
+`publish:cws`, som kun uploader pakken. Det kræver login på
+<https://chrome.google.com/webstore/devconsole/> → Agent360 Browser MCP → Store listing.
+
+**Efterprøv efter rettelsen** med præcis denne kommando, som fandt fejlene:
+
+```
+curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" \
+  | python3 -c "import sys,re,html;t=html.unescape(re.sub(r'<[^>]+>',' ',sys.stdin.read()));t=re.sub(r'\s+',' ',t);
+print([n for n in ['29 browser tools','10 concurrent','pass rate','UNIQUE'] if n.lower() in t.lower()] or 'rent')"
+```
