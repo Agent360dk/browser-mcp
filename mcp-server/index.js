@@ -89,13 +89,13 @@ function advarOmKonflikt(conn) {
   // "kommandoer sendes kun til X" som om X var det rigtige valg.
   const kanVaelge = alle.some(c => c.version);
   process.stderr.write(
-    `[MCP] ADVARSEL: ${alle.length} Browser MCP-udvidelser er forbundet til denne server samtidig ` +
+    `[MCP] WARNING: ${alle.length} Browser MCP extensions are connected to this server at the same time ` +
     `(${alle.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
-    'De deler faner og sessions-tilstand, saa faner kan se ud til at forsvinde. ' +
+    'They share tabs and session state, so tabs can appear to vanish. ' +
     (kanVaelge
       ? `Kommandoer sendes kun til den nyeste (${aktiv?.extensionId}). `
-      : `Ingen af dem oplyser sin version, saa valget (${aktiv?.extensionId}) er vilkaarligt og kan skifte. `) +
-    'Ret det ved at slaa alle paa naer én fra paa chrome://extensions.\n',
+      : `None of them reports its version, so the choice (${aktiv?.extensionId}) is arbitrary and can change. `) +
+    'Fix it by disabling all but one on chrome://extensions.\n',
   );
 }
 
@@ -319,8 +319,8 @@ function createWSS(port = BASE_PORT) {
         // hverken kan saette version, navn eller aftryk paa forbindelsen.
         if (PARRINGSNOEGLE && !noegleMatcher(msg.noegle, PARRINGSNOEGLE)) {
           process.stderr.write(
-            '[MCP] Afviste en udvidelse uden den rigtige parringsnoegle. ' +
-            'Saet samme noegle i udvidelsens popup som i BROWSER_MCP_TOKEN.\n',
+            '[MCP] Rejected an extension without the correct pairing key. ' +
+            'Set the same key in the extension popup as in BROWSER_MCP_TOKEN.\n',
           );
           try { ws.send(JSON.stringify({ type: 'parring', ok: false })); } catch { /* lukket */ }
           try { ws.close(4003, 'parringsnoegle'); } catch { /* lukket */ }
@@ -1407,7 +1407,7 @@ parentCheck = setInterval(() => {
 
   if (frisk.length) {
     process.stderr.write(
-      `[MCP] led ${doede.join(', ')} er vaek, men kaeden gaar stadig op: ` +
+      `[MCP] links ${doede.join(', ')} are gone, but the chain still reaches up: ` +
       `${frisk.join(' → ')} - fortsaetter\n`,
     );
     vagtKaede = frisk;

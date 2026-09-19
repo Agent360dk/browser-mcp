@@ -250,7 +250,7 @@ test('samme konflikt gentages ikke ved hvert hello', () => {
   const blok = kilde.slice(i, i + 900);
   assert.match(blok, /sidsteKonfliktNoegle/, 'uden en noegle skriges der ved hver eneste besked');
   assert.match(blok, /if \(alle\.length < 2\) return/, 'der maa ikke advares naar der kun er én udvidelse');
-  assert.match(blok, /ADVARSEL/, 'konflikten siges ikke hoejt');
+  assert.match(blok, /WARNING/, 'konflikten siges ikke hoejt');
 });
 
 // ── laasen: valget maa ikke skifte midt i et forloeb ────────────────────────
