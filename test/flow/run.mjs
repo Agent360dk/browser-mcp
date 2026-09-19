@@ -559,8 +559,8 @@ try {
     let afvist = false, svar = '';
     try {
       const r = await kald('browser_click', { selector: '#usynlig' });
-      svar = r.tekst; afvist = r.data?.ok === false || /ikke synlig|hidden/i.test(r.tekst);
-    } catch (e) { afvist = /ikke synlig|hidden/i.test(e.message); svar = e.message; }
+      svar = r.tekst; afvist = r.data?.ok === false || /not visible|hidden/i.test(r.tekst);
+    } catch (e) { afvist = /not visible|hidden/i.test(e.message); svar = e.message; }
     skalVaere(afvist, `et skjult element blev klikket - museklikket landede i sidens hjoerne paa noget andet. Svar: ${svar.slice(0, 160)}`);
   });
 
