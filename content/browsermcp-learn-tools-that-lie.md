@@ -99,7 +99,11 @@ Ask what it measured. A tool that reports success because the command was accept
 Because a wrongly reported failure is expensive in its own way: the agent repeats the action, and an Enter that already submitted the form submits it twice. That is why the third answer - unknown - exists.
 
 **Do other browser automation tools have this bug?**
-We have not measured them, and we are not going to claim it without measuring. That measurement is planned, it will publish its method and raw data, and our own failures will be on the same list.
+We measured, on 19 September 2026, and the answer is no - not on the case we could put to all three identically. A controlled field, filled by each tool, with the page recording what the component actually heard: Playwright MCP landed it and the framework heard it; Chrome DevTools MCP refused and said exactly why; we landed it. Nobody lied. The harness is in the repo at `test/aerlighed/` and you can run it yourself.
+
+The honest reading goes further than the table. This bug class comes from driving a browser a human is also using: Chrome acknowledges a keystroke for a tab you are not looking at and never delivers it. Playwright and Chrome DevTools run their own browser, which nobody else is using, so they do not have a tab that can fall into the background mid-task. **Our failure class followed from our architecture.** The nine lies we closed were problems our own design created, not problems we solved before anyone else.
+
+That does not make the work worth less. It makes the claim about it smaller, and we would rather write that here than let you find it.
 
 **What can I check without installing anything?**
 `npm test` runs the extension's real code in a VM against a recorded Chrome stub, so you can prove what it sends and how it judges the answers. Four tools go further and run the generated expression against a hand-written document. That is the cheap way in if you want to prove us wrong.
