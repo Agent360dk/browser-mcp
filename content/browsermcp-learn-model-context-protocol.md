@@ -14,6 +14,19 @@ Before a shared protocol, connecting an AI assistant to your database, your brow
 
 The analogy people reach for is USB-C - and it's a fair one, as long as you remember what it means in practice: **the win isn't magic, it's that nobody has to negotiate a private format anymore.**
 
+## The protocol, from where you sit
+
+```
+You:     Summarise the open pull requests.
+
+Claude:  [a tool from a GitHub server]
+         Four open, two waiting on review.
+```
+
+You did not name a protocol, a server or a tool. MCP is the plumbing that let the client
+know those tools existed and how to call them - and the pieces below are what makes that
+one exchange possible.
+
 ## The pieces, in plain terms
 
 | Piece | What it is |

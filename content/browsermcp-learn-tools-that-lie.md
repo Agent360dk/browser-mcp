@@ -21,6 +21,26 @@ The page had a listener on `window` recording every key. It recorded none. The t
 
 This is the worst kind of failure in an agent tool. A tool that errors makes the agent try something else. A tool that lies makes the agent build on sand, and the damage shows up three steps later somewhere unrelated.
 
+## The three answers, as an exchange
+
+```
+You:     Click the Save button.
+
+Claude:  [browser_click]
+         The click was sent, but nothing in the page received it. The tab is in
+         the background, where Chrome does not deliver mouse input - call
+         browser_switch_tab and I'll try again.
+
+You:     do it
+
+Claude:  [browser_switch_tab, browser_click]
+         Saved.
+```
+
+The first answer is the one this whole page is about. Before the work described below,
+it was *"Clicked #save"* - and the agent went on to the next step as if the form had
+been saved.
+
 ## Why it survived so long
 
 The mouse and the keyboard fail differently, and the difference is the whole explanation.

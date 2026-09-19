@@ -24,6 +24,18 @@ All figures pulled from the GitHub and npm APIs on **2026-08-19**. They move; th
 
 We are the smaller project by every measure of adoption, and there is no point pretending otherwise. What we can point at is the trend line: our commit history is current, and theirs stopped in January.
 
+## What using it looks like
+
+```
+You:     Take a screenshot of my current Chrome tab.
+
+Claude:  [browser_screenshot]
+         <image>
+```
+
+Both projects answer that one, because both drive the Chrome you already have. The
+numbers below are where they part.
+
 ## Is mcp-chrome still maintained?
 
 This is the question people actually search for, and it has no clear English-language answer - which is part of why we wrote this page.

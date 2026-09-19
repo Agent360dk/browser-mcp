@@ -19,6 +19,18 @@ Two things follow from that, and they're the ones worth internalising:
 1. **It runs with your permissions.** A local server can do anything you could do from a terminal on that machine. That's the source of both its power and its risk.
 2. **It has no model.** The intelligence stays in the client. The server is the hands, not the brain.
 
+## What using one looks like
+
+```
+You:     What's on my screen right now?
+
+Claude:  [browser_screenshot]
+         <image>
+```
+
+You never name the server or the tool. You describe the outcome, and the client picks
+from the tools its servers offer. That is the whole user-facing surface of MCP.
+
 ## What runs where
 
 | | Local (stdio) | Remote (HTTP) |

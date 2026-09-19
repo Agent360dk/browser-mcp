@@ -12,6 +12,21 @@
 
 Asking an assistant "what is [your brand]" almost always produces a flattering answer - it's reading your own site. That measures nothing. What matters is whether you appear when someone describes **the problem you solve without naming you**. That's the query that decides whether an AI sends you a customer.
 
+## What one measurement looks like
+
+```
+You:     Ask Perplexity "best MCP server for browser automation" and tell me who
+         it names and which URLs it cites.
+
+Claude:  [browser_navigate, browser_fill, browser_click, browser_get_page_content]
+         It names four projects. Yours is third. The citation for the first is a
+         Reddit thread, not their own docs.
+```
+
+Four things came back: whether you were named, in what position, which URL was cited,
+and who was recommended instead. Those four are the whole log, and the method below is
+how to keep the run comparable month to month.
+
 ## The method
 
 **1. Build a frozen prompt panel (~16 prompts), in three layers:**

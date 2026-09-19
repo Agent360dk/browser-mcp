@@ -12,6 +12,22 @@
 
 You automate a form. The value appears in the field. You submit - and the app behaves as if the field were empty, or reverts it the moment anything else re-renders. Nothing errors. That's the tell: **the DOM and the framework disagree about what's in the box.**
 
+## What it looks like
+
+```
+You:     Put my email in the signup form and submit it.
+
+Claude:  [browser_fill]
+         The field shows the right text, but React's value tracker is still on the
+         old value - the form will behave as if it were empty. Let me type it
+         instead.
+         [browser_click, browser_press_key]
+         Submitted.
+```
+
+The first answer is the one that matters. A tool that could not tell the difference
+would have said "filled" and submitted an empty form.
+
 ## The root cause
 
 React doesn't read `input.value` when you submit. It keeps its own copy of the state and re-renders the input from that copy. It updates its copy only in response to the events its synthetic event system observes.

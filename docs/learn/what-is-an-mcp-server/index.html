@@ -26,6 +26,12 @@
 <p>Strip away the terminology and a typical MCP server is: a process that starts when your AI client starts, says "here are the things I can do," waits, and executes requests. That's it. It's closer to a plugin than to a web server, despite the name - "server" here means "serves capabilities," not "runs in a data centre."</p>
 <p>Two things follow from that, and they're the ones worth internalising:</p>
 <ol><li><b>It runs with your permissions.</b> A local server can do anything you could do from a terminal on that machine. That's the source of both its power and its risk.</li><li><b>It has no model.</b> The intelligence stays in the client. The server is the hands, not the brain.</li></ol>
+<h2 id="what-using-one-looks-like">What using one looks like</h2>
+<div class="code"><pre>You:     What&#x27;s on my screen right now?
+
+Claude:  [browser_screenshot]
+         &lt;image&gt;</pre><button class="copy">Copy</button></div>
+<p>You never name the server or the tool. You describe the outcome, and the client picks from the tools its servers offer. That is the whole user-facing surface of MCP.</p>
 <h2 id="what-runs-where">What runs where</h2>
 <div class="scroll"><table><tr><th></th><th>Local (stdio)</th><th>Remote (HTTP)</th></tr><tr><td>Runs on</td><td>Your machine</td><td>Someone else's</td></tr><tr><td>Can reach</td><td>Your files, your network, your logged-in sessions</td><td>Only what you send it</td></tr><tr><td>Typical use</td><td>Filesystem, git, databases, your browser</td><td>Hosted SaaS APIs</td></tr><tr><td>Data exposure</td><td>The server runs on your machine; what it returns still goes to your AI client and its model provider</td><td>The server itself sees what you send it, and so does your AI client</td></tr></table></div>
 <p>If a capability needs <i>your</i> environment - your files, your VPN, the browser you're signed into - it has to be local. That's not a preference, it's a constraint.</p>

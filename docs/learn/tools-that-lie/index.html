@@ -27,6 +27,19 @@
 page&#x27;s own keydown listener  →  nothing. Not one event.</pre><button class="copy">Copy</button></div>
 <p>The page had a listener on <code>window</code> recording every key. It recorded none. The tool reported success anyway, and an agent building on that answer would go on to wait for a form submission that never came.</p>
 <p>This is the worst kind of failure in an agent tool. A tool that errors makes the agent try something else. A tool that lies makes the agent build on sand, and the damage shows up three steps later somewhere unrelated.</p>
+<h2 id="the-three-answers-as-an-exchange">The three answers, as an exchange</h2>
+<div class="code"><pre>You:     Click the Save button.
+
+Claude:  [browser_click]
+         The click was sent, but nothing in the page received it. The tab is in
+         the background, where Chrome does not deliver mouse input - call
+         browser_switch_tab and I&#x27;ll try again.
+
+You:     do it
+
+Claude:  [browser_switch_tab, browser_click]
+         Saved.</pre><button class="copy">Copy</button></div>
+<p>The first answer is the one this whole page is about. Before the work described below, it was <i>"Clicked #save"</i> - and the agent went on to the next step as if the form had been saved.</p>
 <h2 id="why-it-survived-so-long">Why it survived so long</h2>
 <p>The mouse and the keyboard fail differently, and the difference is the whole explanation.</p>
 <p>In a background tab, mouse events <b>hang</b>. The command goes out and never comes back, so a 1.5 second deadline fires and the tool reports a timeout. That answer is honest - but it is honest <b>by accident</b>. Nothing measured anything; a deadline happened to fire.</p>

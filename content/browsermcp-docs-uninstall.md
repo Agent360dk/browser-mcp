@@ -15,6 +15,17 @@
 
 That's it. There is no uninstaller to run, no account to close, and no data of yours on any server to delete.
 
+## Checking it is really gone
+
+```
+You:     Take a screenshot of my current Chrome tab.
+
+Claude:  I don't have browser access.
+```
+
+That answer is what a clean uninstall looks like. If you still get an image back, the
+MCP server is still registered with your client - step 2 below.
+
 ## Exactly what the extension can access - and why
 
 Browser MCP requests broad permissions for one reason: its whole job is to operate the real, logged-in Chrome you already use. A tool that drives your browser needs the same reach you have. Here is the full list from the extension manifest, with what each is for:

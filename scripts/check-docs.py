@@ -31,6 +31,28 @@ GEN_URLS = re.findall(r",\s*'(/[a-z0-9/-]+)'\s*\)", gen_src)
 if len(GEN_URLS) < 5:
     fail('could not parse PAGES registry from generate-docs.py (found %d urls)' % len(GEN_URLS))
 
+# ---- 0. hver side viser en kommando OG hvad man faar tilbage ----------------
+# MAALT 19/9: 18 af 34 sider manglede det - heriblandt 2FA-fra-Gmail og migrationssiden,
+# hvor udvekslingen ER pointen. Det var ikke en beslutning; det skete side for side, fordi
+# intet maalte det. Foerste maaling talte kun citat-blokke og meldte 22 - Codex-siden viser
+# sin udveksling som transskript, og det er bedre end et citat. Instrumentet blev kalibreret
+# mod tre kendt-sande sider foer tallet blev brugt.
+import re as _re1
+_uden = []
+for _f in sorted(os.listdir(os.path.join(ROOT, 'content'))):
+    if not _f.endswith('.md'):
+        continue
+    _t = open(os.path.join(ROOT, 'content', _f), encoding='utf-8').read()
+    _citat = bool(_re1.search(r'^>\s+\S', _t, _re1.M)) and bool(
+        _re1.search(r'You get|you get back|comes back|instead of', _t, _re1.I))
+    _transskript = any(
+        _re1.search(r'^You:', _b, _re1.M) and _re1.search(r'^\w[\w .-]*:\s', _b, _re1.M)
+        for _b in _re1.findall(r'```[a-z]*\n(.*?)```', _t, _re1.S))
+    if not (_citat or _transskript):
+        _uden.append(_f)
+if _uden:
+    fail('%d sider viser hverken kommando eller svar: %s' % (len(_uden), ', '.join(_uden)))
+
 # ---- 1. tool count ----------------------------------------------------------
 TOOLCOUNT = len(re.findall(r"""name: ['\"]browser_""", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
 claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \

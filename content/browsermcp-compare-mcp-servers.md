@@ -20,6 +20,22 @@
 
 *(All figures fetched 2026-09-19 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
 
+## The one question that separates them
+
+```
+You:     Open the billing page - I'm already logged in there.
+
+A server that drives its own browser:
+         I'm at the login page. What are the credentials?
+
+A server that drives yours:
+         [navigates]
+         Here's the invoice total for August.
+```
+
+Every other difference in the table below - tool count, maintenance, CI support - matters
+less than which of those two answers you get.
+
 ## Which browser does each one actually drive?
 
 This is the axis that decides most real-world choices, and it splits the field cleanly:

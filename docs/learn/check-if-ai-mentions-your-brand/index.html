@@ -24,6 +24,14 @@
 <p><b>Short answer:</b> pick a fixed set of prompts a real buyer would ask, run them on each assistant on a schedule, and log four things every time: were you named, in what position, which URL was cited, and who got recommended instead. The prompt set has to stay frozen - otherwise you're measuring your own wording, not your visibility. Most of it can be automated in your own logged-in browser.</p>
 <h2 id="why-just-search-for-your-name-doesnt-work">Why "just search for your name" doesn't work</h2>
 <p>Asking an assistant "what is [your brand]" almost always produces a flattering answer - it's reading your own site. That measures nothing. What matters is whether you appear when someone describes <b>the problem you solve without naming you</b>. That's the query that decides whether an AI sends you a customer.</p>
+<h2 id="what-one-measurement-looks-like">What one measurement looks like</h2>
+<div class="code"><pre>You:     Ask Perplexity &quot;best MCP server for browser automation&quot; and tell me who
+         it names and which URLs it cites.
+
+Claude:  [browser_navigate, browser_fill, browser_click, browser_get_page_content]
+         It names four projects. Yours is third. The citation for the first is a
+         Reddit thread, not their own docs.</pre><button class="copy">Copy</button></div>
+<p>Four things came back: whether you were named, in what position, which URL was cited, and who was recommended instead. Those four are the whole log, and the method below is how to keep the run comparable month to month.</p>
 <h2 id="the-method">The method</h2>
 <p><b>1. Build a frozen prompt panel (~16 prompts), in three layers:</b></p>
 <ul><li><b>Category</b> - "best tool for [job]", "how do I [problem]" - no brand named. This is the one that counts.</li><li><b>Lost-intent</b> - queries you know you should win and currently don't.</li><li><b>Brand &amp; collision</b> - your name, and any competitor you're confused with.</li></ul>

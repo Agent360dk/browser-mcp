@@ -30,6 +30,27 @@ One difference is left, and it is the only one we will defend: **their 72 tools 
 
 *(We publish the download gap on purpose. Playwright MCP is the bigger project by three orders of magnitude; this page is about when that is not the deciding axis.)*
 
+## The same task, side by side
+
+```
+You:      Sign in to the admin dashboard and export last month's invoices.
+
+Playwright MCP:  [launches its own browser]
+                 I'm at the login page. I need credentials.
+
+Browser MCP:     [browser_navigate]
+                 You're already signed in. Exporting now.
+```
+
+That is the whole difference, and everything below follows from it. The second exchange
+has no login step because the tab is in the Chrome you use.
+
+We measured the reverse case too, on 19 September 2026: on a controlled `<select>`
+built by a framework, **Playwright MCP lands the choice and we do not**. We answer
+honestly that it did not land - but no is still no. That measurement is on
+[/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/) with the method,
+because a comparison page that only lists what we win is not a comparison.
+
 ## Can Playwright MCP use my real browser too?
 
 Partly, and it is fair to say so: Playwright MCP has an opt-in `--extension` flag - "Connect to a running browser instance (Edge/Chrome only). Requires the 'Playwright Extension'" (its README, checked 2026-07-21). It is not the default, not the primary documented path, and the managed profile remains the designed-for mode. If real-Chrome sessions are the *core* of your workflow rather than an edge case, a tool where that is the only mode has fewer seams.

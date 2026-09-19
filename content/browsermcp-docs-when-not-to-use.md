@@ -12,6 +12,18 @@
 
 There is no headless mode and no server mode, by design: the extension drives a real Chrome on a real desktop. A pipeline has no "your browser". Use [Playwright MCP](https://github.com/microsoft/playwright-mcp) - managed profiles, headless, 6.3M npm downloads/week and weekly releases (checked 2026-07-21). This is not a grudging concession; it is the correct tool for that job.
 
+Here is the shape of the mismatch, in one exchange:
+
+```
+You:     Run this check every night at 3am and email me the result.
+
+Claude:  I can run it now, but not at 3am. Browser MCP drives the Chrome on your
+         machine - if the laptop is closed, there is no browser to drive.
+```
+
+Nothing is broken in that answer. It is the tool being used for the wrong job, and the
+sections below are the rest of that list.
+
 ## Don't use it for parallel scraping fleets
 
 One user, one Chrome. Browser MCP supports multiple tabs and sessions inside that Chrome, but it will never fan out to 50 isolated instances. High-volume scraping wants isolated managed browsers (Playwright MCP, or Browser Use's cloud offering if you are in Python).

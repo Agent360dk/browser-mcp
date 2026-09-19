@@ -23,6 +23,16 @@
 <p><b>Short answer:</b> setting <code>input.value</code> on a React-controlled field updates the DOM but not React's internal state - so the framework either ignores your text or wipes it on the next render, and the form submits empty. The fix is to write through the <b>native value setter</b> and then dispatch a bubbling <code>input</code> event, which is what React actually listens for. Same class of bug affects Angular, Vue and Google's Closure-based apps.</p>
 <h2 id="the-symptom">The symptom</h2>
 <p>You automate a form. The value appears in the field. You submit - and the app behaves as if the field were empty, or reverts it the moment anything else re-renders. Nothing errors. That's the tell: <b>the DOM and the framework disagree about what's in the box.</b></p>
+<h2 id="what-it-looks-like">What it looks like</h2>
+<div class="code"><pre>You:     Put my email in the signup form and submit it.
+
+Claude:  [browser_fill]
+         The field shows the right text, but React&#x27;s value tracker is still on the
+         old value - the form will behave as if it were empty. Let me type it
+         instead.
+         [browser_click, browser_press_key]
+         Submitted.</pre><button class="copy">Copy</button></div>
+<p>The first answer is the one that matters. A tool that could not tell the difference would have said "filled" and submitted an empty form.</p>
 <h2 id="the-root-cause">The root cause</h2>
 <p>React doesn't read <code>input.value</code> when you submit. It keeps its own copy of the state and re-renders the input from that copy. It updates its copy only in response to the events its synthetic event system observes.</p>
 <p>So when a script assigns <code>el.value = "text"</code> directly:</p>

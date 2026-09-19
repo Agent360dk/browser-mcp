@@ -24,6 +24,12 @@
 <h2 id="the-problem-mcp-solves">The problem MCP solves</h2>
 <p>Before a shared protocol, connecting an AI assistant to your database, your browser or your ticketing system meant a bespoke integration per assistant. Every vendor had a different plugin shape, so the same capability got rebuilt N times and none of it was portable. MCP collapses that into one interface: capability authors implement the protocol, client authors implement the protocol, and the two sides meet in the middle.</p>
 <p>The analogy people reach for is USB-C - and it's a fair one, as long as you remember what it means in practice: <b>the win isn't magic, it's that nobody has to negotiate a private format anymore.</b></p>
+<h2 id="the-protocol-from-where-you-sit">The protocol, from where you sit</h2>
+<div class="code"><pre>You:     Summarise the open pull requests.
+
+Claude:  [a tool from a GitHub server]
+         Four open, two waiting on review.</pre><button class="copy">Copy</button></div>
+<p>You did not name a protocol, a server or a tool. MCP is the plumbing that let the client know those tools existed and how to call them - and the pieces below are what makes that one exchange possible.</p>
 <h2 id="the-pieces-in-plain-terms">The pieces, in plain terms</h2>
 <div class="scroll"><table><tr><th>Piece</th><th>What it is</th></tr><tr><td><b>Host / client</b></td><td>The AI app the human uses - Claude Code, Cursor, VS Code agent mode, Codex CLI. It manages the model and decides when to call something</td></tr><tr><td><b>Server</b></td><td>A program exposing capabilities. It advertises what it can do; it does not contain the model</td></tr><tr><td><b>Tools</b></td><td>The callable actions a server offers - the thing the model actually invokes ("navigate to this URL", "run this query")</td></tr><tr><td><b>Resources / prompts</b></td><td>Context a server can expose for reading, and reusable prompt templates</td></tr><tr><td><b>Transport</b></td><td>How the two talk. <b>stdio</b> for a server running locally on your machine; <b>HTTP</b> for one running remotely</td></tr></table></div>
 <p>Messages are JSON-RPC. The practical consequence for you: a local server is just a process on your machine that speaks a documented format on stdin/stdout - there's no cloud in the loop unless the server itself puts one there.</p>

@@ -23,6 +23,12 @@
 <p><b>Short answer:</b> Browser MCP does one thing - it gives an AI agent your real, already-logged-in Chrome. If your job does not need <i>your</i> browser, you are probably better served elsewhere: <b>CI/CD and headless scale → Playwright MCP</b>, <b>performance tracing → Chrome DevTools MCP</b>, <b>Python agent stacks → Browser Use</b>. And if the goal is evading bot detection on sites that prohibit automation, no - that is explicitly out of scope for this project.</p>
 <h2 id="dont-use-it-for-cicd-or-scheduled-server-jobs">Don't use it for CI/CD or scheduled server jobs</h2>
 <p>There is no headless mode and no server mode, by design: the extension drives a real Chrome on a real desktop. A pipeline has no "your browser". Use <a href="https://github.com/microsoft/playwright-mcp">Playwright MCP</a> - managed profiles, headless, 6.3M npm downloads/week and weekly releases (checked 2026-07-21). This is not a grudging concession; it is the correct tool for that job.</p>
+<p>Here is the shape of the mismatch, in one exchange:</p>
+<div class="code"><pre>You:     Run this check every night at 3am and email me the result.
+
+Claude:  I can run it now, but not at 3am. Browser MCP drives the Chrome on your
+         machine - if the laptop is closed, there is no browser to drive.</pre><button class="copy">Copy</button></div>
+<p>Nothing is broken in that answer. It is the tool being used for the wrong job, and the sections below are the rest of that list.</p>
 <h2 id="dont-use-it-for-parallel-scraping-fleets">Don't use it for parallel scraping fleets</h2>
 <p>One user, one Chrome. Browser MCP supports multiple tabs and sessions inside that Chrome, but it will never fan out to 50 isolated instances. High-volume scraping wants isolated managed browsers (Playwright MCP, or Browser Use's cloud offering if you are in Python).</p>
 <h2 id="dont-use-it-when-a-clean-profile-is-the-point">Don't use it when a clean profile is the point</h2>
