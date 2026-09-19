@@ -99,7 +99,9 @@ Ask what it measured. A tool that reports success because the command was accept
 Because a wrongly reported failure is expensive in its own way: the agent repeats the action, and an Enter that already submitted the form submits it twice. That is why the third answer - unknown - exists.
 
 **Do other browser automation tools have this bug?**
-We measured, on 19 September 2026, and the answer is no - not on the case we could put to all three identically. A controlled field, filled by each tool, with the page recording what the component actually heard: Playwright MCP landed it and the framework heard it; Chrome DevTools MCP refused and said exactly why; we landed it. Nobody lied. The harness is in the repo at `test/aerlighed/` and you can run it yourself.
+We measured, on 19 September 2026, and the answer is no - not on either of the two cases we could put to all three identically. A controlled field and a controlled `<select>`, driven by each tool, with the page recording what the component actually heard. Six measurements, no lies: Playwright MCP landed both; Chrome DevTools MCP refused both and said exactly why; we landed the field and honestly failed the select. The harness is in the repo at `test/aerlighed/` and you can run it yourself.
+
+The uncomfortable line in that table is ours. On the controlled select - the exact case this whole release came from - Playwright lands the choice and we do not. We answer honestly, which is better than the false yes we used to give, but honest and working are not the same thing.
 
 The honest reading goes further than the table. This bug class comes from driving a browser a human is also using: Chrome acknowledges a keystroke for a tab you are not looking at and never delivers it. Playwright and Chrome DevTools run their own browser, which nobody else is using, so they do not have a tab that can fall into the background mid-task. **Our failure class followed from our architecture.** The nine lies we closed were problems our own design created, not problems we solved before anyone else.
 

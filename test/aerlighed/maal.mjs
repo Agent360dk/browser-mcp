@@ -83,6 +83,7 @@ export const DELTAGERE = {
     kraeverUdvidelse: true,
     navigate: (u) => ['browser_navigate', { url: u }],
     fyld: (v) => ['browser_fill', { selector: '#styret', value: v }],
+    vaelg: () => ['browser_select_option', { selector: '#valg', option: 'b' }],
     evaluer: (js) => ['browser_execute_script', { script: js }],
   },
   playwright: {
@@ -94,6 +95,7 @@ export const DELTAGERE = {
     // det maaler MIT kald, ikke deres aerlighed. En maaling der doemmer paa en misformet
     // anmodning er vaerdiloes. browser_type er det naermeste modstykke til vores fill.
     fyld: (v) => ['browser_type', { element: 'styret felt', target: '#styret', text: v }],
+    vaelg: () => ['browser_select_option', { element: 'styret select', target: '#valg', values: ['b'] }],
     evaluer: (js) => ['browser_evaluate', { function: `() => { return ${js}; }` }],
   },
   devtools: {
@@ -121,9 +123,12 @@ export const DELTAGERE = {
       const t = (sn?.result?.content || []).map((x) => x.text ?? '').join('\n');
       const linje = t.split('\n').find((l) => /styret/i.test(l)) || '';
       const um = linje.match(/uid=?["']?([\w_-]+)/i) || linje.match(/^\s*([\w_-]+)\b/);
-      return { pageId, uid: um ? um[1] : null, snapshot: t.slice(0, 200) };
+      const sl = t.split('\n').find((l) => /valg|select|combobox/i.test(l)) || '';
+      const sm = sl.match(/uid=?["']?([\w_-]+)/i) || sl.match(/^\s*([\w_-]+)\b/);
+      return { pageId, uid: um ? um[1] : null, selectUid: sm ? sm[1] : null, snapshot: t.slice(0, 200) };
     },
     fyld: (v, h) => ['fill', { pageId: h?.pageId ?? 0, uid: h?.uid || 'styret', value: v }],
+    vaelg: (h) => ['fill', { pageId: h?.pageId ?? 0, uid: h?.selectUid || 'valg', value: 'b' }],
     evaluer: (js, h) => ['evaluate_script', { pageId: h?.pageId ?? 0, function: `() => { return ${js}; }` }],
   },
 };
@@ -172,9 +177,30 @@ async function maalEn(noegle, url) {
       raa_rapport: raaTekst.replace(/\s+/g, ' ').slice(0, 160) };
 
     const hoerte = r.tilstand === 'gennemtraengt';
+
+    // Sag 2: styret <select>. Det var HER det eksterne fund laa (issue #19).
+    let selectDom = 'SPRUNGET';
+    if (d.vaelg) {
+      const [sn2, sa2] = d.vaelg(handtag);
+      const valg = await k.kald('tools/call', { name: sn2, arguments: sa2 });
+      const valgTekst = tekst(valg);
+      const vFejl = !!valg?.error || valg?.result?.isError === true || /\berror\b|failed|kunne ikke/i.test(valgTekst);
+      const vUvist = /uvist|unverified|maaske_landet|maybe_landed|uverificeret/i.test(valgTekst);
+      const [en2, ea2] = d.evaluer('JSON.stringify(window.__rapport ? window.__rapport() : null)', handtag);
+      const rap2 = await k.kald('tools/call', { name: en2, arguments: ea2 });
+      const raa2 = tekst(rap2);
+      let r2 = null;
+      for (const kandidat of [raa2, raa2.replace(/\\"/g, '"')]) {
+        const m2 = kandidat.match(/\{[^{}]*"select_tilstand"[^{}]*\}/) || kandidat.match(/\{.*"select_tilstand".*\}/s);
+        if (m2) { try { r2 = JSON.parse(m2[0]); break; } catch {} }
+      }
+      selectDom = r2 ? dom(!vFejl, vUvist, r2.select_tilstand === 'b') : 'KUNNE-IKKE-LAESES';
+    }
+
     return {
       navn: d.navn,
       dom: dom(!fejlede, uvist, hoerte),
+      dom_select: selectDom,
       dom_viser: r.dom, komponenten_ved: r.tilstand, haendelser: r.hoert, betroede: r.betroet,
       vaerktoejet_sagde: svarTekst.replace(/\s+/g, ' ').slice(0, 150),
     };
@@ -192,8 +218,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       continue;
     }
     const r = await maalEn(n, url);
-    console.log(`  ${r.navn.padEnd(30)} ${r.dom}`);
-    for (const [k, v] of Object.entries(r)) if (k !== 'navn' && k !== 'dom') console.log(`      ${k}: ${v}`);
+    console.log(`  ${r.navn.padEnd(30)} fyld: ${(r.dom||'-').padEnd(18)} select: ${r.dom_select || '-'}`);
+    for (const [k, v] of Object.entries(r)) if (!['navn','dom','dom_select'].includes(k)) console.log(`      ${k}: ${v}`);
   }
   s.close();
   console.log('\n  LOEGN = vaerktoejet sagde ja, og komponenten hoerte intet.');

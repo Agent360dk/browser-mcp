@@ -50,3 +50,39 @@
     };
   };
 })();
+
+// ── Styret <select> - samme spoergsmaal, anden mekanik ────────────────────────
+// En styret select ruller ogsaa en naiv tilskrivning tilbage og opdaterer kun sin
+// tilstand paa en aegte change-haendelse. Det var praecis her det EKSTERNE fund laa
+// (issue #19): DOM'ens value blev sat, komponentens state hoerte intet, og vaerktoejet
+// svarede ja. Maalingen skal kunne stille samme spoergsmaal om et select som om et felt.
+(function () {
+  var s = document.getElementById('valg');
+  var vis = document.getElementById('valgt');
+  var tilstand = 'a';
+  var proto = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value');
+  var sporet = 'a';
+  s._valueTracker = {
+    getValue: function () { return sporet; },
+    setValue: function (v) { sporet = v; },
+    stopTracking: function () {},
+  };
+  Object.defineProperty(s, 'value', {
+    get: function () { return proto.get.call(this); },
+    set: function () { proto.set.call(this, tilstand); },
+    configurable: true,
+  });
+  s.addEventListener('change', function (e) {
+    window.__hoert.push({ type: 'change-select', isTrusted: e.isTrusted });
+    tilstand = proto.get.call(s);
+    sporet = tilstand;
+    vis.textContent = tilstand;
+  });
+  var gammel = window.__rapport;
+  window.__rapport = function () {
+    var r = gammel();
+    r.select_dom = proto.get.call(s);
+    r.select_tilstand = tilstand;
+    return r;
+  };
+})();
