@@ -8,6 +8,26 @@ have measured ourselves and not fixed yet.
 This page is deliberately unflattering in places. A capability list that only says yes is a
 brochure, and you cannot plan against a brochure.
 
+## The exchange this page is about
+
+```
+You:     Buy the cheapest ticket on that page.
+
+Claude:  [browser_click]
+         [browser_solve_captcha]
+         There is a CAPTCHA. The checkbox did not clear it on its own, so I am
+         handing it to you: solve it in the tab and tell me when to carry on.
+
+You:     done
+
+Claude:  [browser_click]
+         Booked.
+```
+
+That is a wall we clear *partly*, and the table below says so in the same words. The
+point of the page is that "can it get past X" has three answers, not two - and the
+third one is the agent saying what it cannot do instead of failing quietly.
+
 ## How to read the columns
 
 | Mark | Means |

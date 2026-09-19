@@ -6,6 +6,17 @@ Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page fro
 
 ---
 
+You never call these by name. You describe what you want, and the client picks:
+
+```
+You:     Fill in the address form with my work address and submit it.
+
+Claude:  [browser_fill, browser_fill, browser_fill, browser_click]
+         Submitted. The page now shows "Address saved".
+```
+
+The list below is what the client has to choose from.
+
 ## Navigation & Content - 5 tools
 
 | Tool | Description |

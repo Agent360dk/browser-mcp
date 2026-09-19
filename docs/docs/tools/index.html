@@ -22,6 +22,12 @@
 <p>Browser MCP exposes <b>40 tools</b> to the connected agent. Every tool acts on the active Chrome tab (or a tab/frame you target explicitly) via the Browser MCP extension - no headless browser, no Playwright binary.</p>
 <p>Source of truth: <code>mcp-server/tools.js</code> (<code>TOOLS</code> array). Regenerate this page from that file if tool names, params, or descriptions change.</p>
 <hr>
+<p>You never call these by name. You describe what you want, and the client picks:</p>
+<div class="code"><pre>You:     Fill in the address form with my work address and submit it.
+
+Claude:  [browser_fill, browser_fill, browser_fill, browser_click]
+         Submitted. The page now shows &quot;Address saved&quot;.</pre><button class="copy">Copy</button></div>
+<p>The list below is what the client has to choose from.</p>
 <h2 id="navigation-content-5-tools">Navigation &amp; Content - 5 tools</h2>
 <div class="scroll"><table><tr><th>Tool</th><th>Description</th></tr><tr><td><code>browser_navigate</code></td><td>Navigate the active tab to a URL; reuses the current tab unless <code>new_tab=true</code>.</td></tr><tr><td><code>browser_get_page_content</code></td><td>Return the current page's content as <code>text</code> or <code>html</code>.</td></tr><tr><td><code>browser_screenshot</code></td><td>Screenshot the visible viewport; returns base64 PNG or saves to a given path.</td></tr><tr><td><code>browser_execute_script</code></td><td>Run arbitrary JavaScript in the page context and return the result.</td></tr><tr><td><code>browser_extract_list</code></td><td>Read every row of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete.</td></tr></table></div>
 <h2 id="interaction-14-tools">Interaction - 14 tools</h2>

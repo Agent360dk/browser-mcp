@@ -28,6 +28,20 @@ An AI agent connected to it can navigate pages, read and fill forms, click by CS
 5. Each conversation gets its own color-coded Chrome tab group and can only see and act on tabs it opened - so several agent sessions can run against the same Chrome instance without stepping on each other (up to 20 concurrent sessions).
 6. The server process exits on its own when the client disconnects (stdin-close detection) or after a 4-hour idle timeout - there's no daemon left running in the background.
 
+## What it looks like in practice
+
+```
+You:     Open the analytics dashboard and tell me yesterday's signups.
+
+Claude:  [browser_navigate  analytics.example.com]
+         [browser_get_page_content]
+         41 signups yesterday, up from 33 the day before.
+```
+
+There is no login step in that exchange, and that is the whole point: the tab opened
+in the Chrome you are already signed into. A headless browser would have stopped at
+the login screen as a stranger.
+
 ## Browser MCP vs. headless automation (Playwright, Puppeteer)
 
 Headless frameworks like Playwright and Puppeteer are excellent at what they were built for: fast, disposable, CI-friendly browser instances for testing your own app. The table below compares that headless mode, because it is still the default. One thing it does not cover: Playwright MCP also ships a Chrome extension that drives the browser you are already signed into, so "only we can use your real session" is not true and this page does not claim it. What stays different is the human - none of its 72 tools can stop and ask you for a code (checked 2026-09-19):

@@ -8,6 +8,26 @@
 
 **Short answer:** the four issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.24.0** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
 
+## First: is it actually installed?
+
+One exchange tells you more than any amount of config-reading:
+
+```
+You:     Take a screenshot of my current Chrome tab.
+
+Claude:  [browser_screenshot]
+         <image>
+```
+
+**An image back** - you are running; whatever you are chasing is a specific
+problem below, not a broken install.
+
+**"I don't have browser access"** - the client never loaded the server. Restart the
+client, then check the config file for your client on its install page.
+
+**The call hangs, then times out** - the server is registered but the extension is
+not answering. That is the "not connected" section below.
+
 ## The agent keeps pulling a tab in front of me
 
 **Symptom:** you are working, and Chrome keeps bringing a tab and its window to the front while the
