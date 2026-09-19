@@ -4,9 +4,19 @@
 *Suggested meta description: "Copilot gets your real, already-logged-in Chrome rather than a fresh profile, so it can work on pages that need a session."*
 
 
-**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome - install takes about 90 seconds.**
-
 **Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome - about 90 seconds, four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+
+## One click
+
+Paste this into VS Code's Quick Open (`Cmd/Ctrl+P`) or your browser's address bar:
+
+```
+vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D
+```
+
+That is VS Code's own install-link format: the encoded part is the same four-line config shown in step 3, URL-encoded. Insiders users swap `vscode:` for `vscode-insiders:`.
+
+You still need the Chrome extension - the server is only half of it.
 
 ## The whole thing, in four steps
 

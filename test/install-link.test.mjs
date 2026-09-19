@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const side = readFileSync(join(rod, 'content/browsermcp-docs-install-trae.md'), 'utf8');
+const vscodeSide = readFileSync(join(rod, 'content/browsermcp-docs-install-vscode.md'), 'utf8');
 const pakke = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8'));
 
 function linketsConfig() {
@@ -49,4 +50,29 @@ test('linket peger paa @latest, saa et klik ikke laaser brugeren til dagens udga
   const cfg = linketsConfig();
   assert.ok(cfg.args.some((a) => a.endsWith('@latest')),
     `linket pinner en version: ${JSON.stringify(cfg.args)} - saa faar klikkeren aldrig en rettelse`);
+});
+
+// ── VS Codes eget link-format ───────────────────────────────────────────────
+// Kilde: code.visualstudio.com/api/extension-guides/ai/mcp, ordret:
+//   `vscode:mcp/install?${encodeURIComponent(JSON.stringify(obj))}`
+// Samme fare som Traes: konfigurationen er URL-kodet og kan ikke laeses af den der klikker.
+test('VS Code-linket afkoder til den samme pakke som siden viser', () => {
+  const m = vscodeSide.match(/vscode:mcp\/install\?(\S+)/);
+  assert.ok(m, 'ét-klik-linket findes ikke paa VS Code-siden');
+  const cfg = JSON.parse(decodeURIComponent(m[1]));
+  assert.equal(cfg.command, 'npx');
+  assert.equal(cfg.type, 'stdio', 'VS Code kraever type paa en stdio-server');
+  assert.ok(cfg.name, 'uden name faar serveren et tilfaeldigt navn i brugerens config');
+  const pakkeArg = cfg.args.find((a) => a.startsWith('@'));
+  assert.ok(pakkeArg && pakkeArg.startsWith(pakke.name),
+    `linket installerer ${pakkeArg}, men pakken hedder ${pakke.name}`);
+  assert.ok(pakkeArg.endsWith('@latest'), 'linket pinner en version - saa faar klikkeren aldrig en rettelse');
+});
+
+test('de to ét-klik-links installerer PRAECIS det samme', () => {
+  const t = JSON.parse(Buffer.from(decodeURIComponent(
+    side.match(/name=browser-mcp&config=(\S+)/)[1]), 'base64').toString('utf8'));
+  const v = JSON.parse(decodeURIComponent(vscodeSide.match(/vscode:mcp\/install\?(\S+)/)[1]));
+  assert.deepEqual({ command: t.command, args: t.args }, { command: v.command, args: v.args },
+    'Trae- og VS Code-linket installerer forskellige ting - én af siderne er forkert');
 });
