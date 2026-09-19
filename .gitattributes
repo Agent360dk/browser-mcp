@@ -1,0 +1,11 @@
+# MAALT 19/9-2026: repoet havde INGEN .gitattributes, saa Windows checkede ud med CRLF.
+# Tyve steder i proeverne deler tekst paa '\n', og hver af dem faar saa et '\r' med paa
+# hver linje. Windows-jobbet havde vaeret roedt saa laenge at det blokerede enhver PR -
+# og fejlene pegede paa produktet, ikke paa checkouten. Det her fjerner hele klassen.
+* text=auto eol=lf
+
+*.png  binary
+*.ico  binary
+*.zip  binary
+*.woff binary
+*.woff2 binary

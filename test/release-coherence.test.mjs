@@ -179,7 +179,7 @@ test('WISHLIST paastaar ikke en udgivelse der ikke findes', () => {
   const afsnit = shippedAfsnit(tekst);
 
   const tags = new Set(
-    execSync('git tag', { cwd: new URL('..', import.meta.url).pathname, encoding: 'utf8' })
+    execSync('git tag', { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' })
       .split('\n').map((t) => t.trim()).filter(Boolean),
   );
   // Kun overskrifts-linjer taeller: "- **v1.29.0 (dato) - ...**". Broedtekst maa gerne
