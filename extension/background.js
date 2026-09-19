@@ -895,8 +895,14 @@ const UVERIFICERET_NOTE = 'Museknappen blev sendt, men siden kunne ikke laeses b
 // (settle-opslaget fejlede uden navigation, men museknappen ER sendt). Rettelsen roerte kun den foerste, saa den anden
 // gav stadig et bart ok:false hvor 1.29.0 gav ok:true - og et bart nej faar agenten til at klikke igen.
 // Betingelsen spoerger derfor paa landed === null, ikke paa ét flag: en fremtidig tredje kanal er daekket fra dag ét.
-function uvisVurdering(r) {
+// MAALT 19/9: `note` kan nu gives af kalderen. Uden det laante select-grenens tredje udfald
+// UVERIFICERET_NOTE, som siger "Museknappen blev sendt, men siden kunne ikke laeses bagefter".
+// Begge dele er forkerte for en select: der er ingen museknap, og siden BLEV laest - det er
+// netop derfor vi ved at noget flyttede sig. En rigtig dom med en forkert begrundelse sender
+// laeseren det forkerte sted hen, og det er den samme fejlklasse som resten af 1.29.2.
+function uvisVurdering(r, egenNote) {
   if (!r || r.landed !== null) return null;
+  if (egenNote) return { maaske_landet: true, note: egenNote };
   if (r.uvist) return { maaske_landet: true, note: UVIST_NOTE };
   if (r.uverificeret) return { maaske_landet: true, note: UVERIFICERET_NOTE };
   return { maaske_landet: true, note: 'Handlingen blev sendt, men virkningen kunne ikke bekraeftes. Tjek tilstanden foer du gentager den.' };
@@ -4358,7 +4364,10 @@ async function dispatch(port, method, params) {
         // regel som den custom-gren der ligger 40 linjer nede, og samme ordforraad som resten af
         // klassen. Hronom bad selv om praecis det: "a distinct unverified outcome".
         if (e && e.aftryk && r.foer && e.aftryk !== r.foer) {
-          const uvist = uvisVurdering({ landed: null, uverificeret: true });
+          const uvist = uvisVurdering({ landed: null, uverificeret: true },
+            'Valget blev sendt, og siden aendrede sig - men aendringen beviser ikke at det VAR valget: ' +
+            'noget andet paa siden kan have flyttet sig samtidig. En styret komponent kan ogsaa nulstille ' +
+            'feltet og gemme valget et andet sted, hvilket er korrekt opfoersel. Laes siden i stedet for at vaelge igen.');
           return {
             ok: true, type: 'native_select', landed: null, selected: r.text, value: e.vaerdi, ...uvist,
             note: `Feltet nulstillede sig selv til "${e.vaerdi}", og siden aendrede sig - men aendringen ` +

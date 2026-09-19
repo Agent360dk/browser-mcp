@@ -3,7 +3,7 @@
 Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" in the Chrome Web Store).
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
-## 1.29.2 (2026-09-19)
+## 1.29.2 (2026-09-18)
 
 One class of bug, found an hour after 1.29.1 shipped: tools that answered yes because Chrome had **acknowledged** a command rather than because the page had **received** it. Every route that carries that mistake is closed here - every CDP command in the extension that acknowledges without promising delivery was swept, and there are exactly two. Every fix below was written test-first and checked with a mutation test, and the whole release was verified against a real Chrome: 52 checks, 40 of 40 tools, zero failures.
 

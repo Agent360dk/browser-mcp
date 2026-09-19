@@ -187,7 +187,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS or text selector for the dropdown trigger / <select> element' },
-        option: { type: 'string', description: 'Text OR value of the option to select. Exact value match wins, then exact text, then partial text. Aliases: `value`, `label`. Fails loudly with the available options if nothing matches. A controlled component may reset the field and store the choice elsewhere, so a success can come with `landed: null` and `maybe_landed: true`: the page changed, but the change does not prove it was the selection. Read the page before selecting again.' },
+        option: { type: 'string', description: 'Text OR value of the option to select. Exact value match wins, then exact text, then partial text. Aliases: `value`, `label`. Fails loudly with the available options if nothing matches. A controlled component may reset the field and store the choice elsewhere, so a success can come with `landed: null` and `maaske_landet: true`: the page changed, but the change does not prove it was the selection. Read the page before selecting again.' },
         wait: { type: 'number', description: 'Ms to wait after clicking trigger for options to appear (default: 300)' },
       },
       required: ['selector', 'option'],
