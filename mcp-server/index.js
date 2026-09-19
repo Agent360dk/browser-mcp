@@ -20,6 +20,7 @@ import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
+import { timingSafeEqual } from 'node:crypto';
 
 // Read version from package.json - single source of truth, never drifts
 const PKG_VERSION = JSON.parse(
@@ -117,6 +118,22 @@ function liveConnections() {
 let laastForbindelse = null;
 let harSendtKommando = false;
 const PINNET_UDVIDELSE = (process.env.BROWSER_MCP_EXTENSION_ID || '').trim() || null;
+
+// Parringsnoegle (issue #10). Uden noegle: praecis som i dag - broen tager imod den udvidelse
+// der melder sig. Med noegle: kun den udvidelse der kan den samme noegle, kommer ind.
+//
+// Det er baade det oenskede - Arbejde-profilen og Privat-profilen kan koere hver sin server
+// uden at tage hinandens kommandoer - og lukningen af et hul vi selv har skrevet ned: broen
+// lytter lokalt uden autentificering, saa ethvert program paa maskinen kan melde sig som
+// udvidelse. Noeglen sammenlignes i konstant tid, saa et forkert gaet ikke kan maales frem.
+const PARRINGSNOEGLE = (process.env.BROWSER_MCP_TOKEN || '').trim() || null;
+
+function noegleMatcher(a, b) {
+  const x = Buffer.from(String(a || ''), 'utf8');
+  const y = Buffer.from(String(b || ''), 'utf8');
+  if (x.length !== y.length) return false;
+  return timingSafeEqual(x, y);
+}
 
 function activeConnection() {
   if (laastForbindelse && laastForbindelse.ws.readyState === 1) return laastForbindelse;
@@ -298,6 +315,22 @@ function createWSS(port = BASE_PORT) {
         // ikke overens, er noget galt, og saa maa forbindelsen ikke lukke serveren ned.
         conn.helloId = typeof msg.extensionId === 'string' ? msg.extensionId : null;
         conn.harHilst = true;
+        // Parringen afgoeres FOER noget andet i hilsenen bruges, saa en uparret afsender
+        // hverken kan saette version, navn eller aftryk paa forbindelsen.
+        if (PARRINGSNOEGLE && !noegleMatcher(msg.noegle, PARRINGSNOEGLE)) {
+          process.stderr.write(
+            '[MCP] Afviste en udvidelse uden den rigtige parringsnoegle. ' +
+            'Saet samme noegle i udvidelsens popup som i BROWSER_MCP_TOKEN.\n',
+          );
+          try { ws.send(JSON.stringify({ type: 'parring', ok: false })); } catch { /* lukket */ }
+          try { ws.close(4003, 'parringsnoegle'); } catch { /* lukket */ }
+          return;
+        }
+        // Kvitteringen gaar den anden vej: udvidelsen skal ogsaa kunne se at den taler med
+        // SIN server og ikke med et vilkaarligt program der lyttede paa porten foerst.
+        if (PARRINGSNOEGLE) {
+          try { ws.send(JSON.stringify({ type: 'parring', ok: true, noegle: PARRINGSNOEGLE })); } catch { /* lukket */ }
+        }
         if (conn.helloId && conn.helloId !== conn.extensionId) {
           process.stderr.write(
             `[MCP] Haandtryk oplyser ${conn.helloId} men Origin siger ${conn.extensionId} - ` +

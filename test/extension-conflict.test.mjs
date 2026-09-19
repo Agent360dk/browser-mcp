@@ -203,7 +203,12 @@ test('haandtrykket sendes rent faktisk fra udvidelsen', () => {
 test('serveren laeser haandtrykket og tjekker for konflikt bagefter', () => {
   assert.match(kilde, /msg\.type === 'hello'/, 'serveren laeser ikke hello');
   const i = kilde.indexOf("msg.type === 'hello'");
-  const blok = kilde.slice(i, i + 1400);
+  // Vinduet afgraenses af handleren selv, ikke af et fast tegnantal - samme rettelse som
+  // i testen nedenfor. MAALT 19/9: med slice(i, i + 1400) blev testen roed saa snart
+  // parringsgaten blev tilfoejet, selv om advarslen stod praecis hvor den skulle. Blokken
+  // slutter hvor den NAESTE beskedtype begynder - ikke ved det foerste `return`, for
+  // parringsgaten har sit eget.
+  const blok = kilde.slice(i, kilde.indexOf("msg.type === '", i + 10));
   assert.match(blok, /advarOmKonflikt\(conn\)/, 'konflikten tjekkes ikke naar versionen bliver kendt');
 });
 

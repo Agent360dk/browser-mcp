@@ -22,6 +22,35 @@
 // raekkefoelge. Det er stadig en byggekontrol: filerne laeses fra den indlaeste udvidelses egen mappe, saa aftrykket
 // beviser hvilke FILER der er indlaest - ikke hvilken kode der koerer i et gammelt offscreen-dokument.
 const KODEFILER = ['background.js', 'offscreen.js'];
+
+// ── Parringsnoegle (issue #10) ────────────────────────────────────────────────
+// Uden noegle: nul konfiguration, praecis som i dag. Med noegle: udvidelsen taler KUN
+// med en server der kender den samme, og serveren svarer kun den udvidelse der kan den.
+//
+// Det loeser to ting paa én gang. Det oenskede - at parre én Chrome-profil med én server,
+// saa Arbejde og Privat ikke tager hinandens kommandoer - og et hul vi selv har skrevet
+// ned: broen er lokal og uautentificeret, saa ethvert program paa maskinen kan forbinde
+// til den. En delt hemmelighed lukker begge, og den koster intet for dem der ikke vil have den.
+//
+// Noeglen laeses ved opstart og caches, fordi haandtrykket bygges synkront naar soklen
+// aabner - samme grund som aftrykket eftersendes i stedet for at blokere hilsenen.
+let parringsnoegle = null;
+const parrede = new WeakSet();
+try {
+  chrome.storage.local.get('parringsnoegle').then((v) => {
+    parringsnoegle = (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null;
+  }).catch(() => {});
+  chrome.storage.onChanged.addListener((aendringer, omraade) => {
+    if (omraade !== 'local' || !aendringer.parringsnoegle) return;
+    const ny = aendringer.parringsnoegle.newValue;
+    parringsnoegle = (typeof ny === 'string' && ny.trim()) || null;
+    // Skift af noegle skal tage effekt med det samme, ikke naeste gang browseren starter.
+    for (const [, sokkel] of connections) { try { sokkel.close(); } catch (e) { /* lukket */ } }
+    connections.clear();
+  });
+} catch (e) {
+  console.warn('[Offscreen] kunne ikke laese parringsnoeglen:', e?.message || e);
+}
 let kodeAftrykCache = null;
 async function kodeAftryk() {
   if (kodeAftrykCache) return kodeAftrykCache;
@@ -189,9 +218,9 @@ function tryConnect(port) {
     // og udgivelsens gate afviste sin EGEN kandidat - et langsomt svar er ikke et forkert svar. Hilsenen sendes derfor
     // med det aftryk der allerede ER beregnet (som regel intet ved foerste forbindelse), og aftrykket EFTERSENDES.
     const kode = kodeAftrykCache;
-    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode, noegle: parringsnoegle };
     try {
-      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode, noegle: parringsnoegle };
     } catch (e) {
       console.warn('[Offscreen] kunne ikke bygge haandtrykket:', e?.message || e);
     }
@@ -217,7 +246,28 @@ function tryConnect(port) {
   ws.onmessage = async (event) => {
     let cmd;
     try { cmd = JSON.parse(event.data); } catch { return; }
+
+    // Parringen gaar begge veje. Serveren kvitterer med den noegle den selv kender, saa
+    // udvidelsen kan se at den taler med SIN server - ikke med et vilkaarligt program der
+    // naaede at lytte paa porten foerst. Uden noegle findes beskeden slet ikke.
+    if (cmd && cmd.type === 'parring') {
+      if (cmd.ok === true && parringsnoegle && cmd.noegle === parringsnoegle) {
+        parrede.add(ws);
+      } else {
+        console.warn('[Offscreen] Serveren paa port ' + port + ' kender ikke parringsnoeglen - lukker.');
+        try { ws.close(); } catch (e) { /* lukket */ }
+      }
+      return;
+    }
+
     const { id, method, params, pid } = cmd;
+
+    // Er der sat en noegle, udfoeres INTET foer serveren har kvitteret med den. En server
+    // uden noegle kvitterer aldrig, og kan derfor ikke styre en parret browser.
+    if (parringsnoegle && !parrede.has(ws)) {
+      try { ws.send(JSON.stringify({ id, error: 'Udvidelsen er parret med en anden server (parringsnoegle).' })); } catch (e) { /* lukket */ }
+      return;
+    }
 
     try {
       // Include port so background.js knows which session owns this command

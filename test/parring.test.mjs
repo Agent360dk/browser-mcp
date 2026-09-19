@@ -1,0 +1,223 @@
+/**
+ * Parringsnoeglen (issue #10): én Chrome-profil, én server.
+ *
+ * Det oenskede er hverdagsagtigt: har man Arbejde og Privat aabne samtidig, skal
+ * agenten i den ene ikke kunne styre den anden. Broen er lokal og tager i dag imod
+ * den udvidelse der melder sig - det er nul opsaetning, og det er stadig standarden.
+ * Saetter man en noegle, bliver parringen striks, og samtidig lukkes et hul vi selv
+ * har skrevet ned: broen lytter uden autentificering, saa ethvert program paa
+ * maskinen kan melde sig som udvidelse.
+ *
+ * Noeglen gaelder BEGGE veje. En server uden den rigtige noegle kommer ikke ind, og
+ * en udvidelse med en noegle udfoerer intet foer serveren har kvitteret med den samme.
+ *
+ * Testene her koerer den AEGTE server som proces og den AEGTE offscreen.js i en vm.
+ * Kildetekst-matchning kunne ikke se forskel paa "afviser" og "skriver om at afvise".
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createContext, runInContext } from 'node:vm';
+import { createRequire } from 'node:module';
+
+const rod = dirname(dirname(fileURLToPath(import.meta.url)));
+const krav = createRequire(join(rod, 'mcp-server', 'index.js'));
+const WebSocket = krav('ws');
+
+/** Starter den aegte server, faar den til at binde en port, og giver porten tilbage. */
+async function serverMedNoegle(noegle) {
+  const p = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+    env: { ...process.env, ...(noegle ? { BROWSER_MCP_TOKEN: noegle } : {}) },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let fejl = '';
+  p.stderr.on('data', (d) => { fejl += d.toString(); });
+  const skriv = (o) => p.stdin.write(JSON.stringify(o) + '\n');
+  skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'proeve', version: '0' } } });
+  await new Promise((ok) => p.stdout.once('data', ok));
+  skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  // Porten bindes foerst naar browseren faktisk skal bruges - derfor et vaerktoejskald.
+  // Svaret ventes ikke: uden udvidelse proever det i flere sekunder, og det er porten vi vil have.
+  skriv({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'browser_list_tabs', arguments: {} } });
+
+  // Porten LAESES af serverens egen log. En skanning af spaendet ville finde den foerste
+  // levende browser-mcp paa maskinen - og paa denne maskine koerer der altid nogle - saa
+  // testen ville maale en HELT anden proces uden noegle og alligevel se groen ud.
+  for (let i = 0; i < 200; i++) {
+    const m = fejl.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/);
+    if (m) return { proces: p, port: Number(m[1]), fejl: () => fejl };
+    await new Promise((ok) => setTimeout(ok, 50));
+  }
+  p.kill();
+  throw new Error('serveren bandt aldrig en port: ' + fejl);
+}
+
+/** Melder sig som udvidelse med et givet haandtryk og rapporterer hvad der skete. */
+function udvidelseHilser(port, hilsen) {
+  return new Promise((ok) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+    const svar = [];
+    let lukket = null;
+    ws.on('open', () => ws.send(JSON.stringify(hilsen)));
+    ws.on('message', (d) => { try { svar.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
+    ws.on('close', (kode) => { lukket = kode; });
+    ws.on('error', () => {});
+    setTimeout(() => { try { ws.close(); } catch { /* lukket */ } ok({ svar, lukket }); }, 900);
+  });
+}
+
+const HILSEN = { type: 'hello', extensionId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', version: '1.29.2', kode: 'abcdef012345' };
+
+test('uden noegle er intet aendret - udvidelsen kommer ind som i dag', async () => {
+  const s = await serverMedNoegle(null);
+  try {
+    const r = await udvidelseHilser(s.port, HILSEN);
+    assert.equal(r.lukket, null, 'serveren lukkede en helt almindelig udvidelse ude');
+    assert.equal(r.svar.find((m) => m.type === 'parring'), undefined, 'der blev sendt en parringskvittering uden at nogen har bedt om parring');
+  } finally { s.proces.kill(); }
+});
+
+test('med noegle afvises en udvidelse der ikke kender den', async () => {
+  const s = await serverMedNoegle('arbejde');
+  try {
+    const r = await udvidelseHilser(s.port, { ...HILSEN, noegle: 'privat' });
+    assert.equal(r.lukket, 4003, `en udvidelse med forkert noegle blev IKKE lukket ude (kode ${r.lukket})`);
+    const kvit = r.svar.find((m) => m.type === 'parring');
+    assert.equal(kvit?.ok, false);
+    assert.equal(kvit?.noegle, undefined, 'afvisningen roebede serverens noegle');
+  } finally { s.proces.kill(); }
+});
+
+test('med noegle afvises ogsaa en udvidelse der slet ingen sender', async () => {
+  const s = await serverMedNoegle('arbejde');
+  try {
+    const r = await udvidelseHilser(s.port, HILSEN);
+    assert.equal(r.lukket, 4003, 'en udvidelse uden noegle slap ind paa en parret server');
+  } finally { s.proces.kill(); }
+});
+
+test('med den rigtige noegle kommer udvidelsen ind og faar serverens kvittering', async () => {
+  const s = await serverMedNoegle('arbejde');
+  try {
+    const r = await udvidelseHilser(s.port, { ...HILSEN, noegle: 'arbejde' });
+    assert.equal(r.lukket, null, `den rigtige noegle blev afvist (kode ${r.lukket})`);
+    const kvit = r.svar.find((m) => m.type === 'parring');
+    assert.equal(kvit?.ok, true, 'serveren kvitterede ikke, saa udvidelsen kan ikke se hvem den taler med');
+    assert.equal(kvit?.noegle, 'arbejde');
+  } finally { s.proces.kill(); }
+});
+
+// ── Udvidelsens side ────────────────────────────────────────────────────────
+
+/** Koerer den aegte offscreen.js med en gemt noegle og rapporterer hvad broen gjorde. */
+function broen(gemtNoegle) {
+  const sendt = [];
+  let lukket = false;
+  const ws = {
+    readyState: 0, OPEN: 1,
+    send: (d) => sendt.push(JSON.parse(d)),
+    close: () => { lukket = true; },
+  };
+  const lyttere = [];
+  const ctx = {
+    console: { log() {}, warn() {}, error() {} },
+    setTimeout, clearTimeout, setInterval: () => 0, clearInterval, URLSearchParams, JSON, Promise, Uint8Array, Array, Error, String, Boolean, WeakSet, Map, Set, Object,
+    location: { search: '?v=1.29.2' },
+    WebSocket: Object.assign(function () { return ws; }, { OPEN: 1, CONNECTING: 0 }),
+    fetch: async () => { throw new Error('ingen server'); },
+    crypto: { subtle: { digest: async () => new Uint8Array([0xab, 0xcd, 0xef, 0x01, 0x23, 0x45]).buffer } },
+    chrome: {
+      runtime: {
+        id: 'proeve-id',
+        getURL: (f) => 'chrome-extension://proeve-id/' + f,
+        sendMessage: async () => ({ ok: true }),
+        onMessage: { addListener() {} },
+      },
+      storage: {
+        local: { get: async () => (gemtNoegle ? { parringsnoegle: gemtNoegle } : {}) },
+        onChanged: { addListener: (f) => lyttere.push(f) },
+      },
+    },
+  };
+  ctx.globalThis = ctx;
+  createContext(ctx);
+  runInContext(readFileSync(join(rod, 'extension/offscreen.js'), 'utf8'), ctx, { filename: 'offscreen.js' });
+  return {
+    ctx, ws, sendt, lyttere,
+    erLukket: () => lukket,
+    aabn: async () => { ws.readyState = 1; await ws.onopen(); },
+    modtag: async (o) => { await ws.onmessage({ data: JSON.stringify(o) }); },
+  };
+}
+
+// Noeglen laeses asynkront, men haandtrykket bygges synkront - derfor caches den ved opstart,
+// samme moenster som kodeaftrykket. Uden ventetiden her ville testen maale cachen foer den var fyldt.
+const pust = () => new Promise((ok) => setTimeout(ok, 20));
+
+test('udvidelsen sender sin noegle med i haandtrykket', async () => {
+  const b = broen('arbejde');
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  assert.equal(b.sendt[0]?.type, 'hello');
+  assert.equal(b.sendt[0]?.noegle, 'arbejde', `noeglen kom ikke med: ${JSON.stringify(b.sendt[0])}`);
+});
+
+test('uden gemt noegle er haandtrykket som foer - ingen noegle', async () => {
+  const b = broen(null);
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  assert.equal(b.sendt[0]?.noegle, null);
+});
+
+test('en parret udvidelse udfoerer INTET foer serveren har kvitteret', async () => {
+  const b = broen('arbejde');
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  await b.modtag({ id: 7, method: 'browser_screenshot', params: {} });
+  const svar = b.sendt.find((m) => m.id === 7);
+  assert.match(String(svar?.error), /parringsnoegle/, `kommandoen blev udfoert uden kvittering: ${JSON.stringify(b.sendt)}`);
+});
+
+test('efter serverens kvittering udfoeres kommandoer igen', async () => {
+  const b = broen('arbejde');
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  await b.modtag({ type: 'parring', ok: true, noegle: 'arbejde' });
+  await b.modtag({ id: 8, method: 'browser_screenshot', params: {} });
+  const svar = b.sendt.find((m) => m.id === 8);
+  assert.ok(svar && !svar.error, `den rigtige kvittering blev ikke godtaget: ${JSON.stringify(b.sendt)}`);
+});
+
+test('en server der kvitterer med en ANDEN noegle, lukkes ude af udvidelsen', async () => {
+  const b = broen('arbejde');
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  await b.modtag({ type: 'parring', ok: true, noegle: 'privat' });
+  assert.ok(b.erLukket(), 'udvidelsen blev hos en server der ikke kender dens noegle');
+});
+
+test('skiftes noeglen, kappes de aabne forbindelser med det samme', async () => {
+  const b = broen('arbejde');
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  assert.equal(b.lyttere.length, 1, 'der lyttes ikke efter aendringer i noeglen');
+  b.lyttere[0]({ parringsnoegle: { newValue: 'privat' } }, 'local');
+  assert.ok(b.erLukket(), 'en aendret noegle fik foerst virkning ved naeste genstart');
+});
+
+test('popup\'en kan saette noeglen og viser serverkommandoen', () => {
+  const html = readFileSync(join(rod, 'extension/popup.html'), 'utf8');
+  const js = readFileSync(join(rod, 'extension/popup.js'), 'utf8');
+  assert.match(html, /id="pairKey"/, 'der er intet felt til noeglen');
+  assert.match(js, /parringsnoegle/, 'popup\'en gemmer ikke noeglen');
+  assert.match(js, /BROWSER_MCP_TOKEN=/, 'popup\'en viser ikke hvordan serveren startes med samme noegle');
+});

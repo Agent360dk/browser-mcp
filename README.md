@@ -206,12 +206,13 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 
 ### Environment variables
 
-Both are optional. Neither is needed for normal use.
+All three are optional. None is needed for normal use.
 
 | Variable | Effect |
 |---|---|
 | `BROWSER_MCP_CHECK_NPM=1` | Makes `browser_provide_feedback` also compare this server against the latest version published on npm. Off by default, so the call stays fast and works offline. |
 | `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. |
+| `BROWSER_MCP_TOKEN=<your key>` | Pairs this server with one Chrome profile. Type the same key into the extension's popup ("Pairing"), and that profile will only take commands from a server that knows it - and will ignore any other program that connects to the bridge. Leave it unset for the default: no key, no setup. |
 
 ## 40 Tools
 

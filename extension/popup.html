@@ -57,6 +57,12 @@
     .try .prompt { display: block; background: #0f172a; border-radius: 6px; padding: 8px; font-size: 11px; color: #e2e8f0; margin-bottom: 6px; font-style: italic; }
     .try a { display: block; text-align: center; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-decoration: none; }
     .try a:hover { background: #475569; }
+      .pairing p { margin: 0 0 6px; font-size: 11px; color: #6b7280; line-height: 1.45; }
+    .pairing .row { display: flex; gap: 6px; align-items: center; }
+    .pairing input { flex: 1; min-width: 0; padding: 5px 7px; border: 1px solid #d1d5db; border-radius: 5px; font: inherit; font-size: 12px; }
+    .pairing button { width: auto; margin: 0; }
+    .pairCmd { display: block; margin-top: 6px; }
+    #copyPair { margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -84,6 +90,17 @@
     <span class="prompt">"Take a screenshot of my current Chrome tab."</span>
     <span class="prompt">"Open my Gmail tab and tell me who sent my last 3 emails."</span>
     <a href="https://browsermcp.dev/#try" target="_blank" rel="noopener">More things to try</a>
+  </div>
+
+  <div class="section-title">Pairing (optional)</div>
+  <div class="pairing" id="pairing">
+    <p>Two Chrome profiles, two agents? Give each profile a key, and each server the same one. Then a profile only takes commands from its own server. Leave empty for the default: no key, no setup.</p>
+    <div class="row">
+      <input id="pairKey" type="text" spellcheck="false" autocomplete="off" placeholder="e.g. work-laptop">
+      <button id="savePair">Save</button>
+    </div>
+    <code id="pairCmd" class="pairCmd" hidden></code>
+    <button id="copyPair" hidden>Copy the server command</button>
   </div>
 
   <div class="section-title">Sessions</div>

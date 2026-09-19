@@ -110,3 +110,40 @@ document.getElementById('copyCmd').addEventListener('click', (e) => {
 document.getElementById('clearLog').addEventListener('click', () => {
   chrome.storage.local.set({ actionLog: [] }, renderLog);
 });
+
+// ── Parring (issue #10) ──────────────────────────────────────────────────────
+// Feltet er tomt som standard, og tomt betyder praecis det der sker i dag: ingen noegle,
+// ingen opsaetning. Skriver man én, vises den kommando serveren skal startes med - saa
+// noeglen ikke skal skrives af i haanden to steder.
+
+const pairKey = document.getElementById('pairKey');
+const pairCmd = document.getElementById('pairCmd');
+const copyPair = document.getElementById('copyPair');
+
+function visPairCmd(noegle) {
+  const har = Boolean(noegle);
+  pairCmd.hidden = !har;
+  copyPair.hidden = !har;
+  if (har) pairCmd.textContent = `BROWSER_MCP_TOKEN=${noegle} npx @agent360/browser-mcp@latest`;
+}
+
+chrome.storage.local.get('parringsnoegle', (v) => {
+  const noegle = (v && v.parringsnoegle) || '';
+  pairKey.value = noegle;
+  visPairCmd(noegle);
+});
+
+document.getElementById('savePair').addEventListener('click', (e) => {
+  const noegle = pairKey.value.trim();
+  chrome.storage.local.set({ parringsnoegle: noegle }, () => {
+    visPairCmd(noegle);
+    e.target.textContent = 'Saved';
+    setTimeout(() => { e.target.textContent = 'Save'; }, 1500);
+  });
+});
+
+copyPair.addEventListener('click', (e) => {
+  navigator.clipboard.writeText(pairCmd.textContent.trim());
+  e.target.textContent = 'Copied!';
+  setTimeout(() => { e.target.textContent = 'Copy the server command'; }, 1500);
+});
