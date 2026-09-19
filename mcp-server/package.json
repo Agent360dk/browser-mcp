@@ -60,8 +60,8 @@
     "url": "https://github.com/Agent360dk/browser-mcp.git"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.28.0",
-    "ws": "^8.18.0"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "ws": "^8.21.3"
   },
   "overrides": {
     "fast-uri": "^3.1.7",
