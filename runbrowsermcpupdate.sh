@@ -432,10 +432,10 @@ done
 # 1d-1b. README's "latest release vX.Y.Z (dato)" er en versionspaastand paa forsiden - og
 #        den kopieres til npmjs.com i trin 1b. Intet trin vedligeholdt den: den stod paa
 #        v1.25.0 (2026-07-24) mens npm var paa 1.28.1. Fejes som de oevrige versionsfelter.
-say "README: 'latest release vX.Y.Z' -> v${NEW_VERSION} ($(date +%Y-%m-%d))"
+say "README: 'latest release vX.Y.Z' -> v${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))"
 for f in README.md mcp-server/README.md; do
   [[ -f "$f" ]] || continue
-  run perl -0pi -e "s/latest release v[0-9]+\.[0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)/latest release v${NEW_VERSION} ($(date +%Y-%m-%d))/g" "$f"
+  run perl -0pi -e "s/latest release v[0-9]+\.[0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)/latest release v${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))/g" "$f"
 done
 if [[ "$SHIP" == 1 ]]; then
   grep -q "latest release v${NEW_VERSION}" README.md \
@@ -457,8 +457,8 @@ fi
 #        gik derfor offentlig i den pushede CHANGELOG.md, i en fil der selv lover at
 #        "Dates are when the version was published". Udgivelsesnoterne til GitHub rammes
 #        ikke (awk springer overskriften over), men filen i repoet gjorde.
-say "CHANGELOG: '## ${NEW_VERSION} (not released yet)' -> '## ${NEW_VERSION} ($(date +%Y-%m-%d))'"
-run perl -0pi -e "s/^## \Q${NEW_VERSION}\E \(not released yet\)\$/## ${NEW_VERSION} ($(date +%Y-%m-%d))/m" CHANGELOG.md
+say "CHANGELOG: '## ${NEW_VERSION} (not released yet)' -> '## ${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))'"
+run perl -0pi -e "s/^## \Q${NEW_VERSION}\E \(not released yet\)\$/## ${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))/m" CHANGELOG.md
 if [[ "$SHIP" == 1 ]]; then
   grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md \
     && die "CHANGELOG still says '(not released yet)' for ${NEW_VERSION} - the heading moved; fix the regex"
