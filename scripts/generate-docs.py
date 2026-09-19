@@ -46,6 +46,7 @@ PAGES=[
  ('browsermcp-learn-check-ai-mentions-brand.md','Learn','Check if AI mentions you','/learn/check-if-ai-mentions-your-brand'),
  ('browsermcp-learn-react-controlled-forms.md','Learn','Automating React forms','/learn/browser-automation-react-forms'),
  ('browsermcp-learn-tools-that-lie.md','Learn','Tools that said yes','/learn/tools-that-lie'),
+ ('browsermcp-learn-control-your-real-chrome.md','Learn','Control your real Chrome','/learn/control-your-real-chrome'),
 ]
 
 # Antallet af vaerktoejer udledes af kilden. Stod det haardkodet her, paastod hver
