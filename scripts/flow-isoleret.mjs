@@ -1,31 +1,36 @@
 #!/usr/bin/env node
 /**
- * ⚠️ BLOKERET AF CHROME - aarsagen er fundet og maalt. Laes her foer du bruger den.
+ * ⚠️ VIRKER IKKE - og den foerste aarsag jeg skrev her var FORKERT. Laes begge dele.
  *
- * MAALT og virker: en separat Chrome med egen profil starter, indlaeser udvidelsen fra repoet,
- * faar sit EGET udvidelses-id, og serveren bindes til det med `BROWSER_MCP_EXTENSION_ID`.
- * Gustavs egen udvidelse bliver aktivt lukket ude - set i loggen:
- * «Afviser udvidelse nggfamghkbkjjpooipchhehabjkgicim». Isolationen er altsaa bevist.
+ * MAALT og virker: serveren kan bindes til ét udvidelses-id med `BROWSER_MCP_EXTENSION_ID`,
+ * og Gustavs egen udvidelse bliver saa aktivt lukket ude (set i loggen: «Afviser udvidelse
+ * nggfamghkbkjjpooipchhehabjkgicim»). Selve isolations-mekanikken er bevist.
  *
- * MAALT og virker IKKE - og her er grunden:
+ * ⛔ **Rettelse 19/9, samme aften.** Foerste udgave af dette hoved sagde at `--load-extension`
+ * giver en `background_page`-kontekst hvor `chrome.offscreen` er `undefined`, og at broen
+ * derfor ikke kan starte. **Det var maalt paa den forkerte udvidelse.** Mit filter greb det
+ * foerste CDP-target med «background» i url'en, og det var Chromes egen betalings-udvidelse.
  *
- *   En udvidelse indlaest med `--load-extension` faar en **background_page**-kontekst
- *   (CDP-target-type `background_page`, url `background.html`), ikke en service worker -
- *   selv om manifestet er MV3 og erklaerer `service_worker`. I den kontekst er
- *   `chrome.offscreen` **undefined**. Broen lever i et offscreen-dokument, saa den kan
- *   aldrig starte. Maalt BAADE headless og synlig, saa det er ikke en headless-begraensning.
- *   `WebSocket` findes derimod i konteksten, saa problemet er offscreen-API'et alene.
+ * Den rigtige maaling: i en frisk profil med `--load-extension` er der 2-4 udvidelses-targets,
+ * og de er ALLE Chromes egne - «Betalinger i Chrome Webshop», «Google Hangouts», «Google
+ * Network Speech», «Google Docs Offline». **Vores er slet ikke ét af dem.** Udvidelsen bliver
+ * altsaa aldrig indlaest. Hverken med `--disable-features=DisableLoadExtensionCommandLineSwitch`
+ * eller med `--disable-extensions-except`.
  *
- * Den vej der kan virke, og som ikke er proevet endnu: byg test-profilen ÉN gang i haanden -
- * aabn en Chrome med `--user-data-dir=<fast sti>`, indlaes udvidelsen via chrome://extensions
- * som normalt, og luk. Derefter genbruger scriptet den profil i stedet for `--load-extension`.
- * Saa er udvidelsen «rigtigt installeret» i profilen og faar sin service worker.
+ * Og det modsatte af det jeg foerst skrev er sandt: to af Chromes egne er MV3 med
+ * `chrome.offscreen` som **object** i samme headless-koersel. Headless er fint. MV3 er fint.
+ * Offscreen er fint. Det er indlaesningen der ikke sker.
+ *
+ * Konsekvens: udvidelses-id'et scriptet «fandt» og bandt serveren til, var Chromes eget.
+ * Isolationen virkede, men den isolerede den forkerte ting.
+ *
+ * Vejen der ikke er proevet: installér udvidelsen i en fast profil ÉN gang via
+ * chrome://extensions (kan ikke skriptes - chrome:// er spaerret for baade CDP og os), og lad
+ * scriptet genbruge den profil. Kraever et menneske én gang, eller UI-automatisering med
+ * skriveadgang. computer-mcp koerer readonly her.
  *
  * Indtil da koeres flow-spaerren mod den rigtige Chrome - og derfor foer en udgivelse,
  * ikke efter hver commit.
- *
- * Proev forbindelsen alene (ingen faner, ingen muse-haendelser):
- *   node scripts/flow-isoleret.mjs --kun-forbind [--synlig]
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
