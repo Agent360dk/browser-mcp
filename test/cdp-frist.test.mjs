@@ -111,3 +111,40 @@ test('cdpSend giver op naar hjulet tier, saa en reserveloesning KAN naas (selve 
   assert.match(String(svar), /svarede ikke|timeout|frist/i,
     'hjul-afsendelsen skal afvises, ikke haenge - ellers naar scroll aldrig sin reserveloesning');
 });
+
+// ── Fristen maa ikke haenge paa en dansk saetning ───────────────────────────
+// FUNDET 19/9 af Astra: fire steder afgjorde «er det her en frist?» ved at regex-matche
+// den danske tekst «svarede ikke inden» i fejlbeskeden - og dermed om svaret baerer
+// `maaske_landet` og advarslen mod blind gentagelse. Astra oversatte teksten i hukommelsen
+// og koerte samme press_key-forloeb: `maaske_landet` forsvandt. En ren tekstrettelse kunne
+// altsaa tavst slaa den aerlighed fra som hele 1.29.2 handlede om.
+//
+// Samme lare som huset skrev ned 7/9: et ord kan ikke baere en regel. Fristen baerer nu et
+// flag, og proeven her holder den til det - med en fejl hvis tekst er helt engelsk.
+test('en frist genkendes paa sit flag, ikke paa sine ord', () => {
+  const u = indlaesUdvidelse({ svar: { 'debugger.getTargets': [] } });
+  const lav = u.hent('cdpFristFejl');
+  const er = u.hent('erCdpFrist');
+
+  const paaEngelsk = lav('CDP did not respond within 1500 ms: Input.dispatchKeyEvent');
+  assert.equal(er(paaEngelsk), true,
+    'en frist med engelsk tekst blev ikke genkendt - saa ville en oversaettelse fjerne maaske_landet');
+
+  assert.equal(er(new Error('noget helt andet gik galt')), false,
+    'alt muligt bliver regnet som en frist');
+
+  // Bagstopperen: en fejl der er rejst et andet sted fra, uden flag, men med den gamle tekst.
+  assert.equal(er(new Error('CDP svarede ikke inden 1500 ms: Input.dispatchKeyEvent')), true,
+    'bagstopperen for gamle fejl er vaek');
+});
+
+test('ingen af fristens forbrugere afgoer sagen paa prosaen alene', async () => {
+  const { readFileSync } = await import('node:fs');
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  // Præcis ét sted maa teksten staa som moenster: inde i erCdpFrist selv, som bagstopper.
+  const antal = (kilde.match(/\/svarede ikke inden/g) || []).length;
+  assert.equal(antal, 1,
+    `${antal} steder matcher fristens tekst direkte - de skal gaa gennem erCdpFrist()`);
+  const iHjaelperen = kilde.slice(kilde.indexOf('function erCdpFrist'), kilde.indexOf('function erCdpFrist') + 300);
+  assert.match(iHjaelperen, /svarede ikke inden/, 'bagstopperen ligger ikke i erCdpFrist');
+});

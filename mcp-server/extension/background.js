@@ -605,6 +605,29 @@ function netvaerkFrister() {
   return { budgetMs: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS, bodyMinMs: CDP_FRIST_MS, bodyMaxMs: CDP_FRIST_TUNG_MS };
 }
 
+
+// ── CDP-fristen er et SIGNAL, ikke en saetning ──────────────────────────────
+// FUNDET 19/9 af Astra, efterproevet: fire steder afgjorde de, at en handling var
+// UVIS - og dermed om svaret baerer `maaske_landet` - ved at regex-matche den danske
+// tekst «svarede ikke inden» i fejlens besked. Astra oversatte teksten i hukommelsen
+// og koerte samme press_key-forloeb: `maaske_landet` forsvandt, og advarslen mod blind
+// gentagelse med den. Altsaa kunne en ren tekstrettelse - eller en oversaettelse -
+// tavst slaa praecis den aerlighed fra som 1.29.2 handlede om.
+//
+// Det er husets egen lære, skrevet ned 7/9: et ord kan ikke baere en regel. Fejlen
+// baerer nu et flag. Teksten maa aendres, oversaettes og omskrives frit; signalet
+// foelger ikke med. Tekst-matchet bevares som bagstopper for fejl der er rejst
+// andre steder fra.
+function cdpFristFejl(besked) {
+  const e = new Error(besked);
+  e.cdpFrist = true;
+  return e;
+}
+function erCdpFrist(e) {
+  if (e && e.cdpFrist === true) return true;
+  return /svarede ikke inden/.test((e && e.message) || '');
+}
+
 function cdpMedFrist(tabId, method, params) {
   let ur;
   const frist = cdpFrist(method, params);
@@ -616,7 +639,7 @@ function cdpMedFrist(tabId, method, params) {
       const hint = String(method).startsWith('Input.')
         ? ' (fanen er sandsynligvis i baggrunden - Chrome leverer ikke mus og taster til en fane der ikke er aktiv; kald browser_switch_tab og proev igen)'
         : '';
-      ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: ${method}${hint}`)), frist);
+      ur = setTimeout(() => afvis(cdpFristFejl(`CDP svarede ikke inden ${frist} ms: ${method}${hint}`)), frist);
     }),
   ]).finally(() => clearTimeout(ur));
 }
@@ -1177,6 +1200,12 @@ async function clearFieldAttached(tabId) {
  * FUNDET 13/9 af Astra: tekst-grenen fik den her dom om formiddagen, CSS-grenen ikke - og
  * CSS-grenen er den mest brugte. Én funktion, saa de ikke kan drive fra hinanden igen.
  */
+// `faktisk` staar ved siden af `vaerdi` fordi serverens instruktion til agenten siger
+// «browser_fill with afviger: true … read `faktisk`» (mcp-server/index.js:694). FUNDET 19/9:
+// kun reservestien satte det felt; den her - den almindelige - svarede `vaerdi` alene, saa
+// raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
+// kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
+// API-overflade nogen kan laese i dag.
 function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
   if (laest === undefined || laest === null) {
     return { ok: true, ...ekstra, uvist: true,
@@ -1184,7 +1213,7 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
             'den landede. Laes feltet med browser_execute_script hvis det betyder noget.' };
   }
   if (laest === '') {
-    return { ok: false, ...ekstra, error: 'feltet-er-tomt', vaerdi: laest,
+    return { ok: false, ...ekstra, error: 'feltet-er-tomt', vaerdi: laest, faktisk: laest,
       note: 'Feltet stod tomt efter skrivningen. Chrome kvitterede for baade indsaettelsen og ' +
             'tastetrykkene, men feltet tog ikke imod. Fanen er sandsynligvis i baggrunden, hvor ' +
             'Chrome ikke leverer taster. Kald browser_switch_tab og proev igen.' };
@@ -1195,16 +1224,16 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
     // det eneste sted rammens egen opfattelse staar, og den modsiger DOM'en praecis naar
     // rammen ikke har hoert efter. Det er positivt bevis for at det IKKE landede, ikke uvished.
     if (rammeHoerte === false) {
-      return { ok: true, ...ekstra, vaerdi: laest, ramme_hoerte_ikke: true,
+      return { ok: true, ...ekstra, vaerdi: laest, faktisk: laest, ramme_hoerte_ikke: true,
         note: 'Feltet VISER den rigtige tekst, men sidens egen tilstand har ikke hoert det: ' +
               'React\'s vaerdi-tracker staar stadig paa den gamle vaerdi. Formularen vil ' +
               'sandsynligvis opfoere sig som om feltet er tomt, og vaerdien kan blive kasseret ' +
               'ved indsendelse. Klik i feltet med browser_click og skriv med browser_press_key, ' +
               'eller kontrollér resultatet foer du gaar videre.' };
     }
-    return { ok: true, ...ekstra, vaerdi: laest };
+    return { ok: true, ...ekstra, vaerdi: laest, faktisk: laest };
   }
-  return { ok: true, ...ekstra, afviger: true, vaerdi: laest,
+  return { ok: true, ...ekstra, afviger: true, vaerdi: laest, faktisk: laest,
     note: 'Feltet indeholder noget andet end det skrevne. Siden har sandsynligvis formateret ' +
           'vaerdien - eller der stod noget i forvejen.' };
 }
@@ -3337,11 +3366,11 @@ async function dispatch(port, method, params) {
               loefte,
               new Promise((_, afvis) => {
                 const frist = Math.max(0, ms);
-                ur = setTimeout(() => afvis(new Error(`CDP svarede ikke inden ${frist} ms: Page.captureScreenshot`)), frist);
+                ur = setTimeout(() => afvis(cdpFristFejl(`CDP svarede ikke inden ${frist} ms: Page.captureScreenshot`)), frist);
               }),
             ]);
           } catch (e) {
-            if (e && typeof e === 'object' && /svarede ikke inden/.test(e.message || '')) e.ingenNyRunde = true;
+            if (e && typeof e === 'object' && erCdpFrist(e)) e.ingenNyRunde = true;
             throw e;
           } finally {
             clearTimeout(ur);
@@ -3648,7 +3677,7 @@ async function dispatch(port, method, params) {
         }
         // MAALT 11/9 i Chrome for Testing: en fane i baggrunden faar ikke Input.* - musebevaegelsen udloeber FOER
         // trykket er sendt. Intet klik kan vaere landet (trykSendt er falsk, se ovenfor), saa script-klikket er sikkert.
-        const inputFristFoerTryk = /svarede ikke inden \d+ ms: Input\./.test(e?.message || '');
+        const inputFristFoerTryk = erCdpFrist(e) && /: Input\./.test(e?.message || '');
         if (inputFristFoerTryk || /Debugger detached|Debugger attach failed|not attached/i.test(e?.message || '')) {
           // Ingen "ny adresse = klikket navigerede"-regel her. Astra (efterproevning af c1496d4): en UAFHAENGIG navigation
           // fjernede rammen foer scriptet koerte, og reglen svarede ok:true med nul handlinger. En afvisning beviser ikke at
@@ -3749,7 +3778,7 @@ async function dispatch(port, method, params) {
           }, [parsed.selector]).catch(() => null);
           return r && !r.cspBlocked ? r.result : null;
         };
-        const fristUdloeb = /svarede ikke inden/.test(e?.message || '');
+        const fristUdloeb = erCdpFrist(e);
         if (fristUdloeb) await new Promise((r) => setTimeout(r, 400));
         // MAALT 11/9 af Astra (R5 F1): feltet laeses FOER reserveloesningen skriver. Det er det der skiller en
         // side der afviste vaerdien (feltet stod stille) fra en side der formaterede den (feltet aendrede sig).
@@ -4030,7 +4059,7 @@ async function dispatch(port, method, params) {
         await debuggerDetach(tab.id);
       }
       if (tastFejl) {
-        const frist = /svarede ikke inden/.test(tastFejl.message || '');
+        const frist = erCdpFrist(tastFejl);
         return {
           ok: false, key, error: tastFejl.message,
           ...(frist ? { maaske_landet: true,

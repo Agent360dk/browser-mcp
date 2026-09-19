@@ -93,3 +93,33 @@ test('tomt felt slaar stadig igennem, uanset hvad trackeren siger', async () => 
   const svar = await fyld(sele({ slutVaerdi: '', ramme: true }));
   assert.equal(svar.ok, false, 'et tomt felt er en fejl, ogsaa naar trackeren er enig i tomheden');
 });
+
+// ── Instruktionen lover et felt svaret ikke havde ──────────────────────────
+// FUNDET 19/9 af fyld-tjek, efterproevet her: serverens instruktion til agenten siger
+// ordret «browser_fill with afviger: true means the field shows something other than what
+// you typed; read `faktisk`» (mcp-server/index.js:694). Reservestien SATTE `faktisk`
+// (background.js:3811), men debugger-stien - den almindelige - svarede `vaerdi` og INTET
+// `faktisk`. Agenten fik altsaa besked paa at laese et felt der ikke fandtes, i det
+// vaerktoej der bruges mest.
+//
+// Det er ikke et sprogspoergsmaal. Det er to navne for samme begreb i to kodestier, og
+// det havde vaeret en fejl ogsaa hvis hele filen var engelsk.
+test('afviger: true leverer ogsaa det felt instruktionen beder agenten laese', async () => {
+  const svar = await fyld(sele({ slutVaerdi: 'Gustav Louv', ramme: null }));
+  assert.equal(svar.afviger, true, 'feltet viser noget andet end det skrevne - det er afvigelsen');
+  assert.equal(svar.faktisk, 'Gustav Louv',
+    'instruktionen siger «read faktisk» - staar det ikke i svaret, er raadet uudfoerligt');
+  assert.equal(svar.vaerdi, 'Gustav Louv', 'det gamle navn maa ikke forsvinde - det er API-overflade');
+});
+
+test('de to kodestier svarer med samme felter, saa agenten ikke skal gaette hvilken den ramte', () => {
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const i = kilde.indexOf('function fyldSvar');
+  let d = 0, j = kilde.indexOf('{', i), slut = j;
+  for (; j < kilde.length; j++) { if (kilde[j] === '{') d++; else if (kilde[j] === '}' && --d === 0) { slut = j; break; } }
+  const krop = kilde.slice(i, slut + 1);
+  const medVaerdi = [...krop.matchAll(/return \{[^;]*?\};/gs)].map((m) => m[0]).filter((r) => /vaerdi:/.test(r));
+  const uden = medVaerdi.filter((r) => !/faktisk:/.test(r));
+  assert.equal(uden.length, 0,
+    `${uden.length} af ${medVaerdi.length} svar med \`vaerdi\` mangler \`faktisk\` - reservestien har begge`);
+});
