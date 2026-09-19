@@ -598,6 +598,20 @@ test('det kolde tjek maa ikke doe paa en tom timeout-array', () => {
   // Og egenskaben, ikke bare formuleringen: koer begge former i en rigtig bash.
   const koer = (udtryk) => spawnSync('bash', ['-c',
     `set -euo pipefail; A=(); echo ok | ${udtryk} cat`], { encoding: 'utf8' });
-  assert.notEqual(koer('"${A[@]}"').status, 0, 'bash er holdt op med at fejle paa den gamle form - saa maaler proeven intet');
+
+  // Den sikre form skal virke i ENHVER bash. Det er det egentlige krav.
   assert.equal(koer('${A[@]+"${A[@]}"}').status, 0, 'den sikre form virker ikke i denne bash');
+
+  // Kalibreringen - "kan denne bash overhovedet vise fejlen?" - kan kun koeres hvor
+  // fejlen findes. MAALT 19/9: foerste udgave paastod at den gamle form ALTID fejler.
+  // Det gaelder bash 3.2 (macOS' egen), ikke bash 5 (Linux, og dermed CI), hvor en tom
+  // array-udvidelse er lovlig under `set -u`. Proeven maalte min maskine, ikke reglen,
+  // og gjorde hele CI roed en time efter at den blev skrevet. Paa en moderne bash kan
+  // dette miljoe ikke demonstrere fejlen, og saa er kilde-tjekket ovenfor hele vagten.
+  const gammelFejler = koer('"${A[@]}"').status !== 0;
+  const bashVer = spawnSync('bash', ['-c', 'echo ${BASH_VERSINFO[0]}'], { encoding: 'utf8' }).stdout.trim();
+  if (Number(bashVer) < 5) {
+    assert.ok(gammelFejler,
+      `bash ${bashVer} burde fejle paa den bare udvidelse men gjorde ikke - saa maaler kalibreringen intet`);
+  }
 });
