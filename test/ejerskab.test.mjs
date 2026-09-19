@@ -56,7 +56,7 @@ test('en fane vores egen side aabnede, er vores', async () => {
 test('get_cookies uden domaene afvises - ellers er filteret hele krukken', async () => {
   const u = sele({ id: 1, url: 'https://a.example', windowId: 1, active: true });
   const r = await u.hent('dispatch')(9876, 'get_cookies', {});
-  assert.equal(r.error, 'domain-mangler');
+  assert.equal(r.error, 'domain-missing');
   assert.equal(u.__filter, undefined, 'chrome.cookies.getAll maa slet ikke naas uden domaene');
 });
 
@@ -176,7 +176,7 @@ test('set_cookies: en cookie til et domaene sessionen ikke har aabnet, saettes i
   const { u, satte } = saetSele();
   const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'bank.example.dk' }] });
   assert.equal(satte.length, 0, `cookien blev sat paa et fremmed domaene: ${JSON.stringify(satte)}`);
-  assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
+  assert.match(JSON.stringify(r), /domain-not-in-session/, JSON.stringify(r));
 });
 
 test('set_cookies: sessionens eget domaene virker uaendret (positiv kontrol)', async () => {
@@ -200,7 +200,7 @@ test('set_cookies: et underdomaene sessionen ikke har aabnet, afvises', async ()
   const { u, satte } = saetSele([], { url: 'https://example.com/' });   // Astras scenarie: sessionen staar paa selve example.com
   const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'bank.example.com' }] });
   assert.equal(satte.length, 0, `cookien blev sat paa et uaabnet underdomaene: ${JSON.stringify(satte)}`);
-  assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
+  assert.match(JSON.stringify(r), /domain-not-in-session/, JSON.stringify(r));
 });
 
 // MAALT 12/9 af Astra (efterproevning af 19d036a): sessionen har baade a.example.com og example.com aabne. Et kald med
@@ -222,7 +222,7 @@ test('set_cookies: en host-only cookie til en vaert sessionen ikke har aabnet, a
   const { u, satte } = saetSele([], { url: 'https://a.example.com/' });
   const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', url: 'https://example.com/login' }] });
   assert.equal(satte.length, 0, `cookien landede paa en anden vaert: ${JSON.stringify(satte)}`);
-  assert.match(JSON.stringify(r), /domaene-ikke-i-sessionen/, JSON.stringify(r));
+  assert.match(JSON.stringify(r), /domain-not-in-session/, JSON.stringify(r));
 });
 
 // MAALT samme runde af Opus: vagten tjekkede `domain`, men sendte kalderens egen `url` videre utjekket. Adressen bygges nu
@@ -247,7 +247,7 @@ test('set_cookies: en inkognitofane uden kendt lager skriver ingenting', async (
   const { u, satte } = saetSele([], { incognito: true, lagre: () => { throw new Error('lagre utilgaengelige'); } });
   const r = await u.hent('dispatch')(9876, 'set_cookies', { cookies: [{ name: 'sid', value: 'x', domain: 'a.example.com' }] });
   assert.equal(satte.length, 0, `skrev i et ukendt lager: ${JSON.stringify(satte)}`);
-  assert.match(JSON.stringify(r), /cookie-lager-ukendt|domaene-ikke-i-sessionen/, JSON.stringify(r));
+  assert.match(JSON.stringify(r), /cookie-store-unknown|domain-not-in-session/, JSON.stringify(r));
 });
 
 test('upload-stien er indesluttet i arbejdsmappen - samme vagt som skaermbilledets path', () => {

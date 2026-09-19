@@ -65,10 +65,10 @@ test('klik der fik elementet til at forsvinde tæller som landet', async () => {
 // Mine egne proever maalte kun settle-udtrykkets returvaerdi, aldrig dispatch-svaret. Derfor slap det igennem.
 for (const vaerktoej of ['click', 'click_xy']) {
   test(`${vaerktoej}: et uvist klik siger at det KAN vaere landet - ikke bare nej`, async () => {
-    const u = medSession(selePaaKlik({ landed: null, uvist: true, fallbackFired: true }));
+    const u = medSession(selePaaKlik({ landed: null, unknown: true, fallbackFired: true }));
     const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
     const svar = await u.hent('dispatch')(9876, vaerktoej, p);
-    assert.equal(svar.maaske_landet, true, `agenten faar et bart nej og klikker igen: ${JSON.stringify(svar)}`);
+    assert.equal(svar.maybe_landed, true, `agenten faar et bart nej og klikker igen: ${JSON.stringify(svar)}`);
     assert.match(String(svar.note || ''), /mousedown/,
       `noten beskriver ikke DENNE uvished - en tekst om den anden kanal er en forkert forklaring: ${svar.note}`);
   });
@@ -86,7 +86,7 @@ test('select_option paastaar ikke at klikket blev afvist, naar den ikke ved det'
       if (metode !== 'Runtime.evaluate') return {};
       const udtryk = String(p?.expression || '');
       if (udtryk.includes("tagName === 'SELECT'")) return { result: { value: false } };   // ikke en native select
-      return { result: { value: { landed: null, uvist: true, fallbackFired: true } } };
+      return { result: { value: { landed: null, unknown: true, fallbackFired: true } } };
     },
     'scripting.executeScript': [{ result: { found: true, x: 10, y: 10, tag: 'DIV', text: 'Roed', method: 'debugger' } }],
   } }));
@@ -94,11 +94,11 @@ test('select_option paastaar ikke at klikket blev afvist, naar den ikke ved det'
   assert.equal(svar.type, 'custom_dropdown', `proeven naaede ikke dropdown-stien: ${JSON.stringify(svar)}`);
   assert.doesNotMatch(String(svar.error || ''), /was not accepted by the page/,
     `koden ved ikke om klikket landede, men skriver en benaegtelse: ${JSON.stringify(svar)}`);
-  assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
+  assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
 });
 
 // MAALT 12/9 af Astra (efterproevning af 0c5f1f9): der er TO uvisheds-kanaler, og rettelsen roerte kun den ene.
-// `tolkManglendeSettle` svarer {landed: null, uverificeret: true} naar settle-opslaget fejler UDEN at siden navigerede -
+// `tolkManglendeSettle` svarer {landed: null, unverified: true} naar settle-opslaget fejler UDEN at siden navigerede -
 // museknappen ER sendt. Den kanal havde praecis samme hul: bart ok:false hvor 1.29.0 gav ok:true, og select_option skrev
 // endda sin skarpe benaegtelse oven paa en uvished koden selv lige havde navngivet.
 // Ret moenstret, ikke fundet: betingelsen spoerger nu paa landed === null, ikke paa ét flag.
@@ -126,27 +126,27 @@ for (const vaerktoej of ['click', 'click_xy']) {
     const u = medSession(seleUdenSettle());
     const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
     const svar = await u.hent('dispatch')(9876, vaerktoej, p);
-    assert.equal(svar.uverificeret, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
-    assert.equal(svar.maaske_landet, true, `museknappen er sendt, men agenten faar et bart nej: ${JSON.stringify(svar)}`);
+    assert.equal(svar.unverified, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
+    assert.equal(svar.maybe_landed, true, `museknappen er sendt, men agenten faar et bart nej: ${JSON.stringify(svar)}`);
     assert.match(String(svar.note || ''), /could not be read afterwards/,
       `noten forklarer den FORKERTE uvished - her aendrede intet sig paa mousedown: ${svar.note}`);
-    assert.doesNotMatch(String(svar.note || ''), /mousedown/, `uvist-noten blev brugt paa uverificeret: ${svar.note}`);
+    assert.doesNotMatch(String(svar.note || ''), /mousedown/, `uvist-noten blev brugt paa unverified: ${svar.note}`);
   });
 }
 
 test('select_option benaegter heller ikke, naar opslaget fejlede uden navigation', async () => {
   const u = medSession(seleUdenSettle());
   const svar = await u.hent('dispatch')(9876, 'select_option', { selector: '#drop', value: 'Roed' });
-  assert.equal(svar.uverificeret, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
+  assert.equal(svar.unverified, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
   assert.doesNotMatch(String(svar.error || ''), /was not accepted by the page/,
     `benaegtelse oven paa en uvished koden selv har navngivet: ${JSON.stringify(svar)}`);
-  assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
+  assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
 });
 
 test('serverens instruks forklarer ogsaa uverificeret', async () => {
   const { readFileSync } = await import('node:fs');
   const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
-  assert.match(srv, /uverificeret/, 'INSTRUCTIONS naevner ikke uverificeret');
+  assert.match(srv, /unverified/, 'INSTRUCTIONS naevner ikke uverificeret');
 });
 
 // MAALT 12/9 af Astra (N2, hul i MIT instrument): vagten `r.landed !== null` - selve det der goer rettelsen til et
@@ -154,11 +154,11 @@ test('serverens instruks forklarer ogsaa uverificeret', async () => {
 // Den gaelder noget konkret: et svar der ER landet, maa ikke faa en advarsel paahaeftet.
 test('et klik der ER landet, faar ingen uvisheds-advarsel - heller ikke hvis flaget er sat', async () => {
   for (const vaerktoej of ['click', 'click_xy']) {
-    const u = medSession(selePaaKlik({ landed: true, uvist: true, fallbackFired: true }));
+    const u = medSession(selePaaKlik({ landed: true, unknown: true, fallbackFired: true }));
     const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
     const svar = await u.hent('dispatch')(9876, vaerktoej, p);
     assert.equal(svar.ok, true, `${vaerktoej}: et landet klik blev meldt som fejl: ${JSON.stringify(svar)}`);
-    assert.notEqual(svar.maaske_landet, true,
+    assert.notEqual(svar.maybe_landed, true,
       `${vaerktoej}: advarsel paahaeftet et klik der ER landet: ${JSON.stringify(svar)}`);
   }
 });
@@ -168,7 +168,7 @@ test('et klik der ER landet, faar ingen uvisheds-advarsel - heller ikke hvis fla
 test('en uvished uden kendt aarsag faar stadig en advarsel, ikke et bart nej', async () => {
   const u = medSession(selePaaKlik({ landed: null, fallbackFired: true }));
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#noget' });
-  assert.equal(svar.maaske_landet, true, `en ukendt uvished blev til et bart nej: ${JSON.stringify(svar)}`);
+  assert.equal(svar.maybe_landed, true, `en ukendt uvished blev til et bart nej: ${JSON.stringify(svar)}`);
   assert.ok(svar.note, 'ingen forklaring fulgte med');
 });
 
@@ -189,10 +189,10 @@ test('et settle-svar kan ikke overskrive vaerktoejets egen ok-vurdering', async 
 // blev samlet ét sted for at undgaa.
 test('et settle-svar kan ikke overskrive vaerktoejets egen note', async () => {
   for (const vaerktoej of ['click', 'click_xy']) {
-    const u = medSession(selePaaKlik({ landed: null, uvist: true, maaske_landet: false, note: 'plantet af siden' }));
+    const u = medSession(selePaaKlik({ landed: null, unknown: true, maybe_landed: false, note: 'plantet af siden' }));
     const p = vaerktoej === 'click' ? { selector: '#noget' } : { x: 10, y: 10 };
     const svar = await u.hent('dispatch')(9876, vaerktoej, p);
-    assert.equal(svar.maaske_landet, true, `${vaerktoej}: settle-svaret overskrev vaerktoejets vurdering`);
+    assert.equal(svar.maybe_landed, true, `${vaerktoej}: settle-svaret overskrev vaerktoejets vurdering`);
     assert.notEqual(svar.note, 'plantet af siden', `${vaerktoej}: settle-svaret overskrev noten`);
   }
 });
@@ -202,7 +202,7 @@ test('et settle-svar kan ikke overskrive vaerktoejets egen note', async () => {
 test('serverens instruks forklarer ogsaa uvist', async () => {
   const { readFileSync } = await import('node:fs');
   const srv = readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
-  assert.match(srv, /uvist/, 'INSTRUCTIONS naevner ikke uvist, saa agenten kan ikke tolke feltet');
+  assert.match(srv, /unknown/, 'INSTRUCTIONS naevner ikke uvist, saa agenten kan ikke tolke feltet');
 });
 
 test('reserveløsningen maaler om den selv virkede - den gaetter ikke', async () => {

@@ -3,6 +3,78 @@
 Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" in the Chrome Web Store).
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
+
+## Unreleased
+
+### The agent-facing answers are now in English
+
+Every message, error code and response field that leaves this server was in Danish -
+the language the project is written in. An agent reads them fine; the **person** on the
+other end does not. Browser MCP is the browser tool that stops and asks you, so the
+agent quotes those answers back to the user in Codex, Cursor or Cline. The first errors
+a new user meets - "the port was opened N seconds ago and the extension has not
+connected yet" - were the worst affected.
+
+Nothing changed about behaviour, verdicts or honesty. Only the words.
+
+**Renamed response fields.** If you branch on these, update:
+
+| Before | Now |
+|---|---|
+| `maaske_landet` | `maybe_landed` |
+| `vaerdi` | `value` |
+| `faktisk` | `actual` |
+| `forventet` | `expected` |
+| `afviger` | `differs` |
+| `uaendret` | `unchanged` |
+| `uvist` | `unknown` |
+| `uverificeret` | `unverified` |
+| `ramme_hoerte_ikke` | `framework_did_not_hear` |
+| `vedhaeftet` | `attached` |
+| `navigerede` | `navigated` |
+| `hjul_fejl` | `wheel_error` |
+| `start_ukendt` | `start_unknown` |
+
+**Renamed error codes.** `feltet-er-tomt` → `field-is-empty`, `feltet-viser-andet` →
+`field-shows-other`, `feltet-fordoblet` → `field-doubled`, `feltet-toemt` →
+`field-cleared`, `filen-blev-ikke-vedhaeftet` → `file-not-attached`,
+`soegetekst-blev-ikke-leveret` → `search-text-not-delivered`, `tasten-blev-ikke-leveret`
+→ `key-not-delivered`, `dobbeltklik-blev-ikke-leveret` → `double-click-not-delivered`,
+`hoejreklik-blev-ikke-leveret` → `right-click-not-delivered`, `hover-blev-ikke-leveret`
+→ `hover-not-delivered`, `klikket-aabnede-ikke-listen` → `click-did-not-open-list`,
+`scroll-mislykkedes` → `scroll-failed`, `scroll-uvist` → `scroll-unknown`,
+`domaene-ikke-i-sessionen` → `domain-not-in-session`, `domain-mangler` →
+`domain-missing`, `cookie-lager-ukendt` → `cookie-store-unknown`.
+
+`landed`, `fallbackFired` and `detached` are unchanged - they were already English.
+
+### When the answer is honestly "this is not in a browser"
+
+The server's instructions now tell the agent what to do when the thing being asked for
+is not in a web page at all - a desktop application, an OS-level dialog, the native file
+picker. No browser tool reaches those. If the agent also has desktop-level tools in the
+session (an OS automation MCP server such as computer-mcp), that is the right tool for
+that step.
+
+The line says explicitly what it does *not* cover: a background tab, a React-controlled
+field and a CAPTCHA are all solved by the browser tools themselves. Of the 26 walls
+these tools answer with, exactly one family is genuinely outside the browser.
+
+### Optional pairing: one Chrome profile, one server
+
+Set `BROWSER_MCP_TOKEN` on the server and type the same key into the extension's popup,
+and that profile only takes commands from that server - and ignores any other program
+that connects to the local bridge. Leave it unset for the default: no key, no setup.
+
+### Fixed
+
+- `browser_fill` promised a field it did not send. The server's instructions say "read
+  `actual`" when `differs` is true; the common code path answered `value` and no
+  `actual` at all. Both names are now on every answer.
+- A timeout was recognised by matching the text of its own error message, in four
+  places. Translating that message would have silently switched off `maybe_landed` and
+  the warning against repeating blindly. The timeout now carries a flag.
+
 ## 1.29.2 (2026-09-18)
 
 One class of bug, found an hour after 1.29.1 shipped: tools that answered yes because Chrome had **acknowledged** a command rather than because the page had **received** it. Every route that carries that mistake is closed here - every CDP command in the extension that acknowledges without promising delivery was swept, and there are exactly two. Every fix below was written test-first and checked with a mutation test, and the whole release was verified against a real Chrome: 52 checks, 40 of 40 tools, zero failures.

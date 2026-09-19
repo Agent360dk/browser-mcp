@@ -4,7 +4,7 @@
  * ANTAGET 13/9 af Fable, MAALT 18/9 i flow-spaerren: Blink fyrer `mouseover` KUN naar
  * elementet under markoeren skifter. Anden gang giver `mousemove`. Beviset lyttede kun paa
  * `mouseover`, saa en helt almindelig raekkefoelge - klik paa noget, hover saa det samme -
- * svarede `hover-blev-ikke-leveret`.
+ * svarede `hover-not-delivered`.
  *
  * Han kunne ikke maale det selv (fejlfinderen spoegelses-fastgjorde sig i hans Chrome), saa
  * vi rettede IKKE paa antagelsen. I stedet blev maalingen lagt ind i flow-spaerren, og

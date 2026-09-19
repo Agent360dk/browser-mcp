@@ -903,18 +903,18 @@ async function evaluerTaalmodigt(tabId, params, ms = 3000) {
 }
 
 // Én regel for om et klik landede - brugt af click, click_xy og select_option. Astra, tredje runde:
-// select_option havde stadig den gamle ("ikke falsk" = landet), saa et uvist klik blev til ok:true.
+// select_option havde stadig den gamle ("ikke falsk" = landet), saa et unknown klik blev til ok:true.
 function klikLandede(r) {
   return r?.landed === true || r?.detached === true;
 }
 
-// Teksten der foelger med et uvist klik. Staar ét sted, fordi den skal vaere ens for click, click_xy og select_option -
+// Teksten der foelger med et unknown klik. Staar ét sted, fordi den skal vaere ens for click, click_xy og select_option -
 // tre kaldesteder med den samme regel har foer drevet fra hinanden (select_option havde den gamle i to udgaver).
 const UVIST_NOTE = 'The click was sent, and the page changed on mousedown - but not from the click itself. That may be a ripple, and it may be a menu that opens on mousedown. Check the state before clicking again: a second click closes a menu that is already open.';
 const UVERIFICERET_NOTE = 'The mouse button was sent, but the page could not be read afterwards (the lookup failed and the page did not navigate). ' +
   'The click may have landed. Check the state before clicking again.';
 
-// MAALT 12/9 af Astra: der er TO uvisheds-kanaler - `uvist` (kun mousedown aendrede noget) og `uverificeret`
+// MAALT 12/9 af Astra: der er TO uvisheds-kanaler - `unknown` (kun mousedown aendrede noget) og `uverificeret`
 // (settle-opslaget fejlede uden navigation, men museknappen ER sendt). Rettelsen roerte kun den foerste, saa den anden
 // gav stadig et bart ok:false hvor 1.29.0 gav ok:true - og et bart nej faar agenten til at klikke igen.
 // Betingelsen spoerger derfor paa landed === null, ikke paa ét flag: en fremtidig tredje kanal er daekket fra dag ét.
@@ -925,10 +925,10 @@ const UVERIFICERET_NOTE = 'The mouse button was sent, but the page could not be 
 // laeseren det forkerte sted hen, og det er den samme fejlklasse som resten af 1.29.2.
 function uvisVurdering(r, egenNote) {
   if (!r || r.landed !== null) return null;
-  if (egenNote) return { maaske_landet: true, note: egenNote };
-  if (r.uvist) return { maaske_landet: true, note: UVIST_NOTE };
-  if (r.uverificeret) return { maaske_landet: true, note: UVERIFICERET_NOTE };
-  return { maaske_landet: true, note: 'The action was sent, but its effect could not be confirmed. Check the state before repeating it.' };
+  if (egenNote) return { maybe_landed: true, note: egenNote };
+  if (r.unknown) return { maybe_landed: true, note: UVIST_NOTE };
+  if (r.unverified) return { maybe_landed: true, note: UVERIFICERET_NOTE };
+  return { maybe_landed: true, note: 'The action was sent, but its effect could not be confirmed. Check the state before repeating it.' };
 }
 
 // MAALT 10/9 af Astra (anden runde): et settle-opslag der FEJLEDE gav null, og null blev til ok:true.
@@ -936,16 +936,16 @@ function uvisVurdering(r, egenNote) {
 // maa ikke faa at vide at den skal klikke igen.
 // Tredje runde: "detached", "closed" og "Cannot find" er IKKE bevis for navigation - afkobling sker ogsaa
 // naar nogen aabner DevTools. Bevis er nu: fanen er lukket, adressen er skiftet, eller JavaScript-konteksten
-// blev revet ned (det sker kun naar dokumentet blev udskiftet). Alt andet er uvist og siges som uvist.
+// blev revet ned (det sker kun naar dokumentet blev udskiftet). Alt andet er unknown og siges som unknown.
 async function tolkManglendeSettle(tabId, settle, urlFoer) {
   const fejl = settle?.__fejl || 'settle-opslaget gav intet svar';
   const fane = await chrome.tabs.get(tabId).catch(() => null);
   const urlEfter = fane?.url ?? null;
   const kontekstVaek = /Execution context was destroyed|Cannot find context with specified id|Inspected target navigated/i.test(fejl);
   if (!fane || (urlFoer && urlEfter && urlEfter !== urlFoer) || kontekstVaek) {
-    return { landed: false, fallbackFired: false, detached: true, navigerede: true };
+    return { landed: false, fallbackFired: false, detached: true, navigated: true };
   }
-  return { landed: null, fallbackFired: false, uverificeret: true, fejl };
+  return { landed: null, fallbackFired: false, unverified: true, fejl };
 }
 
 async function debuggerClick(tabId, x, y) {
@@ -1123,7 +1123,7 @@ async function debuggerClick(tabId, x, y) {
         ryd();
         return {
           landed: kunMousedown ? null : klikketVirkede,
-          ...(kunMousedown ? { uvist: true } : {}),
+          ...(kunMousedown ? { unknown: true } : {}),
           fallbackFired: true, aftrykFoer: foerAftryk, aftrykEfter: efterAftryk,
         };
       })()`,
@@ -1201,19 +1201,19 @@ async function clearFieldAttached(tabId) {
  * CSS-grenen er den mest brugte. Én funktion, saa de ikke kan drive fra hinanden igen.
  */
 // `faktisk` staar ved siden af `vaerdi` fordi serverens instruktion til agenten siger
-// «browser_fill with afviger: true … read `faktisk`» (mcp-server/index.js:694). FUNDET 19/9:
+// «browser_fill with differs: true … read `faktisk`» (mcp-server/index.js:694). FUNDET 19/9:
 // kun reservestien satte det felt; den her - den almindelige - svarede `vaerdi` alene, saa
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
 // API-overflade nogen kan laese i dag.
 function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
   if (laest === undefined || laest === null) {
-    return { ok: true, ...ekstra, uvist: true,
+    return { ok: true, ...ekstra, unknown: true,
       note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
             'it landed. Read the field with browser_execute_script if it matters.' };
   }
   if (laest === '') {
-    return { ok: false, ...ekstra, error: 'feltet-er-tomt', vaerdi: laest, faktisk: laest,
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest,
       note: 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
             'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
             'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
@@ -1224,16 +1224,16 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
     // det eneste sted rammens egen opfattelse staar, og den modsiger DOM'en praecis naar
     // rammen ikke har hoert efter. Det er positivt bevis for at det IKKE landede, ikke uvished.
     if (rammeHoerte === false) {
-      return { ok: true, ...ekstra, vaerdi: laest, faktisk: laest, ramme_hoerte_ikke: true,
+      return { ok: true, ...ekstra, value: laest, actual: laest, framework_did_not_hear: true,
         note: 'The field SHOWS the right text, but the page\'s own state has not heard it: ' +
               'React\'s value tracker is still on the old value. The form will ' +
               'probably behave as if the field were empty, and the value may be discarded ' +
               'on submit. Click the field with browser_click and type with browser_press_key, ' +
               'or verify the result before moving on.' };
     }
-    return { ok: true, ...ekstra, vaerdi: laest, faktisk: laest };
+    return { ok: true, ...ekstra, value: laest, actual: laest };
   }
-  return { ok: true, ...ekstra, afviger: true, vaerdi: laest, faktisk: laest,
+  return { ok: true, ...ekstra, differs: true, value: laest, actual: laest,
     note: 'The field contains something other than what was typed. The page has probably formatted ' +
           'the value - or something was already there.' };
 }
@@ -1269,7 +1269,7 @@ async function debuggerFill(tabId, selector, value) {
       const el = document.querySelector(${JSON.stringify(selector)});
       return el ? (el.textContent ?? null) : null;
     })()`).catch(() => null);
-    return { vaerdi: ceTekst, rammeHoerte: null };
+    return { value: ceTekst, rammeHoerte: null };
   }
 
   // Standard input/textarea — focus, clear, fill
@@ -1370,7 +1370,7 @@ async function debuggerFill(tabId, selector, value) {
       landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
       rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     }
-    return { vaerdi: landed, rammeHoerte: rammeHoerte };
+    return { value: landed, rammeHoerte: rammeHoerte };
   } finally {
     await debuggerDetach(tabId);
   }
@@ -1423,18 +1423,18 @@ async function laesVedhaeftedeFiler(tabId, selector) {
 /** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
 function fildSvar(vedhaeftet, oenskede, ekstra) {
   if (!vedhaeftet) {
-    return { ok: true, ...ekstra, uvist: true,
+    return { ok: true, ...ekstra, unknown: true,
       note: 'The file was sent to the field, but the field could not be read afterwards, so it is unknown ' +
             'whether it is attached. Check the page before sending again.' };
   }
   if (vedhaeftet.antal === 0) {
-    return { ok: false, ...ekstra, error: 'filen-blev-ikke-vedhaeftet',
+    return { ok: false, ...ekstra, error: 'file-not-attached',
       note: 'Chrome acknowledged the file, but the field is empty. The path may not exist, the field\'s ' +
             '`accept` rejects the file type, or the page cleared the field itself. The file is NOT uploaded.' };
   }
-  const svar = { ok: true, ...ekstra, vedhaeftet: vedhaeftet.navne };
+  const svar = { ok: true, ...ekstra, attached: vedhaeftet.navne };
   if (vedhaeftet.antal !== oenskede.length) {
-    svar.afviger = true;
+    svar.differs = true;
     svar.note = `Feltet tog ${vedhaeftet.antal} af ${oenskede.length} filer. Et \`accept\`-filter eller ` +
                 'a field without `multiple` discards the rest.';
   }
@@ -1515,7 +1515,7 @@ function haendelsesSvar(bevis, grund, ekstra) {
       ...(bevis.navigeret ? { note: 'Siden navigerede paa handlingen.' } : {}) };
   }
   if (bevis.landed === null) {
-    return { ok: true, landed: null, maaske_landet: true, ...ekstra,
+    return { ok: true, landed: null, maybe_landed: true, ...ekstra,
       note: 'The action was sent, but whether the page received it could not be read. Check the page before trying again.' };
   }
   return { ok: false, landed: false, ...ekstra, error: grund,
@@ -1573,7 +1573,7 @@ async function laesTastBevis(tabId, bevis) {
       },
       args: [id],
     });
-  } catch { return { landed: null }; }     // kunne ikke laeses: uvist, ikke nej
+  } catch { return { landed: null }; }     // kunne ikke laeses: unknown, ikke nej
   const r = svar.filter((x) => x && x.result).map((x) => ({ frameId: x.frameId, ...x.result }));
   if (r.some((x) => x.antal > 0 && x.traf)) return { landed: true };
   // Samme regel som for musen: kun hovedrammens udskiftning er en navigation.
@@ -1634,7 +1634,7 @@ async function scriptingClick(tabId, selector) {
         try { el.dispatchEvent(new PointerEvent('pointerup', { ...mus, buttons: 0 })); } catch (e) {}
         el.dispatchEvent(new MouseEvent('mouseup', opts));
         // Aftrykket tages lige foer el.click(). MAALT 11/9 af Astra (e2e-review): taget foer mousedown blev en ripple klikbevis
-        // (ok:true, nul handlinger; 1.29.0: fejl). En side der reagerer paa pointerdown, bliver derfor aerligt uvist.
+        // (ok:true, nul handlinger; 1.29.0: fejl). En side der reagerer paa pointerdown, bliver derfor aerligt unknown.
         const foer = aftryk();
         el.click();
         // Maales i samme oejeblik som klikket. Astra (efterproevning af c1496d4): en anden maaling 200 ms senere gjorde et
@@ -2846,7 +2846,7 @@ async function setCombobox(tabId, selector, values, opts = {}) {
       // meldt som sidens skyld. Et UVIST klik stopper os ikke - kun et maalt nej.
       const aabneKlik = await debuggerClick(tabId, inputEl.x, inputEl.y);
       if (aabneKlik && aabneKlik.landed === false && !klikLandede(aabneKlik)) {
-        results.push({ value: val, ok: false, error: 'klikket-aabnede-ikke-listen',
+        results.push({ value: val, ok: false, error: 'click-did-not-open-list',
           note: 'The click meant to open the dropdown never reached the page, so the list cannot ' +
                 'appear. Something may be covering the field (cookie banner, overlay), or the tab ' +
                 'is in the background, where Chrome does not deliver mouse input. Call browser_dismiss_overlays ' +
@@ -2882,14 +2882,14 @@ async function setCombobox(tabId, selector, values, opts = {}) {
       //
       // Vi kan ikke maale klikket uden at bygge et bevis til. Feltet KAN vi laese. Og kun paa
       // et rigtigt inputfelt: peger vaelgeren paa en indpakning, er en tom textContent intet
-      // bevis, saa den sag forbliver uvist og gaar den lange vej som foer.
+      // bevis, saa den sag forbliver unknown og gaar den lange vej som foer.
       const efterSkrift = await debuggerEval(tabId, `(() => {
         const el = document.querySelector(${JSON.stringify(selector)});
         if (!el || !('value' in el)) return null;
         return el.value;
       })()`).catch(() => null);
       if (efterSkrift === '') {
-        results.push({ value: val, ok: false, error: 'soegetekst-blev-ikke-leveret', query,
+        results.push({ value: val, ok: false, error: 'search-text-not-delivered', query,
           note: 'The field was empty after the search text was sent, so it never arrived. ' +
                 'The page is not missing options - it was never asked. The tab may be in the ' +
                 'background, where Chrome does not deliver mouse or keyboard input. Call browser_switch_tab ' +
@@ -3670,7 +3670,7 @@ async function dispatch(port, method, params) {
         // trykket sendt, kan klikket vaere landet; saa klikkes der ikke igen.
         if (e?.trykSendt) {
           return {
-            ok: false, error: e.message, maaske_landet: true, method: 'debugger',
+            ok: false, error: e.message, maybe_landed: true, method: 'debugger',
             note: 'The mouse click was sent, but the debugger detached afterwards. The click MAY have landed, ' +
                   'so it is not repeated. Check the page before clicking again.',
           };
@@ -3692,11 +3692,11 @@ async function dispatch(port, method, params) {
             //
             // ⛔ Svaret er IKKE ok:false. Astra maalte 12/9 at en menu der aabner paa mousedown ellers meldes
             // mislykket, og saa klikker agenten igen og lukker den. Det er det TREDJE udfald, som resten af
-            // klassen bruger: sendt, virkning uvist.
-            const uvist = uvisVurdering(r);
+            // klassen bruger: sendt, virkning unknown.
+            const unknown = uvisVurdering(r);
             return {
-              ok: true, method: 'scripting-fallback', tag: r.tag, landed: null, maaske_landet: true,
-              note: (uvist?.note ? uvist.note + ' ' : '') +
+              ok: true, method: 'scripting-fallback', tag: r.tag, landed: null, maybe_landed: true,
+              note: (unknown?.note ? unknown.note + ' ' : '') +
                     'The debugger was blocked, so the click was sent with a script. The page showed no measurable ' +
                     'effect, so it is unknown whether it worked - some pages require a real click. Check the page ' +
                     'before clicking again.',
@@ -3713,7 +3713,7 @@ async function dispatch(port, method, params) {
               };
             }
             return {
-              ok: false, method: 'scripting-fallback', tag: r.tag, landed: false, maaske_landet: true, error: e.message,
+              ok: false, method: 'scripting-fallback', tag: r.tag, landed: false, maybe_landed: true, error: e.message,
               note: 'The tab was in the background, so mouse events did not arrive. A script click was sent, but the click itself ' +
                     'produced no visible effect: either the page requires a real click, or the click worked without a visible change. Check the page, ' +
                     'and call browser_switch_tab and click again only if nothing happened.',
@@ -3744,17 +3744,17 @@ async function dispatch(port, method, params) {
           '(() => { const a = document.activeElement; return a && "value" in a ? String(a.value) : null; })()')
           .catch(() => undefined);
         if (efterTekst === undefined || efterTekst === null) {
-          return { ok: true, method: 'debugger', uvist: true,
+          return { ok: true, method: 'debugger', unknown: true,
             note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
                   'it landed. Read the field with browser_execute_script if it matters.' };
         }
-        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', vaerdi: efterTekst };
+        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst };
         if (efterTekst === '') {
-          return { ok: false, method: 'debugger', error: 'feltet-er-tomt', vaerdi: efterTekst,
+          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
                   'er i baggrunden, hvor Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
         }
-        return { ok: true, method: 'debugger', afviger: true, vaerdi: efterTekst,
+        return { ok: true, method: 'debugger', differs: true, value: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
                 'the value - or something was already there.' };
       }
@@ -3762,7 +3762,7 @@ async function dispatch(port, method, params) {
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
-        return fyldSvar(efterFyld?.vaerdi, params.value, { method: 'debugger' },
+        return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
                         efterFyld?.rammeHoerte);
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
@@ -3813,8 +3813,8 @@ async function dispatch(port, method, params) {
           const fordoblet = endelig === v + v || (v.length >= 3 && endelig.includes(v + v));
           if (fordoblet || (v && endelig === '')) {
             return {
-              ok: false, method: 'fallback', error: fordoblet ? 'feltet-fordoblet' : 'feltet-toemt',
-              forventet: v, faktisk: endelig,
+              ok: false, method: 'fallback', error: fordoblet ? 'field-doubled' : 'field-cleared',
+              expected: v, actual: endelig,
               note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
             };
           }
@@ -3822,8 +3822,8 @@ async function dispatch(port, method, params) {
           // "det er bare formatering" havde huller ("5" -> "15", "1.5" -> "15", Unicode-minus, "+45" -> "+1 45").
           // Femte runde (R5 F1): at melde ENHVER afvigelse som fejl gjorde korrekt formatering ("1.234,50 kr",
           // "+45 12 34 56 78") til ok:false, hvor 1.29.0 sagde ok. Skellet maales nu i stedet for at gaettes:
-          //   stod feltet stille (foer === efter)  -> uvist, og det siges: afviger + uaendret (se nedenfor)
-          //   aendrede det sig til noget andet     -> ok:true, men afviger:true med den faktiske vaerdi
+          //   stod feltet stille (foer === efter)  -> unknown, og det siges: afviger + uaendret (se nedenfor)
+          //   aendrede det sig til noget andet     -> ok:true, men differs:true med den faktiske vaerdi
           // Kalderen faar altsaa aldrig en tavs succes paa en anden vaerdi end den der blev skrevet.
           // Sign-off 11/9 (Astra og Fable, begge reproduceret): feltet viste allerede "1.234,50 kr", fill("1234.5")
           // blev formateret tilbage til praecis det samme, og svaret var "siden tog ikke imod vaerdien" (1.29.0: ok).
@@ -3832,18 +3832,18 @@ async function dispatch(port, method, params) {
           if (typeof foer === 'string' && endelig === foer) {
             if (!v) {
               return {
-                ok: false, method: 'fallback', error: 'feltet-viser-andet', forventet: v, faktisk: endelig,
+                ok: false, method: 'fallback', error: 'field-shows-other', expected: v, actual: endelig,
                 note: 'The field was meant to be cleared, but shows the same as before.',
               };
             }
             return {
-              ok: true, method: 'fallback', value: endelig, afviger: true, uaendret: true, forventet: v, faktisk: endelig,
+              ok: true, method: 'fallback', value: endelig, differs: true, unchanged: true, expected: v, actual: endelig,
               note: 'The field showed the same before and after the write. Either the value was already there in the page\'s own ' +
                     'format, or the page did not accept it. Check `faktisk` before moving on.',
             };
           }
           return {
-            ok: true, method: 'fallback', value: endelig, afviger: true, forventet: v, faktisk: endelig,
+            ok: true, method: 'fallback', value: endelig, differs: true, expected: v, actual: endelig,
             ...(typeof foer === 'string' ? {} : { foer_ukendt: true }),
             note: 'The field changed, but shows different text than what was written - for example formatting ' +
                   '("5,00 kr", "+45 12 34 56 78") or a truncation. Check `faktisk` if the exact value matters.',
@@ -4032,7 +4032,7 @@ async function dispatch(port, method, params) {
       // sendt. En tast der kun er trykket ned, er en tast der haenger. Nu sendes keyUp altid,
       // og svaret siger om nedtrykket fejlede i stedet for at kaste raat.
       await debuggerAttach(tab.id);
-      // Armeres FOER trykket. Fejler injektionen, bliver svaret uvist - aldrig et falskt ja.
+      // Armeres FOER trykket. Fejler injektionen, bliver svaret unknown - aldrig et falskt ja.
       const bevisId = await armerTastBevis(tab.id, key).catch(() => null);
       let tastFejl = null;
       try {
@@ -4062,7 +4062,7 @@ async function dispatch(port, method, params) {
         const frist = erCdpFrist(tastFejl);
         return {
           ok: false, key, error: tastFejl.message,
-          ...(frist ? { maaske_landet: true,
+          ...(frist ? { maybe_landed: true,
             note: 'Chrome kvitterede ikke inden fristen. Tasten kan alligevel have virket ' +
                   '(for example a form that was submitted) - check the page before pressing again.' } : {}),
         };
@@ -4074,11 +4074,11 @@ async function dispatch(port, method, params) {
           ...(bevis.navigeret ? { note: 'Siden navigerede paa tasten.' } : {}) };
       }
       if (bevis.landed === null) {
-        return { ok: true, key, landed: null, maaske_landet: true,
+        return { ok: true, key, landed: null, maybe_landed: true,
           note: 'The key was sent, but whether the page received it could not be read. ' +
                 'Check the page before pressing again.' };
       }
-      return { ok: false, key, landed: false, error: 'tasten-blev-ikke-leveret',
+      return { ok: false, key, landed: false, error: 'key-not-delivered',
         note: 'Chrome acknowledged the keystroke, but no listener in the tab received it. The tab is ' +
               'probably in the background, and Chrome does not deliver mouse or keyboard input to a tab that is not ' +
               'the visible one in its window. Call browser_switch_tab and press again.' };
@@ -4164,7 +4164,7 @@ async function dispatch(port, method, params) {
         // start findes ingen rulning der kan gentages uden at rulle dobbelt, saa der rulles ikke.
         if (!startKendt) {
           return {
-            ok: false, method: 'fallback', error: 'scroll-uvist', start_ukendt: true, hjul_fejl: e.message,
+            ok: false, method: 'fallback', error: 'scroll-unknown', start_unknown: true, wheel_error: e.message,
             hint: 'The wheel call did not answer, and the start position could not be read, so the page MAY have ' +
                   'scrolled. Read window.scrollY with browser_execute_script, then scroll the remainder.',
           };
@@ -4177,8 +4177,8 @@ async function dispatch(port, method, params) {
 
         if (!landede || landede.fejl) {
           return {
-            ok: false, method: 'fallback', error: 'scroll-mislykkedes',
-            hjul_fejl: e.message,
+            ok: false, method: 'fallback', error: 'scroll-failed',
+            wheel_error: e.message,
             fallback_fejl: landede?.fejl || 'the fallback did not answer',
           };
         }
@@ -4201,13 +4201,13 @@ async function dispatch(port, method, params) {
           landede.efter.x === startX + dx && landede.efter.y === startY + dy;
         // Astra (efterproevning af cf5b98a): en animation der gik frem, tilbage og foerst naaede maalet efter 1,6 s, fik
         // svaret ok:false "siden flyttede sig ikke" (1.29.0: ok:true). En rulning der ER sendt, meldes aldrig som fiasko.
-        // Kan bevaegelsen ikke ses inden for ventetiden, er svaret uvist - samme aerlighed som maaske_landet paa klik.
+        // Kan bevaegelsen ikke ses inden for ventetiden, er svaret unknown - samme aerlighed som maaske_landet paa klik.
         return {
           ok: true,
           method: 'fallback', fallback_reason: e.message,
           position: landede.efter, foer: landede.foer,
           ...(flyttede || alleredeFremme ? {} : {
-            uvist: true,
+            unknown: true,
             note: 'The scroll was sent, but the position was unchanged when we answered: either a smooth scroll is still running, ' +
                   'or the bottom has been reached. Read window.scrollY with browser_execute_script if the exact position matters.',
           }),
@@ -4219,7 +4219,7 @@ async function dispatch(port, method, params) {
       // giver samme falske ja. Reservevejen laeser allerede positionen; den gode sti gjorde ikke.
       const slut = await debuggerEval(tab.id, '({x: window.scrollX, y: window.scrollY})').catch(() => null);
       if (!slut || typeof slut.y !== 'number') {
-        return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped', uvist: true,
+        return { ok: true, scrolled: { x: dx, y: dy }, method: 'mouseWheel-stepped', unknown: true,
           note: 'The scroll was sent, but the position could not be read afterwards. Read window.scrollY ' +
                 'with browser_execute_script if the exact position matters.' };
       }
@@ -4228,7 +4228,7 @@ async function dispatch(port, method, params) {
       return { ok: true, method: 'mouseWheel-stepped', position: slut,
         ...(startKendt ? { foer: { x: startX, y: startY } } : {}),
         ...(rykkede || iMaal ? {} : {
-          uvist: true,
+          unknown: true,
           note: 'The scroll was sent, but the page was in the same place when we answered: either a smooth ' +
                 'scroll is still running, the bottom has been reached, or the tab is in the background. Read ' +
                 'window.scrollY with browser_execute_script if the position matters.',
@@ -4257,7 +4257,7 @@ async function dispatch(port, method, params) {
       await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
       await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
       const db = dblBevis ? await laesHaendelsesBevis(tab.id, dblBevis) : { landed: null };
-      return haendelsesSvar(db, 'dobbeltklik-blev-ikke-leveret',
+      return haendelsesSvar(db, 'double-click-not-delivered',
         { double_clicked: db.landed === true, tag: el.tag, text: el.text });
     }
 
@@ -4274,7 +4274,7 @@ async function dispatch(port, method, params) {
       await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
       await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
       const hb2 = hoejreBevis ? await laesHaendelsesBevis(tab.id, hoejreBevis) : { landed: null };
-      const svarH = haendelsesSvar(hb2, 'hoejreklik-blev-ikke-leveret',
+      const svarH = haendelsesSvar(hb2, 'right-click-not-delivered',
         { right_clicked: hb2.landed === true, tag: el.tag, text: el.text });
       // Den gamle note gaelder stadig naar haendelsen LANDEDE: Chromes egen menu aabner ikke via CDP.
       if (svarH.landed === true) svarH.note = 'contextmenu-haendelsen landede; Chromes egen menu aabner ikke via CDP - menuer bygget i siden (OWA, webapps) goer';
@@ -4300,7 +4300,7 @@ async function dispatch(port, method, params) {
         // og en kastet fejl mister markeringen over forbindelsen.
         if (e?.trykSendt) {
           return {
-            ok: false, error: e.message, maaske_landet: true, clicked_at: { x: params.x, y: params.y },
+            ok: false, error: e.message, maybe_landed: true, clicked_at: { x: params.x, y: params.y },
             note: 'The mouse click was sent, but the debugger failed afterwards. The click MAY have landed, ' +
                   'so it is not repeated. Check the page before clicking again.',
           };
@@ -4310,7 +4310,7 @@ async function dispatch(port, method, params) {
       return {
         clicked_at: { x: params.x, y: params.y },
         ...(klik || {}),
-        // Samme som click: vaerktoejets egen dom og et uvist klik staar sidst, saa siden ikke kan overskrive dem.
+        // Samme som click: vaerktoejets egen dom og et unknown klik staar sidst, saa siden ikke kan overskrive dem.
         ok: klikLandede(klik),
         ...(uvisVurdering(klik) || {}),
       };
@@ -4347,7 +4347,7 @@ async function dispatch(port, method, params) {
         await debuggerDetach(tab.id);
       }
       const hb = hoverBevis ? await laesHaendelsesBevis(tab.id, hoverBevis) : { landed: null };
-      return haendelsesSvar(hb, 'hover-blev-ikke-leveret', { tag: el.tag, text: el.text });
+      return haendelsesSvar(hb, 'hover-not-delivered', { tag: el.tag, text: el.text });
     }
 
     case 'select_option': {
@@ -4427,38 +4427,38 @@ async function dispatch(port, method, params) {
         const efter = await debuggerEval(tab.id, `
           (function() {
             const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ vaerdi: null, aftryk: null });
-            return JSON.stringify({ vaerdi: sel.value, aftryk: ${aftryk} });
+            if (!sel) return JSON.stringify({ value: null, aftryk: null });
+            return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
           })()
         `);
         let e; try { e = JSON.parse(efter); } catch { e = null; }
 
-        if (e && e.vaerdi === r.wanted) {
-          return { ok: true, type: 'native_select', selected: r.text, value: e.vaerdi };
+        if (e && e.value === r.wanted) {
+          return { ok: true, type: 'native_select', selected: r.text, value: e.value };
         }
         // En bedre hash lukker IKKE det andet hul: en urelateret aendring paa siden ser stadig ud
         // som en reaktion. Derfor er det her det TREDJE udfald og ikke et selvsikkert ja - samme
         // regel som den custom-gren der ligger 40 linjer nede, og samme ordforraad som resten af
         // klassen. Hronom bad selv om praecis det: "a distinct unverified outcome".
         if (e && e.aftryk && r.foer && e.aftryk !== r.foer) {
-          const uvist = uvisVurdering({ landed: null, uverificeret: true },
+          const unknown = uvisVurdering({ landed: null, unverified: true },
             'The selection was sent, and the page changed - but the change does not prove it WAS the selection: ' +
             'something else on the page may have moved at the same time. A controlled component can also reset ' +
             'the field and store the selection elsewhere, which is correct behaviour. Read the page instead of selecting again.');
           return {
-            ok: true, type: 'native_select', landed: null, selected: r.text, value: e.vaerdi, ...uvist,
-            note: `The field reset itself to "${e.vaerdi}", and the page changed - but the change ` +
-                  'beviser ikke at det var valget. ' + uvist.note,
+            ok: true, type: 'native_select', landed: null, selected: r.text, value: e.value, ...unknown,
+            note: `The field reset itself to "${e.value}", and the page changed - but the change ` +
+                  'beviser ikke at det var valget. ' + unknown.note,
           };
         }
-        // Kunne aftrykket slet ikke laeses, er det ogsaa uvist. Her stod et haardt "rullet tilbage".
+        // Kunne aftrykket slet ikke laeses, er det ogsaa unknown. Her stod et haardt "rullet tilbage".
         if (!e || !e.aftryk || !r.foer) {
-          const uvist = uvisVurdering({ landed: null, uverificeret: true });
+          const unknown = uvisVurdering({ landed: null, unverified: true });
           return { ok: true, type: 'native_select', landed: null, selected: r.text,
-                   value: e ? e.vaerdi : r.actual, ...uvist };
+                   value: e ? e.value: r.actual, ...unknown };
         }
         return { ok: false, type: 'native_select', landed: false,
-          error: `The selection was rolled back: set "${r.wanted}", the field is on "${e ? e.vaerdi : r.actual}", ` +
+          error: `The selection was rolled back: set "${r.wanted}", the field is on "${e ? e.value: r.actual}", ` +
                  'and nothing else on the page changed.' };
       }
 
@@ -4656,7 +4656,7 @@ async function dispatch(port, method, params) {
       if (!params.domain || typeof params.domain !== 'string' || !params.domain.trim()) {
         return {
           ok: false,
-          error: 'domain-mangler',
+          error: 'domain-missing',
           hint: 'Angiv `domain`. Uden det ville kaldet returnere HVER cookie i profilen — ' +
                 'including from pages that have nothing to do with the task.',
         };
@@ -4693,7 +4693,7 @@ async function dispatch(port, method, params) {
       }
       if (!sider.length && ukendtLager) {
         return {
-          ok: false, error: 'cookie-lager-ukendt',
+          ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was read - otherwise ' +
                 'den almindelige profils cookies blive leveret i stedet.',
         };
@@ -4705,7 +4705,7 @@ async function dispatch(port, method, params) {
       const slaegt = (a, b) => a === b || a.endsWith('.' + b) || b.endsWith('.' + a);
       if (!d || !vaertsnavne.some((h) => slaegt(h, d))) {
         return {
-          ok: false, error: 'domaene-ikke-i-sessionen', domain: d, aabne: vaertsnavne,
+          ok: false, error: 'domain-not-in-session', domain: d, aabne: vaertsnavne,
           hint: 'Cookies can only be read for http(s) pages this session has open. Navigate to ' +
                 'the page first - then the agent cannot read cookies from anything it is not working with.',
         };
@@ -4786,7 +4786,7 @@ async function dispatch(port, method, params) {
       }
       if (!saetSider.length && saetUkendtLager) {
         return {
-          ok: false, error: 'cookie-lager-ukendt',
+          ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was written - otherwise ' +
                 'cookien lande i den almindelige profil i stedet.',
         };
@@ -4808,7 +4808,7 @@ async function dispatch(port, method, params) {
         const side = cd ? saetSideFor(cd, Boolean(String(c.domain || '').trim())) : null;
         if (!side) {
           results.push({
-            ok: false, name: c.name, error: 'domaene-ikke-i-sessionen', domain: cd || null,
+            ok: false, name: c.name, error: 'domain-not-in-session', domain: cd || null,
             aabne: saetSider.map((s) => s.vaert),
             hint: 'Cookies can only be set for http(s) pages this session has open, and only for the page\'s own domain ' +
                   'or - if you supply domain yourself - a parent domain it receives cookies from. Navigate to the page first.',

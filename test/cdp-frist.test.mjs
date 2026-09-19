@@ -89,7 +89,7 @@ test('scroll ender med at rulle - reserveloesningen naas, og svaret siger hvorfo
     'siden blev aldrig rullet - reserveloesningen skal ramme en beregnet maal-position');
 });
 
-test('cdpSend giver op naar hjulet tier, saa en reserveloesning KAN naas (selve scroll-reserveloesningen proeves i scroll-uvist)', async () => {
+test('cdpSend giver op naar hjulet tier, saa en reserveloesning KAN naas (selve scroll-reserveloesningen proeves i scroll-unknown)', async () => {
   // Det er HELE pointen: fristen findes for at reserveloesningen kan naas.
   const evalKald = [];
   const u = indlaesUdvidelse({ svar: {

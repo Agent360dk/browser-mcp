@@ -67,13 +67,13 @@ test('tilbagelaesningen spoerger overhovedet om rammen hoerte det', () => {
 test('rammen hoerte det: helt almindeligt ja', async () => {
   const svar = await fyld(sele({ slutVaerdi: 'Gustav', ramme: true }));
   assert.equal(svar.ok, true, 'et felt rammen HAR hoert er ikke en fejl');
-  assert.ok(!svar.ramme_hoerte_ikke, 'advarer om en ramme der faktisk hoerte efter');
-  assert.equal(svar.vaerdi, 'Gustav');
+  assert.ok(!svar.framework_did_not_hear, 'advarer om en ramme der faktisk hoerte efter');
+  assert.equal(svar.value, 'Gustav');
 });
 
 test('DOM viser teksten, men rammen hoerte det IKKE - det maa ikke vaere et bart ja', async () => {
   const svar = await fyld(sele({ slutVaerdi: 'Gustav', ramme: false }));
-  assert.equal(svar.ramme_hoerte_ikke, true,
+  assert.equal(svar.framework_did_not_hear, true,
     'DOM-vaerdien var rigtig og trackeren stod paa den gamle - det er positivt bevis for at ' +
     'formularen ikke har hoert det, og svaret fortier det. Det er hele issue #19');
   assert.match(String(svar.note), /tracker|tilstand/i, 'svaret siger ikke HVORFOR');
@@ -84,7 +84,7 @@ test('DOM viser teksten, men rammen hoerte det IKKE - det maa ikke vaere et bart
 test('intet rammestyret felt: DOM-vaerdien er hele sandheden', async () => {
   const svar = await fyld(sele({ slutVaerdi: 'Gustav', ramme: null }));
   assert.equal(svar.ok, true);
-  assert.ok(!svar.ramme_hoerte_ikke,
+  assert.ok(!svar.framework_did_not_hear,
     'et felt uden tracker er ikke rammestyret - at advare der ville vaere et falskt nej, ' +
     'og et falskt nej er dyrere: agenten gentager handlingen');
 });
@@ -96,7 +96,7 @@ test('tomt felt slaar stadig igennem, uanset hvad trackeren siger', async () => 
 
 // ── Instruktionen lover et felt svaret ikke havde ──────────────────────────
 // FUNDET 19/9 af fyld-tjek, efterproevet her: serverens instruktion til agenten siger
-// ordret «browser_fill with afviger: true means the field shows something other than what
+// ordret «browser_fill with differs: true means the field shows something other than what
 // you typed; read `faktisk`» (mcp-server/index.js:694). Reservestien SATTE `faktisk`
 // (background.js:3811), men debugger-stien - den almindelige - svarede `vaerdi` og INTET
 // `faktisk`. Agenten fik altsaa besked paa at laese et felt der ikke fandtes, i det
@@ -104,12 +104,12 @@ test('tomt felt slaar stadig igennem, uanset hvad trackeren siger', async () => 
 //
 // Det er ikke et sprogspoergsmaal. Det er to navne for samme begreb i to kodestier, og
 // det havde vaeret en fejl ogsaa hvis hele filen var engelsk.
-test('afviger: true leverer ogsaa det felt instruktionen beder agenten laese', async () => {
+test('differs: true leverer ogsaa det felt instruktionen beder agenten laese', async () => {
   const svar = await fyld(sele({ slutVaerdi: 'Gustav Louv', ramme: null }));
-  assert.equal(svar.afviger, true, 'feltet viser noget andet end det skrevne - det er afvigelsen');
-  assert.equal(svar.faktisk, 'Gustav Louv',
+  assert.equal(svar.differs, true, 'feltet viser noget andet end det skrevne - det er afvigelsen');
+  assert.equal(svar.actual, 'Gustav Louv',
     'instruktionen siger «read faktisk» - staar det ikke i svaret, er raadet uudfoerligt');
-  assert.equal(svar.vaerdi, 'Gustav Louv', 'det gamle navn maa ikke forsvinde - det er API-overflade');
+  assert.equal(svar.value, 'Gustav Louv', 'det gamle navn maa ikke forsvinde - det er API-overflade');
 });
 
 test('de to kodestier svarer med samme felter, saa agenten ikke skal gaette hvilken den ramte', () => {
@@ -118,8 +118,8 @@ test('de to kodestier svarer med samme felter, saa agenten ikke skal gaette hvil
   let d = 0, j = kilde.indexOf('{', i), slut = j;
   for (; j < kilde.length; j++) { if (kilde[j] === '{') d++; else if (kilde[j] === '}' && --d === 0) { slut = j; break; } }
   const krop = kilde.slice(i, slut + 1);
-  const medVaerdi = [...krop.matchAll(/return \{[^;]*?\};/gs)].map((m) => m[0]).filter((r) => /vaerdi:/.test(r));
-  const uden = medVaerdi.filter((r) => !/faktisk:/.test(r));
+  const medVaerdi = [...krop.matchAll(/return \{[^;]*?\};/gs)].map((m) => m[0]).filter((r) => /value:/.test(r));
+  const uden = medVaerdi.filter((r) => !/actual:/.test(r));
   assert.equal(uden.length, 0,
     `${uden.length} af ${medVaerdi.length} svar med \`vaerdi\` mangler \`faktisk\` - reservestien har begge`);
 });

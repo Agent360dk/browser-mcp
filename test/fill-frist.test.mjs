@@ -41,8 +41,8 @@ test('en fordobling efter reserveloesningen meldes - den kaldes ikke succes', as
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'X' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, false, `"X" blev til "XX", og vaerktoejet sagde ${JSON.stringify(svar)}`);
-  assert.equal(svar.error, 'feltet-fordoblet');
-  assert.equal(svar.faktisk, 'XX', 'kalderen skal se hvad der faktisk staar i feltet');
+  assert.equal(svar.error, 'field-doubled');
+  assert.equal(svar.actual, 'XX', 'kalderen skal se hvad der faktisk staar i feltet');
 });
 
 test('staar vaerdien der allerede efter fristen, skrives den ikke en gang til', async () => {
@@ -60,11 +60,11 @@ test('et felt der formaterer vaerdien, meldes ikke som fordobling - men med den 
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '12345678' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   // Fjerde runde (Astra): formatering kan ikke skelnes sikkert fra en aendret vaerdi - den meldes med den faktiske tekst.
-  assert.notEqual(svar.error, 'feltet-fordoblet', 'formatering er ikke en fordobling');
-  assert.equal(svar.faktisk, '+45 12 34 56 78', 'kalderen skal se hvad feltet viser');
+  assert.notEqual(svar.error, 'field-doubled', 'formatering er ikke en fordobling');
+  assert.equal(svar.actual, '+45 12 34 56 78', 'kalderen skal se hvad feltet viser');
   // Femte runde (Astra R5 F1): 1.29.0 svarede ok:true her, og det er feltets egen formatering. ok:false er et tilbageslag.
   assert.equal(svar.ok, true, `korrekt formatering blev meldt som fejl: ${JSON.stringify(svar)}`);
-  assert.equal(svar.afviger, true, 'kalderen skal kunne se at feltet viser noget andet end det skrevne');
+  assert.equal(svar.differs, true, 'kalderen skal kunne se at feltet viser noget andet end det skrevne');
 });
 
 test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling', async () => {
@@ -72,10 +72,10 @@ test('en formatering der tilfoejer tegn ("5" -> "5,00 kr") er ikke en fordobling
   const u = sele(['', '5,00 kr'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '5' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
-  assert.notEqual(svar.error, 'feltet-fordoblet', `et beloebsfelt der formaterer blev kaldt fordoblet: ${JSON.stringify(svar)}`);
-  assert.equal(svar.faktisk, '5,00 kr', 'kalderen skal se hvad feltet viser');
+  assert.notEqual(svar.error, 'field-doubled', `et beloebsfelt der formaterer blev kaldt fordoblet: ${JSON.stringify(svar)}`);
+  assert.equal(svar.actual, '5,00 kr', 'kalderen skal se hvad feltet viser');
   assert.equal(svar.ok, true, `korrekt formatering blev meldt som fejl: ${JSON.stringify(svar)}`);
-  assert.equal(svar.afviger, true);
+  assert.equal(svar.differs, true);
 });
 
 test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async () => {
@@ -84,7 +84,7 @@ test('et felt der blev toemt igen af et forsinket Cmd+A/Backspace meldes', async
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'abc' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, false, `feltet endte tomt og vaerktoejet sagde ${JSON.stringify(svar)}`);
-  assert.equal(svar.error, 'feltet-toemt');
+  assert.equal(svar.error, 'field-cleared');
 });
 
 test('en vaerdi siden afviste ("OLD" blev staaende) er aldrig en tavs succes', async () => {
@@ -96,10 +96,10 @@ test('en vaerdi siden afviste ("OLD" blev staaende) er aldrig en tavs succes', a
   const u = sele(['OLD', 'OLD'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NEW' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
-  assert.equal(svar.afviger, true, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
-  assert.equal(svar.uaendret, true, 'kalderen skal kunne se at feltet stod stille');
-  assert.equal(svar.faktisk, 'OLD');
-  assert.equal(svar.forventet, 'NEW');
+  assert.equal(svar.differs, true, `feltet beholdt "OLD" og vaerktoejet sagde ${JSON.stringify(svar)}`);
+  assert.equal(svar.unchanged, true, 'kalderen skal kunne se at feltet stod stille');
+  assert.equal(svar.actual, 'OLD');
+  assert.equal(svar.expected, 'NEW');
 });
 
 // MAALT 11/9 i sign-off (Astra og Fable, begge reproduceret): feltet viser allerede "1.234,50 kr", og fill("1234.5")
@@ -111,29 +111,29 @@ test('et felt der allerede viste vaerdien i sidens format ("1.234,50 kr") meldes
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: '1234.5' });
   assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
   assert.equal(svar.ok, true, `korrekt felt blev meldt som fejl: ${JSON.stringify(svar)}`);
-  assert.notEqual(svar.error, 'feltet-viser-andet');
-  assert.equal(svar.afviger, true, 'kalderen skal stadig kunne se at feltet viser noget andet end det skrevne');
-  assert.equal(svar.uaendret, true);
-  assert.equal(svar.faktisk, '1.234,50 kr');
+  assert.notEqual(svar.error, 'field-shows-other');
+  assert.equal(svar.differs, true, 'kalderen skal stadig kunne se at feltet viser noget andet end det skrevne');
+  assert.equal(svar.unchanged, true);
+  assert.equal(svar.actual, '1.234,50 kr');
 });
 
 // ── Tredje/fjerde runde (Astra) + femte runde (R5 F1) ──────────────────────────────────────────
 // Tredje og fjerde runde viste at enhver regel for "det er bare formatering" har huller. Femte runde viste at
 // ok:false paa enhver afvigelse ogsaa melder korrekt formatering som fejl (1.29.0 sagde ok). Skellet maales nu
 // i stedet for at gaettes: feltet laeses FOER reserveloesningen skriver. Stod det stille, afviste siden vaerdien
-// (ok:false). Aendrede det sig til noget andet end det skrevne, meldes ok:true med afviger:true og den faktiske
+// (ok:false). Aendrede det sig til noget andet end det skrevne, meldes ok:true med differs:true og den faktiske
 // vaerdi, saa kalderen selv kan se forskellen - aldrig en tavs succes.
 for (const [navn, laesninger, vaerdi, skalOk] of [
-  ['et tal der blev til et ANDET tal ("5" -> "15") er ikke formatering', ['', '15'], '5', 'afviger'],
-  ['et fortegn der forsvandt ("-5" -> "5") er ikke formatering', ['', '5'], '-5', 'afviger'],
-  ['tegn der forsvandt fra tekst ("A!b" -> "ab") meldes', ['', 'ab'], 'A!b', 'afviger'],
+  ['et tal der blev til et ANDET tal ("5" -> "15") er ikke formatering', ['', '15'], '5', 'differs'],
+  ['et fortegn der forsvandt ("-5" -> "5") er ikke formatering', ['', '5'], '-5', 'differs'],
+  ['tegn der forsvandt fra tekst ("A!b" -> "ab") meldes', ['', 'ab'], 'A!b', 'differs'],
   ['et felt der skulle toemmes men beholdt "OLD", meldes', ['OLD', 'OLD'], '', false],
-  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") meldes med den faktiske vaerdi', ['', '5'], '5.00', 'afviger'],
+  ['overfloedige decimaler der blev fjernet ("5.00" -> "5") meldes med den faktiske vaerdi', ['', '5'], '5.00', 'differs'],
   // Fjerde runde (Astra): hver 'bare formatering'-regel blev omgaaet.
-  ['et decimaltal der mistede kommaet ("1.5" -> "15") meldes', ['', '15'], '1.5', 'afviger'],
-  ['et beloeb der blev negativt med Unicode-minus ("5" -> "\u22125") meldes', ['', '\u22125'], '5', 'afviger'],
-  ['to store tal der afrundes ens i JavaScript meldes', ['', '9007199254740993'], '9007199254740992', 'afviger'],
-  ['en ekstra landekode foran et internationalt nummer meldes', ['', '+1 45 12345678'], '+45 12345678', 'afviger'],
+  ['et decimaltal der mistede kommaet ("1.5" -> "15") meldes', ['', '15'], '1.5', 'differs'],
+  ['et beloeb der blev negativt med Unicode-minus ("5" -> "\u22125") meldes', ['', '\u22125'], '5', 'differs'],
+  ['to store tal der afrundes ens i JavaScript meldes', ['', '9007199254740993'], '9007199254740992', 'differs'],
+  ['en ekstra landekode foran et internationalt nummer meldes', ['', '+1 45 12345678'], '+45 12345678', 'differs'],
 ]) {
   test(navn, async () => {
     const saet = [], taster = [];
@@ -141,11 +141,11 @@ for (const [navn, laesninger, vaerdi, skalOk] of [
     const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: vaerdi });
     assert.ok(taster.length > 0, 'testen naaede aldrig tastetrykkene - den tester ikke fristen');
     const faktisk = laesninger[laesninger.length - 1];
-    if (skalOk === 'afviger') {
+    if (skalOk === 'differs') {
       assert.equal(svar.ok, true, `"${vaerdi}" -> "${faktisk}" gav ${JSON.stringify(svar)}`);
-      assert.equal(svar.afviger, true, 'en afvigelse maa aldrig vaere en tavs succes');
-      assert.equal(svar.faktisk, faktisk, 'kalderen skal se den faktiske vaerdi');
-      assert.equal(svar.forventet, vaerdi);
+      assert.equal(svar.differs, true, 'en afvigelse maa aldrig vaere en tavs succes');
+      assert.equal(svar.actual, faktisk, 'kalderen skal se den faktiske vaerdi');
+      assert.equal(svar.expected, vaerdi);
     } else {
       assert.equal(svar.ok, skalOk, `"${vaerdi}" -> "${faktisk}" gav ${JSON.stringify(svar)}`);
     }
@@ -159,5 +159,5 @@ test('et felt der allerede viste maalvaerdien er ikke en afvisning', async () =>
   const u = sele(['NY', 'NY'], saet, taster);
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NY' });
   assert.equal(svar.ok, true, JSON.stringify(svar));
-  assert.equal(svar.afviger, undefined);
+  assert.equal(svar.differs, undefined);
 });

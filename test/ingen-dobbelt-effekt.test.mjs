@@ -44,7 +44,7 @@ test('press_key sender keyUp selv naar keyDown ikke kvitteres', async () => {
   const svar = await u.hent('dispatch')(9876, 'press_key', { key: 'Enter' });
   assert.ok(typer.includes('keyUp'), `keyUp blev aldrig sendt - tasten haenger. Sendt: ${typer.join(',')}`);
   assert.equal(svar.ok, false, 'et nedtryk der ikke blev kvitteret, er ikke en bekraeftet succes');
-  assert.equal(svar.maaske_landet, true, 'kalderen skal vide at tasten KAN have virket');
+  assert.equal(svar.maybe_landed, true, 'kalderen skal vide at tasten KAN have virket');
 });
 
 test('execute_script koerer ikke brugerens kode igen efter at den er sendt', async () => {

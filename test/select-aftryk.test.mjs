@@ -104,8 +104,8 @@ test('2. afvist valg, men en URELATERET tekst voksede -> ikke et ja', async () =
   const svar = await vaelg(sele(lavSide({ accepterer: false, nulstiller: false, tekstFoer: 'status 9', tekstEfter: 'status 10' })));
   assert.notEqual(svar.ok === true && svar.landed === undefined, true,
     'en urelateret aendring paa siden blev laest som "valget landede"');
-  assert.equal(svar.maaske_landet, true,
-    `siden aendrede sig, men ikke beviseligt af valget - det skal vaere uvist: ${JSON.stringify(svar)}`);
+  assert.equal(svar.maybe_landed, true,
+    `siden aendrede sig, men ikke beviseligt af valget - det skal vaere unknown: ${JSON.stringify(svar)}`);
 });
 
 test('3. accepteret, feltet nulstiller, label vokser -> ja', async () => {

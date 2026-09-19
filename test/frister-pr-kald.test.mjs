@@ -81,12 +81,12 @@ test('scroll lyver ikke naar ogsaa reserveloesningen fejler', () => {
   assert.doesNotMatch(blok, /\.catch\(\(\) => null\);\s*\n\s*return \{\s*\n?\s*ok: true/,
     'en slugt fejl efterfulgt af ok:true er praecis den loegn resten af dagen gik med at fjerne');
   assert.match(blok, /if \(!landede \|\| landede\.fejl\)/, 'fallbackens fejl skal laeses');
-  assert.match(blok, /ok: false, method: 'fallback', error: 'scroll-mislykkedes'/,
+  assert.match(blok, /ok: false, method: 'fallback', error: 'scroll-failed'/,
     'fejler begge veje, skal svaret sige det');
   // 11/9 (Astra, tredje runde paa samme sted): "ok kommer af om siden flyttede sig" gav falsk fiasko paa en blød rulning der
   // stadig var i gang (1.29.0: ok:true). En sendt rulning meldes ikke som fiasko - den markeres uvist med den maalte position.
   assert.doesNotMatch(blok, /ok: flyttede \|\| alleredeFremme/, 'en sendt rulning maa ikke meldes som fiasko');
-  assert.match(blok, /uvist: true/, 'en bevaegelse der ikke blev set, skal markeres uvist');
+  assert.match(blok, /unknown: true/, 'en bevaegelse der ikke blev set, skal markeres uvist');
   assert.match(blok, /position: landede\.efter/, 'den maalte position skal med, saa kalderen selv kan doemme');
 });
 
@@ -96,7 +96,7 @@ test('scroll opdigter ikke et nulpunkt naar startpositionen ikke kan laeses', ()
   assert.doesNotMatch(blok, /\.catch\(\(\) => \(\{ x: 0, y: 0 \}\)\)/,
     'stod siden paa 500 og laesningen fejlede, ville et opdigtet nulpunkt rulle OP');
   assert.match(blok, /const startKendt = !!start/, 'det skal kunne skelnes om starten er kendt');
-  assert.match(blok, /start_ukendt: true/,
+  assert.match(blok, /start_unknown: true/,
     'er starten ukendt, er rulningen relativ - kalderen skal kunne se det, ikke gaette');
 });
 

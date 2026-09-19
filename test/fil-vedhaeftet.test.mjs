@@ -26,9 +26,9 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 /**
  * Rejser udvidelsen med et filfelt der enten tog imod filen eller ikke gjorde.
- * `vedhaeftet` er de navne feltet staar med BAGEFTER - det som browseren ville vise.
+ * `attached` er de navne feltet staar med BAGEFTER - det som browseren ville vise.
  */
-function sele({ vedhaeftet, laesningFejler = false }) {
+function sele({ attached, laesningFejler = false }) {
   const fane = { id: 1, url: 'https://x.example', windowId: 1, active: false };
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
@@ -56,55 +56,55 @@ function sele({ vedhaeftet, laesningFejler = false }) {
   u.ctx.chrome.scripting.executeScript = async ({ func }) => {
     if (laesningFejler) throw new Error('kunne ikke injicere');
     const kilde = String(func);
-    if (kilde.includes('.files')) return [{ result: { antal: vedhaeftet.length, navne: vedhaeftet } }];
+    if (kilde.includes('.files')) return [{ result: { antal: attached.length, navne: attached } }];
     return [{ result: null }];
   };
   return u;
 }
 
 test('upload_file melder ikke succes paa en fil der aldrig kom paa feltet', async () => {
-  const u = sele({ vedhaeftet: [] });
+  const u = sele({ attached: [] });
   const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png'] });
   assert.equal(svar.ok, false,
-    'upload_file svarede ja fordi CDP kvitterede. Feltet stod tomt bagefter - ingen fil blev vedhaeftet');
-  assert.match(String(svar.error), /vedhaeftet|tom/i, 'svaret siger ikke hvad der var galt');
+    'upload_file svarede ja fordi CDP kvitterede. Feltet stod tomt bagefter - ingen fil blev attached');
+  assert.match(String(svar.error), /not-attached|empty/i, 'svaret siger ikke hvad der var galt');
 });
 
 test('upload_file melder succes naar filen FAKTISK sidder paa feltet', async () => {
-  const u = sele({ vedhaeftet: ['a.png'] });
+  const u = sele({ attached: ['a.png'] });
   const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png'] });
   assert.equal(svar.ok, true, 'upload_file meldte fejl paa en fil der sad paa feltet');
-  assert.deepEqual(svar.vedhaeftet, ['a.png'], 'svaret oplyser ikke hvad feltet faktisk staar med');
+  assert.deepEqual(svar.attached, ['a.png'], 'svaret oplyser ikke hvad feltet faktisk staar med');
 });
 
 test('upload_file siger til naar feltet tog FAERRE filer end der blev sendt', async () => {
   // Et `accept`-filter eller `multiple=false` tager den foerste og kasserer resten.
   // Det er ikke en fejl, men det er heller ikke det agenten bad om - saa det skal staa.
-  const u = sele({ vedhaeftet: ['a.png'] });
+  const u = sele({ attached: ['a.png'] });
   const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png', '/tmp/b.png'] });
   assert.equal(svar.ok, true, 'en delvis vedhaeftning er ikke en fejl');
-  assert.equal(svar.afviger, true,
+  assert.equal(svar.differs, true,
     'svaret skjuler at feltet kun tog 1 af 2 filer - agenten tror begge kom med');
 });
 
 test('kan feltet ikke laeses, er svaret UVIST - aldrig et falskt ja eller nej', async () => {
-  const u = sele({ vedhaeftet: [], laesningFejler: true });
+  const u = sele({ attached: [], laesningFejler: true });
   const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png'] });
   assert.equal(svar.ok, true, 'uvist er ikke det samme som mislykket - filen kan sagtens sidde der');
-  assert.equal(svar.uvist, true, 'svaret paastaar at vide noget det ikke ved');
+  assert.equal(svar.unknown, true, 'svaret paastaar at vide noget det ikke ved');
 });
 
 // FUNDET 13/9 af Fable: uden en POSITIV drop_file-sag overlever mutationen "svar altid
 // ok:false". En proeve der kun kan se den ene retning, vogter kun den ene retning.
 test('drop_file melder succes naar filen FAKTISK sidder paa det skjulte felt', async () => {
-  const u = sele({ vedhaeftet: ['a.png'] });
+  const u = sele({ attached: ['a.png'] });
   const svar = await u.hent('dispatch')(9876, 'drop_file', { selector: '#zone', files: ['/tmp/a.png'] });
   assert.equal(svar.ok, true, `drop_file meldte fejl paa en fil der sad paa feltet: ${JSON.stringify(svar)}`);
-  assert.deepEqual(svar.vedhaeftet, ['a.png'], 'svaret oplyser ikke hvad feltet faktisk staar med');
+  assert.deepEqual(svar.attached, ['a.png'], 'svaret oplyser ikke hvad feltet faktisk staar med');
 });
 
 test('drop_file melder ikke succes paa en fil der aldrig kom paa det skjulte felt', async () => {
-  const u = sele({ vedhaeftet: [] });
+  const u = sele({ attached: [] });
   const svar = await u.hent('dispatch')(9876, 'drop_file', { selector: '#zone', files: ['/tmp/a.png'] });
   assert.notEqual(svar.ok, true,
     'drop_file svarede ja fordi CDP kvitterede for setFileInputFiles. Det skjulte felt stod tomt bagefter');

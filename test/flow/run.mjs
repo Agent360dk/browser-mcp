@@ -281,13 +281,13 @@ try {
     // fastgjorde sig. Paastanden: Blink fyrer `mouseover` KUN naar elementet under markoeren
     // skifter. Anden gang giver `mousemove`. Beviset lytter paa `mouseover`, saa en helt
     // almindelig raekkefoelge - klik paa noget, hover paa det samme - ville svare
-    // `hover-blev-ikke-leveret` og sende agenten til switch_tab uden grund.
+    // `hover-not-delivered` og sende agenten til switch_tab uden grund.
     //
     // Vi retter ikke paa en antagelse. Vi MAALER den her, hver gang spaerren koerer.
     await kald('browser_hover', { selector: '#hover' });
     const svar = await rpc('tools/call', { name: 'browser_hover', arguments: { selector: '#hover' } });
     const t = svar?.content?.[0]?.text || '';
-    skalVaere(!/hover-blev-ikke-leveret/.test(t),
+    skalVaere(!/hover-not-delivered/.test(t),
       'Fables antagelse holder: anden hover paa SAMME element svarer "ikke leveret", fordi Blink ' +
       'kun fyrer mouseover naar elementet under markoeren skifter. Beviset skal lytte paa ' +
       `mousemove ogsaa. Svar: ${t.slice(0, 200)}`);
@@ -367,7 +367,7 @@ try {
   console.log('\n── Data & lager ──');
   await proev('browser_set_cookies', 'saetter en cookie', () => kald('browser_set_cookies', { url: BASE, name: 'flow', value: 'ja' }));
   await proev('browser_get_cookies', 'laeser cookien tilbage', async () => {
-    // R5 R1: get_cookies kraever `domain` - {url} gav nu domain-mangler.
+    // R5 R1: get_cookies kraever `domain` - {url} gav nu domain-missing.
     const r = await kald('browser_get_cookies', { domain: new URL(BASE).hostname });
     skalVaere(r.tekst.includes('flow'), 'cookien kom ikke tilbage');
   });
@@ -570,7 +570,7 @@ try {
     // MAALT 13/9: denne proeve brugte `kald`, som kaster paa ETHVERT ok:false (se ovenfor).
     // Den ene kontrol hvis emne ER aerlighed, kunne derfor ikke bestaa naar vaerktoejet
     // svarede aerligt nej - baggrundsstien returnerer {ok:false, landed:false,
-    // maaske_landet:true} (background.js:3298-3303), og `landed` ER med. Kontrakten var
+    // maybe_landed:true} (background.js:3298-3303), og `landed` ER med. Kontrakten var
     // opfyldt; det var selen der ikke kunne laese den. Nu laeses det raa svar.
     const raa = await rpc('tools/call', { name: 'browser_click', arguments: { selector: '#tekst' } });
     const t = raa.result?.content?.map((c) => c.text ?? '').join('\n') ?? '';

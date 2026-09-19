@@ -81,21 +81,21 @@ test('fill med tekstvaelger melder ikke succes paa et felt der stod tomt', async
   const u = sele({ leverer: false, feltVaerdi: '' });
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Navn', value: 'Gustav' });
   assert.equal(svar.ok, false, 'fill svarede ja paa et felt der stod tomt bagefter');
-  assert.match(String(svar.error), /tomt/, 'svaret siger ikke hvad der var galt');
+  assert.match(String(svar.error), /is-empty/, 'svaret siger ikke hvad der var galt');
 });
 
 test('fill med tekstvaelger melder succes naar vaerdien faktisk staar i feltet', async () => {
   const u = sele({ leverer: true, feltVaerdi: 'Gustav' });
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Navn', value: 'Gustav' });
   assert.equal(svar.ok, true, 'fill meldte fejl paa en vaerdi der landede');
-  assert.equal(svar.vaerdi, 'Gustav', 'svaret oplyser ikke den laeste vaerdi');
+  assert.equal(svar.value, 'Gustav', 'svaret oplyser ikke den laeste vaerdi');
 });
 
 test('fill med tekstvaelger siger til naar siden formaterede vaerdien om', async () => {
   const u = sele({ leverer: true, feltVaerdi: '1.234,50 kr' });
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Beloeb', value: '1234.5' });
   assert.equal(svar.ok, true, 'en side der formaterer paent er ikke en fejl');
-  assert.equal(svar.afviger, true, 'svaret skjuler at feltet indeholder noget andet');
+  assert.equal(svar.differs, true, 'svaret skjuler at feltet indeholder noget andet');
 });
 
 test('scroll melder den position siden STAAR paa, ikke den der blev bedt om', async () => {
@@ -103,7 +103,7 @@ test('scroll melder den position siden STAAR paa, ikke den der blev bedt om', as
   const svar = await u.hent('dispatch')(9876, 'scroll', { y: 600 });
   assert.notDeepEqual(svar.scrolled, { x: 0, y: 600 },
     'scroll svarede med det tal der blev bedt om i stedet for det siden endte paa');
-  assert.equal(svar.uvist, true,
+  assert.equal(svar.unknown, true,
     'siden stod samme sted bagefter, og det blev ikke sagt - en rulning der ikke flyttede noget meldes som succes');
 });
 
@@ -181,7 +181,7 @@ for (const [vaerktoej, params] of [
     assert.notEqual(svar.landed, true,
       `${vaerktoej} svarede landed:true fordi en fremmed ramme manglede maerket. ` +
       'Hovedrammen sagde udtrykkeligt at den intet modtog');
-    assert.doesNotMatch(String(svar.note || ''), /navigerede/,
+    assert.doesNotMatch(String(svar.note || ''), /navigated/,
       `${vaerktoej} paastaar at siden navigerede, fordi en annonce-iframe kom til`);
   });
 }

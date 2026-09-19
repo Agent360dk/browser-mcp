@@ -71,7 +71,7 @@ test('alle tre udgange fra settle-udtrykket rapporterer landed', () => {
   assert.match(blok, /const kunMousedown = !klikketVirkede && foerKlik !== foerAftryk/,
     'det tredje udfald mangler - saa er en ripple enten et ja eller et nej, og begge dele er et gaet');
   assert.match(blok, /landed: kunMousedown \? null : klikketVirkede/, 'framework-fallback fyrede');
-  assert.match(blok, /uvist: true/, 'et uvist klik skal sige at det KAN vaere landet');
+  assert.match(blok, /unknown: true/, 'et uvist klik skal sige at det KAN vaere landet');
 });
 
 test('click videregiver debuggerClick-resultatet i sit svar', () => {

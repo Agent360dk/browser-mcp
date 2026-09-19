@@ -51,8 +51,8 @@ test('et script-klik uden bevis meldes ikke som tavs succes', async () => {
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#create-key' });
   assert.notEqual(JSON.stringify(svar), JSON.stringify({ ok: true, method: 'scripting-fallback', tag: 'DIV' }),
     'vaerktoejet svarede et bart ja paa et klik det ikke har set virke - det er Stripe-tilfaeldet ordret');
-  assert.equal(svar.maaske_landet, true,
-    `svaret siger ikke at virkningen er uvist: ${JSON.stringify(svar)}`);
+  assert.equal(svar.maybe_landed, true,
+    `svaret siger ikke at virkningen er unknown: ${JSON.stringify(svar)}`);
   assert.ok(svar.note && /check|unknown|confirm/i.test(svar.note),
     'svaret giver ikke agenten en anvisning paa hvad den skal goere i stedet');
 });
@@ -62,13 +62,13 @@ test('et script-klik der ER bevist, meldes stadig som succes', async () => {
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#create-key' });
   assert.equal(svar.ok, true, 'et bevist klik blev meldt som fejl');
   assert.equal(svar.landed, true, 'svaret oplyser ikke at klikket landede');
-  assert.notEqual(svar.maaske_landet, true, 'et bevist klik maa ikke ogsaa kalde sig uvist');
+  assert.notEqual(svar.maybe_landed, true, 'et bevist klik maa ikke ogsaa kalde sig uvist');
 });
 
 test('uvist er ikke det samme som mislykket - agenten maa ikke klikke igen i blinde', async () => {
   // Kalibrering mod Astras maaling 12/9: en menu der aabner paa mousedown ser ud som
   // "ingen virkning". Svarer vi ok:false, klikker agenten igen og lukker menuen.
-  const u = sele({ skriptKlik: { ok: true, tag: 'DIV', landed: null, uverificeret: true } });
+  const u = sele({ skriptKlik: { ok: true, tag: 'DIV', landed: null, unverified: true } });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#menu' });
   assert.notEqual(svar.ok, false,
     'et uvist klik blev meldt som mislykket - saa klikker agenten igen og lukker den menu den lige aabnede');

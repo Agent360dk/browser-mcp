@@ -79,7 +79,7 @@ test('kan leveringen ikke laeses, er svaret UVIST - aldrig et falskt ja eller ne
     const u = sele(opsaetning);
     const svar = await u.hent('dispatch')(9876, 'press_key', { key: 'Tab' });
     assert.equal(svar.landed, null, `${navn}: svaret paastaar at vide noget det ikke ved`);
-    assert.equal(svar.maaske_landet, true, `${navn}: svaret advarer ikke om at det er uvist`);
+    assert.equal(svar.maybe_landed, true, `${navn}: svaret advarer ikke om at det er uvist`);
     assert.equal(svar.ok, true, `${navn}: uvist er ikke det samme som mislykket - en tast kan sagtens vaere landet`);
   }
 });

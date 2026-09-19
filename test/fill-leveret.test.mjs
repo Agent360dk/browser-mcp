@@ -60,7 +60,7 @@ test('fill med CSS-vaelger melder ikke succes paa et felt der staar tomt', async
   assert.equal(svar.ok, false,
     'fill svarede ja paa et tomt felt. Baade insertText og tegn-for-tegn-reserveloesningen ' +
     'blev kvitteret uden at blive leveret, og ingen saa paa feltet bagefter');
-  assert.match(String(svar.error), /tomt/, 'svaret siger ikke hvad der var galt');
+  assert.match(String(svar.error), /is-empty/, 'svaret siger ikke hvad der var galt');
   assert.match(String(svar.note), /baggrund|switch_tab/i, 'svaret giver ikke brugeren remedien');
 });
 
@@ -68,21 +68,21 @@ test('fill med CSS-vaelger melder succes naar vaerdien faktisk staar der', async
   const u = sele({ slutVaerdi: 'Gustav' });
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#navn', value: 'Gustav' });
   assert.equal(svar.ok, true, 'fill meldte fejl paa en vaerdi der landede');
-  assert.equal(svar.vaerdi, 'Gustav', 'svaret oplyser ikke den laeste vaerdi');
+  assert.equal(svar.value, 'Gustav', 'svaret oplyser ikke den laeste vaerdi');
 });
 
 test('fill med CSS-vaelger siger til naar siden formaterede vaerdien om', async () => {
   const u = sele({ slutVaerdi: '1.234,50 kr' });
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#beloeb', value: '1234.5' });
   assert.equal(svar.ok, true, 'en side der formaterer paent er ikke en fejl');
-  assert.equal(svar.afviger, true, 'svaret skjuler at feltet indeholder noget andet');
+  assert.equal(svar.differs, true, 'svaret skjuler at feltet indeholder noget andet');
 });
 
 test('kan feltet ikke laeses, er svaret UVIST - aldrig et falskt ja eller nej', async () => {
   const u = sele({ slutVaerdi: '', ulaeseligt: true });
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: '#navn', value: 'Gustav' });
   assert.equal(svar.ok, true, 'uvist er ikke det samme som mislykket');
-  assert.equal(svar.uvist, true, 'svaret paastaar at vide noget det ikke ved');
+  assert.equal(svar.unknown, true, 'svaret paastaar at vide noget det ikke ved');
 });
 
 // ── set_combobox: ok:true paa nul arbejde ────────────────────────────────────
@@ -94,7 +94,7 @@ test('set_combobox svarer ikke ja paa en tom liste af vaerdier', async () => {
   const svar = await u.hent('dispatch')(9876, 'set_combobox', { selector: '#x', values: [] });
   assert.equal(svar.ok, false,
     'set_combobox svarede ja uden at vaelge noget. En tom liste er ikke en udfoert handling');
-  assert.match(String(svar.error), /value|vaerdi/i, 'svaret siger ikke hvad der manglede');
+  assert.match(String(svar.error), /value|value/i, 'svaret siger ikke hvad der manglede');
 });
 
 // ── set_combobox: "no-options-rendered" var en rigtig fejl med forkert forklaring ──
@@ -113,7 +113,7 @@ test('set_combobox siger at soegeteksten aldrig naaede feltet - ikke at siden ma
   const f = svar.results?.[0] || svar;
   assert.notEqual(f.error, 'no-options-rendered',
     'svaret giver siden skylden for en soegetekst der aldrig kom frem til feltet');
-  assert.match(String(f.error), /ikke-leveret|tom/,
+  assert.match(String(f.error), /not-delivered|empty/,
     `svaret siger ikke hvad der faktisk blev maalt: ${JSON.stringify(f)}`);
 });
 
@@ -140,12 +140,12 @@ test('set_combobox siger til naar klikket der skulle aabne listen ikke landede',
   const f = svar.results?.[0] || svar;
   assert.notEqual(f.error, 'no-options-rendered',
     'svaret giver siden skylden, men klikket der skulle aabne listen naaede aldrig frem');
-  assert.match(String(f.error), /klik/i, `svaret siger ikke at det var klikket: ${JSON.stringify(f)}`);
+  assert.match(String(f.error), /click/i, `svaret siger ikke at det var klikket: ${JSON.stringify(f)}`);
 });
 
 test('et UVIST klik stopper ikke set_combobox - vi ved ikke at det gik galt', async () => {
   const u = sele({ slutVaerdi: 'Koeb' });
-  u.ctx.debuggerClick = async () => ({ landed: null, uverificeret: true });
+  u.ctx.debuggerClick = async () => ({ landed: null, unverified: true });
   const svar = await u.hent('dispatch')(9876, 'set_combobox', { selector: '#by', value: 'Koebenhavn', wait_ms: 200 });
   const f = svar.results?.[0] || svar;
   assert.equal(f.error, 'no-options-rendered',

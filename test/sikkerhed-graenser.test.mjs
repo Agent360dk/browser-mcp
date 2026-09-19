@@ -75,7 +75,7 @@ const navne = (svar) => (svar.cookies || []).map((c) => c.name);
 test('get_cookies naegter et domaene sessionen ikke har aabent', async () => {
   const { u, kaldt } = cookieSele('https://a.example.com/side');
   const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'brugerens-netbank.example' });
-  assert.equal(svar.error, 'domaene-ikke-i-sessionen');
+  assert.equal(svar.error, 'domain-not-in-session');
   assert.equal(kaldt.length, 0, 'Chromes cookie-lager maa slet ikke spoerges');
 });
 
@@ -112,14 +112,14 @@ test('en file:-fane autoriserer ingen http-cookies', async () => {
   const { u } = cookieSele('file://bank.example/sti');
   const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'bank.example' });
   assert.doesNotMatch(JSON.stringify(svar), /HEMMELIG_FILE/, 'en file:-fane er ingen side paa bank.example');
-  assert.equal(svar.error, 'domaene-ikke-i-sessionen');
+  assert.equal(svar.error, 'domain-not-in-session');
 });
 
 test('et tomt vaertsnavn (about:blank) lukker ikke "bank.example." ind', async () => {
   const { u } = cookieSele('about:blank');
   const svar = await u.hent('dispatch')(9876, 'get_cookies', { domain: 'bank.example.' });
   assert.doesNotMatch(JSON.stringify(svar), /HEMMELIG_PUNKTUM/);
-  assert.equal(svar.error, 'domaene-ikke-i-sessionen');
+  assert.equal(svar.error, 'domain-not-in-session');
 });
 
 // ── Tredje runde (Astra) ────────────────────────────────────────────────────

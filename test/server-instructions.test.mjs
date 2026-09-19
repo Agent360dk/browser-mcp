@@ -48,10 +48,10 @@ test('instruktionerne forklarer de uvisse svar, saa agenten ikke gentager en han
   const start = kilde.indexOf('## When things fail');
   assert.ok(start > -1, 'afsnittet "When things fail" mangler');
   const afsnit = kilde.slice(start, kilde.indexOf('\n## ', start + 5));
-  for (const felt of ['maaske_landet', 'landed', 'afviger', 'uaendret']) {
+  for (const felt of ['maybe_landed', 'landed', 'differs', 'unchanged']) {
     assert.match(afsnit, new RegExp(felt), `instruktionerne naevner ikke ${felt}`);
   }
-  assert.match(afsnit, /maaske_landet[^\n]*(do not|don't|never)[^\n]*(again|repeat)/i, 'maaske_landet skal sige: gentag ikke blindt');
+  assert.match(afsnit, /maybe_landed[^\n]*(do not|don't|never)[^\n]*(again|repeat)/i, 'maybe_landed skal sige: gentag ikke blindt');
 });
 
 test('instructions leveres til klienten via SDK-serveren', () => {

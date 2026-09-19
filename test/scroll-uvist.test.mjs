@@ -38,8 +38,8 @@ test('ukendt start + hjul der timede ud: der rulles IKKE igen, og svaret siger d
   const svar = await u.hent('dispatch')(9876, 'scroll', { y: 600 });
   assert.equal(rulninger.length, 0, `der blev rullet relativt oveni hjulet: ${rulninger[0]}`);
   assert.equal(svar.ok, false);
-  assert.equal(svar.error, 'scroll-uvist');
-  assert.equal(svar.start_ukendt, true);
+  assert.equal(svar.error, 'scroll-unknown');
+  assert.equal(svar.start_unknown, true);
 });
 
 // MAALT 11/9 af Astra (e2e-review af 1f52333): med blød rulning (scroll-behavior: smooth) flytter siden sig foerst over de
@@ -123,7 +123,7 @@ test('kan bevaegelsen ikke ses inden for ventetiden, er svaret uvist - ikke en f
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
   const svar = await u.hent('dispatch')(9876, 'scroll', { y: 600 });
   assert.notEqual(svar.ok, false, `en rulning der blev sendt, blev meldt som fiasko: ${JSON.stringify(svar)}`);
-  assert.equal(svar.uvist, true, 'kalderen skal kunne se at bevaegelsen ikke blev set');
+  assert.equal(svar.unknown, true, 'kalderen skal kunne se at bevaegelsen ikke blev set');
   assert.deepEqual(svar.position, { x: 0, y: 0 }, 'den maalte position skal med, saa kalderen selv kan doemme');
 });
 

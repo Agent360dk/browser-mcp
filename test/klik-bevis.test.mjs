@@ -71,7 +71,7 @@ test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen succe
   assert.equal(scriptKlik(), 1);
   assert.equal(svar.ok, false, `et script-klik uden virkning blev meldt som succes: ${JSON.stringify(svar)}`);
   assert.equal(svar.landed, false);
-  assert.equal(svar.maaske_landet, true, 'klikket blev sendt - kalderen skal vide at det ikke maa gentages blindt');
+  assert.equal(svar.maybe_landed, true, 'klikket blev sendt - kalderen skal vide at det ikke maa gentages blindt');
   assert.match(JSON.stringify(svar), /switch_tab/, 'svaret skal give agenten en vej ud');
 });
 
@@ -203,7 +203,7 @@ function navigationsSele(nyAdresse) {
 }
 
 // MAALT af Astra (efterproevning af c1496d4): musebevaegelsen udloeb, en UAFHAENGIG navigation fjernede rammen foer scriptet
-// koerte, og reglen "afvist script + ny adresse = klikket navigerede" svarede ok:true, navigerede:true med nul handlinger.
+// koerte, og reglen "afvist script + ny adresse = klikket navigerede" svarede ok:true, navigated:true med nul handlinger.
 // 1.29.0: fejl. En ny adresse beviser ikke at det var klikket - og en afvisning beviser ikke at scriptet koerte.
 test('afvises script-klikket og har fanen en ny adresse, er det IKKE en succes', { timeout: 20000 }, async () => {
   const u = navigationsSele('https://test.example/session-expired');
@@ -216,7 +216,7 @@ test('udloeber selve trykket, klikkes der IKKE via script - det kan vaere landet
   const { u, scriptKlik } = baggrundsSele('mousePressed');
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
   assert.equal(scriptKlik(), 0, `script-klikket fyrede oveni et tryk der kan vaere landet: ${JSON.stringify(svar)}`);
-  assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
+  assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
 });
 
 test('en frist paa input siger at fanen kan vaere i baggrunden, og hvad agenten skal goere', { timeout: 20000 }, async () => {
@@ -245,7 +245,7 @@ test('select_option: et valg-klik der ikke landede giver ok:false', async () => 
 });
 
 test('select_option: et uvist valg-klik giver ikke ok:true', async () => {
-  const svar = await vaelgICustomDropdown({ landed: null, uverificeret: true });
+  const svar = await vaelgICustomDropdown({ landed: null, unverified: true });
   assert.equal(svar.ok, false, `et uvist klik blev til succes: ${JSON.stringify(svar)}`);
 });
 
@@ -262,7 +262,7 @@ test('et settle-opslag der fejler fordi siden NAVIGEREDE, er et landet klik', as
   });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
   assert.equal(svar.ok, true, `et klik der navigerede blev meldt som fejl: ${JSON.stringify(svar)}`);
-  assert.equal(svar.navigerede, true, 'kalderen skal kunne se hvorfor');
+  assert.equal(svar.navigated, true, 'kalderen skal kunne se hvorfor');
 });
 
 test('et settle-opslag der fejler af anden grund, er IKKE et landet klik', async () => {
@@ -272,7 +272,7 @@ test('et settle-opslag der fejler af anden grund, er IKKE et landet klik', async
   });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
   assert.equal(svar.ok, false, `intet bevis blev meldt som succes: ${JSON.stringify(svar)}`);
-  assert.equal(svar.uverificeret, true);
+  assert.equal(svar.unverified, true);
 });
 
 test('afkobling EFTER at museknappen var sendt: der klikkes ikke en gang til', async () => {
@@ -284,7 +284,7 @@ test('afkobling EFTER at museknappen var sendt: der klikkes ikke en gang til', a
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
   assert.equal(scripting, 1, `reserveloesningen klikkede igen (${scripting - 1} ekstra): ${JSON.stringify(svar)}`);
   assert.equal(svar.ok, false);
-  assert.equal(svar.maaske_landet, true, 'kalderen skal vide at klikket KAN vaere landet');
+  assert.equal(svar.maybe_landed, true, 'kalderen skal vide at klikket KAN vaere landet');
 });
 
 // ── Settle-udtrykket mod en falsk side ─────────────────────────────────────
@@ -373,7 +373,7 @@ test('en ripple alene er ikke et landet klik - uden bevis siges der ikke ja', as
   const r = koer(await settleUdtryk());
   assert.equal(t.checked, 0, 'proeven maaler forkert: der SKETE noget');
   assert.notEqual(r.landed, true, `en ripple blev meldt som et landet klik: ${r.aftrykFoer} -> ${r.aftrykEfter}`);
-  assert.equal(r.uvist, true, 'svaret siger ikke at klikket KAN vaere landet - agenten faar et bart nej');
+  assert.equal(r.unknown, true, 'svaret siger ikke at klikket KAN vaere landet - agenten faar et bart nej');
 });
 
 // Den anden side af samme moent: en menu der aabner paa mousedown ER klikkets virkning. Sammenlignes der KUN fra
@@ -415,9 +415,9 @@ test('"not attached" paa samme adresse er IKKE en navigation', async () => {
     return {};
   });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
-  assert.notEqual(svar.navigerede, true, `en afkobling blev kaldt navigation: ${JSON.stringify(svar)}`);
+  assert.notEqual(svar.navigated, true, `en afkobling blev kaldt navigation: ${JSON.stringify(svar)}`);
   assert.equal(svar.ok, false);
-  assert.equal(svar.uverificeret, true);
+  assert.equal(svar.unverified, true);
 });
 
 test('en adresse der skiftede efter klikket, er bevis for en virkning', async () => {
@@ -427,7 +427,7 @@ test('en adresse der skiftede efter klikket, er bevis for en virkning', async ()
     return {};
   }, undefined, () => (efterKlik ? { ...FANE, url: 'https://x.example/kvittering' } : FANE));
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
-  assert.equal(svar.navigerede, true, `siden skiftede adresse, men klikket blev ikke kaldt landet: ${JSON.stringify(svar)}`);
+  assert.equal(svar.navigated, true, `siden skiftede adresse, men klikket blev ikke kaldt landet: ${JSON.stringify(svar)}`);
   assert.equal(svar.ok, true);
 });
 
@@ -442,7 +442,7 @@ test('fejler mousePressed efter levering, slippes museknappen alligevel', async 
   });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' });
   assert.ok(typer.includes('mouseReleased'), `museknappen blev aldrig sluppet: ${typer.join(',')}`);
-  assert.equal(svar.maaske_landet, true);
+  assert.equal(svar.maybe_landed, true);
 });
 
 test('click_xy: afkobling efter at museknappen var sendt giver maaske_landet, ikke en kastet fejl', async () => {
@@ -452,13 +452,13 @@ test('click_xy: afkobling efter at museknappen var sendt giver maaske_landet, ik
   });
   const svar = await u.hent('dispatch')(9876, 'click_xy', { x: 5, y: 5 }).catch((e) => ({ kastet: e.message }));
   assert.equal(svar.kastet, undefined, `fejlen slap ud, og markeringen gik tabt over forbindelsen: ${svar.kastet}`);
-  assert.equal(svar.maaske_landet, true);
+  assert.equal(svar.maybe_landed, true);
   assert.equal(svar.ok, false);
 });
 
 test('click, click_xy og select_option bruger SAMME regel for et landet klik', () => {
   const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
-  // select_option havde stadig den gamle regel, saa "uverificeret" (landed:null) blev til ok:true.
+  // select_option havde stadig den gamle regel, saa "unverified" (landed:null) blev til ok:true.
   assert.equal((kilde.match(/\?\.landed !== false/g) || []).length, 0, 'den gamle regel ("ikke falsk" = landet) findes stadig');
   for (const navn of ["case 'click': {", "case 'click_xy': {", "case 'select_option': {"]) {
     const i = kilde.indexOf(navn);
@@ -467,7 +467,7 @@ test('click, click_xy og select_option bruger SAMME regel for et landet klik', (
     assert.match(blok, /klikLandede\(/, `${navn} bruger ikke den faelles regel`);
   }
   const landede = indlaesUdvidelse({ svar: {} }).hent('klikLandede');
-  assert.equal(landede({ landed: null, uverificeret: true }), false, 'uvist er ikke landet');
+  assert.equal(landede({ landed: null, unverified: true }), false, 'uvist er ikke landet');
   assert.equal(landede({ landed: false, detached: true }), true, 'et element der forsvandt er en virkning');
   assert.equal(landede({ landed: true }), true);
   assert.equal(landede(null), false);
