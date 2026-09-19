@@ -1,21 +1,30 @@
 #!/usr/bin/env node
 /**
- * ⚠️ HALVT FAERDIG - laes her foer du bruger den.
+ * ⚠️ BLOKERET AF CHROME - aarsagen er fundet og maalt. Laes her foer du bruger den.
  *
  * MAALT og virker: en separat Chrome med egen profil starter, indlaeser udvidelsen fra repoet,
- * faar sit EGET udvidelses-id, og serveren bindes til det. Din egen udvidelse bliver aktivt
- * lukket ude - set i loggen: «Afviser udvidelse nggfamghkbkjjpooipchhehabjkgicim».
- * Isolationen er altsaa bevist.
+ * faar sit EGET udvidelses-id, og serveren bindes til det med `BROWSER_MCP_EXTENSION_ID`.
+ * Gustavs egen udvidelse bliver aktivt lukket ude - set i loggen:
+ * «Afviser udvidelse nggfamghkbkjjpooipchhehabjkgicim». Isolationen er altsaa bevist.
  *
- * MAALT og virker IKKE: udvidelsens bro forbinder ikke i en engangsprofil. Hverken headless
- * eller synlig, hverken med `--disable-features=DisableLoadExtensionCommandLineSwitch`,
- * med 40 sekunders ventetid, eller med en rigtig side der skal vaekke service workeren.
- * Aarsagen er ikke fundet. Mistanken er offscreen-dokumentet, men det er UMAALT.
+ * MAALT og virker IKKE - og her er grunden:
  *
- * Indtil den sidste halvdel er loest, koeres flow-spaerren stadig mod Gustavs egen Chrome -
- * og derfor saa sjaeldent som muligt, ikke efter hver commit.
+ *   En udvidelse indlaest med `--load-extension` faar en **background_page**-kontekst
+ *   (CDP-target-type `background_page`, url `background.html`), ikke en service worker -
+ *   selv om manifestet er MV3 og erklaerer `service_worker`. I den kontekst er
+ *   `chrome.offscreen` **undefined**. Broen lever i et offscreen-dokument, saa den kan
+ *   aldrig starte. Maalt BAADE headless og synlig, saa det er ikke en headless-begraensning.
+ *   `WebSocket` findes derimod i konteksten, saa problemet er offscreen-API'et alene.
  *
- * Proev forbindelsen alene (ingen faner, ingen muse-haendelser, ~40 s):
+ * Den vej der kan virke, og som ikke er proevet endnu: byg test-profilen ÉN gang i haanden -
+ * aabn en Chrome med `--user-data-dir=<fast sti>`, indlaes udvidelsen via chrome://extensions
+ * som normalt, og luk. Derefter genbruger scriptet den profil i stedet for `--load-extension`.
+ * Saa er udvidelsen «rigtigt installeret» i profilen og faar sin service worker.
+ *
+ * Indtil da koeres flow-spaerren mod den rigtige Chrome - og derfor foer en udgivelse,
+ * ikke efter hver commit.
+ *
+ * Proev forbindelsen alene (ingen faner, ingen muse-haendelser):
  *   node scripts/flow-isoleret.mjs --kun-forbind [--synlig]
  */
 import { spawn, spawnSync } from 'node:child_process';
