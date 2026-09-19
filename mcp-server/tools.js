@@ -11,6 +11,7 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
+        eget_vindue: { type: 'boolean', description: 'EXPERIMENTAL, requires new_tab. Opens the page in its own unfocused Chrome window instead of a background tab. Whether Chrome delivers mouse and keyboard input in that state is exactly the open question - measure it, do not rely on it.' },
         url: { type: 'string', description: 'URL to navigate to' },
         new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false)' },
       },

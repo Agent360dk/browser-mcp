@@ -3120,6 +3120,30 @@ async function dispatch(port, method, params) {
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
       if (params.new_tab) {
+        // EKSPERIMENT 19/9 (vindues-hypotesen, 1.30). Hele vores fejlklasse kommer af at
+        // Chrome ikke leverer Input.* til en fane der ikke er den viste i sit vindue - og
+        // maalingen 19/9 viste at det er en klasse konkurrenterne IKKE har, fordi de koerer
+        // deres egen browser. Faar en session sit EGET vindue, er dens fane altid den viste
+        // dér, uden at stjaele brugerens fokus. Saa ville klassen forsvinde.
+        //
+        // Det kunne ikke maales foer: vores egen kode fokuserer vinduet naar den aktiverer
+        // fanen, saa tilstanden "synlig i sit eget vindue, men ikke fokuseret" kunne ikke
+        // opnaas. `chrome.windows.create({ focused: false })` er praecis den tilstand.
+        // ⚠️ Tilvalg, ikke standard: om Chrome leverer input dér er PRAECIS det ubesvarede
+        // spoergsmaal. Ingen adfaerd aendrer sig for nogen der ikke beder om det.
+        if (params.eget_vindue) {
+          const vindue = await chrome.windows.create({ url: params.url, focused: false });
+          tab = vindue.tabs && vindue.tabs[0];
+          if (!tab) return { ok: false, error: 'eget_vindue: Chrome oprettede et vindue uden fane' };
+          await addTabToSession(port, tab.id);
+          getSession(port).activeTabId = tab.id;
+          persistSessions();
+          return { ok: true, url: params.url, tabId: tab.id, windowId: vindue.id,
+            eget_vindue: true, fokuseret: false,
+            note: 'Eksperimentel: fanen er den viste i SIT vindue, men vinduet har ikke fokus. ' +
+                  'Om Chrome leverer mus og taster i den tilstand er ikke afgjort - det er hele ' +
+                  'pointen med at kunne lave den. Maal det, stol ikke paa det.' };
+        }
         tab = await chrome.tabs.create({ url: params.url, active: false });
         await addTabToSession(port, tab.id);
       } else {
