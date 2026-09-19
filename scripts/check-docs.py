@@ -53,6 +53,27 @@ for _f in sorted(os.listdir(os.path.join(ROOT, 'content'))):
 if _uden:
     fail('%d sider viser hverken kommando eller svar: %s' % (len(_uden), ', '.join(_uden)))
 
+# ---- 0b. ingen side maa have to udgaver af sin egen indledning --------------
+# MAALT 19/9: baade VS Code-siden og ZCode-siden aabnede med SAMME saetning to gange, i to
+# lidt forskellige udgaver - «install takes about 90 seconds» og «about 90 seconds, four
+# steps». Paa de to sider der ligger i den tungeste ende af trafikken. Det er ikke en
+# stavefejl, det er en side der ser ubearbejdet ud i det foerste oejeblik en ny bruger ser den.
+_dubletter = []
+for _f in sorted(os.listdir(os.path.join(ROOT, 'content'))):
+    if not _f.endswith('.md'):
+        continue
+    _t = open(os.path.join(ROOT, 'content', _f), encoding='utf-8').read()
+    _afsnit = [_a.strip() for _a in _t.split('\n\n')
+               if len(_a.strip()) > 60 and not _a.strip().startswith('//') and '```' not in _a]
+    _set = {}
+    for _a in _afsnit:
+        _k = ' '.join(_a.split())[:60]
+        if _k in _set:
+            _dubletter.append('%s: "%s…"' % (_f, _k[:52]))
+        _set[_k] = _a
+if _dubletter:
+    fail('%d sider aabner med samme saetning to gange: %s' % (len(_dubletter), '; '.join(_dubletter)))
+
 # ---- 1. tool count ----------------------------------------------------------
 TOOLCOUNT = len(re.findall(r"""name: ['\"]browser_""", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
 claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \
