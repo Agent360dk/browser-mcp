@@ -169,3 +169,33 @@ test('hver citeret fejlbesked paa siderne findes ogsaa i koden', () => {
   }
   assert.deepEqual(fund, [], `fejlbeskeder der ikke findes i koden:\n  ${fund.join('\n  ')}`);
 });
+
+// ── Et citat i anfoerselstegn skal vaere et CITAT ───────────────────────────
+// FUNDET 19/9 af Fable: /learn/tools-that-lie/ satte remedien i anfoerselstegn som det
+// vaerktoejet svarer - «"this tab is in the background, call `browser_switch_tab`"» - mens
+// koden svarer «fanen er sandsynligvis i baggrunden … kald browser_switch_tab og proev igen».
+// Ordlyden var opdigtet. Det er samme klasse som den opfundne fejlbesked ovenfor, bare i
+// prosa: en laeser der soeger efter den saetning i sin egen log, finder den aldrig.
+//
+// Reglen: staar der et vaerktoejsnavn inde i et par anfoerselstegn paa en side, skal den
+// saetning findes i koden. Ellers skal den skrives som en BESKRIVELSE uden anfoerselstegn.
+test('citerede vaerktoejssvar paa siderne findes ogsaa i koden', () => {
+  const kode = ['extension/background.js', 'mcp-server/index.js', 'mcp-server/tools.js']
+    .map((f) => readFileSync(join(rod, f), 'utf8')).join('\n');
+  const fund = [];
+  for (const fil of readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'))) {
+    const tekst = readFileSync(join(rod, 'content', fil), 'utf8');
+    // Kun rigtige citater: dobbelte anfoerselstegn omkring en saetning der naevner et vaerktoej.
+    for (const m of tekst.matchAll(/"([^"\n]{25,160}browser_[a-z_]+[^"\n]{0,80})"/g)) {
+      const citat = m[1];
+      // Den del foer vaerktoejsnavnet er den prosa der paastaas at staa i koden.
+      const prosa = citat.split(/browser_[a-z_]+/)[0].replace(/[`*]/g, '').trim();
+      if (prosa.length < 20) continue;
+      if (!kode.includes(prosa)) {
+        const linje = tekst.slice(0, m.index).split('\n').length;
+        fund.push(`content/${fil}:${linje}  "${prosa}…"`);
+      }
+    }
+  }
+  assert.deepEqual(fund, [], `citater der ikke findes i koden:\n  ${fund.join('\n  ')}`);
+});

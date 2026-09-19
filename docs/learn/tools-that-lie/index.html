@@ -38,7 +38,7 @@ page&#x27;s own keydown listener  →  nothing. Not one event.</pre><button clas
 <h2 id="the-three-answers">The three answers</h2>
 <p>The fix is not "return false more often". A tool that wrongly reports failure is expensive in its own way: the agent repeats the action, and an Enter that already submitted the form submits it twice.</p>
 <p>So every tool in this class now answers one of three things:</p>
-<ul><li><b>It landed.</b> The page received the event. Proven, not assumed.</li><li><b>It did not land.</b> Nothing received it, with the reason and the remedy in the message - usually "this tab is in the background, call <code>browser_switch_tab</code>".</li><li><b>Unknown.</b> The action was sent and the effect could not be read. The message says so, and says to check the page rather than repeat blindly.</li></ul>
+<ul><li><b>It landed.</b> The page received the event. Proven, not assumed.</li><li><b>It did not land.</b> Nothing received it, with the reason and the remedy in the message - usually that the tab is in the background and you should call <code>browser_switch_tab</code> first.</li><li><b>Unknown.</b> The action was sent and the effect could not be read. The message says so, and says to check the page rather than repeat blindly.</li></ul>
 <p>That third answer is the one that took longest to accept. It looks like weakness in an API. It is the opposite: it is the only honest thing to return when you genuinely cannot tell, and it is what stops an agent from clicking a menu closed that it just opened.</p>
 <h2 id="the-proof-apparatus-had-the-same-bug">The proof apparatus had the same bug</h2>
 <p>The mechanism we built to catch these lies had a false yes of its own, and it is worth describing because it is so easy to write.</p>

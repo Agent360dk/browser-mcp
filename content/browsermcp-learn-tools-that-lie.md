@@ -55,7 +55,7 @@ The fix is not "return false more often". A tool that wrongly reports failure is
 So every tool in this class now answers one of three things:
 
 - **It landed.** The page received the event. Proven, not assumed.
-- **It did not land.** Nothing received it, with the reason and the remedy in the message - usually "this tab is in the background, call `browser_switch_tab`".
+- **It did not land.** Nothing received it, with the reason and the remedy in the message - usually that the tab is in the background and you should call `browser_switch_tab` first.
 - **Unknown.** The action was sent and the effect could not be read. The message says so, and says to check the page rather than repeat blindly.
 
 That third answer is the one that took longest to accept. It looks like weakness in an API. It is the opposite: it is the only honest thing to return when you genuinely cannot tell, and it is what stops an agent from clicking a menu closed that it just opened.
