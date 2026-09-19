@@ -60,12 +60,13 @@ HEADING = re.compile(r'^\s{0,3}#{1,6}\s|<h[1-6][^>]*>', re.I)
 # vores. En paastand springes over hvis linjen ELLER den naermeste overskrift over den
 # naevner et andet produkt. Kommer der en ny konkurrent til, fejler gaten én gang og
 # navnet tilfoejes her - stoejende frem for tavst forkert.
-ANDRE = re.compile(r'playwright|chrome devtools mcp|mcp-chrome|browsermcp\.io|puppeteer|selenium', re.I)
+ANDRE = re.compile(r'playwright|chrome devtools mcp|mcp-chrome|browsermcp\.io|puppeteer|selenium|copilot|vs ?code|zed|kiro|continue\.dev|cline|gemini cli', re.I)
 # MAALT 9/9: at springe HELE linjen over var det andet hul. En sammenligningsraekke
 # indeholder BEGGE tal - "| Tools | 69 documented | 34 |" - saa undtagelsen beskyttede
 # praecis det sted hvor vores eget forkerte tal stod. Nu springes kun de tal over der er
 # verificeret som andres. Kommer der et nyt, fejler gaten én gang og tallet skrives her.
 KONKURRENT_TAL = {
+    128,  # VS Code agent mode's vaerktoejs-loft pr. chat-anmodning (deres issue-tracker, 19/9)
     72,   # microsoft/playwright-mcp, genoptalt 2026-09-19 EFTER at vagten fyrede: de fjernede
           # browser_webmcp_call + browser_webmcp_list og tilfoejede browser_emulate_media samme dag
     73,   # samme, foer den aendring - beholdt saa gamle henvisninger ikke bliver falsk roede
