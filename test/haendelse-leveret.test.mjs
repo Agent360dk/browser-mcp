@@ -24,8 +24,11 @@ function sele({ leverer, feltVaerdi, rulPosition }) {
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
-    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: false },
-    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: false }],
+    // MAALT 19/9: fanen var `active: false`, og scroll springer nu hjul-stien over for en
+    // fane der ikke er aktiv i sit vindue - saa proeven maalte reserveloesningen i stedet for
+    // det hjul den er skrevet for. Fanen skal vaere aktiv, ellers maaler den ikke sit emne.
+    'tabs.get': { id: 1, url: 'https://x.example', windowId: 1, active: true },
+    'tabs.query': [{ id: 1, url: 'https://x.example', windowId: 1, active: true }],
     'debugger.sendCommand': (_m, metode, p) => {
       if (metode !== 'Runtime.evaluate') return {};
       const udtryk = String(p?.expression || '');

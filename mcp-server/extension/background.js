@@ -4054,7 +4054,31 @@ async function dispatch(port, method, params) {
         .catch(() => null);
       const startKendt = !!start && typeof start.y === 'number';
       const startX = startKendt ? start.x : 0, startY = startKendt ? start.y : 0;
+      // MAALT 19/9: et hjul der faldt paa fristen i en baggrundsfane blev leveret SENERE, da
+      // fanen kom frem - en ekstra rulning ingen havde bedt om. Reproduceret: 0 -> 300 via
+      // reserveloesningen, og efter switch_tab stod siden paa 600 uden et nyt kald.
+      // Vi kan ikke afbryde en CDP-kommando vi har opgivet. Men vi kan lade vaere med at sende
+      // den: er fanen ikke den aktive i sit vindue, leverer Chrome beviseligt ikke Input.* dertil
+      // (maalt 11/9), saa hjulet er spildt uanset. Vi springer det over, ruller aerligt med
+      // scrollTo, og siger hvorfor - i stedet for at efterlade et spoegelse i koeen.
+      // ⚠️ Kun paa det vi HAR maalt. Om en AKTIV fane i et daekket vindue faar input, ved vi
+      // ikke, saa den behandles som foer: send hjulet og lad fristen doemme.
+      let springHjulOver = false;
       try {
+        const f = await chrome.tabs.get(tab.id);
+        springHjulOver = !!f && f.active === false;
+      } catch { springHjulOver = false; }
+      try {
+        // MAALT 19/9: foerste rettelse skrev en GENVEJ her - egen scrollTo, eget svar. To
+        // proever fangede den med det samme: den svarede ok:true selv naar rulningen fejlede,
+        // og rapporterede den oenskede position frem for den faktiske. En parallel sti ved
+        // siden af den aerlige er en ny loegn, ikke en rettelse. Nu kastes der i stedet, saa
+        // den reserveloesning der ALLEREDE er bevist aerlig, goer arbejdet.
+        if (springHjulOver) {
+          throw new Error('fanen er ikke den aktive i sit vindue: Chrome leverer ikke hjul-haendelser dertil, ' +
+            'og et hjul sendt nu ville lande naar fanen kom frem - som en ekstra rulning du ikke har bedt om. ' +
+            'Det blev derfor slet ikke sendt. En feed der loader paa hjul hoerer INTET her; kald browser_switch_tab foerst.');
+        }
         await debuggerAttach(tab.id);
         const STEP_SIZE = 300; // pixels per wheel-event (matches a typical mouse-wheel notch)
         const totalSteps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / STEP_SIZE));
