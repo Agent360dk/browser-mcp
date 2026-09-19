@@ -1435,7 +1435,7 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
   const svar = { ok: true, ...ekstra, attached: vedhaeftet.navne };
   if (vedhaeftet.antal !== oenskede.length) {
     svar.differs = true;
-    svar.note = `Feltet tog ${vedhaeftet.antal} af ${oenskede.length} filer. Et \`accept\`-filter eller ` +
+    svar.note = `The field took ${vedhaeftet.antal} of ${oenskede.length} files. An \`accept\` filter or ` +
                 'a field without `multiple` discards the rest.';
   }
   return svar;
@@ -1512,7 +1512,7 @@ async function laesHaendelsesBevis(tabId, bevis) {
 function haendelsesSvar(bevis, grund, ekstra) {
   if (bevis.landed === true) {
     return { ok: true, landed: true, ...ekstra,
-      ...(bevis.navigeret ? { note: 'Siden navigerede paa handlingen.' } : {}) };
+      ...(bevis.navigeret ? { note: 'The page navigated on the action.' } : {}) };
   }
   if (bevis.landed === null) {
     return { ok: true, landed: null, maybe_landed: true, ...ekstra,
@@ -3493,7 +3493,7 @@ async function dispatch(port, method, params) {
       const maaskeKoert = (world, m) => ({
         ok: false, error: m, maybe_ran: true,
         method: world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
-        note: 'Siden skiftede eller lukkede mens koden koerte. Den kan allerede have koert, saa den ' +
+        note: 'The page changed or closed while the code was running. It may already have run, so it ' +
               'is not run again through the debugger. Call again only if it is safe to run twice.',
       });
       // Step 1: try ISOLATED world
@@ -3824,7 +3824,7 @@ async function dispatch(port, method, params) {
             return {
               ok: false, method: 'fallback', error: fordoblet ? 'field-doubled' : 'field-cleared',
               expected: v, actual: endelig,
-              note: 'Et forsinket tastetryk fra debugger-forsoeget landede efter reserveloesningen.',
+              note: 'A delayed key press from the debugger attempt landed after the fallback.',
             };
           }
           // Anden runde: "OLD" efter fill("NEW") blev kaldt formatering. Tredje og fjerde runde: hver regel for
@@ -4080,7 +4080,7 @@ async function dispatch(port, method, params) {
       const bevis = bevisId ? await laesTastBevis(tab.id, bevisId) : { landed: null };
       if (bevis.landed === true) {
         return { ok: true, key, landed: true,
-          ...(bevis.navigeret ? { note: 'Siden navigerede paa tasten.' } : {}) };
+          ...(bevis.navigeret ? { note: 'The page navigated on the key press.' } : {}) };
       }
       if (bevis.landed === null) {
         return { ok: true, key, landed: null, maybe_landed: true,
@@ -4286,7 +4286,7 @@ async function dispatch(port, method, params) {
       const svarH = haendelsesSvar(hb2, 'right-click-not-delivered',
         { right_clicked: hb2.landed === true, tag: el.tag, text: el.text });
       // Den gamle note gaelder stadig naar haendelsen LANDEDE: Chromes egen menu aabner ikke via CDP.
-      if (svarH.landed === true) svarH.note = 'contextmenu-haendelsen landede; Chromes egen menu aabner ikke via CDP - menuer bygget i siden (OWA, webapps) goer';
+      if (svarH.landed === true) svarH.note = 'the contextmenu event landed; Chrome\'s own menu does not open through CDP - menus built inside the page (OWA, web apps) do';
       return svarH;
     }
 

@@ -243,7 +243,7 @@ test('query-strengen ryger - den baerer tokens og soegetermer', async () => {
 test('en uduelig url braekker ikke logningen', async () => {
   const h = byg();
   await h({ what_happened: 'x', url: 'ikke en url' });
-  assert.equal(h.skrevet[0].url, '(ulaeselig url)');
+  assert.equal(h.skrevet[0].url, '(unreadable url)');
 });
 
 test('den samme graense i loekke fylder ikke logbogen', async () => {

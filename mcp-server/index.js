@@ -93,7 +93,7 @@ function advarOmKonflikt(conn) {
     `(${alle.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
     'They share tabs and session state, so tabs can appear to vanish. ' +
     (kanVaelge
-      ? `Kommandoer sendes kun til den nyeste (${aktiv?.extensionId}). `
+      ? `Commands are only sent to the newest one (${aktiv?.extensionId}). `
       : `None of them reports its version, so the choice (${aktiv?.extensionId}) is arbitrary and can change. `) +
     'Fix it by disabling all but one on chrome://extensions.\n',
   );
@@ -333,7 +333,7 @@ function createWSS(port = BASE_PORT) {
         }
         if (conn.helloId && conn.helloId !== conn.extensionId) {
           process.stderr.write(
-            `[MCP] Haandtryk oplyser ${conn.helloId} men Origin siger ${conn.extensionId} - ` +
+            `[MCP] Handshake reports ${conn.helloId} but Origin says ${conn.extensionId} - ` +
             'bruger Origin\n',
           );
         }
@@ -374,7 +374,7 @@ function createWSS(port = BASE_PORT) {
           //    kopi, der lukkede sin sidste fane, rive serveren vaek under den
           //    udvidelse der reelt loeste opgaven.
           if (!conn.harHilst || (conn.helloId && conn.helloId !== conn.extensionId)) {
-          process.stderr.write('[MCP] terminate ignoreret - intet gyldigt haandtryk\n');
+          process.stderr.write('[MCP] terminate ignored - no valid handshake\n');
           return;
           }
         if (activeConnection() !== conn) {
@@ -412,7 +412,7 @@ function createWSS(port = BASE_PORT) {
         clearTimeout(p.timer);
         pending.delete(id);
         p.reject(new Error(
-          `Forbindelsen til Chrome-udvidelsen forsvandt mens kommandoen koerte (${grund}). ` +
+          `The connection to the Chrome extension disappeared while the command was running (${grund}). ` +
           'The command may have been carried out in the browser - check the state before you ' +
           'try again. If the extension is disabled or Chrome is closed, start it and begin again.',
         ));
@@ -559,7 +559,7 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       throw new Error(
         `Port ${activePort} was opened ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
         'seconds ago, and the extension has not connected yet. It scans every ' +
-        '2. sekund, saa det tager normalt under fem.\n' +
+        '2 seconds, so it normally takes under five.\n' +
         'This is probably NOT a missing installation - try the command again in a ' +
         'moment. If it persists, check that Chrome is running and the extension is enabled.\n' +
         'Tell the user that, in that order. Do NOT ask for a reinstall first.',
@@ -580,7 +580,7 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       throw new Error(
         `All ports ${BASE_PORT}-${MAX_PORT} are taken right now, so this call got no port. ` +
         'This is NOT a problem with Chrome or the extension - they are working fine.\n' +
-        `${MAX_PORT - BASE_PORT + 1} andre chats bruger browseren i oejeblikket. ` +
+        `${MAX_PORT - BASE_PORT + 1} other chats are using the browser right now. ` +
         'Close one of them, or wait until one finishes - then try the command again. ' +
         'This chat does NOT need restarting: every call tries to get a port by itself.\n' +
         'Tell the user exactly that. Do NOT say the extension is missing.',
@@ -941,7 +941,7 @@ const ERSTATNINGER = {
   right_click: 'use `browser_execute_script` with a contextmenu event',
   click_xy: 'use `browser_click` with a selector',
   extract_list: 'use `browser_get_page_content` and scroll with `browser_scroll`',
-  reattach_debugger: 'genindlaes udvidelsen paa chrome://extensions',
+  reattach_debugger: 'reload the extension on chrome://extensions',
 };
 
 function forklarSkaevhed(besked) {
@@ -955,14 +955,14 @@ function forklarSkaevhed(besked) {
     if (alle.length > 1) {
       const aktiv = activeConnection();
       return `Error: ${besked}\n\n` +
-        `FOERST: ${alle.length} Browser MCP-udvidelser er forbundet samtidig ` +
+        `FIRST: ${alle.length} Browser MCP extensions are connected at the same time ` +
         `(${alle.map((c) => c.extensionId || 'ukendt id').join(', ')}). Chrome tillader kun ÉN ` +
         'debugger per tab, so they fight over it, and every mouse, keyboard or file action ' +
         'fails like this. It is probably not the page.\n\n' +
         'To veje ud:\n' +
         '1. Disable all but one on chrome://extensions (the user has to do it - ' +
         'chrome:// kan ikke styres herfra).\n' +
-        `2. Uden at roere Chrome: saet BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
+        `2. Without touching Chrome: set BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
         'in the client configuration, so this server talks only to that one.';
     }
   }
@@ -1082,7 +1082,7 @@ function fingeraftryk(kind, tool, what) {
 // og soegetermer - de har intet at goere i en logbog nogen senere kopierer ind i et issue.
 function afkortUrl(u) {
   if (!u) return null;
-  try { const x = new URL(u); return x.origin + x.pathname; } catch { return '(ulaeselig url)'; }
+  try { const x = new URL(u); return x.origin + x.pathname; } catch { return '(unreadable url)'; }
 }
 
 function skrivTilLogbog(post) {
@@ -1147,8 +1147,8 @@ async function handleProvideFeedback(args) {
     fix_steps.push('Check that Chrome is running and the extension is enabled on chrome://extensions, then click the icon → Reconnect.');
   }
   if (serverOutdated) {
-    findings.push(`MCP-serveren koerer v${PKG_VERSION}, men npm har v${npmLatest}. Fejlen kan allerede vaere rettet.`);
-    fix_steps.push(`Genstart klienten - den henter selv @agent360/browser-mcp@latest (v${npmLatest}).`);
+    findings.push(`The MCP server is running v${PKG_VERSION}, but npm has v${npmLatest}. The error may already be fixed.`);
+    fix_steps.push(`Restart the client - it fetches @agent360/browser-mcp@latest by itself (v${npmLatest}).`);
   }
   if (extOutdated) {
     findings.push(
@@ -1377,7 +1377,7 @@ try {
 } catch {}
 if (!vagtKaede.length) {
   process.stderr.write('[MCP] ingen brugbar foraelder-kaede (ppid=' + parentPid +
-    ') - falder tilbage paa idle-graensen alene\n');
+    ') - falling back on the idle limit alone\n');
 }
 process.stderr.write(`[MCP] vagt-kaede: ${vagtKaede.join(' → ')}\n`);
 
@@ -1408,7 +1408,7 @@ parentCheck = setInterval(() => {
   if (frisk.length) {
     process.stderr.write(
       `[MCP] links ${doede.join(', ')} are gone, but the chain still reaches up: ` +
-      `${frisk.join(' → ')} - fortsaetter\n`,
+      `${frisk.join(' -> ')} - continuing\n`,
     );
     vagtKaede = frisk;
     return;

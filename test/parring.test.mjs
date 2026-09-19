@@ -181,7 +181,7 @@ test('en parret udvidelse udfoerer INTET foer serveren har kvitteret', async () 
   await b.aabn();
   await b.modtag({ id: 7, method: 'browser_screenshot', params: {} });
   const svar = b.sendt.find((m) => m.id === 7);
-  assert.match(String(svar?.error), /parringsnoegle/, `kommandoen blev udfoert uden kvittering: ${JSON.stringify(b.sendt)}`);
+  assert.match(String(svar?.error), /pairing key/, `kommandoen blev udfoert uden kvittering: ${JSON.stringify(b.sendt)}`);
 });
 
 test('efter serverens kvittering udfoeres kommandoer igen', async () => {

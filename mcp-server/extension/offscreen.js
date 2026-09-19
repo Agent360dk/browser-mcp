@@ -49,7 +49,7 @@ try {
     connections.clear();
   });
 } catch (e) {
-  console.warn('[Offscreen] kunne ikke laese parringsnoeglen:', e?.message || e);
+  console.warn('[Offscreen] could not read the pairing key:', e?.message || e);
 }
 let kodeAftrykCache = null;
 async function kodeAftryk() {
@@ -222,7 +222,7 @@ function tryConnect(port) {
     try {
       hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode, noegle: parringsnoegle };
     } catch (e) {
-      console.warn('[Offscreen] kunne ikke bygge haandtrykket:', e?.message || e);
+      console.warn('[Offscreen] could not build the handshake:', e?.message || e);
     }
     try {
       ws.send(JSON.stringify(hilsen));
@@ -254,7 +254,7 @@ function tryConnect(port) {
       if (cmd.ok === true && parringsnoegle && cmd.noegle === parringsnoegle) {
         parrede.add(ws);
       } else {
-        console.warn('[Offscreen] Serveren paa port ' + port + ' kender ikke parringsnoeglen - lukker.');
+        console.warn('[Offscreen] The server on port ' + port + ' does not know the pairing key - closing.');
         try { ws.close(); } catch (e) { /* lukket */ }
       }
       return;
@@ -265,7 +265,7 @@ function tryConnect(port) {
     // Er der sat en noegle, udfoeres INTET foer serveren har kvitteret med den. En server
     // uden noegle kvitterer aldrig, og kan derfor ikke styre en parret browser.
     if (parringsnoegle && !parrede.has(ws)) {
-      try { ws.send(JSON.stringify({ id, error: 'Udvidelsen er parret med en anden server (parringsnoegle).' })); } catch (e) { /* lukket */ }
+      try { ws.send(JSON.stringify({ id, error: 'This extension is paired with a different server (pairing key).' })); } catch (e) { /* lukket */ }
       return;
     }
 
