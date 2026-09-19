@@ -30,6 +30,9 @@ BASE_HEADERS = {
 }
 GH_TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 
+import re as _re0
+
+
 def fetch(url, as_json=False, timeout=25, retries=2):
     # Retries on transient failures (timeout, connection reset, 429/5xx) so one flaky
     # response from a third-party listing site does not become a false 🔴 regression.
@@ -109,6 +112,8 @@ for name, url, was_live in [
     ("mcpservers.org", "https://mcpservers.org/servers/agent360dk/browser-mcp", True),
     ("Glama",          "https://glama.ai/mcp/servers/Agent360dk/browser-mcp",    False),
     ("Smithery",       "https://smithery.ai/server/@Agent360dk/browser-mcp",     False),
+    # Tilfoejet 19/9: her fandt vi juli-teksten. En listning vi ikke maaler, kan sige hvad som helst.
+    ("mcp.so",         "https://mcp.so/server/browser-mcp/Agent360dk",           True),
 ]:
     is_listed, detail, sider[name] = listed(url)
     if is_listed is None:
@@ -122,6 +127,45 @@ for name, url, was_live in [
         rows.append((name, "🟢", detail + " - NY optagelse"))
     else:
         rows.append((name, "✓" if is_listed else "·", detail))
+
+# ---- Siger tredjeparts-listningerne stadig sandt om os? ----
+# MAALT 19/9: mcp.so serverede vores JULI-tekst - «solves CAPTCHAs, 34 tools. MIT, local-only».
+# Alle tre er usande i dag (40 vaerktoejer · kapabilitets-tabellen siger *Partly* og naegter en
+# succesrate · «local-only» blev fjernet fra otte egne sider 10-11/9 fordi det agenten laeser
+# gaar videre til brugerens AI-klient). Loefte-vagten fangede det ikke, og kunne ikke: den laeser
+# filer i repoet. En tredjeparts kopi af en tekst vi har rettet siden, er usynlig for den.
+#
+# Moenstrene herunder er de SAMME som i test/loefter-vagt.test.mjs. `test/registre-tekst.test.mjs`
+# haandhaever at de to lister ikke glider fra hinanden - ellers ville denne vagt langsomt blive
+# en anden vagt end den den siger den er.
+TREDJEPART_FORBUDT = [
+    (r"\blocal-only\b",            "«local-only» - falsk siden 10/9"),
+    (r"\b(29|34) (browser )?tools?\b", "gammelt vaerktoejstal (det er 40)"),
+    (r"solves CAPTCHAs",           "lover CAPTCHA-loesning - vores egen tabel siger *Partly*"),
+    (r"nothing[^.\"]{0,40}leaves (your|the) machine", "«intet forlader maskinen» - falsk"),
+    (r"100% local",                "«100% local» - falsk"),
+    (r"up to 10 concurrent",       "gammelt sessionstal (det er 20)"),
+]
+
+# ⛔ Foerste udgave af det her scannede HELE siden. Den blev roed paa Glama - og traeffet var
+# `"hosting:local-only"`, Glamas EGEN taksonomi-etiket i en JSON-klump med hundredvis af andre
+# servere. Samme fejlklasse som husets otte substring-fejl 7/9: en regel bygget paa et ord der
+# ogsaa findes et andet sted. Der scannes derfor KUN i et vindue omkring vores egen
+# beskrivelses signatur - den saetning ingen anden server paa siden har.
+SIGNATUR = _re0.compile(r"logged-in Chrome", _re0.I)
+
+for _navn, _krop in sider.items():
+    if not _krop:
+        continue
+    _txt = _re0.sub(r"<[^>]+>", " ", _krop)
+    _vinduer = [_txt[max(0, m.start() - 200):m.end() + 400] for m in SIGNATUR.finditer(_txt)]
+    if not _vinduer:
+        rows.append((_navn, "⚠", "vores egen beskrivelse blev ikke fundet paa siden - teksten er ikke tjekket"))
+        continue
+    for _moenster, _hvorfor in TREDJEPART_FORBUDT:
+        if any(_re0.search(_moenster, v, _re0.I) for v in _vinduer):
+            red.append("%s serverer en usandhed om os: %s" % (_navn, _hvorfor))
+            rows.append((_navn, "🔴", "foraeldet tekst: " + _hvorfor))
 
 # ---- Chrome Web Store: brugertal OG ratings ----
 # Tilfoejet 7/9-2026. Ratings er butikkens EGEN rangeringsfaktor, og vi stod paa
