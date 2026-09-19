@@ -14,7 +14,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, symlinkSync, existsSync, rmSync, writeFileSync, linkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRV = fileURLToPath(new URL('../mcp-server/index.js', import.meta.url));
@@ -115,9 +115,17 @@ test('en hardlink til en fil udenfor overskrives ikke', { timeout: 45000 }, asyn
 
 // MAALT 11/9 (Astra R5 F10, samme klasse): med arbejdsmappen "/" blev praefikset "//", og en sti i en
 // almindelig mappe blev afvist som "udenfor".
+// Platformens egen rod: "/" paa mac og Linux, "C:\\" (eller hvad drevet nu hedder) paa Windows.
+const roden = parse(process.cwd()).root;
+
 test('arbejdsmappen "/" afviser ikke en almindelig sti (F10)', { timeout: 45000 }, async () => {
   const maal = join(arbejd, 'inde', 'rod.png');
-  const svar = await skaermbillede(maal, '/');
+  // MAALT 19/9: proeven sendte bogstaveligt "/" som arbejdsmappe. Paa Windows er "/" ikke
+  // roden af den sti maalet ligger paa (det er "C:\\"), saa vagten afviste med rette, og
+  // proeven laeste det som en regression. Egenskaben den maaler - at en ROD som arbejdsmappe
+  // ikke maa afvise en almindelig sti under sig - er den samme paa begge platforme; det er
+  // kun tegnet for "rod" der er forskelligt.
+  const svar = await skaermbillede(maal, roden);
   assert.match(svar, /successfully saved/, `afvist med arbejdsmappe "/": ${svar.slice(0, 240)}`);
   assert.ok(existsSync(maal));
 });

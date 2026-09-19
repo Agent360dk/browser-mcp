@@ -9,6 +9,8 @@ One class of bug, found an hour after 1.29.1 shipped: tools that answered yes be
 
 Two related failures are **not** closed, and are named rather than implied: `browser_fill` can set a value that a React-controlled field does not react to (the open half of #19), and `browser_execute_script` cannot run on a strict-CSP page when the debugger is also unavailable. Both are written down with the measurement attached.
 
+**`browser_fill` now says so when the framework did not hear it.** The value still does not reach a React-controlled component - that half is open - but the tool no longer reports a bare success because the DOM shows the right text. React keeps a `_valueTracker` on the element and updates it when it has processed the change; if the tracker and the field disagree, the framework provably did not hear, and the answer carries `ramme_hoerte_ikke` with the remedy. An element without a tracker is not framework-controlled, and there the DOM value is the whole truth. This is a mechanism, not a name check: a library can be renamed in a production bundle, but two values out of step cannot hide.
+
 **Nine tools answered yes because Chrome acknowledged the command, not because the page received it**
 
 `browser_press_key` was the one that lied. In a tab you are not looking at, Chrome accepts `Input.dispatchKeyEvent` and returns without an error, but never delivers the key. The tool reported `ok:true` on a key that never arrived. Measured live against a known-true control: in a visible tab the Enter landed, in a background tab nothing landed and the answer was still yes. That is the exact bug class 1.29.1 was released to remove, and it was in the tool itself. Session tabs are created in the background, so it was the default state.

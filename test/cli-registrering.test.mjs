@@ -58,7 +58,20 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
       ? { ...process.env, Path: `${bin};${dirname(process.execPath)};${process.env.Path || ''}`, HOME: hjem, USERPROFILE: hjem }
       : { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
   });
-  const kald = existsSync(log) ? readFileSync(log, 'utf8') : '';
+  // MAALT 19/9: paa Windows koeres klienterne gennem cmd.exe med citerede argumenter
+  // (ellers kan .cmd-attrapper slet ikke findes), saa loggen faar 'codex "mcp" "add" ...'.
+  // Citaterne er et artefakt af skallen, ikke af det cli.js beder om. Normaliser dem vaek,
+  // saa proeven maaler KALDET og ikke hvilken skal der laa imellem.
+  const raa = existsSync(log) ? readFileSync(log, 'utf8') : '';
+  // Kun paa Windows, og kun paa HELE tokens. Et foerste forsoeg brugte et globalt regex
+  // og afciterede ogsaa JSON'ens indre noegler, saa argumentet ikke laengere var JSON -
+  // ogsaa paa mac, hvor der intet var at rette. Skallens citering sidder yderst omkring
+  // hvert argument; den pilles af dér og kun dér.
+  const afciter = (t) => (t.length > 1 && t.startsWith('"') && t.endsWith('"')
+    ? t.slice(1, -1).replace(/\\(["\\])/g, '$1') : t);
+  const kald = process.platform === 'win32'
+    ? raa.replace(/\r/g, '').split('\n').map((l) => l.split(' ').map(afciter).join(' ')).join('\n')
+    : raa;
   const cursorFil = join(hjem, '.cursor', 'mcp.json');
   const cursorEfter = existsSync(cursorFil) ? readFileSync(cursorFil, 'utf8') : null;
   rmSync(bin, { recursive: true, force: true });
