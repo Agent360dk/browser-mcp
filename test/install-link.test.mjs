@@ -20,6 +20,7 @@ const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const side = readFileSync(join(rod, 'content/browsermcp-docs-install-trae.md'), 'utf8');
 const vscodeSide = readFileSync(join(rod, 'content/browsermcp-docs-install-vscode.md'), 'utf8');
 const llms = readFileSync(join(rod, 'llms-install.md'), 'utf8');
+const readmes = ['README.md', 'mcp-server/README.md'].map((f) => [f, readFileSync(join(rod, f), 'utf8')]);
 const pakke = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8'));
 
 function linketsConfig() {
@@ -88,4 +89,33 @@ test('begge links i llms-install.md er identiske med sidernes', () => {
     'VS Code-linket i llms-install.md er ikke det samme som paa siden');
   assert.equal(tLlms[1], side.match(/name=browser-mcp&config=(\S+)/)[1],
     'Trae-linket i llms-install.md er ikke det samme som paa siden');
+});
+
+// ── Alle fire ét-klik-veje skal kode PRAECIS den samme konfiguration ───────
+// MAALT 19/9: READMEerne havde allerede to install-badges (Cursors web-endpoint og
+// VS Codes redirect) som jeg ikke tjekkede for, foer jeg tilfoejede mine egne links.
+// Deres konfiguration manglede `-y`, mine havde det - altsaa to forskellige
+// installationer af det samme produkt, afhaengigt af hvor brugeren klikkede.
+//
+// Det er praecis den fejl husets regel er skrevet mod: tjek at det ikke allerede findes,
+// FOER du bygger. Vagten her goer at det ikke kan ske igen uden at blive roedt.
+test('alle ét-klik-veje installerer den samme konfiguration', () => {
+  const facit = JSON.parse(Buffer.from(decodeURIComponent(
+    side.match(/name=browser-mcp&config=(\S+)/)[1]), 'base64').toString('utf8'));
+  const veje = [];
+  for (const [navn, tekst] of readmes) {
+    for (const m of tekst.matchAll(/cursor\.com\/install-mcp\?name=browser-mcp&config=([A-Za-z0-9+/=%]+)/g))
+      veje.push([`${navn} (Cursor)`, JSON.parse(Buffer.from(decodeURIComponent(m[1]), 'base64').toString('utf8'))]);
+    for (const m of tekst.matchAll(/vscode\.dev\/redirect\/mcp\/install\?name=browser-mcp&config=([A-Za-z0-9%.\-_]+)/g))
+      veje.push([`${navn} (VS Code web)`, JSON.parse(decodeURIComponent(m[1]))]);
+  }
+  veje.push(['VS Code-siden', JSON.parse(decodeURIComponent(vscodeSide.match(/vscode:mcp\/install\?(\S+)/)[1]))]);
+  veje.push(['llms-install (VS Code)', JSON.parse(decodeURIComponent(llms.match(/vscode:mcp\/install\?(\S+)/)[1]))]);
+  veje.push(['llms-install (Trae)', JSON.parse(Buffer.from(decodeURIComponent(
+    llms.match(/name=browser-mcp&config=(\S+)/)[1]), 'base64').toString('utf8'))]);
+  assert.ok(veje.length >= 5, `fandt kun ${veje.length} ét-klik-veje - er en af dem forsvundet?`);
+  for (const [navn, cfg] of veje) {
+    assert.equal(cfg.command, facit.command, `${navn}: anden kommando end Trae-siden`);
+    assert.deepEqual(cfg.args, facit.args, `${navn}: andre argumenter end Trae-siden`);
+  }
 });
