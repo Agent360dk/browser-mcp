@@ -20,6 +20,7 @@ PAGES=[
  ('browsermcp-docs-install-zed.md','Docs','Install for Zed','/docs/install-zed'),
  ('browsermcp-docs-install-kiro.md','Docs','Install for Kiro','/docs/install-kiro'),
  ('browsermcp-docs-install-windsurf.md','Docs','Install for Windsurf','/docs/install-windsurf'),
+ ('browsermcp-docs-install-trae.md','Docs','Install for Trae','/docs/install-trae'),
  ('browsermcp-docs-install-continue.md','Docs','Install for Continue.dev','/docs/install-continue'),
  ('browsermcp-docs-install-zcode.md','Docs','ZCode','/docs/install-zcode'),
  ('browsermcp-docs-what-is-browser-mcp.md','Docs','What is Browser MCP','/docs/what-is-browser-mcp'),
