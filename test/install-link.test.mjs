@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const side = readFileSync(join(rod, 'content/browsermcp-docs-install-trae.md'), 'utf8');
 const vscodeSide = readFileSync(join(rod, 'content/browsermcp-docs-install-vscode.md'), 'utf8');
+const llms = readFileSync(join(rod, 'llms-install.md'), 'utf8');
 const pakke = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8'));
 
 function linketsConfig() {
@@ -75,4 +76,16 @@ test('de to ét-klik-links installerer PRAECIS det samme', () => {
   const v = JSON.parse(decodeURIComponent(vscodeSide.match(/vscode:mcp\/install\?(\S+)/)[1]));
   assert.deepEqual({ command: t.command, args: t.args }, { command: v.command, args: v.args },
     'Trae- og VS Code-linket installerer forskellige ting - én af siderne er forkert');
+});
+
+// ── llms-install.md: den fil en AI-assistent FOELGER ────────────────────────
+// Et forkert link her bliver ikke laest af et menneske foerst - det bliver udfoert.
+test('begge links i llms-install.md er identiske med sidernes', () => {
+  const vLlms = llms.match(/vscode:mcp\/install\?(\S+)/);
+  const tLlms = llms.match(/name=browser-mcp&config=(\S+)/);
+  assert.ok(vLlms && tLlms, 'et af de to links mangler i llms-install.md');
+  assert.equal(vLlms[1], vscodeSide.match(/vscode:mcp\/install\?(\S+)/)[1],
+    'VS Code-linket i llms-install.md er ikke det samme som paa siden');
+  assert.equal(tLlms[1], side.match(/name=browser-mcp&config=(\S+)/)[1],
+    'Trae-linket i llms-install.md er ikke det samme som paa siden');
 });

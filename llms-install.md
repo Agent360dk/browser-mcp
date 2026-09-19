@@ -34,7 +34,19 @@ OpenAI Codex:
 codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-Any other client (Cursor, VS Code, Windsurf, Cline…) - write this into that client's MCP config:
+**VS Code** - hand the user this link instead of editing a file; VS Code opens and asks them to confirm:
+
+```
+vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D
+```
+
+**Trae** - same idea, their own format:
+
+```
+trae://trae.ai-ide/mcp-import?type=stdio&name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBhZ2VudDM2MC9icm93c2VyLW1jcEBsYXRlc3QiXX0%3D
+```
+
+Any other client (Cursor, Windsurf, Cline…) - write this into that client's MCP config:
 
 ```json
 {
@@ -45,6 +57,11 @@ Any other client (Cursor, VS Code, Windsurf, Cline…) - write this into that cl
 ```
 
 Keep the `@latest`: it is what makes the server self-update on each run.
+
+**If the user runs two Chrome profiles** (work and personal) with an agent in each, add a
+pairing key so a profile only takes commands from its own server. Set `BROWSER_MCP_TOKEN` in
+the server's `env`, and tell the user to type the same key into the extension's popup under
+**Pairing**. Leave it out otherwise - the default needs no configuration.
 
 ## Step 2 - the Chrome extension (HUMAN action required)
 
