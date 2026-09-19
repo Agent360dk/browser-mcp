@@ -24,6 +24,26 @@ Browser MCP scopes each session to its own set of tabs, visually separated into 
 
 All three run in the same Chrome, at the same time, on your real logged-in profile. None of them can accidentally act on another's tabs.
 
+## What it looks like
+
+```
+You:     What is open in this session?
+
+Claude:  [browser_list_tabs]
+         Two tabs, both in the blue group:
+           #312  Analytics - Last 30 days
+           #313  admin.example.com/orders
+
+You:     And the tab the other agent is using?
+
+Claude:  It is not in this list. browser_list_tabs only returns the tabs this
+         session claimed - the other agent's tabs are in its own colour group,
+         and I cannot see or touch them.
+```
+
+That is the whole model in one exchange: what you get back is your session, and
+only your session.
+
 ## Why this matters for real-Chrome automation
 
 Headless tools solve parallelism by spawning many isolated browsers - clean, but none of them are *your* logged-in browser. Browser MCP's whole point is to act as you, in your real Chrome. Multi-session tab-group isolation is what makes that safe to do more than one agent at a time: you keep the real-browser advantage without the sessions colliding.

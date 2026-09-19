@@ -26,6 +26,20 @@
 <h2 id="the-walkthrough">The walkthrough</h2>
 <ol><li><b>The agent hits the 2FA prompt.</b> It's filling a login on some site (using <code>browser_fill</code> and <code>browser_click</code>) and the site says "we've emailed you a code."</li><li><b>It opens your Gmail - already signed in.</b> <code>browser_navigate</code> to <code>mail.google.com</code>. There's no login step, because this is the Chrome where you're already authenticated. Your session, your cookies.</li><li><b>It reads the newest message.</b> <code>browser_get_page_content</code> returns the inbox text; the agent finds the latest sender/subject that matches and reads the code out of the body.</li><li><b>It types the code back and continues.</b> Back to the login tab, <code>browser_fill</code> the code, submit, done - the task carries on past the wall.</li><li><b>If it's unsure, it asks you.</b> <code>browser_ask_user</code> lets the agent pause and confirm with a human before doing anything sensitive - a built-in checkpoint, not an afterthought.</li></ol>
 <p>That's the whole move. No new integration, no secret to store, no code leaving your machine.</p>
+<h2 id="what-it-looks-like">What it looks like</h2>
+<div class="code"><pre>You:     Log into the billing portal and download this month&#x27;s statement.
+
+Claude:  [browser_navigate, browser_fill, browser_click]
+         The site says it has emailed a code.
+
+         [browser_navigate  mail.google.com]
+         [browser_get_page_content]
+         The newest message is from billing@ - the code is 418293.
+
+         [browser_switch_tab back to the portal]
+         [browser_fill, browser_click]
+         Signed in. statement-2026-08.pdf is in your Downloads.</pre><button class="copy">Copy</button></div>
+<p>Four tools, no new integration, and nothing typed by you. The Gmail tab needed no login because it is the Chrome you were already signed into.</p>
 <h2 id="why-most-tools-cant-do-this">Why most tools can't do this</h2>
 <p>Playwright, Puppeteer and other headless setups spawn a fresh browser with none of your sessions. To read a 2FA email they'd need you to hand over Gmail credentials or wire up the Gmail API - which is the friction, not the fix.</p>
 <p>Playwright MCP's Chrome extension is the honest exception to the first half: it reaches the Gmail tab you are already signed into. What it has no answer for is the second half. Its 72 tools contain nothing that can stop mid-run and ask you for a code (checked 2026-09-19), so a step that genuinely needs a human ends the run rather than pausing it. Browser MCP sidesteps both: it is never a stranger to your accounts, and <code>browser_ask_user</code> can hand the step to you and carry on in the same tab.</p>

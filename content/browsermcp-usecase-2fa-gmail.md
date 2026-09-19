@@ -22,6 +22,26 @@ An agent automating a real task hits a login that sends a one-time code to your 
 
 That's the whole move. No new integration, no secret to store, no code leaving your machine.
 
+## What it looks like
+
+```
+You:     Log into the billing portal and download this month's statement.
+
+Claude:  [browser_navigate, browser_fill, browser_click]
+         The site says it has emailed a code.
+
+         [browser_navigate  mail.google.com]
+         [browser_get_page_content]
+         The newest message is from billing@ - the code is 418293.
+
+         [browser_switch_tab back to the portal]
+         [browser_fill, browser_click]
+         Signed in. statement-2026-08.pdf is in your Downloads.
+```
+
+Four tools, no new integration, and nothing typed by you. The Gmail tab needed no
+login because it is the Chrome you were already signed into.
+
 ## Why most tools can't do this
 
 Playwright, Puppeteer and other headless setups spawn a fresh browser with none of your sessions. To read a 2FA email they'd need you to hand over Gmail credentials or wire up the Gmail API - which is the friction, not the fix.

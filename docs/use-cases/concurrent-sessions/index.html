@@ -28,6 +28,20 @@
 <h2 id="a-concrete-parallel-setup">A concrete parallel setup</h2>
 <ul><li><b>Session A - research:</b> navigating docs and dashboards, pulling content with <code>browser_get_page_content</code>. Blue group.</li><li><b>Session B - testing:</b> driving a form flow with <code>browser_fill</code> / <code>browser_click</code>, checking <code>browser_console_logs</code>. Green group.</li><li><b>Session C - monitoring:</b> watching a status page, taking periodic <code>browser_screenshot</code>s. Orange group.</li></ul>
 <p>All three run in the same Chrome, at the same time, on your real logged-in profile. None of them can accidentally act on another's tabs.</p>
+<h2 id="what-it-looks-like">What it looks like</h2>
+<div class="code"><pre>You:     What is open in this session?
+
+Claude:  [browser_list_tabs]
+         Two tabs, both in the blue group:
+           #312  Analytics - Last 30 days
+           #313  admin.example.com/orders
+
+You:     And the tab the other agent is using?
+
+Claude:  It is not in this list. browser_list_tabs only returns the tabs this
+         session claimed - the other agent&#x27;s tabs are in its own colour group,
+         and I cannot see or touch them.</pre><button class="copy">Copy</button></div>
+<p>That is the whole model in one exchange: what you get back is your session, and only your session.</p>
 <h2 id="why-this-matters-for-real-chrome-automation">Why this matters for real-Chrome automation</h2>
 <p>Headless tools solve parallelism by spawning many isolated browsers - clean, but none of them are <i>your</i> logged-in browser. Browser MCP's whole point is to act as you, in your real Chrome. Multi-session tab-group isolation is what makes that safe to do more than one agent at a time: you keep the real-browser advantage without the sessions colliding.</p>
 <h2 id="faq">FAQ</h2>

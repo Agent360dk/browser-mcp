@@ -32,6 +32,18 @@ Everything else about MCP registration stays the same. Only the package changes:
 
 You also need **our** Chrome extension - theirs will not talk to this server, and both of them wanting the debugger at once is its own kind of bad day. Remove theirs, or disable it: [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl).
 
+## Checking it worked
+
+```
+You:     Take a screenshot of my current Chrome tab.
+
+Claude:  [browser_screenshot]
+         <image>
+```
+
+If you get an image back, the migration is done. If you get *"I don't have
+browser access"*, the client is still holding the old server - restart it.
+
 ## Tool names: nine are identical
 
 `browser_click` · `browser_hover` · `browser_navigate` · `browser_press_key` · `browser_screenshot` · `browser_select_option` · `browser_wait`

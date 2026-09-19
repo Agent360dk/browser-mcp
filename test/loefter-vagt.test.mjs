@@ -138,3 +138,34 @@ test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   assert.ok(!regel('lang tankestreg (AI-aftryk)').test('\u2500\u2500 banner \u2500\u2500'),
     'vagten rammer rammetegn - saa river den kommentar-bannerne i stykker');
 });
+
+// ── Citerede fejlbeskeder skal findes i koden ───────────────────────────────
+// MAALT 19/9: jeg skrev et samtale-eksempel paa /use-cases/vscode-concurrent-sessions/ hvor
+// vaerktoejet svarede `{"ok": false, "error": "tab 481 belongs to another session"}`. Det er
+// opfundet. Det aegte svar er et kast: `Tab 481 does not belong to this session (green)`
+// (background.js:5132) - baade formen og ordene var forkerte. En laeser der ser efter den
+// tekst i sin egen log, finder den aldrig og tror installationen er i stykker.
+//
+// Vagten laeser hver `Error: ...`-linje i en kodeblok paa siderne og kraever at dens faste
+// del staar i den kode der udsender den. Variable stykker (id'er, navne) skaeres fra.
+test('hver citeret fejlbesked paa siderne findes ogsaa i koden', () => {
+  const kode = ['extension/background.js', 'extension/offscreen.js', 'mcp-server/index.js', 'mcp-server/tools.js']
+    .map((f) => readFileSync(join(rod, f), 'utf8')).join('\n');
+  const fund = [];
+  for (const fil of readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'))) {
+    const tekst = readFileSync(join(rod, 'content', fil), 'utf8');
+    tekst.split('\n').forEach((linje, i) => {
+      const m = linje.match(/^\s*Error:\s*(.+?)\s*$/);
+      if (!m) return;
+      // Den faste del er det LAENGSTE stykke uden tal og parenteser - ikke det foerste.
+      // Foerste forsoeg tog stykket foer tallet, og paa "Tab 481 does not belong..." var det
+      // ordet "Tab". Mutationen med en helt opfundet tekst slap derfor igennem, og vagten
+      // maalte ingenting. En vagt der ikke kan blive roed af det den er bygget imod, er pynt.
+      const fast = m[1].split(/\s*\d+\s*|\([^)]*\)/).map((d) => d.trim())
+        .sort((x, y) => y.length - x.length)[0] || '';
+      if (fast.length < 12) return;   // for kort til at sige noget
+      if (!kode.includes(fast)) fund.push(`content/${fil}:${i + 1}  "${fast}"`);
+    });
+  }
+  assert.deepEqual(fund, [], `fejlbeskeder der ikke findes i koden:\n  ${fund.join('\n  ')}`);
+});

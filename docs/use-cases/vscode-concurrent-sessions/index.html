@@ -28,6 +28,20 @@
   ● green   Copilot agent - filling a form in the admin panel
   ● orange  Codex         - watching a deploy log</pre><button class="copy">Copy</button></div>
 <p>Three groups in your tab strip, three colours, three names. <code>browser_list_tabs</code> in the blue session returns blue's tabs. It cannot close green's.</p>
+<p>And this is the exchange when one session reaches for another's tab:</p>
+<div class="code"><pre>You:     Close the tab with the deploy log.
+
+Copilot: [browser_list_tabs]
+         I can see three tabs, all green - the analytics dashboard, the admin
+         form and a blank tab. The deploy log is not among them; it belongs to
+         another session.
+
+You:     Close it anyway.
+
+Copilot: [browser_close_tab  tab_id: 481]
+         Error: Tab 481 does not belong to this session (green)
+         I cannot. That is the isolation doing its job, not a bug.</pre><button class="copy">Copy</button></div>
+<p>The refusal is the feature. A session that could close another session's tabs would make three parallel agents unusable the first time two of them disagreed.</p>
 <h2 id="setting-it-up">Setting it up</h2>
 <p><b>1 - The Chrome extension.</b> <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">One click from the Chrome Web Store</a>.</p>
 <p><b>2 - The MCP server.</b> Command Palette → <b>MCP: Add Server</b>, or <code>.vscode/mcp.json</code>:</p>

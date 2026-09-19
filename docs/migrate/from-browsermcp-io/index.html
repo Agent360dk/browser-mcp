@@ -36,6 +36,12 @@
    }
  }</pre><button class="copy">Copy</button></div>
 <p>You also need <b>our</b> Chrome extension - theirs will not talk to this server, and both of them wanting the debugger at once is its own kind of bad day. Remove theirs, or disable it: <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Chrome Web Store</a>.</p>
+<h2 id="checking-it-worked">Checking it worked</h2>
+<div class="code"><pre>You:     Take a screenshot of my current Chrome tab.
+
+Claude:  [browser_screenshot]
+         &lt;image&gt;</pre><button class="copy">Copy</button></div>
+<p>If you get an image back, the migration is done. If you get <i>"I don't have browser access"</i>, the client is still holding the old server - restart it.</p>
 <h2 id="tool-names-nine-are-identical">Tool names: nine are identical</h2>
 <p><code>browser_click</code> · <code>browser_hover</code> · <code>browser_navigate</code> · <code>browser_press_key</code> · <code>browser_screenshot</code> · <code>browser_select_option</code> · <code>browser_wait</code></p>
 <p>Those work unchanged. Prompts and scripts that name them keep working.</p>

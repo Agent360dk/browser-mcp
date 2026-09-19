@@ -22,6 +22,26 @@ Three conversations running against one Chrome:
 
 Three groups in your tab strip, three colours, three names. `browser_list_tabs` in the blue session returns blue's tabs. It cannot close green's.
 
+And this is the exchange when one session reaches for another's tab:
+
+```
+You:     Close the tab with the deploy log.
+
+Copilot: [browser_list_tabs]
+         I can see three tabs, all green - the analytics dashboard, the admin
+         form and a blank tab. The deploy log is not among them; it belongs to
+         another session.
+
+You:     Close it anyway.
+
+Copilot: [browser_close_tab  tab_id: 481]
+         Error: Tab 481 does not belong to this session (green)
+         I cannot. That is the isolation doing its job, not a bug.
+```
+
+The refusal is the feature. A session that could close another session's tabs
+would make three parallel agents unusable the first time two of them disagreed.
+
 ## Setting it up
 
 **1 - The Chrome extension.** [One click from the Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl).
