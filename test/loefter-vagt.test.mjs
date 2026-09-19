@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, dirname } from 'node:path';
+import { join, relative, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -88,7 +88,10 @@ function filer(sti) {
 function fund(regler) {
   const ud = [];
   for (const f of STIER.flatMap(filer)) {
-    const rel = relative(rod, join(rod, f));
+    // MAALT 19/9: paa Windows giver join/relative backslashes, mens UNDTAGET er skrevet
+    // med skraastreger. Saa matchede ingen undtagelse, og vagten flagede sine EGNE
+    // undtagne filer. Tredje sti-separator-fejl i samme jobs roede historik.
+    const rel = relative(rod, join(rod, f)).split(sep).join('/');
     if (UNDTAGET.has(rel) || !ENDELSER.test(rel)) continue;
     readFileSync(join(rod, rel), 'utf8').split('\n').forEach((linje, i) => {
       if (/^\s*\/\//.test(linje)) return;   // kildekommentarer maa citere det de erstatter

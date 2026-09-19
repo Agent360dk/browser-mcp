@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const kilde = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
@@ -190,7 +191,11 @@ test('rapporten spejler det der blev meldt ind', async () => {
 // ── kontrakter mod resten af systemet ───────────────────────────────────────
 
 test('vaerktoejet er registreret og routet', async () => {
-  const { TOOLS } = await import(join(rod, 'mcp-server/tools.js'));
+// MAALT 19/9: `await import(join(...))` giver paa Windows en sti som C:\\...\\tools.js,
+// og dynamisk import kraever en file://-URL - "Only URLs with a scheme in: file, data,
+// and node are supported". Windows-jobbet havde vaeret roedt saa laenge at det blokerede
+// hver eneste PR. pathToFileURL loeser det og er en no-op paa mac og Linux.
+  const { TOOLS } = await import(pathToFileURL(join(rod, 'mcp-server/tools.js')).href);
   const t = TOOLS.find(x => x.name === 'browser_provide_feedback');
   assert.ok(t, 'browser_provide_feedback mangler i tools.js');
   assert.deepEqual(t.inputSchema.required, ['what_happened']);
@@ -199,7 +204,7 @@ test('vaerktoejet er registreret og routet', async () => {
 });
 
 test('beskrivelsen beder modellen kalde det af sig selv', async () => {
-  const { TOOLS } = await import(join(rod, 'mcp-server/tools.js'));
+  const { TOOLS } = await import(pathToFileURL(join(rod, 'mcp-server/tools.js')).href);
   const d = TOOLS.find(x => x.name === 'browser_provide_feedback').description;
   assert.match(d, /AUTOMATICALLY/, 'uden dette kaldes vaerktoejet kun naar brugeren beder om det');
   assert.match(d, /without asking/i);

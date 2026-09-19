@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const json = (p) => JSON.parse(readFileSync(join(rod, p), 'utf8'));
@@ -25,7 +25,11 @@ function filer(dir, base = dir, ud = []) {
     if (navn === '.DS_Store') continue;
     const p = join(dir, navn);
     if (statSync(join(rod, p)).isDirectory()) filer(p, base, ud);
-    else ud.push(relative(base, p));
+    // MAALT 19/9: paa Windows giver relative() "icons\\icon-16.png", mens manifestet
+    // - et web-format - altid skriver "icons/icon-16.png". Proeven paastod derfor at
+    // ikonet manglede, og Windows-jobbet havde vaeret roedt saa laenge at det blokerede
+    // hver eneste PR i repoet. Filen fandtes hele tiden.
+    else ud.push(relative(base, p).split(sep).join('/'));
   }
   return ud.sort();
 }

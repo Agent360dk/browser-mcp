@@ -26,10 +26,26 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
   const hjem = mkdtempSync(join(tmpdir(), 'cli-hjem-'));
   const bin = mkdtempSync(join(tmpdir(), 'cli-bin-'));
   const log = join(hjem, 'kald.log');
+  // MAALT 19/9: attrapperne var #!/bin/sh-scripts uden endelse, og PATH blev samlet med
+  // ':'. Ingen af delene virker paa Windows, saa `codex` og `code` blev aldrig fundet,
+  // og de to proever var roede der - laenge nok til at blokere hver eneste PR i repoet.
+  // cli.js koerer rigtigt paa Windows for rigtige brugere, saa proeven skal ogsaa goere
+  // det; en platform-skip ville skjule den ene platform hvor stien er svaerest.
+  const win = process.platform === 'win32';
   for (const k of klienter) {
-    const hjaelp = k === 'code' && codeKanAddMcp ? 'echo "  --add-mcp <json>  Adds a Model Context Protocol server definition"' : 'true';
-    writeFileSync(join(bin, k), `#!/bin/sh\nif [ "$1" = "--help" ]; then ${hjaelp}; exit 0; fi\nprintf '%s\\n' "${k} $*" >> "${log}"\nexit 0\n`);
-    chmodSync(join(bin, k), 0o755);
+    const kanAdd = k === 'code' && codeKanAddMcp;
+    if (win) {
+      const hjaelp = kanAdd
+        ? 'echo   --add-mcp ^<json^>  Adds a Model Context Protocol server definition'
+        : 'echo.';
+      writeFileSync(join(bin, k + '.cmd'),
+        `@echo off\r\nif "%1"=="--help" ( ${hjaelp} & exit /b 0 )\r\n` +
+        `>>"${log}" echo ${k} %*\r\nexit /b 0\r\n`);
+    } else {
+      const hjaelp = kanAdd ? 'echo "  --add-mcp <json>  Adds a Model Context Protocol server definition"' : 'true';
+      writeFileSync(join(bin, k), `#!/bin/sh\nif [ "$1" = "--help" ]; then ${hjaelp}; exit 0; fi\nprintf '%s\\n' "${k} $*" >> "${log}"\nexit 0\n`);
+      chmodSync(join(bin, k), 0o755);
+    }
   }
   if (cursor) {
     mkdirSync(join(hjem, '.cursor'));
@@ -37,7 +53,10 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
   }
   const r = spawnSync(process.execPath, [cli, 'install', '--skip-extension'], {
     encoding: 'utf8', timeout: 30000,
-    env: { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
+    shell: process.platform === 'win32',
+    env: process.platform === 'win32'
+      ? { ...process.env, Path: `${bin};${dirname(process.execPath)};${process.env.Path || ''}`, HOME: hjem, USERPROFILE: hjem }
+      : { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
   });
   const kald = existsSync(log) ? readFileSync(log, 'utf8') : '';
   const cursorFil = join(hjem, '.cursor', 'mcp.json');

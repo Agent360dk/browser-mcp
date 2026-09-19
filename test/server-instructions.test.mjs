@@ -17,13 +17,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const kilde = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
 
 // node_modules ligger i mcp-server/, ikke i roden, saa et bart pakkenavn ikke kan
 // resolves herfra. Vi importerer den SAMME SDK som serveren selv bruger.
-const { Server } = await import(join(rod, 'mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/server/index.js'));
+// MAALT 19/9: `await import(join(...))` giver paa Windows en sti som C:\\...\\tools.js,
+// og dynamisk import kraever en file://-URL - "Only URLs with a scheme in: file, data,
+// and node are supported". Windows-jobbet havde vaeret roedt saa laenge at det blokerede
+// hver eneste PR. pathToFileURL loeser det og er en no-op paa mac og Linux.
+const { Server } = await import(pathToFileURL(join(rod, 'mcp-server/node_modules/@modelcontextprotocol/sdk/dist/esm/server/index.js')).href);
 
 // Klip 'new Server(...)'-kaldet ud med balancerede parenteser.
 function konstruktoerKald() {
