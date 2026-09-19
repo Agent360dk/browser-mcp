@@ -14,24 +14,30 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 ## 🟡 Wanted
 
-- **Profile pairing - bind one MCP server to one Chrome profile**
-  ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)). With the extension active in
-  two profiles (work + personal), both connect to every server in the port range and which
-  one wins is a race. An opt-in token (`AGENT360_TOKEN`) would let two MCP entries target two
-  profiles deliberately. Accepted, not scheduled - say so on the issue if you need it.
-  *Note on the security framing: the current `Origin` check proves "some Chrome extension",
-  not which profile, and a local program can set that header itself. An opt-in token doesn't
-  change that for users who leave it off - the value here is profile pairing, not auth.*
-
 - [💡 Submit a wish →](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
 
 ---
 
-## 🚧 Landet på `main`, endnu ikke udgivet
+## ⏳ Venter på 1.30
 
-Rettelserne herunder er lavet, testet og committet, men **ingen udgivelse har fundet sted endnu**,
-så de er ikke i den udvidelse eller den npm-pakke du har. Står her fordi det er ærligere end at
-lade dem stå under «Shipped» - hvilket de gjorde ved en fejl indtil 9/9.
+- **Profile pairing ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)) er BYGGET.**
+  Valgfri `BROWSER_MCP_TOKEN` på serveren, og samme nøgle i udvidelsens popup under **Pairing**.
+  Uden nøgle: nul konfiguration, præcis som i dag. Med nøgle gælder den begge veje - serveren
+  afviser en udvidelse der ikke kan den, og udvidelsen udfører intet før serveren har kvitteret.
+  Specificeret af roth-arasys. Variablen hedder `BROWSER_MCP_TOKEN`, ikke `AGENT360_TOKEN`, af
+  hensyn til de to der allerede findes.
+- **Hele svar-fladen er engelsk.** Beskeder, fejlkoder og feltnavne. Gammel→ny-tabel i CHANGELOG.
+
+---
+
+## 🚧 Landet på `main` - nu udgivet i 1.29.1 og 1.29.2
+
+⚠️ **Rettet 19/9:** afsnittet herunder sagde «ingen udgivelse har fundet sted endnu». Det var
+sandt da det blev skrevet og falsk siden 13/9: **1.29.1 (13/9) og 1.29.2 (18/9) er ude på npm,
+i MCP-registret og i Chrome Web Store.** Punkterne herunder er i dem. Det der venter nu, er 1.30.
+
+Det står her frem for at blive slettet, fordi en fil der fortæller om sin egen forældelse er
+mere værd end en der ser rigtig ud.
 
 - **Skærmbilledet kunne fotografere din egen fane.** Fejlede CDP-optagelsen, faldt koden tilbage
   på `captureVisibleTab`, som fotograferer den *synlige* fane, ikke agentens. Et tjek før og efter

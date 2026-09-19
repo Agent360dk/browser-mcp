@@ -1,9 +1,10 @@
 # Browser MCP by [Agent360](https://agent360.dk)
 
-**Your AI agent drives your real, logged-in Chrome - and works where headless tools die.**
+**The browser tool that can stop and ask you.** A 2FA code, a CAPTCHA, a choice only you can
+make: it asks on your own screen, then carries on in the tab you were already signed into.
 
-It is the browser you are already signed into. No login step to fail, no API key to wire up,
-no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
+It drives the Chrome you are already signed into: no login step to fail, no API key to wire
+up, no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
 in its own colour-coded tab group. 40 tools, MIT, runs on your machine.
 
 → **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** - every
