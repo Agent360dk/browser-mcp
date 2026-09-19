@@ -22,7 +22,15 @@ import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const SRV = fileURLToPath(new URL('../mcp-server/index.js', import.meta.url));
-const BASE = 19876, MAX = 19880;          // 5 porte - nok til at fylde spaendet hurtigt
+// MAALT 19/9: spaendet var fast paa 19876-19880, og to samtidige suite-koersler tog
+// derfor hinandens porte. Resultatet var to roede proever paa uaendret kode - og den
+// foerste mistanke gik paa produktet, ikke paa maaleren. En proeve der ikke kan koere
+// to gange samtidig, er en faelde der venter paa en travl dag.
+//
+// Spaendet udledes nu af processens eget pid, saa to koersler aldrig deler porte. Fem
+// porte er stadig nok til at fylde spaendet hurtigt, som er hele pointen med proeven.
+const BASE = 19000 + (process.pid % 900) * 8;
+const MAX = BASE + 4;
 const ENV = { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) };
 
 const boerneprocesser = [];
