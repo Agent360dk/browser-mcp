@@ -66,6 +66,13 @@ Set `BROWSER_MCP_TOKEN` on the server and type the same key into the extension's
 and that profile only takes commands from that server - and ignores any other program
 that connects to the local bridge. Leave it unset for the default: no key, no setup.
 
+Specified by **roth-arasys** in #10, down to the opt-in shape and the zero-config default.
+Two things ended up different from the request: the variable is `BROWSER_MCP_TOKEN` rather
+than `AGENT360_TOKEN`, to match the two that already exist, and changing the key drops open
+connections immediately instead of at the next browser restart. The pairing is also mutual -
+the extension executes nothing until the server has acknowledged with the same key - which
+covers the local-process case roth-arasys and I agreed an opt-in token would otherwise miss.
+
 ### Fixed
 
 - `browser_fill` promised a field it did not send. The server's instructions say "read
