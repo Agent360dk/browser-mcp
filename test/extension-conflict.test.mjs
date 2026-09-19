@@ -355,8 +355,8 @@ test('gammel udvidelse: ukendt metode forklares, ikke bare rapporteres', () => {
   const f = bygForklaring(null);
   const svar = f('Unknown method: double_click');
   assert.match(svar, /Chrome Web Store/, 'brugeren faar ikke at vide hvorfor');
-  assert.match(svar, /1-3 dage/, 'vinduets laengde naevnes ikke');
-  assert.match(svar, /Indtil da: /, 'ingen erstatning tilbudt');
+  assert.match(svar, /1-3 days/, 'vinduets laengde naevnes ikke');
+  assert.match(svar, /Until then: /, 'ingen erstatning tilbudt');
   assert.ok(!svar.startsWith('Error: Unknown method'), 'den gaadefulde besked staar stadig');
 });
 
@@ -364,7 +364,7 @@ test('alle otte metoder fra v1.26.0 har en erstatning', () => {
   const f = bygForklaring(null);
   for (const m of ['double_click', 'right_click', 'click_xy', 'extract_list',
                    'reattach_debugger']) {
-    assert.match(f(`Unknown method: ${m}`), /Indtil da: /, `${m} mangler en erstatning`);
+    assert.match(f(`Unknown method: ${m}`), /Until then: /, `${m} mangler en erstatning`);
   }
 });
 

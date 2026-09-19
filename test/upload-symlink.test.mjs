@@ -50,12 +50,12 @@ function kald(filer, ms = 35000) {
 
 test('et symlink inde i arbejdsmappen der peger ud, afvises', { timeout: 40000 }, async () => {
   const svar = await kald(['noegle']);
-  assert.match(svar, /peger udenfor/, `symlinket slap forbi vagten: ${svar.slice(0, 200)}`);
+  assert.match(svar, /points outside/, `symlinket slap forbi vagten: ${svar.slice(0, 200)}`);
 });
 
 test('en sti med ../ ud af arbejdsmappen afvises stadig', { timeout: 40000 }, async () => {
   const svar = await kald(['../../etc/hosts']);
-  assert.match(svar, /peger udenfor/);
+  assert.match(svar, /points outside/);
 });
 
 // MAALT 10/9 af Astra (anden runde), reproduceret paa maskinen: resolve() fjernede "link/.." som
@@ -63,12 +63,12 @@ test('en sti med ../ ud af arbejdsmappen afvises stadig', { timeout: 40000 }, as
 // faktisk blev laest laa udenfor.
 test('link/../fil afvises - stien loeses af operativsystemet, ikke som tekst', { timeout: 40000 }, async () => {
   const svar = await kald(['link/../hemmelig.txt']);
-  assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 200)}`);
+  assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 200)}`);
 });
 
 test('et dinglende symlink ud af mappen afvises', { timeout: 40000 }, async () => {
   const svar = await kald(['dinglende']);
-  assert.match(svar, /findes ikke|peger udenfor/, `slap forbi vagten: ${svar.slice(0, 200)}`);
+  assert.match(svar, /does not exist|points outside/, `slap forbi vagten: ${svar.slice(0, 200)}`);
 });
 
 // Positiv kontrol: uden den ville en vagt der afviser ALT bestaa alle testene ovenfor.
@@ -76,5 +76,5 @@ test('en rigtig fil i mappen afvises IKKE - heller ikke skrevet med store bogsta
   const variant = join(dirname(arbejd), basename(arbejd).toUpperCase(), 'egen.txt');
   if (!existsSync(variant)) return t.skip('filsystemet skelner store og smaa bogstaver');
   const svar = await kald([variant], 20000);
-  assert.doesNotMatch(svar, /peger udenfor|findes ikke/, `en lovlig fil blev afvist: ${svar.slice(0, 200)}`);
+  assert.doesNotMatch(svar, /points outside|does not exist/, `en lovlig fil blev afvist: ${svar.slice(0, 200)}`);
 });

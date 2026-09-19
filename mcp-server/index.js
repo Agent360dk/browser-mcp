@@ -413,8 +413,8 @@ function createWSS(port = BASE_PORT) {
         pending.delete(id);
         p.reject(new Error(
           `Forbindelsen til Chrome-udvidelsen forsvandt mens kommandoen koerte (${grund}). ` +
-          'Kommandoen naaede maaske at blive udfoert i browseren - tjek tilstanden foer du ' +
-          'proever igen. Er udvidelsen slaaet fra eller Chrome lukket, saa start den og proev forfra.',
+          'The command may have been carried out in the browser - check the state before you ' +
+          'try again. If the extension is disabled or Chrome is closed, start it and begin again.',
         ));
       }
       process.stderr.write(`[MCP] ${antal} ventende kald afvist - ${grund}\n`);
@@ -513,7 +513,7 @@ function sikrePort() {
   // en loopback-binding tager millisekunder, og hele spaendet naas paa under ét.
   const vagthund = setTimeout(() => {
     if (!portResolver) return;
-    bindFejl = bindFejl || 'bindingen svarede ikke inden for 10 sekunder';
+    bindFejl = bindFejl || 'the bind did not answer within 10 seconds';
     process.stderr.write('[MCP] port-bindingen svarede aldrig - opgiver dette forsoeg\n');
     loesPortLoefte(false);
   }, 10000);
@@ -557,12 +557,12 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     }
     if (doerAabnetNu) {
       throw new Error(
-        `Porten ${activePort} blev aabnet for ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
-        'sekunder siden, og udvidelsen har ikke naaet at forbinde endnu. Den scanner hvert ' +
+        `Port ${activePort} was opened ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
+        'seconds ago, and the extension has not connected yet. It scans every ' +
         '2. sekund, saa det tager normalt under fem.\n' +
-        'Det er sandsynligvis IKKE en manglende installation - proev kommandoen igen om et ' +
-        'oejeblik. Bliver den ved, saa tjek at Chrome koerer og at udvidelsen er slaaet til.\n' +
-        'Sig det til brugeren i den raekkefoelge. Bed IKKE om en geninstallation foerst.',
+        'This is probably NOT a missing installation - try the command again in a ' +
+        'moment. If it persists, check that Chrome is running and the extension is enabled.\n' +
+        'Tell the user that, in that order. Do NOT ask for a reinstall first.',
       );
     }
     // This is the other half of the two-part setup: the server is clearly running (it is
@@ -570,20 +570,20 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // between them. Say which, and where to get it - the agent relays this text to the user.
     if (bindFejl) {
       throw new Error(
-        `Serveren kunne ikke aabne en port paa 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bindFejl}\n` +
-        'Det er IKKE Chrome eller udvidelsen - det er operativsystemet eller en firewall der ' +
-        'afviser bindingen. Tjek om noget blokerer loopback-porte.\n' +
-        'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
+        `The server could not open a port on 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bindFejl}\n` +
+        'This is NOT Chrome or the extension - it is the operating system or a firewall ' +
+        'refusing the bind. Check whether something is blocking loopback ports.\n' +
+        'Tell the user exactly that. Do NOT say the extension is missing.',
       );
     }
     if (alleePorteOptaget) {
       throw new Error(
-        `Alle porte ${BASE_PORT}-${MAX_PORT} er optaget lige nu, saa dette kald fik ingen port. ` +
-        'Det er IKKE et problem med Chrome eller udvidelsen - de virker fint.\n' +
+        `All ports ${BASE_PORT}-${MAX_PORT} are taken right now, so this call got no port. ` +
+        'This is NOT a problem with Chrome or the extension - they are working fine.\n' +
         `${MAX_PORT - BASE_PORT + 1} andre chats bruger browseren i oejeblikket. ` +
-        'Luk en af dem, eller vent til en bliver faerdig - og proev saa kommandoen igen. ' +
-        'Denne chat skal IKKE genstartes: hvert kald proever selv at faa en port.\n' +
-        'Sig praecis dét til brugeren. Sig IKKE at udvidelsen mangler.',
+        'Close one of them, or wait until one finishes - then try the command again. ' +
+        'This chat does NOT need restarting: every call tries to get a port by itself.\n' +
+        'Tell the user exactly that. Do NOT say the extension is missing.',
       );
     }
     throw new Error(
@@ -688,7 +688,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - Element not found → try text-based selector instead of CSS
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
-- A click, hover or key press answers "CDP svarede ikke inden … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click)
+- A click, hover or key press answers "CDP did not respond within … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click)
 - An answer with maaske_landet: true means the action was sent but its effect could not be confirmed. Check the page first (browser_get_page_content or browser_screenshot) and do not repeat it blindly: a second click can submit twice. landed: false means the page showed no visible reaction to the click. landed: null with uvist: true means something on the page changed when the mouse went down, but not from the click itself - it may be a ripple effect, and it may be a menu that opens on mousedown. Read the page before clicking again: a second click closes a menu that is already open. landed: null with uverificeret: true means the mouse button was sent but the page could not be read afterwards - same rule: read the page before repeating. browser_scroll uses uvist with its own meaning - there it means the scroll was sent but the movement could not be seen, and the answer carries ok:true, a note and the measured position
 - Since 1.29.2 the tools that send mouse, keyboard or file input measure whether the page actually received it. An error of tasten-blev-ikke-leveret, hover-blev-ikke-leveret, dobbeltklik-blev-ikke-leveret, hoejreklik-blev-ikke-leveret, feltet-er-tomt, soegetekst-blev-ikke-leveret or filen-blev-ikke-vedhaeftet is a measurement, not a guess: nothing reached the page. Almost always the tab is in the background - call browser_switch_tab to it and repeat the one action. browser_upload_file and browser_drop_file also report vedhaeftet (the file names actually on the field) and afviger: true when the field took fewer files than you sent.
 - browser_fill with afviger: true means the field shows something other than what you typed; read faktisk. uaendret: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check faktisk before moving on
@@ -824,19 +824,19 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         let reel = null; try { reel = realpathSync.native(raaSti); } catch {}
         const afvis = (hvorfor) => ({
           content: [{ type: 'text', text:
-            `Filen skal ligge inden for arbejdsmappen (${rod}). "${f}" ${hvorfor}.\n` +
-            `Uploads sender filen til en fremmed side, og stien kommer fra en model der ` +
-            `laeser de sider. Kopiér filen ind i arbejdsmappen foerst, hvis den skal med.` }],
+            `The file must be inside the working directory (${rod}). "${f}" ${hvorfor}.\n` +
+            `Uploads send the file to a foreign site, and the path comes from a model that ` +
+            `reads those pages. Copy the file into the working directory first if it must go.` }],
           isError: true,
         });
-        if (!reel) return afvis(inde(resolve(raaSti), rod) ? 'findes ikke (eller kan ikke laeses)' : 'peger udenfor');
-        if (!inde(reel, rodReel)) return afvis('peger udenfor');
+        if (!reel) return afvis(inde(resolve(raaSti), rod) ? 'does not exist (or cannot be read)' : 'points outside');
+        if (!inde(reel, rodReel)) return afvis('points outside');
         // Astra, tredje runde: en MAPPE blev godkendt ud fra mappens egen sti - men Chrome gennemloeber
         // mappen og foelger links i den, saa bundle/key -> ~/.ssh/id_rsa kom med. Og en HARDLINK inde i
         // mappen er samme fil som en fil udenfor; realpath kan ikke se det.
         let st = null; try { st = statSync(reel); } catch {}
-        if (!st || !st.isFile()) return afvis('er ikke en almindelig fil (mapper uploades ikke - de kan indeholde links ud af arbejdsmappen)');
-        if (st.nlink > 1) return afvis('har flere navne paa disken (hardlink) og kan vaere en fil uden for arbejdsmappen');
+        if (!st || !st.isFile()) return afvis('is not a regular file (directories are not uploaded - they can contain links out of the working directory)');
+        if (st.nlink > 1) return afvis('has several names on disk (hardlink) and may be a file outside the working directory');
         kanoniske.push(reel);
       }
       if (args && kanoniske.length) {
@@ -868,8 +868,8 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         const targetPath = resolve(rod, args.path);
         if (targetPath !== rod && !targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep)) {   // "/" giver ikke "//" (R5 F10)
           throw new Error(
-            `path skal ligge inden for arbejdsmappen (${rod}). ` +
-            `"${args.path}" peger udenfor. Brug en relativ sti uden ../.`,
+            `path must be inside the working directory (${rod}). ` +
+            `"${args.path}" points outside. Use a relative path without ../.`,
           );
         }
         // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
@@ -887,8 +887,8 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
         if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
           throw new Error(
-            `path skal ligge inden for arbejdsmappen (${rod}). ` +
-            `"${args.path}" peger udenfor (via et link). Brug en almindelig mappe i arbejdsmappen.`,
+            `path must be inside the working directory (${rod}). ` +
+            `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`,
           );
         }
         mkdirSync(dirname(targetPath), { recursive: true });
@@ -937,9 +937,9 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 // en gaadefuld fejl faar brugeren at vide hvorfor - og hvad de kan goere imens.
 const ERSTATNINGER = {
   double_click: 'kald `browser_click` to gange',
-  right_click: 'brug `browser_execute_script` med et contextmenu-event',
-  click_xy: 'brug `browser_click` med en selector',
-  extract_list: 'brug `browser_get_page_content` og scroll med `browser_scroll`',
+  right_click: 'use `browser_execute_script` with a contextmenu event',
+  click_xy: 'use `browser_click` with a selector',
+  extract_list: 'use `browser_get_page_content` and scroll with `browser_scroll`',
   reattach_debugger: 'genindlaes udvidelsen paa chrome://extensions',
 };
 
@@ -956,13 +956,13 @@ function forklarSkaevhed(besked) {
       return `Error: ${besked}\n\n` +
         `FOERST: ${alle.length} Browser MCP-udvidelser er forbundet samtidig ` +
         `(${alle.map((c) => c.extensionId || 'ukendt id').join(', ')}). Chrome tillader kun ÉN ` +
-        'fejlfinder pr. fane, saa de slaas om den, og enhver muse-, taste- eller filhandling ' +
-        'fejler saadan her. Det er sandsynligvis ikke siden.\n\n' +
+        'debugger per tab, so they fight over it, and every mouse, keyboard or file action ' +
+        'fails like this. It is probably not the page.\n\n' +
         'To veje ud:\n' +
-        '1. Slaa alle paa naer én fra paa chrome://extensions (brugeren skal selv - ' +
+        '1. Disable all but one on chrome://extensions (the user has to do it - ' +
         'chrome:// kan ikke styres herfra).\n' +
         `2. Uden at roere Chrome: saet BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
-        'i klientens opsaetning, saa taler denne server kun med den ene.';
+        'in the client configuration, so this server talks only to that one.';
     }
   }
   const m = /Unknown method: ([a-z_]+)/.exec(besked || '');
@@ -972,12 +972,12 @@ function forklarSkaevhed(besked) {
   // er det en aegte fejl og skal ikke bortforklares.
   if (aktiv && aktiv.version) return `Error: ${besked}`;
   const alt = ERSTATNINGER[m[1]];
-  return `Error: browser_${m[1]} findes i denne server, men ikke i din Chrome-udvidelse.\n\n` +
-    'Udvidelsen opdateres via Chrome Web Store og kan vaere 1-3 dage bagud efter en ' +
+  return `Error: browser_${m[1]} exists in this server, but not in your Chrome extension.\n\n` +
+    'The extension is updated through the Chrome Web Store and can be 1-3 days behind after a ' +
     'udgivelse - serveren opdateres med det samme via npm. Alt andet virker imens.\n' +
-    (alt ? `\nIndtil da: ${alt}.\n` : '') +
+    (alt ? `\nUntil then: ${alt}.\n` : '') +
     '\nTjek om en opdatering venter: chrome://extensions → Agent360 Browser MCP. ' +
-    'Er den indlaest som "unpacked", saa koer `npx @agent360/browser-mcp install`.';
+    'If it is loaded as "unpacked", run `npx @agent360/browser-mcp install`.';
 }
 
 const REPO_URL = 'https://github.com/Agent360dk/browser-mcp';
@@ -1124,26 +1124,26 @@ async function handleProvideFeedback(args) {
   if (exts.length > 1) {
     const kanVaelge = exts.some(c => c.version);
     findings.push(
-      `${exts.length} Browser MCP-udvidelser er indlaest i Chrome og forbundet til denne server samtidig ` +
+      `${exts.length} Browser MCP extensions are loaded in Chrome and connected to this server at the same time ` +
       `(${exts.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ' (oplyser ikke version)'}`).join(' + ')}). ` +
-      'Hver af dem foerer sit eget sessions-kort og sine egne fane-grupper i den samme browser, ' +
-      'saa faner kan se ud til at forsvinde og sessioner til at smelte sammen. ' +
+      'Each keeps its own session map and its own tab groups in the same browser, ' +
+      'so tabs can appear to vanish and sessions to merge. ' +
       (kanVaelge
         ? `Denne server sender kun til den nyeste (${active?.extensionId}).`
-        : `Ingen af dem oplyser sin version, saa hvilken der styres (${active?.extensionId}) er vilkaarligt og kan skifte mellem sessioner.`),
+        : `None of them reports its version, so which one is driven (${active?.extensionId}) is arbitrary and can change between sessions.`),
     );
     fix_steps.push(
-      'Aabn chrome://extensions og slaa alle Browser MCP-udvidelser fra paa naer én. ' +
-      'Det skal brugeren selv goere - chrome:// kan ikke styres herfra. Behold den nyeste.',
+      'Open chrome://extensions and disable all Browser MCP extensions but one. ' +
+      'The user has to do it - chrome:// cannot be driven from here. Keep the newest.',
     );
   }
   if (!active && activePort === null) {
     // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
     // i stykker, og et fix-skridt her ville vaere en falsk alarm - se verdict 'idle'.
-    findings.push('Browseren er ikke taget i brug i denne chat endnu, saa der er ingen forbindelse at maale paa. Det er ikke en fejl.');
+    findings.push('The browser has not been used in this chat yet, so there is no connection to measure. That is not an error.');
   } else if (!active) {
-    findings.push('Ingen Chrome-udvidelse er forbundet til denne MCP-server lige nu.');
-    fix_steps.push('Tjek at Chrome koerer og at udvidelsen er slaaet til paa chrome://extensions, klik derefter paa ikonet → Reconnect.');
+    findings.push('No Chrome extension is connected to this MCP server right now.');
+    fix_steps.push('Check that Chrome is running and the extension is enabled on chrome://extensions, then click the icon → Reconnect.');
   }
   if (serverOutdated) {
     findings.push(`MCP-serveren koerer v${PKG_VERSION}, men npm har v${npmLatest}. Fejlen kan allerede vaere rettet.`);
@@ -1152,8 +1152,8 @@ async function handleProvideFeedback(args) {
   if (extOutdated) {
     findings.push(
       extVersion === null
-        ? `Den forbundne udvidelse er saa gammel at den ikke oplyser sin version (foer v${PKG_VERSION}). Den mangler alt hvad der er rettet siden.`
-        : `Udvidelsen er v${extVersion}, serveren er v${PKG_VERSION}. Udvidelsen mangler rettelser fra de mellemliggende udgaver.`,
+        ? `The connected extension is so old that it does not report its version (before v${PKG_VERSION}). It is missing everything fixed since.`
+        : `The extension is v${extVersion}, the server is v${PKG_VERSION}. The extension is missing fixes from the versions in between.`,
     );
     // MAALT 22/8: "↻ reload" er ubrugeligt for en Chrome Web Store-bruger. Butikken
     // skubber paa Googles tidsplan efter et review paa 1-3 dage - der er ingen nyere
@@ -1162,17 +1162,17 @@ async function handleProvideFeedback(args) {
     // skal staa der - og det skal siges at ventetiden er forventet, ikke en fejl.
     fix_steps.push(
       extVersion === null
-        ? 'Kommer udvidelsen fra Chrome Web Store: der er sandsynligvis en nyere version i review ' +
-          '(1-3 dage efter en udgivelse). ↻ reload henter den IKKE foer Google har godkendt - ' +
-          'det er forventet og gaar over af sig selv. Alt andet virker imens. ' +
-          'Er den indlaest som "unpacked": koer `npx @agent360/browser-mcp install` og derefter ' +
+        ? 'If the extension came from the Chrome Web Store: there is probably a newer version in review ' +
+          '(1-3 days after a release). ↻ reload does NOT fetch it before Google has approved - ' +
+          'that is expected and passes by itself. Everything else works meanwhile. ' +
+          'If it is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
           'chrome://extensions → Agent360 Browser MCP → ↻ reload.'
         // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
         // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
-        : 'Er udvidelsen indlaest som "unpacked": koer `npx @agent360/browser-mcp install` og derefter ' +
+        : 'If the extension is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
           'chrome://extensions → Agent360 Browser MCP → ↻ reload. Kommer den fra Chrome Web Store: den nye version ' +
-          'ligger sandsynligvis i review (1-3 dage efter en udgivelse), og ↻ reload henter den IKKE foer Google har ' +
-          'godkendt - det er forventet og gaar over af sig selv. Alt andet virker imens.',
+          'is probably in review (1-3 days after a release), and ↻ reload does NOT fetch it before Google has ' +
+          'approved - that is expected and passes by itself. Everything else works meanwhile.',
     );
   }
 
@@ -1236,14 +1236,14 @@ async function handleProvideFeedback(args) {
 
   const instruction =
     verdict === 'idle'
-      ? 'Browseren er ikke taget i brug i denne chat endnu, saa der er intet at diagnosticere paa forbindelsen - ' +
-        'det er IKKE en fejl i installationen, og du maa ikke sige det til brugeren. ' +
-        'Er der en aegte mangel, saa tilbyd submit_url som et klikbart link.'
+      ? 'The browser has not been used in this chat yet, so there is nothing to diagnose about the connection - ' +
+        'that is NOT a fault in the installation, and you must not tell the user it is. ' +
+        'If there is a genuine gap, offer submit_url as a clickable link.'
     : verdict === 'conflict' || verdict === 'outdated' || verdict === 'disconnected'
-      ? 'Fortael brugeren hvad der blev fundet, og giv fix_steps som konkrete skridt. Proev derefter handlingen igen. ' +
-        'Del KUN submit_url hvis problemet stadig staar efter at fix_steps er fulgt - det er sandsynligvis installationen, ikke en fejl i Browser MCP.'
-      : 'Installationen er frisk, saa det her er sandsynligvis en aegte mangel eller fejl. Fortael brugeren kort hvad der ikke kunne lade sig goere, ' +
-        'og tilbyd submit_url som et klikbart link ("forudfyldt - du kan rette i den foer du sender"). Spoerg ikke om lov foerst.';
+      ? 'Tell the user what was found, and give fix_steps as concrete steps. Then try the action again. ' +
+        'Share submit_url ONLY if the problem remains after fix_steps have been followed - it is probably the installation, not a bug in Browser MCP.'
+      : 'The installation is fresh, so this is probably a genuine gap or bug. Tell the user briefly what could not be done, ' +
+        'and offer submit_url as a clickable link ("pre-filled - you can edit it before sending"). Do not ask permission first.';
 
   const logbog = skrivTilLogbog({
     at: new Date().toISOString(),
@@ -1389,7 +1389,7 @@ parentCheck = setInterval(() => {
   // Kaeden blev frosset ved opstart. Men et MELLEMLED kan afslutte helt normalt
   // mens ejeren koerer videre - maalt to gange paa denne maskine, hvor kaeden gaar
   // npm exec → wrapper → claude → Code Helper (Plugin) → Code. Et forbigaaende led
-  // der lukkede pænt udloeste "chatten bag denne server er vaek", mens chatten var
+  // der lukkede pænt udloeste "the chat behind this server is gone", mens chatten var
   // uroert. Og risikoen er ensrettet vaerre end 1.25.0, som vogtede ét pid: nu er
   // hvert af 5-6 led en ny doedsaarsag.
   //
@@ -1414,8 +1414,8 @@ parentCheck = setInterval(() => {
   }
 
   gracefulShutdown(
-    `Proces ${doede[0]} i kaeden doede, og der er ingen levende vej op - ` +
-    'chatten bag denne server er vaek',
+    `Process ${doede[0]} in the chain died, and there is no live path upwards - ` +
+    'the chat behind this server is gone',
   );
 }, 5000); // hvert 5. sekund
 

@@ -144,7 +144,7 @@ test('en sultet server faar en port naar en bliver fri - uden genstart', async (
   await new Promise((r) => frigivet.close(r));
 
   const tekst = await svar;
-  assert.ok(!/Alle porte/.test(tekst),
+  assert.ok(!/All ports/.test(tekst),
     'serveren gav op paa portene i stedet for at proeve igen da en blev fri: ' + tekst.slice(0, 300));
   assert.ok(await erOptaget(friPort),
     'den frigivne port blev ikke taget af den ventende server');
@@ -175,7 +175,7 @@ test('bind-fejl der ikke er "optaget" giver en FEJL, ikke en evig venten', async
   // noget var i stykker. Deadlocken den vogter var uendelig; 30 s adskiller de to fint.
   const svar = await browserKald(p, 30000);
   assert.notEqual(svar, 'TIMEOUT', 'kaldet haengte i stedet for at fejle - det er deadlocken');
-  assert.match(svar, /kunne ikke aabne en port|Alle porte/,
+  assert.match(svar, /could not open a port|All ports/,
     'kaldet svarede, men ikke med en forklaring paa at bindingen fejlede: ' + svar.slice(0, 200));
 });
 
@@ -195,7 +195,7 @@ test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller
   assert.notEqual(svar, 'TIMEOUT', 'kaldet svarede aldrig');
   assert.ok(!/Chrome Web Store|chromewebstore/i.test(svar),
     'brugeren sendes hen for at geninstallere en udvidelse der ikke naaede at forbinde: ' + svar.slice(0, 240));
-  assert.match(svar, /ikke naaet at forbinde|scanner hvert/,
+  assert.match(svar, /has not connected yet|scans every/,
     'beskeden forklarer ikke at doeren lige er aabnet: ' + svar.slice(0, 240));
   assert.equal((await optagne()).length, foer.length + 1, 'porten blev ikke bundet');
 });
@@ -219,7 +219,7 @@ test('kald 1 fejler paa fuldt spaend, kald 2 lykkes - uden genstart', async () =
 
   // Kald 1: spaendet er fuldt hele vejen igennem, saa det SKAL give op.
   const foerste = await browserKald(p, 25000);
-  assert.match(foerste, /Alle porte/,
+  assert.match(foerste, /All ports/,
     'kald 1 gav ikke op paa et fuldt spaend - testen maaler saa ikke det den paastaar');
 
   // Nu bliver en plads fri, uden at chatten roeres.
@@ -230,7 +230,7 @@ test('kald 1 fejler paa fuldt spaend, kald 2 lykkes - uden genstart', async () =
 
   // Kald 2 i SAMME proces skal selv tage den.
   const andet = await browserKald(p, 40000);
-  assert.ok(!/Alle porte/.test(andet),
+  assert.ok(!/All ports/.test(andet),
     'kald 2 gav ogsaa op - saa er "denne chat skal ikke genstartes" en tom paastand: ' + andet.slice(0, 220));
   assert.ok(await erOptaget(friPort), 'den frigivne port blev ikke taget af naeste kald');
 });

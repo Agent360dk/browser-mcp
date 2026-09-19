@@ -86,7 +86,7 @@ test('frisk installation → current, ingen fix-skridt', async () => {
   assert.equal(r.verdict, 'current');
   assert.deepEqual(r.fix_steps, []);
   assert.deepEqual(r.findings, []);
-  assert.match(r.instruction, /aegte mangel eller fejl/, 'ved frisk installation skal fejlen tages alvorligt som fejl');
+  assert.match(r.instruction, /genuine gap or bug/, 'ved frisk installation skal fejlen tages alvorligt som fejl');
 });
 
 test('gammel server → outdated, og der peges paa genstart i stedet for en bug-rapport', async () => {
@@ -94,8 +94,8 @@ test('gammel server → outdated, og der peges paa genstart i stedet for en bug-
     { what_happened: 'sessioner blander sig sammen' });
   assert.equal(r.verdict, 'outdated');
   assert.ok(r.findings.some(f => f.includes('1.25.0') && f.includes('1.28.0')), 'skal naevne begge versioner');
-  assert.ok(r.fix_steps.some(s => /@latest|genstart/i.test(s)));
-  assert.match(r.instruction, /KUN submit_url hvis problemet stadig staar/,
+  assert.ok(r.fix_steps.some(s => /@latest|restart/i.test(s)));
+  assert.match(r.instruction, /submit_url ONLY if the problem remains/,
     'en gammel installation maa ikke rapporteres som en fejl med det samme');
 });
 
@@ -117,13 +117,13 @@ test('gammel udvidelse med kendt version: raadet naevner ogsaa butikkens venteti
   const tekst = r.fix_steps.join(' ');
   assert.match(tekst, /chrome:\/\/extensions/, 'reload-vejen skal stadig staa der');
   assert.match(tekst, /Chrome Web Store|butik/i, 'butiksbrugeren faar et raad der foerer i ring');
-  assert.match(tekst, /1-3 dage|review/i, 'ventetiden skal siges, saa den ikke ligner en fejl');
+  assert.match(tekst, /1-3 days|review/i, 'ventetiden skal siges, saa den ikke ligner en fejl');
 });
 
 test('udvidelse uden haandtryk regnes som for gammel', async () => {
   const r = await byg({ udvidelser: [ext(null, null)] })({ what_happened: 'noget gik galt' });
   assert.equal(r.verdict, 'outdated');
-  assert.ok(r.findings.some(f => f.includes('ikke oplyser sin version')));
+  assert.ok(r.findings.some(f => f.includes('does not report its version')));
 });
 
 test('to udvidelser → conflict, og det slaar alt andet', async () => {
@@ -297,7 +297,7 @@ test('butiks-brugere faar et raad der kan foelges i review-vinduet', async () =>
   const raad = r.fix_steps.join(' ');
   assert.match(raad, /Chrome Web Store/, 'butiks-tilfaeldet naevnes ikke');
   assert.match(raad, /review/, 'ventetiden forklares ikke');
-  assert.match(raad, /forventet/, 'brugeren faar ikke at vide at det gaar over af sig selv');
+  assert.match(raad, /expected/, 'brugeren faar ikke at vide at det gaar over af sig selv');
   assert.match(raad, /unpacked/, 'den anden installationstype er faldet ud');
 });
 

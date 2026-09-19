@@ -96,20 +96,20 @@ test('en almindelig undermappe i arbejdsmappen virker', { timeout: 45000 }, asyn
 
 test('en sti gennem et mappe-symlink ud af arbejdsmappen afvises, og intet skrives udenfor', { timeout: 45000 }, async () => {
   const svar = await skaermbillede('ud/x.png');
-  assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 240)}`);
+  assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 240)}`);
   assert.ok(!existsSync(join(udenfor, 'x.png')), 'PNG-bytes blev skrevet uden for arbejdsmappen');
 });
 
 test('en sti der selv er et dinglende symlink afvises, og intet skrives udenfor', { timeout: 45000 }, async () => {
   const svar = await skaermbillede('dinglende.png');
-  assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 240)}`);
+  assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 240)}`);
   assert.ok(!existsSync(join(udenfor, 'findes-ikke.png')), 'filen blev skabt gennem linket, uden for arbejdsmappen');
 });
 
 // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men writeFileSync trunkerer den faelles fil.
 test('en hardlink til en fil udenfor overskrives ikke', { timeout: 45000 }, async () => {
   const svar = await skaermbillede('haard.png');
-  assert.match(svar, /peger udenfor/, `slap forbi vagten: ${svar.slice(0, 240)}`);
+  assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 240)}`);
   assert.equal(readFileSync(join(udenfor, 'vigtig.png'), 'utf8'), 'BRUGERENS-FIL', 'filen udenfor blev overskrevet');
 });
 

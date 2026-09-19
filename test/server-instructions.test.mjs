@@ -104,7 +104,7 @@ test('instruktionerne indeholder faktisk det agenten skal styres af', () => {
 test('instruktionerne siger hvad agenten goer naar input ikke naar en fane i baggrunden', () => {
   const i = kilde.indexOf('const INSTRUCTIONS = `');
   const blok = kilde.slice(i, kilde.indexOf('`;', i));
-  assert.match(blok, /CDP svarede ikke[^\n]*background[^\n]*browser_switch_tab/,
+  assert.match(blok, /CDP did not respond[^\n]*background[^\n]*browser_switch_tab/,
     'INSTRUCTIONS skal forbinde fristfejlen med en baggrundsfane og browser_switch_tab');
 });
 

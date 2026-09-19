@@ -84,7 +84,7 @@ test('positiv kontrol: en almindelig fil sendes videre som sin loeste sti', { ti
 test('en mappe afvises - Chrome ville foelge links inde i den', { timeout: 45000 }, async () => {
   const { svar, sendt } = await upload({ files: ['bundle'] });
   assert.equal(sendt.length, 0, `mappen blev sendt videre: ${JSON.stringify(sendt)}`);
-  assert.match(svar, /ikke en almindelig fil/);
+  assert.match(svar, /not a regular file/);
 });
 
 test('en hardlink til en fil udenfor afvises', { timeout: 45000 }, async () => {
