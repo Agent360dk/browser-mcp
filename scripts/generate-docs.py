@@ -27,6 +27,7 @@ PAGES=[
  ('browsermcp-docs-when-not-to-use.md','Docs','When NOT to use','/docs/when-not-to-use'),
  ('browsermcp-docs-capability-matrix.md','Docs','What it can get past','/docs/capability-matrix'),
  ('browsermcp-docs-troubleshooting.md','Docs','Troubleshooting','/docs/troubleshooting'),
+ ('browsermcp-migrate-from-browsermcp-io.md','Compare','Migrate from browsermcp.io','/migrate/from-browsermcp-io'),
  ('browsermcp-compare-browsermcp-io.md','Compare','vs browsermcp.io','/compare/browsermcp-io'),
  ('browsermcp-compare-playwright-mcp.md','Compare','vs Playwright MCP','/compare/playwright-mcp'),
  ('browsermcp-compare-mcp-servers.md','Compare','All servers compared','/compare/browser-automation-mcp-servers'),

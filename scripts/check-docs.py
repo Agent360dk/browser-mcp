@@ -22,7 +22,12 @@ def fail(msg): fails.append(msg)
 
 # Generated pages = the PAGES registry in generate-docs.py (parse it, single source of truth)
 gen_src = open(os.path.join(ROOT, 'scripts', 'generate-docs.py')).read()
-GEN_URLS = re.findall(r"'(/(?:docs|compare|use-cases|learn)/[a-z0-9-]+)'\)", gen_src)
+# MAALT 19/9: her stod en liste over kendte praefikser - docs, compare, use-cases, learn.
+# En ny side paa /migrate/ slap derfor HELT uden om gaten: ingen head-tjek, intet
+# sitemap-krav, ingen noindex-regel. En vagt der kun ser de mapper den blev foedt med,
+# bliver tyndere hver gang sitet vokser, og den siger ikke selv til. Nu laeses URL'en som
+# det den er - sidste felt i en PAGES-post - saa et nyt praefiks daekkes fra dag ét.
+GEN_URLS = re.findall(r",\s*'(/[a-z0-9/-]+)'\s*\)", gen_src)
 if len(GEN_URLS) < 5:
     fail('could not parse PAGES registry from generate-docs.py (found %d urls)' % len(GEN_URLS))
 
