@@ -24,7 +24,8 @@
     "start": "node index.js",
     "publish:cws": "../scripts/publish-cws.sh",
     "publish:cws:draft": "../scripts/publish-cws.sh --draft",
-    "samtidighed": "node ../test/flow/samtidighed.mjs"
+    "samtidighed": "node ../test/flow/samtidighed.mjs",
+    "flow:isoleret": "node ../scripts/flow-isoleret.mjs"
   },
   "keywords": [
     "mcp",
