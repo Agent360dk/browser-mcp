@@ -58,9 +58,31 @@ Docs: https://github.com/Agent360dk/browser-mcp
 // Register the server with Claude Code using Claude Code's own CLI. Writing a config file
 // ourselves is what broke before: ~/.claude/mcp.json is not a path Claude Code reads, so the
 // entry never took effect. `claude mcp add` writes wherever the installed version keeps it.
+// FUNDET 19/9: `koerKlient('codex', ...)` kan ikke koere `codex.cmd`. Paa Windows er
+// baade Codex, VS Code's `code` og Claude Code .cmd-attrapper - npm-installerede CLI'er
+// er det altid - og uden `shell: true` finder Node kun rigtige .exe-filer. Kaldet fejlede
+// med ENOENT, som koden herunder laeser som "klienten er ikke installeret", saa `install`
+// fortalte hver eneste Windows-bruger at de skulle konfigurere i haanden. Tavst: ingen
+// advarsel, bare en klient der aldrig blev fundet.
+//
+// Windows-jobbet i CI havde faktisk fanget det hele tiden. Fejlen laa bare mellem fire
+// andre roede proever der ALLE var maale-fejl, saa den forsvandt i stoejen.
+//
+// shell:true paa Windows kraever citerede argumenter - vores er konstanter og en
+// JSON-streng, og den sidste indeholder tegn cmd.exe ellers ville aede.
+function koerKlient(kommando, args, valg = {}) {
+  // platformen laeses INDE i funktionen. Filen advarer selv om at install() koeres foer
+  // de nederste linjer er naaet, og en modul-const i den doedzone kaster en ReferenceError
+  // som try/catch'en herunder laeser som "klienten er ikke installeret" - samme tavse fejl
+  // vi er ved at rette, bare med en ny aarsag.
+  if (process.platform !== 'win32') return execFileSync(kommando, args, valg);
+  const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
+  return execFileSync(kommando, args.map(citer), { ...valg, shell: true });
+}
+
 function registerWithClaudeCode() {
   try {
-    execFileSync('claude', ['mcp', 'add', '--scope', 'user', 'browser-mcp',
+    koerKlient('claude', ['mcp', 'add', '--scope', 'user', 'browser-mcp',
                             '--', 'npx', '@agent360/browser-mcp@latest'],
                  { stdio: 'pipe' });
     console.log('✅ Registered with Claude Code (claude mcp add --scope user)');
@@ -90,7 +112,7 @@ function registerWithClaudeCode() {
 
 function registerWithCodex() {
   try {
-    execFileSync('codex', ['mcp', 'add', SERVER_NAVN, '--', SERVER_KOMMANDO, ...SERVER_ARGS], { stdio: 'pipe' });
+    koerKlient('codex', ['mcp', 'add', SERVER_NAVN, '--', SERVER_KOMMANDO, ...SERVER_ARGS], { stdio: 'pipe' });
     console.log('✅ Registered with Codex (codex mcp add)');
     return true;
   } catch (err) {
@@ -108,7 +130,7 @@ function registerWithCodex() {
 function registerWithVSCode() {
   let hjaelp;
   try {
-    hjaelp = String(execFileSync('code', ['--help'], { stdio: 'pipe' }));
+    hjaelp = String(koerKlient('code', ['--help'], { stdio: 'pipe' }));
   } catch {
     return null;   // VS Code's `code` er ikke paa PATH
   }
@@ -118,7 +140,7 @@ function registerWithVSCode() {
     return false;
   }
   try {
-    execFileSync('code', ['--add-mcp', JSON.stringify({ name: SERVER_NAVN, command: SERVER_KOMMANDO, args: SERVER_ARGS })], { stdio: 'pipe' });
+    koerKlient('code', ['--add-mcp', JSON.stringify({ name: SERVER_NAVN, command: SERVER_KOMMANDO, args: SERVER_ARGS })], { stdio: 'pipe' });
     console.log('✅ Registered with VS Code (code --add-mcp)');
     return true;
   } catch {
