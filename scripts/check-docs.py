@@ -153,8 +153,25 @@ for name in ('index.html', 'privacy.html'):
 # ---- 5. sitemap -------------------------------------------------------------
 smap = open(os.path.join(DOCS, 'sitemap.xml'), encoding='utf-8').read()
 locs = re.findall(r'<loc>([^<]+)</loc>', smap)
+# En side vi bevidst holder ude af indekset skal OGSAA vaere ude af sitemappet, ellers
+# fortaeller vi Google to modsatte ting om samme URL. Reglen haandhaeves begge veje:
+# en noindex-side i sitemappet er lige saa forkert som en almindelig side der mangler.
+# MAALT 19/9: sitemappet er haandholdt, saa uden det her var det kun et tidsspoergsmaal
+# foer de to lister gled fra hinanden - praecis som dokumentation og virkelighed gjorde.
+NOINDEX = set()
+_gen = open(os.path.join(ROOT, 'scripts', 'generate-docs.py'), encoding='utf-8').read()
+_m = re.search(r'^NOINDEX = \{([^}]*)\}', _gen, re.M)
+if _m:
+    NOINDEX = {x.strip().strip("'\"") for x in _m.group(1).split(',') if x.strip()}
 for url in GEN_URLS:
-    if 'https://browsermcp.dev%s/' % url not in locs:
+    i_sitemap = 'https://browsermcp.dev%s/' % url in locs
+    if url in NOINDEX:
+        if i_sitemap:
+            fail('%s/ er noindex, men staar i sitemap.xml - to modsatte signaler om samme URL' % url)
+        side = os.path.join(DOCS, url.strip('/'), 'index.html')
+        if os.path.exists(side) and 'noindex' not in open(side, encoding='utf-8').read():
+            fail('%s/ staar i NOINDEX, men siden baerer ikke robots-taggen' % url)
+    elif not i_sitemap:
         fail('sitemap.xml missing generated page %s/' % url)
 for loc in locs:
     path = loc.replace('https://browsermcp.dev', '') or '/'

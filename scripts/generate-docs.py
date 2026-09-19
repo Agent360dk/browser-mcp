@@ -228,6 +228,14 @@ def extract_faq(lines):
     if q: faq.append((q,' '.join(a).strip()))
     return [(qq,aa) for qq,aa in faq if qq.endswith('?') and aa]
 
+# Sider vi bevidst holder UDE af Googles indeks. MAALT 19/9: den ene her fik 416
+# visninger og NUL klik paa en maaned, gennemsnitsposition 77,5, og traekker et helt
+# klynge-emne om brand-omtaler i Perplexity som intet har med produktet at goere.
+# Paa et 22-siders domaene er det emne-fortynding: den fortaeller Google at sitet
+# ogsaa handler om noget andet. 'follow' beholdes, saa dens links stadig taeller.
+# En side her SKAL vaere ude af sitemap.xml - check-docs haandhaever begge veje.
+NOINDEX = {'/learn/check-if-ai-mentions-your-brand'}
+
 def head(title, desc, url):
     can='https://browsermcp.dev'+url+'/'
     t=html.escape(title); d=html.escape(desc)
@@ -235,6 +243,7 @@ def head(title, desc, url):
       (('<title>%s</title>'%html.escape(TITLE_TAG[url])) if url in TITLE_TAG else ('<title>%s &middot; Browser MCP</title>'%t)),
       '<meta name="description" content="%s">'%d,
       '<link rel="canonical" href="%s">'%can,
+      *(['<meta name="robots" content="noindex,follow">'] if url in NOINDEX else []),
       '<link rel="icon" type="image/svg+xml" href="/logo.svg"><link rel="icon" type="image/x-icon" href="/favicon.ico">',
       '<meta property="og:type" content="article"><meta property="og:site_name" content="Browser MCP">',
       '<meta property="og:title" content="%s">'%t,'<meta property="og:description" content="%s">'%d,
