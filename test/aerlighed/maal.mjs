@@ -89,15 +89,42 @@ export const DELTAGERE = {
     navn: 'Playwright MCP (Microsoft)',
     start: () => klient('npx', ['-y', '@playwright/mcp@latest', '--headless', '--isolated']),
     navigate: (u) => ['browser_navigate', { url: u }],
-    fyld: (v) => ['browser_fill_form', { fields: [{ name: 'styret felt', type: 'textbox', ref: '#styret', value: v }] }],
+    // MAALT 19/9: feltet hedder `target`, ikke `ref`, og det tager en selector. Foerste
+    // udgave sendte `ref` og fik "Invalid arguments" - deres vaerktoej afviste aerligt, men
+    // det maaler MIT kald, ikke deres aerlighed. En maaling der doemmer paa en misformet
+    // anmodning er vaerdiloes. browser_type er det naermeste modstykke til vores fill.
+    fyld: (v) => ['browser_type', { element: 'styret felt', target: '#styret', text: v }],
     evaluer: (js) => ['browser_evaluate', { function: `() => { return ${js}; }` }],
   },
   devtools: {
     navn: 'Chrome DevTools MCP (Google)',
     start: () => klient('npx', ['-y', 'chrome-devtools-mcp@latest', '--headless', '--isolated']),
-    navigate: (u) => ['navigate_page', { url: u }],
-    fyld: (v) => ['fill', { uid: '#styret', value: v }],
-    evaluer: (js) => ['evaluate_script', { function: `() => { return ${js}; }` }],
+    // MAALT 19/9: `navigate_page` kraever OGSAA et pageId, saa uden det skete navigeringen
+    // aldrig - siden stod paa about:blank, og `evaluate_script` svarede pligtskyldigt "null".
+    // Havde jeg ikke kalibreret, havde jeg udgivet et resultat om Google maalt paa en tom
+    // side. Og deres sider taelles fra 1, ikke 0.
+    foerNavigate: async (kald) => {
+      const sider = await kald('tools/call', { name: 'list_pages', arguments: {} });
+      const st = (sider?.result?.content || []).map((x) => x.text ?? '').join('\n');
+      const pm = st.match(/^\s*(\d+):/m);
+      return { pageId: pm ? Number(pm[1]) : 1 };
+    },
+    navigate: (u, h) => ['navigate_page', { pageId: h?.pageId ?? 1, url: u }],
+    // Google vil have et `uid` fra deres eget side-snapshot, ikke en selector. Uden det
+    // opslag maaler vi igen os selv. `forbered` koeres foer fyld og giver handtaget.
+    // MAALT 19/9: `fill` og `evaluate_script` kraever BEGGE et `pageId`, og `fill` desuden
+    // et `uid` fra deres eget snapshot. To opslag foer vi overhovedet kan stille
+    // spoergsmaalet. Uden dem afviser deres server aerligt - og saa maaler vi igen mig.
+    forbered: async (kald, h) => {
+      const pageId = h?.pageId ?? 1;
+      const sn = await kald('tools/call', { name: 'take_snapshot', arguments: { pageId } });
+      const t = (sn?.result?.content || []).map((x) => x.text ?? '').join('\n');
+      const linje = t.split('\n').find((l) => /styret/i.test(l)) || '';
+      const um = linje.match(/uid=?["']?([\w_-]+)/i) || linje.match(/^\s*([\w_-]+)\b/);
+      return { pageId, uid: um ? um[1] : null, snapshot: t.slice(0, 200) };
+    },
+    fyld: (v, h) => ['fill', { pageId: h?.pageId ?? 0, uid: h?.uid || 'styret', value: v }],
+    evaluer: (js, h) => ['evaluate_script', { pageId: h?.pageId ?? 0, function: `() => { return ${js}; }` }],
   },
 };
 
@@ -117,20 +144,32 @@ async function maalEn(noegle, url) {
     if (!init?.result) return { navn: d.navn, dom: 'KOM-IKKE-I-GANG', note: tekst(init).slice(0, 120) };
     k.notify('notifications/initialized');
 
-    const nav = await k.kald('tools/call', { name: d.navigate(url)[0], arguments: d.navigate(url)[1] });
+    const foer = d.foerNavigate ? await d.foerNavigate(k.kald) : null;
+    const [nn, na] = d.navigate(url, foer);
+    const nav = await k.kald('tools/call', { name: nn, arguments: na });
     if (nav?.error) return { navn: d.navn, dom: 'KOM-IKKE-I-GANG', note: 'navigate: ' + tekst(nav).slice(0, 120) };
 
-    const [fn, fa] = d.fyld('gennemtraengt');
+    const handtag = d.forbered ? await d.forbered(k.kald, foer) : foer;
+    const [fn, fa] = d.fyld('gennemtraengt', handtag);
     const fyld = await k.kald('tools/call', { name: fn, arguments: fa });
     const svarTekst = tekst(fyld);
     const fejlede = !!fyld?.error || fyld?.result?.isError === true || /\berror\b|failed|kunne ikke/i.test(svarTekst);
     const uvist = /uvist|unverified|maybe_landed|maaske|could not be (read|verified)|ramme_hoerte_ikke/i.test(svarTekst);
 
-    const [en, ea] = d.evaluer('JSON.stringify(window.__rapport ? window.__rapport() : null)');
+    const [en, ea] = d.evaluer('JSON.stringify(window.__rapport ? window.__rapport() : null)', handtag);
     const rap = await k.kald('tools/call', { name: en, arguments: ea });
-    const m = tekst(rap).match(/\{[^{}]*"tilstand"[^{}]*\}/);
-    const r = m ? JSON.parse(m[0].replace(/\\"/g, '"')) : null;
-    if (!r) return { navn: d.navn, dom: 'KUNNE-IKKE-LAESES', note: tekst(rap).slice(0, 140) };
+    // Hver server pakker svaret forskelligt ind: Playwright i markdown med escaped JSON,
+    // Chrome DevTools i sin egen ramme. Vi leder derfor efter JSON'en BAADE raa og escaped,
+    // og fejler hoejlydt hvis ingen af delene findes - et tomt svar maa ikke blive til en dom.
+    const raaTekst = tekst(rap);
+    let r = null;
+    for (const kandidat of [raaTekst, raaTekst.replace(/\\"/g, '"').replace(/\\\\/g, '\\')]) {
+      const m = kandidat.match(/\{[^{}]*"tilstand"[^{}]*\}/);
+      if (m) { try { r = JSON.parse(m[0]); break; } catch {} }
+    }
+    if (!r) return { navn: d.navn, dom: 'KUNNE-IKKE-LAESES',
+      vaerktoejet_sagde: svarTekst.replace(/\s+/g, ' ').slice(0, 200),
+      raa_rapport: raaTekst.replace(/\s+/g, ' ').slice(0, 160) };
 
     const hoerte = r.tilstand === 'gennemtraengt';
     return {
