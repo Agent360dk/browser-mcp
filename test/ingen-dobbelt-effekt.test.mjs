@@ -59,7 +59,7 @@ test('execute_script koerer ikke brugerens kode igen efter at den er sendt', asy
   const svar = await u.hent('dispatch')(9876, 'execute_script', { code: '(() => { window.__BRUGERKODE__ = 1; })()' })
     .then((r) => ({ r }), (e) => ({ fejl: e.message }));
   assert.equal(evalueringer, 1, `brugerens kode blev koert ${evalueringer} gange - et muterende script maa koere én gang`);
-  assert.match(svar.fejl || '', /KAN allerede have koert/, 'fejlen skal sige at scriptet maaske er koert');
+  assert.match(svar.fejl || '', /MAY already have run/, 'fejlen skal sige at scriptet maaske er koert');
 });
 
 test('set_date laeser feltet foer den proever kalender-vejen efter en fejl', () => {

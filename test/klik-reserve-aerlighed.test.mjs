@@ -53,7 +53,7 @@ test('et script-klik uden bevis meldes ikke som tavs succes', async () => {
     'vaerktoejet svarede et bart ja paa et klik det ikke har set virke - det er Stripe-tilfaeldet ordret');
   assert.equal(svar.maaske_landet, true,
     `svaret siger ikke at virkningen er uvist: ${JSON.stringify(svar)}`);
-  assert.ok(svar.note && /tjek|uvist|bekraeft/i.test(svar.note),
+  assert.ok(svar.note && /check|unknown|confirm/i.test(svar.note),
     'svaret giver ikke agenten en anvisning paa hvad den skal goere i stedet');
 });
 

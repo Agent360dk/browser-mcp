@@ -28,7 +28,7 @@ test('et CDP-kald der aldrig svarer, giver op i stedet for at haenge', async () 
   const t0 = Date.now();
   await assert.rejects(
     () => u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseWheel', deltaY: 300 }),
-    /svarede ikke|timeout|frist/i,
+    /did not respond|timeout|frist/i,
     'kalderen skal faa en fejl, saa dens reserveloesning kan fyre',
   );
   const brugt = Date.now() - t0;
@@ -80,7 +80,7 @@ test('scroll ender med at rulle - reserveloesningen naas, og svaret siger hvorfo
 
   assert.equal(svar.ok, true, 'siden blev rullet - via reserveloesningen');
   assert.equal(svar.method, 'fallback', 'svaret skal sige AT det var reserveloesningen');
-  assert.match(svar.fallback_reason || '', /svarede ikke/, 'og HVORFOR, saa fejlen kan foelges');
+  assert.match(svar.fallback_reason || '', /did not respond/, 'og HVORFOR, saa fejlen kan foelges');
   assert.ok(brugt < 5000, `maa ikke koste 30 sekunder, brugte ${brugt} ms`);
   // 10/9: vagten kraevede scrollBy. Den blev udskiftet med scrollTo mod en beregnet
   // maal-position, fordi scrollBy lagde sig oveni det hjulet allerede havde naaet -
@@ -108,7 +108,7 @@ test('cdpSend giver op naar hjulet tier, saa en reserveloesning KAN naas (selve 
   } });
   const svar = await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseWheel', deltaY: 300 })
     .then(() => 'kom igennem', (e) => e.message);
-  assert.match(String(svar), /svarede ikke|timeout|frist/i,
+  assert.match(String(svar), /did not respond|timeout|frist/i,
     'hjul-afsendelsen skal afvises, ikke haenge - ellers naar scroll aldrig sin reserveloesning');
 });
 
@@ -141,10 +141,16 @@ test('en frist genkendes paa sit flag, ikke paa sine ord', () => {
 test('ingen af fristens forbrugere afgoer sagen paa prosaen alene', async () => {
   const { readFileSync } = await import('node:fs');
   const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
-  // Præcis ét sted maa teksten staa som moenster: inde i erCdpFrist selv, som bagstopper.
-  const antal = (kilde.match(/\/svarede ikke inden/g) || []).length;
-  assert.equal(antal, 1,
-    `${antal} steder matcher fristens tekst direkte - de skal gaa gennem erCdpFrist()`);
-  const iHjaelperen = kilde.slice(kilde.indexOf('function erCdpFrist'), kilde.indexOf('function erCdpFrist') + 300);
-  assert.match(iHjaelperen, /svarede ikke inden/, 'bagstopperen ligger ikke i erCdpFrist');
+  // Vagten udtrykkes som det den vogter: UDEN FOR erCdpFrist maa ingen afgoere sagen paa
+  // prosaen. En optaelling gik i stykker da teksten skiftede sprog - og en vagt der braekker
+  // af sit eget formaal, maaler ikke laengere det den blev skrevet til.
+  const iHjaelper = kilde.indexOf('function erCdpFrist');
+  const hjaelper = kilde.slice(iHjaelper, kilde.indexOf('\n}', iHjaelper));
+  assert.match(hjaelper, /did not respond within\|svarede ikke inden/,
+    'bagstopperen kender ikke begge ordlyde - en gammel fejl ville miste sit maaske_landet');
+  const udenHjaelper = kilde.slice(0, iHjaelper) + kilde.slice(kilde.indexOf('\n}', iHjaelper));
+  const prosaMatch = [...udenHjaelper.matchAll(/\/[^/\n]*(did not respond within|svarede ikke inden)[^/\n]*\//g)]
+    .filter((m) => !/^\s*\/\//.test(udenHjaelper.slice(udenHjaelper.lastIndexOf('\n', m.index), m.index)));
+  assert.equal(prosaMatch.length, 0,
+    `${prosaMatch.length} steder uden for erCdpFrist matcher fristens tekst: ${prosaMatch.map((m) => m[0]).join(', ')}`);
 });

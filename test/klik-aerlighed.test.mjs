@@ -92,7 +92,7 @@ test('select_option paastaar ikke at klikket blev afvist, naar den ikke ved det'
   } }));
   const svar = await u.hent('dispatch')(9876, 'select_option', { selector: '#drop', value: 'Roed' });
   assert.equal(svar.type, 'custom_dropdown', `proeven naaede ikke dropdown-stien: ${JSON.stringify(svar)}`);
-  assert.doesNotMatch(String(svar.error || ''), /ikke taget imod/,
+  assert.doesNotMatch(String(svar.error || ''), /was not accepted by the page/,
     `koden ved ikke om klikket landede, men skriver en benaegtelse: ${JSON.stringify(svar)}`);
   assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
 });
@@ -128,7 +128,7 @@ for (const vaerktoej of ['click', 'click_xy']) {
     const svar = await u.hent('dispatch')(9876, vaerktoej, p);
     assert.equal(svar.uverificeret, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
     assert.equal(svar.maaske_landet, true, `museknappen er sendt, men agenten faar et bart nej: ${JSON.stringify(svar)}`);
-    assert.match(String(svar.note || ''), /kunne ikke laeses bagefter/,
+    assert.match(String(svar.note || ''), /could not be read afterwards/,
       `noten forklarer den FORKERTE uvished - her aendrede intet sig paa mousedown: ${svar.note}`);
     assert.doesNotMatch(String(svar.note || ''), /mousedown/, `uvist-noten blev brugt paa uverificeret: ${svar.note}`);
   });
@@ -138,7 +138,7 @@ test('select_option benaegter heller ikke, naar opslaget fejlede uden navigation
   const u = medSession(seleUdenSettle());
   const svar = await u.hent('dispatch')(9876, 'select_option', { selector: '#drop', value: 'Roed' });
   assert.equal(svar.uverificeret, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
-  assert.doesNotMatch(String(svar.error || ''), /ikke taget imod/,
+  assert.doesNotMatch(String(svar.error || ''), /was not accepted by the page/,
     `benaegtelse oven paa en uvished koden selv har navngivet: ${JSON.stringify(svar)}`);
   assert.equal(svar.maaske_landet, true, JSON.stringify(svar));
 });

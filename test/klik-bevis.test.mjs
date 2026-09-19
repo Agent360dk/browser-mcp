@@ -222,7 +222,7 @@ test('udloeber selve trykket, klikkes der IKKE via script - det kan vaere landet
 test('en frist paa input siger at fanen kan vaere i baggrunden, og hvad agenten skal goere', { timeout: 20000 }, async () => {
   const { u } = baggrundsSele('mouseMoved');
   const svar = await u.hent('dispatch')(9876, 'hover', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
-  assert.match(JSON.stringify(svar), /baggrunden[^"]*switch_tab/, `fejlen giver ingen vej ud: ${JSON.stringify(svar)}`);
+  assert.match(JSON.stringify(svar), /background[^"]*switch_tab/, `fejlen giver ingen vej ud: ${JSON.stringify(svar)}`);
 });
 
 // ── select_option: det FAKTISKE svar, ikke kildeteksten ────────────────────
@@ -241,7 +241,7 @@ async function vaelgICustomDropdown(valgKlik) {
 test('select_option: et valg-klik der ikke landede giver ok:false', async () => {
   const svar = await vaelgICustomDropdown({ landed: false, fallbackFired: true });
   assert.equal(svar.ok, false, `svaret sagde ok paa et klik der ikke landede: ${JSON.stringify(svar)}`);
-  assert.match(String(svar.error), /ikke taget imod/);
+  assert.match(String(svar.error), /was not accepted by the page/);
 });
 
 test('select_option: et uvist valg-klik giver ikke ok:true', async () => {

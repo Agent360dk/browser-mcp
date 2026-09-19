@@ -171,9 +171,9 @@ test('en select der nulstiller sig selv, men aendrer siden, regnes som lykkedes'
     'der tages ikke et aftryk af siden - saa kan "rullet tilbage" ikke skelnes fra "komponenten gik videre"');
   assert.match(blok, /e\.aftryk !== r\.foer/,
     'aftrykket sammenlignes ikke - vagten kan stadig kalde et vellykket valg for en rollback');
-  const iRollback = blok.indexOf('Valget blev rullet tilbage');
+  const iRollback = blok.indexOf('The selection was rolled back');
   assert.ok(iRollback > -1, 'rollback-beskeden findes ikke laengere');
-  assert.match(blok.slice(iRollback, iRollback + 300), /intet andet paa siden aendrede sig/,
+  assert.match(blok.slice(iRollback, iRollback + 300), /nothing else on the page changed/,
     'rollback maa kun meldes naar INTET andet aendrede sig - ellers er det en falsk negativ');
 });
 
