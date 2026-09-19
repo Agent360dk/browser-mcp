@@ -23,6 +23,20 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const her = dirname(fileURLToPath(import.meta.url));
+
+/** Hvor henter Chrome udvidelsen fra? Svaret staar i Chromes egen profil, ikke i repoet. */
+function chromeKildemappe(udvidelsesId) {
+  if (!udvidelsesId) return null;
+  for (const fil of ['Secure Preferences', 'Preferences']) {
+    try {
+      const sti = join(process.env.HOME || '', 'Library/Application Support/Google/Chrome/Default', fil);
+      const d = JSON.parse(readFileSync(sti, 'utf8'));
+      const p = d?.extensions?.settings?.[udvidelsesId]?.path;
+      if (typeof p === 'string' && p) return p;
+    } catch { /* ingen profil at spoerge - saa faar man det generelle raad */ }
+  }
+  return null;
+}
 const rod = dirname(dirname(her));
 const VENT_PAA_UDVIDELSE_MS = 40000;
 
@@ -442,8 +456,17 @@ try {
       const igen = await kald('browser_provide_feedback', { what_happened: 'flow-test, venter paa kode-aftrykket' });
       kode = (igen.data?.environment?.extensions_connected || []).filter((e) => e.active)[0]?.code ?? null;
     }
+    // "Genindlaes udvidelsen" er kun det rigtige raad hvis Chrome overhovedet peger paa repoet.
+    // MAALT 19/9: den indlaeste kopi laa i ~/Downloads/browser-mcp-AKTIV, saa ALDRIG saa mange
+    // genindlaesninger ville have hjulpet - og WISHLIST har samme faelde noteret to gange foer.
+    // Derfor spoerger gaten Chrome selv hvor den henter udvidelsen, og siger hvad der skal goeres.
+    const indlaestFra = kode === repoAftryk ? null : chromeKildemappe(aktiv[0]?.extension_id);
+    const raad = indlaestFra && indlaestFra !== join(rod, 'extension')
+      ? `Chrome indlaeser udvidelsen fra ${indlaestFra} - ikke fra repoet. Kopiér foerst: `
+        + `cp ${join(rod, 'extension')}/*.js ${join(rod, 'extension')}/*.html ${join(rod, 'extension')}/manifest.json ${indlaestFra}/`
+      : 'genindlaes udvidelsen';
     skalVaere(kode === repoAftryk,
-      `udvidelsens kode-aftryk er ${kode ?? 'ukendt efter 5 s'}, repoets er ${repoAftryk} - Chrome koerer ikke kandidatens kode (genindlaes udvidelsen)`);
+      `udvidelsens kode-aftryk er ${kode ?? 'ukendt efter 5 s'}, repoets er ${repoAftryk} - Chrome koerer ikke kandidatens kode (${raad})`);
   });
   await proev('#shadow-dom', 'selektorer naar ind i shadow DOM', async () => {
     await kald('browser_click', { selector: '#ishadow' });

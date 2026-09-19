@@ -515,3 +515,14 @@ og lever HTML uden undvigetegn.
 .db-SegmentedControlOption:last-child` ramte praecis den rigtige raekke), og
 `browser_navigate` + `get_page_content` som tekst. Da den ene udvidelse blev slaaet fra,
 kom baade skaermbilleder og aegte klik tilbage med det samme.
+
+## Faelden med den KOERENDE kopi (noteret tre gange - nu siger spaerren det selv)
+
+Chrome indlaeser udvidelsen fra `~/Downloads/browser-mcp-AKTIV`, ikke fra repoet. Aendrer man
+`extension/`, koerer browseren stadig den gamle kode, og flow-spaerren sagde bare "genindlaes
+udvidelsen" - et raad der ALDRIG kunne virke, for det er en anden mappe. 19/9 kostede det en
+kvarter, og WISHLIST havde faelden noteret to gange i forvejen.
+
+Spaerren spoerger nu Chromes egen profil hvor udvidelsen hentes fra, og skriver kopi-kommandoen
+i fejlen. Selve kopieringen er stadig i haanden - med vilje: den mappe er Gustavs koerende
+browser, og den maa ikke aendre sig af at en test bliver koert.
