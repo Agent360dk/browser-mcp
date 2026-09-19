@@ -472,11 +472,24 @@ Et klik der ikke virker, maa ikke svare ok.
 
 Stripe saetter `script-src` uden `unsafe-eval`. Baade ISOLATED og MAIN fejler med
 *"Evaluating a string as JavaScript violates the following Content Security Policy"*.
-Hele scripting-vejen er dermed vaek paa netop de sites hvor man har mest brug for den.
 
-**Forslag:** kald `chrome.scripting.executeScript` med `func` + `args` i stedet for en
-streng. Funktions-varianten rammes ikke af sidens CSP. Streng-varianten kan blive
-faldbag, ikke foerstevalg.
+**⚠️ EFTERPROEVET 19/9: punktet er i vidt omfang LUKKET, og posten her var foraeldet.**
+`execute_script` falder tilbage til fejlfinderen naar begge scripting-stier afvises, og
+CDP's `Runtime.evaluate` rammes ikke af sidens CSP. Flow-spaerren beviser det ved hver
+koersel: `#csp-execute_script - JS koerer trods CSP (falder tilbage til debuggeren)`,
+groen i alle koersler siden fixturen blev bygget.
+
+**Det der er tilbage** er smallere, og den offentlige side siger det allerede praecist:
+koden fejler naar siden har stram CSP **og** fejlfinderen samtidig er utilgaengelig - fx
+fordi en anden udvidelse holder den. Begge streng-veje er saa spaerret, én af siden og én
+af udvidelsens egen politik.
+
+**Forslag, hvis den rest skal lukkes:** `chrome.scripting.executeScript` med `func` +
+`args` rammes ikke af sidens CSP - men den tager en funktion, ikke en streng, og vores
+vaerktoej faar vilkaarlig JS fra agenten. At koere den som `func` ville kraeve
+`new Function(kode)` indeni, hvilket ER eval. Forslaget virker derfor ikke som skrevet.
+En reel loesning skal begraense hvad `execute_script` kan udtrykke, og det er en
+produktbeslutning, ikke en rettelse.
 
 ### 3. `browser_fill` saetter vaerdien, men sitet reagerer ikke · **hoej**
 
