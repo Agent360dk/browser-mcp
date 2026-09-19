@@ -2383,7 +2383,16 @@ async function setDatePicker(tabId, selector, iso) {
     }
   }
 
-  if (!opened) return { ok: false, error: 'picker-did-not-open' };
+  // Naar filvaelgeren aldrig aabnede, er det ene af to: siden aabnede den slet ikke, eller
+  // den aabnede som OS-dialog uden for siden. Det andet kan ingen browser-udvidelse naa - CDP
+  // ser kun det der sker i fanen. Det er den ENE af vores 26 vaegge der aerligt ligger uden for
+  // browseren, og derfor det ene sted en henvisning til et skrivebords-vaerktoej er sand.
+  if (!opened) return { ok: false, error: 'picker-did-not-open',
+    note: 'The file picker never opened in the page. Either the trigger does not open one, ' +
+          'or it opened as an operating-system dialog outside the page - which no browser ' +
+          'extension can reach, this one included. If you have desktop-level tools in this ' +
+          'session (an OS automation MCP server such as computer-mcp), that dialog is theirs ' +
+          'to drive. Otherwise ask the user to pick the file.' };
 
   const MAX_NAV = 36;
   let navAttempts = 0;
@@ -3107,7 +3116,7 @@ async function interceptFileChooser(tabId, selector, fileList) {
         if (source.tabId !== tabId || method !== 'Page.fileChooserOpened') return;
         const backendNodeId = eventParams?.backendNodeId;
         if (!backendNodeId) {
-          finish({ ok: false, error: 'file-chooser-without-node', detail: 'Chrome fired fileChooserOpened but supplied no backendNodeId.' });
+          finish({ ok: false, error: 'file-chooser-without-node', detail: 'Chrome fired fileChooserOpened but supplied no backendNodeId.', note: 'The dialog exists, but not as an element in the page, so it cannot be filled from here. If you have desktop-level tools in this session (an OS automation MCP server such as computer-mcp), that dialog is theirs to drive.' });
           return;
         }
         cdpSend(tabId, 'DOM.setFileInputFiles', { backendNodeId, files: fileList })
