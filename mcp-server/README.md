@@ -140,7 +140,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.29.2 (2026-09-19) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.30.0 (2026-09-20) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
 | **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 40 tools, none that can ask the person (checked 2026-09-19) | None |

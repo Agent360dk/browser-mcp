@@ -1,6 +1,6 @@
 {
   "name": "browser-mcp",
-  "version": "1.29.2",
+  "version": "1.30.0",
   "description": "Any MCP client drives the Chrome you are already signed into, without approving every session. Chrome extension plus a local server. 40 tools, 20 sessions, MIT.",
   "mcpServers": {
     "browser-mcp": {
