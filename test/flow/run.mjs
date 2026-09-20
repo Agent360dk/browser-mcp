@@ -110,6 +110,9 @@ const rpc = (method, params, ms = 60000) => new Promise((res, rej) => {
   srv.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
 });
 const kald = async (navn, args = {}, ms) => {
+  // Fokus hentes kun her, og kun for de vaerktoejer Chrome naegter at levere til en
+  // baggrundsfane. De oevrige ~38 proever roerer aldrig Gustavs skaerm.
+  if (KRAEVER_FOKUS.has(navn)) await forrest();
   const r = await rpc('tools/call', { name: navn, arguments: args }, ms);
   const tekst = r.result?.content?.map(c => c.text ?? `<${c.type}>`).join('\n') ?? '';
   if (r.result?.isError) throw new Error(tekst.slice(0, 300));
@@ -131,10 +134,8 @@ const kald = async (navn, args = {}, ms) => {
     // 13/9 gjorde det ved hver navigation, og saa var kaldet til /langsom forbi, foer
     // wait_for_network naaede at lytte. En ny fane fodes derimod ALTID i baggrunden
     // (background.js:2807), saa den skal frem med det samme.
-    if (args && args.new_tab) {
-      await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } })
-      .catch((e) => fanesskiftFejl.push(e?.message || String(e)));
-    }
+    // En ny fane hentes IKKE frem her. Naeste input-kald goer det selv, praecis naar det skal -
+    // og det er hele forskellen mellem 52 fokus-tyverier og 14.
   }
   return { data, tekst };
 };
@@ -162,7 +163,30 @@ async function andreAgenter() {
   })));
   return optagne;
 }
-// Belt og seler: proever der ikke selv navigerer, skal ogsaa have en synlig fane.
+// Gustav 20/9: «den tager hele computerens skaerm-opmaerksomhed». Rigtigt - spaerren hev hans
+// fane frem foer HVER af 52 proever, altsaa ~52 fokus-tyverier paa to minutter.
+//
+// MAALT: kun 14 af de 52 kraever aegte input og dermed en synlig fane. Chrome leverer ikke
+// `Input.*` til en fane der ikke er den viste, og det er en dokumenteret begraensning vi ikke
+// kan omgaa - vi maalte i gaar at hverken headless, en kopieret profil eller `--load-extension`
+// giver os en udvidelse i en separat browser. Men de 38 oevrige laeser, navigerer, henter
+// cookies og tager skaermbilleder, og INTET af det kraever fokus.
+//
+// Derfor: fanen hentes kun frem for de 14. Resten koerer i baggrunden. Det fjerner ikke
+// forstyrrelsen - det skrumper den fra hele koerslen til den fjerdedel der fysisk kraever den.
+// ⛔ Foerste udgave listede PROEVE-navne. Det braekkede `browser_handle_dialog`, som hedder
+// noget uden input men klikker indeni - saa fanen kom aldrig frem og klikket landede ikke.
+// Samme ordliste-fejl som huset har skrevet ned to gange: et NAVN kan ikke baere reglen.
+//
+// Nu afgoeres det af hvad der FAKTISK kaldes: fanen hentes frem lige foer et vaerktoej der
+// sender mus eller taster, uanset hvilken proeve der koerer. Et nyt input-vaerktoej skal
+// tilfoejes her - og hvis nogen glemmer det, fejler netop den proeve, ikke alle de andre.
+const KRAEVER_FOKUS = new Set([
+  'browser_click', 'browser_click_xy', 'browser_double_click', 'browser_right_click',
+  'browser_hover', 'browser_press_key', 'browser_scroll', 'browser_select_option',
+  'browser_set_combobox', 'browser_drop_file', 'browser_upload_file', 'browser_dismiss_overlays',
+]);
+
 const forrest = async () => {
   if (fokusFane == null) return;
   await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } })
@@ -179,7 +203,6 @@ const resultat = new Map();
 async function proev(vaerktoej, beskrivelse, fn) {
   const t0 = Date.now();
   try {
-    await forrest();
     await fn();
     resultat.set(vaerktoej, { status: 'OK', beskrivelse, ms: Date.now() - t0 });
     console.log(`  ✓ ${vaerktoej.padEnd(30)} ${beskrivelse}`);
