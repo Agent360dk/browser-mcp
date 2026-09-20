@@ -131,8 +131,9 @@ dashboards, admin panels, portals.
 
 ═══ TWENTY AGENTS, ONE BROWSER ═══
 
-Every chat gets its own colour-coded Chrome tab group and can only see its own
-tabs - up to 20 at a time. Close the chat and its tabs go with it. Other browser
+Up to 20 agent sessions can use one Chrome at the same time. Every chat gets
+its own colour-coded tab group, can only see its own tabs, and can hold up to
+20 of them. Close the chat and its tabs go with it. Other browser
 automation tools take over the whole profile, so a second agent has to wait.
 
 ═══ WHAT IT DOES WITH YOUR DATA ═══
@@ -142,6 +143,17 @@ Nothing is sent to us. The extension talks to one thing: a server on
 and no payment. What your agent reads goes to your AI client and its model
 provider, the same as anything else you show it. The extension keeps a local log of every action the agent took,
 and marks the sensitive ones, so you can look at what happened.
+
+═══ WHAT IT CANNOT DO ═══
+
+In a tab you are not looking at, the agent can navigate, read, screenshot,
+run scripts, click, and fill a field it finds by CSS selector. It cannot press
+keys, hover, double-click, right-click, click by coordinate, type into a
+combobox, or fill a field found by its visible text - Chrome does not deliver
+mouse and keyboard events to a tab that is not the visible one in its window.
+When one of those is needed, the tool says so and brings the tab in front of
+you rather than failing silently. This is a Chrome limitation, not a bug we
+are about to fix.
 
 MIT licensed, source at https://github.com/Agent360dk/browser-mcp
 ```
@@ -153,7 +165,10 @@ MIT licensed, source at https://github.com/Agent360dk/browser-mcp
 In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, click
 and fill a field it finds by CSS selector. Chrome does not deliver mouse and keyboard events to a tab that is not the visible one in
 its window, so key presses, hover, double-click, right-click, coordinate clicks, combobox typing and filling a field found by its text fail with an
-error that says so, and the agent then brings that tab in front of you. Fully hands-off background work is the goal for 1.30.
+error that says so, and the agent then brings that tab in front of you. ~~Fully hands-off background work is the goal for 1.30.~~ **Trukket tilbage 20/9:** 1.30 er ude og
+leverede det ikke. Chrome leverer ikke input til en tab der ikke er den synlige i sit vindue - det er
+maalt, ikke antaget, og det er ikke noget vi kan rette. Formuleringen ovenfor staar nu i selve
+indsaet-teksten som en begraensning, ikke som et loefte.
 
 ## §2 Images - replace all three, add the two tiles
 
