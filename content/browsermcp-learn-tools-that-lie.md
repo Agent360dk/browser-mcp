@@ -1,4 +1,4 @@
-// KILDE: alt paa denne side er maalt i vores eget repo mellem 13. og 18. september 2026 og staar i CHANGELOG.md for 1.29.1 og 1.29.2, med commit pr. rettelse. De to eksterne fund er offentlige paa issue #19. Ingen tal uden en maaling bag.
+// KILDE: alt paa denne side er maalt i vores eget repo mellem 13. og 18. september 2026 og staar i CHANGELOG.md for 1.29.1, 1.29.2 og 1.30.0, med commit pr. rettelse. De to eksterne fund er offentlige paa issue #19. Ingen tal uden en maaling bag.
 
 # Nine tools that said yes when nothing had happened
 
@@ -131,6 +131,32 @@ That does not make the work worth less. It makes the claim about it smaller, and
 
 **What can I check without installing anything?**
 `npm test` runs the extension's real code in a VM against a recorded Chrome stub, so you can prove what it sends and how it judges the answers. Four tools go further and run the generated expression against a hand-written document. That is the cheap way in if you want to prove us wrong.
+
+## Two more, found after this page went up
+
+Publishing the list did not end the class. Two more came out of our own code in the days after,
+and both are about the *reporting* rather than the doing - which is the part this page is about.
+They shipped fixed in 1.30.0 on 20 September.
+
+**`browser_fill` promised a field it never sent.** The server's own instructions tell the agent:
+when `differs` is true, read `actual` to see what the field really holds. The common code path
+answered with `value` and no `actual` at all. So an agent following our documented advice, on the
+exact answer where it matters most, read a field that was not there. The instruction was right and
+the code did not keep it. Both names are on every answer now.
+
+**The honesty mechanism was one translation away from switching itself off.** When a command times
+out, the tool is supposed to answer `maybe_landed` - the third answer this whole page argues for -
+and warn against repeating blindly. It recognised that timeout by matching the *text of its own
+error message*, in four separate places. We translated every agent-facing string to English in the
+same release. Had we shipped the translation without noticing, the timeout would have stopped being
+recognised, `maybe_landed` would have quietly become a plain failure, and the agent would have been
+told to retry an action that may already have gone through. The behaviour we are proudest of was
+resting on a sentence in Danish. It now carries a flag.
+
+That second one is the more uncomfortable of the two. The first was a tool lying about a page. The
+second was our safeguard against lying, held together by something that was never meant to be load
+bearing - and we found it because a translation forced us to read the code, not because a test
+caught it. There is now a test that does.
 
 ## The honest remainder
 
