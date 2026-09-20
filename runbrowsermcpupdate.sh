@@ -71,7 +71,7 @@ dage_til_udloeb() {
 # ── arg parse ────────────────────────────────────────────────────────────────
 NEW_VERSION=""
 SHIP=0
-SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0
+SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0; SKIP_AERLIGHED=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
   case "$arg" in
@@ -80,6 +80,7 @@ for arg in "$@"; do
     --skip-registry) SKIP_REGISTRY=1 ;;
     --skip-cws)    SKIP_CWS=1 ;;
     --skip-flow)   SKIP_FLOW=1 ;;
+    --skip-aerlighed) SKIP_AERLIGHED=1 ;;
     --skip-github) SKIP_GITHUB=1 ;;
     --skip-local)  SKIP_LOCAL=1 ;;
     --cws-draft)   CWS_DRAFT=1 ;;
@@ -384,6 +385,36 @@ else
       export BMCP_FLOW_OK=1
     fi
   fi
+fi
+
+# ── 2c. Aerligheds-maalingen: er resultatet aeldre end koden der udgives? ──
+#
+# Hvorfor spaerren findes: vi bruger "vi lyver ikke om hvad der landede" som argument udadtil -
+# paa /learn/tools-that-lie/, i CHANGELOG og over for bidragydere. Den paastand er ubevist
+# indtil nogen maaler den PAA DEN KODE DER UDGIVES. Maalingen fandtes 19/9 og blev koert én
+# gang i haanden; intet fik den til at ske igen. En paastand uden en tilbagevendende maaling
+# forfalder tavst - det er hele pointen med den side, og saa kan vi ikke selv vaere undtaget.
+#
+# Den SPAERRER ikke: maalingen kraever en aegte Chrome og et menneske, praecis som flow-spaerren.
+# Den gaar gennem `gate`, saa et toerloeb fortsaetter og en rigtig udgivelse stopper med at
+# fortaelle dig hvilken kommando der mangler.
+step "2c. Aerligheds-maalingen mod den kode der udgives"
+if [[ "$SKIP_AERLIGHED" == 1 ]]; then
+  warn "sprunget over - vi udgiver et aerligheds-argument uden at have maalt det paa denne kode"
+else
+SENESTE_AERLIGHED="$(ls -t test/aerlighed/RESULTAT-*.md 2>/dev/null | head -1 || true)"
+if [[ -z "$SENESTE_AERLIGHED" ]]; then
+  gate "der findes intet aerligheds-resultat i test/aerlighed/. Koer: node test/aerlighed/maal.mjs"
+else
+  # Sammenlign resultatets alder med den nyeste aendring i det maalingen faktisk daekker.
+  KODE_AENDRET="$(git log -1 --format=%ct -- extension/background.js extension/offscreen.js mcp-server/tools.js 2>/dev/null || echo 0)"
+  RESULTAT_SKREVET="$(git log -1 --format=%ct -- "$SENESTE_AERLIGHED" 2>/dev/null || echo 0)"
+  if [[ "$RESULTAT_SKREVET" -lt "$KODE_AENDRET" ]]; then
+    gate "aerligheds-resultatet ($(basename "$SENESTE_AERLIGHED")) er AELDRE end den kode der udgives. Koer: node test/aerlighed/maal.mjs --kun os  - eller udgiv med --skip-aerlighed og skriv hvorfor"
+  else
+    ok "aerligheds-resultatet er nyere end koden det daekker: $(basename "$SENESTE_AERLIGHED")"
+  fi
+fi
 fi
 
 # ── 1. sync + version bump + tool-count + readme (only written under --ship) ──
