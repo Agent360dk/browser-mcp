@@ -73,6 +73,12 @@ connections immediately instead of at the next browser restart. The pairing is a
 the extension executes nothing until the server has acknowledged with the same key - which
 covers the local-process case roth-arasys and I agreed an opt-in token would otherwise miss.
 
+### Credited
+
+**JADRT22** posted a minimal single-file React 18 form on #19 that isolated the case where the
+DOM value is right and the framework has not heard it. That repro is what `framework_did_not_hear`
+was built against, and it was missing from the 1.29.2 entry - an oversight, not a judgement.
+
 ### Fixed
 
 - `browser_fill` promised a field it did not send. The server's instructions say "read
