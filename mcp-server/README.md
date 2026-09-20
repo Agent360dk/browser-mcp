@@ -34,6 +34,14 @@ The killer move: it hits a login wall, reads the verification code from your own
 
 ## The whole thing, in four steps
 
+**Rather not do it by hand?** Paste this to your AI assistant - Claude Code, Cursor, Codex, VS Code, Windsurf, Cline - and it sets itself up:
+
+> Set up Browser MCP for me. Read https://browsermcp.dev/llms-install.md and follow it for whichever AI client you are running in. One step only I can do - tell me which one, and wait for me. When I confirm, call `browser_list_tabs` to prove both halves are talking.
+>
+> If you cannot open URLs: `npx @agent360/browser-mcp install`
+
+It reads the same guide the four steps below spell out by hand. One step stays yours either way: Chrome will not let an extension install itself, so you load it once.
+
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? See the unpacked install below.
 
 **2 - Add the MCP server.** Paste this in a terminal. Required - the extension does nothing on its own:
@@ -50,7 +58,7 @@ claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#youre-in-now-what)
 
-Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config - see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Everything below is the long version.
+Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config - the prompt at the top handles it, or see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Everything below is the long version.
 
 ## The long version - install, step by step
 

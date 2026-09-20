@@ -107,7 +107,22 @@ is no server for it to talk to. The other half is one command.
 
 1. Install this extension (you are here).
 
-2. Register the MCP server with your AI client.
+2. Paste this to your AI assistant. It sets up the other half itself,
+   whether you are in Claude Code, Cursor, Codex, VS Code, Windsurf or Cline:
+
+   ----------------------------------------------------------------
+   Set up Browser MCP for me. Read https://browsermcp.dev/llms-install.md
+   and follow it for whichever AI client you are running in. One step
+   only I can do - tell me which one, and wait for me. When I confirm,
+   call browser_list_tabs to prove both halves are talking.
+
+   If you cannot open URLs: npx @agent360/browser-mcp install
+   ----------------------------------------------------------------
+
+3. Restart your AI client when it tells you to. A green badge appears on the extension's icon
+   the first time the browser is actually used - grey before that is normal.
+
+Rather do it by hand? Same thing, three lines:
 
    Claude Code:
       claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
@@ -120,9 +135,6 @@ is no server for it to talk to. The other half is one command.
        "args": ["@agent360/browser-mcp@latest"]}}}
 
    Per-client guides: https://browsermcp.dev/docs/install-claude-code/
-
-3. Restart your AI client, then ask it to use the browser once. A green badge appears on the extension's icon the first time
-   it is actually used - grey before that is normal.
 
 Why two steps? Chrome does not allow an extension to install itself from npm, and
 npm cannot install a Chrome extension. Neither half can install the other, so you

@@ -46,7 +46,7 @@ vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22type%22%3A%22stdio%22%
 trae://trae.ai-ide/mcp-import?type=stdio&name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBhZ2VudDM2MC9icm93c2VyLW1jcEBsYXRlc3QiXX0%3D
 ```
 
-Any other client (Cursor, Windsurf, Cline…) - write this into that client's MCP config:
+Any other client - write this into that client's MCP config:
 
 ```json
 {
@@ -55,6 +55,30 @@ Any other client (Cursor, Windsurf, Cline…) - write this into that client's MC
   }
 }
 ```
+
+**Do not guess where that file lives.** Each client keeps it somewhere different, and the exact
+path is on that client's own page. Open the one that matches the client you are running in and
+follow it:
+
+| Client | Page |
+|---|---|
+| Cursor | https://browsermcp.dev/docs/install-cursor/ |
+| Windsurf | https://browsermcp.dev/docs/install-windsurf/ |
+| Cline | https://browsermcp.dev/docs/install-cline/ |
+| Continue.dev | https://browsermcp.dev/docs/install-continue/ |
+| GitHub Copilot | https://browsermcp.dev/docs/install-copilot/ |
+| Gemini CLI | https://browsermcp.dev/docs/install-gemini-cli/ |
+| Kiro | https://browsermcp.dev/docs/install-kiro/ |
+| opencode | https://browsermcp.dev/docs/install-opencode/ |
+| Zed | https://browsermcp.dev/docs/install-zed/ |
+| ZCode | https://browsermcp.dev/docs/install-zcode/ |
+| VS Code | https://browsermcp.dev/docs/install-vscode/ |
+| Codex | https://browsermcp.dev/docs/install-codex/ |
+| Trae | https://browsermcp.dev/docs/install-trae/ |
+| Claude Code | https://browsermcp.dev/docs/install-claude-code/ |
+
+If you cannot open URLs at all, run `npx @agent360/browser-mcp install` instead: it registers with
+Claude Code, Codex, VS Code and Cursor through each client's own mechanism and leaves the rest alone.
 
 Keep the `@latest`: it is what makes the server self-update on each run.
 
