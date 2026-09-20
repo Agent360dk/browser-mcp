@@ -34,6 +34,8 @@ PAGES=[
  ('browsermcp-compare-browsermcp-io.md','Compare','vs browsermcp.io','/compare/browsermcp-io'),
  ('browsermcp-compare-playwright-mcp.md','Compare','vs Playwright MCP','/compare/playwright-mcp'),
  ('browsermcp-compare-mcp-servers.md','Compare','All servers compared','/compare/browser-automation-mcp-servers'),
+ ('browsermcp-compare-alternatives.md','Compare','Browser MCP alternatives','/compare/browser-mcp-alternatives'),
+ ('browsermcp-compare-browser-use.md','Compare','vs browser-use','/compare/browser-use'),
  ('browsermcp-compare-mcp-chrome.md','Compare','vs mcp-chrome','/compare/mcp-chrome'),
  ('browsermcp-usecase-claude-code-loginvaeg.md','Use cases','Claude Code + login wall','/use-cases/claude-code-login-wall'),
  ('browsermcp-usecase-cursor-captcha.md','Use cases','Cursor + CAPTCHA','/use-cases/cursor-captcha'),
