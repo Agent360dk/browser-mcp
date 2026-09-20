@@ -60,6 +60,31 @@ ask the human - so describe the mechanism instead of inventing a hit rate.
 
 ---
 
+## ✅ INDSAT I KLADDEN 20/9 - venter kun paa indsendelse
+
+Teksten i §1 er indsat i dashboardets felt **Beskrivelse*** og gemt med "Gem udkast".
+Efterproevet efter en fuld genindlaesning: feltet baerer den nye tekst, og ingen af de fem
+usandheder er tilbage. **Ikke indsendt til gennemgang** - det er Gustavs beslutning, og
+1.30 ligger allerede i review.
+
+### ⛔ Hvorfor fire forsoeg fejlede foerst - laer af det
+
+Cmd+A/Cmd+V globalt, Cmd+A/Cmd+V maalrettet mod Chrome, AX `set_value`, og
+`type`-paa-element: **alle fire kvitterede "ok", ingen af dem landede.** Rodaarsagen blev
+fundet ved at liste Chromes menulinje: hele `Rediger`-menuen stod `[disabled]` - ogsaa
+"Luk vindue" og "Genindlaes". **Chrome var ikke det aktive program.** En vinduesfokus er
+ikke det samme som en program-aktivering, og intet af vaerktoejernes svar afsloerede det.
+
+Opskriften der virkede, i denne raekkefoelge:
+1. aktivér programmet (`app focus`), ikke bare vinduet eller fanen
+2. klik i feltet
+3. **bekraeft med et fokus-opslag at markoeren er i AXTextArea** - ikke i AXWebArea, ikke ingen steder
+4. brug programmets EGEN menu (`Rediger > Vaelg alle`, `Rediger > Indsaet`), ikke syntetiske taster
+5. laes hele feltets vaerdi tilbage og gem foerst derefter
+
+⚠️ Og: udklipsholderen blev overskrevet af en anden proces midt i forloebet. Tjek den
+umiddelbart foer indsaettelsen, aldrig kun da du fyldte den.
+
 ## §1 Detailed description - replace the whole thing
 
 Google's own listing guidance: an overview paragraph, then a short feature list; keywords only
