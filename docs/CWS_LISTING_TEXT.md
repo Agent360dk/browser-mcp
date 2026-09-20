@@ -60,12 +60,19 @@ ask the human - so describe the mechanism instead of inventing a hit rate.
 
 ---
 
-## ✅ INDSAT I KLADDEN 20/9 - venter kun paa indsendelse
+## ⚠️ KLADDEN BAERER EN AELDRE UDGAVE END §1 - laes det her foerst
 
-Teksten i §1 er indsat i dashboardets felt **Beskrivelse*** og gemt med "Gem udkast".
-Efterproevet efter en fuld genindlaesning: feltet baerer den nye tekst, og ingen af de fem
-usandheder er tilbage. **Ikke indsendt til gennemgang** - det er Gustavs beslutning, og
-1.30 ligger allerede i review.
+**Hvad der ER i dashboardets felt `Beskrivelse*` lige nu** (indsat og gemt 20/9, efterproevet
+efter en fuld genindlaesning): den rettede tekst uden nogen af de fem usandheder.
+
+**Hvad der IKKE er der:** §1 er forbedret SIDEN indsaettelsen. Den har nu en prompt man indsaetter
+i sin AI som skridt 2, i stedet for fem registrerings-kommandoer. Kladden har stadig den gamle
+opsaetnings-blok. Den nye tekst ligger klar i
+`~/.claude/plans/browsermcp-2026-09-07/BUTIKSTEKST-klar-til-indsaettelse.txt`.
+
+**Ikke indsendt til gennemgang** - harnessen afviser klikket ("Create Public Surface"), saa det er
+Gustavs. ⚠️ Rettelse til en tidligere note her: **1.30 ligger ikke i review, den er LIVE** i
+butikken (maalt 20/9). Et pakke-review staar derfor ikke i vejen for en tekst-indsendelse.
 
 ### ⛔ Hvorfor fire forsoeg fejlede foerst - laer af det
 
