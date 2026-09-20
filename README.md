@@ -454,6 +454,17 @@ further than anything we can write. [Leave a review](https://chromewebstore.goog
 if it earned one, and say so honestly if it did not. No signup, no reward, nothing gated
 behind it - we just have no signal at all right now.
 
+## The same idea, for the rest of your Mac
+
+This drives your browser. [Computer MCP](https://computermcp.dev) drives everything
+else on macOS - menus, windows, the Dock, any app's accessibility tree - with the same
+stance: password fields are blacked out in memory before a screenshot is written, writes
+go through a consent gate, and every action lands in an append-only log. It runs in the
+background by default: the tools that could take over your screen are not offered unless
+you ask for them.
+
+`npx @agent360/computer-mcp` · MIT · macOS.
+
 ## License
 
 MIT - [Agent360](https://agent360.dk)
