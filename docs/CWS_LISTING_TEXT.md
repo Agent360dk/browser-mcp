@@ -101,7 +101,7 @@ Not a fresh headless browser that hits a login wall on the first page.
 
 Browser MCP is a Chrome extension PLUS a local MCP server. This page can only give
 you the extension. On its own it will sit on "Not connected" forever, because there
-is no server for it to talk to. The other half is one command.
+is no server for it to talk to. The other half takes one paste.
 
 ═══ SETUP (2 minutes) ═══
 
@@ -122,7 +122,7 @@ is no server for it to talk to. The other half is one command.
 3. Restart your AI client when it tells you to. A green badge appears on the extension's icon
    the first time the browser is actually used - grey before that is normal.
 
-Rather do it by hand? Same thing, three lines:
+Rather do it by hand? Pick your client:
 
    Claude Code:
       claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
