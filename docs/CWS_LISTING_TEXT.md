@@ -30,6 +30,25 @@ developer Agent360 Group ApS, category Developer Tools).
   20 *tabs* per session and is a different 20.
 - **9 built-in integrations** - the comparison table in `README.md:138`.
 
+### ⛔ Den FEMTE usandhed, fundet 20/9 - og den er den vaerste
+
+Den levende beskrivelse (laest i sin helhed 20/9 med `computer_find`, ikke en 200-tegns forsmag)
+indeholder dette afsnit:
+
+> ═══ RUNS IN BACKGROUND ═══
+> Only the human-in-the-loop dialog (browser_ask_user) activates your tab. Everything else -
+> **clicks, fills**, screenshots - runs without stealing focus.
+
+**Det er det modsatte af hvad vi selv har maalt.** Chrome leverer ikke mus- og tastatur-haendelser
+til en tab der ikke er den synlige i sit vindue, saa klik og udfyldning i en baggrunds-tab virker
+netop ikke - vaerktoejet siger det og henter fanen frem. Sitet, CHANGELOG og den nye indsaet-tekst
+siger alle sandheden; kun butikken lover det modsatte.
+
+Erstatningsteksten i §1 loeser det: den har intet positivt baggrunds-loefte, og den har til
+gengaeld et "WHAT IT CANNOT DO"-afsnit der siger praecis hvad der ikke naar frem.
+
+⚠️ Tallet i tabellen ovenfor siger "fire usandheder". Det er **fem**.
+
 ### ⚠ Delete the "~80% pass rate" claim and do not replace it with another number
 
 That figure exists **only on the store listing**. It is not in the README, not in
