@@ -18,7 +18,15 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 ---
 
-## ⏳ Venter på 1.30
+## ✅ Udgivet i 1.30 (20/9)
+
+⚠️ **Rettet 20/9:** overskriften her sagde «Venter på 1.30». Det var sandt da det blev skrevet og
+falsk fra 20/9: **1.30.0 er ude på npm, i MCP-registret, på GitHub og i Chrome Web Store** - alle
+fire målt samme dag. Punkterne herunder venter ikke på noget; de er ude.
+
+Samme rettelse som 19/9, og af samme grund: en fil der fortæller om sin egen forældelse er mere
+værd end en der ser rigtig ud. At den skulle rettes to gange på to dage er selve pointen - det
+sker hver gang noget shipper, og ingen vagt fanger det.
 
 - **Profile pairing ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)) er BYGGET.**
   Valgfri `BROWSER_MCP_TOKEN` på serveren, og samme nøgle i udvidelsens popup under **Pairing**.
@@ -34,7 +42,7 @@ When a wish gets implemented, it moves to **✅ Shipped** with the version it la
 
 ⚠️ **Rettet 19/9:** afsnittet herunder sagde «ingen udgivelse har fundet sted endnu». Det var
 sandt da det blev skrevet og falsk siden 13/9: **1.29.1 (13/9) og 1.29.2 (18/9) er ude på npm,
-i MCP-registret og i Chrome Web Store.** Punkterne herunder er i dem. Det der venter nu, er 1.30.
+i MCP-registret og i Chrome Web Store.** Punkterne herunder er i dem. ⚠️ **Og linjen «det der venter nu, er 1.30» er selv forældet pr. 20/9: 1.30 er ude.**
 
 Det står her frem for at blive slettet, fordi en fil der fortæller om sin egen forældelse er
 mere værd end en der ser rigtig ud.

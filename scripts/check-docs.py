@@ -259,6 +259,37 @@ for md in sorted(glob.glob(os.path.join(ROOT, 'content', '*.md'))):
     if "'%s'" % navn not in gen_src:
         fail('content/%s har ingen rute i generate-docs.py - filen bliver tavst ignoreret' % navn)
 
+# ---- 6. intet dokument maa vente paa en version der er udgivet --------------
+# MAALT 19/9 OG 20/9 - to gange paa to dage, i den samme fil. WISHLIST.md sagde
+# «ingen udgivelse har fundet sted endnu» efter 1.29.1 og 1.29.2 var ude, og dagen efter
+# sagde den «Venter paa 1.30» mens 1.30 laa paa npm, i registret, paa GitHub og i butikken.
+# Begge gange stod det offentligt i repoet, og begge gange blev det fundet i haanden.
+#
+# Reglen hviler IKKE paa ordet: den finder et versionsnummer paa en linje der venter, og
+# sammenligner det med den version manifestet faktisk baerer. Et omdoebt afsnit aendrer
+# ingenting - tallet er det baerende. (Huset 7/9: et ord kan ikke baere en regel.)
+VENTE_ORD = re.compile(r'(venter p[aå]|waiting (?:for|on)|kommer i|ships? in|lands? in)\s+v?(\d+\.\d+(?:\.\d+)?)', re.I)
+_manifest = open(os.path.join(ROOT, 'extension', 'manifest.json'), encoding='utf-8').read()
+UDGIVET = tuple(int(x) for x in re.search(r'"version"\s*:\s*"([\d.]+)"', _manifest).group(1).split('.'))
+
+def _ver(t):
+    d = [int(x) for x in t.split('.')]
+    while len(d) < 3: d.append(0)
+    return tuple(d)
+
+for doc in ['WISHLIST.md', 'README.md', 'CHANGELOG.md', 'llms-install.md',
+            os.path.join('docs', 'CWS_LISTING_TEXT.md')]:
+    sti = os.path.join(ROOT, doc)
+    if not os.path.exists(sti):
+        continue
+    for nr, linje in enumerate(open(sti, encoding='utf-8'), 1):
+        if 'Rettet' in linje or 'foraeldet' in linje or 'forældet' in linje:
+            continue  # en linje der selv siger den er foraeldet, er ikke en paastand
+        m = VENTE_ORD.search(linje)
+        if m and _ver(m.group(2)) <= UDGIVET:
+            fail('%s:%d venter paa %s, men %s er udgivet: "%s"'
+                 % (doc, nr, m.group(2), '.'.join(str(x) for x in UDGIVET), linje.strip()[:90]))
+
 # -----------------------------------------------------------------------------
 if fails:
     print('DOCS GATE: %d failure(s)' % len(fails))
