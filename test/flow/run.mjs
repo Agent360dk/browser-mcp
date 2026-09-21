@@ -244,6 +244,41 @@ try {
   }
   console.log(' forbundet.\n');
 
+  // ── Eget vindue paa en anden skaerm ────────────────────────────────────────
+  // ⛔ Gustav har sagt tre gange paa to dage at proeve-koersler ikke maa tage skaermen. Det
+  // er ikke pedanteri: `forrest()` herunder henter fanen frem foer hvert af de 12 vaerktoejer
+  // der fysisk kraever fokus, og det hopper op foran det mennesket sidder og laver - igen og
+  // igen gennem hele koerslen.
+  //
+  // Hvorfor det ikke bare kan slaas fra: MAALT 19/9, Chrome leverer kun mus og tastatur til
+  // et vindue der har operativsystemets fokus. Ikke til en baggrundsfane, og heller ikke til
+  // et eget vindue UDEN fokus - den hypotese blev falsificeret samme dag. Fokus er ikke til
+  // forhandling; det er HVOR fokus sker der er det.
+  //
+  // Saa: har maskinen mere end én skaerm, saet FLOW_VINDUE_X til venstre kant af en skaerm
+  // mennesket ikke kigger paa (en negativ vaerdi er en skaerm til venstre). Sessionens foerste
+  // fane aabnes i sit eget vindue dér, med fokus, og de foelgende faner lander i samme vindue
+  // fordi det er det sidst fokuserede. Hele koerslen sker paa den skaerm.
+  const VINDUE_X = Number(process.env.FLOW_VINDUE_X);
+  if (Number.isFinite(VINDUE_X)) {
+    const r = await kald('browser_navigate', {
+      url: BASE, new_tab: true, eget_vindue: true, fokuser: true,
+      vindue_x: VINDUE_X, vindue_y: Number(process.env.FLOW_VINDUE_Y) || 27,
+      vindue_bredde: Number(process.env.FLOW_VINDUE_BREDDE) || 1280,
+      vindue_hoejde: Number(process.env.FLOW_VINDUE_HOEJDE) || 900,
+    });
+    // ⚠️ Bekraeft at tilstanden BLEV lavet. Samme faelde som 19/9, hvor Chrome koerte den
+    // gamle udvidelseskode, `eget_vindue` blev ignoreret i stilhed, og maalingen i
+    // virkeligheden foregik i en baggrundsfane - det saa ud som et resultat og var ingenting.
+    if (r?.eget_vindue && r?.fokuseret) {
+      console.log(`Eget vindue paa x=${VINDUE_X} (fokuseret). Koerslen roerer ikke hovedskaermen.\n`);
+    } else {
+      console.log('! FLOW_VINDUE_X var sat, men udvidelsen lavede ikke tilstanden - den koerer '
+                + 'formentlig en aeldre kode. Genindlaes den paa chrome://extensions.\n'
+                + '  Koerslen fortsaetter paa den skaerm den er, saa den TAGER skaermen.\n');
+    }
+  }
+
   console.log('── Navigation & indhold ──');
   await proev('browser_navigate', 'aabner fixture-siden', async () => {
     const r = await kald('browser_navigate', { url: BASE });
