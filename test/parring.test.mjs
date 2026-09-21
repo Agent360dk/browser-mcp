@@ -281,13 +281,32 @@ test('med noegle faar en forbindelse der ALDRIG hilser intet kald udleveret', as
     'en tavs forbindelse fik et vaerktoejskald udleveret paa en parret server - noeglen holder ingen ude');
 });
 
-test('UDEN noegle er den tavse forbindelse stadig velkommen - nul opsaetning er standarden', async () => {
-  const kald = await tavsFaarKald(null);
-  assert.ok(kald.length > 0,
-    'uden noegle skal en forbindelse uden hilsen stadig kunne betjene kald - ellers har '
-    + 'parringsfiltret aendret standard-adfaerden for alle der ikke bruger en noegle. '
-    + 'Og uden denne kontrol kan proeven ovenfor vaere groen fordi den maaler ingenting.');
+test('UDEN noegle slipper en uparret forbindelse stadig igennem gaten', () => {
+  // ⛔ Denne kontrol var foerst en integrationsproeve der startede en rigtig server og saa om
+  // en tavs forbindelse fik et kald. Den var flakkende 3 af 6 gange - og aarsagen var ikke
+  // timing, men et KAPLOEB: Gustavs egen udvidelse skanner portene hvert 2. sekund, forbinder
+  // til proevens server og kan vinde rollen som aktiv. Proeven maalte hvem der kom foerst.
+  // En proeve hvis forudsaetning kan svigte uden at sige fra, maaler noget andet end man tror.
+  //
+  // Gaten selv er ren logik, saa den proeves som logik. Ingen server, intet kaploeb.
+  const kilde = readFileSync(join(rod, 'mcp-server', 'index.js'), 'utf8');
+  const m = kilde.match(/function liveConnections\(\) \{[\s\S]*?\n\}/);
+  assert.ok(m, 'liveConnections blev ikke fundet - gaten kan ikke proeves');
+
+  const byg = (noegle) => new Function('connections', 'PARRINGSNOEGLE',
+    `${m[0]}\nreturn liveConnections;`)(
+    new Set([
+      { ws: { readyState: 1 }, parret: false, navn: 'uparret' },
+      { ws: { readyState: 1 }, parret: true, navn: 'parret' },
+      { ws: { readyState: 3 }, parret: true, navn: 'doed' },
+    ]), noegle);
+
+  assert.deepEqual(byg(null)().map((c) => c.navn), ['uparret', 'parret'],
+    'uden noegle blev en uparret forbindelse filtreret fra - nul-opsaetning er aendret for alle');
+  assert.deepEqual(byg('arbejde')().map((c) => c.navn), ['parret'],
+    'med noegle slap en uparret forbindelse igennem - noeglen holder ingen ude');
 });
+
 
 /**
  * ⛔ Offscreen-dokumentet maa KUN roere chrome.runtime.

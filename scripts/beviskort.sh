@@ -57,6 +57,11 @@ um "om de 40 sider rammer - sitet har ingen analytics"
 um "de 12 vaerktoejer der kraever et vindue med fokus - baggrunds-koerslen springer dem over.
      baggrund:  FLOW_KUN_BAGGRUND=1 npm --prefix mcp-server run flow   (40/40 beroert, 0 fejl 21/9)
      fuld:      npm --prefix mcp-server run flow                        (tager skaermen)
-     anden skaerm: FLOW_VINDUE_X=<venstre kant> npm --prefix mcp-server run flow"
+     ⛔ anden skaerm VIRKER IKKE (maalt 21/9): FLOW_VINDUE_X faar vaerktoejet til at svare
+        eget_vindue:true, fokuseret:true og placeret:{left:-3840} - og vinduet er der ikke.
+        Set efter paa alle tre skaerme mens det koerte: ingen af dem havde det. Det fejler
+        sikkert (menneskets vindue roeres ikke), men fokus-tilstanden kan ikke bruges blindt.
+        De 12 vaerktoejer er derfor UMAALTE indtil nogen koerer den fulde spaerre paa en
+        skaerm der er fri."
 
 exit $FEJL
