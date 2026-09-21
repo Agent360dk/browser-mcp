@@ -2019,9 +2019,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Det kan derfor ikke selv laese parringsnoeglen, og forsoeget paa det gjorde parringen i
   // 1.30.0 ubrugelig for enhver der satte en noegle. Baggrunden har lageret, saa den svarer.
   if (msg.type === 'bmcp_hent_parringsnoegle') {
+    // ⛔ `ok` skelner «lageret svarede, der er ingen noegle» fra «lageret svarede ikke».
+    // Foerste udgave svarede `{ noegle: null }` i BEGGE tilfaelde, og offscreen laeste det som
+    // «ingen noegle sat» - altsaa fail-open: en lagerfejl aabnede browseren for enhver server.
     chrome.storage.local.get('parringsnoegle')
-      .then((v) => sendResponse({ noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
-      .catch(() => sendResponse({ noegle: null }));
+      .then((v) => sendResponse({ ok: true, noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
+      .catch((e) => sendResponse({ ok: false, fejl: String(e && e.message || e) }));
     return true;  // svaret kommer asynkront
   }
   if (msg.type === 'mcp_command') {

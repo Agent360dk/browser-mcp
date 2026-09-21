@@ -49,25 +49,46 @@ const parrede = new WeakSet();
 //
 // Baggrunden har lageret. Den svarer paa en besked, og skubber aendringer hertil. Det er
 // Chromium-udviklernes egen anviste loesning.
+// ⛔ TRE tilstande, ikke to. Foerste udgave havde kun `parringsnoegle = null`, og gaten
+// nedenfor lyder `if (parringsnoegle && ...)`. Kunne noeglen ikke hentes - servicearbejderen
+// sov, lageret fejlede - blev den staaende null, gaten sprang HELT over, og udvidelsen
+// udfoerte kommandoer fra enhver server. Altsaa fail-open i selve adgangskontrollen.
+// Fundet af et modstander-review 21/9, som koerte den aegte fil i en vm hvor begge
+// hentninger fejlede: en uparret server fik `browser_get_cookies` besvaret.
+//
+//   'ukendt' = vi VED det ikke endnu  -> udfoer intet
+//   'ingen'  = lageret svarede: ingen noegle sat -> nul opsaetning, alt som foer
+//   'sat'    = der er en noegle -> kraev kvittering
+let noegleTilstand = 'ukendt';
+
 function saetNoegle(vaerdi) {
   const ny = (typeof vaerdi === 'string' && vaerdi.trim()) || null;
   const skiftet = ny !== parringsnoegle;
   parringsnoegle = ny;
+  noegleTilstand = ny ? 'sat' : 'ingen';
   return skiftet;
 }
 
-chrome.runtime.sendMessage({ type: 'bmcp_hent_parringsnoegle' })
-  .then((svar) => { saetNoegle(svar && svar.noegle); })
-  .catch((e) => {
-    // Naar servicearbejderen sover, fejler foerste besked. Den vaekkes af den, saa et
-    // forsoeg mere raekker - og uden noegle er der alligevel intet at hente.
-    console.warn('[Offscreen] could not read the pairing key:', e?.message || e);
-    setTimeout(() => {
-      chrome.runtime.sendMessage({ type: 'bmcp_hent_parringsnoegle' })
-        .then((svar) => { saetNoegle(svar && svar.noegle); })
-        .catch(() => {});
-    }, 1000);
-  });
+// Bliver ved til vi VED det. En enkelt fejlet hentning maa ikke kunne blive permanent,
+// og den maa slet ikke kunne aabne broen imens.
+let forsoeg = 0;
+function hentNoegle() {
+  chrome.runtime.sendMessage({ type: 'bmcp_hent_parringsnoegle' })
+    .then((svar) => {
+      if (!svar || svar.ok !== true) throw new Error(svar && svar.fejl || 'no answer');
+      saetNoegle(svar.noegle);
+    })
+    .catch((e) => {
+      forsoeg += 1;
+      if (forsoeg <= 12) {
+        // 1s, 2s, 4s ... op til 30s. Tilstanden bliver 'ukendt' imens, saa broen er lukket.
+        setTimeout(hentNoegle, Math.min(1000 * 2 ** (forsoeg - 1), 30000));
+      } else {
+        console.warn('[Offscreen] giving up on the pairing key; commands stay refused:', e?.message || e);
+      }
+    });
+}
+hentNoegle();
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg || msg.type !== 'bmcp_parringsnoegle_aendret') return;
@@ -289,6 +310,12 @@ function tryConnect(port) {
 
     // Er der sat en noegle, udfoeres INTET foer serveren har kvitteret med den. En server
     // uden noegle kvitterer aldrig, og kan derfor ikke styre en parret browser.
+    // ⛔ 'ukendt' behandles som 'sat': vi udfoerer intet foer vi VED om der er en noegle.
+    // Den anden vej rundt er fail-open, og det var praecis fejlen.
+    if (noegleTilstand === 'ukendt') {
+      try { ws.send(JSON.stringify({ id, error: 'The extension has not read its pairing state yet - refusing until it knows. Retrying in the background.' })); } catch (e) { /* lukket */ }
+      return;
+    }
     if (parringsnoegle && !parrede.has(ws)) {
       try { ws.send(JSON.stringify({ id, error: 'This extension is paired with a different server (pairing key).' })); } catch (e) { /* lukket */ }
       return;

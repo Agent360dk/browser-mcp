@@ -142,7 +142,8 @@ test('med den rigtige noegle kommer udvidelsen ind og faar serverens kvittering'
 // ── Udvidelsens side ────────────────────────────────────────────────────────
 
 /** Koerer den aegte offscreen.js med en gemt noegle og rapporterer hvad broen gjorde. */
-function broen(gemtNoegle) {
+function broen(gemtNoegle, noegleSvarFejler = false) {
+  const tilBaggrund = [];
   const sendt = [];
   let lukket = false;
   const ws = {
@@ -168,9 +169,20 @@ function broen(gemtNoegle) {
         id: 'proeve-id',
         getURL: (f) => 'chrome-extension://proeve-id/' + f,
         // Baggrunden svarer paa noegle-hentningen. Alt andet kvitterer bare.
-        sendMessage: async (m) => (m && m.type === 'bmcp_hent_parringsnoegle'
-          ? { noegle: gemtNoegle || null }
-          : { ok: true }),
+        // ⛔ Baggrunden svarer nu `{ ok, noegle }`: `ok:false` betyder «kunne ikke laese
+        // lageret», og offscreen skal da holde broen LUKKET i stedet for at laese det som
+        // «ingen noegle». Selen skal derfor svare i samme form, ellers proever den en
+        // kontrakt der ikke findes.
+        sendMessage: async (m) => {
+          // ⛔ Kommandoer til baggrunden optages HER. `sendt` er ws-beskeder til serveren, og
+          // en `mcp_command` optraeder aldrig der - en paastand om `sendt` kan derfor ikke
+          // fejle, uanset hvad udvidelsen goer. (Den fejl blev skrevet og fanget 21/9.)
+          tilBaggrund.push(m);
+          if (m && m.type === 'bmcp_hent_parringsnoegle') {
+            return noegleSvarFejler ? { ok: false, fejl: 'proeve' } : { ok: true, noegle: gemtNoegle || null };
+          }
+          return { ok: true };
+        },
         onMessage: { addListener: (f) => lyttere.push(f) },
       },
     },
@@ -179,7 +191,7 @@ function broen(gemtNoegle) {
   createContext(ctx);
   runInContext(readFileSync(join(rod, 'extension/offscreen.js'), 'utf8'), ctx, { filename: 'offscreen.js' });
   return {
-    ctx, ws, sendt, lyttere,
+    ctx, ws, sendt, lyttere, tilBaggrund,
     erLukket: () => lukket,
     aabn: async () => { ws.readyState = 1; await ws.onopen(); },
     modtag: async (o) => { await ws.onmessage({ data: JSON.stringify(o) }); },
@@ -462,4 +474,48 @@ test('en fremmed forbindelse kan ikke besvare en andens kommando', async () => {
       + 'paa data der aldrig kom fra browseren');
     try { aegte.close(); fremmed.close(); } catch { /* lukket */ }
   } finally { s.proces.kill(); }
+});
+
+/**
+ * ⛔ CRITICAL, fundet af et modstander-review 21/9: parringen var FAIL-OPEN i udvidelsen.
+ *
+ * Gaten lyder `if (parringsnoegle && !parrede.has(ws))`. Kunne noeglen ikke hentes -
+ * servicearbejderen sov, lageret fejlede - blev `parringsnoegle` staaende null, gaten sprang
+ * HELT over, og udvidelsen udfoerte kommandoer fra enhver server. Reviewet koerte den aegte
+ * offscreen.js i en vm hvor begge hentninger fejlede, og en uparret server fik
+ * `browser_get_cookies` besvaret.
+ *
+ * Og baggrunden svarede `{ noegle: null }` baade naar der INTET var sat og naar lageret
+ * fejlede - saa en fejl kunne ikke skelnes fra et fravaer. To fejl der forstaerkede hinanden.
+ *
+ * Reglen er nu: udfoer intet foer tilstanden er KENDT.
+ */
+test('kan noeglen ikke hentes, udfoerer udvidelsen INTET - ikke alt', async () => {
+  const b = broen('arbejde', true);   // brugeren HAR sat en noegle; hentningen fejler
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  // En server der aldrig kvitterer med en noegle sender en kommando.
+  await b.modtag({ id: 1, method: 'get_cookies', params: {} });
+  await pust();
+
+  const udfoert = b.tilBaggrund.filter((m) => m && m.type === 'mcp_command');
+  assert.deepEqual(udfoert, [],
+    'udvidelsen udfoerte en kommando fra en uparret server, fordi den ikke kunne laese sin '
+    + 'egen noegle. Det er fail-open i selve adgangskontrollen');
+
+  const svar = b.sendt.filter((m) => m && m.error);
+  assert.ok(svar.length > 0, 'den skal sige HVORFOR den naegter, ikke bare tie');
+});
+
+test('svarer lageret at der ingen noegle er, er alt som foer - nul opsaetning bevares', async () => {
+  const b = broen(null);   // lageret svarer: ingen noegle
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  await b.modtag({ id: 1, method: 'get_cookies', params: {} });
+  await pust();
+  assert.ok(b.tilBaggrund.some((m) => m && m.type === 'mcp_command'),
+    'uden noegle skal kommandoer udfoeres som altid - ellers har rettelsen lukket for alle '
+    + 'dem der ikke bruger parring');
 });
