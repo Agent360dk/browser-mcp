@@ -4,6 +4,41 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.30.1 (unreleased)
+
+**Pairing did not work, in either direction. This release is that, and little else.**
+
+1.30.0 shipped an optional pairing key so one Chrome profile takes commands from one server.
+Both halves of the promise were false, and two consultant models reading the code found it -
+not our tests, which had been written against a harness more generous than Chrome.
+
+- **The extension could never read its own key.** It looked in `chrome.storage`, and an
+  offscreen document only has `chrome.runtime`. The lookup threw, the error was swallowed, and
+  the handshake went out empty - so anyone who followed the popup's own instruction was locked
+  out for good. The service worker now reads the key and passes it over messaging, which is the
+  documented way.
+- **The key kept nobody out.** It was checked inside the `hello` branch only, so a program that
+  connected and never said hello skipped the check and could be served tool calls. The gate now
+  sits where every path goes through it.
+- **And a connection could answer a command it was never sent.** Replies were matched on the
+  command id alone, and ids count from 1, so an unpaired socket could guess one and return a
+  forged result - worse than receiving the command, because the agent then acts on data that
+  never came from the browser. Each pending command is now bound to the connection it went to.
+
+**`eget_vindue` reported what it was asked for.** It answered `fokuseret: true` when Chrome had
+refused focus, and gave back the coordinates we requested rather than where the window landed.
+It is the one feature whose job is to keep a test run off the user's screen, so the echo read as
+permission to continue. The reply now carries the measured position, what was asked for, whether
+they match, and a warning when they do not.
+
+**Also:** a controlled `<select>` goes through the prototype's value setter, as five other paths
+in the same file already did. See the retraction on /learn/tools-that-lie - this was a
+precaution, not a fix for a bug we could reproduce in React.
+
+⚠️ **Pairing needs both halves.** The server ships on npm, and npm also refreshes the extension
+in `~/.browser-mcp`. If you installed from the Chrome Web Store, pairing starts working when
+Google approves the new extension - until then, treat it as absent rather than as protection.
+
 ## 1.30.0 (2026-09-20)
 
 ### The agent-facing answers are now in English

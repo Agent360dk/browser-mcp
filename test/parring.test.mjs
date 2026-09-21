@@ -27,10 +27,39 @@ const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const krav = createRequire(join(rod, 'mcp-server', 'index.js'));
 const WebSocket = krav('ws');
 
+/** Et frit portspaend UDEN FOR Gustavs 9876-9895, saa proeven ikke deler pulje med hans chats. */
+async function ledigPort(port) {
+  const { createServer } = await import('node:net');
+  return new Promise((ok) => {
+    const srv = createServer();
+    srv.once('error', () => ok(false));
+    srv.once('listening', () => srv.close(() => ok(true)));
+    srv.listen(port, '127.0.0.1');
+  });
+}
+async function ledigtSpaend(forsoeg = 40) {
+  for (let i = 0; i < forsoeg; i++) {
+    const base = 19100 + Math.floor(Math.random() * 800) * 8;
+    if ((await Promise.all([0, 1, 2, 3, 4].map((n) => ledigPort(base + n)))).every(Boolean)) return base;
+  }
+  throw new Error('fandt intet frit portspaend paa 40 forsoeg');
+}
+const SPAEND = await ledigtSpaend();
+
 /** Starter den aegte server, faar den til at binde en port, og giver porten tilbage. */
 async function serverMedNoegle(noegle) {
   const p = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
-    env: { ...process.env, ...(noegle ? { BROWSER_MCP_TOKEN: noegle } : {}) },
+    // ⛔ MAALT 21/9: uden eget spaend bandt proeven 9876/9877 - Gustavs EGET spaend. Hver
+    // `npm test` tog altsaa pladser i den pulje hans 5-12 chats deler, og hans koerende
+    // udvidelse forbandt til proevens server og blev afvist igen og igen. Er puljen fuld
+    // (maalt 7/9: 37 servere), kaster serveren efter 10 s og seks proever bliver roede paa
+    // uaendret kode.
+    //
+    // BROWSER_MCP_TOKEN nulstilles ogsaa foerst: arves den fra skallen, koerer
+    // «uden noegle»-proeverne i virkeligheden MED noegle og maaler det modsatte af deres navn.
+    env: { ...process.env, BROWSER_MCP_TOKEN: '',
+      BROWSER_MCP_BASE_PORT: String(SPAEND), BROWSER_MCP_MAX_PORT: String(SPAEND + 4),
+      ...(noegle ? { BROWSER_MCP_TOKEN: noegle } : {}) },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   let fejl = '';
