@@ -505,6 +505,21 @@ vaerktoej faar vilkaarlig JS fra agenten. At koere den som `func` ville kraeve
 En reel loesning skal begraense hvad `execute_script` kan udtrykke, og det er en
 produktbeslutning, ikke en rettelse.
 
+**Den ene vej der ikke er skrevet ned her foer (21/9):** `chrome.userScripts` har en
+`USER_SCRIPT`-verden med sin egen, laempeligere CSP, og den er bygget netop til at koere
+kode der kommer ind som en streng. Det er den eneste kendte maade at lukke resten paa uden
+at begraense hvad agenten kan udtrykke.
+
+⚠️ **VURDERET, ikke maalt** - to ting skal efterproeves foer nogen bygger paa det:
+om `userScripts` i Chromes nuvaerende udgave kraever at brugeren selv slaar noget til, og
+om `USER_SCRIPT`-verdenen faktisk tillader det vores vaerktoej har brug for.
+
+⛔ **Og prisen er ikke teknisk.** `userScripts` er en NY tilladelse i manifestet. Vi har
+973 installationer; en ny tilladelse udloeser en advarsel til hver enkelt af dem og et nyt
+butiks-review. At bytte en advarsel til 973 mennesker for et hjoerne-tilfaelde - stram CSP
+OG fejlfinderen optaget samtidig - er Gustavs beslutning, ikke en rettelse nogen tager i
+foribifarten.
+
 ### 3. `browser_fill` saetter vaerdien, men sitet reagerer ikke · **hoej**
 
 Stripes begivenheds-soegefelt viste `Checkout` i feltet og **nul traeffere**. Samme felt
