@@ -44,6 +44,10 @@ function byg() {
   // variable som i produktionen - ikke en kopi.
   const fabrik = new Function('connections', `
     let laastForbindelse = null, harSendtKommando = false;
+    // PARRINGSNOEGLE er ogsaa en modul-konstant i index.js, og liveConnections laeser den.
+    // Den skal erklaeres her, ellers koerer den udtrukne kilde i en scope der ikke findes
+    // i produktionen. null = ingen noegle, som er standarden.
+    const PARRINGSNOEGLE = null;
     ${src}
     return {
       cmpVersion, liveConnections, activeConnection, distinctExtensions,

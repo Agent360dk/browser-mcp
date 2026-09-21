@@ -221,3 +221,56 @@ test('popup\'en kan saette noeglen og viser serverkommandoen', () => {
   assert.match(js, /parringsnoegle/, 'popup\'en gemmer ikke noeglen');
   assert.match(js, /BROWSER_MCP_TOKEN=/, 'popup\'en viser ikke hvordan serveren startes med samme noegle');
 });
+
+/**
+ * ⛔ MAALT 21/9: noeglen holdt INGEN ude.
+ *
+ * De tre proever ovenfor sender alle et `hello`. Noeglen blev kun tjekket INDE i
+ * hello-grenen, saa et program der forbandt og aldrig hilste, sprang tjekket over - og kom
+ * alligevel i betragtning som aktiv forbindelse. Det er praecis det hul parringen blev
+ * bygget for at lukke, og det stod aabent i den udgivne 1.30.0.
+ *
+ * Samme moenster som huset har set fire gange: vagten blev proevet ad den ene vej den blev
+ * bygget til, og tvillingen stod aaben.
+ */
+/**
+ * Forbinder TAVST (ingen hilsen) og bliver hængende, saa et kald der sendes BAGEFTER kan
+ * naa den. Foerste udgave af proeven forbandt efter at kaldet var sendt, og saa kunne den
+ * ikke vise forskellen: begge grene var tomme, og «med noegle»-proeven var groen uanset
+ * rettelsen. Et instrument der svarer nul, proeves foerst mod et kendt-sandt tilfaelde.
+ */
+function tavsForbindelse(port) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' });
+  const modtaget = [];
+  ws.on('message', (d) => { try { modtaget.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
+  ws.on('error', () => {});
+  const klar = new Promise((ok) => ws.on('open', ok));
+  return { ws, modtaget, klar, kald: () => modtaget.filter((m) => typeof m?.method === 'string') };
+}
+
+/** Starter serveren, lader en tavs forbindelse melde sig, og sender FOERST derefter et kald. */
+async function tavsFaarKald(noegle) {
+  const s = await serverMedNoegle(noegle);
+  const t = tavsForbindelse(s.port);
+  try {
+    await t.klar;
+    await new Promise((ok) => setTimeout(ok, 200));
+    s.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
+      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
+    await new Promise((ok) => setTimeout(ok, 2500));
+    return t.kald();
+  } finally { try { t.ws.close(); } catch { /* lukket */ } s.proces.kill(); }
+}
+
+test('med noegle faar en forbindelse der ALDRIG hilser intet kald udleveret', async () => {
+  assert.deepEqual(await tavsFaarKald('arbejde'), [],
+    'en tavs forbindelse fik et vaerktoejskald udleveret paa en parret server - noeglen holder ingen ude');
+});
+
+test('UDEN noegle er den tavse forbindelse stadig velkommen - nul opsaetning er standarden', async () => {
+  const kald = await tavsFaarKald(null);
+  assert.ok(kald.length > 0,
+    'uden noegle skal en forbindelse uden hilsen stadig kunne betjene kald - ellers har '
+    + 'parringsfiltret aendret standard-adfaerden for alle der ikke bruger en noegle. '
+    + 'Og uden denne kontrol kan proeven ovenfor vaere groen fordi den maaler ingenting.');
+});

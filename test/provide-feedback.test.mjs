@@ -58,6 +58,10 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
     'connections', 'PKG_VERSION', 'activePort', 'REPO_URL', 'ISSUE_TEMPLATES', 'npmLatestVersion', 'process',
     'appendFileSync', 'mkdirSync', 'dirname', 'join', 'homedir', 'Date',
     `let laastForbindelse = null, harSendtKommando = false;
+    // PARRINGSNOEGLE er ogsaa en modul-konstant i index.js, og liveConnections laeser den.
+    // Den skal erklaeres her, ellers koerer den udtrukne kilde i en scope der ikke findes
+    // i produktionen. null = ingen noegle, som er standarden.
+    const PARRINGSNOEGLE = null;
      const setteFingeraftryk = new Set();
      const FEEDBACK_LOG = '/attrap/feedback.jsonl';
      ${src}

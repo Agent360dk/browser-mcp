@@ -99,8 +99,19 @@ function advarOmKonflikt(conn) {
   );
 }
 
+// ⛔ MAALT 21/9: uden parringsfiltret her holdt noeglen INGEN ude. Den blev kun tjekket inde
+// i `hello`-grenen, saa et program der forbandt og ALDRIG hilste, sprang tjekket over og kom
+// alligevel i betragtning som aktiv forbindelse. Proevet paa en kopi: server med
+// BROWSER_MCP_TOKEN sat, raa WebSocket med forfalsket Origin, intet hello - og den modtog et
+// list_tabs-kald. Praecis det hul funktionen blev bygget for at lukke.
+//
+// Filtret staar HER og ikke i activeConnection(), fordi alt gaar igennem liveConnections():
+// valget af aktiv, optaellingen af udvidelser, raadgivningen. En gate ét sted daekker dem alle.
+// (Huset 20/9: en vagt der kun proeves ad den ene vej den blev bygget til, daekker kun den vej.)
+//
+// Uden noegle er der ingen aendring: `parret` spoerges kun naar PARRINGSNOEGLE er sat.
 function liveConnections() {
-  return [...connections].filter(c => c.ws.readyState === 1);
+  return [...connections].filter(c => c.ws.readyState === 1 && (!PARRINGSNOEGLE || c.parret === true));
 }
 
 // Valget LAASES for serverens levetid.
@@ -285,7 +296,10 @@ function createWSS(port = BASE_PORT) {
     }
 
     const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
-      harHilst: false, helloId: null, since: Date.now() };
+      harHilst: false, helloId: null, since: Date.now(),
+      // Faktisk parret - saettes foerst naar hilsenen har vist den rigtige noegle.
+      // Uden PARRINGSNOEGLE spoerges feltet aldrig, saa standarden er ligegyldig.
+      parret: false };
     connections.add(conn);
     // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
     // nytilkommen udvidelse maa gerne komme i betragtning igen.
@@ -328,6 +342,7 @@ function createWSS(port = BASE_PORT) {
         }
         // Kvitteringen gaar den anden vej: udvidelsen skal ogsaa kunne se at den taler med
         // SIN server og ikke med et vilkaarligt program der lyttede paa porten foerst.
+        conn.parret = true;
         if (PARRINGSNOEGLE) {
           try { ws.send(JSON.stringify({ type: 'parring', ok: true, noegle: PARRINGSNOEGLE })); } catch { /* lukket */ }
         }
