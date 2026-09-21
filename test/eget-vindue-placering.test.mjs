@@ -17,14 +17,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
-function sele() {
+function sele(landet = null) {
   const set = [];
   const fane = { id: 7, url: 'about:blank', windowId: 3, active: false };
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined,
     'tabs.get': fane, 'tabs.query': [fane], 'tabs.update': undefined,
     'tabs.create': fane, 'windows.update': undefined,
-    'windows.create': (spec) => { set.push(spec); return { id: 99, tabs: [{ ...fane, id: 42 }] }; },
+    // ⛔ 21/9: selen svarede foer et bart { id, tabs } - og Chrome svarer med vinduets
+    // FAKTISKE left/top/focused. Med den fattige sele kunne proeven ikke se at koden
+    // rapporterede det den BAD om i stedet for det der skete. Selen svarer nu som Chrome,
+    // og `landet` kan sættes af den enkelte proeve til noget andet end det der blev bedt om.
+    'windows.create': (spec) => { set.push(spec); return { id: 99, ...(landet ?? spec), tabs: [{ ...fane, id: 42 }] }; },
+    'windows.get': () => ({ id: 99, ...(landet ?? set[set.length - 1] ?? {}) }),
     'tabGroups.update': undefined, 'tabs.group': 5,
   } });
   u.hent('sessions').set(9876, { tabIds: new Set(), activeTabId: null, groupId: 5, label: 't', color: 'blue' });
@@ -43,7 +48,10 @@ test('vindue_x og fokuser naar helt frem til chrome.windows.create', async () =>
   assert.equal(spec.top, 27);
   assert.equal(spec.width, 1200);
   assert.equal(spec.focused, true, 'uden fokus leverer Chrome intet input - maalt 19/9');
+  // ⛔ Svaret skal komme fra Chrome, ikke fra parameteret vi sendte. Her landede vinduet
+  // som bedt, saa de er ens - proeven nedenfor viser forskellen naar de ikke er.
   assert.equal(svar.fokuseret, true);
+  assert.equal(svar.placeret_som_bedt, true);
   // Felt for felt frem for deepEqual: svaret gaar gennem en serialisering, saa objektets
   // prototype er ikke den samme - og deepStrictEqual falder paa netop det, ikke paa vaerdierne.
   assert.equal(svar.placeret.left, -3840);
@@ -64,4 +72,33 @@ test('et tal der ikke er et tal sendes ikke videre som position', async () => {
   const { u, set } = sele();
   await naviger(u, { eget_vindue: true, vindue_x: 'venstre' });
   assert.equal('left' in set[0], false, 'en ugyldig position skal udelades, ikke sendes til Chrome');
+});
+
+/**
+ * ⛔ MAALT 21/9 mod rigtig Chrome: vaerktoejet svarede `fokuseret: true` fordi det ekkoede
+ * parameteret - og Chrome havde IKKE givet vinduet fokus. Det svarede ogsaa
+ * `placeret: {left:-3840}` fordi det ekkoede det vi bad om.
+ *
+ * Det er praecis den fejlklasse /learn/tools-that-lie handler om - «rapporterede de tal den
+ * blev SPURGT om» - og den ramte den ene funktion der findes for at holde koersler vaek fra
+ * menneskets skaerm. En koersel kunne tro den laa paa en anden skaerm og i virkeligheden
+ * ligge hvor som helst.
+ *
+ * De to proever herunder er de eneste der kan skelne et ekko fra en maaling.
+ */
+test('svaret kommer fra Chrome, ikke fra parameteret - fokus der blev naegtet meldes som naegtet', async () => {
+  const { u } = sele({ left: -3840, top: 27, focused: false });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: -3840, vindue_y: 27 });
+  assert.equal(svar.fokuseret, false,
+    'vi bad om fokus, Chrome gav det ikke - og vaerktoejet sagde ja. Det er et ekko, ikke en maaling');
+});
+
+test('landede vinduet et andet sted end der blev bedt om, siges det - med en advarsel', async () => {
+  const { u } = sele({ left: 0, top: 0, focused: true });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: -3840, vindue_y: 27 });
+  assert.equal(svar.placeret.left, 0, 'svaret viser ikke hvor vinduet FAKTISK landede');
+  assert.equal(svar.bedt_om.left, -3840, 'svaret viser ikke hvad der blev bedt om, saa forskellen kan ses');
+  assert.equal(svar.placeret_som_bedt, false);
+  assert.match(String(svar.advarsel), /Do not assume the run is off the user's screen/,
+    'et vindue der landede et andet sted skal advare - ellers koerer spaerren blindt paa menneskets skaerm');
 });

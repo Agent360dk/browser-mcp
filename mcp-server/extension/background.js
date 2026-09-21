@@ -3211,11 +3211,36 @@ async function dispatch(port, method, params) {
           await addTabToSession(port, tab.id);
           getSession(port).activeTabId = tab.id;
           persistSessions();
+
+          // ⛔ MAALT 21/9 mod rigtig Chrome: her stod `placeret: { left: spec.left }` og
+          // `fokuseret: !!params.fokuser` - altsaa det der blev BEDT om, ikke det der skete.
+          // Vaerktoejet svarede fokuseret:true, og Chrome havde ikke givet vinduet fokus.
+          //
+          // Det er praecis den fejlklasse /learn/tools-that-lie handler om - «rapporterede de
+          // tal den blev SPURGT om» - og den ramte den ene funktion der findes for at holde
+          // koersler vaek fra menneskets skaerm. En koersel kunne tro den laa et andet sted.
+          //
+          // Vinduet laeses nu tilbage fra Chrome, og svaret siger om det landede som bedt.
+          let faktisk = vindue;
+          try { faktisk = await chrome.windows.get(vindue.id); } catch (e) { /* beholder create-svaret */ }
+          const bedtOm = { left: spec.left ?? null, top: spec.top ?? null };
+          const landede = {
+            left: Number.isFinite(faktisk?.left) ? faktisk.left : null,
+            top: Number.isFinite(faktisk?.top) ? faktisk.top : null,
+          };
+          const somBedt = (bedtOm.left == null || bedtOm.left === landede.left)
+            && (bedtOm.top == null || bedtOm.top === landede.top);
           return { ok: true, url: params.url, tabId: tab.id, windowId: vindue.id,
-            eget_vindue: true, fokuseret: !!params.fokuser,
-            placeret: spec.left != null || spec.top != null
-              ? { left: spec.left ?? null, top: spec.top ?? null }
-              : null,
+            eget_vindue: true,
+            // Chromes eget svar, ikke parameteret vi sendte.
+            fokuseret: !!faktisk?.focused,
+            placeret: bedtOm.left != null || bedtOm.top != null ? landede : null,
+            placeret_som_bedt: bedtOm.left != null || bedtOm.top != null ? somBedt : null,
+            bedt_om: bedtOm.left != null || bedtOm.top != null ? bedtOm : null,
+            advarsel: (bedtOm.left != null || bedtOm.top != null) && !somBedt
+              ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
+                + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
+              : undefined,
             note: params.fokuser
               ? 'The window has focus, so Chrome delivers input to it. Place it on a display nobody is ' +
                 'looking at (a negative left is a screen to the left) and it does not cover anyone\'s work.'
