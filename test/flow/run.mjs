@@ -112,7 +112,7 @@ const rpc = (method, params, ms = 60000) => new Promise((res, rej) => {
 const kald = async (navn, args = {}, ms) => {
   // Fokus hentes kun her, og kun for de vaerktoejer Chrome naegter at levere til en
   // baggrundsfane. De oevrige ~38 proever roerer aldrig Gustavs skaerm.
-  if (KRAEVER_FOKUS.has(navn)) await forrest();
+  if (KRAEVER_FOKUS.has(navn) && !KUN_BAGGRUND) await forrest();
   const r = await rpc('tools/call', { name: navn, arguments: args }, ms);
   const tekst = r.result?.content?.map(c => c.text ?? `<${c.type}>`).join('\n') ?? '';
   if (r.result?.isError) throw new Error(tekst.slice(0, 300));
@@ -187,6 +187,9 @@ const KRAEVER_FOKUS = new Set([
   'browser_set_combobox', 'browser_drop_file', 'browser_upload_file', 'browser_dismiss_overlays',
 ]);
 
+// Saettes til 1 naar koerslen ikke maa roere menneskets skaerm. Se `proev` for hvorfor.
+const KUN_BAGGRUND = process.env.FLOW_KUN_BAGGRUND === '1';
+
 const forrest = async () => {
   if (fokusFane == null) return;
   await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } })
@@ -201,6 +204,20 @@ const forrest = async () => {
 // ── rapportering ────────────────────────────────────────────────────────────
 const resultat = new Map();
 async function proev(vaerktoej, beskrivelse, fn) {
+  // ── Baggrunds-tilstand ────────────────────────────────────────────────────
+  // Browser MCP koerer i baggrunden som standard. Det er ikke en indstilling, det er
+  // produktets hele idé: af de ~52 proever er det kun de 12 herunder der fysisk kraever et
+  // vindue med fokus, fordi Chrome ikke leverer mus og tastatur andre steder (maalt 19/9).
+  // Resten virker fint i en fane ingen kigger paa.
+  //
+  // ⛔ Indtil i dag tog HELE koerslen skaermen, fordi den blandede de to slags. Gustav sagde
+  // det tre gange paa to dage. `FLOW_KUN_BAGGRUND=1` koerer det produktet kan i baggrunden,
+  // og springer de tolv over med deres grund - praecis som vaerktoejerne selv svarer naar de
+  // rammer den graense. En spaerre der opfoerer sig som produktet, maaler produktet.
+  if (KUN_BAGGRUND && KRAEVER_FOKUS.has(vaerktoej)) {
+    spring(vaerktoej, 'kraever et vindue med fokus - Chrome leverer ikke input til andet (maalt 19/9)');
+    return;
+  }
   const t0 = Date.now();
   try {
     await fn();
@@ -695,6 +712,15 @@ try {
 
   console.log('\n' + '='.repeat(72));
   console.log(`DAEKNING: ${vaerktoejer.length}/${alle.length} vaerktoejer beroert · ${ok} OK · ${fejl.length} FEJL · ${sprunget} SPRUNGET`);
+  if (KUN_BAGGRUND) {
+    // ⛔ Siges hoejt, ikke gemt i en sum. En koersel der daekker mindre end den plejer,
+    // maa aldrig kunne forveksles med en fuld koersel - det er hele forskellen paa
+    // 'groen' og 'groen paa det vi maalte'.
+    console.log(`  ⃝ BAGGRUNDS-TILSTAND: de ${KRAEVER_FOKUS.size} vaerktoejer der kraever et vindue med`);
+    console.log('    fokus er IKKE afproevet. Chrome leverer ikke mus og tastatur til andet end');
+    console.log('    det vindue der har fokus (maalt 19/9), saa de kan ikke daekkes uden at tage');
+    console.log('    skaermen. Koer uden FLOW_KUN_BAGGRUND naar der er en skaerm fri.');
+  }
   if (udaekket.length) console.log(`UDAEKKET: ${udaekket.join(', ')}`);
   if (fejl.length) {
     console.log('\nFEJL:');

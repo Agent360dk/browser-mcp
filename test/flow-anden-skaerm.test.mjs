@@ -43,6 +43,16 @@ test('koerslen bekraefter at tilstanden BLEV lavet, og siger til hvis ikke', () 
     'naar tilstanden IKKE blev lavet, skal koerslen sige hoejt at den nu tager skaermen');
 });
 
+test('baggrunds-tilstand springer de fokus-kraevende over i STEDET for at tage skaermen', () => {
+  assert.match(kilde, /FLOW_KUN_BAGGRUND/, 'tilstanden findes ikke');
+  assert.match(kilde, /KRAEVER_FOKUS\.has\(navn\) && !KUN_BAGGRUND/,
+    'forrest() kaldes stadig i baggrunds-tilstand - saa tager koerslen skaermen alligevel');
+  assert.match(kilde, /if \(KUN_BAGGRUND && KRAEVER_FOKUS\.has\(vaerktoej\)\)[\s\S]{0,200}spring\(/,
+    'de fokus-kraevende proever springes ikke over - de ville fejle og se ud som en regression');
+  assert.match(kilde, /BAGGRUNDS-TILSTAND/,
+    'rapporten siger ikke at daekningen er mindre - en halv koersel maa aldrig ligne en hel');
+});
+
 test('Number.isFinite bruges, saa en tom variabel ikke bliver til x=0', () => {
   const i = kilde.indexOf('const VINDUE_X');
   const blok = kilde.slice(i, i + 220);
