@@ -183,7 +183,13 @@ at undvære, ikke efter nummer.
 - [ ] **`browser_fill` føjer til i stedet for at erstatte** (allerede noteret) - men her kostede
   det to ekstra runder, fordi feltet så indeholdt adressen to gange. Forslag: ryd feltet som
   standard, med `append: true` som tilvalg.
-- [ ] **React-styrede `<select>` kan slet ikke drives - fem metoder proevet, alle fejlede.**
+- [ ] **React-styrede `<select>` kan ikke drives i 1.30.0 - rettet paa `main`, ikke udgivet.**
+  ⚠️ **Opdateret 21/9:** aarsagen er fundet, og den er én linje. En styret komponent laegger en
+  value-saetter paa *instansen* der ruller en naiv tildeling tilbage, saa `sel.value = x` skrev
+  den gamle vaerdi igen. Prototypens saetter gaar uden om instansen. Fem andre steder i samme
+  fil gjorde det allerede saadan - `select_option` var det ene sted uden grebet. Rettelsen ligger
+  paa `main`; den er **ikke** i 1.30.0, som er det man kan installere i dag. Punktet flyttes til
+  ✅ naar en udgivelse baerer den, ikke foer.
   Maalt 1/9 paa forbrugeragenten.dk's penge-tilbage-formular. Proevet: `browser_select_option`
   (svarer `ok:true` med rigtig vaerdi - men React's `onChange` fyrer aldrig), native
   value-setter + `dispatchEvent('change')`, samme plus nulstilling af `_valueTracker`,
@@ -201,24 +207,24 @@ at undvære, ikke efter nummer.
   sender videre til app-domænet; værktøjet venter på den URL man bad om, og opgiver.
   Navigationen LYKKES - svaret lyver. Forslag: løs op ved første `load`, uanset slut-URL.
 
-- [ ] **#1 · Udrul `switch_tab`-vinduesfokus** - FIXET ER SKREVET og testet (3 mutationer,
+- [ ] **#G1 · Udrul `switch_tab`-vinduesfokus** - FIXET ER SKREVET og testet (3 mutationer,
       alle fanget). Ligger i `extension/background.js` i dev-checkout. Den kørende kopi er
       `~/Downloads/browser-mcp-AKTIV/background.js` og har det IKKE. Kræver kopiering +
       genindlæsning i `chrome://extensions`. **Højest værdi: uden den læses Google-apps
       halvt renderede, og der drages forkerte konklusioner af dem.**
-- [ ] **#4 · `fill` erstatter ikke, den tilføjer** - brug native value-setter, eller gør
+- [ ] **#G4 · `fill` erstatter ikke, den tilføjer** - brug native value-setter, eller gør
       `append: true` til et eksplicit tilvalg. Nuværende adfærd er næsten aldrig den ønskede.
-- [ ] **#2 + #5 · Angular Material-checkboxes** - host-elementet reagerer ikke; det indre
+- [ ] **#G2 + #G5 · Angular Material-checkboxes** - host-elementet reagerer ikke; det indre
       element varierer mellem Googles egne tabeller (`.particle-ripple-container` vs
       `.mat-checkbox-container`). En løsning bør prøve det inderste klikbare barn generelt.
-- [ ] **#7 · Sessioner er isolerede uden vej imellem** - `list_tabs` viser kun egen session,
+- [ ] **#G7 · Sessioner er isolerede uden vej imellem** - `list_tabs` viser kun egen session,
       `switch_tab` afviser på tværs, og der er intet `list_sessions`. Kostede en opgave 30/8
       fordi det nødvendige login lå i den anden session.
-- [ ] **#6 · Vandret klipning måles ikke** - elementer uden for viewporten får gyldige
+- [ ] **#G6 · Vandret klipning måles ikke** - elementer uden for viewporten får gyldige
       koordinater, klikket sendes i blinde. Scroll ind, eller returnér `offscreen: true`.
-- [ ] **#8 · Googles Closure-formularer** - ingen kendt løsning. Værd at dokumentere som
+- [ ] **#G8 · Googles Closure-formularer** - ingen kendt løsning. Værd at dokumentere som
       kendt grænse, så man stopper i stedet for at bruge tredive kald.
-- [ ] **#3 · Trusted Types i iframes** - laveste prioritet, veldokumenteret grænse.
+- [ ] **#G3 · Trusted Types i iframes** - laveste prioritet, veldokumenteret grænse.
 
 ---
 
@@ -227,7 +233,7 @@ at undvære, ikke efter nummer.
 Tre huller fundet under en rigtig opgave - annoncørverificering, konverterings-opsætning
 og pausering af en kampagne. Alle tre kostede tid, og det første kostede en fejldiagnose.
 
-### 1. `switch_tab` fokuserer ikke VINDUET - diagnosen, ikke symptomet · **hoej** · FIX SKREVET
+### G1. `switch_tab` fokuserer ikke VINDUET - diagnosen, ikke symptomet · **hoej** · FIX SKREVET
 
 Symptomet blev beskrevet her i maaneder som "klik lander ikke naar fanen er skjult".
 Det var ikke aarsagen. 31/8-2026 blev den fundet i koden:
@@ -287,7 +293,7 @@ Uden `landed`-flaget ville det have lignet at npm's side var i stykker.
 sige eksplicit naar kun fallbacken fyrede, fx `user_activation: false`, saa kalderen
 ved at user-activation-gated API'er ikke vil virke.
 
-### 2. Angular Material-checkboxes kan ikke markeres · **høj**
+### G2. Angular Material-checkboxes kan ikke markeres · **høj**
 
 Google Ads' kampagnetabel bruger `<mat-checkbox role="checkbox">` uden `<input>`.
 Den reagerer **hverken** på trusted klik på host-elementet (`landed: true`, men
@@ -300,7 +306,7 @@ til spilde før det blev fundet - pausering af en kampagne var reelt umulig imen
 **Forslag:** når `click` rammer en `[role=checkbox]`/`[role=switch]` og `aria-checked`
 ikke ændrer sig, så prøv automatisk det inderste klikbare barn og rapportér hvad der virkede.
 
-### 3. Trusted Types blokerer `execute_script` i iframes · **lav**
+### G3. Trusted Types blokerer `execute_script` i iframes · **lav**
 
 `payments.google.com`-iframen (annoncørverificering) afviser al JS-evaluering:
 *"Evaluating a string as JavaScript violates this document's Trusted Type assignment
@@ -313,7 +319,7 @@ Kun læsning af DOM'en kræver skærmbillede.
 execute_script på denne frame", frem for den rå Trusted-Types-besked.
 
 
-### 4. `fill` tilfoejer i stedet for at erstatte · **hoej**
+### G4. `fill` tilfoejer i stedet for at erstatte · **hoej**
 
 `browser_fill` paa et felt der allerede har tekst giver begge dele. Konkret ramt to
 gange 22/8: feltet indeholdt "Indsend kundeformular", jeg fyldte "Formular udfyldt
@@ -329,7 +335,7 @@ s.call(input, ''); input.dispatchEvent(new Event('input', {bubbles:true}));
 **Forslag:** ryd feltet foer der skrives, eller tilfoej `append: true` som
 eksplicit tilvalg. Den nuvaerende adfaerd er naesten aldrig den oenskede.
 
-### 5. Checkbox-varianter · **middel**
+### G5. Checkbox-varianter · **middel**
 
 Punkt 2 ovenfor loeses ved at klikke det indre element - men hvilket indre element
 varierer mellem Googles egne tabeller:
@@ -348,7 +354,7 @@ raekkerne er "standardmaal paa kontoniveau". Det er ikke en browser-mcp-fejl, me
 det er vaerd at vide at en markeret raekke ikke altid kan redigeres.
 
 
-### 6. Vandret klipning maales ikke · **lav**
+### G6. Vandret klipning maales ikke · **lav**
 
 Samme session: et element laa paa `x: 3523` i et vindue paa `vw: 3420` - altsaa
 uden for skaermen til hoejre. `resolveElement` gav gyldige koordinater, og klikket
@@ -360,7 +366,7 @@ ind (inkl. vandret, og i alle scrollende forfaedre) foer klikket - eller return�
 en distinkt fejl `offscreen: true` i stedet for at klikke i blinde.
 
 
-### 7. Sessioner er isolerede - og der er ingen vej imellem dem · **middel**
+### G7. Sessioner er isolerede - og der er ingen vej imellem dem · **middel**
 
 Fundet 30/8. `browser_list_tabs` viste en tom liste i session "Claude 2", mens en
 tidligere del af samme opgave havde arbejdet i session "Claude 1" med et logget-ind
@@ -378,7 +384,7 @@ fanerne i ALLE sessioner (med session-navn) saa man i det mindste kan se at det 
 skal bruge findes et andet sted.
 
 
-### 8. Googles Closure-formularer kan ikke betjenes · **hoej**
+### G8. Googles Closure-formularer kan ikke betjenes · **hoej**
 
 Fundet 31/8 i Search Console (`search.google.com/search-console/welcome`). Feltet
 til webadresse kan fyldes ad ALLE veje - native value-setter + input/change,
@@ -406,7 +412,7 @@ _Last updated: 2026-08-22 · Maintained by [@Agent360dk](https://github.com/Agen
 
 ## Målt mod npm-udgivelse (30/8-2026)
 
-### 7. `navigate` deler 30-sekunders budget med alt andet · **hoej**
+### N7. `navigate` deler 30-sekunders budget med alt andet · **hoej**
 
 `index.js` giver `ask_user`, `solve_captcha` og `extract_list` deres egne budgetter.
 Alt andet - inklusive `navigate` - faar 30000 ms.
@@ -425,7 +431,7 @@ i stedet for "den var 400 ms for langsom".
 **Forslag:** giv `navigate` sit eget budget (60-90 sek), eller lad kalderen saette det.
 Og naar den timer ud: naevn antallet af aabne faner i fejlen, saa aarsagen er synlig.
 
-### 8. `list_tabs` kan ikke se ud over sin egen session - og tier om det · **middel**
+### N8. `list_tabs` kan ikke se ud over sin egen session - og tier om det · **middel**
 
 `browser_list_tabs` har `inputSchema: { properties: {} }`. Et `{ all: true }` bliver
 **tavst ignoreret** og svaret er `{"tabs": []}` for en frisk session.
@@ -440,7 +446,7 @@ browseren. Maalingen viste 84 fremmede faner og 2 af mine.
 **Forslag:** enten et `all: true` der faktisk virker (eller en `browser_diagnose`), ELLER
 en fejl ved ukendte parametre. Et tavst ignoreret flag er vaerre end ingen flag.
 
-### 9. Bar tekst som selektor giver "Element not found" · **lav**
+### N9. Bar tekst som selektor giver "Element not found" · **lav**
 
 `browser_click { selector: "Use security key" }` -> `Element not found`.
 Knappen fandtes, med praecis den `innerText`.
@@ -452,7 +458,7 @@ Dokumentationen er korrekt; fejlbeskeden er det ikke.
 **Forslag:** ser selektoren ud som fritekst (mellemrum, ingen CSS-tegn), saa sig
 "ugyldig CSS-selektor - mente du `text=Use security key`?" i stedet for "Element not found".
 
-### 10. To-faktor kan ikke automatiseres - og skal ikke kunne · **ikke en fejl**
+### N10. To-faktor kan ikke automatiseres - og skal ikke kunne · **ikke en fejl**
 
 Skrevet ned saa ingen bruger tid paa det igen.
 
@@ -469,7 +475,7 @@ skal trykke paa.
 Fire fejl ramt paa én opgave: opret en begraenset API-noegle og et webhook-endepunkt.
 Opgaven lykkedes halvt. Det der stoppede den, var vaerktoejet, ikke sitet.
 
-### 1. Fejlfinderen kan ikke haefte sig paa - og fallback siger "ok" alligevel · **hoej**
+### S1. Fejlfinderen kan ikke haefte sig paa - og fallback siger "ok" alligevel · **hoej**
 
 `Debugger attach failed after 3 attempts ... attach resolved but Chrome shows tab not attached`
 paa hvert `browser_click`, `browser_screenshot` og `browser_press_key` i over en time.
@@ -485,7 +491,7 @@ Et klik der ikke virker, maa ikke svare ok.
 (`BROWSER_MCP_EXTENSION_ID=<id>`); (b) lad fallback-klik verificere en virkning
 (DOM-aendring, navigation, fokus) og ellers svare `ok: false, grund: "ingen virkning"`.
 
-### 2. `browser_execute_script` doer paa CSP-straenge sites · **hoej**
+### S2. `browser_execute_script` doer paa CSP-straenge sites · **hoej**
 
 Stripe saetter `script-src` uden `unsafe-eval`. Baade ISOLATED og MAIN fejler med
 *"Evaluating a string as JavaScript violates the following Content Security Policy"*.
@@ -523,7 +529,7 @@ butiks-review. At bytte en advarsel til 973 mennesker for et hjoerne-tilfaelde -
 OG fejlfinderen optaget samtidig - er Gustavs beslutning, ikke en rettelse nogen tager i
 foribifarten.
 
-### 3. `browser_fill` saetter vaerdien, men sitet reagerer ikke · **hoej**
+### S3. `browser_fill` saetter vaerdien, men sitet reagerer ikke · **hoej**
 
 Stripes begivenheds-soegefelt viste `Checkout` i feltet og **nul traeffere**. Samme felt
 filtrerer fint naar et menneske taster. Vaerdien saettes aabenbart uden den haendelses-kaede
@@ -532,7 +538,7 @@ React lytter paa (`keydown`/`keypress`/`input` med rigtig `inputType`, `keyup`).
 **Forslag:** en `browser_type`, der sender aegte tastetryk tegn for tegn via fejlfinderen,
 og lad `browser_fill` falde tilbage til den paa felter hvor intet aendrer sig bagefter.
 
-### 4. `browser_get_page_content { format: "html" }` sprænger token-loftet · **mellem**
+### S4. `browser_get_page_content { format: "html" }` sprænger token-loftet · **mellem**
 
 En almindelig indstillingsside gav 1.042.782 tegn og blev skrevet til disk. For at finde
 ÉN raekkes knap skulle hele siden hentes, gemmes og grep'es tre gange.

@@ -270,6 +270,11 @@ for md in sorted(glob.glob(os.path.join(ROOT, 'content', '*.md'))):
 # ingenting - tallet er det baerende. (Huset 7/9: et ord kan ikke baere en regel.)
 VENTE_ORD = re.compile(r'(venter p[aå]|waiting (?:for|on)|kommer i|ships? in|lands? in)\s+v?(\d+\.\d+(?:\.\d+)?)', re.I)
 IKKE_UDGIVET_MAERKE = re.compile(r'ikke udgivet|endnu ikke udgivet|not released|unreleased', re.I)
+# Maerket, saa hoejst nogle faa skilletegn, saa versionen. Vinduet er smalt med vilje:
+# det er naerheden der goer de to ord til ÉT udsagn om den version.
+MAERKE_SAA_VERSION = re.compile(
+    r'(?:ikke udgivet|endnu ikke udgivet|not released|unreleased)'
+    r'[\s\-–:,.]{0,6}v?(\d+\.\d+(?:\.\d+)?)', re.I)
 
 # MAALT 21/9: foerste udgave af reglen herunder sammenlignede versionsnummeret med den
 # manifestet baerer, og kaldte «IKKE UDGIVET - v1.26.0» en loegn. Den linje er SAND:
@@ -312,12 +317,15 @@ for doc in ['WISHLIST.md', 'README.md', 'CHANGELOG.md', 'llms-install.md',
         # Derfor denne: et eksplicit ikke-udgivet-maerke paa en linje der navngiver en
         # version, uanset raekkefoelgen. Tallet er stadig det baerende - maerket vaelger
         # kun linjerne ud. (Huset 7/9: et ord kan ikke baere en regel.)
-        if IKKE_UDGIVET_MAERKE.search(linje):
-            for tal in re.findall(r'v?(\d+\.\d+(?:\.\d+)?)', linje):
-                if tal in UDGIVNE_TAGS:
-                    fail('%s:%d kalder %s ikke-udgivet, men v%s er tagget: "%s"'
-                         % (doc, nr, tal, tal, linje.strip()[:90]))
-                    break
+        # ⛔ Maerket skal staa LIGE FOER versionen. Foerste udgave saa paa hele linjen, og
+        # fyrede dermed paa «kan ikke drives i 1.30.0 - rettet paa main, ikke udgivet», hvor
+        # «ikke udgivet» handler om RETTELSEN og 1.30.0 er korrekt navngivet som udgivet.
+        # Den form vi jager er «IKKE UDGIVET - v1.29.1»: maerket og tallet er det samme udsagn.
+        for m in MAERKE_SAA_VERSION.finditer(linje):
+            if m.group(1) in UDGIVNE_TAGS:
+                fail('%s:%d kalder %s ikke-udgivet, men v%s er tagget: "%s"'
+                     % (doc, nr, m.group(1), m.group(1), linje.strip()[:90]))
+                break
 
 # -----------------------------------------------------------------------------
 if fails:
