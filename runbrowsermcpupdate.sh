@@ -429,6 +429,25 @@ run rsync -a --delete --exclude='.DS_Store' extension/ mcp-server/extension/
 say "sync README.md → mcp-server/README.md (npm landing page)"
 run cp README.md mcp-server/README.md
 
+# 1b2. sync rod-server.json → mcp-server/server.json UD OVER version.
+#      ⛔ MAALT 21/9, og det er den dyreste slags fejl: commit df97154 hed «registret kan nu
+#      vise vores logo» og lagde en `icons`-blok i ROD-server.json. Trin 5b udgiver den ANDEN
+#      fil. Intet synkroniserede dem, saa registret svarede `icons: false` paa 1.30.0 - og
+#      INGEN fremtidig udgivelse ville have rettet det, fordi hver udgivelse ville sende den
+#      samme fil uden blokken. Commit'et saa ud som om arbejdet var gjort.
+#      `version` udelades her: den saettes atomisk i begge filer i trin 1c lige nedenfor.
+say "sync server.json → mcp-server/server.json (posten registret faktisk faar)"
+run python3 -c "
+import json
+rod = json.load(open('server.json'))
+ms  = json.load(open('mcp-server/server.json'))
+beholdt = ms.get('version')
+ms.update({k: v for k, v in rod.items() if k != 'version'})
+if beholdt is not None: ms['version'] = beholdt
+json.dump(ms, open('mcp-server/server.json', 'w'), indent=2, ensure_ascii=False)
+open('mcp-server/server.json', 'a').write('\n')
+"
+
 # 1c. ATOMIC version bump: one node process reads+validates ALL json, then writes
 #     ALL - so a parse error can't leave the tree half-bumped at mixed versions.
 #     NOTE: server.json's version bumpes her, og trin 5b UDGIVER den til MCP-registret.
