@@ -529,7 +529,8 @@ test('kaster lageret, svarer baggrunden ok:false - ikke "ingen noegle"', async (
   const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
   // Chrome afviser med et loefte; er chrome.storage helt vaek, kaster den synkront. Begge
   // former proeves, for koden skal svare det samme aerlige ok:false paa dem begge.
-  const u = indlaesUdvidelse({ svar: { 'storage.local.get': () => Promise.reject(new Error('lager nede')) } });
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': (n) => (n === 'parringsnoegle'
+    ? Promise.reject(new Error('lager nede')) : {}) } });
   const svar = await new Promise((ok) => {
     for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
   });
@@ -540,7 +541,14 @@ test('kaster lageret, svarer baggrunden ok:false - ikke "ingen noegle"', async (
 
 test('kaster lageret SYNKRONT, svarer baggrunden stadig ok:false', async () => {
   const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  const u = indlaesUdvidelse({ svar: { 'storage.local.get': () => { throw new Error('storage findes ikke'); } } });
+  // ⛔ Attrappen maa kun kaste for NOEGLEN. Foerste udgave kastede paa enhver
+  // storage.local.get, ogsaa baggrundens egen session-genskabelse - og den koerer ved
+  // indlaesning uden for min try/catch. Proeven bestod alene og faldt i den samlede suite.
+  // En attrap der er bredere end virkeligheden, maaler noget andet end den siger.
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': (n) => {
+    if (n === 'parringsnoegle') throw new Error('storage findes ikke');
+    return {};
+  } } });
   const svar = await new Promise((ok) => {
     for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
   });

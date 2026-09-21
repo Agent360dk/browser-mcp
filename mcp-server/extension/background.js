@@ -2022,9 +2022,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // ⛔ `ok` skelner «lageret svarede, der er ingen noegle» fra «lageret svarede ikke».
     // Foerste udgave svarede `{ noegle: null }` i BEGGE tilfaelde, og offscreen laeste det som
     // «ingen noegle sat» - altsaa fail-open: en lagerfejl aabnede browseren for enhver server.
-    chrome.storage.local.get('parringsnoegle')
-      .then((v) => sendResponse({ ok: true, noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
-      .catch((e) => sendResponse({ ok: false, fejl: String(e && e.message || e) }));
+    // try/catch OG .catch: Chrome afviser normalt med et loefte, men er `chrome.storage`
+    // slet ikke til stede, kaster opslaget synkront - og et synkront kast her ville lade
+    // sendResponse uden svar, saa offscreen aldrig faar sin tilstand og broen staar lukket
+    // for evigt. Begge veje skal give det samme aerlige ok:false.
+    try {
+      chrome.storage.local.get('parringsnoegle')
+        .then((v) => sendResponse({ ok: true, noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
+        .catch((e) => sendResponse({ ok: false, fejl: String(e && e.message || e) }));
+    } catch (e) {
+      sendResponse({ ok: false, fejl: String(e && e.message || e) });
+    }
     return true;  // svaret kommer asynkront
   }
   if (msg.type === 'mcp_command') {
