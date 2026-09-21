@@ -146,7 +146,20 @@ function caseBlok(kilde, navn) {
   const start = kilde.indexOf(`case '${navn}'`);
   if (start < 0) return '';
   const naeste = kilde.indexOf("\n      case '", start + 10);
-  return kilde.slice(start, naeste > start ? naeste : start + 8000);
+  if (naeste > start) return kilde.slice(start, naeste);
+  // SIDSTE case i switch'en. Her stod `start + 8000`, og det gik i stykker praecis som
+  // kommentaren ovenfor forudsagde: 21/9 blev der skrevet seks linjers kommentar ind i
+  // select_option, rollback-beskeden rykkede til position 7943, og de 300 tegn proeven
+  // laeser efter den faldt UDEN FOR vinduet. Proeven blev roed. Koden fejlede intet.
+  // Graensen er nu switch'ens egen afslutning - foerste linje paa indrykning 4 - saa den
+  // foelger med naar blokken vokser.
+  const slut = kilde.slice(start).search(/\n {4}\}/);
+  if (slut < 0) {
+    throw new Error(
+      `caseBlok('${navn}'): fandt hverken et naeste case eller switch'ens afslutning. ` +
+      'Et fast antal tegn her ville afkorte blokken TAVST og give en groen proeve paa en halv blok.');
+  }
+  return kilde.slice(start, start + slut);
 }
 
 test('select_option kaster ikke resultatet af sit eget valg vaek', () => {

@@ -4418,7 +4418,17 @@ async function dispatch(port, method, params) {
                 available: Array.from(sel.options).map(o => o.text.trim()).slice(0, 25) });
             }
             const foer = ${aftryk};
-            sel.value = opt.value;
+            // MAALT 19/9 i aerligheds-selen: her tabte vi mod Playwright paa et STYRET select.
+            // Grunden var denne ene linje. En styret komponent - React og fixturen begge - laegger
+            // en value-saetter paa INSTANSEN der ruller en naiv tilskrivning tilbage, saa
+            // \`sel.value = x\` skriver den gamle vaerdi igen og komponenten hoerer aldrig noget.
+            // Prototypens saetter gaar uden om instansen og har praecis samme betydning.
+            // ⛔ Vi vidste det allerede: fem andre steder i denne fil saetter vaerdier netop saadan
+            // (linje ~1304, 2280, 2295, 2877, 3807). select_option var det eneste sted uden grebet.
+            // Prototypen hentes fra elementet, ikke fra et globalt navn: udtrykket koeres ogsaa
+            // i kontekster hvor HTMLSelectElement ikke findes, og der skal det falde tilbage - ikke kaste.
+            const saetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(sel) || {}, 'value')?.set;
+            if (saetter) saetter.call(sel, opt.value); else sel.value = opt.value;
             sel.dispatchEvent(new Event('input', { bubbles: true }));
             sel.dispatchEvent(new Event('change', { bubbles: true }));
             return JSON.stringify({ found: true, wanted: opt.value, actual: sel.value, text: opt.text.trim(), foer });
