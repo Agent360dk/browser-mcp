@@ -264,7 +264,14 @@ async function tavsFaarKald(noegle) {
     await new Promise((ok) => setTimeout(ok, 200));
     s.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
       params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
-    await new Promise((ok) => setTimeout(ok, 2500));
+    // ⛔ Vent paa HAENDELSEN, ikke paa et ur. En fast pause paa 2,5 s fejlede 3 af 6 gange
+    // under diskpres: serveren var langsommere om at binde, og proeven maalte foer kaldet var
+    // sendt. En flakkende kontrol-proeve undergraver praecis det den skal sikre.
+    // Den negative sag (med noegle) skal stadig bruge hele fristen, ellers maaler den for
+    // tidligt og er groen uden grund - derfor loeber loekken altid tiden ud naar der intet kommer.
+    for (let i = 0; i < 60 && t.kald().length === 0; i++) {
+      await new Promise((ok) => setTimeout(ok, 100));
+    }
     return t.kald();
   } finally { try { t.ws.close(); } catch { /* lukket */ } s.proces.kill(); }
 }
@@ -307,4 +314,50 @@ test('offscreen.js roerer kun chrome.runtime - alt andet findes ikke der', () =>
   assert.deepEqual(brugt, ['runtime'],
     `offscreen.js roerer ${brugt.join(', ')}. Kun runtime findes i et offscreen-dokument - `
     + 'alt andet kaster, og et slugt kast er praecis hvad der gjorde parringen ubrugelig i 1.30.0.');
+});
+
+/**
+ * ⛔ MAALT 21/9: baggrundens halvdel af noegle-videresendelsen havde INGEN proeve.
+ *
+ * Mutationsbevis paa den foerste udgave: `if (msg.type === 'bmcp_hent_parringsnoegle')` blev
+ * slaaet fra, og NUL proever blev roede. Offscreen-proeverne stubber selv `sendMessage`, saa
+ * de naar aldrig background.js' svar. Halvdelen af en to-filers rettelse er vaerre end ingen:
+ * den ser faerdig ud. (Huset 7/9, samme klasse.)
+ */
+test('baggrunden svarer offscreen med noeglen fra lageret', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': { parringsnoegle: '  arbejde  ' } } });
+  const svar = await new Promise((ok) => {
+    const beholdt = (u.lyttere.get('runtime.onMessage') || [])
+      .map((fn) => fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok))
+      .some((r) => r === true);
+    assert.ok(beholdt, 'ingen lytter beholdt kanalen aaben - svaret kan ikke naa offscreen');
+  });
+  assert.equal(svar.noegle, 'arbejde', 'baggrunden gav ikke noeglen videre (mellemrum skal trimmes)');
+});
+
+test('uden gemt noegle svarer baggrunden null - ikke undefined', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': {} } });
+  const svar = await new Promise((ok) => {
+    for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
+  });
+  assert.equal(svar.noegle, null, 'et tomt lager skal give null, saa offscreen ikke cacher undefined');
+});
+
+test('en aendret noegle skubbes videre til offscreen', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  const u = indlaesUdvidelse();
+  await u.fyr('storage.onChanged', { parringsnoegle: { newValue: ' privat ' } }, 'local');
+  const sendt = u.optager.kald.filter((k) => k.args?.[0]?.type === 'bmcp_parringsnoegle_aendret');
+  assert.equal(sendt.length, 1, 'aendringen blev ikke skubbet til offscreen - den gaelder foerst ved genstart');
+  assert.equal(sendt[0].args[0].noegle, 'privat');
+});
+
+test('en aendring i et ANDET lager-felt skubbes ikke', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  const u = indlaesUdvidelse();
+  await u.fyr('storage.onChanged', { sessions: { newValue: {} } }, 'local');
+  const sendt = u.optager.kald.filter((k) => k.args?.[0]?.type === 'bmcp_parringsnoegle_aendret');
+  assert.equal(sendt.length, 0, 'enhver lager-aendring kapper forbindelserne - det er en gate paa alt');
 });
