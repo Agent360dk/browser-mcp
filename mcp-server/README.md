@@ -454,6 +454,36 @@ further than anything we can write. [Leave a review](https://chromewebstore.goog
 if it earned one, and say so honestly if it did not. No signup, no reward, nothing gated
 behind it - we just have no signal at all right now.
 
+## The same idea, for the rest of your Mac
+
+This drives your browser. [Computer MCP](https://computermcp.dev) drives everything
+else on macOS - menus, windows, the Dock, any app's accessibility tree - with the same
+stance: password fields are blacked out in memory before a screenshot is written, writes
+go through a consent gate, and every action lands in an append-only log. It runs in the
+background by default: the tools that could take over your screen are not offered unless
+you ask for them.
+
+`npx @agent360/computer-mcp` · MIT · macOS.
+
+## Privacy
+
+The point of this tool is that your browsing stays in your browser. There is no
+account and no server of ours between you and the page.
+
+- **Page content** - what a tool reads from a tab goes to the MCP client you
+  configured, and nowhere else. We never see it.
+- **Cookies, local storage and tokens** are not copied anywhere by default, and
+  the server keeps no store of its own - but five tools can read them
+  (`browser_get_cookies`, `browser_get_local_storage`, `browser_extract_token`
+  and the two matching setters). When the agent calls one, that value goes to
+  your MCP client like any other tool result. Nowhere else, and never to us.
+- **We collect nothing.** No identifiers, no usage counts, no crash reports, no
+  analytics in the extension or on the site.
+- Everything the server does runs on `localhost` between the extension and the
+  MCP client on the same machine.
+
+Full policy: https://browsermcp.dev/privacy
+
 ## License
 
 MIT - [Agent360](https://agent360.dk)
