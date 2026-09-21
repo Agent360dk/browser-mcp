@@ -574,6 +574,9 @@ try {
     try {
       svar = await kald('browser_ask_user', { message: 'Flowtest - luk denne, der skal ikke svares.', timeout: 8000 }, 30000);
     } catch (e) {
+      // Et baggrunds-spring er ikke et svar fra vaerktoejet - lad det passere, ellers
+      // doemmes et kald der aldrig skete. Se `#usynligt-element` for hvad det koster.
+      if (e?.baggrundSprang) throw e;
       skalVaere(/timeout|timed out|no response/i.test(e.message), `fejlede uden at forklare hvorfor: ${e.message.slice(0, 140)}`);
       const dt = Date.now() - t0;
       skalVaere(dt < 25000, `ventede ${dt} ms paa en frist paa 8000 - fristen holdes ikke`);
@@ -652,7 +655,14 @@ try {
     try {
       const r = await kald('browser_click', { selector: '#usynlig' });
       svar = r.tekst; afvist = r.data?.ok === false || /not visible|hidden/i.test(r.tekst);
-    } catch (e) { afvist = /not visible|hidden/i.test(e.message); svar = e.message; }
+    } catch (e) {
+      // ⛔ Et baggrunds-spring maa ikke slugges her. MAALT 21/9: proeven leder efter ordene
+      // "not visible", og springets besked matcher dem ikke - saa et vaerktoej der ALDRIG
+      // blev kaldt, blev doemt som "klikkede paa et skjult element". Den vaerste slags falsk
+      // roed: den peger paa et vaern der virker.
+      if (e?.baggrundSprang) throw e;
+      afvist = /not visible|hidden/i.test(e.message); svar = e.message;
+    }
     skalVaere(afvist, `et skjult element blev klikket - museklikket landede i sidens hjoerne paa noget andet. Svar: ${svar.slice(0, 160)}`);
   });
 
@@ -698,6 +708,9 @@ try {
     let r;
     try { r = await kald('browser_extract_list', { selector: '.raekke' }, 60000); }
     catch (e) {
+      // Et baggrunds-spring er ikke et svar fra vaerktoejet - lad det passere, ellers
+      // doemmes et kald der aldrig skete. Se `#usynligt-element` for hvad det koster.
+      if (e?.baggrundSprang) throw e;
       skalVaere(/blocks script injection|screenshots/i.test(e.message),
         `fejlede uden at forklare hvorfor: ${e.message.slice(0, 140)}`);
       return;

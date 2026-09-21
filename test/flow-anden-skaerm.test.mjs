@@ -61,6 +61,25 @@ test('baggrunds-tilstand springer de fokus-kraevende over i STEDET for at tage s
     'rapporten siger ikke at daekningen er mindre - en halv koersel maa aldrig ligne en hel');
 });
 
+test('ingen proeve kan sluge et baggrunds-spring i sit eget net', () => {
+  // ⛔ MAALT 21/9: `#usynligt-element` fangede springet i sin egen catch, ledte efter ordene
+  // "not visible", fandt dem ikke - og doemte et vaerktoej der ALDRIG blev kaldt som "klikkede
+  // paa et skjult element". Den vaerste slags falsk roed: den peger paa et vaern der virker.
+  //
+  // Reglen er mekanisk: enhver catch der INSPICERER fejlen (laeser e.message) skal foerst
+  // lade et spring passere. En catch der bare rydder op og kaster videre, er uskadelig.
+  const inspicerende = [...kilde.matchAll(/catch \(e\) \{([\s\S]{0,400}?)\n\s{0,6}\}/g)]
+    // Den yderste fejlhaandtering undtages: den SKAL rapportere alt, ogsaa et spring.
+    .filter(([, krop]) => /e\.message|e\?\.message/.test(krop) && !/harness kastede/.test(krop));
+  assert.ok(inspicerende.length >= 2,
+    `fandt kun ${inspicerende.length} catch-blokke der laeser fejlen - moensteret er aendret, og proeven maaler ikke det den tror`);
+
+  const sluger = inspicerende.filter(([, krop]) => !/baggrundSprang/.test(krop));
+  assert.deepEqual(sluger.map(([m]) => m.slice(0, 70)), [],
+    'en catch laeser fejlbeskeden uden foerst at lade et baggrunds-spring passere - ' +
+    'saa bliver et vaerktoej der aldrig blev kaldt, doemt som en fejl');
+});
+
 test('Number.isFinite bruges, saa en tom variabel ikke bliver til x=0', () => {
   const i = kilde.indexOf('const VINDUE_X');
   const blok = kilde.slice(i, i + 220);
