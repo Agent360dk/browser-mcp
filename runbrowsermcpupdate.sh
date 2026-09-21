@@ -45,6 +45,10 @@ cd "$REPO_ROOT"
 # Beviset for at koden er set koere i en browser maa KUN kunne komme fra trin 2b i denne koersel. Arvede vi
 # flaget fra skallen, kunne en tidligere koersels bevis slukke spaerren for kode den aldrig har set.
 unset BMCP_FLOW_OK
+# ⛔ Arves den fra en shell der har den eksporteret, koerer spaerren i baggrundstilstand og
+# springer de fokus-kraevende vaerktoejer over - uden at scriptet ved det. Nulstilles sammen
+# med beviset den ellers ville forfalske.
+unset FLOW_KUN_BAGGRUND
 
 # ── colours ──────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -378,8 +382,14 @@ else
     done < <(sed -n '/^FEJL:/,/^====/p' "$FLOW_UD" | sed '1d; /^====/d')
     if [[ $FLOW_UVENTEDE -gt 0 ]]; then
       gate "$FLOW_UVENTEDE uventede fejl i flow-testen. Er det musehaendelser, ligger fanen i baggrunden - giv Chrome et synligt vindue og koer igen. Er det selv-diagnosen, koerer Chrome ikke kandidatens kode"
+    elif [[ "$(sed -n 's/^DAEKNING:.*· \([0-9]\{1,\}\) SPRUNGET.*/\1/p' "$FLOW_UD" | head -1)" =~ ^[1-9] ]]; then
+      # ⛔ MAALT 21/9: spaerren laeste KUN FEJL-blokken. Koerte flowet i baggrundstilstand,
+      # blev 17 vaerktoejer sprunget over - og nul fejl blev laest som «groen paa den kode der
+      # udgives». Den saetning var ikke sand: en tredjedel af fladen var aldrig roert.
+      # SPRUNGET blev printet af koerslen og laest af ingen.
+      gate "flow-spaerren sprang vaerktoejer over ($(sed -n 's/^DAEKNING:.*· \([0-9]\{1,\}\) SPRUNGET.*/\1/p' "$FLOW_UD" | head -1)). Nul fejl er ikke det samme som daekket. Koer uden FLOW_KUN_BAGGRUND, eller acceptér hullet eksplicit."
     else
-      ok "flow-spaerren er groen: nul uventede fejl paa den kode der udgives"
+      ok "flow-spaerren er groen: nul uventede fejl og nul oversprungne paa den kode der udgives"
       # Butikstrinnet koerer samme flow-test. Efter versionsbumpet ville den fejle paa en forskel scriptet
       # selv har lavet (manifest bumpet, indlaest udvidelse ikke). Beviset er fremskaffet her, foer bumpet.
       export BMCP_FLOW_OK=1

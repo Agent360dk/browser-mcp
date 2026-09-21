@@ -62,6 +62,19 @@ these tools answer with, exactly one family is genuinely outside the browser.
 
 ### Optional pairing: one Chrome profile, one server
 
+> ⚠️ **Retracted on 21 September.** Both promises in this section were false in the shipped
+> 1.30.0, and we found it by having two models read the code rather than by testing it.
+> The extension could never read its own key: it looked in `chrome.storage`, and an offscreen
+> document only has `chrome.runtime`, so the lookup threw, the error was swallowed, and the
+> handshake went out empty. Anyone who followed the popup's own instruction was locked out for
+> good. And the key kept nobody out either: it was only checked inside the `hello` branch, so a
+> program that connected and never said hello skipped the check entirely and could be served
+> tool calls. That is precisely the hole the feature was built to close.
+>
+> Both halves are fixed on `main`. **Pairing works only once both are out** - the server half
+> ships through npm, the extension half only when the Chrome Web Store approves it. Until then,
+> treat pairing as not present rather than as protection.
+
 Set `BROWSER_MCP_TOKEN` on the server and type the same key into the extension's popup,
 and that profile only takes commands from that server - and ignores any other program
 that connects to the local bridge. Leave it unset for the default: no key, no setup.

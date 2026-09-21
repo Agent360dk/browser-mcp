@@ -499,8 +499,16 @@ function loesPortLoefte(fik) {
 
 // Slip porten, men BLIV I LIVE. Forskellen er hele pointen: lukkede vi processen ned,
 // ville en chat der er faerdig med browseren kl. 10 og skal bruge den igen kl. 10:40 staa
-// uden - og Claude Code genstarter ikke en MCP-server midt i en samtale. Processen koster
-// ~35 MB og ingen port; det er porten der er den knappe ressource.
+// uden. Processen koster ~35 MB og ingen port; det er porten der er den knappe ressource.
+//
+// ⛔ RETTET 21/9: her stod ogsaa «og Claude Code genstarter ikke en MCP-server midt i en
+// samtale». Det er FALSK, og paastanden har baaret et argument i flere maaneder. Maalt i
+// klientens egne MCP-logger: 294 tomgangslukninger, og i de 45 tilfaelde hvor der kom et
+// vaerktoejskald bagefter, lykkedes 44. Sekvensen er hver gang «connection closed» ->
+// «cleared connection cache for reconnection» -> «starting connection» -> kaldet virker.
+// Klienten genstarter altsaa. Argumentet for at blive i live staar stadig - en genstart
+// koster tid og en ny session - men det maa hvile paa det, ikke paa en paastand ingen
+// havde maalt.
 function frigivPort(grund) {
   if (activePort === null) return;
   process.stderr.write(`[MCP] frigiver port ${activePort} - ${grund}\n`);
