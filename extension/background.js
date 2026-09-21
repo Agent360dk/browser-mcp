@@ -3170,17 +3170,37 @@ async function dispatch(port, method, params) {
         // ⚠️ Tilvalg, ikke standard: om Chrome leverer input dér er PRAECIS det ubesvarede
         // spoergsmaal. Ingen adfaerd aendrer sig for nogen der ikke beder om det.
         if (params.eget_vindue) {
-          const vindue = await chrome.windows.create({ url: params.url, focused: false });
+          // ⛔ MAALT 19/9 og FALSIFICERET: et eget vindue UDEN fokus leverer nul taster,
+          // praecis som en baggrundsfane. Det er ikke fanens synlighed i sit vindue der
+          // afgoer det - det er om VINDUET har operativsystemets fokus.
+          // (test/aerlighed/RESULTAT-vindueshypotesen-2026-09-19.md)
+          //
+          // Men det gav funktionen et bedre formaal end det den blev bygget til. Paa en
+          // maskine med flere skaerme kan vinduet placeres paa en skaerm mennesket ikke
+          // kigger paa OG faa fokus dér: saa leverer Chrome input, uden at noget daekker
+          // det brugeren arbejder i. Det er forskellen paa "kan ikke koere uden at tage
+          // skaermen" og "koerer et andet sted".
+          const spec = { url: params.url, focused: !!params.fokuser };
+          for (const [ind, ud] of [['vindue_x', 'left'], ['vindue_y', 'top'],
+                                   ['vindue_bredde', 'width'], ['vindue_hoejde', 'height']]) {
+            if (Number.isFinite(params[ind])) spec[ud] = Math.round(params[ind]);
+          }
+          const vindue = await chrome.windows.create(spec);
           tab = vindue.tabs && vindue.tabs[0];
           if (!tab) return { ok: false, error: 'eget_vindue: Chrome created a window with no tab' };
           await addTabToSession(port, tab.id);
           getSession(port).activeTabId = tab.id;
           persistSessions();
           return { ok: true, url: params.url, tabId: tab.id, windowId: vindue.id,
-            eget_vindue: true, fokuseret: false,
-            note: 'Experimental: the tab is the visible one in ITS window, but the window does not have focus. ' +
-                  'Whether Chrome delivers mouse and keyboard input in that state is undecided - that is the whole ' +
-                  'point of being able to create it. Measure it, do not rely on it.' };
+            eget_vindue: true, fokuseret: !!params.fokuser,
+            placeret: spec.left != null || spec.top != null
+              ? { left: spec.left ?? null, top: spec.top ?? null }
+              : null,
+            note: params.fokuser
+              ? 'The window has focus, so Chrome delivers input to it. Place it on a display nobody is ' +
+                'looking at (a negative left is a screen to the left) and it does not cover anyone\'s work.'
+              : 'Without focus this window behaves exactly like a background tab: Chrome delivers no mouse or ' +
+                'keyboard input to it. Measured 19 Sept. Pass fokuser:true, and place it with vindue_x/vindue_y.' };
         }
         tab = await chrome.tabs.create({ url: params.url, active: false });
         await addTabToSession(port, tab.id);

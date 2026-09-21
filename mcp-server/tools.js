@@ -11,7 +11,12 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        eget_vindue: { type: 'boolean', description: 'EXPERIMENTAL, requires new_tab. Opens the page in its own unfocused Chrome window instead of a background tab. Whether Chrome delivers mouse and keyboard input in that state is exactly the open question - measure it, do not rely on it.' },
+        eget_vindue: { type: 'boolean', description: 'Requires new_tab. Opens the page in its own Chrome window. On its own this does NOT make input work: measured 19 Sept, an unfocused window delivers no keystrokes at all, exactly like a background tab - what decides it is whether the WINDOW has the operating system\'s focus, not whether the tab is the visible one in it. What this is genuinely for: on a machine with more than one display, put the window on a screen nobody is looking at and pass fokuser:true. Then Chrome delivers input and nothing covers the person\'s work.' },
+        fokuser: { type: 'boolean', description: 'With eget_vindue: give the new window the operating system\'s focus. Needed for keyboard and mouse input to arrive. Pair it with vindue_x on a second display, or it takes the screen.' },
+        vindue_x: { type: 'number', description: 'With eget_vindue: the window\'s left edge in global screen points. A NEGATIVE value is a display to the left of the main one - that is how you put it on another screen. Read the displays first; do not guess.' },
+        vindue_y: { type: 'number', description: 'With eget_vindue: the window\'s top edge in global screen points.' },
+        vindue_bredde: { type: 'number', description: 'With eget_vindue: window width in points.' },
+        vindue_hoejde: { type: 'number', description: 'With eget_vindue: window height in points.' },
         url: { type: 'string', description: 'URL to navigate to' },
         new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false)' },
       },
