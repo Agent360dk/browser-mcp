@@ -50,8 +50,13 @@ cp /tmp/bevis.bak mcp-server/index.js
 
 echo "── Det kortet IKKE kan svare paa ──"
 um "om nogen af npm-tallene er mennesker (ingen geografi, ingen user-agent)"
-um "om foerste koersel virker for en ny bruger - 973 installationer, 0 anmeldelser"
+um "om foerste koersel virker for en ny bruger - 1.000 installationer, 0 anmeldelser (butikstallet er rundet)"
 um "om de 40 sider rammer - sitet har ingen analytics"
-um "flow-spaerren mod aegte Chrome (kraever Gustavs skaerm: npm --prefix mcp-server run flow)"
+# ⛔ 21/9: den her linje sagde "kraever Gustavs skaerm". Det er ikke sandt laengere, og en
+# UMAALT-linje der er foraeldet er praecis den fejlklasse kortet findes for at fange.
+um "de 12 vaerktoejer der kraever et vindue med fokus - baggrunds-koerslen springer dem over.
+     baggrund:  FLOW_KUN_BAGGRUND=1 npm --prefix mcp-server run flow   (40/40 beroert, 0 fejl 21/9)
+     fuld:      npm --prefix mcp-server run flow                        (tager skaermen)
+     anden skaerm: FLOW_VINDUE_X=<venstre kant> npm --prefix mcp-server run flow"
 
 exit $FEJL
