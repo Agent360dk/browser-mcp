@@ -19,5 +19,14 @@
         "type": "stdio"
       }
     }
+  ],
+  "icons": [
+    {
+      "src": "https://browsermcp.dev/logo.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    }
   ]
 }
