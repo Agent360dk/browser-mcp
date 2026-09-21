@@ -11,6 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { caseBlok } from './hjaelp/kildeblok.mjs';
 
 const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
 
@@ -154,7 +155,8 @@ test('bedes der eksplicit om det, aktiveres den', async () => {
 test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
   const i = kilde.indexOf("case 'switch_tab'");
   assert.ok(i > -1, "switch_tab findes");
-  const blok = kilde.slice(i, i + 1600);
+  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+  const blok = caseBlok(kilde, 'switch_tab');
 
   assert.match(blok, /chrome\.tabs\.update\([^)]*active:\s*true/,
     'fanen skal stadig goeres aktiv');
@@ -166,7 +168,8 @@ test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
 
 test('switch_tab: et vindue der ikke kan fokuseres vaelter ikke kaldet', () => {
   const i = kilde.indexOf("case 'switch_tab'");
-  const blok = kilde.slice(i, i + 1600);
+  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+  const blok = caseBlok(kilde, 'switch_tab');
   // Vinduet kan vaere lukket eller paa et andet Space. Fanen er stadig aktiv,
   // saa kaldet skal lykkes - men svaret skal sige aerligt at synligheden ikke
   // kunne sikres, i stedet for at lade kalderen tro at siden er synlig.

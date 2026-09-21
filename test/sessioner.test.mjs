@@ -17,6 +17,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { caseBlok } from './hjaelp/kildeblok.mjs';
 
 const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
 
@@ -178,7 +179,8 @@ test('agentens eget close_tab draeber ikke sessionen', () => {
     'saettet skal erklaeres med praecis det navn brugsstederne refererer til');
   const i = kilde.indexOf("case 'close_tab'");
   assert.ok(i > -1, 'close_tab-handleren skal findes');
-  const blok = kilde.slice(i, i + 700);
+  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+  const blok = caseBlok(kilde, 'close_tab');
   assert.match(blok, /agentLukkedeFaner\.add\(/,
     'uden markeringen tolker onRemoved lukningen som at BRUGEREN lukkede fanen, ' +
     'og sessionen termineres midt i agentens eget arbejde');

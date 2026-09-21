@@ -15,6 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { caseBlok } from './hjaelp/kildeblok.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -142,25 +143,7 @@ test('server-instruktionerne naevner de vaerktoejer der skal kaldes af sig selv'
 // til det naeste. Et fast antal tegn (`slice(i, i + 3200)`) gaar tavst i stykker den dag
 // nogen skriver et kommentar-afsnit ind: assertionen falder uden at noget er brudt. Maalt
 // 8/9, hvor praecis det skete for select_option-vagten (jf. issue #14).
-function caseBlok(kilde, navn) {
-  const start = kilde.indexOf(`case '${navn}'`);
-  if (start < 0) return '';
-  const naeste = kilde.indexOf("\n      case '", start + 10);
-  if (naeste > start) return kilde.slice(start, naeste);
-  // SIDSTE case i switch'en. Her stod `start + 8000`, og det gik i stykker praecis som
-  // kommentaren ovenfor forudsagde: 21/9 blev der skrevet seks linjers kommentar ind i
-  // select_option, rollback-beskeden rykkede til position 7943, og de 300 tegn proeven
-  // laeser efter den faldt UDEN FOR vinduet. Proeven blev roed. Koden fejlede intet.
-  // Graensen er nu switch'ens egen afslutning - foerste linje paa indrykning 4 - saa den
-  // foelger med naar blokken vokser.
-  const slut = kilde.slice(start).search(/\n {4}\}/);
-  if (slut < 0) {
-    throw new Error(
-      `caseBlok('${navn}'): fandt hverken et naeste case eller switch'ens afslutning. ` +
-      'Et fast antal tegn her ville afkorte blokken TAVST og give en groen proeve paa en halv blok.');
-  }
-  return kilde.slice(start, start + slut);
-}
+// caseBlok bor nu i test/hjaelp/kildeblok.mjs - samme graenser, ét sted at rette.
 
 test('select_option kaster ikke resultatet af sit eget valg vaek', () => {
   const blok = caseBlok(bgSrc, 'select_option');
@@ -192,7 +175,8 @@ test('en select der nulstiller sig selv, men aendrer siden, regnes som lykkedes'
 
 test('upload_file pakker DOM.getDocument ud som CDP faktisk svarer', () => {
   const i = bgSrc.indexOf("case 'upload_file'");
-  const blok = bgSrc.slice(i, i + 2600);
+  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+  const blok = caseBlok(bgSrc, 'upload_file');
   assert.ok(!/const \{ result: docResult \} = await cdpSend\(tab\.id, 'DOM\.getDocument'/.test(blok),
     'DOM.getDocument svarer {root}, ikke {result:{root}} - den gamle udpakning er tilbage');
   assert.match(blok, /const docResult = await cdpSend\(tab\.id, 'DOM\.getDocument'/, 'kaldet mangler');
@@ -219,7 +203,8 @@ test('select_frame bygger ikke funktioner i service-workeren', () => {
   const i = bgSrc.indexOf("case 'select_frame'");
   // Kommentarer strippes: forklaringen af fejlen citerer den gamle kode, og en
   // negativ paastand maa ikke fyre paa sin egen dokumentation.
-  const blok = bgSrc.slice(i, i + 2400).split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+  const blok = caseBlok(bgSrc, 'select_frame').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
   assert.ok(!/func: new Function\(/.test(blok),
     "new Function() i selve executeScript-kaldet koeres i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet fejlede paa hver eneste side");
   assert.match(blok, /args: \[code\]/, 'koden skal sendes med som argument');
@@ -265,8 +250,10 @@ test('ask_user sender kun serialiserbare argumenter til Chrome', () => {
   //
   // Det blev aldrig opdaget fordi ask_user stod som SPRUNGET i flowtesten. Et
   // vaerktoej ingen tester er ikke daekket, det er bare tavst.
-  const i = bgSrc.indexOf("case 'ask_user'");
-  const blok = bgSrc.slice(i, i + 20000);
+  // ⛔ Her stod `slice(i, i + 20000)` paa en blok der er 8.310 tegn. De sidste ~11.700 tegn
+  // var NABO-BLOKKENES kode, saa `args: [...]`-matchet kunne lige saa godt have ramt et
+  // andet vaerktoejs argumentliste. Maalt 21/9.
+  const blok = caseBlok(bgSrc, 'ask_user');
   const m = blok.match(/args: \[([\s\S]*?)\],/);
   assert.ok(m, 'fandt ikke args-listen i ask_user');
   const args = m[1];
