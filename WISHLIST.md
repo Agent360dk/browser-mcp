@@ -183,13 +183,16 @@ at undvære, ikke efter nummer.
 - [ ] **`browser_fill` føjer til i stedet for at erstatte** (allerede noteret) - men her kostede
   det to ekstra runder, fordi feltet så indeholdt adressen to gange. Forslag: ryd feltet som
   standard, med `append: true` som tilvalg.
-- [ ] **React-styrede `<select>` kan ikke drives i 1.30.0 - rettet paa `main`, ikke udgivet.**
-  ⚠️ **Opdateret 21/9:** aarsagen er fundet, og den er én linje. En styret komponent laegger en
-  value-saetter paa *instansen* der ruller en naiv tildeling tilbage, saa `sel.value = x` skrev
-  den gamle vaerdi igen. Prototypens saetter gaar uden om instansen. Fem andre steder i samme
-  fil gjorde det allerede saadan - `select_option` var det ene sted uden grebet. Rettelsen ligger
-  paa `main`; den er **ikke** i 1.30.0, som er det man kan installere i dag. Punktet flyttes til
-  ✅ naar en udgivelse baerer den, ikke foer.
+- [x] **React-styrede `<select>` VIRKER i 1.30.0 - vores egen maaling var forkert.**
+  ⚠️ **Tilbagetrukket 21/9, samme dag som det blev skrevet.** Punktet hvilede paa husets egen
+  proeveside, og den var forkert: den lagde en value-saetter og en `_valueTracker` paa et
+  `<select>` og kaldte det «samme mekanik som React». React goer ingen af delene paa et select -
+  den sporer `input` og `textarea`, og laeser et selects vaerdi paa den native `change`-haendelse.
+  Maalt mod aegte React 18.3.1: den naive tildeling 1.30.0 allerede laver LANDER, og `onChange`
+  fyrer. Der var ingen React-fejl.
+  Prototype-saetteren staar stadig i koden - en komponent KUNNE goere det proevesiden gjorde - men
+  vi har ikke fundet et rigtigt bibliotek der goer det ved et `<select>`. Det er en forholdsregel,
+  ikke en maaling.
   Maalt 1/9 paa forbrugeragenten.dk's penge-tilbage-formular. Proevet: `browser_select_option`
   (svarer `ok:true` med rigtig vaerdi - men React's `onChange` fyrer aldrig), native
   value-setter + `dispatchEvent('change')`, samme plus nulstilling af `_valueTracker`,

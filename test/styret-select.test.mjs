@@ -9,9 +9,15 @@
  * Vi svarede aerligt nej. Men nej er stadig nej, og det stod offentligt paa
  * /learn/tools-that-lie/ som vores eget tab.
  *
- * AARSAGEN var én linje: `sel.value = opt.value`. En styret komponent - React og
- * aerligheds-fixturen begge - laegger en value-saetter paa INSTANSEN der ruller en naiv
- * tilskrivning tilbage. Prototypens saetter gaar uden om instansen og betyder det samme.
+ * ⛔ RETTET 21/9: «React og aerligheds-fixturen begge» var FALSK. React laegger ingen
+ * value-saetter og ingen tracker paa et <select> - kun paa input og textarea - og laeser
+ * vaerdien paa den native change-haendelse. Maalt mod aegte React 18.3.1 i jsdom: den naive
+ * `sel.value = x` plus change LANDER, og onChange fyrer. 19/9-tabet fandtes kun mod vores
+ * EGEN fixtur, og det blev udgivet som et tab mod Playwright foer det blev trukket tilbage.
+ *
+ * Proeven herunder er stadig gyldig, men den maaler en HYPOTETISK komponent der laegger en
+ * value-saetter paa elementet - ikke React. Prototypens saetter haandterer den slags, og
+ * koster intet. Skriv aldrig et resultat herfra som «React virker ikke».
  *
  * ⛔ Og det bider: FEM andre steder i background.js satte allerede vaerdier praecis saadan
  * (fill, clear, dato, combobox). select_option var det eneste sted uden grebet. Vi vidste

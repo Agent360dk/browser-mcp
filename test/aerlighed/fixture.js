@@ -2,9 +2,25 @@
 // FAKTISK hoerte. Det er hele pointen: vi maaler ikke hvad DOM'en viser - det kan et
 // vaerktoej saette uden at nogen hoerer det - men hvad komponentens egen tilstand blev.
 //
-// Mekanikken er den samme som React's: en value-setter paa instansen der ruller en
-// naiv tilskrivning tilbage, en `_valueTracker` der kun opdateres naar komponenten selv
-// har behandlet aendringen, og en input-lytter der er den ENESTE vej til ny tilstand.
+// Mekanikken for TEKSTFELTET er den samme som React's: en value-setter paa instansen der
+// ruller en naiv tilskrivning tilbage, en `_valueTracker` der kun opdateres naar komponenten
+// selv har behandlet aendringen, og en input-lytter der er den ENESTE vej til ny tilstand.
+//
+// ⛔ MEN LAES DETTE FOER DU DRAGER EN KONKLUSION OM <select>.
+//
+// Selectet nedenfor faar det SAMME greb - instans-saetter plus `_valueTracker` - og det er
+// IKKE hvad React goer. React kalder `track()` paa `input` og `textarea`, aldrig paa `select`
+// (react-dom 18.3.1: `case 'input'` og `case 'textarea'` kalder track, `case 'select'` goer
+// ikke), og laeser et selects vaerdi paa den native `change`-haendelse.
+//
+// Maalt 21/9 mod aegte React 18.3.1 i jsdom: en naiv `sel.value = x` plus `change` LANDER,
+// og `onChange` fyrer. Vores egen 19/9-maaling meldte derfor et tab mod Playwright som
+// ikke findes i React - og det tab blev udgivet paa /learn/tools-that-lie/ og i
+// kapacitets-matricen, hvor det stod i nogle timer foer det blev trukket tilbage.
+//
+// Selectet her modellerer altsaa en HYPOTETISK komponent der laegger en value-saetter paa
+// elementet. Det er en gyldig ting at vaere robust over for. Det er ikke React, og et
+// resultat herfra maa ikke skrives som «React virker ikke».
 (function () {
   var felt = document.getElementById('styret');
   var visning = document.getElementById('tilstand');
