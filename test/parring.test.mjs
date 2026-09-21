@@ -130,15 +130,19 @@ function broen(gemtNoegle) {
     fetch: async () => { throw new Error('ingen server'); },
     crypto: { subtle: { digest: async () => new Uint8Array([0xab, 0xcd, 0xef, 0x01, 0x23, 0x45]).buffer } },
     chrome: {
+      // ⛔ KUN runtime. Chromes dokumentation siger ordret at runtime er den ENESTE
+      // udvidelses-API et offscreen-dokument har. Selen gav tidligere ogsaa `storage`, og
+      // derfor kunne de fire proever herunder ikke se at offscreen.js laeste et lager der
+      // ikke findes. Fejlen naaede den udgivne 1.30.0 og gjorde parringen ubrugelig.
+      // En sele der er rundhaandet med API'er, maaler et produkt der ikke findes.
       runtime: {
         id: 'proeve-id',
         getURL: (f) => 'chrome-extension://proeve-id/' + f,
-        sendMessage: async () => ({ ok: true }),
-        onMessage: { addListener() {} },
-      },
-      storage: {
-        local: { get: async () => (gemtNoegle ? { parringsnoegle: gemtNoegle } : {}) },
-        onChanged: { addListener: (f) => lyttere.push(f) },
+        // Baggrunden svarer paa noegle-hentningen. Alt andet kvitterer bare.
+        sendMessage: async (m) => (m && m.type === 'bmcp_hent_parringsnoegle'
+          ? { noegle: gemtNoegle || null }
+          : { ok: true }),
+        onMessage: { addListener: (f) => lyttere.push(f) },
       },
     },
   };
@@ -209,8 +213,11 @@ test('skiftes noeglen, kappes de aabne forbindelser med det samme', async () => 
   await pust();
   b.ctx.tryConnect(9876);
   await b.aabn();
-  assert.equal(b.lyttere.length, 1, 'der lyttes ikke efter aendringer i noeglen');
-  b.lyttere[0]({ parringsnoegle: { newValue: 'privat' } }, 'local');
+  // Offscreen kan ikke lytte paa lageret - kun paa beskeder. Baggrunden skubber aendringen.
+  // Chrome leverer en besked til ALLE lyttere, saa det goer proeven ogsaa; offscreen.js har
+  // flere, og at pege paa lyttere[0] ville vaere en antagelse om raekkefoelgen.
+  assert.ok(b.lyttere.length >= 1, 'der lyttes ikke efter aendringer i noeglen');
+  for (const l of b.lyttere) l({ type: 'bmcp_parringsnoegle_aendret', noegle: 'privat' });
   assert.ok(b.erLukket(), 'en aendret noegle fik foerst virkning ved naeste genstart');
 });
 
@@ -273,4 +280,31 @@ test('UDEN noegle er den tavse forbindelse stadig velkommen - nul opsaetning er 
     'uden noegle skal en forbindelse uden hilsen stadig kunne betjene kald - ellers har '
     + 'parringsfiltret aendret standard-adfaerden for alle der ikke bruger en noegle. '
     + 'Og uden denne kontrol kan proeven ovenfor vaere groen fordi den maaler ingenting.');
+});
+
+/**
+ * ⛔ Offscreen-dokumentet maa KUN roere chrome.runtime.
+ *
+ * Chromes dokumentation siger ordret at runtime er den eneste udvidelses-API et
+ * offscreen-dokument har. 1.30.0 blev udgivet med `chrome.storage.local.get(...)` i
+ * offscreen.js; opslaget kastede, fejlen blev slugt, parringsnoeglen forblev tom, og enhver
+ * der fulgte popup'ens egen instruktion var laast ude for altid.
+ *
+ * Vagten hviler paa MEKANIKKEN - hvilket chrome-navnerum der roeres - ikke paa et ord eller
+ * et funktionsnavn. En omdoebt hjaelper aendrer ingenting. (Huset 7/9: et ord kan ikke baere
+ * en regel.)
+ */
+test('offscreen.js roerer kun chrome.runtime - alt andet findes ikke der', () => {
+  const kilde = readFileSync(join(rod, 'extension/offscreen.js'), 'utf8');
+  // Kommentarer ud foerst: filen FORKLARER fejlen, og forklaringen maa ikke udloese vagten.
+  const kode = kilde.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const brugt = [...new Set([...kode.matchAll(/\bchrome\.([a-zA-Z]+)/g)].map((m) => m[1]))];
+
+  // ⛔ Detektoren proeves mod et kendt-sandt tilfaelde, foer «ingen fund» betyder noget.
+  const proeve = [...new Set([...'chrome.storage.local.get(1)'.matchAll(/\bchrome\.([a-zA-Z]+)/g)].map((m) => m[1]))];
+  assert.deepEqual(proeve, ['storage'], 'detektoren finder ikke et chrome-navnerum den faar forelagt');
+
+  assert.deepEqual(brugt, ['runtime'],
+    `offscreen.js roerer ${brugt.join(', ')}. Kun runtime findes i et offscreen-dokument - `
+    + 'alt andet kaster, og et slugt kast er praecis hvad der gjorde parringen ubrugelig i 1.30.0.');
 });

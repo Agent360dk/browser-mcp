@@ -36,21 +36,46 @@ const KODEFILER = ['background.js', 'offscreen.js'];
 // aabner - samme grund som aftrykket eftersendes i stedet for at blokere hilsenen.
 let parringsnoegle = null;
 const parrede = new WeakSet();
-try {
-  chrome.storage.local.get('parringsnoegle').then((v) => {
-    parringsnoegle = (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null;
-  }).catch(() => {});
-  chrome.storage.onChanged.addListener((aendringer, omraade) => {
-    if (omraade !== 'local' || !aendringer.parringsnoegle) return;
-    const ny = aendringer.parringsnoegle.newValue;
-    parringsnoegle = (typeof ny === 'string' && ny.trim()) || null;
-    // Skift af noegle skal tage effekt med det samme, ikke naeste gang browseren starter.
-    for (const [, sokkel] of connections) { try { sokkel.close(); } catch (e) { /* lukket */ } }
-    connections.clear();
-  });
-} catch (e) {
-  console.warn('[Offscreen] could not read the pairing key:', e?.message || e);
+// ⛔ MAALT 21/9: her stod `chrome.storage.local.get(...)`, og det kan ALDRIG virke.
+// Et offscreen-dokument har kun `chrome.runtime` - Chromes egen dokumentation siger det
+// ordret, og opslaget kaster en TypeError som try'et ovenfor slugte. Noeglen forblev null,
+// haandtrykket sendte en tom noegle, og serveren afviste. Enhver der satte den samme noegle
+// begge steder, som popup'en beder om, var laast ude for altid. Fejlen laa i den udgivne
+// 1.30.0.
+//
+// Og filen VIDSTE det: kommentaren laengere nede siger selv at portomraadet sendes via
+// dokumentets adresse fordi background.js har lageret, og at getManifest ikke findes her.
+// Opslaget blev skrevet tolv linjer under den viden.
+//
+// Baggrunden har lageret. Den svarer paa en besked, og skubber aendringer hertil. Det er
+// Chromium-udviklernes egen anviste loesning.
+function saetNoegle(vaerdi) {
+  const ny = (typeof vaerdi === 'string' && vaerdi.trim()) || null;
+  const skiftet = ny !== parringsnoegle;
+  parringsnoegle = ny;
+  return skiftet;
 }
+
+chrome.runtime.sendMessage({ type: 'bmcp_hent_parringsnoegle' })
+  .then((svar) => { saetNoegle(svar && svar.noegle); })
+  .catch((e) => {
+    // Naar servicearbejderen sover, fejler foerste besked. Den vaekkes af den, saa et
+    // forsoeg mere raekker - og uden noegle er der alligevel intet at hente.
+    console.warn('[Offscreen] could not read the pairing key:', e?.message || e);
+    setTimeout(() => {
+      chrome.runtime.sendMessage({ type: 'bmcp_hent_parringsnoegle' })
+        .then((svar) => { saetNoegle(svar && svar.noegle); })
+        .catch(() => {});
+    }, 1000);
+  });
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (!msg || msg.type !== 'bmcp_parringsnoegle_aendret') return;
+  if (!saetNoegle(msg.noegle)) return;
+  // Skift af noegle skal tage effekt med det samme, ikke naeste gang browseren starter.
+  for (const [, sokkel] of connections) { try { sokkel.close(); } catch (e) { /* lukket */ } }
+  connections.clear();
+});
 let kodeAftrykCache = null;
 async function kodeAftryk() {
   if (kodeAftrykCache) return kodeAftrykCache;

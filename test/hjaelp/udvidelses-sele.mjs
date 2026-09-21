@@ -115,6 +115,11 @@ export function byggChrome(svar = {}, optager = new Optager()) {
         remove: kald('storage.local.remove'),
       },
       session: { get: kald('storage.session.get'), set: kald('storage.session.set') },
+      // Chrome har ALTID storage.onChanged. Selen manglede den, og da background.js fik en
+      // lytter der videresender noegle-aendringer til offscreen, kastede hele filen ved
+      // indlaesning - 300 proever roede paa én gang. En sele der er FATTIGERE end Chrome er
+      // lige saa forkert som en der er rundhaandet: begge maaler et produkt der ikke findes.
+      onChanged: haendelse('storage.onChanged'),
     },
     offscreen: {
       hasDocument: kald('offscreen.hasDocument'), createDocument: kald('offscreen.createDocument'),

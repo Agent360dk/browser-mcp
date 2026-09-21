@@ -2003,7 +2003,27 @@ async function rensHandlingslog() {
 
 // ── Message Handler — receives commands from offscreen.js ──────────────────
 
+// En noegle der skiftes i popup'en skal gaelde med det samme. Offscreen kan ikke lytte selv
+// (kun chrome.runtime), saa baggrunden skubber aendringen derhen.
+chrome.storage.onChanged.addListener((aendringer, omraade) => {
+  if (omraade !== 'local' || !aendringer.parringsnoegle) return;
+  const ny = aendringer.parringsnoegle.newValue;
+  chrome.runtime.sendMessage({
+    type: 'bmcp_parringsnoegle_aendret',
+    noegle: (typeof ny === 'string' && ny.trim()) || null,
+  }).catch(() => { /* offscreen er ikke aabent endnu - det henter selv ved opstart */ });
+});
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // ⛔ Offscreen-dokumentet har KUN chrome.runtime - Chromes dokumentation siger det ordret.
+  // Det kan derfor ikke selv laese parringsnoeglen, og forsoeget paa det gjorde parringen i
+  // 1.30.0 ubrugelig for enhver der satte en noegle. Baggrunden har lageret, saa den svarer.
+  if (msg.type === 'bmcp_hent_parringsnoegle') {
+    chrome.storage.local.get('parringsnoegle')
+      .then((v) => sendResponse({ noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
+      .catch(() => sendResponse({ noegle: null }));
+    return true;  // svaret kommer asynkront
+  }
   if (msg.type === 'mcp_command') {
     const port = msg.port;
     logAction(port, msg.method);
