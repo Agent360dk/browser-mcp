@@ -473,10 +473,14 @@ account and no server of ours between you and the page.
 - **Page content** - what a tool reads from a tab goes to the MCP client you
   configured, and nowhere else. We never see it.
 - **Cookies, local storage and tokens** are not copied anywhere by default, and
-  the server keeps no store of its own - but five tools can read them
-  (`browser_get_cookies`, `browser_get_local_storage`, `browser_extract_token`
-  and the two matching setters). When the agent calls one, that value goes to
-  your MCP client like any other tool result. Nowhere else, and never to us.
+  the server keeps no store of its own - but they are reachable. Five tools go
+  at them directly (`browser_get_cookies`, `browser_get_local_storage`,
+  `browser_extract_token` and the two matching setters), and three more can get
+  to the same data another way: `browser_execute_script` runs in the page and
+  can read `document.cookie`, and `browser_get_page_content` and
+  `browser_extract_list` will carry a token that the page itself puts in the
+  DOM. When any of them runs, that value goes to your MCP client like any other
+  tool result. Nowhere else, and never to us.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
   analytics in the extension or on the site.
 - Everything the server does runs on `localhost` between the extension and the
