@@ -78,6 +78,10 @@ const web = createServer((req, res) => {
 await new Promise(r => web.listen(0, '127.0.0.1', r));
 const BASE = `http://127.0.0.1:${web.address().port}`;
 
+// Baggrunds-tilstand: koerslen maa ikke roere menneskets skaerm. Se `proev` for hvorfor.
+const KUN_BAGGRUND = process.env.FLOW_KUN_BAGGRUND === '1';
+const BAGGRUND_MARKOER = 'kraever et vindue med fokus: ';
+
 // ── MCP-server over stdio ───────────────────────────────────────────────────
 // MAALT 11/9 af Astra (R5 R1): upload- og drop-filerne blev lagt i en tmp-mappe UDEN FOR serverens arbejdsmappe,
 // og den nye vagt afviste dem - gaten der koeres foer butiksudgivelsen, var roed paa korrekt kode. Serveren
@@ -112,7 +116,16 @@ const rpc = (method, params, ms = 60000) => new Promise((res, rej) => {
 const kald = async (navn, args = {}, ms) => {
   // Fokus hentes kun her, og kun for de vaerktoejer Chrome naegter at levere til en
   // baggrundsfane. De oevrige ~38 proever roerer aldrig Gustavs skaerm.
-  if (KRAEVER_FOKUS.has(navn) && !KUN_BAGGRUND) await forrest();
+  if (KRAEVER_FOKUS.has(navn)) {
+    // ⛔ MAALT 21/9: navne-baseret overspringning kan ALDRIG daekke det her. Fem proever
+    // hedder noget andet end vaerktoejet og kalder et fokus-vaerktoej indeni - #hover-igen,
+    // #shadow-dom, #usynligt-element, #csp-click og browser_handle_dialog. I baggrunds-
+    // tilstand fejlede de med en CDP-frist og saa ud som regressioner. Derfor staar reglen
+    // HER, hvor vaerktoejet faktisk kaldes: uanset hvad proeven hedder, kommer den forbi.
+    // (Samme lære som i morges: byg reglen paa mekanikken, ikke paa navnet.)
+    if (KUN_BAGGRUND) { const e = new Error(BAGGRUND_MARKOER + navn); e.baggrundSprang = true; throw e; }
+    await forrest();
+  }
   const r = await rpc('tools/call', { name: navn, arguments: args }, ms);
   const tekst = r.result?.content?.map(c => c.text ?? `<${c.type}>`).join('\n') ?? '';
   if (r.result?.isError) throw new Error(tekst.slice(0, 300));
@@ -188,8 +201,6 @@ const KRAEVER_FOKUS = new Set([
 ]);
 
 // Saettes til 1 naar koerslen ikke maa roere menneskets skaerm. Se `proev` for hvorfor.
-const KUN_BAGGRUND = process.env.FLOW_KUN_BAGGRUND === '1';
-
 const forrest = async () => {
   if (fokusFane == null) return;
   await rpc('tools/call', { name: 'browser_switch_tab', arguments: { tab_id: fokusFane } })
@@ -224,6 +235,12 @@ async function proev(vaerktoej, beskrivelse, fn) {
     resultat.set(vaerktoej, { status: 'OK', beskrivelse, ms: Date.now() - t0 });
     console.log(`  ✓ ${vaerktoej.padEnd(30)} ${beskrivelse}`);
   } catch (e) {
+    if (e?.baggrundSprang) {
+      // Ikke en fejl: koerslen naegtede med vilje at tage skaermen. En proeve der staar som
+      // FEJL her ville ligne en regression og faa nogen til at lede efter en fejl der ikke findes.
+      spring(vaerktoej, e.message);
+      return;
+    }
     resultat.set(vaerktoej, { status: 'FEJL', beskrivelse, fejl: e.message, ms: Date.now() - t0 });
     console.log(`  ✗ ${vaerktoej.padEnd(30)} ${beskrivelse}\n      → ${e.message.split('\n')[0].slice(0, 200)}`);
   }

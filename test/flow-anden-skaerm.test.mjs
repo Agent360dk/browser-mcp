@@ -45,10 +45,18 @@ test('koerslen bekraefter at tilstanden BLEV lavet, og siger til hvis ikke', () 
 
 test('baggrunds-tilstand springer de fokus-kraevende over i STEDET for at tage skaermen', () => {
   assert.match(kilde, /FLOW_KUN_BAGGRUND/, 'tilstanden findes ikke');
-  assert.match(kilde, /KRAEVER_FOKUS\.has\(navn\) && !KUN_BAGGRUND/,
-    'forrest() kaldes stadig i baggrunds-tilstand - saa tager koerslen skaermen alligevel');
-  assert.match(kilde, /if \(KUN_BAGGRUND && KRAEVER_FOKUS\.has\(vaerktoej\)\)[\s\S]{0,200}spring\(/,
-    'de fokus-kraevende proever springes ikke over - de ville fejle og se ud som en regression');
+  // ⛔ Reglen skal staa hvor VAERKTOEJET kaldes, ikke hvor proeven navngives. MAALT 21/9:
+  // fem proever hedder noget andet end vaerktoejet og kalder et fokus-vaerktoej indeni
+  // (#hover-igen, #shadow-dom, #usynligt-element, #csp-click, browser_handle_dialog). En
+  // navne-baseret overspringning ramte ingen af dem, og de fejlede med en CDP-frist som saa
+  // ud som regressioner.
+  const kaldBlok = kilde.slice(kilde.indexOf('if (KRAEVER_FOKUS.has(navn))'), kilde.indexOf('const forrest'));
+  assert.match(kaldBlok, /if \(KUN_BAGGRUND\)[\s\S]{0,160}throw/,
+    'et fokus-vaerktoej kaldes stadig i baggrunds-tilstand - saa tager koerslen skaermen alligevel');
+  assert.match(kaldBlok, /await forrest\(\);/,
+    'forrest() kaldes slet ikke laengere - saa virker en normal koersel heller ikke');
+  assert.match(kilde, /e\?\.baggrundSprang[\s\S]{0,260}spring\(/,
+    'et bevidst spring registreres som FEJL - det ville ligne en regression og sende nogen paa jagt');
   assert.match(kilde, /BAGGRUNDS-TILSTAND/,
     'rapporten siger ikke at daekningen er mindre - en halv koersel maa aldrig ligne en hel');
 });
