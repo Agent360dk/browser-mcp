@@ -465,6 +465,25 @@ you ask for them.
 
 `npx @agent360/computer-mcp` · MIT · macOS.
 
+## Privacy
+
+The point of this tool is that your browsing stays in your browser. There is no
+account and no server of ours between you and the page.
+
+- **Page content** - what a tool reads from a tab goes to the MCP client you
+  configured, and nowhere else. We never see it.
+- **Cookies, local storage and tokens** are not copied anywhere by default, and
+  the server keeps no store of its own - but five tools can read them
+  (`browser_get_cookies`, `browser_get_local_storage`, `browser_extract_token`
+  and the two matching setters). When the agent calls one, that value goes to
+  your MCP client like any other tool result. Nowhere else, and never to us.
+- **We collect nothing.** No identifiers, no usage counts, no crash reports, no
+  analytics in the extension or on the site.
+- Everything the server does runs on `localhost` between the extension and the
+  MCP client on the same machine.
+
+Full policy: https://browsermcp.dev/privacy
+
 ## License
 
 MIT - [Agent360](https://agent360.dk)
