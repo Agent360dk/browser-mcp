@@ -1,0 +1,33 @@
+# Maaler hvor laenge en bidragyder venter paa det FOERSTE svar fra os.
+#
+# Findes fordi tallet aldrig blev maalt, og fordi det viste sig at vaere det dyreste tal
+# projektet har: PR #20 laa 9 dage med 462 linjer og nul ord, #11 laa 16 dage. Begge blev
+# besvaret 20/9, og begge bidragydere havde skrevet bedre end vores egne noter.
+#
+# Dagligt, ikke maanedligt: en frist paa 72 timer kan ikke vogtes én gang om maaneden.
+# Den BLOKERER ikke noget - den goer tavsheden synlig, og det er hele opgaven.
+name: svartid
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # dagligt 06:00 UTC = 08:00 Europe/Copenhagen
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  svartid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: dage til foerste svar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # ⛔ Scriptet koerer sin egen selvtest foerst og afviser at udskrive tal hvis den
+        # fejler. Uden den kunne vagten ikke blive roed: 21/9 var begge aabne traade
+        # besvaret, saa flag-grenen blev aldrig naaet og "0 over fristen" saa groent ud
+        # ved enhver frist - ogsaa én time.
+        run: python3 scripts/svartid.py --repo "${{ github.repository }}"
