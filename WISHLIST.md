@@ -85,9 +85,12 @@ mere værd end en der ser rigtig ud.
 
 ## ✅ Shipped
 
-- **IKKE UDGIVET - v1.29.1. Punkterne herunder ligger på `main` og venter en udgivelse.**
-  (Stod fejlagtigt som shipped fra 8/9 til 9/9. Fem fejl af samme familie: værktøjet sagde ét og
-  gjorde et andet.)
+- **Udgivet i v1.29.1.** ⚠️ **Rettet 21/9:** linjen her sagde «IKKE UDGIVET … venter en
+  udgivelse». Det var sandt da det blev skrevet 9/9 og falsk fra udgivelsen samme dag - den stod
+  under en overskrift der selv sagde «Shipped», og npm er nu på 1.30.0. Tredje gang på tre dage at
+  denne fil skulle rettes for at have overhalet sig selv; det sker hver gang noget shipper.
+  (Stod omvendt fejlagtigt som shipped fra 8/9 til 9/9. Fem fejl af samme familie: værktøjet sagde
+  ét og gjorde et andet.)
   Fundet ved at køre værktøjerne mod en ægte React-formular, ikke ved at læse koden.
   - `select_option` meldte **fiasko om valg der lykkedes.** Vagten læste feltet synkront
     efter hændelsen - men et styret felt der arbejder ser præcis sådan ud: det gemmer

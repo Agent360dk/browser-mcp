@@ -12,7 +12,7 @@ The companion check (regen-diff: generator output == committed HTML) runs as its
 own CI step: `python3 scripts/generate-docs.py && git diff --exit-code -- docs/`.
 Exit code 0 = all green; 1 = failures (printed).
 """
-import os, re, sys, glob
+import os, re, sys, glob, subprocess
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 DOCS = os.path.join(ROOT, 'docs')
@@ -269,6 +269,20 @@ for md in sorted(glob.glob(os.path.join(ROOT, 'content', '*.md'))):
 # sammenligner det med den version manifestet faktisk baerer. Et omdoebt afsnit aendrer
 # ingenting - tallet er det baerende. (Huset 7/9: et ord kan ikke baere en regel.)
 VENTE_ORD = re.compile(r'(venter p[aå]|waiting (?:for|on)|kommer i|ships? in|lands? in)\s+v?(\d+\.\d+(?:\.\d+)?)', re.I)
+IKKE_UDGIVET_MAERKE = re.compile(r'ikke udgivet|endnu ikke udgivet|not released|unreleased', re.I)
+
+# MAALT 21/9: foerste udgave af reglen herunder sammenlignede versionsnummeret med den
+# manifestet baerer, og kaldte «IKKE UDGIVET - v1.26.0» en loegn. Den linje er SAND:
+# 1.26.0 blev aldrig udgivet - hverken tag eller npm (16 udgivne versioner, 1.26.0 ikke
+# iblandt). Det baerende er ikke raekkefoelgen, men om versionen FINDES.
+UDGIVNE_TAGS = {t[1:] for t in subprocess.run(
+    ['git', '-C', ROOT, 'tag', '--list', 'v*'],
+    capture_output=True, text=True).stdout.split() if t.startswith('v')}
+# Et instrument der kan svare nul, proeves foer tallet bruges: uden tags ser reglen intet
+# og ville tie stille i et fladt CI-udtjek.
+if not UDGIVNE_TAGS:
+    fail('check-docs: ingen git-tags fundet - ikke-udgivet-reglen kan ikke maale noget '
+         '(fladt udtjek? koer git fetch --tags)')
 _manifest = open(os.path.join(ROOT, 'extension', 'manifest.json'), encoding='utf-8').read()
 UDGIVET = tuple(int(x) for x in re.search(r'"version"\s*:\s*"([\d.]+)"', _manifest).group(1).split('.'))
 
@@ -289,6 +303,21 @@ for doc in ['WISHLIST.md', 'README.md', 'CHANGELOG.md', 'llms-install.md',
         if m and _ver(m.group(2)) <= UDGIVET:
             fail('%s:%d venter paa %s, men %s er udgivet: "%s"'
                  % (doc, nr, m.group(2), '.'.join(str(x) for x in UDGIVET), linje.strip()[:90]))
+
+        # MAALT 21/9 - tredje gang i den samme fil, og denne gang gik den FORBI reglen
+        # ovenfor. Linjen var «IKKE UDGIVET - v1.29.1. … venter en udgivelse»: tallet stod
+        # FOER vente-ordet, og «venter en» er ikke «venter paa». Reglen ovenfor kraever
+        # raekkefoelgen ord-saa-tal, saa den kunne aldrig se den.
+        #
+        # Derfor denne: et eksplicit ikke-udgivet-maerke paa en linje der navngiver en
+        # version, uanset raekkefoelgen. Tallet er stadig det baerende - maerket vaelger
+        # kun linjerne ud. (Huset 7/9: et ord kan ikke baere en regel.)
+        if IKKE_UDGIVET_MAERKE.search(linje):
+            for tal in re.findall(r'v?(\d+\.\d+(?:\.\d+)?)', linje):
+                if tal in UDGIVNE_TAGS:
+                    fail('%s:%d kalder %s ikke-udgivet, men v%s er tagget: "%s"'
+                         % (doc, nr, tal, tal, linje.strip()[:90]))
+                    break
 
 # -----------------------------------------------------------------------------
 if fails:
