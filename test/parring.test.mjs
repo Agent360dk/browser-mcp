@@ -519,3 +519,31 @@ test('svarer lageret at der ingen noegle er, er alt som foer - nul opsaetning be
     'uden noegle skal kommandoer udfoeres som altid - ellers har rettelsen lukket for alle '
     + 'dem der ikke bruger parring');
 });
+
+/**
+ * ⛔ Mutationsbevis 21/9 viste hullet: aendres baggrundens fejl-gren tilbage til
+ * `{ ok: true, noegle: null }`, blev NUL proever roede. En lagerfejl ville igen se ud som
+ * «ingen noegle sat», og offscreen ville aabne broen - fail-open ad bagdoeren.
+ */
+test('kaster lageret, svarer baggrunden ok:false - ikke "ingen noegle"', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  // Chrome afviser med et loefte; er chrome.storage helt vaek, kaster den synkront. Begge
+  // former proeves, for koden skal svare det samme aerlige ok:false paa dem begge.
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': () => Promise.reject(new Error('lager nede')) } });
+  const svar = await new Promise((ok) => {
+    for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
+  });
+  assert.equal(svar.ok, false,
+    'en lagerfejl blev meldt som et gyldigt svar - offscreen laeser det som «ingen noegle» og aabner broen');
+  assert.equal(svar.noegle, undefined, 'fejlsvaret maa ikke ogsaa baere en noegle-vaerdi');
+});
+
+test('kaster lageret SYNKRONT, svarer baggrunden stadig ok:false', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': () => { throw new Error('storage findes ikke'); } } });
+  const svar = await new Promise((ok) => {
+    for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
+  });
+  assert.equal(svar.ok, false,
+    'et synkront kast lod sendResponse uden svar - offscreen faar aldrig sin tilstand og broen staar lukket for evigt');
+});
