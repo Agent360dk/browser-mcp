@@ -1,0 +1,52 @@
+{
+  "manifest_version": "0.2",
+  "name": "browser-mcp",
+  "display_name": "Browser MCP by Agent360",
+  "description": "Drive your real, signed-in Chrome from any AI agent. When it hits a 2FA code, a CAPTCHA or a choice only you can make, it asks on your screen and carries on in the same tab.",
+  "long_description": "Browser MCP gives your agent the Chrome you already use - your sessions, your cookies, your logins - instead of a fresh headless browser that hits a login wall on the first page. 40 tools.\n\nIMPORTANT - this is half of Browser MCP. The other half is a Chrome extension, and Chrome does not allow an extension to be installed from a bundle. Without it the server sits on \"Not connected\" forever.\n\nInstall it from the Chrome Web Store:\nhttps://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n\nNothing is sent to us: the extension talks to a server on 127.0.0.1 that you started. No account, no telemetry, no API key. MIT.",
+  "author": {
+    "name": "Agent360",
+    "email": "hello@agent360.dk",
+    "url": "https://agent360.dk"
+  },
+  "homepage": "https://browsermcp.dev",
+  "documentation": "https://browsermcp.dev/docs/install-claude-code/",
+  "support": "https://github.com/Agent360dk/browser-mcp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {}
+    }
+  },
+  "tools_generated": true,
+  "keywords": [
+    "browser",
+    "chrome",
+    "automation",
+    "2fa",
+    "captcha",
+    "logged-in",
+    "local-first"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Agent360dk/browser-mcp"
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=18"
+    }
+  }
+}
