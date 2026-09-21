@@ -291,6 +291,25 @@ def git_datoer(fn):
             return ''
     seneste = _kald(['-1'])
     foerste = _kald(['--reverse']) or seneste
+    # ⛔ MAALT 21/9: uden de her fire linjer kunne docs-gaten ALDRIG passere paa en commit der
+    # aendrer en genereret side, og fem commits (926fc49, b2c1d3d, 7adedf8, 6bb74d7, ced86e3)
+    # laa roede paa CI uden at nogen saa det - vagten var groen lokalt hver gang.
+    #
+    # Grunden: datoen blev udledt af filens SIDSTE COMMIT. Du redigerer, genererer (faar
+    # gaarsdagens dato), committer - og nu ER commit'en filens sidste, saa CI regenererer og
+    # faar en anden dato. Generatoren var ikke en funktion af traeet, men af traeet OG
+    # historikken, og historikken aendrede sig i selve det oejeblik man committede.
+    #
+    # En fil du lige har redigeret, er aendret I DAG - committet eller ej. Saa falder de to
+    # koersler sammen: lokalt er filen beskidt -> i dag; paa CI er den commit'et i dag -> i dag.
+    try:
+        _snavs = subprocess.run(['git', 'status', '--porcelain', '--', sti],
+                                capture_output=True, text=True, timeout=10,
+                                cwd=os.path.dirname(os.path.abspath(__file__)))
+        if _snavs.stdout.strip():
+            seneste = TODAY
+    except Exception:
+        pass
     par = (foerste or TODAY, seneste or TODAY)
     _DATO_CACHE[fn] = par
     return par
