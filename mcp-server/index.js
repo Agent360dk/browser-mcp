@@ -407,6 +407,13 @@ function createWSS(port = BASE_PORT) {
       const { id, result, error } = msg;
       const p = pending.get(id);
       if (!p) return;
+      // ⛔ Kun den forbindelse kommandoen blev sendt til maa besvare den. Uden dette kunne
+      // enhver sokkel paa broen gaette et id og forfalske svaret - ogsaa en uparret.
+      if (p.conn && p.conn !== conn) {
+        process.stderr.write(
+          `[MCP] Ignored a reply to command ${id} from a connection it was not sent to.\n`);
+        return;
+      }
       pending.delete(id);
       clearTimeout(p.timer);
       if (error) p.reject(new Error(error));
@@ -627,7 +634,16 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       pending.delete(id);
       reject(new Error(`Command timed out after ${timeoutMs}ms: ${method}`));
     }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
+    // ⛔ MAALT 21/9 af en konsulent-model: parringsgaten afgoer hvem der FAAR en kommando,
+    // men ikke hvem der maa SVARE paa den. Svar blev matchet paa `pending.get(id)` alene, og
+    // id'erne taelles fra 1. En forbindelse uden noegle og uden hilsen kunne derfor gaette et
+    // id og levere et FORFALSKET svar paa en andens kommando.
+    //
+    // Det er vaerre end at modtage kommandoen: agenten handler paa data den tror kom fra
+    // browseren. Jeg meldte selv «gaten daekker alle veje paa én gang» - det gjorde den ikke.
+    //
+    // Kommandoen bindes til den forbindelse den blev sendt til, og svaret tjekkes mod den.
+    pending.set(id, { resolve, reject, timer, conn });
     // pid = Claude Code-processen der ejer denne server. Udvidelsen bruger den til at
     // skelne 'samme chat, ny forbindelse' fra 'en anden chat' naar den adopterer sessioner.
     harSendtKommando = true;

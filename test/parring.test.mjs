@@ -380,3 +380,57 @@ test('en aendring i et ANDET lager-felt skubbes ikke', async () => {
   const sendt = u.optager.kald.filter((k) => k.args?.[0]?.type === 'bmcp_parringsnoegle_aendret');
   assert.equal(sendt.length, 0, 'enhver lager-aendring kapper forbindelserne - det er en gate paa alt');
 });
+
+/**
+ * ⛔ MAALT 21/9: gaten afgjorde hvem der FIK en kommando - ikke hvem der maatte SVARE.
+ *
+ * Svar blev matchet paa `pending.get(id)` alene, og id'erne taelles fra 1. En forbindelse
+ * uden noegle og uden hilsen kunne gaette et id og levere et forfalsket svar paa en andens
+ * kommando. Det er vaerre end at modtage kommandoen: agenten handler paa data den tror kom
+ * fra browseren.
+ *
+ * Jeg meldte selv at parringsgaten «daekker alle veje paa én gang». Det gjorde den ikke.
+ */
+test('en fremmed forbindelse kan ikke besvare en andens kommando', async () => {
+  const s = await serverMedNoegle('arbejde');
+  try {
+    // Den aegte, parrede udvidelse.
+    const aegte = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+    const modtaget = [];
+    aegte.on('message', (d) => { try { modtaget.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
+    aegte.on('error', () => {});
+    await new Promise((ok) => aegte.on('open', ok));
+    aegte.send(JSON.stringify({ ...HILSEN, noegle: 'arbejde' }));
+
+    // Angriberen: ingen noegle, ingen hilsen - men lytter med paa broen.
+    const fremmed = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: 'chrome-extension://cccccccccccccccccccccccccccccccc' });
+    fremmed.on('error', () => {});
+    await new Promise((ok) => fremmed.on('open', ok));
+    await new Promise((ok) => setTimeout(ok, 300));
+
+    // Serveren skal sende et kald til den AEGTE. Angriberen forsoeger at svare foerst.
+    s.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
+      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
+    for (let i = 0; i < 40 && modtaget.filter((m) => m.method).length === 0; i++) {
+      await new Promise((ok) => setTimeout(ok, 100));
+    }
+    const kald = modtaget.find((m) => m.method);
+    assert.ok(kald, 'den aegte udvidelse fik aldrig kaldet - proeven kan ikke maale noget');
+
+    let svaret = null;
+    const slut = new Promise((ok) => {
+      const t = setInterval(() => {
+        const l = s.fejl();
+        if (/Ignored a reply to command/.test(l)) { svaret = 'afvist'; clearInterval(t); ok(); }
+      }, 100);
+      setTimeout(() => { clearInterval(t); ok(); }, 4000);
+    });
+    fremmed.send(JSON.stringify({ id: kald.id, result: { tabs: [{ id: 1, url: 'https://forfalsket.example' }] } }));
+    await slut;
+
+    assert.equal(svaret, 'afvist',
+      'et forfalsket svar fra en uparret forbindelse blev accepteret - agenten ville handle '
+      + 'paa data der aldrig kom fra browseren');
+    try { aegte.close(); fremmed.close(); } catch { /* lukket */ }
+  } finally { s.proces.kill(); }
+});
