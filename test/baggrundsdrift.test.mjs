@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { caseBlok } from './hjaelp/kildeblok.mjs';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const kilde = readFileSync(join(rod, 'extension/background.js'), 'utf8');
@@ -42,16 +43,19 @@ test('kun ask_user aktiverer fanen - alt andet arbejder i baggrunden', () => {
 
 // 9/9-2026, tredje gang samme faelde paa én dag: `slice(i, i + 4000)` gik i stykker fordi
 // der kom en ny vagt ind i blokken. Et fast antal tegn er ikke en blok. Nu klippes ved
-// case'ets EGNE graenser - samme greb som caseBlok() i tool-surface.
-function caseBlok(kilde, navn) {
-  const start = kilde.indexOf(`case '${navn}'`);
-  if (start < 0) return '';
-  const naeste = kilde.indexOf("\n      case '", start + 10);
-  // Er der ingen naeste case, er det switchens SIDSTE - og saa er blokken resten. Loftet paa 8000 tegn stod her foer, og
-  // det gjorde proeven blind: 12/9 gled 'screenshot'-casens fokus-linje ud paa tegn 8493, og proeven blev roed uden at
-  // linjen var vaek. En for lille rude er et blindt instrument.
-  return naeste > start ? kilde.slice(start, naeste) : kilde.slice(start);
-}
+// case'ets EGNE graenser.
+//
+// ⛔ MAALT 21/9: den lokale kopi der stod her, ledte efter `case '` med SEKS mellemrums
+// indrykning. Der er nul af dem i background.js - 38 har fire. Soegningen gav -1 hver
+// eneste gang, og faldbagen «saa er det switchens sidste» gjorde blokken til HELE resten
+// af filen: 124.118 tegn i stedet for 8.577.
+//
+// Det var ikke teoretisk. Mutationsbevist samme dag: `getSessionTab(port, false)` blev
+// fjernet fra screenshot-casen, og proeven forblev GROEN - den fandt kaldet i en anden
+// case, 115.000 tegn laengere nede. Den samme rettelse blev lavet i test/hjaelp/kildeblok.mjs
+// 21/9, og denne tvilling blev staaende. (Huset 8/9: ret moenstret, ikke fundet.)
+//
+// Den faelles klipper kaster hellere end at afkorte, og har ingen faldbag der kan tie.
 
 test('screenshot fotograferer uden at skifte fane', () => {
   const blok = caseBlok(kilde, 'screenshot');
@@ -73,8 +77,7 @@ test('screenshot fotograferer uden at skifte fane', () => {
 });
 
 test('press_key sender tasten uden at hente fanen frem', () => {
-  const i = kilde.indexOf("case 'press_key'");
-  const blok = kilde.slice(i, i + 700);
+  const blok = caseBlok(kilde, 'press_key');
   assert.match(blok, /getSessionTab\(port, false\)/,
     'press_key aktiverer fanen igen. Maalt 21/8: tasten lander i baggrundsfanen uden.');
 });
@@ -88,8 +91,7 @@ test('getSessionTab stjaeler aldrig VINDUES-fokus', () => {
 });
 
 test('ask_user gemmer sig ikke - den skal frem', () => {
-  const i = kilde.indexOf("case 'ask_user'");
-  const blok = kilde.slice(i, i + 900);
+  const blok = caseBlok(kilde, 'ask_user');
   assert.match(blok, /getSessionTab\(port, true\)/, 'ask_user skal aktivere fanen');
   assert.match(blok, /setBadgeText/, 'og markere sig paa ikonet, saa den kan findes i et andet vindue');
 });

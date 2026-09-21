@@ -74,3 +74,56 @@ test('ingen fast skive kan naa ind i nabo-blokken', () => {
   assert.deepEqual(overskridelser, [],
     'en skive raekker ind i nabo-blokken - en assertion kan blive groen paa kode der staar et andet sted');
 });
+
+/**
+ * Den samme fejl i sin FARLIGERE form.
+ *
+ * Reglen ovenfor ser kun fast-tal-skiver (`slice(i, i + 2600)`). MAALT 21/9 stod der en
+ * anden udgave i test/baggrundsdrift.test.mjs: en egen `caseBlok`-kopi hvis graense-soegning
+ * var `indexOf("\n      case '")` - SEKS mellemrum, hvor background.js har nul af dem og 38
+ * med fire. Soegningen gav -1 hver gang, og faldbagen «saa er det switchens sidste» gjorde
+ * blokken til HELE resten af filen: 124.118 tegn i stedet for 8.577.
+ *
+ * Den slap forbi reglen ovenfor fordi der ikke er noget tal at maale - den raekker uendeligt
+ * langt. Mutationsbevist samme dag: screenshot-casens `getSessionTab(port, false)` blev
+ * fjernet, og proeven forblev GROEN paa et kald 115.000 tegn laengere nede.
+ *
+ * Reglen hviler paa indrykningen, som er et tal i kilden - ikke paa et navn. En omdoebt
+ * hjaelpefunktion aendrer ingenting.
+ */
+test('ingen proeve leder efter en case-indrykning der ikke findes', () => {
+  const bg = readFileSync(join(ROD, 'extension', 'background.js'), 'utf8');
+
+  function find(tekst, fil) {
+    const fundet = [];
+    const re = /indexOf\(\s*"\\n( +)case '"/g;
+    let m;
+    while ((m = re.exec(tekst))) {
+      const rum = m[1].length;
+      const antal = bg.split(`\n${' '.repeat(rum)}case '`).length - 1;
+      if (antal === 0) {
+        fundet.push(`${fil}: leder efter case med ${rum} mellemrum - background.js har 0 af dem`);
+      }
+    }
+    return fundet;
+  }
+
+  const migSelv = 'kildeskiver.test.mjs';
+  const fund = [];
+  for (const fil of readdirSync(HER).filter((f) => f.endsWith('.test.mjs') && f !== migSelv)) {
+    fund.push(...find(readFileSync(join(HER, fil), 'utf8'), fil));
+  }
+  for (const fil of readdirSync(join(HER, 'hjaelp')).filter((f) => f.endsWith('.mjs'))) {
+    fund.push(...find(readFileSync(join(HER, 'hjaelp', fil), 'utf8'), `hjaelp/${fil}`));
+  }
+
+  // ⛔ Detektoren proeves mod et kendt-sandt tilfaelde foer nul betyder noget.
+  assert.deepEqual(find(`kilde.indexOf("\\n      case '", i)`, 'kalibrering').length, 1,
+    'detektoren fanger ikke en seks-mellemrums-soegning - saa betyder nul fund ingenting');
+  // Og den maa ikke fyre paa den rigtige indrykning.
+  assert.deepEqual(find(`kilde.indexOf("\\n    case '", i)`, 'kalibrering'), [],
+    'detektoren fyrer paa den KORREKTE indrykning - saa er den ubrugelig');
+
+  assert.deepEqual(fund, [],
+    'en proeve soeger efter en indrykning der ikke findes - dens blokke raekker til filens slutning');
+});
