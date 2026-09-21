@@ -304,7 +304,13 @@ try {
     // ⚠️ Bekraeft at tilstanden BLEV lavet. Samme faelde som 19/9, hvor Chrome koerte den
     // gamle udvidelseskode, `eget_vindue` blev ignoreret i stilhed, og maalingen i
     // virkeligheden foregik i en baggrundsfane - det saa ud som et resultat og var ingenting.
-    if (r?.eget_vindue && r?.fokuseret) {
+    // ⛔ MAALT 21/9 af Astra: her stod `r?.eget_vindue`, og `kald()` returnerer
+    // `{ data, tekst }` - feltet ligger i `data`. Udtrykket var ALTID undefined, saa
+    // else-grenen blev taget hver eneste gang: spaerren meldte «den TAGER skaermen»
+    // ogsaa naar vinduet var placeret helt rigtigt. En vagt der altid svarer det samme
+    // maaler ingenting. Og proeven i flow-anden-skaerm.test.mjs KRAEVEDE den forkerte
+    // form via en regex, saa den beskyttede fejlen i stedet for at fange den.
+    if (r?.data?.eget_vindue && r?.data?.fokuseret) {
       console.log(`Eget vindue paa x=${VINDUE_X} (fokuseret). Koerslen roerer ikke hovedskaermen.\n`);
     } else {
       console.log('! FLOW_VINDUE_X var sat, men udvidelsen lavede ikke tilstanden - den koerer '

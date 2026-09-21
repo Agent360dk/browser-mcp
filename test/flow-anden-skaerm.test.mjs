@@ -37,8 +37,15 @@ test('FLOW_VINDUE_X sendes videre som placering OG fokus', () => {
 test('koerslen bekraefter at tilstanden BLEV lavet, og siger til hvis ikke', () => {
   const i = kilde.indexOf('FLOW_VINDUE_X');
   const blok = kilde.slice(i, kilde.indexOf('── Navigation & indhold ──', i));
-  assert.match(blok, /r\?\.eget_vindue\s*&&\s*r\?\.fokuseret/,
-    'svaret efterproeves ikke - saa kan en gammel udvidelse ignorere parametrene i stilhed');
+  // ⛔ 21/9: denne regex kraevede `r?.eget_vindue` - det forkerte objektniveau. `kald()`
+  // returnerer { data, tekst }, saa udtrykket var altid undefined og vagten svarede det
+  // samme uanset virkeligheden. Proeven laaste fejlen fast i stedet for at fange den.
+  // Nu kraeves `data`-niveauet, og formen efterproeves mod kald()'s faktiske returvaerdi.
+  assert.match(blok, /r\?\.data\?\.eget_vindue\s*&&\s*r\?\.data\?\.fokuseret/,
+    'svaret efterproeves paa det forkerte objektniveau - saa er vagten altid falsk');
+  const sele = readFileSync(new URL('./flow/run.mjs', import.meta.url), 'utf8');
+  assert.match(sele, /return \{ data, tekst \};/,
+    'kald() returnerer ikke laengere { data, tekst } - vagten ovenfor peger saa forkert igen');
   assert.match(blok, /TAGER skaermen/,
     'naar tilstanden IKKE blev lavet, skal koerslen sige hoejt at den nu tager skaermen');
 });
