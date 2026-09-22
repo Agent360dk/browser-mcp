@@ -96,7 +96,10 @@ else
   # Flow-testen returnerer en fejlkode naar der ER fejl. Det er IKKE det samme som at
   # den ikke kunne koere - den skelnen kostede en blokeret udgivelse 30/8. DAEKNING-
   # linjen er beviset paa at den naaede hele vejen igennem.
-  npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
+  # ⛔ Samme isolerede browser som udgivelses-scriptet. Rettes kun det ene, staar tvillingen
+  # tilbage og kraever menneskets skaerm - og huset har lukket den ene doer og ladt tvillingen
+  # staa fem gange i aar. Se scripts/flow-isoleret.mjs.
+  node "$(dirname "$0")/flow-isoleret.mjs" --spaerre > "$FLOW_UD" 2>&1 || true
   if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
     echo "  Flow-testen kunne slet ikke koere:"; tail -20 "$FLOW_UD"
     echo "  Er Chrome aaben med udvidelsen indlaest?"; exit 1

@@ -362,8 +362,17 @@ else
   # hver linje her er en roed lampe nogen har vaennet sig til. Tilfoej kun med dato og grund.
   KENDTE_FEJL=()
   FLOW_UD="$(mktemp)"
-  say "npm --prefix mcp-server run flow"
-  npm --prefix mcp-server run flow > "$FLOW_UD" 2>&1 || true
+  # ⛔ Spaerren koerer i sin EGEN browser, ikke i menneskets. Foer 21/9 kraevede den Gustavs
+  # skaerm i to minutter ved hver udgivelse - Chrome leverer kun mus og tastatur til det
+  # vindue der har operativsystemets fokus - og han har tre gange sagt at koersler ikke maa
+  # tage skaermen. Den isolerede vej henter Chrome for Testing, indlaeser repoets extension/,
+  # flytter portomraadet til 19900-19904 og koerer spaerren der. MAALT 21/9: 40/40 vaerktoejer,
+  # 0 fejl, 0 sprunget - inklusive de 12 der kraever fokus.
+  #
+  # Falder den isolerede vej, er det en GATE, ikke en stiltiende tilbagefaldt til hans skaerm:
+  # det ville vaere praecis den slags tavse forskel der goer et bevis vaerdiloest.
+  say "node scripts/flow-isoleret.mjs --spaerre   (egen browser, ingen skaerm roeres)"
+  node scripts/flow-isoleret.mjs --spaerre > "$FLOW_UD" 2>&1 || true
   if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
     tail -20 "$FLOW_UD" | sed 's/^/    /'
     gate "flow-testen kunne ikke koere faerdig. Er Chrome aaben med PRAECIS én udvidelse indlaest - repoets extension/? (--skip-flow udgiver i blinde)"

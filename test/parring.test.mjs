@@ -22,28 +22,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext } from 'node:vm';
 import { createRequire } from 'node:module';
+import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const krav = createRequire(join(rod, 'mcp-server', 'index.js'));
 const WebSocket = krav('ws');
 
-/** Et frit portspaend UDEN FOR Gustavs 9876-9895, saa proeven ikke deler pulje med hans chats. */
-async function ledigPort(port) {
-  const { createServer } = await import('node:net');
-  return new Promise((ok) => {
-    const srv = createServer();
-    srv.once('error', () => ok(false));
-    srv.once('listening', () => srv.close(() => ok(true)));
-    srv.listen(port, '127.0.0.1');
-  });
-}
-async function ledigtSpaend(forsoeg = 40) {
-  for (let i = 0; i < forsoeg; i++) {
-    const base = 19100 + Math.floor(Math.random() * 800) * 8;
-    if ((await Promise.all([0, 1, 2, 3, 4].map((n) => ledigPort(base + n)))).every(Boolean)) return base;
-  }
-  throw new Error('fandt intet frit portspaend paa 40 forsoeg');
-}
+// Spaendet kommer fra den faelles hjaelper - se test/hjaelp/ledigt-spaend.mjs for hvorfor
+// faste spaend kostede baade her og i to andre proevefiler.
 const SPAEND = await ledigtSpaend();
 
 /** Starter den aegte server, faar den til at binde en port, og giver porten tilbage. */

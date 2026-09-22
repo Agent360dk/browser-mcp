@@ -480,7 +480,13 @@ function flowBeslutningen() {
   const c = readFileSync(new URL('../scripts/publish-cws.sh', import.meta.url), 'utf8');
   const start = c.indexOf('if [[ "${BMCP_FLOW_OK:-}" == "1" ]]; then');
   assert.ok(start > -1, 'beslutningskaeden i publish-cws.sh findes ikke laengere');
-  const slut = c.indexOf('\nfi', c.indexOf('npm --prefix mcp-server run flow', start));
+  // ⛔ 21/9: spaerren koerer nu i sin EGEN browser (scripts/flow-isoleret.mjs), ikke i
+  // menneskets Chrome. Ankeret foelger med - men proeven maaler stadig HVILKEN gren der
+  // vaelges, ikke at en bestemt kommando staar der. Findes kommandoen ikke, er det en
+  // fejl i sig selv: saa er der ingen gren der faktisk koerer spaerren.
+  const iKald = c.indexOf('flow-isoleret.mjs', start);
+  assert.ok(iKald > -1, 'publish-cws.sh koerer ikke laengere flow-spaerren i en isoleret browser');
+  const slut = c.indexOf('\nfi', iKald);
   const blok = c.slice(start, slut);
   // else-grenen erstattes af ét ord, saa vi maaler HVILKEN gren der vaelges uden at koere flow-testen.
   const linjer = blok.split('\n');

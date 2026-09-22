@@ -16,10 +16,13 @@ import { mkdtempSync, mkdirSync, symlinkSync, existsSync, rmSync, writeFileSync,
 import { tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
 
 const SRV = fileURLToPath(new URL('../mcp-server/index.js', import.meta.url));
 const { WebSocket } = createRequire(new URL('../mcp-server/package.json', import.meta.url))('ws');
-const BASE = 19990, MAX = 19994;
+// ⛔ Var et FAST spaend, og to samtidige suiter ramte derfor hinanden: den ene koersels
+// falske udvidelse besvarede den andens server. Se test/hjaelp/ledigt-spaend.mjs.
+const BASE = await ledigtSpaend(5), MAX = BASE + 4;
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 const arbejd = mkdtempSync(join(tmpdir(), 'bmcp-skaerm-'));
