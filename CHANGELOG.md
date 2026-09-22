@@ -35,6 +35,15 @@ they match, and a warning when they do not.
 in the same file already did. See the retraction on /learn/tools-that-lie - this was a
 precaution, not a fix for a bug we could reproduce in React.
 
+⛔ **What the key protects against, and what it does not.** It stops another program on your
+machine from driving your browser through the bridge - that was the hole, and it is closed. It
+does **not** hide the key from that program: `BROWSER_MCP_TOKEN` is an environment variable, and
+any process running as you can read it out of the process table with `ps eww`. The popup even asks
+you to type it on a command line, so it lands in your shell history too. Treat it as a way to keep
+two Chrome profiles from taking each other's commands, not as a secret. 1.30.0's note that a paired
+profile *"ignores any other program that connects to the local bridge"* is true of a program that
+connects and asks; it is not true of one that goes looking.
+
 ⚠️ **Pairing needs both halves.** The server ships on npm, and npm also refreshes the extension
 in `~/.browser-mcp`. If you installed from the Chrome Web Store, pairing starts working when
 Google approves the new extension - until then, treat it as absent rather than as protection.

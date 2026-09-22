@@ -102,3 +102,28 @@ test('landede vinduet et andet sted end der blev bedt om, siges det - med en adv
   assert.match(String(svar.advarsel), /Do not assume the run is off the user's screen/,
     'et vindue der landede et andet sted skal advare - ellers koerer spaerren blindt paa menneskets skaerm');
 });
+
+/**
+ * ⛔ Modstander-review 21/9: foerste rettelse gjorde `fokuseret` aerlig, men lod `note` staa
+ * paa `params.fokuser`. Svaret sagde derfor «fokuseret: false» og «The window has focus» i
+ * SAMME nyttelast - og prosaen er den der bliver laest. En halv rettelse, hvor den halve
+ * halvdel var den vigtigste.
+ */
+test('naegtes fokus, siger PROSAEN det ogsaa - ikke kun booleanen', async () => {
+  const { u } = sele({ left: -3840, top: 27, focused: false });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: -3840, vindue_y: 27 });
+  assert.equal(svar.fokuseret, false);
+  assert.doesNotMatch(String(svar.note), /The window has focus/,
+    'noten siger at vinduet har fokus, mens fokuseret er false - de to modsiger hinanden i samme svar');
+  assert.match(String(svar.note), /did not give it/,
+    'noten skal sige at fokus blev naegtet, saa en agent der laeser prosaen faar det samme at vide som booleanen');
+  assert.match(String(svar.advarsel), /Focus was refused/,
+    'der er ingen advarsel naar KUN fokus naegtes - kun den ene boolean, som er let at overse');
+});
+
+test('gives fokus, staar prosaen ved det', async () => {
+  const { u } = sele({ left: -3840, top: 27, focused: true });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: -3840, vindue_y: 27 });
+  assert.match(String(svar.note), /The window has focus/);
+  assert.equal(svar.advarsel, undefined, 'der advares om noget der gik godt');
+});

@@ -269,7 +269,12 @@ for md in sorted(glob.glob(os.path.join(ROOT, 'content', '*.md'))):
 # sammenligner det med den version manifestet faktisk baerer. Et omdoebt afsnit aendrer
 # ingenting - tallet er det baerende. (Huset 7/9: et ord kan ikke baere en regel.)
 VENTE_ORD = re.compile(r'(venter p[aå]|waiting (?:for|on)|kommer i|ships? in|lands? in)\s+v?(\d+\.\d+(?:\.\d+)?)', re.I)
-IKKE_UDGIVET_MAERKE = re.compile(r'ikke udgivet|endnu ikke udgivet|not released|unreleased', re.I)
+# ⛔ Maerke-listen er ordbaseret, og det er dens GRAENSE - ikke dens styrke. Tallet er det
+# baerende (det slaas op i git-tags), men noget skal vaelge linjerne ud. «Ikke shippet
+# endnu» slap forbi til 21/9 og er tilfoejet; den naeste formulering slipper ogsaa, indtil
+# nogen skriver den her. Det er en kendt, accepteret svaghed - ikke en paastand om daekning.
+IKKE_UDGIVET_MAERKE = re.compile(
+    r'ikke udgivet|endnu ikke udgivet|ikke shippet|ikke udsendt|not released|unreleased|not shipped', re.I)
 # Maerket, saa hoejst nogle faa skilletegn, saa versionen. Vinduet er smalt med vilje:
 # det er naerheden der goer de to ord til ÉT udsagn om den version.
 MAERKE_SAA_VERSION = re.compile(
@@ -321,11 +326,29 @@ for doc in ['WISHLIST.md', 'README.md', 'CHANGELOG.md', 'llms-install.md',
         # fyrede dermed paa «kan ikke drives i 1.30.0 - rettet paa main, ikke udgivet», hvor
         # «ikke udgivet» handler om RETTELSEN og 1.30.0 er korrekt navngivet som udgivet.
         # Den form vi jager er «IKKE UDGIVET - v1.29.1»: maerket og tallet er det samme udsagn.
-        for m in MAERKE_SAA_VERSION.finditer(linje):
-            if m.group(1) in UDGIVNE_TAGS:
-                fail('%s:%d kalder %s ikke-udgivet, men v%s er tagget: "%s"'
-                     % (doc, nr, m.group(1), m.group(1), linje.strip()[:90]))
-                break
+        # ⛔ TREDJE udgave, efter et modstander-review 21/9. De to foerste hvilede paa
+        # RAEKKEFOELGEN - foerst ord saa tal, eller maerket lige foer versionen - og seks
+        # varianter slap forbi: «v1.29.1 er IKKE UDGIVET endnu», «1.29.1: not released yet»,
+        # «IKKE UDGIVET (endnu) - v1.29.1», «IKKE UDGIVET - version 1.29.1», og flere.
+        # Kommentaren sagde «tallet er det baerende»; i praksis var det ordstillingen.
+        #
+        # Nu: findes BAADE et ikke-udgivet-maerke OG et udgivet versionsnummer i samme
+        # SAETNING, fyrer reglen - uanset raekkefoelge og hvad der staar imellem.
+        # ⛔ Del KUN ved punktum/spoergsmaal/udraab plus mellemrum. Foerste udgave delte
+        # ogsaa ved « - » og «:», og de BINDER: «IKKE UDGIVET - v1.29.1» blev til to
+        # saetninger, og reglen saa aldrig maerke og tal sammen. Fire af syv varianter
+        # slap. Versionsnumres egne punktummer har intet mellemrum efter og deler ikke.
+        for saetning in re.split(r'(?<=[.!?])\s+', linje):
+            if not IKKE_UDGIVET_MAERKE.search(saetning):
+                continue
+            for tal in re.findall(r'\bv?(\d+\.\d+(?:\.\d+)?)\b', saetning):
+                if tal in UDGIVNE_TAGS:
+                    fail('%s:%d kalder %s ikke-udgivet, men v%s er tagget: "%s"'
+                         % (doc, nr, tal, tal, linje.strip()[:90]))
+                    break
+            else:
+                continue
+            break
 
 # -----------------------------------------------------------------------------
 if fails:

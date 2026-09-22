@@ -3248,15 +3248,28 @@ async function dispatch(port, method, params) {
             placeret: bedtOm.left != null || bedtOm.top != null ? landede : null,
             placeret_som_bedt: bedtOm.left != null || bedtOm.top != null ? somBedt : null,
             bedt_om: bedtOm.left != null || bedtOm.top != null ? bedtOm : null,
-            advarsel: (bedtOm.left != null || bedtOm.top != null) && !somBedt
-              ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
-                + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
-              : undefined,
-            note: params.fokuser
+            // ⛔ Advar ogsaa naar KUN fokus blev naegtet. Foer stod der intet i det tilfaelde -
+            // kun den ene boolean, modsagt af prosaen ved siden af. Fundet af et modstander-review.
+            advarsel: (params.fokuser && !faktisk?.focused)
+              ? 'Focus was refused by Chrome. Input tools will not reach this window - call '
+                + 'browser_switch_tab, or do not assume this run is off the user\'s screen.'
+              : ((bedtOm.left != null || bedtOm.top != null) && !somBedt
+                ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
+                  + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
+                : undefined),
+            // ⛔ Ogsaa prosaen skal komme fra maalingen. Foerste rettelse gjorde `fokuseret`
+            // aerlig, men lod `note` staa paa `params.fokuser` - saa svaret sagde
+            // «fokuseret: false» og «The window has focus» i SAMME nyttelast.
+            note: faktisk?.focused
               ? 'The window has focus, so Chrome delivers input to it. Place it on a display nobody is ' +
                 'looking at (a negative left is a screen to the left) and it does not cover anyone\'s work.'
-              : 'Without focus this window behaves exactly like a background tab: Chrome delivers no mouse or ' +
-                'keyboard input to it. Measured 19 Sept. Pass fokuser:true, and place it with vindue_x/vindue_y.' };
+              : (params.fokuser
+                ? 'You asked for focus and Chrome did not give it. This window now behaves exactly like a '
+                  + 'background tab: no mouse or keyboard input is delivered to it. Measured 21 Sept - read '
+                  + '`fokuseret` rather than assuming.'
+                : 'Without focus this window behaves exactly like a background tab: Chrome delivers no mouse '
+                  + 'or keyboard input to it. Measured 19 Sept. Pass fokuser:true, and place it with vindue_x.'),
+          };
         }
         tab = await chrome.tabs.create({ url: params.url, active: false });
         await addTabToSession(port, tab.id);

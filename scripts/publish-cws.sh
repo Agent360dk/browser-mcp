@@ -59,6 +59,9 @@ fi
 #
 # Hver linje her er en roed lampe nogen har vaennet sig til. Tilfoej kun en med en
 # dato og en grund - og slet den saa snart den kan lukkes.
+. "$(dirname "$0")/flow-daekning.sh"
+flow_nulstil_arv
+
 KENDTE_FEJL=()
 
 # ── Automatiske tests (30/8) ────────────────────────────────────────────────
@@ -121,7 +124,16 @@ else
     echo "   Hastesag: SPRING_FLOW_OVER=1 $0 $*"
     exit 1
   fi
-  echo "  ✅ ingen nye fejl - spaerren giver groent lys"
+  # ⛔ Nul fejl er ikke det samme som daekket. Dette script taalte foer en koersel hvor 17
+  # vaerktoejer var sprunget over - og det er et udgivet npm-script der laegger zip'en i
+  # butikken. Samme vagt som udgivelses-scriptet, ét sted.
+  if ! GRUND="$(flow_daekning_ok "$FLOW_UD")"; then
+    echo ""
+    echo "⛔ flow-spaerren daekkede ikke alt: $GRUND"
+    echo "   Koer uden FLOW_KUN_BAGGRUND, eller brug SPRING_FLOW_OVER=1 bevidst."
+    exit 1
+  fi
+  echo "  ✅ ingen nye fejl og intet oversprunget - spaerren giver groent lys"
 fi
 
 # Read version from extension manifest

@@ -457,7 +457,17 @@ test('beviset for en groen browser kan ikke arves fra skallen', () => {
   // kommenterede linjen UD forblev groen, fordi strengen stadig stod dér, nu bare i en kommentar. Praecis den
   // fejl Astra fandt i 5c-proeven samme dag. Proeven ser nu kun paa kode.
   const kode = script().split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
-  const nulstil = kode.indexOf('unset BMCP_FLOW_OK');
+  // ⛔ 21/9: nulstillingen flyttede ind i scripts/flow-daekning.sh, saa BEGGE udgivelses-veje
+  // deler den. Proeven maa derfor ikke laengere lede efter `unset` i dette script alene - men
+  // den skal stadig bevise at det SKER, ikke bare at en funktion kaldes. Derfor to led:
+  // funktionen kaldes her foer trin 2b, OG den faelles fil nulstiller faktisk begge flag.
+  const faelles = readFileSync(join(rod, 'scripts', 'flow-daekning.sh'), 'utf8');
+  for (const flag of ['BMCP_FLOW_OK', 'FLOW_KUN_BAGGRUND']) {
+    assert.match(faelles, new RegExp('unset ' + flag),
+      `den faelles vagt nulstiller ikke ${flag} - en eksporteret variabel fra en anden chat kan `
+      + 'saa forfalske beviset i begge udgivelses-veje');
+  }
+  const nulstil = kode.indexOf('flow_nulstil_arv');
   assert.ok(nulstil > -1,
     'flaget nulstilles ikke ved start. En eksporteret variabel fra en tidligere koersel - eller fra en anden ' +
     'chat i samme skal - kunne saa slukke flow-spaerren for kode ingen har set koere i en browser.');
