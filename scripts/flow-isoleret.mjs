@@ -192,6 +192,9 @@ async function main() {
   skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05',
     capabilities: {}, clientInfo: { name: 'flow-isoleret', version: '0' } } });
   await new Promise((ok) => server.stdout.once('data', ok));
+  // ⛔ Draen resten. Uden det hobede serverens svar sig op i roeret, og en server der
+  // ikke kan skrive, kan heller ikke svare - saa udvidelsens probe hang til sin graense.
+  server.stdout.on('data', () => {});
   skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
   skriv({ jsonrpc: '2.0', id: 2, method: 'tools/call',
     params: { name: 'browser_list_tabs', arguments: {} } });
@@ -233,6 +236,15 @@ async function main() {
     if (BEHOLD) { console.log('--behold: browseren koerer videre. Ctrl-C for at lukke.'); await new Promise(() => {}); }
     return;
   }
+
+  // ⛔ MAALT 22/9: kontrol-serveren skal VAEK foer spaerren starter. run.mjs starter sin EGEN
+  // server i samme portomraade, og udvidelsen forbinder til alle servere den finder - saa to
+  // servere konkurrerede om den, og den ene var en zombie ingen laeste fra. Det var én af
+  // aarsagerne til at forbindelsen svigtede i 3 af 4 koersler. Kontrol-serverens eneste job
+  // er at bevise at broen virker, og det har den gjort paa dette tidspunkt.
+  try { server.kill(); } catch {}
+  server = null;
+  await vent(1500);
 
   // ⛔ Spaerren skal koere UDEN FLOW_KUN_BAGGRUND: hele pointen er at de 12 fokus-kraevende
   // vaerktoejer maales. Den maa ikke arves fra skallen, for saa springer de over igen og
