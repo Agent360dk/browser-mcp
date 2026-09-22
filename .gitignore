@@ -7,3 +7,7 @@ node_modules/
 
 # Efterladt af aerligheds-maalingen naar den koerer Playwright MCP (test/aerlighed/).
 .playwright-mcp/
+
+# Chrome for Testing, hentet af scripts/flow-isoleret.mjs. ~360 MB binaer - hoerer
+# ikke i git. Hentes paa ny med: npx @puppeteer/browsers install chrome@stable
+chrome/

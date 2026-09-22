@@ -1,149 +1,231 @@
 #!/usr/bin/env node
 /**
- * ⚠️ VIRKER IKKE - og den foerste aarsag jeg skrev her var FORKERT. Laes begge dele.
+ * En isoleret browser til flow-spaerren - saa en koersel aldrig behoever menneskets skaerm.
  *
- * MAALT og virker: serveren kan bindes til ét udvidelses-id med `BROWSER_MCP_EXTENSION_ID`,
- * og Gustavs egen udvidelse bliver saa aktivt lukket ude (set i loggen: «Afviser udvidelse
- * nggfamghkbkjjpooipchhehabjkgicim»). Selve isolations-mekanikken er bevist.
+ * ## Hvorfor det her fandtes som «virker ikke» indtil 21/9
  *
- * ⛔ **Rettelse 19/9, samme aften.** Foerste udgave af dette hoved sagde at `--load-extension`
- * giver en `background_page`-kontekst hvor `chrome.offscreen` er `undefined`, og at broen
- * derfor ikke kan starte. **Det var maalt paa den forkerte udvidelse.** Mit filter greb det
- * foerste CDP-target med «background» i url'en, og det var Chromes egen betalings-udvidelse.
+ * Foerste udgave (19/9) konkluderede at udvidelsen ALDRIG indlaeses med `--load-extension`.
+ * Det var maalt i **Google Chrome**, som har fjernet flaget for Chrome-maerkede builds.
+ * Chrome for Testing har det stadig - og huset havde selv brugt netop den browser 11/9 og
+ * tabt vejen igen.
  *
- * Den rigtige maaling: i en frisk profil med `--load-extension` er der 2-4 udvidelses-targets,
- * og de er ALLE Chromes egne - «Betalinger i Chrome Webshop», «Google Hangouts», «Google
- * Network Speech», «Google Docs Offline». **Vores er slet ikke ét af dem.** Udvidelsen bliver
- * altsaa aldrig indlaest. Hverken med `--disable-features=DisableLoadExtensionCommandLineSwitch`
- * eller med `--disable-extensions-except`.
+ * ⛔ Og 19/9-maalingen gik galt paa noget andet ogsaa: den greb det foerste CDP-target med
+ * «background» i url'en, og det var Chromes EGEN udvidelse. Derfor spoerger dette script
+ * hver service worker hvad den HEDDER, og kraever at finde «Agent360 Browser MCP». Et target
+ * er ikke vores fordi det ligner vores.
  *
- * Og det modsatte af det jeg foerst skrev er sandt: to af Chromes egne er MV3 med
- * `chrome.offscreen` som **object** i samme headless-koersel. Headless er fint. MV3 er fint.
- * Offscreen er fint. Det er indlaesningen der ikke sker.
+ * MAALT 21/9 i Chrome for Testing 153: udvidelsen indlaeses, og alle 12 fokus-kraevende
+ * vaerktoejer leverer aegte haendelser (isTrusted: true) efter et `browser_switch_tab`.
  *
- * Konsekvens: udvidelses-id'et scriptet «fandt» og bandt serveren til, var Chromes eget.
- * Isolationen virkede, men den isolerede den forkerte ting.
+ * ## Isolationen - tre lag, saa Gustavs egen Chrome ikke kan blande sig
  *
- * Vejen der ikke er proevet: installér udvidelsen i en fast profil ÉN gang via
- * chrome://extensions (kan ikke skriptes - chrome:// er spaerret for baade CDP og os), og lad
- * scriptet genbruge den profil. Kraever et menneske én gang, eller UI-automatisering med
- * skriveadgang. computer-mcp koerer readonly her.
+ * 1. Egen profil (frisk mappe), saa intet arves fra hans.
+ * 2. Eget portomraade 19900-19904, sat via `bmcpPorte` i udvidelsens lager. Hans egen
+ *    udvidelse skanner 9876-9895 og kan derfor ALDRIG naa denne servers port.
+ * 3. Serveren bindes til dette udvidelses-id med BROWSER_MCP_EXTENSION_ID, saa selv hvis
+ *    noget alligevel forbandt, ville det blive afvist.
  *
- * Indtil da koeres flow-spaerren mod den rigtige Chrome - og derfor foer en udgivelse,
- * ikke efter hver commit.
+ * ## Brug
+ *
+ *   node scripts/flow-isoleret.mjs            # henter browseren foerste gang
+ *   node scripts/flow-isoleret.mjs --behold   # lad browseren koere bagefter (fejlsoegning)
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
-const rod = dirname(dirname(fileURLToPath(import.meta.url)));
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const CDP = 9333;                       // ikke i 9876-9895; det er vores egne porte
-const profil = mkdtempSync(join(tmpdir(), 'bmcp-flow-profil-'));
+const ROD = dirname(dirname(fileURLToPath(import.meta.url)));
+const krav = createRequire(join(ROD, 'mcp-server', 'index.js'));
+const WebSocket = krav('ws');
 
-const log = (s) => process.stdout.write(s + '\n');
+const CDP_PORT = 19333;
+const PORTE = '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
+const BEHOLD = process.argv.includes('--behold');
+const SPAERRE = process.argv.includes('--spaerre');
+const UDVIDELSENS_NAVN = 'Agent360 Browser MCP';
 
-async function cdp(sti) {
-  const r = await fetch(`http://127.0.0.1:${CDP}/json/${sti}`);
+/** Finder Chrome for Testing, og henter den hvis den mangler. */
+function findBrowser() {
+  const rod = join(ROD, 'chrome');
+  const find = () => {
+    if (!existsSync(rod)) return null;
+    for (const d of readdirSync(rod)) {
+      const p = join(rod, d, 'chrome-mac-arm64', 'Google Chrome for Testing.app',
+        'Contents', 'MacOS', 'Google Chrome for Testing');
+      if (existsSync(p)) return p;
+      const linux = join(rod, d, 'chrome-linux64', 'chrome');
+      if (existsSync(linux)) return linux;
+    }
+    return null;
+  };
+  let p = find();
+  if (p) return p;
+  console.log('Henter Chrome for Testing (~360 MB, én gang)...');
+  const r = spawnSync('npx', ['--yes', '@puppeteer/browsers', 'install', 'chrome@stable'],
+    { cwd: ROD, stdio: 'inherit' });
+  if (r.status !== 0) throw new Error('kunne ikke hente Chrome for Testing');
+  p = find();
+  if (!p) throw new Error('hentede Chrome for Testing, men fandt den ikke bagefter');
+  return p;
+}
+
+/** Ét CDP-kald mod et target, og svaret tilbage. */
+function cdp(url, metode, params = {}, ms = 8000) {
+  return new Promise((ok, fejl) => {
+    const ws = new WebSocket(url);
+    const t = setTimeout(() => { try { ws.close(); } catch {} fejl(new Error(`${metode}: ingen svar`)); }, ms);
+    ws.on('open', () => ws.send(JSON.stringify({ id: 1, method: metode, params })));
+    ws.on('message', (m) => {
+      const r = JSON.parse(m.toString());
+      if (r.id !== 1) return;
+      clearTimeout(t); try { ws.close(); } catch {}
+      r.error ? fejl(new Error(r.error.message)) : ok(r.result);
+    });
+    ws.on('error', (e) => { clearTimeout(t); fejl(e); });
+  });
+}
+
+const vent = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function targets() {
+  const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/list`);
   return r.json();
 }
 
-/** Venter paa at Chrome svarer paa fejlfinder-porten. */
-async function venterPaaChrome(ms = 15000) {
-  const slut = Date.now() + ms;
-  while (Date.now() < slut) {
-    try { await cdp('version'); return true; } catch { /* ikke oppe endnu */ }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return false;
-}
-
-/** Finder udvidelsens id ud af dens egne targets. */
-async function udvidelsesId(ms = 20000) {
-  const slut = Date.now() + ms;
-  while (Date.now() < slut) {
-    const t = await cdp('list').catch(() => []);
-    const m = t.map((x) => String(x.url || '')).find((u) => u.startsWith('chrome-extension://'));
-    if (m) return m.slice('chrome-extension://'.length).split('/')[0];
-    await new Promise((r) => setTimeout(r, 300));
+/**
+ * ⛔ Finder VORES service worker ved at spoerge om navnet. Et target er ikke vores fordi
+ * url'en indeholder «background» - det var fejlen 19/9, hvor Chromes egen betalings-
+ * udvidelse blev taget for vores og hele konklusionen byggede paa den.
+ */
+async function vorosServiceWorker() {
+  for (const t of (await targets()).filter((t) => t.type === 'service_worker')) {
+    try {
+      const r = await cdp(t.webSocketDebuggerUrl, 'Runtime.evaluate', {
+        expression: 'chrome.runtime.getManifest().name', returnByValue: true,
+      });
+      if (r?.result?.value === UDVIDELSENS_NAVN) {
+        return { ...t, id: t.url.split('/')[2] };
+      }
+    } catch { /* et target der ikke svarer, er ikke vores */ }
   }
   return null;
 }
 
-log(`→ starter en isoleret Chrome (${process.argv.includes('--synlig') ? 'synlig' : 'headless'}, egen profil, din browser roeres ikke)`);
-// --headless=new er standard: saa ser brugeren INTET. Chrome leverer Input.* i headless,
-// fordi der ikke er en vinduesmanager der skal give fokus foerst - praecis den begraensning
-// der goer den synlige koersel forstyrrende. Virker en proeve ikke headless, koer med
-// `--synlig` og se den.
-const synlig = process.argv.includes('--synlig');
-const chrome = spawn(CHROME, [
-  ...(synlig ? [] : ['--headless=new']),
-  `--user-data-dir=${profil}`,
-  `--load-extension=${join(rod, 'extension')}`,
-  `--remote-debugging-port=${CDP}`,
-  '--no-first-run', '--no-default-browser-check',
-  // Chrome 137+ slaar `--load-extension` fra af sikkerhedshensyn; flaget her aabner den
-  // igen. Uden det indlaeses udvidelsen, men koeres ikke - og saa forbinder broen aldrig.
-  '--disable-features=ChromeWhatsNewUI,DisableLoadExtensionCommandLineSwitch',
-  // En rigtig side, ikke about:blank: service workeren skal vaekkes for at broen aabner.
-  'https://example.com/',
-], { stdio: 'ignore', detached: false });
+async function main() {
+  const browser = findBrowser();
+  const d = mkdtempSync(join(tmpdir(), 'bmcp-isoleret-'));
+  cpSync(join(ROD, 'extension'), join(d, 'ext'), { recursive: true });
 
-let kode = 1;
-try {
-  if (!await venterPaaChrome()) throw new Error('Chrome svarede ikke paa fejlfinder-porten');
-  const id = await udvidelsesId();
-  if (!id) throw new Error('udvidelsen blev ikke indlaest i test-profilen');
-  log(`→ udvidelsen er indlaest som ${id}`);
+  console.log(`Browser:  ${browser.split('/').slice(-1)[0]}`);
+  console.log(`Profil:   ${d}`);
+  console.log(`Porte:    ${PORTE}  (menneskets eget spaend 9876-9895 roeres ikke)\n`);
 
-  // Isolationen sker med `BROWSER_MCP_EXTENSION_ID`. Test-profilen indlaeser udvidelsen fra
-  // repoets sti og faar derfor et ANDET id end den kopi Chrome koerer i din egen profil.
-  // Serveren lukker enhver udvidelse der ikke er den pinnede (index.js:281), saa din browser
-  // melder sig forgaeves og bliver ikke styret.
-  //
-  // Foerste to forsoeg gik gennem parringsnoeglen i stedet: den skulle skrives i test-profilens
-  // storage, og hverken popup-siden (chrome.storage undefined saa tidligt) eller service
-  // workeren (ikke listet af /json/list) var til at naa. Pinning loeser det samme uden at
-  // skrive noget som helst - og er en funktion der allerede er proevet.
-  log(`→ serveren bindes til ${id} - din egen udvidelse lukkes ude`);
+  const chrome = spawn(browser, [
+    '--headless=new', `--remote-debugging-port=${CDP_PORT}`,
+    `--user-data-dir=${join(d, 'profil')}`, `--load-extension=${join(d, 'ext')}`,
+    '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling',
+    'about:blank',
+  ], { stdio: 'ignore' });
 
-  if (process.argv.includes('--kun-forbind')) {
-    // Kort proeve: forbinder udvidelsen overhovedet i denne profil? Den koerer ingen
-    // muse- eller tastehaendelser og aabner ingen faner, saa den forstyrrer mindst muligt.
-    const { spawn: spawn2 } = await import('node:child_process');
-    const srv = spawn2(process.execPath, [join(rod, 'mcp-server/index.js')], {
-      env: { ...process.env, BROWSER_MCP_EXTENSION_ID: id }, stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    let fejl = '';
-    srv.stderr.on('data', (d) => { fejl += d.toString(); });
-    const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
-    skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'probe', version: '0' } } });
-    await new Promise((ok) => srv.stdout.once('data', ok));
-    skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    skriv({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'browser_list_tabs', arguments: {} } });
-    await new Promise((r) => setTimeout(r, 40000));
-    srv.kill();
-    const forbandt = /extension connected/.test(fejl);
-    log(forbandt ? '✓ udvidelsen FORBANDT i den isolerede profil' : '✗ udvidelsen forbandt IKKE');
-    const afvist = (fejl.match(/Afviser udvidelse (\S+)/g) || []);
-    if (afvist.length) log('  (og din egen udvidelse blev lukket ude: ' + afvist[0] + ')');
-    kode = forbandt ? 0 : 3;
-    throw { stille: true };
+  let server = null;
+  const ryd = () => {
+    if (server) { try { server.kill(); } catch {} }
+    if (!BEHOLD) {
+      try { chrome.kill(); } catch {}
+      try { rmSync(d, { recursive: true, force: true }); } catch {}
+    }
+  };
+  process.on('exit', ryd);
+  process.on('SIGINT', () => { ryd(); process.exit(130); });
+
+  // 1 · vent paa VORES udvidelse, og kun vores
+  let sw = null;
+  for (let i = 0; i < 40 && !sw; i++) { await vent(500); try { sw = await vorosServiceWorker(); } catch {} }
+  if (!sw) {
+    console.error('⛔ Udvidelsen blev ikke indlaest. Det er ikke det samme som at den ikke KAN:');
+    console.error('   maal foerst om browseren er Chrome for Testing - Google Chrome har fjernet');
+    console.error('   --load-extension, og dét var fejlen bag den gamle «virker ikke»-note.');
+    process.exit(1);
+  }
+  console.log(`✓ Vores udvidelse indlaest: ${sw.id}`);
+
+  // 2 · flyt dens portomraade, og genskab offscreen saa det traeder i kraft
+  // ⛔ Det er ikke nok at lukke dokumentet: `ensureOffscreen()` kaldes ved indlaesning og
+  // ved onStartup, og ingen af delene sker igen naar vi selv lukker det. Uden det genskabes
+  // broen aldrig, og porten skannes af ingen. Vi kalder den derfor selv - den er global i
+  // servicearbejderen.
+  await cdp(sw.webSocketDebuggerUrl, 'Runtime.evaluate', {
+    expression: `chrome.storage.local.set({ bmcpPorte: '${PORTE}' })
+      .then(() => chrome.offscreen.closeDocument().catch(() => {}))
+      .then(() => new Promise(r => setTimeout(r, 300)))
+      .then(() => ensureOffscreen())
+      .then(() => 'ok')`,
+    awaitPromise: true, returnByValue: true,
+  });
+  await vent(1500);
+
+  // Efterproev at dokumentet FAKTISK bar det nye spaend med. En tavs genskabelse uden
+  // `porte=` ville skanne 9876-9895 - altsaa menneskets eget, hvilket er hele det vi undgaar.
+  const doks = (await targets()).filter((t) => t.url.includes('offscreen.html'));
+  const medSpaend = doks.filter((t) => t.url.includes(`porte=${PORTE}`));
+  if (!medSpaend.length) {
+    console.error(`⛔ Offscreen-dokumentet blev genskabt UDEN porte=${PORTE}: `
+      + (doks.map((t) => t.url).join(', ') || 'intet dokument'));
+    console.error('   Uden det ville koerslen skanne menneskets eget spaend 9876-9895.');
+    process.exit(1);
+  }
+  console.log(`✓ Offscreen-dokumentet koerer paa ${PORTE}`);
+
+  // 3 · serveren, bundet til netop denne udvidelse
+  const [fra, til] = PORTE.split('-');
+  server = spawn(process.execPath, [join(ROD, 'mcp-server', 'index.js')], {
+    env: { ...process.env, BROWSER_MCP_BASE_PORT: fra, BROWSER_MCP_MAX_PORT: til,
+      BROWSER_MCP_EXTENSION_ID: sw.id, BROWSER_MCP_TOKEN: '' },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let log = '';
+  server.stderr.on('data', (b) => { log += b.toString(); });
+  const skriv = (o) => server.stdin.write(JSON.stringify(o) + '\n');
+  skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05',
+    capabilities: {}, clientInfo: { name: 'flow-isoleret', version: '0' } } });
+  await new Promise((ok) => server.stdout.once('data', ok));
+  skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  skriv({ jsonrpc: '2.0', id: 2, method: 'tools/call',
+    params: { name: 'browser_list_tabs', arguments: {} } });
+
+  for (let i = 0; i < 60 && !/extension connected/i.test(log); i++) await vent(500);
+  if (!/extension connected/i.test(log)) {
+    console.error('⛔ Udvidelsen forbandt ikke til den isolerede server paa 30 s.');
+    console.error(log.split('\n').slice(-8).join('\n'));
+    process.exit(1);
+  }
+  const port = (log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1];
+  console.log(`✓ Udvidelsen forbundet paa port ${port}\n`);
+  if (!SPAERRE) {
+    console.log('Koer spaerren mod den med:');
+    console.log(`  BROWSER_MCP_BASE_PORT=${fra} BROWSER_MCP_MAX_PORT=${til} \\`);
+    console.log(`  BROWSER_MCP_EXTENSION_ID=${sw.id} npm --prefix mcp-server run flow\n`);
+    if (BEHOLD) { console.log('--behold: browseren koerer videre. Ctrl-C for at lukke.'); await new Promise(() => {}); }
+    return;
   }
 
-  log('→ koerer flow-spaerren mod den isolerede Chrome\n');
-  const r = spawnSync('npm', ['--prefix', join(rod, 'mcp-server'), 'run', 'flow'], {
-    stdio: 'inherit',
-    env: { ...process.env, BROWSER_MCP_EXTENSION_ID: id },
+  // ⛔ Spaerren skal koere UDEN FLOW_KUN_BAGGRUND: hele pointen er at de 12 fokus-kraevende
+  // vaerktoejer maales. Den maa ikke arves fra skallen, for saa springer de over igen og
+  // koerslen ville se groen ud uden at have maalt det den blev bygget til.
+  const miljoe = { ...process.env, BROWSER_MCP_BASE_PORT: fra, BROWSER_MCP_MAX_PORT: til,
+    BROWSER_MCP_EXTENSION_ID: sw.id };
+  delete miljoe.FLOW_KUN_BAGGRUND;
+  delete miljoe.FLOW_VINDUE_X;
+  console.log('── Flow-spaerren, isoleret ' + '─'.repeat(44) + '\n');
+  const kode = await new Promise((ok) => {
+    const f = spawn(process.execPath, [join(ROD, 'test', 'flow', 'run.mjs')],
+      { env: miljoe, stdio: 'inherit', cwd: join(ROD, 'mcp-server') });
+    f.on('exit', (c) => ok(c ?? 1));
   });
-  kode = r.status ?? 1;
-} catch (e) {
-  if (!e?.stille) log('✗ ' + (e?.message || e));
-} finally {
-  try { chrome.kill(); } catch { /* allerede vaek */ }
-  try { rmSync(profil, { recursive: true, force: true }); } catch { /* ligeglad */ }
-  log('\n→ test-Chrome lukket, profilen slettet. Din egen browser er uroert.');
+  process.exitCode = kode;
 }
-process.exit(kode);
+
+main().catch((e) => { console.error('⛔', e.message); process.exit(1); });
