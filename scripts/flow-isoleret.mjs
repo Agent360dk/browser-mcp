@@ -196,9 +196,31 @@ async function main() {
   skriv({ jsonrpc: '2.0', id: 2, method: 'tools/call',
     params: { name: 'browser_list_tabs', arguments: {} } });
 
-  for (let i = 0; i < 60 && !/extension connected/i.test(log); i++) await vent(500);
+  // ⛔ MAALT 22/9: den her forbindelse er FLAKKENDE - ca. 1 ud af 3 koersler naaede den ikke.
+  // Roden er lokaliseret, ikke loest: udvidelsen finder levende porte med et HTTP-kald
+  // (se offscreen.js' lange note om Chromes WebSocket-bremse), og i headless Chrome HAENGER
+  // det kald nogle gange - det svarer hverken ja eller nej, saa skanningen ser aldrig porten.
+  // Maalt ved at koere kaldet direkte i servicearbejderen: intet svar paa 10 s.
+  //
+  // Indtil roden er fundet, nudger vi skanningen og giver den laengere tid. Det er en
+  // OMGAAELSE, ikke en rettelse, og den staar her saa den ikke bliver forvekslet med en.
+  // Falder den alligevel, er det en gate - ikke et tilbagefald til menneskets skaerm.
+  for (let runde = 0; runde < 3 && !/extension connected/i.test(log); runde++) {
+    for (let i = 0; i < 40 && !/extension connected/i.test(log); i++) await vent(500);
+    if (/extension connected/i.test(log)) break;
+    console.log(`  (forbindelsen udeblev - genskaber broen, forsoeg ${runde + 2} af 3)`);
+    try {
+      await cdp(sw.webSocketDebuggerUrl, 'Runtime.evaluate', {
+        expression: `chrome.offscreen.closeDocument().catch(() => {})
+          .then(() => new Promise(r => setTimeout(r, 500)))
+          .then(() => ensureOffscreen()).then(() => 'ok')`,
+        awaitPromise: true, returnByValue: true,
+      }, 15000);
+    } catch (e) { /* servicearbejderen kan sove; naeste runde proever igen */ }
+  }
   if (!/extension connected/i.test(log)) {
-    console.error('⛔ Udvidelsen forbandt ikke til den isolerede server paa 30 s.');
+    console.error('⛔ Udvidelsen forbandt ikke til den isolerede server paa 3 forsoeg (~60 s).');
+    console.error('   Kendt flakiness - se noten ovenfor. Roden er den haengende HTTP-probe.');
     console.error(log.split('\n').slice(-8).join('\n'));
     process.exit(1);
   }
