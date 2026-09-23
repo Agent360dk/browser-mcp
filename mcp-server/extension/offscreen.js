@@ -188,9 +188,26 @@ async function harServer(port) {
   }
 }
 
+// ⛔ MAALT 23/9: laasen kunne blive staaende for evigt.
+//
+// `skanner` frigives i `finally`, og det daekker exceptions - men IKKE et loefte der aldrig
+// afgoeres. Haenger én probe, afgoeres `Promise.all` aldrig, `finally` naas aldrig, og saa
+// returnerer HVER senere skanning med det samme. Broen er doed indtil udvidelsen genstartes.
+//
+// Maalt i en isoleret browser: `skanner: true`, `forbindelser: 0`, og en probe der ikke
+// svarede. Og det rammer ikke kun proever - et offscreen-dokument er aldrig synligt, saa
+// Chrome kan fryse det, og et frosset dokument fyrer heller ikke sin egen afbryder-timer.
+// Én haengning ville altsaa vaere nok til at en bruger holdt op med at finde servere.
+//
+// Sikkerhedsventilen frigiver laasen efter et stykke tid uanset hvad. Er dokumentet frosset,
+// fyrer den foerst naar det taes op igen - og saa genoptager skanningen, i stedet for at
+// vaere doed. Det er hele forskellen paa «en daarlig periode» og «vaek til genstart».
+const SCAN_MAX_MS = 15000;
+
 async function scanPorts() {
   if (skanner) return;            // skanningen er nu asynkron; undgaa overlap
   skanner = true;
+  const ventil = setTimeout(() => { skanner = false; }, SCAN_MAX_MS);
   try {
     const kandidater = [];
     for (let port = BASE_PORT; port <= MAX_PORT; port++) {
@@ -210,6 +227,7 @@ async function scanPorts() {
       if (port !== null) tryConnect(port);
     }
   } finally {
+    clearTimeout(ventil);
     skanner = false;
   }
 }

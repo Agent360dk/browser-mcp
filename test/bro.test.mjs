@@ -50,6 +50,10 @@ async function koerSkan({ levende = [], fremmede = [], allerede = new Map() } = 
   const src = [
     'const BASE_PORT = 9876, MAX_PORT = 9895;',
     'const PROBE_TIMEOUT_MS = 400;',
+    // ⛔ Laeses fra kilden, ikke skrevet af. En kopi her ville tavst afvige fra produktet,
+    // og saa maaler proeven en anden konstant end den der koerer. Sikkerhedsventilen paa
+    // skannings-laasen er selv vogtet i test/skanner-laas.test.mjs.
+    (kilde.match(/const SCAN_MAX_MS = \d+;/) || ['const SCAN_MAX_MS = 15000;'])[0],
     'let skanner = false;',
     'function tryConnect(p) { new WebSocket(`ws://127.0.0.1:${p}`); }',
     udklip('harServer'),

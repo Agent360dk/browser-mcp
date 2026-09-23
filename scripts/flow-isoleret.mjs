@@ -41,7 +41,12 @@ const ROD = dirname(dirname(fileURLToPath(import.meta.url)));
 const krav = createRequire(join(ROD, 'mcp-server', 'index.js'));
 const WebSocket = krav('ws');
 
-const CDP_PORT = 19333;
+// ⛔ MAALT 23/9: her stod en FAST port. Koerer to koersler efter hinanden, naar den forrige
+// browser ikke altid at doe foerst - saa kan den nye ikke tage porten, og vi spoerger den
+// DOEENDE instans, som ingen udvidelse har. Fejlen kom ud som «udvidelsen blev ikke
+// indlaest», og det passede: bare ikke om den browser vi lige havde startet.
+// Forklarer moenstret praecis: foerste koersel virker, de naeste fejler.
+const CDP_PORT = 19340 + Math.floor(Math.random() * 400);
 const PORTE = '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
 const BEHOLD = process.argv.includes('--behold');
 const SPAERRE = process.argv.includes('--spaerre');
@@ -103,9 +108,14 @@ async function targets() {
 async function vorosServiceWorker() {
   for (const t of (await targets()).filter((t) => t.type === 'service_worker')) {
     try {
+      // ⛔ MAALT 23/9: her stod standard-taalmodigheden paa 8 sekunder. Chromes EGNE
+      // udvidelser (Hangouts, google.com, Docs Offline) svarer nogle gange slet ikke, og tre
+      // tavse maal aad derfor hele soegningens budget paa 20 s - foer vores egen blev spurgt.
+      // Vores udvidelse ER der: maalt dukker den op efter ~4 s. Fejlen «udvidelsen blev ikke
+      // indlaest» var altsaa min egen soegning der loeb toer, ikke browseren.
       const r = await cdp(t.webSocketDebuggerUrl, 'Runtime.evaluate', {
         expression: 'chrome.runtime.getManifest().name', returnByValue: true,
-      });
+      }, 2500);
       if (r?.result?.value === UDVIDELSENS_NAVN) {
         return { ...t, id: t.url.split('/')[2] };
       }
@@ -127,6 +137,14 @@ async function main() {
     '--headless=new', `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${join(d, 'profil')}`, `--load-extension=${join(d, 'ext')}`,
     '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling',
+    // ⛔ MAALT 23/9, roden efter syv fejlspor: udvidelsens probe mod 127.0.0.1 HANG - ikke
+    // langsomt, men uendeligt, afbrudt af vores egen frist uanset om den stod paa 400 eller
+    // 2000 ms. Serveren svarer 426 paa 8 ms maalt fra Node, saa den var uskyldig.
+    // Chrome behandler kald til lokalnetvaerket FRA ET DOKUMENT saerskilt og kan kraeve en
+    // tilladelse. Offscreen-dokumentet er et dokument - og i en browser uden vindue kan den
+    // dialog ikke vises, saa kaldet venter for evigt. Det forklarer baade haengningen og at
+    // den kun rammer headless: rigtige brugere med et vindue ser den aldrig.
+    '--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults',
     'about:blank',
   ], { stdio: 'ignore' });
 
@@ -142,8 +160,23 @@ async function main() {
   process.on('SIGINT', () => { ryd(); process.exit(130); });
 
   // 1 · vent paa VORES udvidelse, og kun vores
+  // ⛔ Og efterproev at fejlfindings-porten svarer den browser VI startede. Svarer en fremmed,
+  // er alt hvad vi maaler bagefter om en anden proces.
+  let egen = false;
+  for (let i = 0; i < 20 && !egen; i++) {
+    await vent(500);
+    try { egen = (await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json()) != null; } catch { /* ikke oppe endnu */ }
+  }
+  if (!egen) {
+    console.error(`⛔ Browserens fejlfindings-port ${CDP_PORT} svarede ikke paa 10 s.`);
+    process.exit(1);
+  }
+
+  // Frist paa UR, ikke paa antal forsoeg: et forsoeg kan tage alt fra 0,1 til 8 sekunder,
+  // saa «40 forsoeg» er ikke en tid - det var derfor budgettet kunne loebe toer uset.
   let sw = null;
-  for (let i = 0; i < 40 && !sw; i++) { await vent(500); try { sw = await vorosServiceWorker(); } catch {} }
+  const frist = Date.now() + 60000;
+  while (!sw && Date.now() < frist) { await vent(500); try { sw = await vorosServiceWorker(); } catch {} }
   if (!sw) {
     console.error('⛔ Udvidelsen blev ikke indlaest. Det er ikke det samme som at den ikke KAN:');
     console.error('   maal foerst om browseren er Chrome for Testing - Google Chrome har fjernet');
@@ -235,6 +268,29 @@ async function main() {
     } catch (e) { /* servicearbejderen kan sove; naeste runde proever igen */ }
   }
   if (!/extension connected/i.test(log)) {
+    // ⛔ En fejlmelding der bare siger «forbandt ikke» tvinger den naeste til at gaette. Her
+    // spoerges broen selv, saa fejlen forklarer sig: hvilket spaend den skanner, om skanningen
+    // staar laast, og hvad en probe mod den KENDT levende port faktisk svarer.
+    try {
+      const off = (await targets()).find((t) => t.url.includes('offscreen.html'));
+      if (off?.webSocketDebuggerUrl) {
+        const spoerg = async (x) => {
+          try {
+            const r = await cdp(off.webSocketDebuggerUrl, 'Runtime.evaluate',
+              { expression: x, awaitPromise: true, returnByValue: true }, 8000);
+            return r?.result?.value;
+          } catch (e) { return 'kunne ikke spoerge: ' + e.message; }
+        };
+        console.error('   broens egen tilstand:');
+        console.error(`     spaend        : ${await spoerg('BASE_PORT + "-" + MAX_PORT')}`);
+        console.error(`     skanner-laast : ${await spoerg('String(skanner)')}`);
+        console.error(`     forbindelser  : ${await spoerg('connections.size')}`);
+        console.error(`     probe mod ${fra}: ${await spoerg(`(async()=>{const t=Date.now();const r=await harServer(${fra});return r+" efter "+(Date.now()-t)+" ms"})()`)}`);
+        console.error(`     noegle-tilstand: ${await spoerg('typeof noegleTilstand !== "undefined" ? noegleTilstand : "(ukendt)"')}`);
+      } else {
+        console.error('   ⛔ offscreen-dokumentet findes slet ikke laengere - broen er vaek.');
+      }
+    } catch (e) { console.error('   (kunne ikke laese broens tilstand: ' + e.message + ')'); }
     console.error('⛔ Udvidelsen forbandt ikke til den isolerede server paa 3 forsoeg (~60 s).');
     console.error('   Kendt flakiness - se noten ovenfor. Roden er den haengende HTTP-probe.');
     console.error(log.split('\n').slice(-8).join('\n'));
