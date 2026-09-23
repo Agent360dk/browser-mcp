@@ -191,7 +191,20 @@ async function main() {
   const skriv = (o) => server.stdin.write(JSON.stringify(o) + '\n');
   skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05',
     capabilities: {}, clientInfo: { name: 'flow-isoleret', version: '0' } } });
-  await new Promise((ok) => server.stdout.once('data', ok));
+  // ⛔ MAALT 23/9: her stod en ventetid UDEN graense. Svarede serveren aldrig paa stdout,
+  // hang hele spaerren for evigt - maalt tre gange, senest 54 minutter midt i en udgivelse,
+  // med 23 efterladte browsere. Og fordi den hang FOER `run.mjs` blev startet, saa loggen ud
+  // som om spaerren koerte. En vagt der kan haenge, er ikke en vagt - den er en blokering
+  // uden fejlmelding.
+  const svarede = await Promise.race([
+    new Promise((ok) => server.stdout.once('data', () => ok(true))),
+    vent(20000).then(() => false),
+  ]);
+  if (!svarede) {
+    console.error('⛔ Serveren svarede ikke paa 20 s. Spaerren stopper hellere end at haenge.');
+    console.error(log.split('\n').slice(-6).join('\n'));
+    process.exit(1);
+  }
   // ⛔ Draen resten. Uden det hobede serverens svar sig op i roeret, og en server der
   // ikke kan skrive, kan heller ikke svare - saa udvidelsens probe hang til sin graense.
   server.stdout.on('data', () => {});
