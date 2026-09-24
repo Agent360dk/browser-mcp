@@ -132,7 +132,9 @@ async function vorosServiceWorker() {
 async function main() {
   const browser = findBrowser();
   const d = mkdtempSync(join(tmpdir(), 'bmcp-isoleret-'));
-  cpSync(join(ROD, 'extension'), join(d, 'ext'), { recursive: true });
+  // BMCP_UDVIDELSE_KILDE: maal en ANDEN udvidelse end repoets - fx den udgivne, for at se hvad
+  // brugerne oplever i dagene hvor ny server moeder gammel udvidelse fra butikken.
+  cpSync(process.env.BMCP_UDVIDELSE_KILDE || join(ROD, 'extension'), join(d, 'ext'), { recursive: true });
 
   // ⛔ MAALT 24/9 - den tredje og rigtige vej til isolation, foreslaaet af Fable 22/9 og ikke
   // fulgt foer nu. Testudvidelsens portomraade skal vaere et andet end menneskets, ellers finder
