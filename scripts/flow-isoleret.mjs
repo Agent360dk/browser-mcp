@@ -180,19 +180,39 @@ async function main() {
     }
   };
   process.on('exit', ryd);
+
+  // ⛔ MAALT 24/9 inde i udgivelses-scriptets proevekoersel: browserens fejlfindings-port svarede
+  // ikke paa 10 s, fordi hele proevesuiten lige havde koert og maskinen var presset. Den fejl
+  // proevede IKKE igen - genforsoeget fandtes kun ved forbindelsesfejlen - saa en langsom opstart
+  // draebte hele udgivelsen. Nu proever enhver FORBIGAAENDE opstartsfejl igen med en helt frisk
+  // browser. Sikkerhedsstoppet ved portrettelsen proever bevidst IKKE igen.
+  const proevIgenEllerStop = () => {
+    const forsoeg = Number(process.env.BMCP_ISOLERET_FORSOEG || 1);
+    if (forsoeg < 3) {
+      console.error(`   Proever igen med en helt frisk browser (forsoeg ${forsoeg + 1} af 3).\n`);
+      ryd();
+      const r = spawnSync(process.execPath, process.argv.slice(1), {
+        stdio: 'inherit',
+        env: { ...process.env, BMCP_ISOLERET_FORSOEG: String(forsoeg + 1) },
+      });
+      process.exit(r.status ?? 1);
+    }
+    console.error('⛔ Tre friske browsere kom ikke op. Spaerren stopper.');
+    process.exit(1);
+  };
   process.on('SIGINT', () => { ryd(); process.exit(130); });
 
   // 1 · vent paa VORES udvidelse, og kun vores
   // ⛔ Og efterproev at fejlfindings-porten svarer den browser VI startede. Svarer en fremmed,
   // er alt hvad vi maaler bagefter om en anden proces.
   let egen = false;
-  for (let i = 0; i < 20 && !egen; i++) {
+  for (let i = 0; i < 60 && !egen; i++) {
     await vent(500);
     try { egen = (await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json()) != null; } catch { /* ikke oppe endnu */ }
   }
   if (!egen) {
-    console.error(`⛔ Browserens fejlfindings-port ${CDP_PORT} svarede ikke paa 10 s.`);
-    process.exit(1);
+    console.error(`⛔ Browserens fejlfindings-port ${CDP_PORT} svarede ikke paa 30 s.`);
+    proevIgenEllerStop();
   }
 
   // Frist paa UR, ikke paa antal forsoeg: et forsoeg kan tage alt fra 0,1 til 8 sekunder,
@@ -204,7 +224,7 @@ async function main() {
     console.error('⛔ Udvidelsen blev ikke indlaest. Det er ikke det samme som at den ikke KAN:');
     console.error('   maal foerst om browseren er Chrome for Testing - Google Chrome har fjernet');
     console.error('   --load-extension, og dét var fejlen bag den gamle «virker ikke»-note.');
-    process.exit(1);
+    proevIgenEllerStop();
   }
   console.log(`✓ Vores udvidelse indlaest: ${sw.id}`);
 
@@ -235,7 +255,7 @@ async function main() {
   if (!svarede) {
     console.error('⛔ Serveren svarede ikke paa 20 s. Spaerren stopper hellere end at haenge.');
     console.error(log.split('\n').slice(-6).join('\n'));
-    process.exit(1);
+    proevIgenEllerStop();
   }
   // ⛔ Draen resten. Uden det hobede serverens svar sig op i roeret, og en server der
   // ikke kan skrive, kan heller ikke svare - saa udvidelsens probe hang til sin graense.
@@ -291,18 +311,7 @@ async function main() {
     // samme browser goer det vaerre (det var roden), saa her proeves med en helt ny browser og
     // en ny profil. Tre forsoeg loefter chancen fra ca. halvdelen til ca. ni ud af ti.
     // Det er en omgaaelse i et MAALEINSTRUMENT, ikke i produktet - og hvert forsoeg er synligt.
-    const forsoeg = Number(process.env.BMCP_ISOLERET_FORSOEG || 1);
-    if (forsoeg < 3) {
-      console.error(`   Proever igen med en helt frisk browser (forsoeg ${forsoeg + 1} af 3).\n`);
-      ryd();
-      const r = spawnSync(process.execPath, process.argv.slice(1), {
-        stdio: 'inherit',
-        env: { ...process.env, BMCP_ISOLERET_FORSOEG: String(forsoeg + 1) },
-      });
-      process.exit(r.status ?? 1);
-    }
-    console.error('⛔ Tre friske browsere forbandt ikke. Spaerren stopper.');
-    process.exit(1);
+    proevIgenEllerStop();
   }
   const port = (log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1];
   console.log(`✓ Udvidelsen forbundet paa port ${port}\n`);

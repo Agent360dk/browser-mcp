@@ -375,7 +375,10 @@ else
   node scripts/flow-isoleret.mjs --spaerre > "$FLOW_UD" 2>&1 || true
   if ! grep -q "^DAEKNING:" "$FLOW_UD"; then
     tail -20 "$FLOW_UD" | sed 's/^/    /'
-    gate "flow-testen kunne ikke koere faerdig. Er Chrome aaben med PRAECIS én udvidelse indlaest - repoets extension/? (--skip-flow udgiver i blinde)"
+    # Spaerren koerer i sin EGEN browser siden 22/9 - den gamle besked spurgte om menneskets
+    # Chrome, og det foerte fejlsoegningen det forkerte sted hen. Den isolerede spaerre proever
+    # selv tre friske browsere, saa en fejl her er ikke en enkelt uheldig opstart.
+    gate "flow-spaerren kom ikke igennem, heller ikke efter tre friske browsere. Laes loggen ovenfor - den roede koersel skriver broens egen tilstand. Koer igen: node scripts/flow-isoleret.mjs --spaerre (--skip-flow udgiver i blinde)"
   else
     grep -E "^DAEKNING:" "$FLOW_UD" | sed 's/^/  /'
     FLOW_UVENTEDE=0
