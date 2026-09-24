@@ -55,6 +55,8 @@ async function koerSkan({ levende = [], fremmede = [], allerede = new Map() } = 
     // skannings-laasen er selv vogtet i test/skanner-laas.test.mjs.
     (kilde.match(/const SCAN_MAX_MS = \d+;/) || ['const SCAN_MAX_MS = 15000;'])[0],
     'let skanner = false;',
+    // Porte med en probe i luften - samme mekanik som i produktet, se offscreen.js.
+    'const iLuften = new Set();',
     'function tryConnect(p) { new WebSocket(`ws://127.0.0.1:${p}`); }',
     udklip('harServer'),
     udklip('scanPorts'),

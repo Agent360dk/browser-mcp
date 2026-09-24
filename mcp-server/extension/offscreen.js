@@ -203,6 +203,8 @@ async function harServer(port) {
 // fyrer den foerst naar det taes op igen - og saa genoptager skanningen, i stedet for at
 // vaere doed. Det er hele forskellen paa «en daarlig periode» og «vaek til genstart».
 const SCAN_MAX_MS = 15000;
+// Porte med en probe i luften. Uden den kan ventilen fordoble antallet af haengende kald.
+const iLuften = new Set();
 
 async function scanPorts() {
   if (skanner) return;            // skanningen er nu asynkron; undgaa overlap
@@ -219,9 +221,21 @@ async function scanPorts() {
     }
     if (!kandidater.length) return;
 
-    // Probes koeres parallelt — de er gratis i bremsens regnskab.
+    // ⛔ MAALT 23/9: sikkerhedsventilen alene gjorde det VAERRE. Den slipper laasen efter 15 s,
+    // en ny skanning starter - og haenger proberne, hober de sig op. Chrome tillader kun et
+    // lille antal samtidige forbindelser per vaert, saa de haengende kald aeder pladserne og
+    // INTET kommer igennem derefter. 0 af 12 koersler efter at ventilen kom ind, mod groen
+    // foer den.
+    //
+    // Derfor: en port der allerede har en probe i luften, probes ikke igen. Ventilen maa gerne
+    // slippe laasen - men den maa ikke kunne fordoble antallet af haengende kald.
+    const nye = kandidater.filter((p) => !iLuften.has(p));
+    for (const p of nye) iLuften.add(p);
     const levende = await Promise.all(
-      kandidater.map(async (port) => (await harServer(port)) ? port : null),
+      nye.map(async (port) => {
+        try { return (await harServer(port)) ? port : null; }
+        finally { iLuften.delete(port); }
+      }),
     );
     for (const port of levende) {
       if (port !== null) tryConnect(port);
