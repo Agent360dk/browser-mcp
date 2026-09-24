@@ -68,6 +68,11 @@ async function opretMed(lagerVaerdi) {
     udklip('PORTE_MAX_SPAEND', false),
     udklip('portOmraadeFraLager'),
     udklip('offscreenSvarer'),
+    // 24/9: ensureOffscreen er nu en tynd indpakning der sikrer at broen bygges én ad gangen;
+    // selve arbejdet ligger i ensureOffscreenIndre. Begge skal med, ellers maaler selen en
+    // anden funktion end den der koerer.
+    'let offscreenIGang = null;',
+    udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',
   ].join('\n');

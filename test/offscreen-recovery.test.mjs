@@ -74,6 +74,11 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
     udklip('PORTE_MAX_SPAEND', false),
     udklip('portOmraadeFraLager'),
     udklip('offscreenSvarer'),
+    // 24/9: ensureOffscreen er nu en tynd indpakning der sikrer at broen bygges én ad gangen;
+    // selve arbejdet ligger i ensureOffscreenIndre. Begge skal med, ellers maaler selen en
+    // anden funktion end den der koerer.
+    'let offscreenIGang = null;',
+    udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',
   ].join('\n');
@@ -184,12 +189,23 @@ test('en bro med samme version faar fred', async () => {
 });
 
 // ── Mutations-verificeret: tvangs-lukningen fjernet gav roed.
-test('en genindlaesning tvinger altid en frisk bro', () => {
+test('en genindlaesning tvinger altid en frisk bro - men en NY installation lukker den ikke', () => {
   const i = kilde.indexOf('chrome.runtime.onInstalled.addListener');
   assert.ok(i > -1, 'onInstalled skal haandteres');
-  const blok = kilde.slice(i, i + 700);
+  // Hele haendelsen, ikke et fast antal tegn: et fast udsnit brast da reglen voksede 24/9.
+  const slut = kilde.indexOf('\n});', i);
+  const blok = kilde.slice(i, slut);
   assert.match(blok, /closeDocument\(\)/,
-    'onInstalled fyrer ved installation, opdatering OG "Genindlaes" - i alle tre er koden ' +
-    'aendret, saa en overlevende bro er per definition forældet, uanset hvad den svarer');
+    'ved opdatering og "Genindlaes" er koden aendret, saa en overlevende bro er per definition '
+    + 'foraeldet, uanset hvad den svarer - den skal lukkes');
+
+  // ⛔ 24/9: ved en NY installation findes der ingen gammel bro. Den eneste bro er den der
+  // lige er ved at blive bygget, og at lukke den efterlod broen halvdoed for en ny bruger.
+  const installation = blok.indexOf("reason === 'install'");
+  assert.ok(installation > -1, 'installation behandles ikke for sig - saa lukkes den nye brugers bro');
+  const retur = blok.indexOf('return;', installation);
+  assert.ok(retur > -1 && retur < blok.indexOf('closeDocument()'),
+    'installations-grenen skal vende tilbage FOER broen lukkes - ellers lukker en ny installation '
+    + 'den bro den selv er ved at bygge');
   assert.match(blok, /offscreenGenskabt: 0/, 'og taelleren skal nulstilles, ellers arver den nye bro en gammel pause');
 });

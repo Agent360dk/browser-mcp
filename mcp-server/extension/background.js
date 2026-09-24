@@ -1888,7 +1888,24 @@ async function portOmraadeFraLager() {
   } catch { return null; }
 }
 
-async function ensureOffscreen() {
+// ⛔ MAALT 24/9 - fundet af Astra, bekraeftet her: broen kunne bygges af TRE kaldere paa
+// samme tid - linjen oeverst i «Start», installations-haendelsen og hjerteslaget. Ingen af
+// dem ventede paa de andre. Ved en ny installation fyrer de to foerste naesten samtidig, og
+// installations-haendelsen LUKKER broen mens den anden er ved at bygge den. Luk-og-genbyg
+// efterlader broen halvdoed: den findes, melder det rigtige spaend, og alle dens kald mod
+// 127.0.0.1 haenger for evigt. Resultat: «Not connected» for evigt for en ny bruger.
+//
+// Nu bygges broen én ad gangen: et kald der kommer mens et andet er i gang, faar det samme
+// loefte og venter paa det.
+let offscreenIGang = null;
+function ensureOffscreen() {
+  if (!offscreenIGang) {
+    offscreenIGang = ensureOffscreenIndre().finally(() => { offscreenIGang = null; });
+  }
+  return offscreenIGang;
+}
+
+async function ensureOffscreenIndre() {
   const findes = await chrome.offscreen.hasDocument();
 
   if (findes) {
@@ -5598,9 +5615,19 @@ chrome.runtime.onStartup.addListener(() => ensureOffscreen().catch(console.error
 // overlevende bro er per definition forældet — uanset hvor villigt den svarer paa ping.
 // MAALT 22/8: uden tvangen slog en genindlaesning aldrig igennem til broen, og
 // udvikling krævede en fuld genstart af Chrome hver gang.
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (detaljer) => {
   // Foerst: aeldre udgaver gemte parametre (adgangskoder, cookie-vaerdier) i historikken.
   await rensHandlingslog();
+  // ⛔ Ved en NY installation findes der ingen gammel bro at erstatte - den eneste bro er den
+  // der lige nu er ved at blive bygget. At lukke den er praecis det der efterlod broen
+  // halvdoed for en ny bruger (maalt 24/9). Saa ved installation: vent paa den, og faerdig.
+  if (detaljer?.reason === 'install') {
+    await ensureOffscreen().catch(console.error);
+    return;
+  }
+  // Ved opdatering og genindlaesning ER den gamle bro foraeldet. Vent foerst paa en
+  // opbygning der allerede er i gang, saa vi ikke lukker en halvfaerdig bro.
+  await ensureOffscreen().catch(() => {});
   try {
     if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
   } catch (e) {
