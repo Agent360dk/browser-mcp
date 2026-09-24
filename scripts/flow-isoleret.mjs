@@ -31,7 +31,7 @@
  *   node scripts/flow-isoleret.mjs --behold   # lad browseren koere bagefter (fejlsoegning)
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, readdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,7 +47,7 @@ const WebSocket = krav('ws');
 // indlaest», og det passede: bare ikke om den browser vi lige havde startet.
 // Forklarer moenstret praecis: foerste koersel virker, de naeste fejler.
 const CDP_PORT = 19340 + Math.floor(Math.random() * 400);
-const PORTE = '9890-9895';         // den hoeje ende af standardspaendet - se noten ved isolationen
+const PORTE = '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
 const BEHOLD = process.argv.includes('--behold');
 const SPAERRE = process.argv.includes('--spaerre');
 const UDVIDELSENS_NAVN = 'Agent360 Browser MCP';
@@ -129,6 +129,28 @@ async function main() {
   const d = mkdtempSync(join(tmpdir(), 'bmcp-isoleret-'));
   cpSync(join(ROD, 'extension'), join(d, 'ext'), { recursive: true });
 
+  // ⛔ MAALT 24/9 - den tredje og rigtige vej til isolation, foreslaaet af Fable 22/9 og ikke
+  // fulgt foer nu. Testudvidelsens portomraade skal vaere et andet end menneskets, ellers finder
+  // hans udvidelse testserveren og hamrer paa den: den groenne koersel havde 0 afvisninger i
+  // serverens log, de to roede havde 7 hver.
+  //
+  // At FLYTTE spaendet i en koerende udvidelse knaekkede broen begge gange (lukke+genskabe gav
+  // haengende kald; hel genstart byggede broen uden spaendet). Her rettes standarden i KOPIEN
+  // foer browseren starter, saa broen bygges med det rigtige spaend fra foerste indlaesning.
+  //
+  // ⚠️ Maalingens graense, sagt hoejt: det der koeres er repoets extension/ med PRAECIS én
+  // linje aendret - standard-portomraadet. Alt andet er byte-identisk.
+  const offPath = join(d, 'ext', 'offscreen.js');
+  const [fraP, tilP] = PORTE.split('-').map(Number);
+  const offKilde = readFileSync(offPath, 'utf8');
+  const standard = 'return [9876, 9895];';
+  if (offKilde.split(standard).length !== 2) {
+    console.error(`⛔ Fandt ikke praecis én «${standard}» i offscreen.js - kan ikke isolere sikkert.`);
+    console.error('   Uden den ville testudvidelsen skanne menneskets eget spaend. Stopper.');
+    process.exit(1);
+  }
+  writeFileSync(offPath, offKilde.replace(standard, `return [${fraP}, ${tilP}];`));
+
   console.log(`Browser:  ${browser.split('/').slice(-1)[0]}`);
   console.log(`Profil:   ${d}`);
   console.log(`Porte:    ${PORTE}  (menneskets eget spaend 9876-9895 roeres ikke)\n`);
@@ -182,25 +204,7 @@ async function main() {
   console.log(`✓ Vores udvidelse indlaest: ${sw.id}`);
 
   // 2 · flyt dens portomraade, og genskab offscreen saa det traeder i kraft
-  // ⛔ MAALT 24/9, efter seks forkastede hypoteser og 15 fejlede koersler:
-  //
-  // Her stod `closeDocument()` + `ensureOffscreen()` for at flytte udvidelsens portomraade.
-  // Det EFTERLADER broen halvdoed: dokumentet findes, baerer det rigtige `?porte=`, melder
-  // det rigtige spaend - og alle dens `fetch` mod 127.0.0.1 haenger for evigt. Serveren var
-  // uskyldig hele vejen: den svarer 426 paa 8 ms maalt fra Node.
-  //
-  // Bevist ved at FJERNE trinnet: uden portflytning forbandt udvidelsen med det samme,
-  // foerste forsoeg. En hel genstart af udvidelsen blev ogsaa proevet - saa byggede den broen
-  // uden portomraadet. Begge veje til at flytte spaendet er altsaa daarlige.
-  //
-  // Derfor ligger isolationen nu paa SERVERENS side i stedet:
-  //   · serveren bindes til netop denne testudvidelses id (BROWSER_MCP_EXTENSION_ID), saa
-  //     menneskets egen udvidelse bliver afvist hvis den finder porten
-  //   · og den tager en port i den HOEJE ende af spaendet, hvor hans chats sjaeldent naar til
-  //
-  // ⚠️ Prisen, sagt hoejt: testserveren tager ÉN port i 9876-9895 i et par minutter, og
-  // menneskets udvidelse vil proeve den og blive afvist. Det er en stoej vi accepterer for at
-  // faa en spaerre der virker - i stedet for en isolation der aldrig blev groen.
+  // Isolationen sker i kopien ovenfor. Intet flyttes i den koerende udvidelse.
 
   // 3 · serveren, bundet til netop denne udvidelse
   const [fra, til] = PORTE.split('-');
@@ -247,15 +251,9 @@ async function main() {
   for (let runde = 0; runde < 3 && !/extension connected/i.test(log); runde++) {
     for (let i = 0; i < 40 && !/extension connected/i.test(log); i++) await vent(500);
     if (/extension connected/i.test(log)) break;
-    console.log(`  (forbindelsen udeblev - genskaber broen, forsoeg ${runde + 2} af 3)`);
-    try {
-      await cdp(sw.webSocketDebuggerUrl, 'Runtime.evaluate', {
-        expression: `chrome.offscreen.closeDocument().catch(() => {})
-          .then(() => new Promise(r => setTimeout(r, 500)))
-          .then(() => ensureOffscreen()).then(() => 'ok')`,
-        awaitPromise: true, returnByValue: true,
-      }, 15000);
-    } catch (e) { /* servicearbejderen kan sove; naeste runde proever igen */ }
+    // ⛔ Her stod en GENSKABELSE af broen ved hvert genforsoeg - praecis det trin der knaekker
+    // den (maalt 24/9). Hvert genforsoeg gjorde det altsaa vaerre. Nu ventes der bare videre.
+    console.log(`  (forbindelsen udeblev - venter videre, forsoeg ${runde + 2} af 3)`);
   }
   if (!/extension connected/i.test(log)) {
     // ⛔ En fejlmelding der bare siger «forbandt ikke» tvinger den naeste til at gaette. Her
@@ -311,6 +309,10 @@ async function main() {
   const miljoe = { ...process.env, BROWSER_MCP_BASE_PORT: fra, BROWSER_MCP_MAX_PORT: til,
     BROWSER_MCP_EXTENSION_ID: sw.id };
   delete miljoe.FLOW_KUN_BAGGRUND;
+  // Aftrykket skal tages af den kopi Chrome faktisk koerer, ikke af repoet - de afviger i
+  // PRAECIS ét tal, standard-portomraadet. Det siges hoejt her, saa ingen tror det er repoet.
+  miljoe.BMCP_UDVIDELSE_MAPPE = join(d, 'ext');
+  console.log('⚠️  Maales paa repoets extension/ med ÉN linje aendret: standard-portomraadet.');
   delete miljoe.FLOW_VINDUE_X;
   console.log('── Flow-spaerren, isoleret ' + '─'.repeat(44) + '\n');
   const kode = await new Promise((ok) => {

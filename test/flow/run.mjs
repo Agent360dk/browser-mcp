@@ -543,7 +543,11 @@ try {
     // sin egen background.js i haandtrykket; her sammenlignes det med repoets fil, saa gaten ikke kan passere mod en
     // gammel kopi med samme nummer.
     const repoHash = createHash('sha256');
-    for (const fil of ['background.js', 'offscreen.js']) repoHash.update(readFileSync(join(rod, 'extension', fil)));
+    // ⛔ En isoleret koersel indlaeser en KOPI med ét aendret tal (standard-portomraadet, se
+    // scripts/flow-isoleret.mjs). Saa skal aftrykket tages af DEN kopi - ellers afviser gaten sin
+    // egen kandidat, og det var praecis hvad den gjorde 24/9. Uden variablen er intet aendret.
+    const udvidelsesMappe = process.env.BMCP_UDVIDELSE_MAPPE || join(rod, 'extension');
+    for (const fil of ['background.js', 'offscreen.js']) repoHash.update(readFileSync(join(udvidelsesMappe, fil)));
     const repoAftryk = repoHash.digest('hex').slice(0, 12);
     // Aftrykket eftersendes af udvidelsen, saa "ukendt" kan betyde "endnu ikke ankommet". MAALT 12/9 af Astra: en langsom
     // hentning gjorde aftrykket til null, og gaten afviste sin egen kandidat. Et UKENDT aftryk proeves derfor igen; et
