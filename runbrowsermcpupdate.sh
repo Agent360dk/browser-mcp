@@ -755,7 +755,11 @@ else
   if [[ "$REG_LIVE" == "$NEW_VERSION" ]]; then
     warn "registry already at v$NEW_VERSION - skipping (resumable re-run)"
   elif [[ "$SHIP" != 1 ]]; then
-    say "would: gh auth token → exchange for registry JWT → mcp-publisher publish mcp-server/server.json"
+    if [[ "${GITHUB_ACTIONS:-}" == "true" && -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+      say "would: mcp-publisher login github-oidc → mcp-publisher publish mcp-server/server.json"
+    else
+      say "would: gh auth token → exchange for registry JWT → mcp-publisher publish mcp-server/server.json"
+    fi
     say "       (registry currently advertises '${REG_LIVE:-unknown}')"
   else
     say "registry advertises '${REG_LIVE:-unknown}' → publishing $NEW_VERSION"
