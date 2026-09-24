@@ -22,7 +22,9 @@ DRAFT_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --draft)    DRAFT_ONLY=1 ;;
-    --trusted)  MODE="trustedTesters" ;;
+    # Butikkens API v2 har ingen «trusted testers»-maal - kun udgiv-straks eller gør-klar.
+    # Stille at udgive til ALLE i stedet ville vaere vaerre end at stoppe.
+    --trusted)  echo "✗ --trusted findes ikke i butikkens API v2. Brug --draft og udgiv i kontrolpanelet."; exit 1 ;;
     --default)  MODE="default" ;;
     *) echo "Unknown arg: $arg"; exit 1 ;;
   esac
@@ -38,6 +40,7 @@ fi
 : "${CWS_CLIENT_SECRET:?missing in .env}"
 : "${CWS_REFRESH_TOKEN:?missing in .env}"
 : "${CWS_EXTENSION_ID:?missing in .env - find at chrome.google.com/webstore/devconsole}"
+: "${CWS_PUBLISHER_ID:?missing in .env - the id in the address of chrome.google.com/webstore/devconsole}"
 
 # ── Flow-spaerre (30/8) ─────────────────────────────────────────────────────
 #
@@ -163,49 +166,72 @@ if [[ -z "$ACCESS_TOKEN" ]]; then
 fi
 echo "  Access token acquired"
 
+# ⛔ MAALT 24/9: her brugte scriptet butikkens API v1.1. Google afloeste den med v2 i oktober
+# 2025 og har arkiveret dokumentationen for v1 (Astra angiver lukning 15/10-2026 - den dato er
+# ikke bekraeftet her). v2 kraever udgiver-id'et i adressen, og tilstandene hedder noget andet:
+# en upload er «SUCCEEDED», ikke «SUCCESS». En blind udskiftning af adressen ville have meldt
+# hver vellykket upload som fejlet. Alt herunder er laest af Googles egen maskinlaesbare
+# beskrivelse ($discovery/rest?version=v2), ikke af en artikel.
+CWS_API="https://chromewebstore.googleapis.com"
+ITEM="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
+# Tomt svar eller en HTML-fejlside fra Google skal give en tom vaerdi - og dermed en afvisning -
+# ikke et nedbrud med stakspor. (Maalt 24/9: et forkert opbygget kald gav en 404-HTML-side.)
+felt() { node -e "let d={}; try { d=JSON.parse(require('fs').readFileSync(0,'utf8')) } catch {} ; const v=('$1').split('.').reduce((o,k)=>o&&o[k],d); console.log(v===undefined||v===null?'':v)"; }
+
 # Step 2: upload zip to CWS
-echo "→ Uploading zip to Chrome Web Store"
-UPLOAD_RESP=$(curl -s -X PUT \
-  "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}" \
+echo "→ Uploading zip to Chrome Web Store (API v2)"
+UPLOAD_RESP=$(curl -s -X POST "${CWS_API}/upload/v2/${ITEM}:upload" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  -H "x-goog-api-version: 2" \
-  -T "$ZIP")
+  -H "Content-Type: application/zip" \
+  --data-binary @"$ZIP")
+UPLOAD_STATE=$(echo "$UPLOAD_RESP" | felt uploadState)
 
-UPLOAD_STATE=$(echo "$UPLOAD_RESP" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.uploadState||'UNKNOWN'); if(d.itemError){console.error('Errors:',JSON.stringify(d.itemError,null,2))}")
+# En stor pakke kan blive behandlet asynkront. Saa foelges den via fetchStatus.
+for i in $(seq 1 30); do
+  [[ "$UPLOAD_STATE" != "IN_PROGRESS" ]] && break
+  sleep 2
+  UPLOAD_STATE=$(curl -s "${CWS_API}/v2/${ITEM}:fetchStatus" -H "Authorization: Bearer ${ACCESS_TOKEN}" | felt lastAsyncUploadState)
+done
 
-if [[ "$UPLOAD_STATE" != "SUCCESS" ]]; then
-  echo "✗ Upload failed: $UPLOAD_STATE"
-  echo "$UPLOAD_RESP" | node -e "console.error(JSON.stringify(JSON.parse(require('fs').readFileSync(0,'utf8')),null,2))"
+if [[ "$UPLOAD_STATE" != "SUCCEEDED" ]]; then
+  echo "✗ Upload failed: ${UPLOAD_STATE:-intet svar}"
+  echo "$UPLOAD_RESP" | head -c 1200; echo
   exit 1
 fi
-echo "  Upload SUCCESS"
+
+# ⛔ Ny vagt: v2 fortaeller hvilken version butikken FIK. Uploader vi den forkerte zip, er det
+# her det opdages - ikke naar en bruger faar den gamle kode om tre dage.
+FIK=$(echo "$UPLOAD_RESP" | felt crxVersion)
+if [[ -n "$FIK" && "$FIK" != "$VERSION" ]]; then
+  echo "✗ Butikken fik version $FIK, men manifestet siger $VERSION - forkert pakke uploadet."
+  exit 1
+fi
+echo "  Upload SUCCEEDED${FIK:+ (butikken fik $FIK)}"
 
 # Step 3: publish (unless --draft)
 if [[ "$DRAFT_ONLY" == "1" ]]; then
   echo "→ --draft flag set; leaving in draft (manual publish via dashboard required)"
-  echo "✓ Done - view at https://chrome.google.com/webstore/devconsole/"
+  echo "✓ Done - view at https://chrome.google.com/webstore/devconsole/${CWS_PUBLISHER_ID}"
   exit 0
 fi
 
-echo "→ Publishing (target: $MODE)"
-PUBLISH_RESP=$(curl -s -X POST \
-  "https://www.googleapis.com/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}/publish?publishTarget=${MODE}" \
+echo "→ Publishing (API v2, udgives straks efter godkendelse)"
+PUBLISH_RESP=$(curl -s -X POST "${CWS_API}/v2/${ITEM}:publish" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-  -H "x-goog-api-version: 2" \
-  -H "Content-Length: 0")
-
-PUBLISH_STATUS=$(echo "$PUBLISH_RESP" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log((d.status||['UNKNOWN'])[0]); if(d.statusDetail){console.error('Detail:',JSON.stringify(d.statusDetail))}")
+  -H "Content-Type: application/json" \
+  -d '{"publishType":"DEFAULT_PUBLISH"}')
+PUBLISH_STATUS=$(echo "$PUBLISH_RESP" | felt state)
 
 case "$PUBLISH_STATUS" in
-  OK)
+  PENDING_REVIEW)
     echo "  Publish OK - review queue entered"
     ;;
-  ITEM_PENDING_REVIEW)
-    echo "  Already pending review - uploaded version replaced previous draft"
+  PUBLISHED|PUBLISHED_TO_TESTERS|STAGED)
+    echo "  Publish OK - state: $PUBLISH_STATUS"
     ;;
   *)
-    echo "✗ Publish status: $PUBLISH_STATUS"
-    echo "$PUBLISH_RESP" | node -e "console.error(JSON.stringify(JSON.parse(require('fs').readFileSync(0,'utf8')),null,2))"
+    echo "✗ Publish status: ${PUBLISH_STATUS:-intet svar}"
+    echo "$PUBLISH_RESP" | head -c 1200; echo
     exit 1
     ;;
 esac
