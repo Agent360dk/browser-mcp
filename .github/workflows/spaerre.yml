@@ -13,6 +13,8 @@ name: spaerre
 # paa en langsommere maskine. Repoet er offentligt, saa Mac-maskinerne koster intet.
 on:
   workflow_dispatch: {}
+  # Kaldes af udgivelses-arbejdsgangen, saa en udgivelse ikke kan starte uden en groen spaerre.
+  workflow_call: {}
   pull_request:
     paths:
       - 'extension/**'

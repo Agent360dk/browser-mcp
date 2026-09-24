@@ -283,7 +283,15 @@ if [[ "$SKIP_NPM" == 0 ]]; then
   # en HELT anden noegle. Spaerren tjekkede altsaa en legitimation udgivelsen ikke bruger:
   # den blokerede en udgivelse der ville lykkes, og ville have lukket én igennem der
   # ville fejle. Nu tjekkes den noegle der faktisk bliver brugt.
-  if [[ -n "${NPM_TOKEN:-}" ]]; then
+  # ⛔ 24/9: paa GitHub udgives der UDEN noegle - npm's «trusted publishing»: GitHub beviser selv
+  # over for npm hvem der udgiver, ved hver udgivelse, og intet udloeber. Det er svaret paa at en
+  # noegle fra `npm login` doede efter et doegn (maalt 23->24/9), og paa at npm fjerner direkte
+  # udgivelse med granular noegle i januar 2027. Kun naar vi FAKTISK koerer paa GitHub med
+  # id-token-rettighed; Gustavs Mac bruger stadig noeglen fra .env.
+  if [[ "${GITHUB_ACTIONS:-}" == "true" && -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && -z "${NPM_TOKEN:-}" ]]; then
+    ok "npm: udgives via trusted publishing (OIDC) fra GitHub - ingen noegle"
+    NPM_VIA_OIDC=1
+  elif [[ -n "${NPM_TOKEN:-}" ]]; then
     NPM_WHO="$(curl -s -H "Authorization: Bearer $NPM_TOKEN" https://registry.npmjs.org/-/whoami \
       | python3 -c "import json,sys;print(json.load(sys.stdin).get('username',''))" 2>/dev/null || true)"
     if [[ -n "$NPM_WHO" ]]; then
@@ -304,14 +312,18 @@ if [[ "$SKIP_NPM" == 0 ]]; then
   else gate "npm not authenticated (E401) - run 'npm login', saet NPM_TOKEN i .env, eller pass --skip-npm"; fi
 fi
 if [[ "$SKIP_CWS" == 0 ]]; then
-  if [[ ! -f .env ]]; then gate ".env missing (CWS secrets) - see docs/CWS_PUBLISH_SETUP.md, or --skip-cws"
+  # 24/9: paa GitHub kommer butikkens vaerdier fra miljoeet «udgivelse» som hemmeligheder, ikke fra
+  # en .env-fil. Reglen er den samme - alle fem SKAL vaere der - kun kilden er en anden.
+  if [[ ! -f .env && "${GITHUB_ACTIONS:-}" != "true" ]]; then gate ".env missing (CWS secrets) - see docs/CWS_PUBLISH_SETUP.md, or --skip-cws"
   else
     # .env already sourced early (top of file); just verify the required vars.
     CWS_MISSING=""
-    for v in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_EXTENSION_ID; do
+    # CWS_PUBLISHER_ID er med siden API v2 (bc86b99) - uden den kan butikken ikke adresseres.
+    for v in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_EXTENSION_ID CWS_PUBLISHER_ID; do
       [[ -n "${!v:-}" ]] || CWS_MISSING="$CWS_MISSING $v"
     done
     if [[ -n "$CWS_MISSING" ]]; then gate "CWS secrets missing in .env:$CWS_MISSING - see docs/CWS_PUBLISH_SETUP.md"
+    elif [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then ok "CWS secrets present (GitHub-miljoeet «udgivelse»)"
     else ok "CWS secrets present in .env"; fi
   fi
 fi
@@ -651,10 +663,16 @@ else
     # mcp-server/.npmrc + ~/.npmrc - NOT the repo-root .npmrc that references
     # ${NPM_TOKEN} - so without this it silently uses the stale ~/.npmrc token
     # and 404s. Requires NPM_TOKEN from .env (sourced at top).
+    if [[ "${NPM_VIA_OIDC:-0}" == 1 ]]; then
+      # ⛔ Ingen token-override her: en authToken i konfigurationen OVERTRUMFER trusted publishing
+      # (Fable 24/9). --provenance knytter pakken synligt til netop denne GitHub-koersel.
+      run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public --provenance"
+    else
     [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env - needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
     # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
     # not the secret) and is expanded by the inner bash -c from the exported env.
     run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"
+    fi
   fi
 fi
 
@@ -745,14 +763,20 @@ else
     # `gh auth token` carries read:org, which the exchange requires - a mcp-publisher
     # device-flow login does NOT get an effective read:org and yields a token scoped to
     # io.github.<user>/* only, which cannot publish under the org namespace.
-    GH_TOK="$(gh auth token 2>/dev/null || true)"
-    [[ -n "$GH_TOK" ]] || die "gh auth token empty - run 'gh auth login' (scope must include read:org)"
-    REG_TOK="$(curl -s -X POST https://registry.modelcontextprotocol.io/v0/auth/github-at \
-      -H 'Content-Type: application/json' -d "{\"github_token\":\"$GH_TOK\"}" 2>/dev/null \
-      | python3 -c "import json,sys;print(json.load(sys.stdin).get('registry_token',''))" 2>/dev/null || true)"
-    [[ -n "$REG_TOK" ]] || die "registry token exchange failed - the gh token needs read:org AND you must be an active Owner of the org"
-    mkdir -p "$HOME/.config/mcp-publisher"
-    REG_TOK="$REG_TOK" python3 - <<'PY'
+    if [[ "${GITHUB_ACTIONS:-}" == "true" && -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+      # 24/9: paa GitHub logger registret ind med GitHubs eget id-token - ingen noegle at
+      # veksle, intet der udloeber (fundet af Fable: mcp-publisher har en github-oidc-udbyder).
+      # Navnerummet io.github.Agent360dk/* passer til repoets ejer.
+      mcp-publisher login github-oidc || die "registret afviste GitHubs id-token (kraever permissions: id-token: write)"
+    else
+      GH_TOK="$(gh auth token 2>/dev/null || true)"
+      [[ -n "$GH_TOK" ]] || die "gh auth token empty - run 'gh auth login' (scope must include read:org)"
+      REG_TOK="$(curl -s -X POST https://registry.modelcontextprotocol.io/v0/auth/github-at \
+        -H 'Content-Type: application/json' -d "{\"github_token\":\"$GH_TOK\"}" 2>/dev/null \
+        | python3 -c "import json,sys;print(json.load(sys.stdin).get('registry_token',''))" 2>/dev/null || true)"
+      [[ -n "$REG_TOK" ]] || die "registry token exchange failed - the gh token needs read:org AND you must be an active Owner of the org"
+      mkdir -p "$HOME/.config/mcp-publisher"
+      REG_TOK="$REG_TOK" python3 - <<'PY'
 import json, os
 p = os.path.expanduser("~/.config/mcp-publisher/token.json")
 d = json.load(open(p)) if os.path.exists(p) else {"method": "github", "registry": "https://registry.modelcontextprotocol.io"}
@@ -760,6 +784,7 @@ d["token"] = os.environ["REG_TOK"]
 json.dump(d, open(p, "w"))
 os.chmod(p, 0o600)
 PY
+    fi
     ( cd "$REPO_ROOT/mcp-server" && mcp-publisher publish server.json ) \
       || die "registry publish failed - see the error above (description must be <=100 chars)"
     # Laes tilbage. Linjen herunder PAASTOD tidligere at registret var opdateret uden at

@@ -1,0 +1,89 @@
+name: udgivelse
+
+# Udgivelsen af browser-mcp - fra GitHub i stedet for fra Gustavs Mac, og UDEN npm-noegle.
+#
+# Hvorfor den findes (24/9): en noegle fra `npm login` doede efter et doegn, og npm fjerner direkte
+# udgivelse med granular noegle i januar 2027. Her beviser GitHub selv over for npm hvem der udgiver
+# («trusted publishing»), ved hver udgivelse. Intet at gemme, intet der udloeber.
+#
+# Sikringerne, i raekkefoelge:
+#  1. Spaerren skal vaere groen FOER udgivelsen overhovedet starter (job «spaerre» -> «needs»).
+#  2. En RIGTIG udgivelse bruger miljoeet «udgivelse», som kraever Gustavs klik og kun maa koere
+#     fra main. Det er hans ja i mekanisk form.
+#  3. Resten er det samme udgivelses-script som paa hans Mac - skrevet om, ikke genopfundet
+#     (Fable 24/9: 847 linjer der er maalt og rettet i ugevis skal ikke skrives forfra).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versionen der udgives, fx 1.30.1'
+        required: true
+      ship:
+        description: 'Udgiv for alvor. Uden flueben er det en proevekoersel der intet sender ud.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  spaerre:
+    uses: ./.github/workflows/spaerre.yml
+
+  udgiv:
+    needs: spaerre
+    runs-on: macos-latest
+    timeout-minutes: 45
+    # Kun en rigtig udgivelse faar miljoeet - og dermed Gustavs godkendelse og butikkens noegler.
+    # En proevekoersel koerer uden, og springer derfor butikstrinnet over (siges hoejt nedenfor).
+    environment: ${{ inputs.ship && 'udgivelse' || '' }}
+    permissions:
+      contents: write   # commit, tag og release paa GitHub
+      id-token: write   # npm trusted publishing + MCP-registret via github-oidc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing kraever npm >= 11.5.1. Node 22 leverer npm 10.x (maalt paa Gustavs Mac:
+      # 10.9.4). Uden opgraderingen falder npm stille tilbage til «ingen legitimation».
+      - name: opgrader npm til trusted publishing
+        run: npm install -g npm@latest && npm --version
+
+      - name: installer mcp-publisher
+        run: brew install mcp-publisher
+
+      - name: installer serveren
+        run: npm install --prefix mcp-server --no-audit --no-fund
+
+      - name: git-identitet
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: udgivelses-scriptet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          VERSION: ${{ inputs.version }}
+          SHIP: ${{ inputs.ship }}
+        run: |
+          flag=(--skip-local --skip-flow)
+          # --skip-flow: spaerren HAR koert - i jobbet ovenfor, og dette job kan ikke starte uden.
+          # --skip-local: at genindlaese udvidelsen paa en Mac er Gustavs maskine, ikke runnerens.
+          if [[ "$SHIP" == "true" ]]; then
+            flag=(--ship "${flag[@]}")
+          else
+            echo "::notice::Proevekoersel: intet sendes ud. Butikkens noegler findes kun i miljoeet «udgivelse», saa butikstrinnet springes over."
+            flag+=(--skip-cws)
+          fi
+          ./runbrowsermcpupdate.sh "$VERSION" "${flag[@]}"
