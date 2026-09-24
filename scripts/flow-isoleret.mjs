@@ -50,6 +50,11 @@ const CDP_PORT = 19340 + Math.floor(Math.random() * 400);
 const PORTE = '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
 const BEHOLD = process.argv.includes('--behold');
 const SPAERRE = process.argv.includes('--spaerre');
+// `--koer <script> [args]`: koer et andet maaleinstrument i den samme isolerede browser.
+// Findes fordi aerligheds-maalingen ellers koerer mod MENNESKETS Chrome og tager skaermen
+// (sagt tre gange: det maa den ikke). `--spaerre` er blot `--koer test/flow/run.mjs`.
+const KOER_I = process.argv.indexOf('--koer');
+const KOER = KOER_I > -1 ? process.argv.slice(KOER_I + 1) : null;
 const UDVIDELSENS_NAVN = 'Agent360 Browser MCP';
 
 /** Finder Chrome for Testing, og henter den hvis den mangler. */
@@ -301,7 +306,7 @@ async function main() {
   }
   const port = (log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1];
   console.log(`✓ Udvidelsen forbundet paa port ${port}\n`);
-  if (!SPAERRE) {
+  if (!SPAERRE && !KOER) {
     console.log('Koer spaerren mod den med:');
     console.log(`  BROWSER_MCP_BASE_PORT=${fra} BROWSER_MCP_MAX_PORT=${til} \\`);
     console.log(`  BROWSER_MCP_EXTENSION_ID=${sw.id} npm --prefix mcp-server run flow\n`);
@@ -329,10 +334,11 @@ async function main() {
   miljoe.BMCP_UDVIDELSE_MAPPE = join(d, 'ext');
   console.log('⚠️  Maales paa repoets extension/ med ÉN linje aendret: standard-portomraadet.');
   delete miljoe.FLOW_VINDUE_X;
-  console.log('── Flow-spaerren, isoleret ' + '─'.repeat(44) + '\n');
+  console.log('── ' + (KOER ? KOER.join(' ') : 'Flow-spaerren') + ', isoleret ' + '─'.repeat(30) + '\n');
   const kode = await new Promise((ok) => {
-    const f = spawn(process.execPath, [join(ROD, 'test', 'flow', 'run.mjs')],
-      { env: miljoe, stdio: 'inherit', cwd: join(ROD, 'mcp-server') });
+    const [script, ...argumenter] = KOER || [join('test', 'flow', 'run.mjs')];
+    const f = spawn(process.execPath, [join(ROD, script), ...argumenter],
+      { env: miljoe, stdio: 'inherit', cwd: KOER ? ROD : join(ROD, 'mcp-server') });
     f.on('exit', (c) => ok(c ?? 1));
   });
   // ⛔ MAALT 24/9: her stod kun `process.exitCode = kode`. Browseren og serveren holdt node i
