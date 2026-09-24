@@ -318,7 +318,13 @@ async function main() {
       { env: miljoe, stdio: 'inherit', cwd: join(ROD, 'mcp-server') });
     f.on('exit', (c) => ok(c ?? 1));
   });
-  process.exitCode = kode;
+  // ⛔ MAALT 24/9: her stod kun `process.exitCode = kode`. Browseren og serveren holdt node i
+  // live, og oprydningen koerer foerst ved `exit` - hoenen og aegget. En GROEN koersel stod
+  // derfor og ventede i 18 minutter efter at have printet sin dom, og den naeste startede
+  // aldrig. Vaerre: udgivelses-scriptet koerer netop denne spaerre, saa selv en groen koersel
+  // ville have stoppet udgivelsen i trin 2b for evigt.
+  ryd();
+  process.exit(kode);
 }
 
 main().catch((e) => { console.error('⛔', e.message); process.exit(1); });
