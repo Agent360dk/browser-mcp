@@ -280,8 +280,23 @@ async function main() {
       }
     } catch (e) { console.error('   (kunne ikke laese broens tilstand: ' + e.message + ')'); }
     console.error('⛔ Udvidelsen forbandt ikke til den isolerede server paa 3 forsoeg (~60 s).');
-    console.error('   Kendt flakiness - se noten ovenfor. Roden er den haengende HTTP-probe.');
     console.error(log.split('\n').slice(-8).join('\n'));
+
+    // ⛔ MAALT 24/9: en FRISK browser forbinder ca. hver anden gang. At genskabe broen i den
+    // samme browser goer det vaerre (det var roden), saa her proeves med en helt ny browser og
+    // en ny profil. Tre forsoeg loefter chancen fra ca. halvdelen til ca. ni ud af ti.
+    // Det er en omgaaelse i et MAALEINSTRUMENT, ikke i produktet - og hvert forsoeg er synligt.
+    const forsoeg = Number(process.env.BMCP_ISOLERET_FORSOEG || 1);
+    if (forsoeg < 3) {
+      console.error(`   Proever igen med en helt frisk browser (forsoeg ${forsoeg + 1} af 3).\n`);
+      ryd();
+      const r = spawnSync(process.execPath, process.argv.slice(1), {
+        stdio: 'inherit',
+        env: { ...process.env, BMCP_ISOLERET_FORSOEG: String(forsoeg + 1) },
+      });
+      process.exit(r.status ?? 1);
+    }
+    console.error('⛔ Tre friske browsere forbandt ikke. Spaerren stopper.');
     process.exit(1);
   }
   const port = (log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1];
