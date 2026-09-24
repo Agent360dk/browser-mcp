@@ -52,8 +52,10 @@ jobs:
 
       # Trusted publishing kraever npm >= 11.5.1. Node 22 leverer npm 10.x (maalt paa Gustavs Mac:
       # 10.9.4). Uden opgraderingen falder npm stille tilbage til «ingen legitimation».
+      # Laast til den version proevekoerslen 36013325037 brugte (24/9); «latest» kan skifte
+      # major under os paa udgivelsesdagen. npm 12 kraever Node >= 22.22.2 (runneren har 22.23.2).
       - name: opgrader npm til trusted publishing
-        run: npm install -g npm@latest && npm --version
+        run: npm install -g npm@12.1.0 && npm --version
 
       - name: installer mcp-publisher
         run: brew install mcp-publisher
