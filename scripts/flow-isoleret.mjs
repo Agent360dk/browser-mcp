@@ -47,7 +47,7 @@ const WebSocket = krav('ws');
 // indlaest», og det passede: bare ikke om den browser vi lige havde startet.
 // Forklarer moenstret praecis: foerste koersel virker, de naeste fejler.
 const CDP_PORT = 19340 + Math.floor(Math.random() * 400);
-const PORTE = '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
+const PORTE = '9890-9895';         // den hoeje ende af standardspaendet - se noten ved isolationen
 const BEHOLD = process.argv.includes('--behold');
 const SPAERRE = process.argv.includes('--spaerre');
 const UDVIDELSENS_NAVN = 'Agent360 Browser MCP';
@@ -137,14 +137,10 @@ async function main() {
     '--headless=new', `--remote-debugging-port=${CDP_PORT}`,
     `--user-data-dir=${join(d, 'profil')}`, `--load-extension=${join(d, 'ext')}`,
     '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling',
-    // ⛔ MAALT 23/9, roden efter syv fejlspor: udvidelsens probe mod 127.0.0.1 HANG - ikke
-    // langsomt, men uendeligt, afbrudt af vores egen frist uanset om den stod paa 400 eller
-    // 2000 ms. Serveren svarer 426 paa 8 ms maalt fra Node, saa den var uskyldig.
-    // Chrome behandler kald til lokalnetvaerket FRA ET DOKUMENT saerskilt og kan kraeve en
-    // tilladelse. Offscreen-dokumentet er et dokument - og i en browser uden vindue kan den
-    // dialog ikke vises, saa kaldet venter for evigt. Det forklarer baade haengningen og at
-    // den kun rammer headless: rigtige brugere med et vindue ser den aldrig.
-    '--disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults',
+    // ⛔ HER STOD tre flag mod Chromes lokalnetvaerks-tilladelse. De var et GAET, og de gjorde
+    // det VAERRE: koerslen foer dem var groen, og 0 af 6 efter. Fjernet igen.
+    // Laeren staar i MISSION-filen: en aendring der ikke er maalt til at hjaelpe, skal ud igen -
+    // ellers stabler gaetterier sig oven paa hinanden og skjuler den aegte aarsag.
     'about:blank',
   ], { stdio: 'ignore' });
 
@@ -186,31 +182,25 @@ async function main() {
   console.log(`✓ Vores udvidelse indlaest: ${sw.id}`);
 
   // 2 · flyt dens portomraade, og genskab offscreen saa det traeder i kraft
-  // ⛔ Det er ikke nok at lukke dokumentet: `ensureOffscreen()` kaldes ved indlaesning og
-  // ved onStartup, og ingen af delene sker igen naar vi selv lukker det. Uden det genskabes
-  // broen aldrig, og porten skannes af ingen. Vi kalder den derfor selv - den er global i
-  // servicearbejderen.
-  await cdp(sw.webSocketDebuggerUrl, 'Runtime.evaluate', {
-    expression: `chrome.storage.local.set({ bmcpPorte: '${PORTE}' })
-      .then(() => chrome.offscreen.closeDocument().catch(() => {}))
-      .then(() => new Promise(r => setTimeout(r, 300)))
-      .then(() => ensureOffscreen())
-      .then(() => 'ok')`,
-    awaitPromise: true, returnByValue: true,
-  });
-  await vent(1500);
-
-  // Efterproev at dokumentet FAKTISK bar det nye spaend med. En tavs genskabelse uden
-  // `porte=` ville skanne 9876-9895 - altsaa menneskets eget, hvilket er hele det vi undgaar.
-  const doks = (await targets()).filter((t) => t.url.includes('offscreen.html'));
-  const medSpaend = doks.filter((t) => t.url.includes(`porte=${PORTE}`));
-  if (!medSpaend.length) {
-    console.error(`⛔ Offscreen-dokumentet blev genskabt UDEN porte=${PORTE}: `
-      + (doks.map((t) => t.url).join(', ') || 'intet dokument'));
-    console.error('   Uden det ville koerslen skanne menneskets eget spaend 9876-9895.');
-    process.exit(1);
-  }
-  console.log(`✓ Offscreen-dokumentet koerer paa ${PORTE}`);
+  // ⛔ MAALT 24/9, efter seks forkastede hypoteser og 15 fejlede koersler:
+  //
+  // Her stod `closeDocument()` + `ensureOffscreen()` for at flytte udvidelsens portomraade.
+  // Det EFTERLADER broen halvdoed: dokumentet findes, baerer det rigtige `?porte=`, melder
+  // det rigtige spaend - og alle dens `fetch` mod 127.0.0.1 haenger for evigt. Serveren var
+  // uskyldig hele vejen: den svarer 426 paa 8 ms maalt fra Node.
+  //
+  // Bevist ved at FJERNE trinnet: uden portflytning forbandt udvidelsen med det samme,
+  // foerste forsoeg. En hel genstart af udvidelsen blev ogsaa proevet - saa byggede den broen
+  // uden portomraadet. Begge veje til at flytte spaendet er altsaa daarlige.
+  //
+  // Derfor ligger isolationen nu paa SERVERENS side i stedet:
+  //   · serveren bindes til netop denne testudvidelses id (BROWSER_MCP_EXTENSION_ID), saa
+  //     menneskets egen udvidelse bliver afvist hvis den finder porten
+  //   · og den tager en port i den HOEJE ende af spaendet, hvor hans chats sjaeldent naar til
+  //
+  // ⚠️ Prisen, sagt hoejt: testserveren tager ÉN port i 9876-9895 i et par minutter, og
+  // menneskets udvidelse vil proeve den og blive afvist. Det er en stoej vi accepterer for at
+  // faa en spaerre der virker - i stedet for en isolation der aldrig blev groen.
 
   // 3 · serveren, bundet til netop denne udvidelse
   const [fra, til] = PORTE.split('-');
