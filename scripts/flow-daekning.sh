@@ -16,6 +16,11 @@
 flow_nulstil_arv() {
   unset BMCP_FLOW_OK
   unset FLOW_KUN_BAGGRUND
+  # ⛔ Fundet af Astra 24/9: disse to lader spaerren maale en ANDEN udvidelse end kandidatens.
+  # Arves de fra en skal, godkender udgivelsen kode der aldrig blev maalt. Jeg tilfoejede dem
+  # selv samme dag og glemte at nulstille dem her.
+  unset BMCP_UDVIDELSE_KILDE
+  unset BMCP_UDVIDELSE_MAPPE
 }
 
 # flow_daekning_ok <fil-med-koerselsudskrift>
@@ -36,6 +41,15 @@ flow_daekning_ok() {
   # aldrig blive til et groent lys via en tom streng.
   if [[ -z "$sprunget" || -z "$beroert" || -z "$total" ]]; then
     echo "DAEKNING-linjen kunne ikke laeses ($linje) - spaerren tier hellere end at sige groent"
+    return 1
+  fi
+  # ⛔ Fundet af Astra 24/9: spaerren kan erklaere sin egen maaling UGYLDIG (fane-skift der
+  # fejlede, saa proeverne koerte i en baggrundsfane) og ALLIGEVEL skrive sin daeknings-linje.
+  # Begge udgivelses-scripts laeste kun den linje og ignorerede exitkoden - saa en ugyldig
+  # koersel med nul fejl ville have godkendt en udgivelse. Exitkoden alene kan ikke bruges,
+  # for listen over KENDTE fejl giver ogsaa exitkode 1; det er markoeren der er praecis.
+  if grep -q "UGYLDIG MAALING" "$ud" 2>/dev/null; then
+    echo "spaerren erklaerede selv maalingen UGYLDIG - $(grep -m1 'UGYLDIG MAALING' "$ud" | cut -c1-90)"
     return 1
   fi
   if [[ "$sprunget" -gt 0 ]]; then

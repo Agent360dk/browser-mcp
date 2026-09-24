@@ -4,7 +4,7 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
-## 1.30.1 (unreleased)
+## 1.30.1 (not released yet)
 
 **Pairing did not work, in either direction. This release is that, and little else.**
 

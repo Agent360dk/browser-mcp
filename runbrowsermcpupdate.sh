@@ -546,9 +546,11 @@ fi
 # Derfor pakkes tarballen nu og startes som en rigtig bruger ville goere det, FOER
 # noget som helst udgives. Det er det eneste trin der beviser at pakken virker.
 step "2. Pakke-tjek (pack → udpak → start)"
-if [[ "$SHIP" != 1 ]]; then
-  say "ville pakke tarballen ud og starte den (koeres kun med --ship)"
-else
+# ⛔ Fundet af Astra 24/9: dette trin koerte KUN med --ship. Proevekoerslen kunne derfor vaere
+# groen, mens en pakke der ikke kan starte foerst blev opdaget EFTER Gustavs ja - og efter at
+# butikken allerede havde faaet sin upload. Trinnet udgiver intet (pakker til en midlertidig
+# mappe og taler med den dér), saa det koerer nu ogsaa i proevekoerslen.
+{
   SMOKE_DIR="$(mktemp -d)"
   ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
   ( cd "$SMOKE_DIR" && tar xzf agent360-browser-mcp-*.tgz ) || die "kunne ikke pakke tarballen ud"
@@ -560,7 +562,7 @@ else
     || die "tarballen svarer ikke paa MCP-haandtrykket - UDGIV IKKE. Se fejlen ovenfor (mangler der en fil i package.json files?)"
   ok "tarballen starter og svarer paa initialize"
   rm -rf "$SMOKE_DIR"
-fi
+}
 
 
 # ── 3. Chrome Web Store ───────────────────────────────────────────────────────
