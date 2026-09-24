@@ -2,6 +2,7 @@
   "chrome-devtools-mcp": {
     "citater": {},
     "vaerktoejer": [
+      "analyze_heapsnapshot_contexts",
       "click",
       "click_at",
       "close_heapsnapshot",

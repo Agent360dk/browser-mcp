@@ -13,7 +13,7 @@
 | Project | GitHub stars | Last commit | npm downloads/week | Latest release | Drives which browser? |
 |---|---|---|---|---|---|
 | [Playwright MCP](https://github.com/microsoft/playwright-mcp) | 37,248 | 2026-09-18 | 5,968,258 | 0.0.81 (2026-09-14) | Own managed profile (isolated or persistent); real Chrome only via opt-in `--extension` |
-| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 52,272 | 2026-09-18 | 1,500,288 | 1.9.0 (2026-09-08) | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
+| [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) | 52,549 | 2026-09-24 | 1,026,016 | 1.10.1 (2026-09-23) | Own dedicated profile; attach to running Chrome via opt-in `--browser-url` |
 | [Browser Use](https://github.com/browser-use/browser-use) | 115,128 | 2026-09-15 | n/a (Python/PyPI) | 0.13.6 | Own launched instance; real-profile reuse is an opt-in example |
 | [browsermcp.io](https://github.com/BrowserMCP/mcp) | 7,108 | **2025-04-24** | 9,107 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
 | [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 44 | 2026-09-18 | 1,456 | 1.29.1 (2026-09-13) | **Your real Chrome** (extension) - only mode |

@@ -118,7 +118,11 @@ KONKURRENT_TAL = {
     72,   # microsoft/playwright-mcp, genoptalt 2026-09-19 EFTER at vagten fyrede: de fjernede
           # browser_webmcp_call + browser_webmcp_list og tilfoejede browser_emulate_media samme dag
     73,   # samme, foer den aendring - beholdt saa gamle henvisninger ikke bliver falsk roede
-    52,   # ChromeDevTools/chrome-devtools-mcp
+    59,   # ChromeDevTools/chrome-devtools-mcp, genoptalt 2026-09-24 af konkurrent-vagten.
+          # ⛔ Her stod 52, og det tal var FREDET: vagten sprang det over som «verificeret
+          # konkurrent-tal», saa vores side sagde 52 i ugevis mens de voksede til 59. Et tal paa
+          # denne liste skal genmaales naar konkurrent-vagten melder nye vaerktoejer - ellers
+          # beskytter listen netop det forældede tal den skulle skelne fra vores egne.
     19,   # yolo-chrome-mcp (SeedX), verificeret 2026-09-08
     29,   # chrome-devtools-mcp's egen "29 tools"-formulering i deres README
 }
