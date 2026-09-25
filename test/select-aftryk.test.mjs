@@ -24,15 +24,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+import { lavSide as lavDomSide } from './hjaelp/side-model.mjs';
 
 /** En side med en native <select> og en uafhaengig applikationstilstand. */
 function lavSide({ accepterer, nulstiller, tekstFoer, tekstEfter }) {
   let vaerdi = 'a';
   let tekst = tekstFoer;
   const el = {
-    tagName: 'SELECT',
-    form: null,
-    options: [{ value: 'a', text: 'Alfa' }, { value: 'b', text: 'Beta' }],
     get value() { return vaerdi; },
     set value(v) { vaerdi = v; },
     dispatchEvent() {
@@ -42,28 +40,7 @@ function lavSide({ accepterer, nulstiller, tekstFoer, tekstEfter }) {
       return true;
     },
   };
-  const kasse = { x: 0, y: 0, width: 120, height: 24, top: 0, left: 0, right: 120, bottom: 24 };
-  Object.assign(el, {
-    getBoundingClientRect: () => kasse,
-    getAttribute: () => null,
-    closest: () => null,
-    scrollIntoView() {}, focus() {}, blur() {},
-    isConnected: true,
-    offsetHeight: 24,
-    checkVisibility: () => true,
-  });
-  const document = {
-    querySelector: () => el,
-    querySelectorAll: () => [],
-    elementFromPoint: () => el,
-    addEventListener() {}, removeEventListener() {},
-    createElement: () => ({ style: {}, setAttribute() {}, appendChild() {}, remove() {} }),
-    activeElement: el,
-    body: { get innerText() { return tekst; }, contains: () => true },
-    documentElement: { scrollTop: 0, scrollLeft: 0, clientWidth: 1280, clientHeight: 800 },
-  };
-  class Ev { constructor(t) { this.type = t; } }
-  return { document, Ev, feltet: () => vaerdi };
+  return { ...lavDomSide({ element: el, bodyText: () => tekst }), feltet: () => vaerdi };
 }
 
 function sele(side) {
@@ -79,8 +56,7 @@ function sele(side) {
       // `return` + linjeskift indsaetter et semikolon. Uden den svarer HVER evaluering undefined,
       // og proeven maaler den forkerte gren uden at sige fra.
       const v = new Function('document', 'Event', 'window', 'getComputedStyle', 'return (' + p.expression + ')')(
-        side.document, side.Ev, { scrollX: 0, scrollY: 0, innerWidth: 1280, innerHeight: 800, getComputedStyle: () => ({}) },
-        () => ({ visibility: 'visible', display: 'block', opacity: '1', pointerEvents: 'auto' }));
+        side.document, side.Ev, side.window, side.getComputedStyle);
       return { result: { value: v } };
     },
   } });
