@@ -1,0 +1,36 @@
+name: bypass-proeve
+
+# MIDLERTIDIG (26/9) - slettes naar maalingen er gjort.
+# Spoergsmaalet: kan GitHubs udgivelsesjob undtages fra en laas? Udgivelsen skubber selv til main
+# (trin 4), saa en laas «kraev PR for alle» uden virksom undtagelse ville draebe udgivelsen EFTER
+# at butikken har faaet sin version. Maalt paa et proeve-tag, aldrig paa main: et ruleset paa
+# tags «bypass-proeve-*» forbyder oprettelse; uden undtagelse skal dette job blive AFVIST, med
+# GitHub Actions (app 15368) som undtagelse skal det komme IGENNEM.
+
+on:
+  workflow_dispatch:
+    inputs:
+      navn:
+        description: 'suffiks til proeve-tagget'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  proeve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: skub et proeve-tag med jobbets egen noegle
+        env:
+          NAVN: ${{ inputs.navn }}
+        run: |
+          [[ "$NAVN" =~ ^[a-z0-9-]+$ ]] || { echo "ugyldigt navn"; exit 1; }
+          git tag "bypass-proeve-$NAVN"
+          if git push origin "refs/tags/bypass-proeve-$NAVN"; then
+            echo "RESULTAT: SKUBBET"
+          else
+            echo "RESULTAT: AFVIST"
+          fi
