@@ -705,3 +705,23 @@ test('release-scriptet spoerger npm FOER butikken, og kun naar det udgiver', () 
   assert.ok(blok.length > 0 && blok.length < 400, 'tjekket skal sidde i --ship-grenen');
   assert.match(s.slice(tjek, tjek + 400), /\|\| die "npm afviser/);
 });
+
+test('release-scriptet koerer docs-vagten foer butikken og stopper paa roedt', () => {
+  const s = script();
+  const fra = s.indexOf('# 1f.');
+  const til = s.indexOf('# ── 2. Pakke-tjek');
+  assert.ok(fra > 0 && til > fra && til < s.indexOf('step "3. Chrome Web Store publish"'), 'docs-vagten skal ligge foer trin 3');
+  const blok = s.slice(fra, til);
+  // Blokken koeres for alvor mod en falsk docs-vagt: roed skal give gate, groen skal give ok.
+  const koer = (kode) => {
+    const d = mkdtempSync(join(tmpdir(), 'docs-vagt-'));
+    mkdirSync(join(d, 'scripts'));
+    writeFileSync(join(d, 'scripts/check-docs.py'), `import sys; print("docs-fejl"); sys.exit(${kode})\n`);
+    const r = spawnSync('bash', ['-c', `ok(){ echo "OK:$1"; }; gate(){ echo "GATE:$1"; }; REPO_ROOT='${d}'\n${blok}`], { encoding: 'utf8' });
+    rmSync(d, { recursive: true, force: true });
+    return r.stdout;
+  };
+  assert.match(koer(1), /GATE:docs-vagten er roed/);
+  assert.doesNotMatch(koer(1), /OK:/);
+  assert.match(koer(0), /OK:docs-vagt ren/);
+});

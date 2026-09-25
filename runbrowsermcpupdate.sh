@@ -560,6 +560,17 @@ fi
 #     meldte toerkoerslen GROENT mens den rigtige koersel doede - efter at 5 JSON-filer
 #     allerede var bumpet. Trinnet var overfloedigt: README peger ikke paa en versioneret fil.
 
+# 1f. 25/9: docs-vagten koerte kun i docs-gate.yml, og den starter kun naar en docs-fil aendres.
+#     En aendring i tools.js alene - et vaerktoej mere eller mindre - kom ud uden at nogen talte
+#     docs igen. Udgivelsen er oejeblikket hvor sitet og butikken skal passe med koden, saa den
+#     koerer her, efter versions- og taellersynkroniseringen og foer noget sendes ud.
+if DOCS_OUT="$(python3 "$REPO_ROOT/scripts/check-docs.py" 2>&1)"; then
+  ok "docs-vagt ren - vaerktoejstal, links og meta passer med koden"
+else
+  printf '%s\n' "$DOCS_OUT" | tail -20
+  gate "docs-vagten er roed - sitet eller docs siger noget andet end koden. Ret det foer udgivelse"
+fi
+
 # ── 2. Pakke-tjek: starter tarballen overhovedet? ─────────────────────────────
 # MAALT 23/8: `vagt.js` blev importeret af index.js men glemt i package.json "files".
 # `npm pack` gav 14 filer uden den, og HVER eneste `npx @agent360/browser-mcp` doede
