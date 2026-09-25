@@ -291,6 +291,17 @@ if [[ "$SKIP_NPM" == 0 ]]; then
   if [[ "${GITHUB_ACTIONS:-}" == "true" && -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && -z "${NPM_TOKEN:-}" ]]; then
     ok "npm: udgives via trusted publishing (OIDC) fra GitHub - ingen noegle"
     NPM_VIA_OIDC=1
+    # 25/9: butik (trin 3) og tag (trin 4) kommer FOER npm (trin 5). Mangler trusted publisher paa
+    # npmjs.com, skal det stoppe HER og ikke efter en halv udgivelse. Kan kun maales i det job der
+    # udgiver (npm binder udgiveren til miljoeet «udgivelse»), saa proevekoersler siger kun hvad der ville ske.
+    if [[ "$SHIP" == 1 ]]; then
+      NPM_PAKKE="$(python3 -c "import json;print(json.load(open('$REPO_ROOT/mcp-server/package.json'))['name'])")"
+      OIDC_SVAR="$(python3 "$REPO_ROOT/scripts/npm-oidc-tjek.py" "$NPM_PAKKE")" \
+        && ok "npm accepterer GitHub som udgiver af $NPM_PAKKE (trusted publisher er sat op)" \
+        || die "npm afviser GitHub som udgiver af $NPM_PAKKE: $OIDC_SVAR - ret trusted publisher paa npmjs.com. Stoppet FOER butik, tag og npm."
+    else
+      say "would: spoerge npm om GitHub maa udgive pakken (kan foerst maales i miljoeet 'udgivelse')"
+    fi
   elif [[ -n "${NPM_TOKEN:-}" ]]; then
     NPM_WHO="$(curl -s -H "Authorization: Bearer $NPM_TOKEN" https://registry.npmjs.org/-/whoami \
       | python3 -c "import json,sys;print(json.load(sys.stdin).get('username',''))" 2>/dev/null || true)"

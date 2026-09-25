@@ -631,3 +631,77 @@ test('det kolde tjek maa ikke doe paa en tom timeout-array', () => {
       `bash ${bashVer} burde fejle paa den bare udvidelse men gjorde ikke - saa maaler kalibreringen intet`);
   }
 });
+
+// ── npm trusted publisher, spurgt FOER butik og tag (25/9) ───────────────────
+// Udgivelsen tager butikken og GitHub-tagget foer npm. Uden dette tjek opdages en manglende
+// trusted publisher foerst i trin 5 - efter en halv udgivelse. Proeven stiller en falsk GitHub
+// (id-token) og en falsk npm (token-bytning) op og koerer tjek-scriptet mod dem.
+
+import { createServer } from 'node:http';
+import { execFile } from 'node:child_process';
+
+const oidcTjek = join(rod, 'scripts/npm-oidc-tjek.py');
+const NPM_STI = '/-/npm/v1/oidc/token/exchange/package/@agent360%2fbrowser-mcp';
+
+async function koerOidcTjek(npmSvar) {
+  const set = [];
+  const server = createServer((req, res) => {
+    set.push(`${req.method} ${req.url} ${req.headers.authorization || ''}`);
+    if (req.url.startsWith('/idtoken')) {
+      const ok = req.headers.authorization === 'Bearer gh-noegle' && req.url.includes('audience=npm%3A127.0.0.1');
+      res.writeHead(ok ? 200 : 403).end(ok ? JSON.stringify({ value: 'id-token-fra-github' }) : '{}');
+    } else if (req.method === 'POST' && req.url === NPM_STI && req.headers.authorization === 'Bearer id-token-fra-github') {
+      res.writeHead(npmSvar.status).end(JSON.stringify(npmSvar.krop));
+    } else {
+      res.writeHead(404).end(JSON.stringify({ message: 'forkert sti eller noegle' }));
+    }
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    return await new Promise((r) => execFile('python3', [oidcTjek, '@agent360/browser-mcp'], {
+      env: {
+        ...process.env,
+        ACTIONS_ID_TOKEN_REQUEST_URL: `http://127.0.0.1:${port}/idtoken?api-version=2.0`,
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'gh-noegle',
+        NPM_REGISTRY: `http://127.0.0.1:${port}`,
+      },
+    }, (fejl, stdout) => r({ kode: fejl ? fejl.code : 0, ud: stdout, set })));
+  } finally { server.close(); }
+}
+
+test('npm-tjek: npm udleverer et token -> ja, og tokenet skrives aldrig ud', async () => {
+  const s = await koerOidcTjek({ status: 201, krop: { token: 'HEMMELIG-NPM-TOKEN' } });
+  assert.equal(s.kode, 0, s.ud);
+  assert.equal(s.ud.trim(), 'ok');
+  assert.ok(!s.ud.includes('HEMMELIG') && !s.ud.includes('id-token-fra-github'));
+});
+
+test('npm-tjek: npm afviser udgiveren -> nej, med grunden', async () => {
+  const s = await koerOidcTjek({ status: 404, krop: { message: 'No trusted publisher found' } });
+  assert.equal(s.kode, 1);
+  assert.match(s.ud, /HTTP 404.*No trusted publisher found/);
+});
+
+test('npm-tjek: npm svarer 200 uden token -> nej', async () => {
+  const s = await koerOidcTjek({ status: 200, krop: {} });
+  assert.equal(s.kode, 1);
+});
+
+test('npm-tjek: uden id-token-rettighed -> nej, og det siger hvorfor', async () => {
+  const r = spawnSync('python3', [oidcTjek, '@agent360/browser-mcp'], {
+    env: { PATH: process.env.PATH }, encoding: 'utf8',
+  });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /id-token: write/);
+});
+
+test('release-scriptet spoerger npm FOER butikken, og kun naar det udgiver', () => {
+  const s = script();
+  const tjek = s.indexOf('scripts/npm-oidc-tjek.py');
+  const butik = s.indexOf('step "3. Chrome Web Store publish"');
+  assert.ok(tjek > 0 && butik > 0 && tjek < butik, 'tjekket skal ligge foer trin 3');
+  const blok = s.slice(s.lastIndexOf('if [[ "$SHIP" == 1 ]]; then', tjek), tjek);
+  assert.ok(blok.length > 0 && blok.length < 400, 'tjekket skal sidde i --ship-grenen');
+  assert.match(s.slice(tjek, tjek + 400), /\|\| die "npm afviser/);
+});
