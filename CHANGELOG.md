@@ -24,6 +24,28 @@ not our tests, which had been written against a harness more generous than Chrom
   command id alone, and ids count from 1, so an unpaired socket could guess one and return a
   forged result - worse than receiving the command, because the agent then acts on data that
   never came from the browser. Each pending command is now bound to the connection it went to.
+- **And a key that could not be fetched opened the bridge.** If the extension failed to read
+  its key - the service worker asleep, storage erroring - the gate saw no key and let every
+  server through. "Could not read" and "no key set" also looked identical. The extension now
+  knows three states: unknown, none and set. Unknown is treated as set, so nothing runs until
+  it knows, and the read retries instead of giving up.
+
+**A new install could get a half-dead bridge, "Not connected" for good.** Three callers could
+build the bridge at the same time, and on a fresh install the install event closed it while
+another caller was still building it. The bridge then existed, reported the right ports, and
+every call to the server hung. It hit exactly the person installing today; existing installs
+never saw it. The bridge is now built one at a time, and a fresh install no longer closes it.
+
+**One hanging probe could stop the extension finding servers until Chrome restarted.** The
+scan lock was released in `finally`, which never runs if a probe never settles - and Chrome can
+freeze an offscreen document mid-probe. The lock is now released after 15 seconds regardless,
+and a port with a call still in the air is not probed again, so the valve cannot stack
+connections until Chrome's per-host limit is used up.
+
+**`eget_vindue` can place its window.** `vindue_x`, `vindue_y`, `vindue_bredde` and
+`vindue_hoejde` position the new window, and `fokuser` asks Chrome to give it focus. On a
+machine with more than one screen, that is how a run gets keyboard input without covering the
+person's work. Chrome often refuses focus, which is why the reply below matters.
 
 **`eget_vindue` reported what it was asked for.** It answered `fokuseret: true` when Chrome had
 refused focus, and gave back the coordinates we requested rather than where the window landed.
@@ -34,6 +56,9 @@ they match, and a warning when they do not.
 **Also:** a controlled `<select>` goes through the prototype's value setter, as five other paths
 in the same file already did. See the retraction on /learn/tools-that-lie - this was a
 precaution, not a fix for a bug we could reproduce in React.
+
+**Credited:** @DorianChn moved the two select suites onto one shared page model (#28), so a
+change to what the extension reads from the page lands in both tests instead of one.
 
 ⛔ **What the key protects against, and what it does not.** It stops another program on your
 machine from driving your browser through the bridge - that was the hole, and it is closed. It
