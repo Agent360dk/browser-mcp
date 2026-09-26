@@ -1897,12 +1897,48 @@ async function portOmraadeFraLager() {
 //
 // Nu bygges broen én ad gangen: et kald der kommer mens et andet er i gang, faar det samme
 // loefte og venter paa det.
+//
+// ⛔ 26/9 (fuld review, maalt): to huller i den foerste udgave af koeen.
+//  1. «Reconnect» og opdateringen LUKKEDE broen uden for koeen og sluttede sig derefter til en
+//     igangvaerende opbygning. Var hjerteslaget midt i sit ping, fejlede pinget (dokumentet var
+//     vaek), lukningen kastede, og hjerteslaget returnerede UDEN at bygge: ingen bro i op til 60 s.
+//     Nu gaar «luk og byg igen» gennem SAMME koe (genbygOffscreen) og venter paa det der er i gang.
+//  2. Et loefte der aldrig afgoeres (en haengende createDocument) holdt koeen for evigt - samme
+//     klasse som skannerlaasen i d813f0d. Nu har hvert led en frist.
 let offscreenIGang = null;
+const OFFSCREEN_FRIST_MS = 20000;
+
+function iOffscreenKoe(arbejde) {
+  const forrige = offscreenIGang;
+  const selve = (async () => {
+    if (forrige) { try { await forrige; } catch { /* det forrige led fejlede - vi arbejder alligevel */ } }
+    return arbejde();
+  })();
+  let frist;
+  const ledet = Promise.race([selve, new Promise((_, afvis) => {
+    frist = setTimeout(() => afvis(new Error('offscreen: opbygningen svarede ikke inden for fristen')), OFFSCREEN_FRIST_MS);
+  })]).finally(() => {
+    clearTimeout(frist);
+    if (offscreenIGang === ledet) offscreenIGang = null;
+  });
+  offscreenIGang = ledet;
+  return ledet;
+}
+
 function ensureOffscreen() {
-  if (!offscreenIGang) {
-    offscreenIGang = ensureOffscreenIndre().finally(() => { offscreenIGang = null; });
-  }
-  return offscreenIGang;
+  return offscreenIGang || iOffscreenKoe(ensureOffscreenIndre);
+}
+
+// Luk den gamle bro og byg en frisk - i koeen, efter det der allerede er i gang.
+function genbygOffscreen() {
+  return iOffscreenKoe(async () => {
+    try {
+      if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+    } catch (e) {
+      console.warn('[BG] kunne ikke lukke broen foer genopbygning:', e?.message || e);
+    }
+    await ensureOffscreenIndre();
+  });
 }
 
 async function ensureOffscreenIndre() {
@@ -2052,18 +2088,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // lukke — blev afvisningen slugt, og extensionen stod tilbage UDEN
     // offscreen-dokument. Ingen WebSocket, ingen genopretning, og kun en
     // manuel genindlaesning kunne redde den.
+    // 26/9: luk og byg gaar gennem koeen (genbygOffscreen) - se ensureOffscreen.
     (async () => {
+      // Fejler det, tager hjerteslags-alarmen den inden for et minut - men kun fordi vi
+      // IKKE lader fejlen forsvinde.
       try {
-        if (await chrome.offscreen.hasDocument()) {
-          await chrome.offscreen.closeDocument();
-        }
-      } catch (e) {
-        console.warn('[BG] kunne ikke lukke offscreen:', e?.message || e);
-      }
-      // Proev at genskabe. Fejler det, tager hjerteslags-alarmen den
-      // inden for et minut — men kun fordi vi IKKE lader fejlen forsvinde.
-      try {
-        await ensureOffscreen();
+        await genbygOffscreen();
       } catch (e) {
         console.error('[BG] kunne ikke genskabe offscreen:', e?.message || e);
         setTimeout(() => ensureOffscreen().catch(console.error), 2000);
@@ -5595,16 +5625,10 @@ chrome.runtime.onInstalled.addListener(async (detaljer) => {
     await ensureOffscreen().catch(console.error);
     return;
   }
-  // Ved opdatering og genindlaesning ER den gamle bro foraeldet. Vent foerst paa en
-  // opbygning der allerede er i gang, saa vi ikke lukker en halvfaerdig bro.
-  await ensureOffscreen().catch(() => {});
-  try {
-    if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
-  } catch (e) {
-    console.warn('[BG] kunne ikke lukke broen ved genindlaesning:', e?.message || e);
-  }
+  // Ved opdatering og genindlaesning ER den gamle bro foraeldet. Luk og byg gaar gennem koeen,
+  // saa en halvfaerdig bro aldrig lukkes midt i sin opbygning (26/9).
   await chrome.storage.local.set({ offscreenGenskabt: 0, offscreenPauseTil: 0 });
-  ensureOffscreen().catch(console.error);
+  genbygOffscreen().catch(console.error);
 });
 
 // Hjerteslag der genskaber offscreen-dokumentet hvis Chrome har ryddet det.
