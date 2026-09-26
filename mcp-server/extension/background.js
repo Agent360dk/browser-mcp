@@ -1906,9 +1906,10 @@ async function portOmraadeFraLager() {
 //  2. ⛔ INGEN FRIST (26/9, Astra maalte det): en foerste udgave gav hvert led en frist paa 20 s. Men
 //     en frist stopper ikke arbejdet - den frigiver kun koeen. Et udloebet led kunne vaagne efter et
 //     await og lukke den NYE, levende bro; og fristen talte mens leddet stod i koe, saa en
-//     genopbygning fik ned til ét sekunds arbejdstid. Et haengende led holdes i stedet af Chromes
-//     egen livscyklus: uden dokument udveksles der ingen beskeder, servicearbejderen lukkes efter
-//     30 s tomgang, og den naeste alarm starter en frisk med en tom koe.
+//     genopbygning fik ned til ét sekunds arbejdstid. Et haengende led blokerer derfor baade
+//     hjerteslag og «Reconnect», og genopretning er IKKE garanteret: en tilkoblet debugger holder
+//     servicearbejderen i live (Chrome 118+), saa den genstarter ikke af sig selv. Udvejen er at
+//     genindlaese udvidelsen - det staar i CHANGELOG som kendt begraensning (Astra 26/9).
 let offscreenIGang = null;
 
 function iOffscreenKoe(arbejde) {

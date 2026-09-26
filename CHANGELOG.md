@@ -36,9 +36,10 @@ another caller was still building it. The bridge then existed, reported the righ
 every call to the server hung. It hit exactly the person installing today; existing installs
 never saw it. The bridge is now built one at a time, and a fresh install no longer closes it.
 "Reconnect" and extension updates close and rebuild it in the same queue, so they cannot close a
-bridge halfway through loading. Known limit: if Chrome ever leaves a build hanging, the queue waits
-until Chrome restarts the extension's background worker, which it does after 30 seconds without
-activity.
+bridge halfway through loading. Known limit: if Chrome ever leaves a build hanging, both the
+heartbeat and "Reconnect" wait behind it, and recovery is not guaranteed - an attached debugger
+keeps the extension's background worker alive. Reloading the extension in chrome://extensions
+clears it.
 
 **Four characters could stop the server.** The text `null` is valid JSON; the next line read
 `msg.type`, and the process died. Any program on the machine could send it without saying hello.
