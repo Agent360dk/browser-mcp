@@ -70,9 +70,10 @@ i sin AI som skridt 2, i stedet for fem registrerings-kommandoer. Kladden har st
 opsaetnings-blok. Den nye tekst ligger klar i
 `~/.claude/plans/browsermcp-2026-09-07/BUTIKSTEKST-klar-til-indsaettelse.txt`.
 
-**Ikke indsendt til gennemgang** - harnessen afviser klikket ("Create Public Surface"), saa det er
-Gustavs. ⚠️ Rettelse til en tidligere note her: **1.30 ligger ikke i review, den er LIVE** i
-butikken (maalt 20/9). Et pakke-review staar derfor ikke i vejen for en tekst-indsendelse.
+**Rettet 26/9: teksten ER live.** Butikssiden (curl 26/9) siger «40 tools», «Up to 20 agent
+sessions» og «⚠ READ FIRST - THIS EXTENSION IS HALF OF BROWSER MCP», og ingen af de fire gamle
+paastande (29 tools, 10 concurrent, ~80 %, UNIQUE). Om det er §1-udgaven med prompten eller den
+aeldre opsaetnings-blok, er IKKE maalt.
 
 ### ⛔ Hvorfor fire forsoeg fejlede foerst - laer af det
 

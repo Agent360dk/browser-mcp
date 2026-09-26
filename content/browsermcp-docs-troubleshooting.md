@@ -41,11 +41,12 @@ those tools measure whether the page actually received the event instead of trus
 acknowledgement, so you get an honest failure rather than a silent one, and the agent then calls
 `browser_switch_tab`, which brings that tab forward.
 
-**What you can do today.** Give the agent its own Chrome window and leave that window in the
-background of another window rather than another tab: the limit is which tab is visible in *its*
-window, not whether the window has focus. Reading, screenshots and scripts keep working either way.
+**What you can do today.** Reading, screenshots and scripts work in a background tab or window.
+Input - typing, hover, coordinate clicks - needs the tab to be the visible one in a window that has
+the operating system's focus (both measured). The agent brings the tab to the front when it needs
+to, and says so.
 
-**Fix status: fully hands-off background work is the goal for 1.30.** Some of it cannot be solved at
+**Fix status: not fixed, and not fixable by us.** 1.30 did not deliver hands-off background input. Some of it cannot be solved at
 all - CSS `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event
 is never `isTrusted`, and a real double-click's text selection is browser behaviour rather than an
 event.

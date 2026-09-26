@@ -4540,12 +4540,12 @@ async function dispatch(port, method, params) {
             }
             const foer = ${aftryk};
             // MAALT 19/9 i aerligheds-selen: her tabte vi mod Playwright paa et STYRET select.
-            // Grunden var denne ene linje. En styret komponent - React og fixturen begge - laegger
-            // en value-saetter paa INSTANSEN der ruller en naiv tilskrivning tilbage, saa
+            // En komponent der laegger en value-saetter paa INSTANSEN (ikke React - det var vores egen
+            // fixtur, trukket tilbage 21/9 paa /learn/tools-that-lie) kan rulle en naiv tilskrivning tilbage, saa
             // \`sel.value = x\` skriver den gamle vaerdi igen og komponenten hoerer aldrig noget.
             // Prototypens saetter gaar uden om instansen og har praecis samme betydning.
             // ⛔ Vi vidste det allerede: fem andre steder i denne fil saetter vaerdier netop saadan
-            // (linje ~1304, 2280, 2295, 2877, 3807). select_option var det eneste sted uden grebet.
+            // (fill, clear, set_date, combobox). select_option var det eneste sted uden grebet - en forsigtighed.
             // Prototypen hentes fra elementet, ikke fra et globalt navn: udtrykket koeres ogsaa
             // i kontekster hvor HTMLSelectElement ikke findes, og der skal det falde tilbage - ikke kaste.
             const saetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(sel) || {}, 'value')?.set;

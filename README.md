@@ -89,7 +89,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
 3. **Click "Load unpacked"** (top left, next to "Pack extension")
 4. **Navigate to `~/.browser-mcp/extension/`** and click "Select"
    - On Mac: Press `Cmd+Shift+G` in the file picker, paste `~/.browser-mcp/extension/`, press Enter
-   - On Windows: Paste `%USERPROFILE%\.browser-mcp\extension\` in the address bar
+   - On Windows: Paste `%USERPROFILE%\.browser-mcp\extension\` in the address bar (Windows is not yet verified: our automated tests do not pass there)
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
@@ -192,7 +192,9 @@ Those tools measure whether the page actually received the event rather than tru
 acknowledgement, so a background tab produces an honest failure instead of a silent one.
 (Introduced in 1.29.2 - see CHANGELOG.md for which release you are on.)
 
-Fully hands-off background work is the goal for 1.30. Some of it cannot be solved at all: CSS
+Fully hands-off background input is not part of 1.30, and it is not something we can fix: Chrome
+delivers no mouse or keyboard input to a tab that is not the visible one in its window, and none to
+a window without the operating system's focus (both measured). Some of it cannot be solved at all: CSS
 `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
 never `isTrusted`, `elementFromPoint` stops at a cross-origin iframe, and the text selection a
 real double-click makes is browser behaviour rather than an event.
@@ -221,7 +223,7 @@ All three are optional. None is needed for normal use.
 |---|---|
 | `BROWSER_MCP_CHECK_NPM=1` | Makes `browser_provide_feedback` also compare this server against the latest version published on npm. Off by default, so the call stays fast and works offline. |
 | `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. |
-| `BROWSER_MCP_TOKEN=<your key>` | Pairs this server with one Chrome profile. Type the same key into the extension's popup ("Pairing"), and that profile will only take commands from a server that knows it - and will ignore any other program that connects to the bridge. Leave it unset for the default: no key, no setup. |
+| `BROWSER_MCP_TOKEN` | **Withdrawn in 1.30.1 and ignored** - the server says so when it starts. Pairing shipped in 1.30.0 but kept nobody out, so it was taken back rather than left as false protection. It will return redesigned. |
 
 ## 40 Tools
 
@@ -473,9 +475,10 @@ account and no server of ours between you and the page.
 - **Page content** - what a tool reads from a tab goes to the MCP client you
   configured, and nowhere else. We never see it.
 - **Cookies, local storage and tokens** are not copied anywhere by default, and
-  the server keeps no store of its own - but they are reachable. Five tools go
-  at them directly (`browser_get_cookies`, `browser_get_local_storage`,
-  `browser_extract_token` and the two matching setters), and three more can get
+  the server keeps no store of its own - but they are reachable. Three tools read
+  them directly (`browser_get_cookies`, `browser_get_local_storage`,
+  `browser_extract_token`), two more write them (`browser_set_cookies`,
+  `browser_set_local_storage`), and three more can get
   to the same data another way: `browser_execute_script` runs in the page and
   can read `document.cookie`, and `browser_get_page_content` and
   `browser_extract_list` will carry a token that the page itself puts in the
@@ -484,7 +487,9 @@ account and no server of ours between you and the page.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
   analytics in the extension or on the site.
 - Everything the server does runs on `localhost` between the extension and the
-  MCP client on the same machine.
+  MCP client on the same machine. That bridge is **local and unauthenticated**:
+  another program running as you on the same machine can connect to it. Browser
+  MCP does not protect you from software you already run.
 
 Full policy: https://browsermcp.dev/privacy
 
