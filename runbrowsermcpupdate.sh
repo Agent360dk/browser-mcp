@@ -74,12 +74,13 @@ dage_til_udloeb() {
 NEW_VERSION=""
 SHIP=0
 SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0; SKIP_AERLIGHED=0
-PREPARE=0
+PREPARE=0; GENOPTAG=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
   case "$arg" in
     --ship)        SHIP=1 ;;
     --prepare)     PREPARE=1 ;;
+    --genoptag)    GENOPTAG=1; SKIP_CWS=1 ;;
     --skip-npm)    SKIP_NPM=1 ;;
     --skip-registry) SKIP_REGISTRY=1 ;;
     --skip-cws)    SKIP_CWS=1 ;;
@@ -201,6 +202,38 @@ if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then
 else
   ny_tag_tjek "$NEW_VERSION" || die "tagget v$NEW_VERSION findes allerede, men peger ikke paa HEAD: en tidligere koersel naaede at tagge og pushe, og der er kommet ny kode siden. Bump versionen, eller flyt tagget bevidst foer du koerer igen"
   ok "version $NEW_VERSION > npm-latest $NPM_LATEST (tag:${LATEST_TAG:-none})"
+fi
+
+# 26/9 (Astra, PR #31): et genoptag-flueben alene kunne udgive en ny version til GitHub, npm og
+# registret uden at butikken nogensinde fik den. Genoptag kraever nu to beviser: tagget paa HEAD
+# (det skubbes lige efter butikstrinnet - trin 3b) og butikkens eget svar om at den har versionen.
+cws_har_version() {
+  local v="$1" at
+  [[ -n "${CWS_CLIENT_ID:-}" && -n "${CWS_REFRESH_TOKEN:-}" && -n "${CWS_PUBLISHER_ID:-}" && -n "${CWS_EXTENSION_ID:-}" ]] || return 2
+  at="$(curl -s -X POST https://oauth2.googleapis.com/token -d "client_id=${CWS_CLIENT_ID}" \
+    -d "client_secret=${CWS_CLIENT_SECRET:-}" -d "refresh_token=${CWS_REFRESH_TOKEN}" -d grant_type=refresh_token \
+    | python3 -c 'import json,sys;print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)"
+  [[ -n "$at" ]] || return 2
+  curl -s "https://chromewebstore.googleapis.com/v2/publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}:fetchStatus" \
+    -H "Authorization: Bearer $at" | python3 -c '
+import json,sys
+v=sys.argv[1]
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+for k in ("submittedItemRevisionStatus","publishedItemRevisionStatus"):
+    for ch in (d.get(k) or {}).get("distributionChannels",[]) or []:
+        if ch.get("crxVersion")==v: sys.exit(0)
+sys.exit(1)' "$v"
+}
+if [[ "$GENOPTAG" == 1 ]]; then
+  [[ "$SHIP" == 1 ]] || die "--genoptag bruges kun med --ship"
+  genoptag_tjek "$NEW_VERSION" || die "--genoptag kraever tagget v$NEW_VERSION paa HEAD. Tagget skubbes lige efter butikstrinnet, saa uden det er der intet bevis for at butikken fik netop denne commit. Koer uden genoptag"
+  cws_har_version "$NEW_VERSION"; CWS_SVAR=$?
+  case "$CWS_SVAR" in
+    0) ok "butikken har v$NEW_VERSION, og tagget peger paa HEAD - genoptager efter butikstrinnet" ;;
+    2) die "--genoptag kan ikke spoerge butikken (noeglerne mangler) - koer i miljoeet 'udgivelse'" ;;
+    *) die "--genoptag: butikken har ikke v$NEW_VERSION - butikstrinnet blev aldrig gennemfoert. Koer uden genoptag" ;;
+  esac
 fi
 
 # Every path this release touches/stages. Anything dirty OUTSIDE this set is a
@@ -616,19 +649,42 @@ if [[ "$PREPARE" == 1 ]]; then
   say "naeste: commit filerne ovenfor, aabn en PR mod main, lad tjekkene koere, merge - og udgiv derefter fra main"
   exit 0
 fi
+# Samme krav i proevekoersel og udgivelse (Astra 26/9: en proevekoersel kaldte kandidaten forberedt
+# ud fra manifest og CHANGELOG alene, mens ship doede paa resten). Kun laesning.
+kandidat_problemer() {
+  local v="$1" f
+  for f in $JSON_FILES; do
+    [[ -f "$f" ]] || continue
+    node -e "
+      const j=JSON.parse(require('fs').readFileSync('$f','utf8')); const v='$v'; const d=[];
+      if ('version' in j && j.version!==v) d.push(j.version);
+      if (Array.isArray(j.packages)) j.packages.forEach(p=>{ if (p&&p.version&&p.version!==v) d.push(p.version); });
+      if (j.packages&&j.packages['']&&j.packages[''].version&&j.packages[''].version!==v) d.push(j.packages[''].version);
+      if (d.length) console.log('$f har version '+d.join(', '));"
+  done
+  diff -rq --exclude=.DS_Store extension mcp-server/extension >/dev/null 2>&1 || echo "mcp-server/extension/ er ikke en tro kopi af extension/"
+  cmp -s README.md mcp-server/README.md || echo "mcp-server/README.md er ikke README.md"
+  { grep -q "^## ${v} (" CHANGELOG.md && ! grep -q "^## ${v} (not released yet)" CHANGELOG.md; } || echo "CHANGELOG har ingen dateret overskrift for ${v}"
+  grep -q "\"softwareVersion\": \"${v}\"" docs/index.html || echo "docs/index.html softwareVersion er ikke ${v}"
+  grep -q "latest release v${v} (" README.md || echo "README 'latest release' er ikke v${v}"
+}
+PROBLEMER="$(kandidat_problemer "$NEW_VERSION")"
+git fetch -q origin main 2>/dev/null || true
 if [[ "$SHIP" == 1 ]]; then
   if [[ -n "$(git status --porcelain)" ]]; then
     git status --short
     die "kandidaten er ikke forberedt: trin 1 aendrede filerne ovenfor. Koer ./runbrowsermcpupdate.sh ${NEW_VERSION} --prepare paa en gren, merge PR'en, og udgiv derefter. Intet er udgivet."
   fi
-  ok "kandidaten er forberedt - trin 1 havde intet at skrive"
+  [[ -z "$PROBLEMER" ]] || die "kandidaten er ikke forberedt: ${PROBLEMER//$'\n'/; }. Intet er udgivet."
+  # Foer butikken, ikke efter (Astra 26/9): en lokal commit der ikke er paa origin/main, maa ikke naa butikken.
+  git merge-base --is-ancestor HEAD origin/main \
+    || die "HEAD er ikke paa origin/main - der udgives kun en commit der er merget gennem tjekkene. Intet er udgivet."
+  ok "kandidaten er forberedt og merget - trin 1 havde intet at skrive"
 else
-  FORBEREDT="$(node -p "require('./extension/manifest.json').version")"
-  if [[ "$FORBEREDT" == "$NEW_VERSION" ]] && ! grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md; then
-    ok "kandidaten v${NEW_VERSION} er forberedt (manifest og CHANGELOG)"
-  else
-    gate "kandidaten er ikke forberedt (manifest ${FORBEREDT}, CHANGELOG-overskrift) - koer --prepare paa en gren og merge PR'en foer udgivelsen"
-  fi
+  if [[ -z "$PROBLEMER" ]]; then ok "kandidaten v${NEW_VERSION} er forberedt"
+  else gate "kandidaten er ikke forberedt: ${PROBLEMER//$'\n'/; } - koer --prepare paa en gren og merge PR'en foer udgivelsen"; fi
+  git merge-base --is-ancestor HEAD origin/main 2>/dev/null && ok "HEAD er paa origin/main" \
+    || gate "HEAD er ikke paa origin/main - en udgivelse herfra ville blive afvist foer butikken"
 fi
 
 # ── 2. Pakke-tjek: starter tarballen overhovedet? ─────────────────────────────
@@ -666,34 +722,33 @@ else
   # MAALT 12/9 af Fable: fejler koerslen EFTER butiks-uploaden men FOER npm, afviser butikken den samme version
   # ved en genkoersel - og saa doer scriptet foer GitHub. Alt andet (tag, push, release, npm, register) taaler en
   # genkoersel. Hintet stod kun paa genoptag-stien, hvor man allerede var forbi npm.
-  warn "fejler koerslen EFTER dette trin, saa koer igen med --skip-cws: butikken afviser den samme version to gange"
+  warn "fejler koerslen EFTER dette trin, saa genoptag (--genoptag / workflow-feltet genoptag): butikken afviser den samme version to gange"
   CWS_ARGS=(); [[ "$CWS_DRAFT" == 1 ]] && CWS_ARGS+=(--draft)
   say "scripts/publish-cws.sh ${CWS_ARGS[*]:-} (reads extension/manifest.json = $NEW_VERSION)"
   run ./scripts/publish-cws.sh ${CWS_ARGS[@]+"${CWS_ARGS[@]}"}
 fi
 
-# ── 4. GitHub: commit, tag, push, release ─────────────────────────────────────
-step "4. GitHub: tag v${NEW_VERSION} · push tag · release"
+# ── 3b. Tag: beviset paa hvad butikken fik ─────────────────────────────────────
+# 26/9 (Astra, PR #31): tagget skubbes LIGE efter butikken. Saa er det bundet til den commit butikken
+# fik, og --genoptag kan kraeve det: findes tagget ikke paa HEAD, blev butikstrinnet aldrig gennemfoert.
+step "3b. Tag v${NEW_VERSION} · push tag"
 if [[ "$SKIP_GITHUB" == 1 ]]; then warn "skipped (--skip-github)"
 else
-  # ⛔ 26/9: her stod `git reset`, `git add`, `git commit` og `git push origin main`. Main kraever
-  # fem tjek som jobbets noegle ikke kan springe over, saa trin 4 doede EFTER butikken. Versionen
-  # er nu allerede paa main (--prepare + PR), og udgivelsen tagger den commit der blev testet.
-  if [[ "$SHIP" == 1 ]]; then
-    git fetch -q origin main
-    git merge-base --is-ancestor HEAD origin/main \
-      || die "HEAD er ikke paa origin/main - der udgives kun en commit der er merget gennem tjekkene"
-  fi
   if git rev-parse "v${NEW_VERSION}" >/dev/null 2>&1; then
     warn "tag v${NEW_VERSION} already exists - skipping tag"
   else
     run git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"   # annotated, so it pushes
   fi
-  # push branch, then the tag EXPLICITLY. (--follow-tags silently skips lightweight
-  # tags and even annotated ones can be missed on resume; explicit push is robust
-  # and idempotent - an already-pushed tag just reports up-to-date.)
   run git push origin "v${NEW_VERSION}"
+fi
 
+# ── 4. GitHub: release ────────────────────────────────────────────────────────
+step "4. GitHub: release"
+if [[ "$SKIP_GITHUB" == 1 ]]; then warn "skipped (--skip-github)"
+else
+  # ⛔ 26/9: her stod `git reset`, `git add`, `git commit` og `git push origin main`. Main kraever
+  # fem tjek som jobbets noegle ikke kan springe over, saa trin 4 doede EFTER butikken. Versionen
+  # er nu allerede paa main (--prepare + PR); tagget er skubbet i trin 3b.
   ZIP="/tmp/agent360-browser-mcp-${NEW_VERSION}.zip"
   say "build release zip for GitHub asset: $ZIP"
   run bash -c "rm -f '$ZIP'; cd '$REPO_ROOT/extension' && zip -qr '$ZIP' . -x '*.DS_Store'"

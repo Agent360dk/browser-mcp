@@ -69,8 +69,10 @@ jobs:
       - name: installer mcp-publisher
         run: brew install mcp-publisher
 
+      # 26/9 (Astra, PR #31): `npm ci`, ikke `npm install`. install omskrev lockfilen, og ship doer paa
+      # et beskidt traee. ci roerer aldrig lockfilen - og fejler hoejt hvis den er ude af trit.
       - name: installer serveren
-        run: npm install --prefix mcp-server --no-audit --no-fund
+        run: npm ci --prefix mcp-server --no-audit --no-fund
 
       - name: git-identitet
         run: |
@@ -97,8 +99,9 @@ jobs:
           if [[ "$SHIP" == "true" ]]; then
             flag=(--ship "${flag[@]}")
             if [[ "$GENOPTAG" == "true" ]]; then
-              echo "::notice::Genoptagelse: butikstrinnet springes over. Resten genoptages af scriptets egne vagter (tag, npm-version)."
-              flag+=(--skip-cws)
+              # --genoptag kraever tagget paa HEAD og at butikken selv svarer at den har versionen.
+              echo "::notice::Genoptagelse: scriptet tjekker tag og butik foer det springer butikstrinnet over."
+              flag+=(--genoptag)
             fi
           else
             echo "::notice::Proevekoersel: intet sendes ud. Butikkens noegler findes kun i miljoeet «udgivelse», saa butikstrinnet springes over."
