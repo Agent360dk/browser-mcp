@@ -69,18 +69,37 @@ async function serverMedNoegle(noegle) {
   throw new Error('serveren bandt aldrig en port: ' + fejl);
 }
 
-/** Melder sig som udvidelse med et givet haandtryk og rapporterer hvad der skete. */
-function udvidelseHilser(port, hilsen) {
-  return new Promise((ok) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
-    const svar = [];
-    let lukket = null;
-    ws.on('open', () => ws.send(JSON.stringify(hilsen)));
-    ws.on('message', (d) => { try { svar.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
-    ws.on('close', (kode) => { lukket = kode; });
-    ws.on('error', () => {});
-    setTimeout(() => { try { ws.close(); } catch { /* lukket */ } ok({ svar, lukket }); }, 900);
-  });
+/**
+ * Melder sig som udvidelse, sender et vaerktoejskald gennem serveren, og rapporterer hvad der skete.
+ *
+ * ⛔ Astra 26/9: foerste udgave svarede efter 900 ms uanset hvad, ogsaa naar soklen ALDRIG aabnede.
+ * «Ikke lukket» beviser ikke «kom ind». Nu skal soklen aabne inden for fristen, og udvidelsen skal
+ * modtage et rigtigt vaerktoejskald - det er det «kom ind» betyder.
+ */
+async function udvidelseHilser(port, hilsen, server = null) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+  const svar = [];
+  let lukket = null;
+  ws.on('message', (d) => { try { svar.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
+  ws.on('close', (kode) => { lukket = kode; });
+  ws.on('error', () => {});
+  const aabnet = await Promise.race([
+    new Promise((ok) => ws.on('open', () => ok(true))),
+    new Promise((ok) => setTimeout(() => ok(false), 3000)),
+  ]);
+  if (aabnet) ws.send(JSON.stringify(hilsen));
+  await new Promise((ok) => setTimeout(ok, 400));
+  let kald = null;
+  if (aabnet && server) {
+    server.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 77, method: 'tools/call',
+      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
+    for (let n = 0; n < 50 && !kald; n++) {
+      kald = svar.find((m) => typeof m?.method === 'string') || null;
+      if (!kald) await new Promise((ok) => setTimeout(ok, 100));
+    }
+  }
+  try { ws.close(); } catch { /* lukket */ }
+  return { aabnet, svar, lukket, kald };
 }
 
 
@@ -89,8 +108,10 @@ const HILSEN = { type: 'hello', extensionId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
 test('uden noegle er intet aendret - udvidelsen kommer ind som i dag', async () => {
   const s = await serverMedNoegle(null);
   try {
-    const r = await udvidelseHilser(s.port, HILSEN);
+    const r = await udvidelseHilser(s.port, HILSEN, s);
+    assert.equal(r.aabnet, true, 'soklen aabnede aldrig - proeven kan ikke maale noget');
     assert.equal(r.lukket, null, 'serveren lukkede en helt almindelig udvidelse ude');
+    assert.ok(r.kald, 'udvidelsen fik aldrig et vaerktoejskald - den kom ikke ind');
     assert.equal(r.svar.find((m) => m.type === 'parring'), undefined, 'der blev sendt en parringskvittering');
   } finally { s.proces.kill(); }
 });
@@ -101,8 +122,10 @@ test('BROWSER_MCP_TOKEN ignoreres: en udvidelse uden noegle kommer ind, og serve
   // noeglen ikke virker.
   const s = await serverMedNoegle('arbejde');
   try {
-    const r = await udvidelseHilser(s.port, HILSEN);
+    const r = await udvidelseHilser(s.port, HILSEN, s);
+    assert.equal(r.aabnet, true, 'soklen aabnede aldrig - proeven kan ikke maale noget');
     assert.equal(r.lukket, null, `en udvidelse uden noegle blev lukket ude (kode ${r.lukket}) - parringen er ikke trukket tilbage`);
+    assert.ok(r.kald, 'udvidelsen uden noegle fik aldrig et vaerktoejskald - serveren holder den stadig ude');
     assert.match(s.fejl(), /BROWSER_MCP_TOKEN is ignored: pairing was withdrawn/,
       'serveren tier om at noeglen ignoreres - brugeren tror han er beskyttet');
   } finally { s.proces.kill(); }
@@ -112,6 +135,7 @@ test('med noegle sat gentager serveren den aldrig - heller ikke til en udvidelse
   const s = await serverMedNoegle('arbejde');
   try {
     const r = await udvidelseHilser(s.port, { ...HILSEN, noegle: 'arbejde' });
+    assert.equal(r.aabnet, true, 'soklen aabnede aldrig - proeven kan ikke maale noget');
     assert.equal(r.lukket, null);
     assert.equal(r.svar.find((m) => m.type === 'parring'), undefined,
       'serveren sendte en parringskvittering - noeglen er stadig i spil');

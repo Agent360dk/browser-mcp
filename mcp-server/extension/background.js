@@ -1903,22 +1903,20 @@ async function portOmraadeFraLager() {
 //     igangvaerende opbygning. Var hjerteslaget midt i sit ping, fejlede pinget (dokumentet var
 //     vaek), lukningen kastede, og hjerteslaget returnerede UDEN at bygge: ingen bro i op til 60 s.
 //     Nu gaar «luk og byg igen» gennem SAMME koe (genbygOffscreen) og venter paa det der er i gang.
-//  2. Et loefte der aldrig afgoeres (en haengende createDocument) holdt koeen for evigt - samme
-//     klasse som skannerlaasen i d813f0d. Nu har hvert led en frist.
+//  2. ⛔ INGEN FRIST (26/9, Astra maalte det): en foerste udgave gav hvert led en frist paa 20 s. Men
+//     en frist stopper ikke arbejdet - den frigiver kun koeen. Et udloebet led kunne vaagne efter et
+//     await og lukke den NYE, levende bro; og fristen talte mens leddet stod i koe, saa en
+//     genopbygning fik ned til ét sekunds arbejdstid. Et haengende led holdes i stedet af Chromes
+//     egen livscyklus: uden dokument udveksles der ingen beskeder, servicearbejderen lukkes efter
+//     30 s tomgang, og den naeste alarm starter en frisk med en tom koe.
 let offscreenIGang = null;
-const OFFSCREEN_FRIST_MS = 20000;
 
 function iOffscreenKoe(arbejde) {
   const forrige = offscreenIGang;
-  const selve = (async () => {
+  const ledet = (async () => {
     if (forrige) { try { await forrige; } catch { /* det forrige led fejlede - vi arbejder alligevel */ } }
     return arbejde();
-  })();
-  let frist;
-  const ledet = Promise.race([selve, new Promise((_, afvis) => {
-    frist = setTimeout(() => afvis(new Error('offscreen: opbygningen svarede ikke inden for fristen')), OFFSCREEN_FRIST_MS);
-  })]).finally(() => {
-    clearTimeout(frist);
+  })().finally(() => {
     if (offscreenIGang === ledet) offscreenIGang = null;
   });
   offscreenIGang = ledet;

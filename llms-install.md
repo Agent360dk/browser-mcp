@@ -82,10 +82,10 @@ Claude Code, Codex, VS Code and Cursor through each client's own mechanism and l
 
 Keep the `@latest`: it is what makes the server self-update on each run.
 
-**If the user runs two Chrome profiles** (work and personal) with an agent in each, add a
-pairing key so a profile only takes commands from its own server. Set `BROWSER_MCP_TOKEN` in
-the server's `env`, and tell the user to type the same key into the extension's popup under
-**Pairing**. Leave it out otherwise - the default needs no configuration.
+**Do not set `BROWSER_MCP_TOKEN`.** Pairing was withdrawn in 1.30.1 because it kept nobody out;
+the server ignores the variable and the popup no longer has the field. With two Chrome profiles,
+each profile's extension connects to whichever server it finds - there is no per-profile
+separation today. The bridge is local and unauthenticated.
 
 ## Step 2 - the Chrome extension (HUMAN action required)
 

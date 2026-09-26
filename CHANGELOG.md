@@ -36,8 +36,9 @@ another caller was still building it. The bridge then existed, reported the righ
 every call to the server hung. It hit exactly the person installing today; existing installs
 never saw it. The bridge is now built one at a time, and a fresh install no longer closes it.
 "Reconnect" and extension updates close and rebuild it in the same queue, so they cannot close a
-bridge halfway through loading, and a build that hangs gives up after 20 seconds instead of
-blocking every build after it.
+bridge halfway through loading. Known limit: if Chrome ever leaves a build hanging, the queue waits
+until Chrome restarts the extension's background worker, which it does after 30 seconds without
+activity.
 
 **Four characters could stop the server.** The text `null` is valid JSON; the next line read
 `msg.type`, and the process died. Any program on the machine could send it without saying hello.
@@ -140,9 +141,9 @@ these tools answer with, exactly one family is genuinely outside the browser.
 > program that connected and never said hello skipped the check entirely and could be served
 > tool calls. That is precisely the hole the feature was built to close.
 >
-> Both halves are fixed on `main`. **Pairing works only once both are out** - the server half
-> ships through npm, the extension half only when the Chrome Web Store approves it. Until then,
-> treat pairing as not present rather than as protection.
+> ⛔ **Withdrawn in 1.30.1.** A later review measured that even with both halves fixed, the key kept
+> nobody out (it was sent to any server in the port range and accepted back as proof). Pairing is
+> gone from the popup, the extension and the server; see 1.30.1.
 
 Set `BROWSER_MCP_TOKEN` on the server and type the same key into the extension's popup,
 and that profile only takes commands from that server - and ignores any other program

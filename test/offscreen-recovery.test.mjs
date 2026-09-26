@@ -78,8 +78,7 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
     // selve arbejdet ligger i ensureOffscreenIndre. Begge skal med, ellers maaler selen en
     // anden funktion end den der koerer.
     'let offscreenIGang = null;',
-    // 26/9: koeen har faaet en frist og en egen funktion (iOffscreenKoe) - den skal med.
-    'const OFFSCREEN_FRIST_MS = 20000;',
+    // 26/9: koeen har faaet sin egen funktion (iOffscreenKoe) - den skal med.
     udklip('iOffscreenKoe'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),

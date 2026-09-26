@@ -33,7 +33,6 @@ test('to samtidige kald bygger broen ÉN gang - ikke to', async () => {
   // ensureOffscreenIndre er tunge; her er den erstattet af det ene den skal: bygge broen.
   const src = `
     let offscreenIGang = null;
-    const OFFSCREEN_FRIST_MS = 20000;
     ${udklip('iOffscreenKoe')}
     async function ensureOffscreenIndre() {
       if (!(await chrome.offscreen.hasDocument())) await chrome.offscreen.createDocument();
@@ -56,7 +55,6 @@ test('naar opbygningen er faerdig, maa et nyt kald godt starte en ny', async () 
   } };
   const src = `
     let offscreenIGang = null;
-    const OFFSCREEN_FRIST_MS = 20000;
     ${udklip('iOffscreenKoe')}
     async function ensureOffscreenIndre() {
       if (!(await chrome.offscreen.hasDocument())) await chrome.offscreen.createDocument();
@@ -74,26 +72,30 @@ test('naar opbygningen er faerdig, maa et nyt kald godt starte en ny', async () 
  * til hjerteslagets igangvaerende opbygning. Hjerteslagets ping fejlede (dokumentet var vaek),
  * lukningen kastede, og hjerteslaget vendte tilbage uden at bygge. Resultat: ingen bro i op til
  * 60 s - netop naar brugeren trykker, fordi serverens fejltekst beder om det.
+ *
+ * ⛔ Og Astra 26/9: de foerste udgaver af proeverne her var groenne med en genbygOffscreen der INTET
+ * gjorde, fordi hjerteslaget selv byggede broen. Proeverne maaler derfor nu at Reconnect ERSTATTER
+ * dokumentet (et nyt id), ikke bare at der er en bro til sidst.
  */
-function broModel({ fristMs = 20000, opretHaenger = false } = {}) {
-  const tilstand = { dokument: true, levende: false, oprettet: 0, lukket: 0 };
+function broModel({ levende = false } = {}) {
+  const tilstand = { dokument: true, id: 1, levende, klar: true, oprettet: 0, lukket: 0, halvdoed: false };
   const chrome = { offscreen: {
     hasDocument: async () => tilstand.dokument,
     closeDocument: async () => {
       if (!tilstand.dokument) throw new Error('No current offscreen document');
+      if (!tilstand.klar) tilstand.halvdoed = true;
       tilstand.dokument = false; tilstand.lukket += 1;
     },
     createDocument: async () => {
-      if (opretHaenger && tilstand.oprettet === 0) { tilstand.oprettet += 1; return new Promise(() => {}); }
-      await new Promise((r) => setTimeout(r, 20));
-      tilstand.dokument = true; tilstand.levende = true; tilstand.oprettet += 1;
+      tilstand.dokument = true; tilstand.klar = false; tilstand.id += 1; tilstand.oprettet += 1;
+      await new Promise((r) => setTimeout(r, 40));
+      tilstand.klar = true; tilstand.levende = true;
     },
   } };
-  // Den del af ensureOffscreenIndre der betyder noget her: et dokument der findes men ikke
-  // svarer, lukkes; kan det ikke lukkes, proeves der igen ved naeste hjerteslag.
+  // Den del af ensureOffscreenIndre der betyder noget her: et dokument der findes og svarer, faar
+  // lov at vaere; et der ikke svarer, lukkes; kan det ikke lukkes, proeves der igen naeste gang.
   const src = `
     let offscreenIGang = null;
-    const OFFSCREEN_FRIST_MS = ${fristMs};
     const ping = async () => { await new Promise((r) => setTimeout(r, 50)); return tilstand.dokument && tilstand.levende; };
     async function ensureOffscreenIndre() {
       if (await chrome.offscreen.hasDocument()) {
@@ -110,27 +112,38 @@ function broModel({ fristMs = 20000, opretHaenger = false } = {}) {
   return { ...f, tilstand };
 }
 
-test('«Reconnect» midt i hjerteslagets ping efterlader en bro - ikke ingen', async () => {
-  const m = broModel();
-  const hjerteslag = m.ensureOffscreen();        // dokumentet findes men er doedt; pinget venter
+test('«Reconnect» midt i hjerteslagets ping efterlader en bro - og den er Reconnects egen', async () => {
+  const m = broModel();                          // et dokument der findes men er doedt
+  const hjerteslag = m.ensureOffscreen();        // pinget venter
   await new Promise((r) => setTimeout(r, 10));
   const reconnect = m.genbygOffscreen();         // brugeren trykker
   await Promise.allSettled([hjerteslag, reconnect]);
-  assert.equal(m.tilstand.dokument, true,
-    `ingen bro efter Reconnect (lukket ${m.tilstand.lukket}, oprettet ${m.tilstand.oprettet}) - `
-    + 'lukningen ramte hjerteslagets opbygning, og ingen byggede igen');
+  assert.equal(m.tilstand.dokument && m.tilstand.klar, true,
+    `ingen faerdig bro efter Reconnect (lukket ${m.tilstand.lukket}, oprettet ${m.tilstand.oprettet})`);
+  assert.equal(m.tilstand.oprettet, 2,
+    `Reconnect byggede ikke selv en ny bro (oprettet ${m.tilstand.oprettet}) - hjerteslaget gjorde arbejdet`);
 });
 
-test('en opbygning der haenger, holder ikke koeen - den naeste bygger efter fristen', async () => {
-  const m = broModel({ fristMs: 100, opretHaenger: true });
+test('«Reconnect» erstatter ogsaa en bro der svarer - det er hele knappens formaal', async () => {
+  const m = broModel({ levende: true });
+  await m.genbygOffscreen();
+  assert.equal(m.tilstand.lukket, 1, 'den gamle bro blev ikke lukket');
+  assert.equal(m.tilstand.id, 2, 'der blev ikke bygget en ny bro');
+  assert.equal(m.tilstand.dokument && m.tilstand.klar, true);
+});
+
+test('«Reconnect» midt i en opbygning venter paa den - og erstatter den bagefter', async () => {
+  // Chrome melder dokumentet «til stede» fra det oejeblik det oprettes, men det er foerst klar naar
+  // siden er indlaest. Lukkes det imellem, er broen halvdoed - «Offscreen document closed before
+  // fully loading», den fejl 8cd485d handlede om.
+  const m = broModel();
   m.tilstand.dokument = false;
-  await m.ensureOffscreen().catch(() => {});      // haenger, afvises af fristen
-  const naeste = await Promise.race([
-    m.ensureOffscreen().then(() => 'bygget', () => 'fejlede'),
-    new Promise((r) => setTimeout(() => r('haenger stadig'), 1000)),
-  ]);
-  assert.equal(naeste, 'bygget', `det naeste kald ${naeste} - en haengende opbygning laaser broen til servicearbejderen genstartes`);
-  assert.equal(m.tilstand.dokument, true);
+  const opbygning = m.ensureOffscreen();         // bygger dokument 2
+  await new Promise((r) => setTimeout(r, 5));
+  await Promise.allSettled([opbygning, m.genbygOffscreen()]);
+  assert.equal(m.tilstand.halvdoed, false, 'genopbygningen lukkede en bro der stadig var ved at indlaese');
+  assert.equal(m.tilstand.id, 3, `Reconnect erstattede ikke broen efter opbygningen (id ${m.tilstand.id})`);
+  assert.equal(m.tilstand.dokument && m.tilstand.klar, true, 'og bagefter er der ingen faerdig bro');
 });
 
 test('broen lukkes KUN inde i koeen - aldrig direkte fra en haendelse', () => {
@@ -147,42 +160,4 @@ test('broen lukkes KUN inde i koeen - aldrig direkte fra en haendelse', () => {
   const tilladt = new Set(['ensureOffscreenIndre', 'genbygOffscreen']);
   assert.deepEqual(fund.filter((f) => !tilladt.has(f)), [],
     `broen lukkes uden for koeen i: ${fund.filter((f) => !tilladt.has(f)).join(', ')}`);
-});
-
-test('«Reconnect» midt i en opbygning lukker ikke den halvfaerdige bro', async () => {
-  // Chrome melder dokumentet «til stede» fra det oejeblik det oprettes, men det er foerst klar
-  // naar siden er indlaest. Lukkes det imellem, er broen halvdoed - «Offscreen document closed
-  // before fully loading», den fejl 8cd485d handlede om. Genopbygningen skal derfor VENTE paa den
-  // opbygning der er i gang, ikke bare selv bygge bagefter.
-  const tilstand = { dokument: false, klar: false, halvdoed: false };
-  const chrome = { offscreen: {
-    hasDocument: async () => tilstand.dokument,
-    closeDocument: async () => {
-      if (!tilstand.dokument) throw new Error('No current offscreen document');
-      if (!tilstand.klar) tilstand.halvdoed = true;
-      tilstand.dokument = false; tilstand.klar = false;
-    },
-    createDocument: async () => {
-      tilstand.dokument = true; tilstand.klar = false;
-      await new Promise((r) => setTimeout(r, 40));
-      tilstand.klar = true;
-    },
-  } };
-  const src = `
-    let offscreenIGang = null;
-    const OFFSCREEN_FRIST_MS = 20000;
-    async function ensureOffscreenIndre() {
-      if (await chrome.offscreen.hasDocument()) return;
-      await chrome.offscreen.createDocument();
-    }
-    ${udklip('iOffscreenKoe')}
-    ${udklip('ensureOffscreen')}
-    ${udklip('genbygOffscreen')}
-    return { ensureOffscreen, genbygOffscreen };`;
-  const m = new Function('chrome', 'console', src)(chrome, { warn() {}, log() {}, error() {} });
-  const opbygning = m.ensureOffscreen();
-  await new Promise((r) => setTimeout(r, 5));    // opbygningen er i gang
-  await Promise.allSettled([opbygning, m.genbygOffscreen()]);
-  assert.equal(tilstand.halvdoed, false, 'genopbygningen lukkede en bro der stadig var ved at indlaese');
-  assert.equal(tilstand.dokument && tilstand.klar, true, 'og bagefter er der ingen faerdig bro');
 });
