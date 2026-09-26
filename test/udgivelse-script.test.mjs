@@ -16,7 +16,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const roegtest = join(rod, 'scripts/pakke-roegtest.mjs');
@@ -296,10 +296,10 @@ test('udgivelsen skriver CHANGELOG-overskriften om fra "not released yet" til da
   // Den pushede fil sagde derfor fortsat "not released yet" - og filen stod beskidt, saa naeste koersel doede paa den.
   const forvaltet = script().slice(script().indexOf('MANAGED=('), script().indexOf('is_managed()'));
   assert.match(forvaltet, /^\s*CHANGELOG\.md\s*$/m, 'CHANGELOG.md er ikke forvaltet - saa staar den beskidt efter koerslen');
-  const stage = script().slice(script().indexOf('run git add '), script().indexOf('run git add ') + 420);
-  // 17/9: trin 4 stager nu fra MANAGED, saa "forvaltet" ER "staged" - vogtet for alle filer i proeven nederst.
-  assert.ok(/CHANGELOG\.md/.test(stage) || stage.includes('"${MANAGED[@]}"'),
-    'CHANGELOG.md stages ikke - omskrivningen naar aldrig ud i pushet');
+  // 26/9: udgivelsen committer ikke laengere selv. Omskrivningen sker med --prepare paa en gren og
+  // merges gennem en PR; --ship doer hvis trin 1 stadig har noget at skrive (1g).
+  assert.match(script(), /die "kandidaten er ikke forberedt/,
+    'udgivelsen stopper ikke paa et uforberedt traee - saa gaar "not released yet" ud igen');
 });
 
 // MAALT samme runde: fejler koerslen EFTER butiks-uploaden men FOER npm, afviser butikken den samme version ved en
@@ -380,7 +380,10 @@ test('spaerren siger kun GROENT naar der ikke er uventede fejl - ikke naar aftry
 
 test('spaerren doer ikke i toerloeb - planen skal kunne ses hele vejen', () => {
   const k = script();
-  const blok = k.slice(k.indexOf('2b. Flow-spaerre'), k.indexOf('Chrome Web Store publish'));
+  // 26/9: kun trin 2b selv (til 2c). Foer gik udsnittet helt til butikken og saa dermed ogsaa 1g's
+  // stop, som kun gaelder --ship og derfor ikke kan skjule planen i en toerloeb.
+  const blok = k.slice(k.indexOf('2b. Flow-spaerre'), k.indexOf('step "2c.'));
+  assert.ok(blok.length > 0, 'trin 2b blev ikke fundet');
   assert.doesNotMatch(blok, /\n\s*die "/, 'trin 2b bruger die i stedet for gate - saa viser toerloebet ikke trin 3-6');
   assert.match(blok, /gate /, 'trin 2b bruger ikke gate()');
 });
@@ -523,7 +526,7 @@ test('butikstrinnet alene koerer stadig flow-spaerren - beviset kommer kun fra t
 // CLI's galleri laeser netop GitHub. Praecis den fejl Astra fandt paa CHANGELOG.md 12/9,
 // dengang rettet for den ene fil. Denne proeve vogter MOENSTRET: ingen skrevet fil maa
 // mangle i commit'et, uanset hvad den hedder.
-test('hver fil trin 1 skriver i, er baade forvaltet og kommer med i commit og push', () => {
+test('hver fil trin 1 skriver i, er forvaltet - og udgivelsen kraever dem rene', () => {
   const kode = script().split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
   const liste = (navn) => {
     const m = kode.match(new RegExp(`^${navn}="([^"]+)"`, 'm'));
@@ -537,18 +540,12 @@ test('hver fil trin 1 skriver i, er baade forvaltet og kommer med i commit og pu
   const forvaltet = kode.slice(mStart, kode.indexOf(')', mStart)).split(/\s+/).slice(1).filter(Boolean);
   const erForvaltet = (f) => forvaltet.some((m) => f === m || f.startsWith(m + '/'));
 
-  const aStart = kode.indexOf('run git add ');
-  const stageLinje = kode.slice(aStart, kode.indexOf('\n\n', aStart));
-  const staged = stageLinje.includes('"${MANAGED[@]}"') ? forvaltet
-    : stageLinje.replace('run git add', '').replace(/\\\n/g, ' ').split(/\s+/).filter(Boolean);
-  const erStaged = (f) => staged.some((m) => f === m || f.startsWith(m + '/'));
-
   const uforvaltet = skrevet.filter((f) => !erForvaltet(f));
-  const ustaged = skrevet.filter((f) => !erStaged(f));
   assert.deepEqual(uforvaltet, [],
     `trin 1 skriver i ${uforvaltet.join(', ')}, men MANAGED kender dem ikke - naeste koersels stray-tjek doer paa dem`);
-  assert.deepEqual(ustaged, [],
-    `trin 1 skriver i ${ustaged.join(', ')}, men trin 4 committer dem ikke - aendringen naar aldrig GitHub`);
+  // 26/9: filerne committes med --prepare i en PR; udgivelsen doer hvis nogen af dem er beskidt.
+  assert.match(kode, /git status --porcelain[\s\S]*?die "kandidaten er ikke forberedt/,
+    'udgivelsen kraever ikke at trin 1s filer er rene - saa kan en uforberedt kandidat udgives');
 });
 
 // ── npm-noeglens udloeb ──────────────────────────────────────────────────────
@@ -724,4 +721,109 @@ test('release-scriptet koerer docs-vagten foer butikken og stopper paa roedt', (
   assert.match(koer(1), /GATE:docs-vagten er roed/);
   assert.doesNotMatch(koer(1), /OK:/);
   assert.match(koer(0), /OK:docs-vagt ren/);
+});
+
+// ── Udgivelsen skriver aldrig til main (26/9, panel + fuld review) ───────────
+// Trin 4 skubbede selv versions-commit'en til main med jobbets noegle. Main kraever fem tjek som
+// den noegle ikke kan springe over, saa en rigtig koersel ville doe EFTER butikken. Nu forberedes
+// versionen med --prepare paa en gren (PR med alle tjek), og udgivelsen tagger den testede commit.
+
+const kodeLinjer = (tekst) => tekst.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+
+test('trin 4 committer og skubber aldrig til main - kun tag og release', () => {
+  const s = script();
+  const fra = s.indexOf('step "4. GitHub');
+  const til = s.indexOf('step "5. npm publish');
+  assert.ok(fra > 0 && til > fra, 'trin 4 blev ikke fundet');
+  const blok = kodeLinjer(s.slice(fra, til));
+  for (const [moenster, hvad] of [[/git push origin main/, 'skubber til main'], [/git commit/, 'committer'],
+    [/run git add/, 'stager filer'], [/run git reset/, 'nulstiller indekset']]) {
+    assert.doesNotMatch(blok, moenster, `trin 4 ${hvad} - main kraever tjek som udgivelsens noegle ikke kan springe over`);
+  }
+  assert.match(blok, /git push origin "v\$\{NEW_VERSION\}"/, 'trin 4 skubber ikke laengere tagget');
+  assert.match(blok, /merge-base --is-ancestor HEAD origin\/main/, 'trin 4 tjekker ikke at den udgivne commit er merget');
+});
+
+test('README-datoen flyttes ikke naar versionen allerede staar der - et forberedt traee forbliver rent', () => {
+  const s = script();
+  const linje = s.split('\n').find((l) => l.includes('run perl') && l.includes('latest release v'));
+  assert.ok(linje, 'README-daten-linjen blev ikke fundet');
+  const perl = linje.trim().replace(/^run /, '');
+  const d = mkdtempSync(join(tmpdir(), 'readme-dato-'));
+  try {
+    const f = join(d, 'README.md');
+    const koer = (indhold) => {
+      writeFileSync(f, indhold);
+      execFileSync('bash', ['-c', `NEW_VERSION=1.30.1; f='${f}'; ${perl}`]);
+      return readFileSync(f, 'utf8');
+    };
+    // En fast, gammel dato: med dagens dato ville omskrivningen give samme tekst, og proeven var blind
+    // (fanget af mutationsbeviset 26/9 - fixturens dato var tilfaeldigvis dagens danske dato).
+    assert.equal(koer('latest release v1.30.1 (2020-01-01)\n'), 'latest release v1.30.1 (2020-01-01)\n',
+      'datoen blev flyttet selv om versionen allerede stod der - udgivelsen en anden dag bliver beskidt');
+    assert.match(koer('latest release v1.30.0 (2026-09-20)\n'), /latest release v1\.30\.1 \(\d{4}-\d{2}-\d{2}\)/,
+      'en ny version faar ikke laengere sin dato');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('et uforberedt traee stopper udgivelsen foer butikken - og --prepare stopper foer pakningen', () => {
+  const s = script();
+  const blok = s.indexOf('# 1g. 26/9');
+  const butik = s.indexOf('step "3. Chrome Web Store publish"');
+  const pakke = s.indexOf('step "2. Pakke-tjek');
+  assert.ok(blok > 0 && blok < pakke && pakke < butik, '1g skal ligge foer pakketjekket og butikken');
+  const tekst = kodeLinjer(s.slice(blok, pakke));
+  assert.match(tekst, /if \[\[ "\$PREPARE" == 1 \]\]; then[\s\S]*?exit 0/, '--prepare stopper ikke efter trin 1');
+  assert.match(tekst, /git status --porcelain[\s\S]*?die "kandidaten er ikke forberedt/, 'et beskidt traee stopper ikke udgivelsen');
+});
+
+test('--prepare og --ship sammen afvises, og --prepare naegtes paa main', () => {
+  const kor = (args, cwd) => { try { execFileSync('bash', [join(rod, 'runbrowsermcpupdate.sh'), ...args], { cwd, encoding: 'utf8', stdio: 'pipe', env: { PATH: process.env.PATH, HOME: tmpdir() } }); return { kode: 0, ud: '' }; } catch (e) { return { kode: e.status, ud: String(e.stdout) + String(e.stderr) }; } };
+  const begge = kor(['9.9.9', '--prepare', '--ship'], rod);
+  assert.equal(begge.kode, 1);
+  assert.match(begge.ud, /to trin/, 'kombinationen blev ikke afvist med en forklaring');
+
+  // En lokal klon paa main: --prepare maa ikke skrive versionen direkte paa main.
+  const d = mkdtempSync(join(tmpdir(), 'prepare-main-'));
+  try {
+    execFileSync('git', ['clone', '-q', '--local', '--branch', 'main', rod, d]);
+    execFileSync('cp', [join(rod, 'runbrowsermcpupdate.sh'), join(d, 'runbrowsermcpupdate.sh')]);
+    const paaMain = (() => { try { execFileSync('bash', ['runbrowsermcpupdate.sh', '9.9.9', '--prepare'], { cwd: d, encoding: 'utf8', stdio: 'pipe', env: { PATH: process.env.PATH, HOME: tmpdir() } }); return { kode: 0, ud: '' }; } catch (e) { return { kode: e.status, ud: String(e.stdout) + String(e.stderr) }; } })();
+    assert.equal(paaMain.kode, 1, '--prepare koerte paa main');
+    assert.match(paaMain.ud, /--prepare laves paa en gren/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('aerligheds-resultatet vaelges efter git-tid, ikke efter filtid', () => {
+  const s = script();
+  const fra = s.indexOf('SENESTE_AERLIGHED=""; SENESTE_TID=0');
+  const til = s.indexOf('done', fra) + 4;
+  assert.ok(fra > 0, 'valget af aerligheds-resultat blev ikke fundet');
+  const valg = s.slice(fra, til);
+  const d = mkdtempSync(join(tmpdir(), 'aerlighed-valg-'));
+  try {
+    const git = (...a) => execFileSync('git', a, { cwd: d, env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+    git('init', '-q');
+    mkdirSync(join(d, 'test/aerlighed'), { recursive: true });
+    writeFileSync(join(d, 'test/aerlighed/RESULTAT-gammel.md'), 'a');
+    git('add', '.'); git('commit', '-q', '-m', 'gammel', '--date', '2026-01-01T00:00:00');
+    execFileSync('bash', ['-c', `cd '${d}' && GIT_COMMITTER_DATE=2026-01-01T00:00:00 git -c user.name=t -c user.email=t@t commit -q --amend --no-edit --date 2026-01-01T00:00:00`]);
+    writeFileSync(join(d, 'test/aerlighed/RESULTAT-ny.md'), 'b');
+    git('add', '.'); git('commit', '-q', '-m', 'ny');
+    // Filtiden vendes om: den gamle faar den nyeste mtime, som paa en frisk checkout kan ske.
+    execFileSync('touch', ['-t', '203001010000', join(d, 'test/aerlighed/RESULTAT-gammel.md')]);
+    const valgt = execFileSync('bash', ['-c', `cd '${d}' && ${valg}\nprintf '%s' "$SENESTE_AERLIGHED"`], { encoding: 'utf8' });
+    assert.equal(valgt, 'test/aerlighed/RESULTAT-ny.md', `valgte ${valgt} - filtiden vandt over git-tiden`);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('udgivelses-workflowet: én ad gangen, genoptag springer kun butikken over, spaerrens resultat sendes med', () => {
+  const wf = readFileSync(join(rod, '.github/workflows/udgivelse.yml'), 'utf8');
+  // Forankret ved linjestart: `x-concurrency:` indeholder ordet og slap igennem mutationsbeviset.
+  assert.match(wf, /^concurrency:\s*\n\s+group: udgivelse\s*\n\s+cancel-in-progress: false/m, 'to udgivelser kan koere samtidig');
+  assert.match(wf, /SPAERRE_RESULTAT: \$\{\{ needs\.spaerre\.result \}\}/, 'spaerrens resultat sendes ikke med');
+  assert.match(wf, /if \[\[ "\$GENOPTAG" == "true" \]\]; then[\s\S]*?flag\+=\(--skip-cws\)/, 'genoptag springer ikke butikken over');
+  const s = script();
+  assert.match(s, /if \[\[ "\$\{SPAERRE_RESULTAT:-\}" == "success" \]\]; then\s*\n\s*ok "flow-spaerren koerte/,
+    'advarslen «i blinde» fjernes paa noget andet end spaerrens resultat');
 });

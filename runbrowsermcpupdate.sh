@@ -74,10 +74,12 @@ dage_til_udloeb() {
 NEW_VERSION=""
 SHIP=0
 SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0; SKIP_AERLIGHED=0
+PREPARE=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
   case "$arg" in
     --ship)        SHIP=1 ;;
+    --prepare)     PREPARE=1 ;;
     --skip-npm)    SKIP_NPM=1 ;;
     --skip-registry) SKIP_REGISTRY=1 ;;
     --skip-cws)    SKIP_CWS=1 ;;
@@ -95,7 +97,7 @@ for arg in "$@"; do
   esac
 done
 
-[[ -n "$NEW_VERSION" ]] || die "Usage: ./runbrowsermcpupdate.sh <X.Y.Z> [--ship]  (see --help)"
+[[ -n "$NEW_VERSION" ]] || die "Usage: ./runbrowsermcpupdate.sh <X.Y.Z> [--ship | --prepare]  (see --help)"
 [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version '$NEW_VERSION' is not semver X.Y.Z"
 
 # Load secrets ONCE, early + exported, so both the npm pre-flight and `npm publish`
@@ -103,8 +105,20 @@ done
 # live in .env (gitignored). This is the single source of truth for publish auth.
 if [[ -f .env ]]; then set -a; source .env; set +a; fi
 
+# ⛔ 26/9 (panel + fuld review): udgivelsen skubbede selv versions-commit'en til main (trin 4). Main
+# kraever fem tjek, som jobbets egen noegle ikke kan springe over, saa en rigtig koersel ville doe
+# EFTER butikken. Nu er det to trin: --prepare skriver versionen (trin 1 + docs) paa en GREN, der
+# merges gennem en PR med alle tjek; --ship udgiver den forberedte commit og skriver aldrig til main.
+# --prepare er praecis trin 1 koert for alvor, og intet andet.
+if [[ "$PREPARE" == 1 ]]; then
+  [[ "$SHIP" == 1 ]] && die "--prepare og --ship er to trin - koer dem hver for sig"
+  SHIP=1
+  SKIP_NPM=1; SKIP_CWS=1; SKIP_GITHUB=1; SKIP_REGISTRY=1; SKIP_FLOW=1; SKIP_AERLIGHED=1; SKIP_LOCAL=1
+fi
+
 MODE_LABEL="${Y}DRY-RUN${Z} (nothing will change - add --ship to execute)"
 [[ "$SHIP" == 1 ]] && MODE_LABEL="${R}${B}SHIP${Z} (this WILL publish)"
+[[ "$PREPARE" == 1 ]] && MODE_LABEL="${Y}${B}PREPARE${Z} (writes the version on this branch; publishes nothing)"
 
 # run-or-echo wrapper: in dry-run, print the command; with --ship, execute it
 run() {
@@ -121,8 +135,13 @@ for bin in node zip git; do command -v "$bin" >/dev/null || die "missing require
 ok "tools present: node, zip, git"
 
 BRANCH="$(git branch --show-current)"
-[[ "$BRANCH" == "main" ]] || die "on branch '$BRANCH' - releases ship from 'main'"
-ok "on branch main"
+if [[ "$PREPARE" == 1 ]]; then
+  [[ "$BRANCH" != "main" ]] || die "--prepare laves paa en gren, ikke paa main - versionen skal gennem en PR med alle tjek"
+  ok "on branch $BRANCH (prepare)"
+else
+  [[ "$BRANCH" == "main" ]] || die "on branch '$BRANCH' - releases ship from 'main'"
+  ok "on branch main"
+fi
 
 # current versions (for monotonic check + reporting)
 CUR_EXT="$(node -p "require('./extension/manifest.json').version")"
@@ -373,7 +392,13 @@ TOOL_COUNT="$(grep -oE "name: ['\"]browser_[a-z_]+" mcp-server/tools.js | sort -
 #      hasher (background.js, offscreen.js).
 step "2b. Flow-spaerre mod en aegte Chrome"
 if [[ "$SKIP_FLOW" == 1 || "${SPRING_FLOW_OVER:-}" == "1" ]]; then
-  warn "sprunget over - du udgiver i blinde: ingen har set koden koere i en browser"
+  # 26/9: paa GitHub har spaerren koert som sit eget job (needs: spaerre), og workflowet sender
+  # dens RESULTAT med. Kun det - ikke flaget - maa fjerne advarslen.
+  if [[ "${SPAERRE_RESULTAT:-}" == "success" ]]; then
+    ok "flow-spaerren koerte som eget job foer dette og bestod (needs: spaerre)"
+  else
+    warn "sprunget over - du udgiver i blinde: ingen har set koden koere i en browser"
+  fi
   # MAALT 13/9 af Astra og Fable, uafhaengigt: uden den her linje var --skip-flow ikke en noedudgang, men en
   # doedsfaelde. Butikstrinnet (trin 3) koerer sin EGEN flow-test, og efter versionsbumpet fejler den altid paa
   # en forskel scriptet selv har lavet (manifestet bumpet, den indlaeste udvidelse ikke). Flaget lovede
@@ -441,7 +466,15 @@ step "2c. Aerligheds-maalingen mod den kode der udgives"
 if [[ "$SKIP_AERLIGHED" == 1 ]]; then
   warn "sprunget over - vi udgiver et aerligheds-argument uden at have maalt det paa denne kode"
 else
-SENESTE_AERLIGHED="$(ls -t test/aerlighed/RESULTAT-*.md 2>/dev/null | head -1 || true)"
+# ⛔ 26/9 (Fable, maalt i proevekoersel 36096109221): `ls -t` vaelger paa filtid, og paa en frisk
+# checkout har alle filer checkout-tiden. Det valgte en vilkaarlig, aeldre rapport - og i ship doer
+# gaten paa den. Nyeste vaelges nu efter den commit der sidst roerte filen.
+SENESTE_AERLIGHED=""; SENESTE_TID=0
+for f in test/aerlighed/RESULTAT-*.md; do
+  [[ -f "$f" ]] || continue
+  t="$(git log -1 --format=%ct -- "$f" 2>/dev/null)"; t="${t:-0}"
+  if (( t > SENESTE_TID )); then SENESTE_TID="$t"; SENESTE_AERLIGHED="$f"; fi
+done
 if [[ -z "$SENESTE_AERLIGHED" ]]; then
   gate "der findes intet aerligheds-resultat i test/aerlighed/. Koer: node test/aerlighed/maal.mjs"
 else
@@ -524,7 +557,9 @@ done
 say "README: 'latest release vX.Y.Z' -> v${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))"
 for f in README.md mcp-server/README.md; do
   [[ -f "$f" ]] || continue
-  run perl -0pi -e "s/latest release v[0-9]+\.[0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)/latest release v${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))/g" "$f"
+  # 26/9: kun naar versionen ER en anden. Efter --prepare staar den der allerede, og en udgivelse en
+  # anden dag maa ikke flytte datoen - saa ville et forberedt traee blive beskidt i udgivelsen.
+  run perl -0pi -e "s/latest release v(?!\Q${NEW_VERSION}\E )[0-9]+\.[0-9]+\.[0-9]+ \([0-9]{4}-[0-9]{2}-[0-9]{2}\)/latest release v${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))/g" "$f"
 done
 if [[ "$SHIP" == 1 ]]; then
   grep -q "latest release v${NEW_VERSION}" README.md \
@@ -571,6 +606,31 @@ else
   gate "docs-vagten er roed - sitet eller docs siger noget andet end koden. Ret det foer udgivelse"
 fi
 
+# 1g. 26/9: forberedt kandidat. --prepare stopper her og overlader filerne til en PR. --ship kraever
+#     at trin 1 intet havde at skrive: saa er det den commit der gik gennem PR'ens tjek, der udgives,
+#     og udgivelsen skal aldrig selv committe eller skubbe til main.
+if [[ "$PREPARE" == 1 ]]; then
+  python3 "$REPO_ROOT/scripts/generate-docs.py" >/dev/null || die "generate-docs.py fejlede"
+  ok "kandidaten v${NEW_VERSION} er skrevet paa grenen '$BRANCH' - intet er udgivet"
+  git status --short
+  say "naeste: commit filerne ovenfor, aabn en PR mod main, lad tjekkene koere, merge - og udgiv derefter fra main"
+  exit 0
+fi
+if [[ "$SHIP" == 1 ]]; then
+  if [[ -n "$(git status --porcelain)" ]]; then
+    git status --short
+    die "kandidaten er ikke forberedt: trin 1 aendrede filerne ovenfor. Koer ./runbrowsermcpupdate.sh ${NEW_VERSION} --prepare paa en gren, merge PR'en, og udgiv derefter. Intet er udgivet."
+  fi
+  ok "kandidaten er forberedt - trin 1 havde intet at skrive"
+else
+  FORBEREDT="$(node -p "require('./extension/manifest.json').version")"
+  if [[ "$FORBEREDT" == "$NEW_VERSION" ]] && ! grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md; then
+    ok "kandidaten v${NEW_VERSION} er forberedt (manifest og CHANGELOG)"
+  else
+    gate "kandidaten er ikke forberedt (manifest ${FORBEREDT}, CHANGELOG-overskrift) - koer --prepare paa en gren og merge PR'en foer udgivelsen"
+  fi
+fi
+
 # ── 2. Pakke-tjek: starter tarballen overhovedet? ─────────────────────────────
 # MAALT 23/8: `vagt.js` blev importeret af index.js men glemt i package.json "files".
 # `npm pack` gav 14 filer uden den, og HVER eneste `npx @agent360/browser-mcp` doede
@@ -613,31 +673,17 @@ else
 fi
 
 # ── 4. GitHub: commit, tag, push, release ─────────────────────────────────────
-step "4. GitHub: commit · tag v${NEW_VERSION} · push · release"
+step "4. GitHub: tag v${NEW_VERSION} · push tag · release"
 if [[ "$SKIP_GITHUB" == 1 ]]; then warn "skipped (--skip-github)"
 else
-  say "reset index, then stage release-managed files only (no git add -A; drops any stray pre-staged files)"
-  run git reset -q
-  # MAALT 22/8: index.js, tools.js og bin/ manglede her - praecis den kode npm udgiver
-  # ("files" i package.json). npm kunne faa en version der ikke fandtes i noget commit.
-  # MAALT 17/9 i en toer-koersel af 1.29.2: her stod en HAANDSKREVET liste ved siden af MANAGED. gemini-extension.json
-  # kom 13/9 i MANAGED og i trin 1's fejekoste, men ikke herind - saa --ship ville bumpe den paa disken og aldrig
-  # committe den, og Gemini CLI's galleri laeser GitHub. Samme fejl som CHANGELOG.md 12/9. To lister der skal
-  # holdes ens, driver fra hinanden; nu stages der fra den ene.
-  run git add "${MANAGED[@]}"
-
-  # commit only if something is staged - a resumed run (already committed) must
-  # NOT abort here under set -e and strand the tag/push/release that follow.
+  # ⛔ 26/9: her stod `git reset`, `git add`, `git commit` og `git push origin main`. Main kraever
+  # fem tjek som jobbets noegle ikke kan springe over, saa trin 4 doede EFTER butikken. Versionen
+  # er nu allerede paa main (--prepare + PR), og udgivelsen tagger den commit der blev testet.
   if [[ "$SHIP" == 1 ]]; then
-    if git diff --cached --quiet; then
-      warn "nothing staged (resumed run) - skipping commit"
-    else
-      git commit -m "release: v${NEW_VERSION} - npm + Chrome Web Store + GitHub"
-    fi
-  else
-    echo "    ${C}would run:${Z} git commit -m \"release: v${NEW_VERSION} …\" (if anything staged)"
+    git fetch -q origin main
+    git merge-base --is-ancestor HEAD origin/main \
+      || die "HEAD er ikke paa origin/main - der udgives kun en commit der er merget gennem tjekkene"
   fi
-
   if git rev-parse "v${NEW_VERSION}" >/dev/null 2>&1; then
     warn "tag v${NEW_VERSION} already exists - skipping tag"
   else
@@ -646,7 +692,6 @@ else
   # push branch, then the tag EXPLICITLY. (--follow-tags silently skips lightweight
   # tags and even annotated ones can be missed on resume; explicit push is robust
   # and idempotent - an already-pushed tag just reports up-to-date.)
-  run git push origin main
   run git push origin "v${NEW_VERSION}"
 
   ZIP="/tmp/agent360-browser-mcp-${NEW_VERSION}.zip"

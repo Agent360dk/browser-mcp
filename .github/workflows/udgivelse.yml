@@ -22,6 +22,15 @@ on:
         description: 'Udgiv for alvor. Uden flueben er det en proevekoersel der intet sender ud.'
         type: boolean
         default: false
+      genoptag:
+        description: 'Genoptag efter en fejl EFTER butikstrinnet: springer Chrome Web Store over (butikken afviser samme version to gange).'
+        type: boolean
+        default: false
+
+# 26/9: kun én udgivelse ad gangen. To samtidige ville aendre de samme kanaler.
+concurrency:
+  group: udgivelse
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -38,7 +47,7 @@ jobs:
     # En proevekoersel koerer uden, og springer derfor butikstrinnet over (siges hoejt nedenfor).
     environment: ${{ inputs.ship && 'udgivelse' || '' }}
     permissions:
-      contents: write   # commit, tag og release paa GitHub
+      contents: write   # tag og release paa GitHub - aldrig et push til main (26/9)
       id-token: write   # npm trusted publishing + MCP-registret via github-oidc
     steps:
       - uses: actions/checkout@v4
@@ -78,12 +87,19 @@ jobs:
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
           VERSION: ${{ inputs.version }}
           SHIP: ${{ inputs.ship }}
+          GENOPTAG: ${{ inputs.genoptag }}
+          # Spaerrens RESULTAT, ikke et flag: kun det maa fjerne advarslen «udgiver i blinde».
+          SPAERRE_RESULTAT: ${{ needs.spaerre.result }}
         run: |
           flag=(--skip-local --skip-flow)
           # --skip-flow: spaerren HAR koert - i jobbet ovenfor, og dette job kan ikke starte uden.
           # --skip-local: at genindlaese udvidelsen paa en Mac er Gustavs maskine, ikke runnerens.
           if [[ "$SHIP" == "true" ]]; then
             flag=(--ship "${flag[@]}")
+            if [[ "$GENOPTAG" == "true" ]]; then
+              echo "::notice::Genoptagelse: butikstrinnet springes over. Resten genoptages af scriptets egne vagter (tag, npm-version)."
+              flag+=(--skip-cws)
+            fi
           else
             echo "::notice::Proevekoersel: intet sendes ud. Butikkens noegler findes kun i miljoeet «udgivelse», saa butikstrinnet springes over."
             flag+=(--skip-cws)
