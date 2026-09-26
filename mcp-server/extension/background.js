@@ -2020,38 +2020,8 @@ async function rensHandlingslog() {
 
 // ── Message Handler — receives commands from offscreen.js ──────────────────
 
-// En noegle der skiftes i popup'en skal gaelde med det samme. Offscreen kan ikke lytte selv
-// (kun chrome.runtime), saa baggrunden skubber aendringen derhen.
-chrome.storage.onChanged.addListener((aendringer, omraade) => {
-  if (omraade !== 'local' || !aendringer.parringsnoegle) return;
-  const ny = aendringer.parringsnoegle.newValue;
-  chrome.runtime.sendMessage({
-    type: 'bmcp_parringsnoegle_aendret',
-    noegle: (typeof ny === 'string' && ny.trim()) || null,
-  }).catch(() => { /* offscreen er ikke aabent endnu - det henter selv ved opstart */ });
-});
-
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // ⛔ Offscreen-dokumentet har KUN chrome.runtime - Chromes dokumentation siger det ordret.
-  // Det kan derfor ikke selv laese parringsnoeglen, og forsoeget paa det gjorde parringen i
-  // 1.30.0 ubrugelig for enhver der satte en noegle. Baggrunden har lageret, saa den svarer.
-  if (msg.type === 'bmcp_hent_parringsnoegle') {
-    // ⛔ `ok` skelner «lageret svarede, der er ingen noegle» fra «lageret svarede ikke».
-    // Foerste udgave svarede `{ noegle: null }` i BEGGE tilfaelde, og offscreen laeste det som
-    // «ingen noegle sat» - altsaa fail-open: en lagerfejl aabnede browseren for enhver server.
-    // try/catch OG .catch: Chrome afviser normalt med et loefte, men er `chrome.storage`
-    // slet ikke til stede, kaster opslaget synkront - og et synkront kast her ville lade
-    // sendResponse uden svar, saa offscreen aldrig faar sin tilstand og broen staar lukket
-    // for evigt. Begge veje skal give det samme aerlige ok:false.
-    try {
-      chrome.storage.local.get('parringsnoegle')
-        .then((v) => sendResponse({ ok: true, noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
-        .catch((e) => sendResponse({ ok: false, fejl: String(e && e.message || e) }));
-    } catch (e) {
-      sendResponse({ ok: false, fejl: String(e && e.message || e) });
-    }
-    return true;  // svaret kommer asynkront
-  }
+  // 26/9: parringen er trukket tilbage i 1.30.1 - baggrunden udleverer ingen noegle.
   if (msg.type === 'mcp_command') {
     const port = msg.port;
     logAction(port, msg.method);

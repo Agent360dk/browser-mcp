@@ -23,80 +23,10 @@
 // beviser hvilke FILER der er indlaest - ikke hvilken kode der koerer i et gammelt offscreen-dokument.
 const KODEFILER = ['background.js', 'offscreen.js'];
 
-// ── Parringsnoegle (issue #10) ────────────────────────────────────────────────
-// Uden noegle: nul konfiguration, praecis som i dag. Med noegle: udvidelsen taler KUN
-// med en server der kender den samme, og serveren svarer kun den udvidelse der kan den.
-//
-// Det loeser to ting paa én gang. Det oenskede - at parre én Chrome-profil med én server,
-// saa Arbejde og Privat ikke tager hinandens kommandoer - og et hul vi selv har skrevet
-// ned: broen er lokal og uautentificeret, saa ethvert program paa maskinen kan forbinde
-// til den. En delt hemmelighed lukker begge, og den koster intet for dem der ikke vil have den.
-//
-// Noeglen laeses ved opstart og caches, fordi haandtrykket bygges synkront naar soklen
-// aabner - samme grund som aftrykket eftersendes i stedet for at blokere hilsenen.
-let parringsnoegle = null;
-const parrede = new WeakSet();
-// ⛔ MAALT 21/9: her stod `chrome.storage.local.get(...)`, og det kan ALDRIG virke.
-// Et offscreen-dokument har kun `chrome.runtime` - Chromes egen dokumentation siger det
-// ordret, og opslaget kaster en TypeError som try'et ovenfor slugte. Noeglen forblev null,
-// haandtrykket sendte en tom noegle, og serveren afviste. Enhver der satte den samme noegle
-// begge steder, som popup'en beder om, var laast ude for altid. Fejlen laa i den udgivne
-// 1.30.0.
-//
-// Og filen VIDSTE det: kommentaren laengere nede siger selv at portomraadet sendes via
-// dokumentets adresse fordi background.js har lageret, og at getManifest ikke findes her.
-// Opslaget blev skrevet tolv linjer under den viden.
-//
-// Baggrunden har lageret. Den svarer paa en besked, og skubber aendringer hertil. Det er
-// Chromium-udviklernes egen anviste loesning.
-// ⛔ TRE tilstande, ikke to. Foerste udgave havde kun `parringsnoegle = null`, og gaten
-// nedenfor lyder `if (parringsnoegle && ...)`. Kunne noeglen ikke hentes - servicearbejderen
-// sov, lageret fejlede - blev den staaende null, gaten sprang HELT over, og udvidelsen
-// udfoerte kommandoer fra enhver server. Altsaa fail-open i selve adgangskontrollen.
-// Fundet af et modstander-review 21/9, som koerte den aegte fil i en vm hvor begge
-// hentninger fejlede: en uparret server fik `browser_get_cookies` besvaret.
-//
-//   'ukendt' = vi VED det ikke endnu  -> udfoer intet
-//   'ingen'  = lageret svarede: ingen noegle sat -> nul opsaetning, alt som foer
-//   'sat'    = der er en noegle -> kraev kvittering
-let noegleTilstand = 'ukendt';
-
-function saetNoegle(vaerdi) {
-  const ny = (typeof vaerdi === 'string' && vaerdi.trim()) || null;
-  const skiftet = ny !== parringsnoegle;
-  parringsnoegle = ny;
-  noegleTilstand = ny ? 'sat' : 'ingen';
-  return skiftet;
-}
-
-// Bliver ved til vi VED det. En enkelt fejlet hentning maa ikke kunne blive permanent,
-// og den maa slet ikke kunne aabne broen imens.
-let forsoeg = 0;
-function hentNoegle() {
-  chrome.runtime.sendMessage({ type: 'bmcp_hent_parringsnoegle' })
-    .then((svar) => {
-      if (!svar || svar.ok !== true) throw new Error(svar && svar.fejl || 'no answer');
-      saetNoegle(svar.noegle);
-    })
-    .catch((e) => {
-      forsoeg += 1;
-      if (forsoeg <= 12) {
-        // 1s, 2s, 4s ... op til 30s. Tilstanden bliver 'ukendt' imens, saa broen er lukket.
-        setTimeout(hentNoegle, Math.min(1000 * 2 ** (forsoeg - 1), 30000));
-      } else {
-        console.warn('[Offscreen] giving up on the pairing key; commands stay refused:', e?.message || e);
-      }
-    });
-}
-hentNoegle();
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (!msg || msg.type !== 'bmcp_parringsnoegle_aendret') return;
-  if (!saetNoegle(msg.noegle)) return;
-  // Skift af noegle skal tage effekt med det samme, ikke naeste gang browseren starter.
-  for (const [, sokkel] of connections) { try { sokkel.close(); } catch (e) { /* lukket */ } }
-  connections.clear();
-});
+// ⛔ 26/9: PARRINGEN ER TRUKKET TILBAGE I 1.30.1. Udvidelsen henter, sender og kraever ingen
+// noegle - heller ikke en som 1.30.0's popup naaede at gemme i lageret. Grunden staar ved
+// PARRING_TRUKKET_TILBAGE i mcp-server/index.js: noeglen blev sendt i hilsenen til enhver server
+// paa en port i spaendet og taget tilbage som bevis, saa den holdt ingen ude.
 let kodeAftrykCache = null;
 async function kodeAftryk() {
   if (kodeAftrykCache) return kodeAftrykCache;
@@ -296,9 +226,9 @@ function tryConnect(port) {
     // og udgivelsens gate afviste sin EGEN kandidat - et langsomt svar er ikke et forkert svar. Hilsenen sendes derfor
     // med det aftryk der allerede ER beregnet (som regel intet ved foerste forbindelse), og aftrykket EFTERSENDES.
     const kode = kodeAftrykCache;
-    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode, noegle: parringsnoegle };
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
     try {
-      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode, noegle: parringsnoegle };
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };
     } catch (e) {
       console.warn('[Offscreen] could not build the handshake:', e?.message || e);
     }
@@ -325,33 +255,11 @@ function tryConnect(port) {
     let cmd;
     try { cmd = JSON.parse(event.data); } catch { return; }
 
-    // Parringen gaar begge veje. Serveren kvitterer med den noegle den selv kender, saa
-    // udvidelsen kan se at den taler med SIN server - ikke med et vilkaarligt program der
-    // naaede at lytte paa porten foerst. Uden noegle findes beskeden slet ikke.
-    if (cmd && cmd.type === 'parring') {
-      if (cmd.ok === true && parringsnoegle && cmd.noegle === parringsnoegle) {
-        parrede.add(ws);
-      } else {
-        console.warn('[Offscreen] The server on port ' + port + ' does not know the pairing key - closing.');
-        try { ws.close(); } catch (e) { /* lukket */ }
-      }
-      return;
-    }
+    // 26/9: `null` er gyldig JSON - kun objekter med en `method` er kommandoer (serveren sender
+    // intet andet; en 1.30.0-servers parringskvittering ignoreres dermed ogsaa).
+    if (!cmd || typeof cmd !== 'object' || typeof cmd.method !== 'string') return;
 
     const { id, method, params, pid } = cmd;
-
-    // Er der sat en noegle, udfoeres INTET foer serveren har kvitteret med den. En server
-    // uden noegle kvitterer aldrig, og kan derfor ikke styre en parret browser.
-    // ⛔ 'ukendt' behandles som 'sat': vi udfoerer intet foer vi VED om der er en noegle.
-    // Den anden vej rundt er fail-open, og det var praecis fejlen.
-    if (noegleTilstand === 'ukendt') {
-      try { ws.send(JSON.stringify({ id, error: 'The extension has not read its pairing state yet - refusing until it knows. Retrying in the background.' })); } catch (e) { /* lukket */ }
-      return;
-    }
-    if (parringsnoegle && !parrede.has(ws)) {
-      try { ws.send(JSON.stringify({ id, error: 'This extension is paired with a different server (pairing key).' })); } catch (e) { /* lukket */ }
-      return;
-    }
 
     try {
       // Include port so background.js knows which session owns this command

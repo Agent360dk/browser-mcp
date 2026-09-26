@@ -20,7 +20,6 @@ import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
-import { timingSafeEqual } from 'node:crypto';
 
 // Read version from package.json - single source of truth, never drifts
 const PKG_VERSION = JSON.parse(
@@ -109,9 +108,10 @@ function advarOmKonflikt(conn) {
 // valget af aktiv, optaellingen af udvidelser, raadgivningen. En gate ét sted daekker dem alle.
 // (Huset 20/9: en vagt der kun proeves ad den ene vej den blev bygget til, daekker kun den vej.)
 //
-// Uden noegle er der ingen aendring: `parret` spoerges kun naar PARRINGSNOEGLE er sat.
+// ⛔ 26/9: parringen er trukket tilbage i 1.30.1 (se PARRING_TRUKKET_TILBAGE nedenfor), og med
+// den filtret paa `parret`. Broen er igen lokal og uautentificeret for alle - det staar i README.
 function liveConnections() {
-  return [...connections].filter(c => c.ws.readyState === 1 && (!PARRINGSNOEGLE || c.parret === true));
+  return [...connections].filter(c => c.ws.readyState === 1);
 }
 
 // Valget LAASES for serverens levetid.
@@ -130,20 +130,20 @@ let laastForbindelse = null;
 let harSendtKommando = false;
 const PINNET_UDVIDELSE = (process.env.BROWSER_MCP_EXTENSION_ID || '').trim() || null;
 
-// Parringsnoegle (issue #10). Uden noegle: praecis som i dag - broen tager imod den udvidelse
-// der melder sig. Med noegle: kun den udvidelse der kan den samme noegle, kommer ind.
-//
-// Det er baade det oenskede - Arbejde-profilen og Privat-profilen kan koere hver sin server
-// uden at tage hinandens kommandoer - og lukningen af et hul vi selv har skrevet ned: broen
-// lytter lokalt uden autentificering, saa ethvert program paa maskinen kan melde sig som
-// udvidelse. Noeglen sammenlignes i konstant tid, saa et forkert gaet ikke kan maales frem.
-const PARRINGSNOEGLE = (process.env.BROWSER_MCP_TOKEN || '').trim() || null;
-
-function noegleMatcher(a, b) {
-  const x = Buffer.from(String(a || ''), 'utf8');
-  const y = Buffer.from(String(b || ''), 'utf8');
-  if (x.length !== y.length) return false;
-  return timingSafeEqual(x, y);
+// ⛔ 26/9: PARRINGEN ER TRUKKET TILBAGE I 1.30.1 (issue #10 genaabnes til et redesign).
+// Et panel og et review maalte at den ikke holdt det den lovede: udvidelsen sendte noeglen i
+// hilsenen til ENHVER server paa en port i spaendet og tog den tilbage som bevis, saa et fremmed
+// program kunne parre sig ved at gentage den; en halvt parret opsaetning kaprede den anden profils
+// server; og en 1.30.0-udvidelse (der aldrig kunne laese sin noegle) blev laast ude af en server
+// med noeglen sat - som popup'en bad brugeren om. En sikring der ikke sikrer, er vaerre end ingen.
+// BROWSER_MCP_TOKEN ignoreres derfor, og serveren siger det hoejt i stedet for at tie.
+const PARRING_TRUKKET_TILBAGE = (process.env.BROWSER_MCP_TOKEN || '').trim() !== '';
+if (PARRING_TRUKKET_TILBAGE) {
+  process.stderr.write(
+    '[MCP] BROWSER_MCP_TOKEN is ignored: pairing was withdrawn in 1.30.1 because it did not keep ' +
+    'another program on this machine out. It will return redesigned. The bridge is local and ' +
+    'unauthenticated - see the README.\n',
+  );
 }
 
 function activeConnection() {
@@ -296,10 +296,7 @@ function createWSS(port = BASE_PORT) {
     }
 
     const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
-      harHilst: false, helloId: null, since: Date.now(),
-      // Faktisk parret - saettes foerst naar hilsenen har vist den rigtige noegle.
-      // Uden PARRINGSNOEGLE spoerges feltet aldrig, saa standarden er ligegyldig.
-      parret: false };
+      harHilst: false, helloId: null, since: Date.now() };
     connections.add(conn);
     // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
     // nytilkommen udvidelse maa gerne komme i betragtning igen.
@@ -332,23 +329,6 @@ function createWSS(port = BASE_PORT) {
         // ikke overens, er noget galt, og saa maa forbindelsen ikke lukke serveren ned.
         conn.helloId = typeof msg.extensionId === 'string' ? msg.extensionId : null;
         conn.harHilst = true;
-        // Parringen afgoeres FOER noget andet i hilsenen bruges, saa en uparret afsender
-        // hverken kan saette version, navn eller aftryk paa forbindelsen.
-        if (PARRINGSNOEGLE && !noegleMatcher(msg.noegle, PARRINGSNOEGLE)) {
-          process.stderr.write(
-            '[MCP] Rejected an extension without the correct pairing key. ' +
-            'Set the same key in the extension popup as in BROWSER_MCP_TOKEN.\n',
-          );
-          try { ws.send(JSON.stringify({ type: 'parring', ok: false })); } catch { /* lukket */ }
-          try { ws.close(4003, 'parringsnoegle'); } catch { /* lukket */ }
-          return;
-        }
-        // Kvitteringen gaar den anden vej: udvidelsen skal ogsaa kunne se at den taler med
-        // SIN server og ikke med et vilkaarligt program der lyttede paa porten foerst.
-        conn.parret = true;
-        if (PARRINGSNOEGLE) {
-          try { ws.send(JSON.stringify({ type: 'parring', ok: true, noegle: PARRINGSNOEGLE })); } catch { /* lukket */ }
-        }
         if (conn.helloId && conn.helloId !== conn.extensionId) {
           process.stderr.write(
             `[MCP] Handshake reports ${conn.helloId} but Origin says ${conn.extensionId} - ` +
