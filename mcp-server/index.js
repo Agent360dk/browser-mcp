@@ -319,6 +319,9 @@ function createWSS(port = BASE_PORT) {
     ws.on('message', (data) => {
       let msg;
       try { msg = JSON.parse(data.toString()); } catch { return; }
+      // 26/9: `null` er gyldig JSON, og `null.type` kastede inde i lytteren - serveren doede af fire
+      // tegn fra en sokkel der aldrig hilste. Kun objekter er beskeder.
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
 
       // Identitets-haandtryk fra offscreen-dokumentet (v1.28+).
       if (msg.type === 'hello') {
