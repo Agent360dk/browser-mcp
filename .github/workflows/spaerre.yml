@@ -12,7 +12,18 @@ name: spaerre
 # i nyere Ubuntu og er langsommere, og spaerren har forbigaaende opstartsfejl der bliver VAERRE
 # paa en langsommere maskine. Repoet er offentligt, saa Mac-maskinerne koster intet.
 on:
-  workflow_dispatch: {}
+  # 26/9: haandkoersel kan maale det der ER udgivet (kriterie 1): butikkens udvidelse og/eller
+  # npm-serveren i en given version. Tom = kandidatens egen kode, som ved PR og udgivelse.
+  workflow_dispatch:
+    inputs:
+      udvidelse_fra_butik:
+        description: 'Version fra Chrome Web Store, fx 1.30.1 (tom = repoets udvidelse)'
+        required: false
+        default: ''
+      server_fra_npm:
+        description: 'Version fra npm, fx 1.30.1 (tom = repoets server)'
+        required: false
+        default: ''
   # Kaldes af udgivelses-arbejdsgangen, saa en udgivelse ikke kan starte uden en groen spaerre.
   workflow_call: {}
   # 25/9: INGEN stifilter. Spaerren skal kunne vaere et paakraevet tjek paa main, og et paakraevet
@@ -47,10 +58,23 @@ jobs:
           path: chrome
           key: cft-${{ runner.os }}-${{ runner.arch }}-stable
 
+      - name: hent det udgivne (kun ved haandkoersel med version)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.udvidelse_fra_butik != '' || inputs.server_fra_npm != '') }}
+        env:
+          UDVIDELSE: ${{ inputs.udvidelse_fra_butik }}
+          SERVER: ${{ inputs.server_fra_npm }}
+        run: |
+          git fetch -q --tags origin
+          python3 scripts/hent-udgivet.py --udvidelse "$UDVIDELSE" --server "$SERVER" --ud "$RUNNER_TEMP/udgivet" >> "$GITHUB_ENV"
+
       - name: spaerren, isoleret
         run: |
           . scripts/flow-daekning.sh
           flow_nulstil_arv
+          # Det udgivne saettes EFTER nulstillingen og kun fra hent-trinnets egne, beviste stier.
+          [[ -n "${UDGIVET_UDVIDELSE:-}" ]] && export BMCP_UDVIDELSE_KILDE="$UDGIVET_UDVIDELSE"
+          [[ -n "${UDGIVET_SERVER:-}" ]] && export BMCP_SERVER_INDEX="$UDGIVET_SERVER"
+          echo "udvidelse: ${BMCP_UDVIDELSE_KILDE:-repoets} · server: ${BMCP_SERVER_INDEX:-repoets}"
           node scripts/flow-isoleret.mjs --spaerre 2>&1 | tee spaerre.log
           # Samme dom som udgivelses-scriptet - ét sted, ikke en kopi.
           if ! grund="$(flow_daekning_ok spaerre.log)"; then

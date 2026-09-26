@@ -235,7 +235,9 @@ async function main() {
 
   // 3 · serveren, bundet til netop denne udvidelse
   const [fra, til] = PORTE.split('-');
-  server = spawn(process.execPath, [join(ROD, 'mcp-server', 'index.js')], {
+  // BMCP_SERVER_INDEX: maal en ANDEN server end repoets - den udgivne fra npm (scripts/hent-udgivet.py).
+  // Nulstilles af flow_nulstil_arv, saa kandidatens spaerre aldrig maaler en anden server end sin egen.
+  server = spawn(process.execPath, [process.env.BMCP_SERVER_INDEX || join(ROD, 'mcp-server', 'index.js')], {
     env: { ...process.env, BROWSER_MCP_BASE_PORT: fra, BROWSER_MCP_MAX_PORT: til,
       BROWSER_MCP_EXTENSION_ID: sw.id, BROWSER_MCP_TOKEN: '' },
     stdio: ['pipe', 'pipe', 'pipe'],

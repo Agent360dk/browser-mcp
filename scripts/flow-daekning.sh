@@ -21,6 +21,8 @@ flow_nulstil_arv() {
   # selv samme dag og glemte at nulstille dem her.
   unset BMCP_UDVIDELSE_KILDE
   unset BMCP_UDVIDELSE_MAPPE
+  # 26/9: og serveren - saa kandidatens spaerre aldrig maaler en anden server end sin egen.
+  unset BMCP_SERVER_INDEX
 }
 
 # flow_daekning_ok <fil-med-koerselsudskrift>
