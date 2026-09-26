@@ -3229,9 +3229,20 @@ async function dispatch(port, method, params) {
           // det brugeren arbejder i. Det er forskellen paa "kan ikke koere uden at tage
           // skaermen" og "koerer et andet sted".
           const spec = { url: params.url, focused: !!params.fokuser };
+          // ⛔ 26/9 (fuld review, maalt): en position som tekst ("-1920") blev tavst udeladt, og
+          // vinduet aabnede MED fokus paa Chromes standardplads - brugerens skaerm. Tal som tekst
+          // laeses nu som tal; et felt der slet ikke er et tal, afviser vinduet i stedet for at
+          // lade Chrome vaelge pladsen.
           for (const [ind, ud] of [['vindue_x', 'left'], ['vindue_y', 'top'],
                                    ['vindue_bredde', 'width'], ['vindue_hoejde', 'height']]) {
-            if (Number.isFinite(params[ind])) spec[ud] = Math.round(params[ind]);
+            const raa = params[ind];
+            if (raa == null) continue;
+            const tal = typeof raa === 'string' && raa.trim() !== '' ? Number(raa) : raa;
+            if (!Number.isFinite(tal)) {
+              return { ok: false, error: `eget_vindue: ${ind} must be a number, got ${JSON.stringify(raa)}. `
+                + 'No window was opened - without a position Chrome picks the spot, usually in front of the user.' };
+            }
+            spec[ud] = Math.round(tal);
           }
           const vindue = await chrome.windows.create(spec);
           tab = vindue.tabs && vindue.tabs[0];
@@ -3273,13 +3284,17 @@ async function dispatch(port, method, params) {
               : ((bedtOm.left != null || bedtOm.top != null) && !somBedt
                 ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
                   + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
-                : undefined),
+                : (params.fokuser && bedtOm.left == null && bedtOm.top == null
+                  ? 'Focus with no position: Chrome chose where the window went, usually in front of '
+                    + 'the user, and it now has their keyboard focus.'
+                  : undefined)),
             // ⛔ Ogsaa prosaen skal komme fra maalingen. Foerste rettelse gjorde `fokuseret`
             // aerlig, men lod `note` staa paa `params.fokuser` - saa svaret sagde
             // «fokuseret: false» og «The window has focus» i SAMME nyttelast.
             note: faktisk?.focused
-              ? 'The window has focus, so Chrome delivers input to it. Place it on a display nobody is ' +
-                'looking at (a negative left is a screen to the left) and it does not cover anyone\'s work.'
+              ? 'The window has focus, so Chrome delivers input to it. Focus is exclusive: while this window ' +
+                'has it, whatever the person types goes here - even on another display. Use it only on a ' +
+                'machine nobody is typing on.'
               : (params.fokuser
                 ? 'You asked for focus and Chrome did not give it. This window now behaves exactly like a '
                   + 'background tab: no mouse or keyboard input is delivered to it. Measured 21 Sept - read '
