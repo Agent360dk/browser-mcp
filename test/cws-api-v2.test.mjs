@@ -22,7 +22,17 @@ test('scriptet taler med API v2, ikke v1.1', () => {
   assert.doesNotMatch(kode, /chromewebstore\/v1\.1/, 'et kald til v1.1 staar stadig i scriptet');
   assert.match(kode, /upload\/v2\/\$\{ITEM\}:upload/, 'uploaden bruger ikke v2');
   assert.match(kode, /v2\/\$\{ITEM\}:publish/, 'udgivelsen bruger ikke v2');
-  assert.match(kode, /CWS_PUBLISHER_ID/, 'v2 kraever udgiver-id, og scriptet kender det ikke');
+});
+
+// ⛔ 26/9 (fuld review, mutationsbevist): her stod `assert.match(kode, /CWS_PUBLISHER_ID/)`. Ordet
+// staar ogsaa i scriptets miljoe-tjek, saa proeven var groen med udgiver-id'et fjernet fra selve
+// adressen. Nu koeres scriptets EGEN ITEM-linje, og den adresse der kommer ud, tjekkes.
+test('adressen til butikken baerer udgiver-id og udvidelses-id', () => {
+  const linje = kilde.split('\n').find((l) => /^ITEM=/.test(l));
+  assert.ok(linje, 'ITEM-adressen blev ikke fundet i publish-cws.sh');
+  const ud = execFileSync('bash', ['-c', `CWS_PUBLISHER_ID=UDGIVER; CWS_EXTENSION_ID=UDVIDELSE; ${linje}; printf '%s' "$ITEM"`],
+    { encoding: 'utf8' });
+  assert.equal(ud, 'publishers/UDGIVER/items/UDVIDELSE', 'v2 kraever udgiver-id i adressen');
 });
 
 /** Koerer scriptets egen svar-laeser, ikke en kopi af den. */
