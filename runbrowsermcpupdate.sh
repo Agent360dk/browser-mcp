@@ -285,12 +285,14 @@ is_managed() { # path → 0 if under a managed prefix
 }
 
 # working tree: only release-managed paths may be dirty (unless --allow-dirty)
+FORVALTET_BESKIDT=""
 if [[ "$ALLOW_DIRTY" == 0 ]]; then
   STRAY=""
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     p="${line:3}"; p="${p%% -> *}"          # strip status prefix + rename arrow
-    is_managed "$p" || STRAY="${STRAY}      ${p}"$'\n'
+    if is_managed "$p"; then FORVALTET_BESKIDT="${FORVALTET_BESKIDT}${p}; "
+    else STRAY="${STRAY}      ${p}"$'\n'; fi
   done < <(git status --porcelain)
   if [[ -n "$STRAY" ]]; then
     warn "working tree has changes outside release-managed files:"
@@ -298,7 +300,14 @@ if [[ "$ALLOW_DIRTY" == 0 ]]; then
     die "commit/stash these first, or re-run with --allow-dirty"
   fi
 fi
-ok "working tree clean (or only release-managed files dirty)"
+# 27/9: her stod «clean (or only release-managed files dirty)» - et groent lys der tavst daekkede over
+# beskidte forvaltede filer. Proevekoerslen paa GitHub stoppede senere paa et beskidt traee, og
+# ingen linje sagde hvilken fil. Nu siges de hoejt.
+if [[ -n "$FORVALTET_BESKIDT" ]]; then
+  warn "forvaltede filer er allerede aendret foer udgivelsen: ${FORVALTET_BESKIDT}(en udgivelse stopper paa dem i 1g; --prepare committer dem)"
+else
+  ok "working tree clean"
+fi
 
 # gate(): defineret HER, foer foerste kald. MAALT 22/8: test-gaten nedenfor kaldte
 # gate paa linje 163, mens definitionen laa paa 168 - med `set -euo pipefail` gav et
@@ -696,8 +705,10 @@ if [[ "$SHIP" == 1 ]]; then
 else
   # Proevekoerslen koerer trin 1 FOR ALVOR i en kopi af den committede kode og sammenligner. Det er
   # praecis det ship goer i arbejdstraeet - saa kan de aldrig vaere uenige (Astra 26/9, to runder).
-  [[ -z "$(git status --porcelain)" ]] && ok "arbejdstraeet er rent" \
-    || gate "arbejdstraeet har ucommittede aendringer - ship ville stoppe paa dem"
+  # 27/9: gaten siger nu HVILKE filer - paa GitHub-maskinen var traeet beskidt, og loggen tav om hvorfor.
+  BESKIDT_NU="$(git status --porcelain | head -8 | tr '\n' ';')"
+  [[ -z "$BESKIDT_NU" ]] && ok "arbejdstraeet er rent" \
+    || gate "arbejdstraeet har ucommittede aendringer - ship ville stoppe paa dem: ${BESKIDT_NU}"
   FOER="$(mktemp -d)"; EFTER="$(mktemp -d)"; TRIN1_LOG="$(mktemp)"; DIFF_UD="$(mktemp)"
   git archive HEAD | tar -x -C "$FOER"; git archive HEAD | tar -x -C "$EFTER"
   # 27/9 (Astra R3): trin 1 koeres i en SELVSTAENDIG bash med set -euo pipefail. Kaldt inde i en

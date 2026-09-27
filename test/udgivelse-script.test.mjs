@@ -884,7 +884,36 @@ test('proevekoersel: koerer trin 1 i en kopi og siger hvad den ville aendre - og
 
 test('proevekoersel: ucommittede aendringer siges hoejt - ship ville stoppe paa dem', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: false, beskidt: true });
-  assert.match(r.ud, /GATE:arbejdstraeet har ucommittede aendringer/, r.ud);
+  // 27/9: og den siger HVILKEN fil - paa GitHub-maskinen tav den, og aarsagen kunne ikke findes.
+  assert.match(r.ud, /GATE:arbejdstraeet har ucommittede aendringer - ship ville stoppe paa dem: .*mcp-server\/index\.js/, r.ud);
+});
+
+test('pre-flight naevner forvaltede filer der allerede er beskidte - «clean» er kun rent (27/9)', { skip: POSIX_SKRIPT }, () => {
+  const s = script();
+  const fra = s.indexOf('MANAGED=(');
+  const slutMarkoer = 'ok "working tree clean"\nfi\n';
+  const blok = s.slice(fra, s.indexOf(slutMarkoer, fra) + slutMarkoer.length);
+  assert.ok(fra > 0 && blok.includes('FORVALTET_BESKIDT'), 'pre-flight-blokken blev ikke fundet');
+  const d = mkdtempSync(join(tmpdir(), 'preflight-snavs-'));
+  const git = (...a) => execFileSync('git', a, { cwd: d, stdio: 'pipe', env: { ...process.env,
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
+  try {
+    writeFileSync(join(d, 'README.md'), 'a\n'); writeFileSync(join(d, 'andet.txt'), 'a\n');
+    git('init', '-q'); git('add', '.'); git('commit', '-q', '-m', 'a');
+    const koer = () => spawnSync('bash', ['-c', `set -euo pipefail
+      ok(){ echo "OK:$*"; }; warn(){ echo "WARN:$*"; }; die(){ echo "DIE:$*"; exit 1; }
+      cd '${d}'; ALLOW_DIRTY=0
+      ${blok}`], { encoding: 'utf8' });
+    assert.match(koer().stdout, /OK:working tree clean/);
+    writeFileSync(join(d, 'README.md'), 'b\n');
+    const forvaltet = koer();
+    assert.equal(forvaltet.status, 0, forvaltet.stdout + forvaltet.stderr);
+    assert.match(forvaltet.stdout, /WARN:forvaltede filer er allerede aendret foer udgivelsen: README\.md;/,
+      'en beskidt forvaltet fil blev kaldt «clean»');
+    assert.doesNotMatch(forvaltet.stdout, /OK:working tree clean/);
+    writeFileSync(join(d, 'andet.txt'), 'b\n');
+    assert.match(koer().stdout, /DIE:commit\/stash these first/, 'en fremmed beskidt fil blev ikke stoppet');
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
 test('proevekoersel: et trin 1 der fejler MIDT I kaldes ikke forberedt (Astra R3)', { skip: POSIX_SKRIPT }, () => {
