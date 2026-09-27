@@ -24,6 +24,7 @@ PAGES=[
  ('browsermcp-docs-install-opencode.md','Docs','Install for opencode','/docs/install-opencode'),
  ('browsermcp-docs-install-continue.md','Docs','Install for Continue.dev','/docs/install-continue'),
  ('browsermcp-docs-install-zcode.md','Docs','ZCode','/docs/install-zcode'),
+ ('browsermcp-docs-install-qwen-code.md','Docs','Install for Qwen Code','/docs/install-qwen-code'),
  ('browsermcp-docs-what-is-browser-mcp.md','Docs','What is Browser MCP','/docs/what-is-browser-mcp'),
  ('browsermcp-docs-tools.md','Docs','Tools','/docs/tools'),
  ('browsermcp-docs-uninstall.md','Docs','Uninstall & data','/docs/uninstall'),
