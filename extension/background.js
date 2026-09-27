@@ -1897,12 +1897,47 @@ async function portOmraadeFraLager() {
 //
 // Nu bygges broen én ad gangen: et kald der kommer mens et andet er i gang, faar det samme
 // loefte og venter paa det.
+//
+// ⛔ 26/9 (fuld review, maalt): to huller i den foerste udgave af koeen.
+//  1. «Reconnect» og opdateringen LUKKEDE broen uden for koeen og sluttede sig derefter til en
+//     igangvaerende opbygning. Var hjerteslaget midt i sit ping, fejlede pinget (dokumentet var
+//     vaek), lukningen kastede, og hjerteslaget returnerede UDEN at bygge: ingen bro i op til 60 s.
+//     Nu gaar «luk og byg igen» gennem SAMME koe (genbygOffscreen) og venter paa det der er i gang.
+//  2. ⛔ INGEN FRIST (26/9, Astra maalte det): en foerste udgave gav hvert led en frist paa 20 s. Men
+//     en frist stopper ikke arbejdet - den frigiver kun koeen. Et udloebet led kunne vaagne efter et
+//     await og lukke den NYE, levende bro; og fristen talte mens leddet stod i koe, saa en
+//     genopbygning fik ned til ét sekunds arbejdstid. Et haengende led blokerer derfor baade
+//     hjerteslag og «Reconnect», og genopretning er IKKE garanteret: en tilkoblet debugger holder
+//     servicearbejderen i live (Chrome 118+), saa den genstarter ikke af sig selv. Udvejen er at
+//     genindlaese udvidelsen - det staar i CHANGELOG som kendt begraensning (Astra 26/9).
 let offscreenIGang = null;
+
+function iOffscreenKoe(arbejde) {
+  const forrige = offscreenIGang;
+  const ledet = (async () => {
+    if (forrige) { try { await forrige; } catch { /* det forrige led fejlede - vi arbejder alligevel */ } }
+    return arbejde();
+  })().finally(() => {
+    if (offscreenIGang === ledet) offscreenIGang = null;
+  });
+  offscreenIGang = ledet;
+  return ledet;
+}
+
 function ensureOffscreen() {
-  if (!offscreenIGang) {
-    offscreenIGang = ensureOffscreenIndre().finally(() => { offscreenIGang = null; });
-  }
-  return offscreenIGang;
+  return offscreenIGang || iOffscreenKoe(ensureOffscreenIndre);
+}
+
+// Luk den gamle bro og byg en frisk - i koeen, efter det der allerede er i gang.
+function genbygOffscreen() {
+  return iOffscreenKoe(async () => {
+    try {
+      if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+    } catch (e) {
+      console.warn('[BG] kunne ikke lukke broen foer genopbygning:', e?.message || e);
+    }
+    await ensureOffscreenIndre();
+  });
 }
 
 async function ensureOffscreenIndre() {
@@ -2020,38 +2055,8 @@ async function rensHandlingslog() {
 
 // ── Message Handler — receives commands from offscreen.js ──────────────────
 
-// En noegle der skiftes i popup'en skal gaelde med det samme. Offscreen kan ikke lytte selv
-// (kun chrome.runtime), saa baggrunden skubber aendringen derhen.
-chrome.storage.onChanged.addListener((aendringer, omraade) => {
-  if (omraade !== 'local' || !aendringer.parringsnoegle) return;
-  const ny = aendringer.parringsnoegle.newValue;
-  chrome.runtime.sendMessage({
-    type: 'bmcp_parringsnoegle_aendret',
-    noegle: (typeof ny === 'string' && ny.trim()) || null,
-  }).catch(() => { /* offscreen er ikke aabent endnu - det henter selv ved opstart */ });
-});
-
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // ⛔ Offscreen-dokumentet har KUN chrome.runtime - Chromes dokumentation siger det ordret.
-  // Det kan derfor ikke selv laese parringsnoeglen, og forsoeget paa det gjorde parringen i
-  // 1.30.0 ubrugelig for enhver der satte en noegle. Baggrunden har lageret, saa den svarer.
-  if (msg.type === 'bmcp_hent_parringsnoegle') {
-    // ⛔ `ok` skelner «lageret svarede, der er ingen noegle» fra «lageret svarede ikke».
-    // Foerste udgave svarede `{ noegle: null }` i BEGGE tilfaelde, og offscreen laeste det som
-    // «ingen noegle sat» - altsaa fail-open: en lagerfejl aabnede browseren for enhver server.
-    // try/catch OG .catch: Chrome afviser normalt med et loefte, men er `chrome.storage`
-    // slet ikke til stede, kaster opslaget synkront - og et synkront kast her ville lade
-    // sendResponse uden svar, saa offscreen aldrig faar sin tilstand og broen staar lukket
-    // for evigt. Begge veje skal give det samme aerlige ok:false.
-    try {
-      chrome.storage.local.get('parringsnoegle')
-        .then((v) => sendResponse({ ok: true, noegle: (v && typeof v.parringsnoegle === 'string' && v.parringsnoegle.trim()) || null }))
-        .catch((e) => sendResponse({ ok: false, fejl: String(e && e.message || e) }));
-    } catch (e) {
-      sendResponse({ ok: false, fejl: String(e && e.message || e) });
-    }
-    return true;  // svaret kommer asynkront
-  }
+  // 26/9: parringen er trukket tilbage i 1.30.1 - baggrunden udleverer ingen noegle.
   if (msg.type === 'mcp_command') {
     const port = msg.port;
     logAction(port, msg.method);
@@ -2082,18 +2087,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // lukke — blev afvisningen slugt, og extensionen stod tilbage UDEN
     // offscreen-dokument. Ingen WebSocket, ingen genopretning, og kun en
     // manuel genindlaesning kunne redde den.
+    // 26/9: luk og byg gaar gennem koeen (genbygOffscreen) - se ensureOffscreen.
     (async () => {
+      // Fejler det, tager hjerteslags-alarmen den inden for et minut - men kun fordi vi
+      // IKKE lader fejlen forsvinde.
       try {
-        if (await chrome.offscreen.hasDocument()) {
-          await chrome.offscreen.closeDocument();
-        }
-      } catch (e) {
-        console.warn('[BG] kunne ikke lukke offscreen:', e?.message || e);
-      }
-      // Proev at genskabe. Fejler det, tager hjerteslags-alarmen den
-      // inden for et minut — men kun fordi vi IKKE lader fejlen forsvinde.
-      try {
-        await ensureOffscreen();
+        await genbygOffscreen();
       } catch (e) {
         console.error('[BG] kunne ikke genskabe offscreen:', e?.message || e);
         setTimeout(() => ensureOffscreen().catch(console.error), 2000);
@@ -3229,9 +3228,20 @@ async function dispatch(port, method, params) {
           // det brugeren arbejder i. Det er forskellen paa "kan ikke koere uden at tage
           // skaermen" og "koerer et andet sted".
           const spec = { url: params.url, focused: !!params.fokuser };
+          // ⛔ 26/9 (fuld review, maalt): en position som tekst ("-1920") blev tavst udeladt, og
+          // vinduet aabnede MED fokus paa Chromes standardplads - brugerens skaerm. Tal som tekst
+          // laeses nu som tal; et felt der slet ikke er et tal, afviser vinduet i stedet for at
+          // lade Chrome vaelge pladsen.
           for (const [ind, ud] of [['vindue_x', 'left'], ['vindue_y', 'top'],
                                    ['vindue_bredde', 'width'], ['vindue_hoejde', 'height']]) {
-            if (Number.isFinite(params[ind])) spec[ud] = Math.round(params[ind]);
+            const raa = params[ind];
+            if (raa == null) continue;
+            const tal = typeof raa === 'string' && raa.trim() !== '' ? Number(raa) : raa;
+            if (!Number.isFinite(tal)) {
+              return { ok: false, error: `eget_vindue: ${ind} must be a number, got ${JSON.stringify(raa)}. `
+                + 'No window was opened - without a position Chrome picks the spot, usually in front of the user.' };
+            }
+            spec[ud] = Math.round(tal);
           }
           const vindue = await chrome.windows.create(spec);
           tab = vindue.tabs && vindue.tabs[0];
@@ -3273,13 +3283,17 @@ async function dispatch(port, method, params) {
               : ((bedtOm.left != null || bedtOm.top != null) && !somBedt
                 ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
                   + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
-                : undefined),
+                : (params.fokuser && bedtOm.left == null && bedtOm.top == null
+                  ? 'Focus with no position: Chrome chose where the window went, usually in front of '
+                    + 'the user, and it now has their keyboard focus.'
+                  : undefined)),
             // ⛔ Ogsaa prosaen skal komme fra maalingen. Foerste rettelse gjorde `fokuseret`
             // aerlig, men lod `note` staa paa `params.fokuser` - saa svaret sagde
             // «fokuseret: false» og «The window has focus» i SAMME nyttelast.
             note: faktisk?.focused
-              ? 'The window has focus, so Chrome delivers input to it. Place it on a display nobody is ' +
-                'looking at (a negative left is a screen to the left) and it does not cover anyone\'s work.'
+              ? 'The window has focus, so Chrome delivers input to it. Focus is exclusive: while this window ' +
+                'has it, whatever the person types goes here - even on another display. Use it only on a ' +
+                'machine nobody is typing on.'
               : (params.fokuser
                 ? 'You asked for focus and Chrome did not give it. This window now behaves exactly like a '
                   + 'background tab: no mouse or keyboard input is delivered to it. Measured 21 Sept - read '
@@ -4525,12 +4539,12 @@ async function dispatch(port, method, params) {
             }
             const foer = ${aftryk};
             // MAALT 19/9 i aerligheds-selen: her tabte vi mod Playwright paa et STYRET select.
-            // Grunden var denne ene linje. En styret komponent - React og fixturen begge - laegger
-            // en value-saetter paa INSTANSEN der ruller en naiv tilskrivning tilbage, saa
+            // En komponent der laegger en value-saetter paa INSTANSEN (ikke React - det var vores egen
+            // fixtur, trukket tilbage 21/9 paa /learn/tools-that-lie) kan rulle en naiv tilskrivning tilbage, saa
             // \`sel.value = x\` skriver den gamle vaerdi igen og komponenten hoerer aldrig noget.
             // Prototypens saetter gaar uden om instansen og har praecis samme betydning.
             // ⛔ Vi vidste det allerede: fem andre steder i denne fil saetter vaerdier netop saadan
-            // (linje ~1304, 2280, 2295, 2877, 3807). select_option var det eneste sted uden grebet.
+            // (fill, clear, set_date, combobox). select_option var det eneste sted uden grebet - en forsigtighed.
             // Prototypen hentes fra elementet, ikke fra et globalt navn: udtrykket koeres ogsaa
             // i kontekster hvor HTMLSelectElement ikke findes, og der skal det falde tilbage - ikke kaste.
             const saetter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(sel) || {}, 'value')?.set;
@@ -5625,16 +5639,10 @@ chrome.runtime.onInstalled.addListener(async (detaljer) => {
     await ensureOffscreen().catch(console.error);
     return;
   }
-  // Ved opdatering og genindlaesning ER den gamle bro foraeldet. Vent foerst paa en
-  // opbygning der allerede er i gang, saa vi ikke lukker en halvfaerdig bro.
-  await ensureOffscreen().catch(() => {});
-  try {
-    if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
-  } catch (e) {
-    console.warn('[BG] kunne ikke lukke broen ved genindlaesning:', e?.message || e);
-  }
+  // Ved opdatering og genindlaesning ER den gamle bro foraeldet. Luk og byg gaar gennem koeen,
+  // saa en halvfaerdig bro aldrig lukkes midt i sin opbygning (26/9).
   await chrome.storage.local.set({ offscreenGenskabt: 0, offscreenPauseTil: 0 });
-  ensureOffscreen().catch(console.error);
+  genbygOffscreen().catch(console.error);
 });
 
 // Hjerteslag der genskaber offscreen-dokumentet hvis Chrome har ryddet det.

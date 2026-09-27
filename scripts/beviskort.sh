@@ -52,16 +52,19 @@ echo "── Det kortet IKKE kan svare paa ──"
 um "om nogen af npm-tallene er mennesker (ingen geografi, ingen user-agent)"
 um "om foerste koersel virker for en ny bruger - 1.000 installationer, 0 anmeldelser (butikstallet er rundet)"
 um "om de 40 sider rammer - sitet har ingen analytics"
-# ⛔ 21/9: den her linje sagde "kraever Gustavs skaerm". Det er ikke sandt laengere, og en
-# UMAALT-linje der er foraeldet er praecis den fejlklasse kortet findes for at fange.
-um "de 12 vaerktoejer der kraever et vindue med fokus - baggrunds-koerslen springer dem over.
-     baggrund:  FLOW_KUN_BAGGRUND=1 npm --prefix mcp-server run flow   (40/40 beroert, 0 fejl 21/9)
-     fuld:      npm --prefix mcp-server run flow                        (tager skaermen)
-     ⛔ anden skaerm VIRKER IKKE (maalt 21/9): FLOW_VINDUE_X faar vaerktoejet til at svare
-        eget_vindue:true, fokuseret:true og placeret:{left:-3840} - og vinduet er der ikke.
-        Set efter paa alle tre skaerme mens det koerte: ingen af dem havde det. Det fejler
-        sikkert (menneskets vindue roeres ikke), men fokus-tilstanden kan ikke bruges blindt.
-        De 12 vaerktoejer er derfor UMAALTE indtil nogen koerer den fulde spaerre paa en
-        skaerm der er fri."
+# ⛔ 26/9: her stod at 12 vaerktoejer var UMAALTE fordi de kraever et vindue med fokus. Det er
+# ikke sandt laengere: den isolerede spaerre (scripts/flow-isoleret.mjs) koerer alle 40 i sin EGEN
+# headless Chrome for Testing, tager ikke skaermen, og koerer paa GitHub (spaerre.yml). Kortet
+# spoerger nu GitHub om spaerren er groen paa netop denne commit - tallet udledes, huskes ikke.
+SP=$(gh run list --workflow spaerre.yml --commit "$(git rev-parse HEAD)" -L1 --json conclusion --jq '.[0].conclusion' 2>/dev/null)
+if [ "$SP" = success ]; then
+  gr "flow-spaerren groen paa denne commit (GitHub, headless Chrome for Testing, 40 vaerktoejer beroert)"
+else
+  um "flow-spaerren paa denne commit: ${SP:-ingen koersel}. Koer: gh workflow run spaerre.yml --ref <gren>
+     eller lokalt, uden at tage skaermen: node scripts/flow-isoleret.mjs --spaerre"
+fi
+um "om alle 40 vaerktoejer VIRKER - spaerren beroerer dem ved navn; den proever ikke hver adfaerd"
+um "den aegte butiksinstallation - spaerren indlaeser udvidelsen upakket, ikke fra Chrome Web Store"
+um "Windows - proeverne er roede dér (continue-on-error i tests.yml)"
 
 exit $FEJL

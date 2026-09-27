@@ -1,3 +1,4 @@
+// KILDE: mcp-server/bin/cli.js (install registrerer med `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`) - kontrolleret mod cli.js og en falsk claude-shim 26/9 (fuld review D). Claude Codes egen dokumentation er ikke hentet paa ny.
 # Add Browser MCP to Claude Code
 *Suggested meta description: "Four steps, about a minute. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
 

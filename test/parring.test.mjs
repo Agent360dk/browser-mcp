@@ -1,19 +1,18 @@
 /**
- * Parringsnoeglen (issue #10): én Chrome-profil, én server.
+ * PARRINGEN ER TRUKKET TILBAGE I 1.30.1 - og disse proever beviser at den er det, begge steder.
  *
- * Det oenskede er hverdagsagtigt: har man Arbejde og Privat aabne samtidig, skal
- * agenten i den ene ikke kunne styre den anden. Broen er lokal og tager i dag imod
- * den udvidelse der melder sig - det er nul opsaetning, og det er stadig standarden.
- * Saetter man en noegle, bliver parringen striks, og samtidig lukkes et hul vi selv
- * har skrevet ned: broen lytter uden autentificering, saa ethvert program paa
- * maskinen kan melde sig som udvidelse.
+ * 1.30.0 udgav en parringsnoegle (issue #10). 26/9 maalte et panel og et review at den ikke holdt:
+ *  - udvidelsen sendte noeglen i hilsenen til ENHVER server paa en port i spaendet og tog den
+ *    tilbage som bevis, saa et fremmed program kunne parre sig ved at gentage den (0 -> 1 kommando);
+ *  - en halvt parret opsaetning kaprede den anden profils server (3 af 8 forsoeg);
+ *  - en 1.30.0-udvidelse kunne aldrig laese sin noegle og blev laast ude (4003) af en server med
+ *    noeglen sat - som popup'en bad brugeren om.
+ * En sikring der ikke sikrer, er vaerre end ingen. Den kommer igen redesignet.
  *
- * Noeglen gaelder BEGGE veje. En server uden den rigtige noegle kommer ikke ind, og
- * en udvidelse med en noegle udfoerer intet foer serveren har kvitteret med den samme.
- *
- * Testene her koerer den AEGTE server som proces og den AEGTE offscreen.js i en vm.
- * Kildetekst-matchning kunne ikke se forskel paa "afviser" og "skriver om at afvise".
+ * Det der IKKE handlede om parring, bevares og proeves stadig her: svar bindes til den forbindelse
+ * kommandoen gik til, og offscreen.js roerer kun chrome.runtime.
  */
+
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -70,58 +69,121 @@ async function serverMedNoegle(noegle) {
   throw new Error('serveren bandt aldrig en port: ' + fejl);
 }
 
-/** Melder sig som udvidelse med et givet haandtryk og rapporterer hvad der skete. */
-function udvidelseHilser(port, hilsen) {
-  return new Promise((ok) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
-    const svar = [];
-    let lukket = null;
-    ws.on('open', () => ws.send(JSON.stringify(hilsen)));
-    ws.on('message', (d) => { try { svar.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
-    ws.on('close', (kode) => { lukket = kode; });
-    ws.on('error', () => {});
-    setTimeout(() => { try { ws.close(); } catch { /* lukket */ } ok({ svar, lukket }); }, 900);
-  });
+/**
+ * Melder sig som udvidelse, sender et vaerktoejskald gennem serveren, og rapporterer hvad der skete.
+ *
+ * ⛔ Astra 26/9: foerste udgave svarede efter 900 ms uanset hvad, ogsaa naar soklen ALDRIG aabnede.
+ * «Ikke lukket» beviser ikke «kom ind». Nu skal soklen aabne inden for fristen, og udvidelsen skal
+ * modtage et rigtigt vaerktoejskald - det er det «kom ind» betyder.
+ */
+async function udvidelseHilser(port, hilsen, server = null) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+  const svar = [];
+  let lukket = null;
+  ws.on('message', (d) => { try { svar.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
+  ws.on('close', (kode) => { lukket = kode; });
+  ws.on('error', () => {});
+  const aabnet = await Promise.race([
+    new Promise((ok) => ws.on('open', () => ok(true))),
+    new Promise((ok) => setTimeout(() => ok(false), 3000)),
+  ]);
+  if (aabnet) ws.send(JSON.stringify(hilsen));
+  await new Promise((ok) => setTimeout(ok, 400));
+  let kald = null;
+  if (aabnet && server) {
+    server.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 77, method: 'tools/call',
+      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
+    for (let n = 0; n < 50 && !kald; n++) {
+      kald = svar.find((m) => typeof m?.method === 'string') || null;
+      if (!kald) await new Promise((ok) => setTimeout(ok, 100));
+    }
+  }
+  try { ws.close(); } catch { /* lukket */ }
+  return { aabnet, svar, lukket, kald };
 }
+
 
 const HILSEN = { type: 'hello', extensionId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', version: '1.29.2', kode: 'abcdef012345' };
 
 test('uden noegle er intet aendret - udvidelsen kommer ind som i dag', async () => {
   const s = await serverMedNoegle(null);
   try {
-    const r = await udvidelseHilser(s.port, HILSEN);
+    const r = await udvidelseHilser(s.port, HILSEN, s);
+    assert.equal(r.aabnet, true, 'soklen aabnede aldrig - proeven kan ikke maale noget');
     assert.equal(r.lukket, null, 'serveren lukkede en helt almindelig udvidelse ude');
-    assert.equal(r.svar.find((m) => m.type === 'parring'), undefined, 'der blev sendt en parringskvittering uden at nogen har bedt om parring');
+    assert.ok(r.kald, 'udvidelsen fik aldrig et vaerktoejskald - den kom ikke ind');
+    assert.equal(r.svar.find((m) => m.type === 'parring'), undefined, 'der blev sendt en parringskvittering');
   } finally { s.proces.kill(); }
 });
 
-test('med noegle afvises en udvidelse der ikke kender den', async () => {
+test('BROWSER_MCP_TOKEN ignoreres: en udvidelse uden noegle kommer ind, og serveren siger hvorfor', async () => {
+  // Det er netop butikkens 1.30.0-udvidelse: den kan aldrig sende sin noegle. Med parringen
+  // aktiv blev den lukket ude med 4003; nu skal den ind, og brugeren skal kunne se hvorfor
+  // noeglen ikke virker.
   const s = await serverMedNoegle('arbejde');
   try {
-    const r = await udvidelseHilser(s.port, { ...HILSEN, noegle: 'privat' });
-    assert.equal(r.lukket, 4003, `en udvidelse med forkert noegle blev IKKE lukket ude (kode ${r.lukket})`);
-    const kvit = r.svar.find((m) => m.type === 'parring');
-    assert.equal(kvit?.ok, false);
-    assert.equal(kvit?.noegle, undefined, 'afvisningen roebede serverens noegle');
+    const r = await udvidelseHilser(s.port, HILSEN, s);
+    assert.equal(r.aabnet, true, 'soklen aabnede aldrig - proeven kan ikke maale noget');
+    assert.equal(r.lukket, null, `en udvidelse uden noegle blev lukket ude (kode ${r.lukket}) - parringen er ikke trukket tilbage`);
+    assert.ok(r.kald, 'udvidelsen uden noegle fik aldrig et vaerktoejskald - serveren holder den stadig ude');
+    assert.match(s.fejl(), /BROWSER_MCP_TOKEN is ignored: pairing was withdrawn/,
+      'serveren tier om at noeglen ignoreres - brugeren tror han er beskyttet');
   } finally { s.proces.kill(); }
 });
 
-test('med noegle afvises ogsaa en udvidelse der slet ingen sender', async () => {
-  const s = await serverMedNoegle('arbejde');
-  try {
-    const r = await udvidelseHilser(s.port, HILSEN);
-    assert.equal(r.lukket, 4003, 'en udvidelse uden noegle slap ind paa en parret server');
-  } finally { s.proces.kill(); }
-});
-
-test('med den rigtige noegle kommer udvidelsen ind og faar serverens kvittering', async () => {
+test('med noegle sat gentager serveren den aldrig - heller ikke til en udvidelse der sender en', async () => {
   const s = await serverMedNoegle('arbejde');
   try {
     const r = await udvidelseHilser(s.port, { ...HILSEN, noegle: 'arbejde' });
-    assert.equal(r.lukket, null, `den rigtige noegle blev afvist (kode ${r.lukket})`);
-    const kvit = r.svar.find((m) => m.type === 'parring');
-    assert.equal(kvit?.ok, true, 'serveren kvitterede ikke, saa udvidelsen kan ikke se hvem den taler med');
-    assert.equal(kvit?.noegle, 'arbejde');
+    assert.equal(r.aabnet, true, 'soklen aabnede aldrig - proeven kan ikke maale noget');
+    assert.equal(r.lukket, null);
+    assert.equal(r.svar.find((m) => m.type === 'parring'), undefined,
+      'serveren sendte en parringskvittering - noeglen er stadig i spil');
+    assert.ok(!JSON.stringify(r.svar).includes('arbejde'), 'serveren gentog noeglen over broen');
+  } finally { s.proces.kill(); }
+});
+
+test('en fremmed forbindelse kan ikke besvare en andens kommando', async () => {
+  const s = await serverMedNoegle(null);
+  try {
+    // Den aegte udvidelse.
+    const aegte = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+    const modtaget = [];
+    aegte.on('message', (d) => { try { modtaget.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
+    aegte.on('error', () => {});
+    await new Promise((ok) => aegte.on('open', ok));
+    aegte.send(JSON.stringify(HILSEN));
+
+    // Angriberen: ingen hilsen - men lytter med paa broen.
+    const fremmed = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: 'chrome-extension://cccccccccccccccccccccccccccccccc' });
+    fremmed.on('error', () => {});
+    await new Promise((ok) => fremmed.on('open', ok));
+    await new Promise((ok) => setTimeout(ok, 300));
+
+    // Serveren skal sende et kald til den AEGTE. Angriberen forsoeger at svare foerst.
+    s.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
+      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
+    for (let i = 0; i < 40 && modtaget.filter((m) => m.method).length === 0; i++) {
+      await new Promise((ok) => setTimeout(ok, 100));
+    }
+    const kald = modtaget.find((m) => m.method);
+    assert.ok(kald, 'den aegte udvidelse fik aldrig kaldet - proeven kan ikke maale noget');
+
+    let svaret = null;
+    const slut = new Promise((ok) => {
+      const t = setInterval(() => {
+        const l = s.fejl();
+        if (/Ignored a reply to command/.test(l)) { svaret = 'afvist'; clearInterval(t); ok(); }
+      }, 100);
+      setTimeout(() => { clearInterval(t); ok(); }, 4000);
+    });
+    fremmed.send(JSON.stringify({ id: kald.id, result: { tabs: [{ id: 1, url: 'https://forfalsket.example' }] } }));
+    await slut;
+
+    assert.equal(svaret, 'afvist',
+      'et forfalsket svar fra en fremmed forbindelse blev accepteret - agenten ville handle '
+      + 'paa data der aldrig kom fra browseren');
+    try { aegte.close(); fremmed.close(); } catch { /* lukket */ }
   } finally { s.proces.kill(); }
 });
 
@@ -188,165 +250,49 @@ function broen(gemtNoegle, noegleSvarFejler = false) {
 // samme moenster som kodeaftrykket. Uden ventetiden her ville testen maale cachen foer den var fyldt.
 const pust = () => new Promise((ok) => setTimeout(ok, 20));
 
-test('udvidelsen sender sin noegle med i haandtrykket', async () => {
-  const b = broen('arbejde');
+test('udvidelsen sender ingen noegle - heller ikke en som 1.30.0 naaede at gemme', async () => {
+  const b = broen('gammel-noegle-fra-1.30.0');
   await pust();
   b.ctx.tryConnect(9876);
   await b.aabn();
-  assert.equal(b.sendt[0]?.type, 'hello');
-  assert.equal(b.sendt[0]?.noegle, 'arbejde', `noeglen kom ikke med: ${JSON.stringify(b.sendt[0])}`);
+  const hello = b.sendt.find((m) => m.type === 'hello');
+  assert.ok(hello, 'udvidelsen hilste ikke - proeven kan ikke maale noget');
+  assert.equal('noegle' in hello, false, 'hilsenen baerer stadig et noegle-felt');
+  assert.equal(b.tilBaggrund.some((m) => m?.type === 'bmcp_hent_parringsnoegle'), false,
+    'udvidelsen spoerger stadig baggrunden om noeglen');
 });
 
-test('uden gemt noegle er haandtrykket som foer - ingen noegle', async () => {
+test('kommandoer udfoeres med det samme - ingen kvittering kraeves', async () => {
+  const b = broen('gammel-noegle-fra-1.30.0');
+  await pust();
+  b.ctx.tryConnect(9876);
+  await b.aabn();
+  await b.modtag({ id: 1, method: 'get_page_content', params: {} });
+  assert.equal(b.tilBaggrund.filter((m) => m?.type === 'mcp_command').length, 1,
+    'kommandoen blev ikke udfoert - udvidelsen venter stadig paa en parring der aldrig kommer');
+});
+
+test('en parringsbesked fra en gammel server ignoreres, og soklen lever', async () => {
   const b = broen(null);
   await pust();
   b.ctx.tryConnect(9876);
   await b.aabn();
-  assert.equal(b.sendt[0]?.noegle, null);
+  await b.modtag({ type: 'parring', ok: true, noegle: 'hvad-som-helst' });
+  assert.equal(b.erLukket(), false, 'udvidelsen lukkede soklen paa en parringsbesked');
+  assert.equal(b.tilBaggrund.filter((m) => m?.type === 'mcp_command').length, 0,
+    'en besked uden method blev sendt videre som kommando');
 });
 
-test('en parret udvidelse udfoerer INTET foer serveren har kvitteret', async () => {
-  const b = broen('arbejde');
+test('null og beskeder uden method faar ikke udvidelsen til at kaste eller udfoere noget', async () => {
+  const b = broen(null);
   await pust();
   b.ctx.tryConnect(9876);
   await b.aabn();
-  await b.modtag({ id: 7, method: 'browser_screenshot', params: {} });
-  const svar = b.sendt.find((m) => m.id === 7);
-  assert.match(String(svar?.error), /pairing key/, `kommandoen blev udfoert uden kvittering: ${JSON.stringify(b.sendt)}`);
+  await b.modtag(null);
+  await b.modtag({ id: 7 });
+  assert.equal(b.tilBaggrund.filter((m) => m?.type === 'mcp_command').length, 0);
 });
 
-test('efter serverens kvittering udfoeres kommandoer igen', async () => {
-  const b = broen('arbejde');
-  await pust();
-  b.ctx.tryConnect(9876);
-  await b.aabn();
-  await b.modtag({ type: 'parring', ok: true, noegle: 'arbejde' });
-  await b.modtag({ id: 8, method: 'browser_screenshot', params: {} });
-  const svar = b.sendt.find((m) => m.id === 8);
-  assert.ok(svar && !svar.error, `den rigtige kvittering blev ikke godtaget: ${JSON.stringify(b.sendt)}`);
-});
-
-test('en server der kvitterer med en ANDEN noegle, lukkes ude af udvidelsen', async () => {
-  const b = broen('arbejde');
-  await pust();
-  b.ctx.tryConnect(9876);
-  await b.aabn();
-  await b.modtag({ type: 'parring', ok: true, noegle: 'privat' });
-  assert.ok(b.erLukket(), 'udvidelsen blev hos en server der ikke kender dens noegle');
-});
-
-test('skiftes noeglen, kappes de aabne forbindelser med det samme', async () => {
-  const b = broen('arbejde');
-  await pust();
-  b.ctx.tryConnect(9876);
-  await b.aabn();
-  // Offscreen kan ikke lytte paa lageret - kun paa beskeder. Baggrunden skubber aendringen.
-  // Chrome leverer en besked til ALLE lyttere, saa det goer proeven ogsaa; offscreen.js har
-  // flere, og at pege paa lyttere[0] ville vaere en antagelse om raekkefoelgen.
-  assert.ok(b.lyttere.length >= 1, 'der lyttes ikke efter aendringer i noeglen');
-  for (const l of b.lyttere) l({ type: 'bmcp_parringsnoegle_aendret', noegle: 'privat' });
-  assert.ok(b.erLukket(), 'en aendret noegle fik foerst virkning ved naeste genstart');
-});
-
-test('popup\'en kan saette noeglen og viser serverkommandoen', () => {
-  const html = readFileSync(join(rod, 'extension/popup.html'), 'utf8');
-  const js = readFileSync(join(rod, 'extension/popup.js'), 'utf8');
-  assert.match(html, /id="pairKey"/, 'der er intet felt til noeglen');
-  assert.match(js, /parringsnoegle/, 'popup\'en gemmer ikke noeglen');
-  assert.match(js, /BROWSER_MCP_TOKEN=/, 'popup\'en viser ikke hvordan serveren startes med samme noegle');
-});
-
-/**
- * ⛔ MAALT 21/9: noeglen holdt INGEN ude.
- *
- * De tre proever ovenfor sender alle et `hello`. Noeglen blev kun tjekket INDE i
- * hello-grenen, saa et program der forbandt og aldrig hilste, sprang tjekket over - og kom
- * alligevel i betragtning som aktiv forbindelse. Det er praecis det hul parringen blev
- * bygget for at lukke, og det stod aabent i den udgivne 1.30.0.
- *
- * Samme moenster som huset har set fire gange: vagten blev proevet ad den ene vej den blev
- * bygget til, og tvillingen stod aaben.
- */
-/**
- * Forbinder TAVST (ingen hilsen) og bliver hængende, saa et kald der sendes BAGEFTER kan
- * naa den. Foerste udgave af proeven forbandt efter at kaldet var sendt, og saa kunne den
- * ikke vise forskellen: begge grene var tomme, og «med noegle»-proeven var groen uanset
- * rettelsen. Et instrument der svarer nul, proeves foerst mod et kendt-sandt tilfaelde.
- */
-function tavsForbindelse(port) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}`, { origin: 'chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' });
-  const modtaget = [];
-  ws.on('message', (d) => { try { modtaget.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
-  ws.on('error', () => {});
-  const klar = new Promise((ok) => ws.on('open', ok));
-  return { ws, modtaget, klar, kald: () => modtaget.filter((m) => typeof m?.method === 'string') };
-}
-
-/** Starter serveren, lader en tavs forbindelse melde sig, og sender FOERST derefter et kald. */
-async function tavsFaarKald(noegle) {
-  const s = await serverMedNoegle(noegle);
-  const t = tavsForbindelse(s.port);
-  try {
-    await t.klar;
-    await new Promise((ok) => setTimeout(ok, 200));
-    s.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
-      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
-    // ⛔ Vent paa HAENDELSEN, ikke paa et ur. En fast pause paa 2,5 s fejlede 3 af 6 gange
-    // under diskpres: serveren var langsommere om at binde, og proeven maalte foer kaldet var
-    // sendt. En flakkende kontrol-proeve undergraver praecis det den skal sikre.
-    // Den negative sag (med noegle) skal stadig bruge hele fristen, ellers maaler den for
-    // tidligt og er groen uden grund - derfor loeber loekken altid tiden ud naar der intet kommer.
-    for (let i = 0; i < 60 && t.kald().length === 0; i++) {
-      await new Promise((ok) => setTimeout(ok, 100));
-    }
-    return t.kald();
-  } finally { try { t.ws.close(); } catch { /* lukket */ } s.proces.kill(); }
-}
-
-test('med noegle faar en forbindelse der ALDRIG hilser intet kald udleveret', async () => {
-  assert.deepEqual(await tavsFaarKald('arbejde'), [],
-    'en tavs forbindelse fik et vaerktoejskald udleveret paa en parret server - noeglen holder ingen ude');
-});
-
-test('UDEN noegle slipper en uparret forbindelse stadig igennem gaten', () => {
-  // ⛔ Denne kontrol var foerst en integrationsproeve der startede en rigtig server og saa om
-  // en tavs forbindelse fik et kald. Den var flakkende 3 af 6 gange - og aarsagen var ikke
-  // timing, men et KAPLOEB: Gustavs egen udvidelse skanner portene hvert 2. sekund, forbinder
-  // til proevens server og kan vinde rollen som aktiv. Proeven maalte hvem der kom foerst.
-  // En proeve hvis forudsaetning kan svigte uden at sige fra, maaler noget andet end man tror.
-  //
-  // Gaten selv er ren logik, saa den proeves som logik. Ingen server, intet kaploeb.
-  const kilde = readFileSync(join(rod, 'mcp-server', 'index.js'), 'utf8');
-  const m = kilde.match(/function liveConnections\(\) \{[\s\S]*?\n\}/);
-  assert.ok(m, 'liveConnections blev ikke fundet - gaten kan ikke proeves');
-
-  const byg = (noegle) => new Function('connections', 'PARRINGSNOEGLE',
-    `${m[0]}\nreturn liveConnections;`)(
-    new Set([
-      { ws: { readyState: 1 }, parret: false, navn: 'uparret' },
-      { ws: { readyState: 1 }, parret: true, navn: 'parret' },
-      { ws: { readyState: 3 }, parret: true, navn: 'doed' },
-    ]), noegle);
-
-  assert.deepEqual(byg(null)().map((c) => c.navn), ['uparret', 'parret'],
-    'uden noegle blev en uparret forbindelse filtreret fra - nul-opsaetning er aendret for alle');
-  assert.deepEqual(byg('arbejde')().map((c) => c.navn), ['parret'],
-    'med noegle slap en uparret forbindelse igennem - noeglen holder ingen ude');
-});
-
-
-/**
- * ⛔ Offscreen-dokumentet maa KUN roere chrome.runtime.
- *
- * Chromes dokumentation siger ordret at runtime er den eneste udvidelses-API et
- * offscreen-dokument har. 1.30.0 blev udgivet med `chrome.storage.local.get(...)` i
- * offscreen.js; opslaget kastede, fejlen blev slugt, parringsnoeglen forblev tom, og enhver
- * der fulgte popup'ens egen instruktion var laast ude for altid.
- *
- * Vagten hviler paa MEKANIKKEN - hvilket chrome-navnerum der roeres - ikke paa et ord eller
- * et funktionsnavn. En omdoebt hjaelper aendrer ingenting. (Huset 7/9: et ord kan ikke baere
- * en regel.)
- */
 test('offscreen.js roerer kun chrome.runtime - alt andet findes ikke der', () => {
   const kilde = readFileSync(join(rod, 'extension/offscreen.js'), 'utf8');
   // Kommentarer ud foerst: filen FORKLARER fejlen, og forklaringen maa ikke udloese vagten.
@@ -362,182 +308,22 @@ test('offscreen.js roerer kun chrome.runtime - alt andet findes ikke der', () =>
     + 'alt andet kaster, og et slugt kast er praecis hvad der gjorde parringen ubrugelig i 1.30.0.');
 });
 
-/**
- * ⛔ MAALT 21/9: baggrundens halvdel af noegle-videresendelsen havde INGEN proeve.
- *
- * Mutationsbevis paa den foerste udgave: `if (msg.type === 'bmcp_hent_parringsnoegle')` blev
- * slaaet fra, og NUL proever blev roede. Offscreen-proeverne stubber selv `sendMessage`, saa
- * de naar aldrig background.js' svar. Halvdelen af en to-filers rettelse er vaerre end ingen:
- * den ser faerdig ud. (Huset 7/9, samme klasse.)
- */
-test('baggrunden svarer offscreen med noeglen fra lageret', async () => {
-  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  const u = indlaesUdvidelse({ svar: { 'storage.local.get': { parringsnoegle: '  arbejde  ' } } });
-  const svar = await new Promise((ok) => {
-    const beholdt = (u.lyttere.get('runtime.onMessage') || [])
-      .map((fn) => fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok))
-      .some((r) => r === true);
-    assert.ok(beholdt, 'ingen lytter beholdt kanalen aaben - svaret kan ikke naa offscreen');
-  });
-  assert.equal(svar.noegle, 'arbejde', 'baggrunden gav ikke noeglen videre (mellemrum skal trimmes)');
+test('popup\'en har ingen parring - brugeren kan ikke taende en sikring der ikke sikrer', () => {
+  const html = readFileSync(join(rod, 'extension/popup.html'), 'utf8');
+  const js = readFileSync(join(rod, 'extension/popup.js'), 'utf8');
+  assert.equal(/id="pairKey"|id="savePair"|Pairing \(optional\)/.test(html), false, 'popup.html viser stadig parringen');
+  assert.equal(/parringsnoegle|BROWSER_MCP_TOKEN/.test(js), false, 'popup.js saetter eller viser stadig noeglen');
 });
 
-test('uden gemt noegle svarer baggrunden null - ikke undefined', async () => {
+test('baggrunden udleverer ingen noegle og skubber ingen noegle-aendring', async () => {
   const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  const u = indlaesUdvidelse({ svar: { 'storage.local.get': {} } });
+  const u = indlaesUdvidelse({ svar: { 'storage.local.get': { parringsnoegle: 'arbejde' } } });
   const svar = await new Promise((ok) => {
     for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
+    setTimeout(() => ok('intet svar'), 200);
   });
-  assert.equal(svar.noegle, null, 'et tomt lager skal give null, saa offscreen ikke cacher undefined');
-});
-
-test('en aendret noegle skubbes videre til offscreen', async () => {
-  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  const u = indlaesUdvidelse();
-  await u.fyr('storage.onChanged', { parringsnoegle: { newValue: ' privat ' } }, 'local');
-  const sendt = u.optager.kald.filter((k) => k.args?.[0]?.type === 'bmcp_parringsnoegle_aendret');
-  assert.equal(sendt.length, 1, 'aendringen blev ikke skubbet til offscreen - den gaelder foerst ved genstart');
-  assert.equal(sendt[0].args[0].noegle, 'privat');
-});
-
-test('en aendring i et ANDET lager-felt skubbes ikke', async () => {
-  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  const u = indlaesUdvidelse();
-  await u.fyr('storage.onChanged', { sessions: { newValue: {} } }, 'local');
-  const sendt = u.optager.kald.filter((k) => k.args?.[0]?.type === 'bmcp_parringsnoegle_aendret');
-  assert.equal(sendt.length, 0, 'enhver lager-aendring kapper forbindelserne - det er en gate paa alt');
-});
-
-/**
- * ⛔ MAALT 21/9: gaten afgjorde hvem der FIK en kommando - ikke hvem der maatte SVARE.
- *
- * Svar blev matchet paa `pending.get(id)` alene, og id'erne taelles fra 1. En forbindelse
- * uden noegle og uden hilsen kunne gaette et id og levere et forfalsket svar paa en andens
- * kommando. Det er vaerre end at modtage kommandoen: agenten handler paa data den tror kom
- * fra browseren.
- *
- * Jeg meldte selv at parringsgaten «daekker alle veje paa én gang». Det gjorde den ikke.
- */
-test('en fremmed forbindelse kan ikke besvare en andens kommando', async () => {
-  const s = await serverMedNoegle('arbejde');
-  try {
-    // Den aegte, parrede udvidelse.
-    const aegte = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
-    const modtaget = [];
-    aegte.on('message', (d) => { try { modtaget.push(JSON.parse(d.toString())); } catch { /* ikke json */ } });
-    aegte.on('error', () => {});
-    await new Promise((ok) => aegte.on('open', ok));
-    aegte.send(JSON.stringify({ ...HILSEN, noegle: 'arbejde' }));
-
-    // Angriberen: ingen noegle, ingen hilsen - men lytter med paa broen.
-    const fremmed = new WebSocket(`ws://127.0.0.1:${s.port}`, { origin: 'chrome-extension://cccccccccccccccccccccccccccccccc' });
-    fremmed.on('error', () => {});
-    await new Promise((ok) => fremmed.on('open', ok));
-    await new Promise((ok) => setTimeout(ok, 300));
-
-    // Serveren skal sende et kald til den AEGTE. Angriberen forsoeger at svare foerst.
-    s.proces.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call',
-      params: { name: 'browser_list_tabs', arguments: {} } }) + '\n');
-    for (let i = 0; i < 40 && modtaget.filter((m) => m.method).length === 0; i++) {
-      await new Promise((ok) => setTimeout(ok, 100));
-    }
-    const kald = modtaget.find((m) => m.method);
-    assert.ok(kald, 'den aegte udvidelse fik aldrig kaldet - proeven kan ikke maale noget');
-
-    let svaret = null;
-    const slut = new Promise((ok) => {
-      const t = setInterval(() => {
-        const l = s.fejl();
-        if (/Ignored a reply to command/.test(l)) { svaret = 'afvist'; clearInterval(t); ok(); }
-      }, 100);
-      setTimeout(() => { clearInterval(t); ok(); }, 4000);
-    });
-    fremmed.send(JSON.stringify({ id: kald.id, result: { tabs: [{ id: 1, url: 'https://forfalsket.example' }] } }));
-    await slut;
-
-    assert.equal(svaret, 'afvist',
-      'et forfalsket svar fra en uparret forbindelse blev accepteret - agenten ville handle '
-      + 'paa data der aldrig kom fra browseren');
-    try { aegte.close(); fremmed.close(); } catch { /* lukket */ }
-  } finally { s.proces.kill(); }
-});
-
-/**
- * ⛔ CRITICAL, fundet af et modstander-review 21/9: parringen var FAIL-OPEN i udvidelsen.
- *
- * Gaten lyder `if (parringsnoegle && !parrede.has(ws))`. Kunne noeglen ikke hentes -
- * servicearbejderen sov, lageret fejlede - blev `parringsnoegle` staaende null, gaten sprang
- * HELT over, og udvidelsen udfoerte kommandoer fra enhver server. Reviewet koerte den aegte
- * offscreen.js i en vm hvor begge hentninger fejlede, og en uparret server fik
- * `browser_get_cookies` besvaret.
- *
- * Og baggrunden svarede `{ noegle: null }` baade naar der INTET var sat og naar lageret
- * fejlede - saa en fejl kunne ikke skelnes fra et fravaer. To fejl der forstaerkede hinanden.
- *
- * Reglen er nu: udfoer intet foer tilstanden er KENDT.
- */
-test('kan noeglen ikke hentes, udfoerer udvidelsen INTET - ikke alt', async () => {
-  const b = broen('arbejde', true);   // brugeren HAR sat en noegle; hentningen fejler
-  await pust();
-  b.ctx.tryConnect(9876);
-  await b.aabn();
-  // En server der aldrig kvitterer med en noegle sender en kommando.
-  await b.modtag({ id: 1, method: 'get_cookies', params: {} });
-  await pust();
-
-  const udfoert = b.tilBaggrund.filter((m) => m && m.type === 'mcp_command');
-  assert.deepEqual(udfoert, [],
-    'udvidelsen udfoerte en kommando fra en uparret server, fordi den ikke kunne laese sin '
-    + 'egen noegle. Det er fail-open i selve adgangskontrollen');
-
-  const svar = b.sendt.filter((m) => m && m.error);
-  assert.ok(svar.length > 0, 'den skal sige HVORFOR den naegter, ikke bare tie');
-});
-
-test('svarer lageret at der ingen noegle er, er alt som foer - nul opsaetning bevares', async () => {
-  const b = broen(null);   // lageret svarer: ingen noegle
-  await pust();
-  b.ctx.tryConnect(9876);
-  await b.aabn();
-  await b.modtag({ id: 1, method: 'get_cookies', params: {} });
-  await pust();
-  assert.ok(b.tilBaggrund.some((m) => m && m.type === 'mcp_command'),
-    'uden noegle skal kommandoer udfoeres som altid - ellers har rettelsen lukket for alle '
-    + 'dem der ikke bruger parring');
-});
-
-/**
- * ⛔ Mutationsbevis 21/9 viste hullet: aendres baggrundens fejl-gren tilbage til
- * `{ ok: true, noegle: null }`, blev NUL proever roede. En lagerfejl ville igen se ud som
- * «ingen noegle sat», og offscreen ville aabne broen - fail-open ad bagdoeren.
- */
-test('kaster lageret, svarer baggrunden ok:false - ikke "ingen noegle"', async () => {
-  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  // Chrome afviser med et loefte; er chrome.storage helt vaek, kaster den synkront. Begge
-  // former proeves, for koden skal svare det samme aerlige ok:false paa dem begge.
-  const u = indlaesUdvidelse({ svar: { 'storage.local.get': (n) => (n === 'parringsnoegle'
-    ? Promise.reject(new Error('lager nede')) : {}) } });
-  const svar = await new Promise((ok) => {
-    for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
-  });
-  assert.equal(svar.ok, false,
-    'en lagerfejl blev meldt som et gyldigt svar - offscreen laeser det som «ingen noegle» og aabner broen');
-  assert.equal(svar.noegle, undefined, 'fejlsvaret maa ikke ogsaa baere en noegle-vaerdi');
-});
-
-test('kaster lageret SYNKRONT, svarer baggrunden stadig ok:false', async () => {
-  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
-  // ⛔ Attrappen maa kun kaste for NOEGLEN. Foerste udgave kastede paa enhver
-  // storage.local.get, ogsaa baggrundens egen session-genskabelse - og den koerer ved
-  // indlaesning uden for min try/catch. Proeven bestod alene og faldt i den samlede suite.
-  // En attrap der er bredere end virkeligheden, maaler noget andet end den siger.
-  const u = indlaesUdvidelse({ svar: { 'storage.local.get': (n) => {
-    if (n === 'parringsnoegle') throw new Error('storage findes ikke');
-    return {};
-  } } });
-  const svar = await new Promise((ok) => {
-    for (const fn of u.lyttere.get('runtime.onMessage') || []) fn({ type: 'bmcp_hent_parringsnoegle' }, {}, ok);
-  });
-  assert.equal(svar.ok, false,
-    'et synkront kast lod sendResponse uden svar - offscreen faar aldrig sin tilstand og broen staar lukket for evigt');
+  assert.ok(svar === 'intet svar' || svar?.noegle === undefined, `baggrunden udleverede noeglen: ${JSON.stringify(svar)}`);
+  await u.fyr('storage.onChanged', { parringsnoegle: { newValue: 'ny' } }, 'local');
+  assert.equal(u.optager.kald.filter((k) => k.args?.[0]?.type === 'bmcp_parringsnoegle_aendret').length, 0,
+    'baggrunden skubber stadig noegle-aendringer til offscreen');
 });

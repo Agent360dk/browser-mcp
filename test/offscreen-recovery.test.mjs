@@ -78,6 +78,8 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
     // selve arbejdet ligger i ensureOffscreenIndre. Begge skal med, ellers maaler selen en
     // anden funktion end den der koerer.
     'let offscreenIGang = null;',
+    // 26/9: koeen har faaet sin egen funktion (iOffscreenKoe) - den skal med.
+    udklip('iOffscreenKoe'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',
@@ -195,16 +197,19 @@ test('en genindlaesning tvinger altid en frisk bro - men en NY installation lukk
   // Hele haendelsen, ikke et fast antal tegn: et fast udsnit brast da reglen voksede 24/9.
   const slut = kilde.indexOf('\n});', i);
   const blok = kilde.slice(i, slut);
-  assert.match(blok, /closeDocument\(\)/,
+  // 26/9: lukningen sker nu I koeen (genbygOffscreen), aldrig direkte i haendelsen - en direkte
+  // lukning kunne ramme en opbygning der var i gang.
+  assert.match(blok, /genbygOffscreen\(\)/,
     'ved opdatering og "Genindlaes" er koden aendret, saa en overlevende bro er per definition '
-    + 'foraeldet, uanset hvad den svarer - den skal lukkes');
+    + 'foraeldet, uanset hvad den svarer - den skal lukkes og bygges igen');
+  assert.doesNotMatch(blok, /closeDocument\(\)/, 'haendelsen lukker broen uden for koeen');
 
   // ⛔ 24/9: ved en NY installation findes der ingen gammel bro. Den eneste bro er den der
   // lige er ved at blive bygget, og at lukke den efterlod broen halvdoed for en ny bruger.
   const installation = blok.indexOf("reason === 'install'");
   assert.ok(installation > -1, 'installation behandles ikke for sig - saa lukkes den nye brugers bro');
   const retur = blok.indexOf('return;', installation);
-  assert.ok(retur > -1 && retur < blok.indexOf('closeDocument()'),
+  assert.ok(retur > -1 && retur < blok.indexOf('genbygOffscreen()'),
     'installations-grenen skal vende tilbage FOER broen lukkes - ellers lukker en ny installation '
     + 'den bro den selv er ved at bygge');
   assert.match(blok, /offscreenGenskabt: 0/, 'og taelleren skal nulstilles, ellers arver den nye bro en gammel pause');

@@ -72,6 +72,8 @@ async function opretMed(lagerVaerdi) {
     // selve arbejdet ligger i ensureOffscreenIndre. Begge skal med, ellers maaler selen en
     // anden funktion end den der koerer.
     'let offscreenIGang = null;',
+    // 26/9: koeen har faaet sin egen funktion (iOffscreenKoe) - den skal med.
+    udklip('iOffscreenKoe'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',

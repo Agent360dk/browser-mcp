@@ -106,7 +106,7 @@ Neither of those was found by us. Both were found by someone reading the code an
 
 It does **not** prove what those expressions do in a real DOM - in that layer the test answers them rather than executing them. Four tools go further and run the generated expression against a hand-written document, and that is the pattern to copy. It is also how the outside finding above was reproduced: no browser, no framework, no install.
 
-`npm run flow` is the layer that runs them for real, against an actual Chrome. It cannot run in CI, and that is a limitation we would rather state than hide.
+`npm run flow` is the layer that runs them for real, against an actual Chrome. It now also runs in CI, in its own headless Chrome on a GitHub macOS runner, before a release can start. It touches all 40 tools by name; it does not exercise every behaviour of every tool, and that is a limitation we would rather state than hide.
 
 If you want to prove us wrong about a tool, the second paragraph is the cheap way in.
 

@@ -25,7 +25,12 @@ on:
         required: false
         default: ''
   # Kaldes af udgivelses-arbejdsgangen, saa en udgivelse ikke kan starte uden en groen spaerre.
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Commit/tag der testes (tom = den der udloeste koerslen). Genoptagelse sender tagget.'
+        type: string
+        default: ''
   # 25/9: INGEN stifilter. Spaerren skal kunne vaere et paakraevet tjek paa main, og et paakraevet
   # tjek der aldrig starter, staar som «Expected» for evigt - saa kan en PR der kun roerer docs
   # aldrig merges. Et filter der springer den over er en port der aldrig kan passere.
@@ -43,6 +48,8 @@ jobs:
         with:
           # Aerligheds-trinnet og docs-vagten laeser git-historik og tags.
           fetch-depth: 0
+          # Tom ved PR/dispatch (= den udloesende commit); tagget ved genoptagelse af en udgivelse.
+          ref: ${{ inputs.ref || '' }}
 
       - uses: actions/setup-node@v4
         with:

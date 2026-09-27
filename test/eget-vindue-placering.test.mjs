@@ -68,10 +68,36 @@ test('uden fokuser er vinduet ufokuseret, og svaret siger hvad det betyder', asy
     'svaret skal sige at et ufokuseret vindue ikke modtager input - ellers gentager naeste laeser maalingen fra 19/9');
 });
 
-test('et tal der ikke er et tal sendes ikke videre som position', async () => {
+test('en position der ikke kan laeses som tal, afviser vinduet - intet aabnes paa brugerens skaerm', async () => {
+  // ⛔ 26/9 (fuld review, maalt): foer blev en ugyldig position tavst udeladt, vinduet aabnede
+  // MED fokus paa Chromes standardplads - brugerens skaerm - og svaret sagde at alt var fint.
   const { u, set } = sele();
-  await naviger(u, { eget_vindue: true, vindue_x: 'venstre' });
-  assert.equal('left' in set[0], false, 'en ugyldig position skal udelades, ikke sendes til Chrome');
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: 'venstre' });
+  assert.equal(set.length, 0, 'der blev aabnet et vindue trods en ulaeselig position');
+  assert.equal(svar.ok, false);
+  assert.match(String(svar.error), /vindue_x/, 'fejlen siger ikke hvilket felt der var galt');
+});
+
+test('en position skrevet som tekst ("-1920") naar Chrome som tal', async () => {
+  const { u, set } = sele();
+  await naviger(u, { eget_vindue: true, vindue_x: '-1920', vindue_y: ' 27 ' });
+  assert.equal(set[0].left, -1920, 'en position skrevet som tekst blev tabt - klienter sender tit tal som tekst');
+  assert.equal(set[0].top, 27);
+});
+
+test('fokus uden position advarer: vinduet lander hvor Chrome vaelger, typisk foran brugeren', async () => {
+  const { u } = sele({ left: 0, top: 0, focused: true });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true });
+  assert.match(String(svar.advarsel), /no position/i,
+    'fokus uden position giver ingen advarsel - saa tager koerslen skaermen uden at sige det');
+});
+
+test('prosaen lover ikke at intet daekkes - fokus er eksklusivt', async () => {
+  const { u } = sele({ left: -3840, top: 27, focused: true });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: -3840, vindue_y: 27 });
+  assert.doesNotMatch(String(svar.note), /does not cover anyone/,
+    'noten lover at intet daekkes - men mens vinduet har fokus, lander det mennesket skriver i det');
+  assert.match(String(svar.note), /exclusive/i, 'noten siger ikke at fokus er eksklusivt');
 });
 
 /**

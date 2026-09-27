@@ -379,10 +379,19 @@ FASTE_URLS = [
 ]
 
 def _fast_dato(relsti):
+    # 26/9 (Astra, PR #31): samme fejl som git_datoer havde 21/9, bare paa de faste sider. --prepare
+    # aendrer docs/index.html (softwareVersion) og regenererer: uden denne kontrol fik forsiden sin
+    # GAMLE commitdato, og efter commit'en regenererede docs-gaten med den nye - regen-diff roed paa
+    # en kandidat prepare lige havde kaldt faerdig. En beskidt fil er aendret I DAG.
+    sti = os.path.join(REPO, relsti)
+    cwd = os.path.dirname(os.path.abspath(__file__))
     try:
-        r = subprocess.run(['git','log','-1','--format=%ad','--date=short','--',os.path.join(REPO, relsti)],
-                           capture_output=True, text=True, timeout=10,
-                           cwd=os.path.dirname(os.path.abspath(__file__)))
+        snavs = subprocess.run(['git', 'status', '--porcelain', '--', sti],
+                               capture_output=True, text=True, timeout=10, cwd=cwd)
+        if snavs.stdout.strip():
+            return TODAY
+        r = subprocess.run(['git','log','-1','--format=%ad','--date=short','--',sti],
+                           capture_output=True, text=True, timeout=10, cwd=cwd)
         return (r.stdout.strip() or TODAY)
     except Exception:
         return TODAY
