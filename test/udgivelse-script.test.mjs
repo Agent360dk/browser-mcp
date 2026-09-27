@@ -992,3 +992,36 @@ test('udgivelses-workflowet installerer med npm ci og genoptager med --genoptag'
   assert.match(wf, /flag\+=\(--genoptag\)/, 'genoptag bruger ikke scriptets --genoptag-vagter');
   assert.doesNotMatch(wf, /GENOPTAG[\s\S]{0,200}flag\+=\(--skip-cws\)/, 'genoptag springer stadig blindt butikken over');
 });
+
+test('det AEGTE trin 1: prepare lykkes, og en udgivelse bagefter aendrer intet - med scriptets shell-indstillinger', () => {
+  // ⛔ 27/9: trin 1 blev en funktion, og dens sidste kommando (`grep ... && die`) returnerede 1 i det
+  // GODE tilfaelde. Med set -e doede hver rigtig udgivelse i trin 1. Proeverne brugte en stand-in for
+  // trin 1 og kunne ikke se det; proevekoerslen mod den rigtige kode fandt det. Her koeres det AEGTE
+  // trin 1 paa repoets egen committede kode: foerst som --prepare (skriver versionen), saa som ship
+  // (skal intet have at skrive).
+  const s = script();
+  const fn = s.slice(s.indexOf('trin1() {'), s.indexOf('\n}\ntrin1\n') + 2);
+  const toolcount = s.split('\n').find((l) => l.startsWith('TOOL_COUNT='));
+  assert.ok(fn.length > 500 && toolcount, 'trin1 eller TOOL_COUNT blev ikke fundet');
+  const prep = mkdtempSync(join(tmpdir(), 'trin1-prep-'));
+  const ship = mkdtempSync(join(tmpdir(), 'trin1-ship-'));
+  const koer = (d) => spawnSync('bash', ['-c', `set -euo pipefail
+      R=''; Z=''; C=''; B=''; Y=''
+      say(){ :; }; ok(){ :; }; warn(){ :; }; die(){ echo "DIE:$*"; exit 1; }; run(){ "$@"; }
+      SHIP=1; NEW_VERSION='9.9.9'
+      cd '${d}'
+      ${toolcount}
+      ${fn}
+      trin1
+      echo TRIN1-OK`], { encoding: 'utf8' });
+  try {
+    execFileSync('bash', ['-c', `git -C '${rod}' archive HEAD | tar -x -C '${prep}'`]);
+    const r1 = koer(prep);
+    assert.match(r1.stdout, /TRIN1-OK/, `trin 1 doede som --prepare (exit ${r1.status}): ${r1.stdout}${r1.stderr}`);
+    execFileSync('bash', ['-c', `cp -R '${prep}/.' '${ship}/'`]);
+    const r2 = koer(ship);
+    assert.match(r2.stdout, /TRIN1-OK/, `trin 1 doede paa en forberedt kandidat (exit ${r2.status}): ${r2.stdout}${r2.stderr}`);
+    const diff = spawnSync('diff', ['-rq', prep, ship], { encoding: 'utf8' });
+    assert.equal(diff.stdout.trim(), '', `trin 1 aendrede en forberedt kandidat - ship ville doe paa sit eget output:\n${diff.stdout}`);
+  } finally { rmSync(prep, { recursive: true, force: true }); rmSync(ship, { recursive: true, force: true }); }
+});

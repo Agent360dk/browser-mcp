@@ -630,9 +630,13 @@ fi
 say "CHANGELOG: '## ${NEW_VERSION} (not released yet)' -> '## ${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))'"
 run perl -0pi -e "s/^## \Q${NEW_VERSION}\E \(not released yet\)\$/## ${NEW_VERSION} ($(TZ=Europe/Copenhagen date +%Y-%m-%d))/m" CHANGELOG.md
 if [[ "$SHIP" == 1 ]]; then
-  grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md \
-    && die "CHANGELOG still says '(not released yet)' for ${NEW_VERSION} - the heading moved; fix the regex"
+  # `if`, ikke `grep && die`: som sidste kommando i trin1() returnerede `&&`-listen 1 i det GODE
+  # tilfaelde, og med set -e doede hver rigtig udgivelse i trin 1 (fanget af proevekoerslen 27/9).
+  if grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md; then
+    die "CHANGELOG still says '(not released yet)' for ${NEW_VERSION} - the heading moved; fix the regex"
+  fi
 fi
+  return 0
 }
 trin1
 
