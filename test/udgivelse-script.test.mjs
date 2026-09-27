@@ -779,10 +779,12 @@ test('udgivelsen committer og skubber aldrig til main - tagget skubbes FOER buti
  * trin1 er en stand-in der goer det trin 1 goer ved en kandidat: skriver versionen, daterer CHANGELOG
  * og synker mcp-server/server.json fra roden. Ship koerer den i arbejdstraeet foer 1g, som scriptet.
  */
-function koerKandidatBlok({ ship, forberedt = true, usynk = false, beskidt = false, foranOrigin = false, trin1Fejler = false, diffKode = null }) {
+function koerKandidatBlok({ ship, forberedt = true, usynk = false, beskidt = false, foranOrigin = false, trin1Fejler = false, diffKode = null, regen = 'ens' }) {
   const s = script();
   const blok = s.slice(s.indexOf('# 1g. 26/9'), s.indexOf('\n# ── 2. Pakke-tjek'));
   assert.ok(blok.includes('declare -f trin1'), '1g koerer ikke trin 1 i en kopi - saa kan proevekoersel og ship vaere uenige');
+  assert.match(s, /^gate\(\) \{ if \[\[ "\$SHIP" == 1 \]\]; then die "\$1"; else warn /m,
+    'scriptets gate() doer ikke laengere i ship - fixturens stub spejler den ikke');
   const d = mkdtempSync(join(tmpdir(), 'kandidat-'));
   const git = (...a) => execFileSync('git', a, { cwd: d, stdio: 'pipe', env: { ...process.env,
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
@@ -794,7 +796,13 @@ function koerKandidatBlok({ ship, forberedt = true, usynk = false, beskidt = fal
     writeFileSync(join(d, 'server.json'), '{"icons": ["a.png"]}\n');
     writeFileSync(join(d, 'mcp-server/server.json'), usynk ? '{}\n' : '{"icons": ["a.png"]}\n');
     writeFileSync(join(d, 'mcp-server/index.js'), 'server();\n');
-    git('init', '-q', '-b', 'main'); git('add', 'extension', 'mcp-server', 'CHANGELOG.md', 'server.json'); git('commit', '-q', '-m', 'kandidat');
+    // En stub-generator som docs-gaten koerer: den skriver sitemappet. 'afviger' = det committede
+    // sitemap er ikke det generatoren skaber (som efter en squash); 'doer' = generatoren fejler.
+    mkdirSync(join(d, 'scripts')); mkdirSync(join(d, 'docs'));
+    writeFileSync(join(d, 'scripts/generate-docs.py'), regen === 'doer' ? 'import sys; sys.exit("generatoren doede")\n'
+      : "open('docs/sitemap.xml', 'w').write('<lastmod>2026-09-27</lastmod>\\n')\n");
+    writeFileSync(join(d, 'docs/sitemap.xml'), regen === 'afviger' ? '<lastmod>1900-01-01</lastmod>\n' : '<lastmod>2026-09-27</lastmod>\n');
+    git('init', '-q', '-b', 'main'); git('add', 'extension', 'mcp-server', 'CHANGELOG.md', 'server.json', 'scripts', 'docs'); git('commit', '-q', '-m', 'kandidat');
     const origin = d + '-origin.git';
     execFileSync('git', ['clone', '-q', '--bare', d, origin]);
     git('remote', 'add', 'origin', origin); git('fetch', '-q', 'origin');
@@ -809,7 +817,8 @@ function koerKandidatBlok({ ship, forberedt = true, usynk = false, beskidt = fal
       execFileSync('chmod', ['+x', join(shim, 'diff')]);
     }
     const skal = `set -euo pipefail
-      ok(){ echo "OK:$*"; }; gate(){ echo "GATE:$*"; }; warn(){ echo "WARN:$*"; }; say(){ :; }; die(){ echo "DIE:$*"; exit 1; }
+      # gate som scriptets egen: doer i ship, advarer i proevekoersel (linje «gate() {» i scriptet).
+      ok(){ echo "OK:$*"; }; gate(){ if [[ "$SHIP" == 1 ]]; then die "$*"; else echo "GATE:$*"; fi; }; warn(){ echo "WARN:$*"; }; say(){ :; }; die(){ echo "DIE:$*"; exit 1; }
       SHIP=${ship ? 1 : 0}; PREPARE=0; NEW_VERSION=1.30.1; BRANCH=main; REPO_ROOT='${d}'
       trin1(){
         printf '{"version": "1.30.1"}\\n' > extension/manifest.json
@@ -905,6 +914,21 @@ ${generatorLaverNyFil ? "open('docs/ny-side.html','w').write('x')" : ''}
     echo EFTER-BLOKKEN`], { encoding: 'utf8', env: { ...process.env,
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
 }
+
+test('en kandidat hvis docs/ ikke genskabes af generatoren, naar ALDRIG butikken (Astra R4)', () => {
+  // Den strukturelle docs-vagt (check-docs.py) bestaar en forkert sitemap-dato; kun regen-diff ser den.
+  const ship = koerKandidatBlok({ ship: true, regen: 'afviger' });
+  assert.equal(ship.kode, 1, ship.ud);
+  assert.match(ship.ud, /DIE:docs\/ afviger fra generatorens output paa kandidaten: .*docs\/sitemap\.xml/, ship.ud);
+  const proeve = koerKandidatBlok({ ship: false, regen: 'afviger' });
+  assert.match(proeve.ud, /GATE:docs\/ afviger fra generatorens output/, proeve.ud);
+  const doer = koerKandidatBlok({ ship: true, regen: 'doer' });
+  assert.equal(doer.kode, 1, doer.ud);
+  assert.match(doer.ud, /DIE:docs-regenereringen kunne ikke koere paa kandidaten: .*generatoren doede/, doer.ud);
+  const ok = koerKandidatBlok({ ship: true });
+  assert.match(ok.ud, /OK:docs\/ genskabes uaendret af generatoren/, ok.ud);
+  assert.equal(ok.kode, 0, ok.ud);
+});
 
 test('--prepare committer selv sit output - og en genkoersel committer intet nyt (Astra R3)', () => {
   const d = mkdtempSync(join(tmpdir(), 'prepare-commit-'));

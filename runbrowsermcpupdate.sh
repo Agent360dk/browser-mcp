@@ -722,6 +722,24 @@ else
   git merge-base --is-ancestor HEAD origin/main 2>/dev/null && ok "HEAD er paa origin/main" \
     || gate "HEAD er ikke paa origin/main - en udgivelse herfra ville blive afvist foer butikken"
 fi
+# 27/9 (Astra R4): docs-gatens regen-diff haandhaeves OGSAA her - paa den konkrete kandidat, foer
+# butikken. check-docs.py (1f) ser kun strukturen, ikke om generatoren genskaber filerne; en
+# sitemap-dato der skiftede ved en squash, slap igennem den. Koeres i en klon af HEAD: arbejdstraeet
+# roeres ikke, og generatoren faar den historik dens datoer kommer fra. Samme dom som docs-gate.yml.
+REGEN_KLON="$(mktemp -d)"; REGEN_LOG="$(mktemp)"
+if git clone -q --shared --no-checkout "$REPO_ROOT" "$REGEN_KLON" >"$REGEN_LOG" 2>&1 \
+   && git -C "$REGEN_KLON" checkout -q --detach "$(git rev-parse HEAD)" >>"$REGEN_LOG" 2>&1 \
+   && ( cd "$REGEN_KLON" && python3 scripts/generate-docs.py ) >>"$REGEN_LOG" 2>&1; then
+  REGEN_AENDRET="$(git -C "$REGEN_KLON" status --porcelain -- docs/ | tr '\n' ';')"
+  if [[ -z "$REGEN_AENDRET" ]]; then
+    ok "docs/ genskabes uaendret af generatoren paa kandidaten - samme dom som docs-gaten"
+  else
+    gate "docs/ afviger fra generatorens output paa kandidaten: ${REGEN_AENDRET} Koer generate-docs.py paa en gren, merge med en merge-commit, og udgiv derefter"
+  fi
+else
+  gate "docs-regenereringen kunne ikke koere paa kandidaten: $(tail -3 "$REGEN_LOG" | tr '\n' ' ')"
+fi
+rm -rf "$REGEN_KLON" "$REGEN_LOG"
 
 # ── 2. Pakke-tjek: starter tarballen overhovedet? ─────────────────────────────
 # MAALT 23/8: `vagt.js` blev importeret af index.js men glemt i package.json "files".
