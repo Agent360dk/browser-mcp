@@ -888,6 +888,15 @@ test('proevekoersel: ucommittede aendringer siges hoejt - ship ville stoppe paa 
   assert.match(r.ud, /GATE:arbejdstraeet har ucommittede aendringer - ship ville stoppe paa dem: .*mcp-server\/index\.js/, r.ud);
 });
 
+test('repoets EGEN .gitignore daekker Pythons cache - uden hjaelp fra en global ignore (27/9)', () => {
+  // Paa Gustavs Mac skjulte ~/.gitignore_global scripts/__pycache__/; paa GitHubs maskine gjorde intet,
+  // og udgivelsens kandidat-tjek stoppede paa den. core.excludesFile slaaes fra, saa kun repoet taeller.
+  for (const sti of ['scripts/__pycache__/generate-docs.cpython-312.pyc', 'scripts/x.pyc']) {
+    const r = spawnSync('git', ['-c', 'core.excludesFile=/dev/null', 'check-ignore', '--no-index', '-q', sti], { cwd: rod });
+    assert.equal(r.status, 0, `${sti} ignoreres ikke af repoets egen .gitignore - en frisk maskine ser den som en ucommittet fil`);
+  }
+});
+
 test('pre-flight naevner forvaltede filer der allerede er beskidte - «clean» er kun rent (27/9)', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const fra = s.indexOf('MANAGED=(');

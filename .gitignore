@@ -1,4 +1,11 @@
 node_modules/
+
+# 27/9: Pythons cache opstaar naar et script i scripts/ importerer et andet (check-docs -> generate-docs).
+# Paa Gustavs Mac skjulte ~/.gitignore_global den, saa alt saa rent ud - men paa GitHubs maskine stod
+# scripts/__pycache__/ som en ucommittet fil, og udgivelsens kandidat-tjek ville stoppe paa den.
+# Repoet maa ikke afhaenge af den enkeltes globale ignore.
+__pycache__/
+*.pyc
 .DS_Store
 *.log
 .env
