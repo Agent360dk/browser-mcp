@@ -28,12 +28,10 @@ Samme rettelse som 19/9, og af samme grund: en fil der fortæller om sin egen fo
 værd end en der ser rigtig ud. At den skulle rettes to gange på to dage er selve pointen - det
 sker hver gang noget shipper, og ingen vagt fanger det.
 
-- **Profile pairing ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)) er BYGGET.**
-  Valgfri `BROWSER_MCP_TOKEN` på serveren, og samme nøgle i udvidelsens popup under **Pairing**.
-  Uden nøgle: nul konfiguration, præcis som i dag. Med nøgle gælder den begge veje - serveren
-  afviser en udvidelse der ikke kan den, og udvidelsen udfører intet før serveren har kvitteret.
-  Specificeret af roth-arasys. Variablen hedder `BROWSER_MCP_TOKEN`, ikke `AGENT360_TOKEN`, af
-  hensyn til de to der allerede findes.
+- **Profile pairing ([#10](https://github.com/Agent360dk/browser-mcp/issues/10)) er TRUKKET TILBAGE i 1.30.1.**
+  Den blev bygget i 1.30.0 (specificeret af roth-arasys), men holdt ingen ude: nøglen blev sendt
+  til enhver server i portområdet og taget tilbage som bevis. Den kommer igen redesignet (udfordring
+  og svar, bundet til forbindelsen). Indtil da ignorerer serveren `BROWSER_MCP_TOKEN`.
 - **Hele svar-fladen er engelsk.** Beskeder, fejlkoder og feltnavne. Gammel→ny-tabel i CHANGELOG.
 
 ---

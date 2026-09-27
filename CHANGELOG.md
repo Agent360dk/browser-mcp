@@ -6,46 +6,58 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 ## 1.30.1 (not released yet)
 
-**Pairing did not work, in either direction. This release is that, and little else.**
+**Pairing is withdrawn, and a new install could get a bridge that never connected. This release
+is those two, and the faults found on the way.**
 
-1.30.0 shipped an optional pairing key so one Chrome profile takes commands from one server.
-Both halves of the promise were false, and two consultant models reading the code found it -
-not our tests, which had been written against a harness more generous than Chrome.
+**Pairing (1.30.0) is taken back.** 1.30.0 shipped an optional pairing key so one Chrome profile
+takes commands from one server. It did not work - and when we fixed that, a review measured that
+it still kept nobody out:
 
-- **The extension could never read its own key.** It looked in `chrome.storage`, and an
-  offscreen document only has `chrome.runtime`. The lookup threw, the error was swallowed, and
-  the handshake went out empty - so anyone who followed the popup's own instruction was locked
-  out for good. The service worker now reads the key and passes it over messaging, which is the
-  documented way.
-- **The key kept nobody out.** It was checked inside the `hello` branch only, so a program that
-  connected and never said hello skipped the check and could be served tool calls. The gate now
-  sits where every path goes through it.
-- **And a connection could answer a command it was never sent.** Replies were matched on the
-  command id alone, and ids count from 1, so an unpaired socket could guess one and return a
-  forged result - worse than receiving the command, because the agent then acts on data that
-  never came from the browser. Each pending command is now bound to the connection it went to.
-- **And a key that could not be fetched opened the bridge.** If the extension failed to read
-  its key - the service worker asleep, storage erroring - the gate saw no key and let every
-  server through. "Could not read" and "no key set" also looked identical. The extension now
-  knows three states: unknown, none and set. Unknown is treated as set, so nothing runs until
-  it knows, and the read retries instead of giving up.
+- The extension sent its key in the handshake to any server listening on a port in its range, and
+  accepted the same key back as proof. A program on your machine could pair itself by repeating it.
+- With only one profile paired, that profile could lock onto the other profile's server and refuse
+  every call it made.
+- The 1.30.0 extension could never read its own key (an offscreen document only has
+  `chrome.runtime`), so setting `BROWSER_MCP_TOKEN` - as the popup told you to - locked you out.
+
+A safety feature that keeps nobody out is worse than none. It is gone from the popup, the extension
+sends and requires no key (also not one 1.30.0 stored), and the server ignores `BROWSER_MCP_TOKEN`
+and says so when it starts. It will come back redesigned. **The bridge is local and
+unauthenticated:** any program running as you on the same machine can connect to it, as before 1.30.0.
+
+Kept from that work, because it holds on its own: a connection can no longer answer a command it
+was never sent. Replies were matched on the command id alone, and ids count from 1, so any socket
+could guess one and return a forged result. Each pending command is now bound to the connection
+it went to.
 
 **A new install could get a half-dead bridge, "Not connected" for good.** Three callers could
 build the bridge at the same time, and on a fresh install the install event closed it while
 another caller was still building it. The bridge then existed, reported the right ports, and
 every call to the server hung. It hit exactly the person installing today; existing installs
 never saw it. The bridge is now built one at a time, and a fresh install no longer closes it.
+"Reconnect" and extension updates close and rebuild it in the same queue, so they cannot close a
+bridge halfway through loading. Known limit: if Chrome ever leaves a build hanging, both the
+heartbeat and "Reconnect" wait behind it, and recovery is not guaranteed - an attached debugger
+keeps the extension's background worker alive. Reloading the extension in chrome://extensions
+clears it.
+
+**Four characters could stop the server.** The text `null` is valid JSON; the next line read
+`msg.type`, and the process died. Any program on the machine could send it without saying hello.
+Only objects are treated as messages now, on both sides of the bridge.
 
 **One hanging probe could stop the extension finding servers until Chrome restarted.** The
 scan lock was released in `finally`, which never runs if a probe never settles - and Chrome can
-freeze an offscreen document mid-probe. The lock is now released after 15 seconds regardless,
-and a port with a call still in the air is not probed again, so the valve cannot stack
-connections until Chrome's per-host limit is used up.
+freeze an offscreen document mid-probe. The lock is now released after 15 seconds (counted from
+when the document runs again, if Chrome froze it), and a port with a call still in the air is not
+probed again, so the valve cannot stack connections until Chrome's per-host limit is used up. Known
+limit: a port whose old call never settles stays skipped until that call ends.
 
 **`eget_vindue` can place its window.** `vindue_x`, `vindue_y`, `vindue_bredde` and
-`vindue_hoejde` position the new window, and `fokuser` asks Chrome to give it focus. On a
-machine with more than one screen, that is how a run gets keyboard input without covering the
-person's work. Chrome often refuses focus, which is why the reply below matters.
+`vindue_hoejde` position the new window, and `fokuser` asks Chrome to give it focus. Chrome often
+refuses. When it does give focus, it is exclusive: whatever the person types goes to that window,
+even on another display - use it only on a machine nobody is typing on. A position that is not a
+number now refuses to open the window instead of letting Chrome put it in front of you (text such
+as `"-1920"` is read as a number), and focus without a position warns.
 
 **`eget_vindue` reported what it was asked for.** It answered `fokuseret: true` when Chrome had
 refused focus, and gave back the coordinates we requested rather than where the window landed.
@@ -57,21 +69,11 @@ they match, and a warning when they do not.
 in the same file already did. See the retraction on /learn/tools-that-lie - this was a
 precaution, not a fix for a bug we could reproduce in React.
 
+**Node:** the package now asks for Node 20 or newer - the versions it is tested on (20, 22, 24).
+It said 18, which was never tested.
+
 **Credited:** @DorianChn moved the two select suites onto one shared page model (#28), so a
 change to what the extension reads from the page lands in both tests instead of one.
-
-⛔ **What the key protects against, and what it does not.** It stops another program on your
-machine from driving your browser through the bridge - that was the hole, and it is closed. It
-does **not** hide the key from that program: `BROWSER_MCP_TOKEN` is an environment variable, and
-any process running as you can read it out of the process table with `ps eww`. The popup even asks
-you to type it on a command line, so it lands in your shell history too. Treat it as a way to keep
-two Chrome profiles from taking each other's commands, not as a secret. 1.30.0's note that a paired
-profile *"ignores any other program that connects to the local bridge"* is true of a program that
-connects and asks; it is not true of one that goes looking.
-
-⚠️ **Pairing needs both halves.** The server ships on npm, and npm also refreshes the extension
-in `~/.browser-mcp`. If you installed from the Chrome Web Store, pairing starts working when
-Google approves the new extension - until then, treat it as absent rather than as protection.
 
 ## 1.30.0 (2026-09-20)
 
@@ -140,9 +142,9 @@ these tools answer with, exactly one family is genuinely outside the browser.
 > program that connected and never said hello skipped the check entirely and could be served
 > tool calls. That is precisely the hole the feature was built to close.
 >
-> Both halves are fixed on `main`. **Pairing works only once both are out** - the server half
-> ships through npm, the extension half only when the Chrome Web Store approves it. Until then,
-> treat pairing as not present rather than as protection.
+> ⛔ **Withdrawn in 1.30.1.** A later review measured that even with both halves fixed, the key kept
+> nobody out (it was sent to any server in the port range and accepted back as proof). Pairing is
+> gone from the popup, the extension and the server; see 1.30.1.
 
 Set `BROWSER_MCP_TOKEN` on the server and type the same key into the extension's popup,
 and that profile only takes commands from that server - and ignores any other program

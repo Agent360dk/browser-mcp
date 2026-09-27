@@ -69,8 +69,6 @@ If you copy a config from a Claude Code or Cursor guide, this is the line that b
 
 **The badge stays grey until you ask for something.** The server only takes a port the first time real work arrives. Ask for a screenshot and it appears.
 
-**`environment` if you need the pairing key.** Running two Chrome profiles with an agent in each? Add `"environment": { "BROWSER_MCP_TOKEN": "your-key" }` and type the same key in the extension popup under **Pairing**. Leave it out otherwise.
-
 ## Frequently asked questions
 
 **Global or per project?**
