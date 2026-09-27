@@ -12,7 +12,18 @@ name: spaerre
 # i nyere Ubuntu og er langsommere, og spaerren har forbigaaende opstartsfejl der bliver VAERRE
 # paa en langsommere maskine. Repoet er offentligt, saa Mac-maskinerne koster intet.
 on:
-  workflow_dispatch: {}
+  # 26/9: haandkoersel kan maale det der ER udgivet (kriterie 1): butikkens udvidelse og/eller
+  # npm-serveren i en given version. Tom = kandidatens egen kode, som ved PR og udgivelse.
+  workflow_dispatch:
+    inputs:
+      udvidelse_fra_butik:
+        description: 'Version fra Chrome Web Store, fx 1.30.1 (tom = repoets udvidelse)'
+        required: false
+        default: ''
+      server_fra_npm:
+        description: 'Version fra npm, fx 1.30.1 (tom = repoets server)'
+        required: false
+        default: ''
   # Kaldes af udgivelses-arbejdsgangen, saa en udgivelse ikke kan starte uden en groen spaerre.
   workflow_call:
     inputs:
@@ -54,17 +65,57 @@ jobs:
           path: chrome
           key: cft-${{ runner.os }}-${{ runner.arch }}-stable
 
+      - name: hent det udgivne (kun ved haandkoersel med version)
+        id: hent
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.udvidelse_fra_butik != '' || inputs.server_fra_npm != '') }}
+        env:
+          UDVIDELSE: ${{ inputs.udvidelse_fra_butik }}
+          SERVER: ${{ inputs.server_fra_npm }}
+        run: |
+          git fetch -q --tags origin
+          # Til trinnets OUTPUTS, ikke $GITHUB_ENV: spaerretrinnet laeser kun dette trins beviste stier (Astra 27/9).
+          python3 scripts/hent-udgivet.py --udvidelse "$UDVIDELSE" --server "$SERVER" --ud "$RUNNER_TEMP/udgivet" >> "$GITHUB_OUTPUT"
+
       - name: spaerren, isoleret
+        # ⛔ 27/9 (Astra, PR #32 R2): uden `shell:` koerer GitHub `bash -e` UDEN pipefail, saa
+        # `node ... | tee` fik tee's exitkode. Et flow med 1 FEJL og fuld daekning blev groent,
+        # fordi flow_daekning_ok kun ser daekning, oversprungne og ugyldige maalinger.
+        # `shell: bash` = `bash --noprofile --norc -eo pipefail {0}`.
+        shell: bash
+        env:
+          # Sat EKSPLICIT paa trinnet fra hent-trinnets outputs - tomme naar det ikke koerte. Et arvet
+          # UDGIVET_* i miljoeet kan derfor ikke genaktivere en fremmed kandidat (Astra 27/9).
+          UDGIVET_UDVIDELSE: ${{ steps.hent.outputs.UDGIVET_UDVIDELSE }}
+          UDGIVET_SERVER: ${{ steps.hent.outputs.UDGIVET_SERVER }}
         run: |
           . scripts/flow-daekning.sh
           flow_nulstil_arv
-          node scripts/flow-isoleret.mjs --spaerre 2>&1 | tee spaerre.log
-          # Samme dom som udgivelses-scriptet - ét sted, ikke en kopi.
+          # Det udgivne saettes EFTER nulstillingen og kun fra hent-trinnets egne, beviste stier.
+          [[ -n "${UDGIVET_UDVIDELSE:-}" ]] && export BMCP_UDVIDELSE_KILDE="$UDGIVET_UDVIDELSE"
+          [[ -n "${UDGIVET_SERVER:-}" ]] && export BMCP_SERVER_INDEX="$UDGIVET_SERVER"
+          echo "udvidelse: ${BMCP_UDVIDELSE_KILDE:-repoets} · server: ${BMCP_SERVER_INDEX:-repoets}"
+          # Exitkoden fanges (ikke -e's straks-stop), saa daekningsdommen stadig skrives foer roedt.
+          if node scripts/flow-isoleret.mjs --spaerre 2>&1 | tee spaerre.log; then FLOW_KODE=0; else FLOW_KODE=$?; fi
           if ! grund="$(flow_daekning_ok spaerre.log)"; then
             echo "::error::flow-spaerren daekkede ikke alt: $grund"
             exit 1
           fi
+          # Daekningen er ikke hele dommen: flowet selv svarer 1 ved FEJL eller fejlede fane-skift, 3 hvis
+          # selen kastede. Udgivelses-scriptet taeller FEJL-listen; her er flowets eget svar dommen.
+          if [[ "$FLOW_KODE" != 0 ]]; then
+            echo "::error::flow-spaerren endte med exit $FLOW_KODE: $(sed -n '/^FEJL:/,/^====/p' spaerre.log | sed -n '2,4p' | tr '\n' ' ')"
+            exit 1
+          fi
           grep -m1 '^DAEKNING:' spaerre.log
+          # Loggen skal BEVISE at det udgivne blev maalt - ikke kun at variablen var sat.
+          if [[ -n "${UDGIVET_UDVIDELSE:-}" ]] && ! grep -qxF "MAALT-UDVIDELSE: $UDGIVET_UDVIDELSE" spaerre.log; then
+            echo "::error::spaerren maalte ikke butikkens udvidelse ($UDGIVET_UDVIDELSE)"; exit 1
+          fi
+          if [[ -n "${UDGIVET_SERVER:-}" ]]; then
+            for maerke in MAALT-SERVER FLOW-SERVER; do
+              grep -qxF "$maerke: $UDGIVET_SERVER" spaerre.log || { echo "::error::$maerke er ikke npm-serveren ($UDGIVET_SERVER)"; exit 1; }
+            done
+          fi
 
       - name: gem loggen
         if: always()
