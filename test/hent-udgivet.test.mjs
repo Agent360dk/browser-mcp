@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
+// 27/9: hent-udgivet.py koerer kun i spaerre.yml paa macos-latest. Paa Windows finder Python `npm.cmd`
+// i stedet for proevens falske npm, og npm-linket er ikke en symlink der kan koeres - miljoe, ikke kode.
+const KUN_MACOS = process.platform === 'win32' && 'hent-udgivet.py koerer kun paa macOS (spaerre.yml)';
 const py = (kode) => execFileSync('python3', ['-c', `import importlib.util, sys, json
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
@@ -154,7 +157,7 @@ print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: '
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 
-test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - ikke index.js (Astra 27/9)', () => {
+test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - ikke index.js (Astra 27/9)', { skip: KUN_MACOS }, () => {
   const god = koerHentServer();
   assert.equal(god.status, 0, god.stderr);
   assert.match(god.stdout.trim(), /node_modules\/@agent360\/browser-mcp\/bin\/cli\.js$/, 'spaerren faar ikke brugerindgangen - saa proeves npx-vejen ikke');
