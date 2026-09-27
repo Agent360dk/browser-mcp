@@ -759,7 +759,9 @@ test('udgivelsen committer og skubber aldrig til main - tagget skubbes FOER buti
     assert.doesNotMatch(blok, moenster, `udgivelsen ${hvad} - main kraever tjek som udgivelsens noegle ikke kan springe over`);
   }
   assert.match(kodeLinjer(s.slice(tag, butik)), /run git push origin "v\$\{NEW_VERSION\}"/, 'tagget skubbes ikke foer butikken');
-});test('README-datoen flyttes ikke naar versionen allerede staar der - et forberedt traee forbliver rent', () => {
+});
+
+test('README-datoen flyttes ikke naar versionen allerede staar der - et forberedt traee forbliver rent', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const linje = s.split('\n').find((l) => l.includes('run perl') && l.includes('latest release v'));
   assert.ok(linje, 'README-daten-linjen blev ikke fundet');
