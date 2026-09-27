@@ -139,6 +139,11 @@ BRANCH="$(git branch --show-current)"
 if [[ "$PREPARE" == 1 ]]; then
   [[ "$BRANCH" != "main" ]] || die "--prepare laves paa en gren, ikke paa main - versionen skal gennem en PR med alle tjek"
   ok "on branch $BRANCH (prepare)"
+elif [[ "$GENOPTAG" == 1 ]]; then
+  # 27/9 (Astra R3): genoptagelse koerer paa den TAGGEDE commit (workflowet checker v<version> ud),
+  # ikke paa main's spids - main kan have flyttet sig siden butikken fik kandidaten. Tagget skal
+  # pege paa HEAD, og HEAD skal ligge paa origin/main; begge dele kontrolleres nedenfor.
+  ok "genoptag: koerer paa $(git rev-parse --short HEAD) - tag og origin/main kontrolleres"
 else
   [[ "$BRANCH" == "main" ]] || die "on branch '$BRANCH' - releases ship from 'main'"
   ok "on branch main"
@@ -663,9 +668,19 @@ fi
 #     og udgivelsen skal aldrig selv committe eller skubbe til main.
 if [[ "$PREPARE" == 1 ]]; then
   python3 "$REPO_ROOT/scripts/generate-docs.py" >/dev/null || die "generate-docs.py fejlede"
-  ok "kandidaten v${NEW_VERSION} er skrevet paa grenen '$BRANCH' - intet er udgivet"
-  git status --short
-  say "naeste: commit filerne ovenfor NU (samme dag - sitemappets dato foelger commit-dagen), aabn en PR mod main, lad tjekkene koere, merge samme dag - og udgiv derefter fra main"
+  # 27/9 (Astra R3): prepare COMMITTER selv. Sitemappets dato for en beskidt fil er «i dag», og for
+  # en ren fil forfatterdatoen - committes det i samme oejeblik, er de to den samme dag, uanset
+  # hvornaar PR'en merges (merge med en merge-commit, ikke squash; amend ikke commit'en).
+  # Traeet var rent foer prepare (pre-flight), saa alt der er aendret nu, er prepares eget output.
+  git add -u
+  if git diff --cached --quiet; then
+    ok "kandidaten v${NEW_VERSION} var allerede forberedt paa '$BRANCH' - intet at committe"
+  else
+    git commit -q -m "release: forbered v${NEW_VERSION}" || die "kunne ikke committe prepares output"
+    ok "kandidaten v${NEW_VERSION} er committet paa '$BRANCH' ($(git rev-parse --short HEAD)) - intet er udgivet"
+  fi
+  [[ -z "$(git status --porcelain)" ]] || { git status --short; die "prepare efterlod filer uden for commit'en"; }
+  say "naeste: skub grenen, aabn en PR mod main, lad tjekkene koere, merge med en merge-commit - og udgiv derefter fra main"
   exit 0
 fi
 git fetch -q origin main 2>/dev/null || true
@@ -683,17 +698,27 @@ else
   # praecis det ship goer i arbejdstraeet - saa kan de aldrig vaere uenige (Astra 26/9, to runder).
   [[ -z "$(git status --porcelain)" ]] && ok "arbejdstraeet er rent" \
     || gate "arbejdstraeet har ucommittede aendringer - ship ville stoppe paa dem"
-  FOER="$(mktemp -d)"; EFTER="$(mktemp -d)"
+  FOER="$(mktemp -d)"; EFTER="$(mktemp -d)"; TRIN1_LOG="$(mktemp)"; DIFF_UD="$(mktemp)"
   git archive HEAD | tar -x -C "$FOER"; git archive HEAD | tar -x -C "$EFTER"
-  if ( cd "$EFTER" && SHIP=1 trin1 ) >/dev/null 2>&1; then
-    # `|| true`: diff svarer 1 NETOP naar der er forskelle, og med pipefail stoppede hele koerslen her.
-    AENDRET="$(diff -rq "$FOER" "$EFTER" 2>/dev/null | sed -e "s#$FOER/##g" -e "s#$EFTER/##g" | tr '\n' ';' || true)"
-    if [[ -z "$AENDRET" ]]; then ok "kandidaten v${NEW_VERSION} er forberedt - trin 1 aendrer intet i den committede kode"
-    else gate "kandidaten er ikke forberedt - trin 1 ville aendre: ${AENDRET} Koer --prepare paa en gren og merge PR'en"; fi
+  # 27/9 (Astra R3): trin 1 koeres i en SELVSTAENDIG bash med set -euo pipefail. Kaldt inde i en
+  # `if` ophaevede bash fejlstoppet inde i funktionen: en fejlet kommando fortsatte til `return 0`,
+  # og proevekoerslen meldte groent, hvor ship doede.
+  if ( cd "$EFTER" && SHIP=1 NEW_VERSION="$NEW_VERSION" TOOL_COUNT="${TOOL_COUNT:-}" \
+       bash -c "set -euo pipefail; R=''; G=''; Y=''; C=''; B=''; Z=''
+                $(declare -f trin1 run say ok warn die 2>/dev/null || true)
+                trin1" ) >"$TRIN1_LOG" 2>&1; then
+    # diff'ens svar bevares: 0 = ens, 1 = forskelle, alt andet = kunne ikke sammenligne (Astra R3).
+    if diff -rq "$FOER" "$EFTER" >"$DIFF_UD" 2>&1; then DIFF_KODE=0; else DIFF_KODE=$?; fi
+    case "$DIFF_KODE" in
+      0) ok "kandidaten v${NEW_VERSION} er forberedt - trin 1 aendrer intet i den committede kode" ;;
+      1) AENDRET="$(sed -e "s#$FOER/##g" -e "s#$EFTER/##g" "$DIFF_UD" | tr '\n' ';')"
+         gate "kandidaten er ikke forberedt - trin 1 ville aendre: ${AENDRET} Koer --prepare paa en gren og merge PR'en" ;;
+      *) gate "kandidaten kunne ikke efterproeves - diff svarede ${DIFF_KODE}: $(tail -2 "$DIFF_UD" | tr '\n' ' ')" ;;
+    esac
   else
-    gate "trin 1 fejlede i en kopi af den committede kode - ship ville ogsaa fejle"
+    gate "trin 1 fejlede i en kopi af den committede kode - ship ville ogsaa fejle: $(tail -3 "$TRIN1_LOG" | tr '\n' ' ')"
   fi
-  rm -rf "$FOER" "$EFTER"
+  rm -rf "$FOER" "$EFTER" "$TRIN1_LOG" "$DIFF_UD"
   git merge-base --is-ancestor HEAD origin/main 2>/dev/null && ok "HEAD er paa origin/main" \
     || gate "HEAD er ikke paa origin/main - en udgivelse herfra ville blive afvist foer butikken"
 fi
