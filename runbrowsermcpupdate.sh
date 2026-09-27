@@ -535,12 +535,26 @@ if [[ -z "$SENESTE_AERLIGHED" ]]; then
   gate "der findes intet aerligheds-resultat i test/aerlighed/. Koer: node test/aerlighed/maal.mjs"
 else
   # Sammenlign resultatets alder med den nyeste aendring i det maalingen faktisk daekker.
-  KODE_AENDRET="$(git log -1 --format=%ct -- extension/background.js extension/offscreen.js mcp-server/tools.js 2>/dev/null || echo 0)"
-  RESULTAT_SKREVET="$(git log -1 --format=%ct -- "$SENESTE_AERLIGHED" 2>/dev/null || echo 0)"
-  if [[ "$RESULTAT_SKREVET" -lt "$KODE_AENDRET" ]]; then
-    gate "aerligheds-resultatet ($(basename "$SENESTE_AERLIGHED")) er AELDRE end den kode der udgives. Koer: node test/aerlighed/maal.mjs --kun os  - eller udgiv med --skip-aerlighed og skriv hvorfor"
+  # 27/9: her stod en DATO-sammenligning. Et resultat med en LOEGN i - eller maalt paa en anden kode -
+  # slap igennem, bare filen var nyere end koden. Nu laeses maalingens egne linjer (maal.mjs skriver dem):
+  # dommen skal vaere «0 LOEGN», og den maalte commit skal have PRAECIS den kode der udgives, i de filer
+  # der bestemmer hvad vaerktoejerne svarer (udvidelsen, vaerktoejslisten og serveren der formidler svaret).
+  AERLIGHED_FILER=(extension/background.js extension/offscreen.js mcp-server/tools.js mcp-server/index.js)
+  MAALT_COMMIT="$(sed -n 's/^MAALT-COMMIT: *\([0-9a-f]\{7,40\}\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
+  AERLIGHED_DOM="$(sed -n 's/^AERLIGHED-DOM: *\(.*[^ ]\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
+  KOER_IGEN="Koer: AERLIGHED_MED_OS=1 node scripts/flow-isoleret.mjs --koer test/aerlighed/maal.mjs --kun os, og kopier MAALT-COMMIT og AERLIGHED-DOM ind i en ny RESULTAT-fil"
+  if [[ -z "$MAALT_COMMIT" || -z "$AERLIGHED_DOM" ]]; then
+    gate "aerligheds-resultatet ($(basename "$SENESTE_AERLIGHED")) har ingen MAALT-COMMIT/AERLIGHED-DOM - udgivelsen kan ikke se hvad der blev maalt. $KOER_IGEN"
+  elif [[ "$AERLIGHED_DOM" != "0 LOEGN" ]]; then
+    gate "aerligheds-maalingen af vores eget vaerktoej siger «${AERLIGHED_DOM}» ($(basename "$SENESTE_AERLIGHED")) - vi udgiver ikke en loegn om os selv"
+  elif ! git cat-file -e "${MAALT_COMMIT}^{commit}" 2>/dev/null; then
+    gate "den maalte commit ${MAALT_COMMIT} findes ikke i repoet - resultatet kan ikke bindes til koden. $KOER_IGEN"
+  elif ! AERLIGHED_FORSKEL="$(git diff --name-only "$MAALT_COMMIT" HEAD -- "${AERLIGHED_FILER[@]}" 2>&1)"; then
+    gate "kunne ikke sammenligne den maalte kode med den der udgives: ${AERLIGHED_FORSKEL}"
+  elif [[ -n "$AERLIGHED_FORSKEL" ]]; then
+    gate "aerligheds-maalingen gaelder ${MAALT_COMMIT:0:7}, men koden er aendret siden: $(printf '%s' "$AERLIGHED_FORSKEL" | tr '\n' ' ')- $KOER_IGEN"
   else
-    ok "aerligheds-resultatet er nyere end koden det daekker: $(basename "$SENESTE_AERLIGHED")"
+    ok "aerligheds-maalingen gaelder den kode der udgives: 0 LOEGN, maalt paa ${MAALT_COMMIT:0:7} ($(basename "$SENESTE_AERLIGHED"))"
   fi
 fi
 fi
