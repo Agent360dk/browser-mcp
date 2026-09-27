@@ -18,6 +18,13 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execFileSync } from 'node:child_process';
 
+
+// 27/9: prøver der KØRER udgivelses-scriptets shell, springes over paa Windows. Scriptet koerer kun
+// paa macOS/Linux (udgivelse.yml: macos-latest; Gustavs Mac), og paa Windows fejlede de paa miljoeet
+// (perl -i paa tvaers af drev, CRLF i checkouten) - ikke paa koden. Stoej i Windows-jobbet har foer
+// skjult en AEGTE Windows-fejl (se bin/cli.js, koerKlient), saa det job skal kun vaere roedt paa det
+// der faktisk koerer paa Windows.
+const POSIX_SKRIPT = process.platform === 'win32' && 'runbrowsermcpupdate.sh koerer kun paa macOS/Linux';
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const roegtest = join(rod, 'scripts/pakke-roegtest.mjs');
 const script = () => readFileSync(join(rod, 'runbrowsermcpupdate.sh'), 'utf8');
@@ -137,7 +144,7 @@ test('pakketjek: pakken koeres med et midlertidigt hjem, ikke brugerens', () => 
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
-test('release-scriptet bruger pakketjekket og ikke log-linjen', () => {
+test('release-scriptet bruger pakketjekket og ikke log-linjen', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   assert.match(s, /node "\$REPO_ROOT\/scripts\/pakke-roegtest\.mjs" "\$SMOKE_DIR\/package"/,
     'release-scriptet kalder ikke pakketjekket');
@@ -164,7 +171,7 @@ test('versionstjek: samme version som npm genoptager en halv udgivelse', () => {
   assert.deepEqual(tjek('1.29.1', '1.29.1'), { status: 0, ud: 'genoptag' });
 });
 
-test('versionstjek: en aeldre version stopper', () => {
+test('versionstjek: en aeldre version stopper', { skip: POSIX_SKRIPT }, () => {
   assert.notEqual(tjek('1.29.0', '1.29.1').status, 0);
   assert.notEqual(tjek('1.9.0', '1.10.0').status, 0);
 });
@@ -199,7 +206,7 @@ test('genoptag: intet tag for versionen -> stop', () => {
   assert.notEqual(genoptagTjek(() => {}), 0);
 });
 
-test('release-scriptet koerer genoptag-tjekket naar versionen allerede er paa npm', () => {
+test('release-scriptet koerer genoptag-tjekket naar versionen allerede er paa npm', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const i = s.indexOf('if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then');
   assert.ok(i > -1);
@@ -236,7 +243,7 @@ test('ny udgivelse hvor tagget peger paa en AELDRE commit: stop', () => {
   assert.notEqual(nyTagTjek((git) => { git('tag', 'v1.29.1'); git('commit', '-q', '--allow-empty', '-m', 'ny kode'); }), 0);
 });
 
-test('release-scriptet koerer ny_tag_tjek paa ny-vejen', () => {
+test('release-scriptet koerer ny_tag_tjek paa ny-vejen', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const i = s.indexOf('if [[ "$VERSIONS_TILSTAND" == genoptag ]]; then');
   assert.ok(i > -1);
@@ -446,7 +453,7 @@ function skipGrenen() {
   return `${k.slice(start, slut)}\nfi`;
 }
 
-test('--skip-flow giver fritagelsen videre til butikstrinnet i stedet for at draebe det', () => {
+test('--skip-flow giver fritagelsen videre til butikstrinnet i stedet for at draebe det', { skip: POSIX_SKRIPT }, () => {
   const gren = skipGrenen().replace(/^\s*warn .*$/m, ':');
   const r = spawnSync('bash', ['-c', `set -eu\nSKIP_FLOW=1\n${gren}\nprintenv SPRING_FLOW_OVER || echo TOM`], {
     encoding: 'utf8', env: { PATH: process.env.PATH },
@@ -501,7 +508,7 @@ function flowBeslutningen() {
   return `${linjer.slice(0, iElse + 1).join('\n')}\n  echo KOERER_TESTEN\nfi`;
 }
 
-test('butikstrinnet alene koerer stadig flow-spaerren - beviset kommer kun fra trin 2b', () => {
+test('butikstrinnet alene koerer stadig flow-spaerren - beviset kommer kun fra trin 2b', { skip: POSIX_SKRIPT }, () => {
   const kaede = flowBeslutningen();
   const koer = (env) => {
     const r = spawnSync('bash', ['-c', `set -eu\n${kaede}`], { encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
@@ -562,7 +569,7 @@ test('hver fil trin 1 skriver i, er forvaltet - og udgivelsen kraever dem rene',
 //
 // npm udleverer ikke et tokens udloeb, saa den eneste kilde er kommentaren i .env.
 // Det er skroebeligt, og derfor siger advarslen ogsaa hvor tallet kommer fra.
-test('pre-flight regner dage til npm-noeglens udloeb ud af .env', () => {
+test('pre-flight regner dage til npm-noeglens udloeb ud af .env', { skip: POSIX_SKRIPT }, () => {
   const fn = script().slice(script().indexOf('dage_til_udloeb()'));
   const krop = fn.slice(0, fn.indexOf('\n}') + 2);
   assert.ok(krop.includes('expires'), 'funktionen leder ikke efter udloebs-datoen');
@@ -598,7 +605,7 @@ test('pre-flight siger fra naar noeglen er ved at udloebe', () => {
   assert.match(blok, /gate /, 'en udloebet noegle giver kun en advarsel, ikke en spaerre');
 });
 
-test('det kolde tjek maa ikke doe paa en tom timeout-array', () => {
+test('det kolde tjek maa ikke doe paa en tom timeout-array', { skip: POSIX_SKRIPT }, () => {
   // MAALT 19/9 under udgivelsen af 1.29.2: maskinen har ingen timeout(1), saa TIMEOUT_CMD
   // blev en TOM array - og "${TIMEOUT_CMD[@]}" fejler med "unbound variable" under `set -u`
   // paa macOS' bash 3.2, hvor tom og usat er samme ting. Seks forsoeg, seks syntaksfejl, og
@@ -709,7 +716,7 @@ test('release-scriptet spoerger npm FOER butikken, og kun naar det udgiver', () 
   assert.match(s.slice(tjek, tjek + 400), /\|\| die "npm afviser/);
 });
 
-test('release-scriptet koerer docs-vagten foer butikken og stopper paa roedt', () => {
+test('release-scriptet koerer docs-vagten foer butikken og stopper paa roedt', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const fra = s.indexOf('# 1f.');
   // Kun 1f: fra 26/9 ligger 1g (kandidat-tjekket) imellem og har sine egne proever.
@@ -737,7 +744,7 @@ test('release-scriptet koerer docs-vagten foer butikken og stopper paa roedt', (
 
 const kodeLinjer = (tekst) => tekst.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
 
-test('udgivelsen committer og skubber aldrig til main - tagget skubbes FOER butikken', () => {
+test('udgivelsen committer og skubber aldrig til main - tagget skubbes FOER butikken', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const pakke = s.indexOf('step "2. Pakke-tjek');
   const tag = s.indexOf('step "2d. Tag');
@@ -837,31 +844,31 @@ function koerKandidatBlok({ ship, forberedt = true, usynk = false, beskidt = fal
   }
 }
 
-test('ship: en forberedt, merget kandidat gaar videre', () => {
+test('ship: en forberedt, merget kandidat gaar videre', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: true });
   assert.equal(r.kode, 0, r.ud);
   assert.match(r.ud, /OK:kandidaten er forberedt og merget/);
 });
 
-test('ship: et beskidt traee stopper foer butikken', () => {
+test('ship: et beskidt traee stopper foer butikken', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: true, beskidt: true });
   assert.equal(r.kode, 1, r.ud);
   assert.match(r.ud, /DIE:kandidaten er ikke forberedt: trin 1 aendrede/);
 });
 
-test('ship: en committet men uforberedt kandidat stopper - trin 1 aendrer den', () => {
+test('ship: en committet men uforberedt kandidat stopper - trin 1 aendrer den', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: true, forberedt: false });
   assert.equal(r.kode, 1, r.ud);
   assert.match(r.ud, /DIE:kandidaten er ikke forberedt: trin 1 aendrede/);
 });
 
-test('ship: en commit der ikke er paa origin/main stopper FOER butikken', () => {
+test('ship: en commit der ikke er paa origin/main stopper FOER butikken', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: true, foranOrigin: true });
   assert.equal(r.kode, 1, r.ud);
   assert.match(r.ud, /DIE:HEAD er ikke paa origin\/main/);
 });
 
-test('proevekoersel: koerer trin 1 i en kopi og siger hvad den ville aendre - ogsaa en usynket server.json', () => {
+test('proevekoersel: koerer trin 1 i en kopi og siger hvad den ville aendre - ogsaa en usynket server.json', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: false, forberedt: false });
   assert.match(r.ud, /GATE:kandidaten er ikke forberedt - trin 1 ville aendre: .*manifest\.json/, r.ud);
   assert.doesNotMatch(r.ud, /OK:kandidaten v1\.30\.1 er forberedt/);
@@ -873,12 +880,12 @@ test('proevekoersel: koerer trin 1 i en kopi og siger hvad den ville aendre - og
   assert.match(ok.ud, /OK:arbejdstraeet er rent/, ok.ud);
 });
 
-test('proevekoersel: ucommittede aendringer siges hoejt - ship ville stoppe paa dem', () => {
+test('proevekoersel: ucommittede aendringer siges hoejt - ship ville stoppe paa dem', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: false, beskidt: true });
   assert.match(r.ud, /GATE:arbejdstraeet har ucommittede aendringer/, r.ud);
 });
 
-test('proevekoersel: et trin 1 der fejler MIDT I kaldes ikke forberedt (Astra R3)', () => {
+test('proevekoersel: et trin 1 der fejler MIDT I kaldes ikke forberedt (Astra R3)', { skip: POSIX_SKRIPT }, () => {
   // ⛔ 27/9: trin 1 blev kaldt inde i en `if`, og dér slaar bash fejlstoppet fra - ogsaa inde i
   // funktionen. En fejlet kommando fortsatte til `return 0`, og proevekoerslen meldte groent.
   const r = koerKandidatBlok({ ship: false, trin1Fejler: true });
@@ -887,7 +894,7 @@ test('proevekoersel: et trin 1 der fejler MIDT I kaldes ikke forberedt (Astra R3
   assert.doesNotMatch(r.ud, /SKULLE-IKKE-KOERE/, 'trin 1 fortsatte efter en fejlet kommando');
 });
 
-test('proevekoersel: en diff der ikke kan sammenligne er ikke «ens» (Astra R3)', () => {
+test('proevekoersel: en diff der ikke kan sammenligne er ikke «ens» (Astra R3)', { skip: POSIX_SKRIPT }, () => {
   const r = koerKandidatBlok({ ship: false, diffKode: 2 });
   assert.match(r.ud, /GATE:kandidaten kunne ikke efterproeves - diff svarede 2/, r.ud);
   assert.doesNotMatch(r.ud, /OK:kandidaten v1\.30\.1 er forberedt/, 'en diff-fejl blev kaldt en forberedt kandidat');
@@ -915,7 +922,7 @@ ${generatorLaverNyFil ? "open('docs/ny-side.html','w').write('x')" : ''}
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
 }
 
-test('en kandidat hvis docs/ ikke genskabes af generatoren, naar ALDRIG butikken (Astra R4)', () => {
+test('en kandidat hvis docs/ ikke genskabes af generatoren, naar ALDRIG butikken (Astra R4)', { skip: POSIX_SKRIPT }, () => {
   // Den strukturelle docs-vagt (check-docs.py) bestaar en forkert sitemap-dato; kun regen-diff ser den.
   const ship = koerKandidatBlok({ ship: true, regen: 'afviger' });
   assert.equal(ship.kode, 1, ship.ud);
@@ -930,7 +937,7 @@ test('en kandidat hvis docs/ ikke genskabes af generatoren, naar ALDRIG butikken
   assert.equal(ok.kode, 0, ok.ud);
 });
 
-test('--prepare committer selv sit output - og en genkoersel committer intet nyt (Astra R3)', () => {
+test('--prepare committer selv sit output - og en genkoersel committer intet nyt (Astra R3)', { skip: POSIX_SKRIPT }, () => {
   const d = mkdtempSync(join(tmpdir(), 'prepare-commit-'));
   const git = (...a) => execFileSync('git', a, { cwd: d, encoding: 'utf8', env: { ...process.env,
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
@@ -959,7 +966,7 @@ test('--prepare committer selv sit output - og en genkoersel committer intet nyt
   } finally { rmSync(d, { recursive: true, force: true }); rmSync(d + '-rod', { recursive: true, force: true }); }
 });
 
-test('--genoptag koerer paa den taggede commit (detached) - en almindelig udgivelse kraever stadig main', () => {
+test('--genoptag koerer paa den taggede commit (detached) - en almindelig udgivelse kraever stadig main', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const fra = s.indexOf('BRANCH="$(git branch --show-current)"');
   const blok = s.slice(fra, s.indexOf('\nfi\n', fra) + 4);
@@ -992,7 +999,7 @@ test('genoptagelse checker tagget ud, og spaerren tester den samme commit (Astra
   const spCheckout = sp.slice(sp.indexOf('actions/checkout'), sp.indexOf('actions/setup-node'));
   assert.match(spCheckout, /ref: \$\{\{ inputs\.ref \|\| '' \}\}/, 'spaerrens checkout bruger ikke den ref den faar');
 });
-test('--prepare og --ship sammen afvises, og --prepare naegtes paa main', () => {
+test('--prepare og --ship sammen afvises, og --prepare naegtes paa main', { skip: POSIX_SKRIPT }, () => {
   const kor = (args, cwd) => { try { execFileSync('bash', [join(rod, 'runbrowsermcpupdate.sh'), ...args], { cwd, encoding: 'utf8', stdio: 'pipe', env: { PATH: process.env.PATH, HOME: tmpdir() } }); return { kode: 0, ud: '' }; } catch (e) { return { kode: e.status, ud: String(e.stdout) + String(e.stderr) }; } };
   const begge = kor(['9.9.9', '--prepare', '--ship'], rod);
   assert.equal(begge.kode, 1);
@@ -1012,7 +1019,7 @@ test('--prepare og --ship sammen afvises, og --prepare naegtes paa main', () => 
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
-test('aerligheds-resultatet vaelges efter git-tid, ikke efter filtid', () => {
+test('aerligheds-resultatet vaelges efter git-tid, ikke efter filtid', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const fra = s.indexOf('SENESTE_AERLIGHED=""; SENESTE_TID=0');
   const til = s.indexOf('done', fra) + 4;
@@ -1046,7 +1053,7 @@ test('udgivelses-workflowet: én ad gangen, genoptag springer kun butikken over,
     'advarslen «i blinde» fjernes paa noget andet end spaerrens resultat');
 });
 
-test('--genoptag kraever tagget paa HEAD og butikkens eget ja', () => {
+test('--genoptag kraever tagget paa HEAD og butikkens eget ja', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const fn = s.slice(s.indexOf('genoptag_tjek() {'), s.indexOf('\n}', s.indexOf('genoptag_tjek() {')) + 2);
   // Blokken EFTER cws_har_version - grenkontrollen har en `elif [[ "$GENOPTAG" == 1 ]]` foer den.
@@ -1073,7 +1080,7 @@ test('--genoptag kraever tagget paa HEAD og butikkens eget ja', () => {
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
-test('cws_har_version laeser butikkens svar: kun en revision med netop versionen tæller', () => {
+test('cws_har_version laeser butikkens svar: kun en revision med netop versionen tæller', { skip: POSIX_SKRIPT }, () => {
   const s = script();
   const slut = "sys.exit(1)' \"$v\"\n}";
   const fn = s.slice(s.indexOf('cws_har_version() {'), s.indexOf(slut) + slut.length);
@@ -1156,7 +1163,7 @@ test('udgivelses-workflowet installerer med npm ci og genoptager med --genoptag'
   assert.doesNotMatch(wf, /GENOPTAG[\s\S]{0,200}flag\+=\(--skip-cws\)/, 'genoptag springer stadig blindt butikken over');
 });
 
-test('det AEGTE trin 1: prepare lykkes, og en udgivelse bagefter aendrer intet - med scriptets shell-indstillinger', () => {
+test('det AEGTE trin 1: prepare lykkes, og en udgivelse bagefter aendrer intet - med scriptets shell-indstillinger', { skip: POSIX_SKRIPT }, () => {
   // ⛔ 27/9: trin 1 blev en funktion, og dens sidste kommando (`grep ... && die`) returnerede 1 i det
   // GODE tilfaelde. Med set -e doede hver rigtig udgivelse i trin 1. Proeverne brugte en stand-in for
   // trin 1 og kunne ikke se det; proevekoerslen mod den rigtige kode fandt det. Her koeres det AEGTE
