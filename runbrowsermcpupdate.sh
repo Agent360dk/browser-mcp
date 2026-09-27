@@ -206,7 +206,8 @@ fi
 
 # 26/9 (Astra, PR #31): et genoptag-flueben alene kunne udgive en ny version til GitHub, npm og
 # registret uden at butikken nogensinde fik den. Genoptag kraever nu to beviser: tagget paa HEAD
-# (det skubbes lige efter butikstrinnet - trin 3b) og butikkens eget svar om at den har versionen.
+# (det skubbes foer butikken - trin 2d) og butikkens eget svar om at den har versionen i en godkendt
+# tilstand (ikke afvist eller annulleret).
 cws_har_version() {
   local v="$1" at
   [[ -n "${CWS_CLIENT_ID:-}" && -n "${CWS_REFRESH_TOKEN:-}" && -n "${CWS_PUBLISHER_ID:-}" && -n "${CWS_EXTENSION_ID:-}" ]] || return 2
@@ -220,15 +221,20 @@ import json,sys
 v=sys.argv[1]
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(1)
+# En afvist eller annulleret indsendelse er IKKE en butik der har versionen (Astra 26/9).
+godkendt = {"PENDING_REVIEW","STAGED","PUBLISHED","PUBLISHED_TO_TESTERS"}
 for k in ("submittedItemRevisionStatus","publishedItemRevisionStatus"):
-    for ch in (d.get(k) or {}).get("distributionChannels",[]) or []:
+    rev = d.get(k) or {}
+    if rev.get("state") not in godkendt: continue
+    for ch in rev.get("distributionChannels",[]) or []:
         if ch.get("crxVersion")==v: sys.exit(0)
 sys.exit(1)' "$v"
 }
 if [[ "$GENOPTAG" == 1 ]]; then
   [[ "$SHIP" == 1 ]] || die "--genoptag bruges kun med --ship"
-  genoptag_tjek "$NEW_VERSION" || die "--genoptag kraever tagget v$NEW_VERSION paa HEAD. Tagget skubbes lige efter butikstrinnet, saa uden det er der intet bevis for at butikken fik netop denne commit. Koer uden genoptag"
-  cws_har_version "$NEW_VERSION"; CWS_SVAR=$?
+  genoptag_tjek "$NEW_VERSION" || die "--genoptag kraever tagget v$NEW_VERSION paa HEAD. Tagget skubbes foer butikken, saa uden det er butikken aldrig blevet kontaktet. Koer uden genoptag"
+  # `if`, ikke `kald; svar=$?`: med set -e doede scriptet paa kaldet, og forklaringerne naaedes aldrig.
+  if cws_har_version "$NEW_VERSION"; then CWS_SVAR=0; else CWS_SVAR=$?; fi
   case "$CWS_SVAR" in
     0) ok "butikken har v$NEW_VERSION, og tagget peger paa HEAD - genoptager efter butikstrinnet" ;;
     2) die "--genoptag kan ikke spoerge butikken (noeglerne mangler) - koer i miljoeet 'udgivelse'" ;;
@@ -251,6 +257,9 @@ MANAGED=(
   mcp-server/README.md
   README.md
   docs/index.html
+  # 26/9 (Astra): --prepare regenererer sitet, og sitemappet skifter dato. Uforvaltet stoppede en
+  # genkoersel af prepare paa sit eget output.
+  docs/sitemap.xml
   # MAALT 12/9 af Astra: trin 1d-3 skriver CHANGELOG-overskriften om fra "(not released yet)" til datoen - men filen stod
   # hverken her eller i `git add` nedenfor. Aendringen blev derfor aldrig committet: den PUSHEDE CHANGELOG.md sagde
   # fortsat "not released yet", altsaa praecis det trinnet skulle lukke. Og filen stod beskidt bagefter, saa NAESTE
@@ -524,6 +533,10 @@ fi
 
 # ── 1. sync + version bump + tool-count + readme (only written under --ship) ──
 step "1. Version → ${NEW_VERSION} · tool-count → ${TOOL_COUNT} · sync extension + README"
+# 26/9 (Astra, PR #31): trin 1 er en FUNKTION, saa proevekoerslen kan koere den for alvor i en kopi
+# af den committede kode og se om den aendrer noget (1g). Saa kan proevekoersel og udgivelse aldrig
+# vaere uenige om hvorvidt kandidaten er forberedt - de koerer samme kode.
+trin1() {
 
 # 1a. sync extension/ → mcp-server/extension/ FIRST so the npm-bundled copy + the
 #     GitHub zip + CWS zip are byte-identical, then bump every manifest uniformly.
@@ -620,6 +633,8 @@ if [[ "$SHIP" == 1 ]]; then
   grep -q "^## ${NEW_VERSION} (not released yet)" CHANGELOG.md \
     && die "CHANGELOG still says '(not released yet)' for ${NEW_VERSION} - the heading moved; fix the regex"
 fi
+}
+trin1
 
 # 1e. FJERNET 22/8: her stod en perl-erstatning + en grep-gate paa `browser-mcp-vX.Y.Z.zip`.
 #     Den streng findes ikke laengere i nogen README - begge linker nu til
@@ -646,43 +661,35 @@ if [[ "$PREPARE" == 1 ]]; then
   python3 "$REPO_ROOT/scripts/generate-docs.py" >/dev/null || die "generate-docs.py fejlede"
   ok "kandidaten v${NEW_VERSION} er skrevet paa grenen '$BRANCH' - intet er udgivet"
   git status --short
-  say "naeste: commit filerne ovenfor, aabn en PR mod main, lad tjekkene koere, merge - og udgiv derefter fra main"
+  say "naeste: commit filerne ovenfor NU (samme dag - sitemappets dato foelger commit-dagen), aabn en PR mod main, lad tjekkene koere, merge samme dag - og udgiv derefter fra main"
   exit 0
 fi
-# Samme krav i proevekoersel og udgivelse (Astra 26/9: en proevekoersel kaldte kandidaten forberedt
-# ud fra manifest og CHANGELOG alene, mens ship doede paa resten). Kun laesning.
-kandidat_problemer() {
-  local v="$1" f
-  for f in $JSON_FILES; do
-    [[ -f "$f" ]] || continue
-    node -e "
-      const j=JSON.parse(require('fs').readFileSync('$f','utf8')); const v='$v'; const d=[];
-      if ('version' in j && j.version!==v) d.push(j.version);
-      if (Array.isArray(j.packages)) j.packages.forEach(p=>{ if (p&&p.version&&p.version!==v) d.push(p.version); });
-      if (j.packages&&j.packages['']&&j.packages[''].version&&j.packages[''].version!==v) d.push(j.packages[''].version);
-      if (d.length) console.log('$f har version '+d.join(', '));"
-  done
-  diff -rq --exclude=.DS_Store extension mcp-server/extension >/dev/null 2>&1 || echo "mcp-server/extension/ er ikke en tro kopi af extension/"
-  cmp -s README.md mcp-server/README.md || echo "mcp-server/README.md er ikke README.md"
-  { grep -q "^## ${v} (" CHANGELOG.md && ! grep -q "^## ${v} (not released yet)" CHANGELOG.md; } || echo "CHANGELOG har ingen dateret overskrift for ${v}"
-  grep -q "\"softwareVersion\": \"${v}\"" docs/index.html || echo "docs/index.html softwareVersion er ikke ${v}"
-  grep -q "latest release v${v} (" README.md || echo "README 'latest release' er ikke v${v}"
-}
-PROBLEMER="$(kandidat_problemer "$NEW_VERSION")"
 git fetch -q origin main 2>/dev/null || true
 if [[ "$SHIP" == 1 ]]; then
   if [[ -n "$(git status --porcelain)" ]]; then
     git status --short
     die "kandidaten er ikke forberedt: trin 1 aendrede filerne ovenfor. Koer ./runbrowsermcpupdate.sh ${NEW_VERSION} --prepare paa en gren, merge PR'en, og udgiv derefter. Intet er udgivet."
   fi
-  [[ -z "$PROBLEMER" ]] || die "kandidaten er ikke forberedt: ${PROBLEMER//$'\n'/; }. Intet er udgivet."
   # Foer butikken, ikke efter (Astra 26/9): en lokal commit der ikke er paa origin/main, maa ikke naa butikken.
   git merge-base --is-ancestor HEAD origin/main \
     || die "HEAD er ikke paa origin/main - der udgives kun en commit der er merget gennem tjekkene. Intet er udgivet."
   ok "kandidaten er forberedt og merget - trin 1 havde intet at skrive"
 else
-  if [[ -z "$PROBLEMER" ]]; then ok "kandidaten v${NEW_VERSION} er forberedt"
-  else gate "kandidaten er ikke forberedt: ${PROBLEMER//$'\n'/; } - koer --prepare paa en gren og merge PR'en foer udgivelsen"; fi
+  # Proevekoerslen koerer trin 1 FOR ALVOR i en kopi af den committede kode og sammenligner. Det er
+  # praecis det ship goer i arbejdstraeet - saa kan de aldrig vaere uenige (Astra 26/9, to runder).
+  [[ -z "$(git status --porcelain)" ]] && ok "arbejdstraeet er rent" \
+    || gate "arbejdstraeet har ucommittede aendringer - ship ville stoppe paa dem"
+  FOER="$(mktemp -d)"; EFTER="$(mktemp -d)"
+  git archive HEAD | tar -x -C "$FOER"; git archive HEAD | tar -x -C "$EFTER"
+  if ( cd "$EFTER" && SHIP=1 trin1 ) >/dev/null 2>&1; then
+    # `|| true`: diff svarer 1 NETOP naar der er forskelle, og med pipefail stoppede hele koerslen her.
+    AENDRET="$(diff -rq "$FOER" "$EFTER" 2>/dev/null | sed -e "s#$FOER/##g" -e "s#$EFTER/##g" | tr '\n' ';' || true)"
+    if [[ -z "$AENDRET" ]]; then ok "kandidaten v${NEW_VERSION} er forberedt - trin 1 aendrer intet i den committede kode"
+    else gate "kandidaten er ikke forberedt - trin 1 ville aendre: ${AENDRET} Koer --prepare paa en gren og merge PR'en"; fi
+  else
+    gate "trin 1 fejlede i en kopi af den committede kode - ship ville ogsaa fejle"
+  fi
+  rm -rf "$FOER" "$EFTER"
   git merge-base --is-ancestor HEAD origin/main 2>/dev/null && ok "HEAD er paa origin/main" \
     || gate "HEAD er ikke paa origin/main - en udgivelse herfra ville blive afvist foer butikken"
 fi
@@ -715,6 +722,21 @@ step "2. Pakke-tjek (pack → udpak → start)"
 }
 
 
+# ── 2d. Tag: bindingen FOER noget uigenkaldeligt ───────────────────────────────
+# 26/9 (Astra, PR #31, to runder): tagget skubbes FOER butikken. Efter butikken kunne et fejlet push
+# efterlade en indsendt version uden tag, og --genoptag afviste netop den. Foer butikken er et fejlet
+# push harmloest (intet er sendt), og et tag paa HEAD er bindingen --genoptag kraever.
+step "2d. Tag v${NEW_VERSION} · push tag (foer butikken)"
+if [[ "$SKIP_GITHUB" == 1 ]]; then warn "skipped (--skip-github)"
+else
+  if git rev-parse "v${NEW_VERSION}" >/dev/null 2>&1; then
+    warn "tag v${NEW_VERSION} already exists - skipping tag"
+  else
+    run git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"   # annotated, so it pushes
+  fi
+  run git push origin "v${NEW_VERSION}"
+fi
+
 # ── 3. Chrome Web Store ───────────────────────────────────────────────────────
 step "3. Chrome Web Store publish"
 if [[ "$SKIP_CWS" == 1 ]]; then warn "skipped (--skip-cws)"
@@ -726,20 +748,6 @@ else
   CWS_ARGS=(); [[ "$CWS_DRAFT" == 1 ]] && CWS_ARGS+=(--draft)
   say "scripts/publish-cws.sh ${CWS_ARGS[*]:-} (reads extension/manifest.json = $NEW_VERSION)"
   run ./scripts/publish-cws.sh ${CWS_ARGS[@]+"${CWS_ARGS[@]}"}
-fi
-
-# ── 3b. Tag: beviset paa hvad butikken fik ─────────────────────────────────────
-# 26/9 (Astra, PR #31): tagget skubbes LIGE efter butikken. Saa er det bundet til den commit butikken
-# fik, og --genoptag kan kraeve det: findes tagget ikke paa HEAD, blev butikstrinnet aldrig gennemfoert.
-step "3b. Tag v${NEW_VERSION} · push tag"
-if [[ "$SKIP_GITHUB" == 1 ]]; then warn "skipped (--skip-github)"
-else
-  if git rev-parse "v${NEW_VERSION}" >/dev/null 2>&1; then
-    warn "tag v${NEW_VERSION} already exists - skipping tag"
-  else
-    run git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"   # annotated, so it pushes
-  fi
-  run git push origin "v${NEW_VERSION}"
 fi
 
 # ── 4. GitHub: release ────────────────────────────────────────────────────────

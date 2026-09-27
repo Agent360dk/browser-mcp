@@ -328,7 +328,7 @@ test('flow-spaerren har sit eget trin FOER butik, GitHub og npm', () => {
   const iButik = k.indexOf('3. Chrome Web Store publish');
   // 26/9: GitHub-kanalen starter nu i trin 3b (tagget). Et anker der ikke findes, gav -1 og en
   // sammenligning der ikke maaler noget - derfor tjekkes ankeret ogsaa.
-  const iGitHub = k.indexOf('step "3b. Tag');
+  const iGitHub = k.indexOf('step "2d. Tag');
   assert.ok(iButik > -1 && iGitHub > -1, 'ankrene blev ikke fundet - proeven maaler intet');
   assert.ok(iFlow < iButik && iFlow < iGitHub,
     'flow-trinnet ligger EFTER en uigenkaldelig kanal - det er for sent at opdage at koden ikke koerer');
@@ -543,6 +543,9 @@ test('hver fil trin 1 skriver i, er forvaltet - og udgivelsen kraever dem rene',
   const forvaltet = kode.slice(mStart, kode.indexOf(')', mStart)).split(/\s+/).slice(1).filter(Boolean);
   const erForvaltet = (f) => forvaltet.some((m) => f === m || f.startsWith(m + '/'));
 
+  // 26/9 (Astra): --prepare regenererer sitet, og sitemappet skifter dato. Er det ikke forvaltet,
+  // stopper en genkoersel af prepare paa sit eget output.
+  skrevet.push('docs/sitemap.xml');
   const uforvaltet = skrevet.filter((f) => !erForvaltet(f));
   assert.deepEqual(uforvaltet, [],
     `trin 1 skriver i ${uforvaltet.join(', ')}, men MANAGED kender dem ikke - naeste koersels stray-tjek doer paa dem`);
@@ -734,21 +737,22 @@ test('release-scriptet koerer docs-vagten foer butikken og stopper paa roedt', (
 
 const kodeLinjer = (tekst) => tekst.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
 
-test('trin 4 committer og skubber aldrig til main - tagget skubbes i 3b, lige efter butikken', () => {
+test('udgivelsen committer og skubber aldrig til main - tagget skubbes FOER butikken', () => {
   const s = script();
+  const pakke = s.indexOf('step "2. Pakke-tjek');
+  const tag = s.indexOf('step "2d. Tag');
   const butik = s.indexOf('step "3. Chrome Web Store publish"');
-  const tag = s.indexOf('step "3b. Tag');
   const fire = s.indexOf('step "4. GitHub');
   const npm = s.indexOf('step "5. npm publish');
-  assert.ok(butik > 0 && butik < tag && tag < fire && fire < npm, 'raekkefoelgen skal vaere butik -> tag -> release -> npm');
+  assert.ok(pakke > 0 && pakke < tag && tag < butik && butik < fire && fire < npm,
+    'raekkefoelgen skal vaere pakketjek -> tag -> butik -> release -> npm');
   const blok = kodeLinjer(s.slice(tag, npm));
   for (const [moenster, hvad] of [[/git push origin main/, 'skubber til main'], [/git commit/, 'committer'],
     [/run git add/, 'stager filer'], [/run git reset/, 'nulstiller indekset']]) {
-    assert.doesNotMatch(blok, moenster, `trin 3b-4 ${hvad} - main kraever tjek som udgivelsens noegle ikke kan springe over`);
+    assert.doesNotMatch(blok, moenster, `udgivelsen ${hvad} - main kraever tjek som udgivelsens noegle ikke kan springe over`);
   }
-  assert.match(kodeLinjer(s.slice(tag, fire)), /run git push origin "v\$\{NEW_VERSION\}"/, 'tagget skubbes ikke lige efter butikken');
-});
-test('README-datoen flyttes ikke naar versionen allerede staar der - et forberedt traee forbliver rent', () => {
+  assert.match(kodeLinjer(s.slice(tag, butik)), /run git push origin "v\$\{NEW_VERSION\}"/, 'tagget skubbes ikke foer butikken');
+});test('README-datoen flyttes ikke naar versionen allerede staar der - et forberedt traee forbliver rent', () => {
   const s = script();
   const linje = s.split('\n').find((l) => l.includes('run perl') && l.includes('latest release v'));
   assert.ok(linje, 'README-daten-linjen blev ikke fundet');
@@ -770,32 +774,43 @@ test('README-datoen flyttes ikke naar versionen allerede staar der - et forbered
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
-/** Koerer scriptets EGEN 1g-blok i et lille repo med en fjern-main. */
-function koerKandidatBlok({ ship, forberedt = true, beskidt = false, foranOrigin = false, prepare = false }) {
+/**
+ * Koerer scriptets EGEN 1g-blok i et lille repo med en fjern-main - med scriptets shell-indstillinger.
+ * trin1 er en stand-in der goer det trin 1 goer ved en kandidat: skriver versionen, daterer CHANGELOG
+ * og synker mcp-server/server.json fra roden. Ship koerer den i arbejdstraeet foer 1g, som scriptet.
+ */
+function koerKandidatBlok({ ship, forberedt = true, usynk = false, beskidt = false, foranOrigin = false }) {
   const s = script();
   const blok = s.slice(s.indexOf('# 1g. 26/9'), s.indexOf('\n# ── 2. Pakke-tjek'));
-  assert.ok(blok.length > 100, '1g-blokken blev ikke fundet');
+  assert.ok(blok.includes('SHIP=1 trin1'), '1g koerer ikke trin 1 i en kopi - saa kan proevekoersel og ship vaere uenige');
   const d = mkdtempSync(join(tmpdir(), 'kandidat-'));
   const git = (...a) => execFileSync('git', a, { cwd: d, stdio: 'pipe', env: { ...process.env,
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
   try {
     const v = forberedt ? '1.30.1' : '1.30.0';
-    mkdirSync(join(d, 'extension')); mkdirSync(join(d, 'mcp-server/extension'), { recursive: true }); mkdirSync(join(d, 'docs'));
-    for (const f of ['extension/manifest.json', 'mcp-server/extension/manifest.json']) writeFileSync(join(d, f), JSON.stringify({ version: v }, null, 2) + '\n');
-    const readme = `latest release v${v} (2020-01-01)\n`;
-    writeFileSync(join(d, 'README.md'), readme); writeFileSync(join(d, 'mcp-server/README.md'), readme);
+    mkdirSync(join(d, 'extension')); mkdirSync(join(d, 'mcp-server'));
+    writeFileSync(join(d, 'extension/manifest.json'), `{"version": "${v}"}\n`);
     writeFileSync(join(d, 'CHANGELOG.md'), forberedt ? '## 1.30.1 (2020-01-01)\n' : '## 1.30.1 (not released yet)\n');
-    writeFileSync(join(d, 'docs/index.html'), `{"softwareVersion": "${v}"}\n`);
-    git('init', '-q', '-b', 'main'); git('add', 'extension', 'mcp-server', 'README.md', 'CHANGELOG.md', 'docs'); git('commit', '-q', '-m', 'kandidat');
+    writeFileSync(join(d, 'server.json'), '{"icons": ["a.png"]}\n');
+    writeFileSync(join(d, 'mcp-server/server.json'), usynk ? '{}\n' : '{"icons": ["a.png"]}\n');
+    writeFileSync(join(d, 'mcp-server/index.js'), 'server();\n');
+    git('init', '-q', '-b', 'main'); git('add', 'extension', 'mcp-server', 'CHANGELOG.md', 'server.json'); git('commit', '-q', '-m', 'kandidat');
     const origin = d + '-origin.git';
     execFileSync('git', ['clone', '-q', '--bare', d, origin]);
     git('remote', 'add', 'origin', origin); git('fetch', '-q', 'origin');
-    if (foranOrigin) { writeFileSync(join(d, 'docs/ny.txt'), 'x'); git('add', 'docs/ny.txt'); git('commit', '-q', '-m', 'lokal'); }
-    if (beskidt) writeFileSync(join(d, 'README.md'), readme + 'aendret\n');
-    const skal = `ok(){ echo "OK:$*"; }; gate(){ echo "GATE:$*"; }; warn(){ echo "WARN:$*"; }; say(){ :; }; die(){ echo "DIE:$*"; exit 1; }
-      SHIP=${ship ? 1 : 0}; PREPARE=${prepare ? 1 : 0}; NEW_VERSION=1.30.1; BRANCH=main; REPO_ROOT='${d}'
-      JSON_FILES="extension/manifest.json mcp-server/extension/manifest.json"
+    if (foranOrigin) { writeFileSync(join(d, 'ny.txt'), 'x'); git('add', 'ny.txt'); git('commit', '-q', '-m', 'lokal'); }
+    // En fil trin 1 IKKE roerer - ellers overskriver stand-in'en snavset, og proeven maaler intet.
+    if (beskidt) writeFileSync(join(d, 'mcp-server/index.js'), 'server(); // ucommitteret\n');
+    const skal = `set -euo pipefail
+      ok(){ echo "OK:$*"; }; gate(){ echo "GATE:$*"; }; warn(){ echo "WARN:$*"; }; say(){ :; }; die(){ echo "DIE:$*"; exit 1; }
+      SHIP=${ship ? 1 : 0}; PREPARE=0; NEW_VERSION=1.30.1; BRANCH=main; REPO_ROOT='${d}'
+      trin1(){
+        printf '{"version": "1.30.1"}\\n' > extension/manifest.json
+        printf '## 1.30.1 (2020-01-01)\\n' > CHANGELOG.md
+        cp server.json mcp-server/server.json
+      }
       cd '${d}'
+      if [[ "$SHIP" == 1 ]]; then trin1; fi
       ${blok}`;
     const r = spawnSync('bash', ['-c', skal], { encoding: 'utf8' });
     return { kode: r.status, ud: r.stdout + r.stderr };
@@ -814,10 +829,10 @@ test('ship: et beskidt traee stopper foer butikken', () => {
   assert.match(r.ud, /DIE:kandidaten er ikke forberedt: trin 1 aendrede/);
 });
 
-test('ship: en committet men uforberedt kandidat stopper - og siger hvad der mangler', () => {
+test('ship: en committet men uforberedt kandidat stopper - trin 1 aendrer den', () => {
   const r = koerKandidatBlok({ ship: true, forberedt: false });
   assert.equal(r.kode, 1, r.ud);
-  assert.match(r.ud, /DIE:kandidaten er ikke forberedt: .*manifest\.json har version 1\.30\.0/);
+  assert.match(r.ud, /DIE:kandidaten er ikke forberedt: trin 1 aendrede/);
 });
 
 test('ship: en commit der ikke er paa origin/main stopper FOER butikken', () => {
@@ -826,12 +841,21 @@ test('ship: en commit der ikke er paa origin/main stopper FOER butikken', () => 
   assert.match(r.ud, /DIE:HEAD er ikke paa origin\/main/);
 });
 
-test('proevekoersel: samme kandidat-krav som ship - en uforberedt kandidat kaldes ikke forberedt', () => {
+test('proevekoersel: koerer trin 1 i en kopi og siger hvad den ville aendre - ogsaa en usynket server.json', () => {
   const r = koerKandidatBlok({ ship: false, forberedt: false });
-  assert.match(r.ud, /GATE:kandidaten er ikke forberedt: .*CHANGELOG har ingen dateret overskrift/, r.ud);
+  assert.match(r.ud, /GATE:kandidaten er ikke forberedt - trin 1 ville aendre: .*manifest\.json/, r.ud);
   assert.doesNotMatch(r.ud, /OK:kandidaten v1\.30\.1 er forberedt/);
+  const usynk = koerKandidatBlok({ ship: false, usynk: true });
+  assert.match(usynk.ud, /GATE:kandidaten er ikke forberedt - trin 1 ville aendre: .*server\.json/,
+    'en usynket mcp-server/server.json blev kaldt forberedt - ship ville doe paa den');
   const ok = koerKandidatBlok({ ship: false });
   assert.match(ok.ud, /OK:kandidaten v1\.30\.1 er forberedt/, ok.ud);
+  assert.match(ok.ud, /OK:arbejdstraeet er rent/, ok.ud);
+});
+
+test('proevekoersel: ucommittede aendringer siges hoejt - ship ville stoppe paa dem', () => {
+  const r = koerKandidatBlok({ ship: false, beskidt: true });
+  assert.match(r.ud, /GATE:arbejdstraeet har ucommittede aendringer/, r.ud);
 });
 test('--prepare og --ship sammen afvises, og --prepare naegtes paa main', () => {
   const kor = (args, cwd) => { try { execFileSync('bash', [join(rod, 'runbrowsermcpupdate.sh'), ...args], { cwd, encoding: 'utf8', stdio: 'pipe', env: { PATH: process.env.PATH, HOME: tmpdir() } }); return { kode: 0, ud: '' }; } catch (e) { return { kode: e.status, ud: String(e.stdout) + String(e.stderr) }; } };
@@ -897,7 +921,8 @@ test('--genoptag kraever tagget paa HEAD og butikkens eget ja', () => {
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
   try {
     git('init', '-q'); writeFileSync(join(d, 'a'), 'a'); git('add', 'a'); git('commit', '-q', '-m', 'a');
-    const koer = ({ ship = 1, butik = 0 }) => spawnSync('bash', ['-c', `ok(){ echo "OK:$*"; }; die(){ echo "DIE:$*"; exit 1; }
+    const koer = ({ ship = 1, butik = 0 }) => spawnSync('bash', ['-c', `set -euo pipefail
+      ok(){ echo "OK:$*"; }; die(){ echo "DIE:$*"; exit 1; }
       cd '${d}'; SHIP=${ship}; GENOPTAG=1; NEW_VERSION=1.30.1
       ${fn}
       cws_har_version(){ return ${butik}; }
@@ -924,9 +949,14 @@ test('cws_har_version laeser butikkens svar: kun en revision med netop versionen
       return spawnSync('bash', ['-c', `${fn}\ncws_har_version 1.30.1; echo "kode:$?"`], { encoding: 'utf8',
         env: { PATH: `${d}:${process.env.PATH}`, CWS_CLIENT_ID: 'c', CWS_REFRESH_TOKEN: 'r', CWS_PUBLISHER_ID: 'p', CWS_EXTENSION_ID: 'e' } }).stdout.trim();
     };
-    assert.equal(status('{"submittedItemRevisionStatus":{"distributionChannels":[{"crxVersion":"1.30.1"}]}}'), 'kode:0');
-    assert.equal(status('{"publishedItemRevisionStatus":{"distributionChannels":[{"crxVersion":"1.30.0"}]}}'), 'kode:1',
+    assert.equal(status('{"submittedItemRevisionStatus":{"state":"PENDING_REVIEW","distributionChannels":[{"crxVersion":"1.30.1"}]}}'), 'kode:0');
+    assert.equal(status('{"publishedItemRevisionStatus":{"state":"PUBLISHED","distributionChannels":[{"crxVersion":"1.30.1"}]}}'), 'kode:0');
+    assert.equal(status('{"publishedItemRevisionStatus":{"state":"PUBLISHED","distributionChannels":[{"crxVersion":"1.30.0"}]}}'), 'kode:1',
       'en butik med en ANDEN version blev kaldt en butik med 1.30.1');
+    for (const tilstand of ['REJECTED', 'CANCELLED']) {
+      assert.equal(status(`{"submittedItemRevisionStatus":{"state":"${tilstand}","distributionChannels":[{"crxVersion":"1.30.1"}]}}`), 'kode:1',
+        `en ${tilstand} indsendelse blev kaldt en butik der har versionen`);
+    }
     assert.equal(status('<html>fejl</html>'), 'kode:1');
     const uden = spawnSync('bash', ['-c', `${fn}\ncws_har_version 1.30.1; echo "kode:$?"`], { encoding: 'utf8', env: { PATH: process.env.PATH } }).stdout.trim();
     assert.equal(uden, 'kode:2', 'uden noegler skal svaret vaere «kan ikke spoerge», ikke «nej»');
