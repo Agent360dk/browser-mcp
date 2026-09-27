@@ -67,6 +67,10 @@ test('butikkens pakke sammenlignes byte for byte med tagget - kun butikkens egne
     rmSync(join(butik, 'ekstra.js'));
     writeFileSync(join(butik, 'manifest.json'), JSON.stringify({ version: '9.9.9', name: 'y' }));
     assert.match(sml().join(' '), /manifest\.json: afviger/, 'et aendret manifest slap igennem');
+    // 27/9 (Astra): en pakke der MANGLER en fil fra tagget blev kaldt «lig tagget».
+    writeFileSync(join(butik, 'manifest.json'), JSON.stringify({ version: '9.9.9', name: 'x' }));
+    rmSync(join(butik, 'background.js'));
+    assert.match(sml().join(' '), /background\.js: findes i tagget v9\.9\.9, men mangler i pakken/, 'en manglende fil slap igennem');
   } finally { rmSync(repo, { recursive: true, force: true }); rmSync(butik, { recursive: true, force: true }); }
 });
 
@@ -90,4 +94,133 @@ test('spaerre.yml saetter det udgivne EFTER nulstillingen og kun fra hent-trinne
   const koer = wf.indexOf('node scripts/flow-isoleret.mjs --spaerre');
   assert.ok(nul > 0 && saet > nul && koer > saet, 'det udgivne skal saettes efter flow_nulstil_arv og foer spaerren');
   assert.match(wf, /if: \$\{\{ github\.event_name == 'workflow_dispatch' &&/, 'hent-trinnet koerer ogsaa ved PR og udgivelse');
+});
+
+/** En syntetisk CRX med de givne filer. */
+const crxPy = (filer) => `import io, zipfile
+b = io.BytesIO(); z = zipfile.ZipFile(b, 'w')
+for n, v in ${JSON.stringify(Object.entries(filer))}: z.writestr(n, v)
+z.close()
+CRX = b'Cr24\\x03\\x00\\x00\\x00' + b'\\x00' * 40 + b.getvalue()
+class Svar:
+    def __init__(self, data): self.data = data
+    def read(self): return self.data
+`;
+
+test('hent_udvidelse: hver hentning faar sin egen mappe - en genbrugt --ud blander ikke gamle filer ind (Astra 27/9)', () => {
+  const repo = repoMedTag(TAG);
+  const ud = mkdtempSync(join(tmpdir(), 'hent-ud-'));
+  try {
+    const hent = (filer) => spawnSync('python3', ['-c', `import importlib.util, sys, os
+spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+${crxPy(filer)}
+h.urllib.request.urlopen = lambda *a, **k: Svar(CRX)
+print(h.hent_udvidelse('9.9.9', ${JSON.stringify(ud)}, ${JSON.stringify(repo)}))`], { encoding: 'utf8' });
+    const foerste = hent(TAG);
+    assert.equal(foerste.status, 0, foerste.stderr);
+    const mappe1 = foerste.stdout.trim();
+    assert.ok(mappe1.startsWith(ud), 'mappen ligger ikke under --ud');
+    // Anden hentning i SAMME --ud, men butikken mangler background.js. Den gamle ligger stadig i
+    // den foerste mappe - den maa ikke blive maalt som om butikken udleverede den.
+    const anden = hent({ 'manifest.json': TAG['manifest.json'] });
+    assert.notEqual(anden.status, 0, 'en pakke uden background.js blev godkendt - den gamle fil fra forrige hentning talte med');
+    assert.match(anden.stderr, /background\.js: findes i tagget v9\.9\.9, men mangler i pakken/, anden.stderr);
+    const forkert = hent({ ...TAG, 'manifest.json': JSON.stringify({ version: '9.9.8', name: 'x' }) });
+    assert.match(forkert.stderr, /butikken udleverer 9\.9\.8, ikke 9\.9\.9/);
+  } finally { rmSync(repo, { recursive: true, force: true }); rmSync(ud, { recursive: true, force: true }); }
+});
+
+/** Et falsk `npm` der «installerer» en pakke med den givne package.json og brugerindgang. */
+function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `console.log('9.9.9')` } = {}) {
+  const d = mkdtempSync(join(tmpdir(), 'hent-server-'));
+  const shim = join(d, 'shim'); mkdirSync(shim);
+  const pakke = JSON.stringify({ name: '@agent360/browser-mcp', version, bin });
+  writeFileSync(join(shim, 'npm'), `#!/bin/bash
+while [[ $# -gt 0 ]]; do [[ "$1" == --prefix ]] && { P="$2"; shift; }; shift; done
+M="$P/node_modules/@agent360/browser-mcp"; mkdir -p "$M/bin"
+cat > "$M/package.json" <<'JSON'
+${pakke}
+JSON
+${cli === null ? '' : `cat > "$M/bin/cli.js" <<'JS'\n${cli}\nJS`}
+`);
+  execFileSync('chmod', ['+x', join(shim, 'npm')]);
+  try {
+    return spawnSync('python3', ['-c', `import importlib.util
+spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PATH: `${shim}:${process.env.PATH}` } });
+  } finally { rmSync(d, { recursive: true, force: true }); }
+}
+
+test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - ikke index.js (Astra 27/9)', () => {
+  const god = koerHentServer();
+  assert.equal(god.status, 0, god.stderr);
+  assert.match(god.stdout.trim(), /node_modules\/@agent360\/browser-mcp\/bin\/cli\.js$/, 'spaerren faar ikke brugerindgangen - saa proeves npx-vejen ikke');
+  const mangler = koerHentServer({ cli: null });
+  assert.notEqual(mangler.status, 0, 'en pakke hvis bin-fil mangler, blev godkendt');
+  assert.match(mangler.stderr, /brugerindgang \.\/bin\/cli\.js findes ikke/);
+  const ingenBin = koerHentServer({ bin: {} });
+  assert.match(ingenBin.stderr, /erklaerer ingen brugerindgang/);
+  const forkertSvar = koerHentServer({ cli: `console.log('1.0.0')` });
+  assert.match(forkertSvar.stderr, /svarede ikke 9\.9\.9 paa --version/, 'en brugerindgang der svarer en anden version blev godkendt');
+  const doer = koerHentServer({ cli: `throw new Error('braekket')` });
+  assert.match(doer.stderr, /svarede ikke 9\.9\.9 paa --version \(exit 1\)/, 'en brugerindgang der doer blev godkendt');
+  const forkertVersion = koerHentServer({ version: '9.9.8' });
+  assert.match(forkertVersion.stderr, /npm udleverede 9\.9\.8, ikke 9\.9\.9/);
+});
+
+test('det aegte bin/cli.js svarer sin version paa --version - det hent_server kraever af den udgivne', () => {
+  const v = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).version;
+  const bin = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).bin['browser-mcp'];
+  assert.equal(execFileSync('node', [join(rod, 'mcp-server', bin), '--version'], { encoding: 'utf8' }).trim(), v);
+});
+
+test('spaerre.yml: det udgivne kommer fra hent-trinnets OUTPUTS, ikke fra arvet miljoe (Astra 27/9)', () => {
+  const wf = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
+  const hent = wf.slice(wf.indexOf('- name: hent det udgivne'), wf.indexOf('- name: spaerren, isoleret'));
+  assert.match(hent, /\n\s+id: hent\n/, 'hent-trinnet har intet id - dets outputs kan ikke laeses');
+  assert.match(hent, />> "\$GITHUB_OUTPUT"/, 'hent-trinnet skriver ikke til sine outputs');
+  // Bundet til STRUKTUREN (en skrivning til filen), ikke ordet - trinnets egen kommentar naevner $GITHUB_ENV.
+  assert.doesNotMatch(wf, />>\s*"\$GITHUB_ENV"/, 'det udgivne sendes stadig gennem miljoeet, som alle senere trin arver');
+  const spaerre = wf.slice(wf.indexOf('- name: spaerren, isoleret'), wf.indexOf('- name: gem loggen'));
+  const env = spaerre.slice(spaerre.indexOf('env:'), spaerre.indexOf('run: |'));
+  assert.match(env, /UDGIVET_UDVIDELSE: \$\{\{ steps\.hent\.outputs\.UDGIVET_UDVIDELSE \}\}/,
+    'spaerretrinnet saetter ikke UDGIVET_UDVIDELSE eksplicit - et arvet vaerdi kan genaktivere en fremmed udvidelse');
+  assert.match(env, /UDGIVET_SERVER: \$\{\{ steps\.hent\.outputs\.UDGIVET_SERVER \}\}/,
+    'spaerretrinnet saetter ikke UDGIVET_SERVER eksplicit');
+});
+
+test('spaerre.yml: loggen skal BEVISE at det udgivne blev maalt - ellers roedt', () => {
+  const wf = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
+  const spaerre = wf.slice(wf.indexOf('- name: spaerren, isoleret'), wf.indexOf('- name: gem loggen'));
+  const fra = spaerre.indexOf("grep -m1 '^DAEKNING:' spaerre.log");
+  assert.ok(fra > 0, 'efter-tjekket blev ikke fundet');
+  const blok = spaerre.slice(fra).split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const d = mkdtempSync(join(tmpdir(), 'spaerre-log-'));
+  try {
+    const koer = (log, env) => {
+      writeFileSync(join(d, 'spaerre.log'), log);
+      return spawnSync('bash', ['-e', '-c', blok], { cwd: d, encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+    };
+    const DAEK = 'DAEKNING: 40/40 vaerktoejer beroert · 52 OK · 0 FEJL · 0 SPRUNGET\n';
+    const rigtig = `MAALT-UDVIDELSE: /u\nMAALT-SERVER: /s/cli.js\nFLOW-SERVER: /s/cli.js\n${DAEK}`;
+    assert.equal(koer(rigtig, { UDGIVET_UDVIDELSE: '/u', UDGIVET_SERVER: '/s/cli.js' }).status, 0);
+    const repoets = `MAALT-UDVIDELSE: repoets\nMAALT-SERVER: /s/cli.js\nFLOW-SERVER: /s/cli.js\n${DAEK}`;
+    assert.notEqual(koer(repoets, { UDGIVET_UDVIDELSE: '/u', UDGIVET_SERVER: '/s/cli.js' }).status, 0,
+      'en koersel der maalte repoets udvidelse blev godkendt som butikkens');
+    const flowRepoets = `MAALT-UDVIDELSE: /u\nMAALT-SERVER: /s/cli.js\nFLOW-SERVER: repoets\n${DAEK}`;
+    assert.notEqual(koer(flowRepoets, { UDGIVET_UDVIDELSE: '/u', UDGIVET_SERVER: '/s/cli.js' }).status, 0,
+      'flow-testen startede repoets server, og koerslen blev godkendt som npm-serverens');
+    // En almindelig PR-koersel (intet hentet) kraever ingen maerker.
+    assert.equal(koer(`MAALT-UDVIDELSE: repoets\n${DAEK}`, {}).status, 0);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('flow-isoleret og flow-testen skriver hvad de FAKTISK maaler, med samme udtryk som de starter', () => {
+  const iso = readFileSync(join(rod, 'scripts/flow-isoleret.mjs'), 'utf8');
+  assert.match(iso, /console\.log\(`MAALT-UDVIDELSE: \$\{process\.env\.BMCP_UDVIDELSE_KILDE \|\| 'repoets'\}`\)/);
+  assert.match(iso, /console\.log\(`MAALT-SERVER: \$\{process\.env\.BMCP_SERVER_INDEX \|\| 'repoets'\}`\);\n\s+server = spawn\(process\.execPath, \[process\.env\.BMCP_SERVER_INDEX \|\|/);
+  const run = readFileSync(join(rod, 'test/flow/run.mjs'), 'utf8');
+  assert.match(run, /console\.log\(`FLOW-SERVER: \$\{process\.env\.BMCP_SERVER_INDEX \|\| 'repoets'\}`\);\nconst srv = spawn\(process\.execPath, \[process\.env\.BMCP_SERVER_INDEX \|\|/);
 });

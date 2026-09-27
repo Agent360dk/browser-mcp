@@ -88,6 +88,8 @@ const BAGGRUND_MARKOER = 'kraever et vindue med fokus: ';
 // startes nu i flow-testens egen mappe, og filerne laegges der.
 const flowMappe = mkdtempSync(join(tmpdir(), 'bmcp-flow-'));
 // BMCP_SERVER_INDEX: den udgivne server fra npm i stedet for repoets (samme variabel som flow-isoleret).
+// 27/9: loggen siger hvilken server flow-testen startede - spaerre.yml kraever linjen naar det udgivne maales.
+console.log(`FLOW-SERVER: ${process.env.BMCP_SERVER_INDEX || 'repoets'}`);
 const srv = spawn(process.execPath, [process.env.BMCP_SERVER_INDEX || join(rod, 'mcp-server/index.js')], { cwd: flowMappe, stdio: ['pipe', 'pipe', 'pipe'] });
 let stdoutBuf = '', udvidelseKlar = false;
 const venter = new Map();

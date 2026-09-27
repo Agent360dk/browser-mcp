@@ -7,13 +7,19 @@ npm. Scriptet henter dem, beviser hvad det har hentet, og skriver miljoevariable
 
 Beviserne (et af dem fejler -> exit 1, intet skrives):
   - butikkens manifest har den forventede version
-  - hver fil i butikkens pakke er byte for byte lig filen i tagget v<version> (butikkens egen
-    _metadata/ og manifestets «key»/«update_url» er det eneste butikken tilfoejer)
-  - npm-pakken har den forventede version
+  - butikkens pakke og taggets extension/ har PRAECIS de samme filer (begge veje - en manglende
+    fil er lige saa forkert som en ekstra), og hver fil er byte for byte lig tagget. Undtaget er
+    kun butikkens egen _metadata/, .DS_Store og manifestets «key»/«update_url»; manifestet
+    sammenlignes derfor som JSON (formatering og noegleorden tilgives)
+  - npm-pakken har den forventede version, og dens erklaerede brugerindgang (package.json «bin»)
+    findes og svarer med versionen - det er den fil `npx @agent360/browser-mcp` koerer
+
+Hver hentning pakkes ud i sin EGEN nye mappe under --ud: en genbrugt mappe kunne blande gamle filer
+ind i det der maales (Astra 27/9).
 
 Brug:
   hent-udgivet.py --udvidelse 1.30.1 --server 1.30.1 --ud <mappe>
-Udskriver linjer til $GITHUB_ENV:  UDGIVET_UDVIDELSE=<mappe>  UDGIVET_SERVER=<index.js>
+Udskriver linjer til $GITHUB_OUTPUT:  UDGIVET_UDVIDELSE=<mappe>  UDGIVET_SERVER=<brugerindgangen, bin/cli.js>
 """
 import argparse
 import io
@@ -21,6 +27,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import urllib.request
 import zipfile
 
@@ -47,9 +54,21 @@ def filer(mappe: str):
             yield rel
 
 
+def tag_filer(version: str, repo: str) -> set:
+    r = subprocess.run(['git', '-C', repo, 'ls-tree', '-r', '--name-only', f'v{version}', '--', 'extension/'],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f'tagget v{version} findes ikke i {repo}: {r.stderr.strip()}')
+    return {n[len('extension/'):] for n in r.stdout.splitlines()
+            if n.startswith('extension/') and os.path.basename(n) != '.DS_Store'}
+
+
 def forskelle_mod_tag(mappe: str, version: str, repo: str) -> list:
-    """Filer der IKKE er byte-identiske med tagget. Manifestet sammenlignes uden butikkens felter."""
+    """Filer der IKKE er byte-identiske med tagget, begge veje. Manifestet sammenlignes uden butikkens felter."""
     forskelle = []
+    # 27/9 (Astra): kun butikkens filer blev gennemloebet - en pakke UDEN popup.js var «lig tagget».
+    for rel in sorted(tag_filer(version, repo) - set(filer(mappe))):
+        forskelle.append(f'{rel}: findes i tagget v{version}, men mangler i pakken')
     for rel in sorted(filer(mappe)):
         r = subprocess.run(['git', '-C', repo, 'show', f'v{version}:extension/{rel}'], capture_output=True)
         if r.returncode != 0:
@@ -68,9 +87,15 @@ def forskelle_mod_tag(mappe: str, version: str, repo: str) -> list:
     return forskelle
 
 
+def ny_mappe(ud: str, navn: str) -> str:
+    """En NY, tom mappe pr. hentning. En genbrugt mappe beholdt filer fra en tidligere hentning,
+    og de blev maalt som om butikken havde udleveret dem (Astra 27/9)."""
+    os.makedirs(ud, exist_ok=True)
+    return tempfile.mkdtemp(prefix=f'{navn}-', dir=ud)
+
+
 def hent_udvidelse(version: str, ud: str, repo: str) -> str:
-    mappe = os.path.join(ud, 'udvidelse')
-    os.makedirs(mappe, exist_ok=True)
+    mappe = ny_mappe(ud, 'udvidelse')
     crx = urllib.request.urlopen(CRX_URL.format(id=UDVIDELSES_ID), timeout=60).read()
     pak_crx_ud(crx, mappe)
     fik = json.load(open(os.path.join(mappe, 'manifest.json'))).get('version')
@@ -84,16 +109,28 @@ def hent_udvidelse(version: str, ud: str, repo: str) -> str:
 
 
 def hent_server(version: str, ud: str) -> str:
-    mappe = os.path.join(ud, 'server')
-    os.makedirs(mappe, exist_ok=True)
+    mappe = ny_mappe(ud, 'server')
     subprocess.run(['npm', 'install', '--prefix', mappe, '--no-audit', '--no-fund', '--silent',
                     f'@agent360/browser-mcp@{version}'], check=True)
     pakke = os.path.join(mappe, 'node_modules', '@agent360', 'browser-mcp')
     fik = json.load(open(os.path.join(pakke, 'package.json'))).get('version')
     if fik != version:
         raise SystemExit(f'npm udleverede {fik}, ikke {version}')
-    print(f'npm-serveren {version} hentet', file=sys.stderr)
-    return os.path.join(pakke, 'index.js')
+    # 27/9 (Astra): en fremmed starter serveren gennem pakkens «bin» (npx), ikke index.js. Er bin
+    # defekt, virker index.js stadig - og spaerren saa intet. Brugerindgangen proeves og bruges.
+    bin_felt = json.load(open(os.path.join(pakke, 'package.json'))).get('bin')
+    rel = bin_felt.get('browser-mcp') if isinstance(bin_felt, dict) else bin_felt
+    if not rel:
+        raise SystemExit('npm-pakken erklaerer ingen brugerindgang «browser-mcp» i package.json «bin»')
+    indgang = os.path.normpath(os.path.join(pakke, rel))
+    if not os.path.isfile(indgang):
+        raise SystemExit(f'npm-pakkens brugerindgang {rel} findes ikke i pakken')
+    svar = subprocess.run(['node', indgang, '--version'], capture_output=True, text=True, timeout=60)
+    if svar.returncode != 0 or svar.stdout.strip() != version:
+        raise SystemExit(f'npm-pakkens brugerindgang svarede ikke {version} paa --version '
+                         f'(exit {svar.returncode}): {(svar.stdout + svar.stderr).strip()[:200]}')
+    print(f'npm-serveren {version} hentet - brugerindgangen {rel} svarer {version}', file=sys.stderr)
+    return indgang
 
 
 def main() -> int:

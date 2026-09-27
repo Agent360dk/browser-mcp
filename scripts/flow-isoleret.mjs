@@ -135,6 +135,8 @@ async function main() {
   // BMCP_UDVIDELSE_KILDE: maal en ANDEN udvidelse end repoets - fx den udgivne, for at se hvad
   // brugerne oplever i dagene hvor ny server moeder gammel udvidelse fra butikken.
   cpSync(process.env.BMCP_UDVIDELSE_KILDE || join(ROD, 'extension'), join(d, 'ext'), { recursive: true });
+  // 27/9: loggen siger hvad der blev maalt - spaerre.yml kraever linjen naar det udgivne maales.
+  console.log(`MAALT-UDVIDELSE: ${process.env.BMCP_UDVIDELSE_KILDE || 'repoets'}`);
 
   // ⛔ MAALT 24/9 - den tredje og rigtige vej til isolation, foreslaaet af Fable 22/9 og ikke
   // fulgt foer nu. Testudvidelsens portomraade skal vaere et andet end menneskets, ellers finder
@@ -237,6 +239,7 @@ async function main() {
   const [fra, til] = PORTE.split('-');
   // BMCP_SERVER_INDEX: maal en ANDEN server end repoets - den udgivne fra npm (scripts/hent-udgivet.py).
   // Nulstilles af flow_nulstil_arv, saa kandidatens spaerre aldrig maaler en anden server end sin egen.
+  console.log(`MAALT-SERVER: ${process.env.BMCP_SERVER_INDEX || 'repoets'}`);
   server = spawn(process.execPath, [process.env.BMCP_SERVER_INDEX || join(ROD, 'mcp-server', 'index.js')], {
     env: { ...process.env, BROWSER_MCP_BASE_PORT: fra, BROWSER_MCP_MAX_PORT: til,
       BROWSER_MCP_EXTENSION_ID: sw.id, BROWSER_MCP_TOKEN: '' },
