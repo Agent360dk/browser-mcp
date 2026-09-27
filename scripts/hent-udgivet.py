@@ -12,7 +12,8 @@ Beviserne (et af dem fejler -> exit 1, intet skrives):
     kun butikkens egen _metadata/, .DS_Store og manifestets «key»/«update_url»; manifestet
     sammenlignes derfor som JSON (formatering og noegleorden tilgives)
   - npm-pakken har den forventede version, og dens erklaerede brugerindgang (package.json «bin»)
-    findes og svarer med versionen - det er den fil `npx @agent360/browser-mcp` koerer
+    findes, og npm-KOMMANDOEN - det link npm laver i node_modules/.bin, som `npx` koerer direkte,
+    altsaa gennem filens shebang - svarer med versionen
 
 Hver hentning pakkes ud i sin EGEN nye mappe under --ud: en genbrugt mappe kunne blande gamle filer
 ind i det der maales (Astra 27/9).
@@ -125,11 +126,19 @@ def hent_server(version: str, ud: str) -> str:
     indgang = os.path.normpath(os.path.join(pakke, rel))
     if not os.path.isfile(indgang):
         raise SystemExit(f'npm-pakkens brugerindgang {rel} findes ikke i pakken')
-    svar = subprocess.run(['node', indgang, '--version'], capture_output=True, text=True, timeout=60)
+    # 27/9 (Astra R2): `node cli.js` omgaar shebang'en. npx koerer npm's link DIREKTE - uden
+    # `#!/usr/bin/env node` starter kommandoen slet ikke. Linket proeves derfor som npx bruger det.
+    kommando = os.path.join(mappe, 'node_modules', '.bin', 'browser-mcp')
+    if not os.path.exists(kommando):
+        raise SystemExit('npm lavede ingen kommando «browser-mcp» i node_modules/.bin - bin-feltet virker ikke')
+    try:
+        svar = subprocess.run([kommando, '--version'], capture_output=True, text=True, timeout=60)
+    except OSError as e:
+        raise SystemExit(f'npm-kommandoen browser-mcp kan ikke startes (shebang/koerselsret?): {e}')
     if svar.returncode != 0 or svar.stdout.strip() != version:
-        raise SystemExit(f'npm-pakkens brugerindgang svarede ikke {version} paa --version '
+        raise SystemExit(f'npm-kommandoen browser-mcp svarede ikke {version} paa --version '
                          f'(exit {svar.returncode}): {(svar.stdout + svar.stderr).strip()[:200]}')
-    print(f'npm-serveren {version} hentet - brugerindgangen {rel} svarer {version}', file=sys.stderr)
+    print(f'npm-serveren {version} hentet - kommandoen browser-mcp ({rel}) svarer {version}', file=sys.stderr)
     return indgang
 
 

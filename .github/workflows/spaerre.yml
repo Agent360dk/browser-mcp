@@ -70,6 +70,11 @@ jobs:
           python3 scripts/hent-udgivet.py --udvidelse "$UDVIDELSE" --server "$SERVER" --ud "$RUNNER_TEMP/udgivet" >> "$GITHUB_OUTPUT"
 
       - name: spaerren, isoleret
+        # ⛔ 27/9 (Astra, PR #32 R2): uden `shell:` koerer GitHub `bash -e` UDEN pipefail, saa
+        # `node ... | tee` fik tee's exitkode. Et flow med 1 FEJL og fuld daekning blev groent,
+        # fordi flow_daekning_ok kun ser daekning, oversprungne og ugyldige maalinger.
+        # `shell: bash` = `bash --noprofile --norc -eo pipefail {0}`.
+        shell: bash
         env:
           # Sat EKSPLICIT paa trinnet fra hent-trinnets outputs - tomme naar det ikke koerte. Et arvet
           # UDGIVET_* i miljoeet kan derfor ikke genaktivere en fremmed kandidat (Astra 27/9).
@@ -82,10 +87,16 @@ jobs:
           [[ -n "${UDGIVET_UDVIDELSE:-}" ]] && export BMCP_UDVIDELSE_KILDE="$UDGIVET_UDVIDELSE"
           [[ -n "${UDGIVET_SERVER:-}" ]] && export BMCP_SERVER_INDEX="$UDGIVET_SERVER"
           echo "udvidelse: ${BMCP_UDVIDELSE_KILDE:-repoets} · server: ${BMCP_SERVER_INDEX:-repoets}"
-          node scripts/flow-isoleret.mjs --spaerre 2>&1 | tee spaerre.log
-          # Samme dom som udgivelses-scriptet - ét sted, ikke en kopi.
+          # Exitkoden fanges (ikke -e's straks-stop), saa daekningsdommen stadig skrives foer roedt.
+          if node scripts/flow-isoleret.mjs --spaerre 2>&1 | tee spaerre.log; then FLOW_KODE=0; else FLOW_KODE=$?; fi
           if ! grund="$(flow_daekning_ok spaerre.log)"; then
             echo "::error::flow-spaerren daekkede ikke alt: $grund"
+            exit 1
+          fi
+          # Daekningen er ikke hele dommen: flowet selv svarer 1 ved FEJL eller fejlede fane-skift, 3 hvis
+          # selen kastede. Udgivelses-scriptet taeller FEJL-listen; her er flowets eget svar dommen.
+          if [[ "$FLOW_KODE" != 0 ]]; then
+            echo "::error::flow-spaerren endte med exit $FLOW_KODE: $(sed -n '/^FEJL:/,/^====/p' spaerre.log | sed -n '2,4p' | tr '\n' ' ')"
             exit 1
           fi
           grep -m1 '^DAEKNING:' spaerre.log

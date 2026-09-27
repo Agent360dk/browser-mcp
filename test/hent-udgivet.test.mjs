@@ -132,7 +132,7 @@ print(h.hent_udvidelse('9.9.9', ${JSON.stringify(ud)}, ${JSON.stringify(repo)}))
 });
 
 /** Et falsk `npm` der «installerer» en pakke med den givne package.json og brugerindgang. */
-function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `console.log('9.9.9')` } = {}) {
+function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `#!/usr/bin/env node\nconsole.log('9.9.9')`, link = true } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'hent-server-'));
   const shim = join(d, 'shim'); mkdirSync(shim);
   const pakke = JSON.stringify({ name: '@agent360/browser-mcp', version, bin });
@@ -142,7 +142,8 @@ M="$P/node_modules/@agent360/browser-mcp"; mkdir -p "$M/bin"
 cat > "$M/package.json" <<'JSON'
 ${pakke}
 JSON
-${cli === null ? '' : `cat > "$M/bin/cli.js" <<'JS'\n${cli}\nJS`}
+${cli === null ? '' : `cat > "$M/bin/cli.js" <<'JS'\n${cli}\nJS\nchmod +x "$M/bin/cli.js"`}
+${link ? `mkdir -p "$P/node_modules/.bin"; ln -sf ../@agent360/browser-mcp/bin/cli.js "$P/node_modules/.bin/browser-mcp"` : ''}
 `);
   execFileSync('chmod', ['+x', join(shim, 'npm')]);
   try {
@@ -162,10 +163,18 @@ test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - i
   assert.match(mangler.stderr, /brugerindgang \.\/bin\/cli\.js findes ikke/);
   const ingenBin = koerHentServer({ bin: {} });
   assert.match(ingenBin.stderr, /erklaerer ingen brugerindgang/);
-  const forkertSvar = koerHentServer({ cli: `console.log('1.0.0')` });
+  const forkertSvar = koerHentServer({ cli: `#!/usr/bin/env node\nconsole.log('1.0.0')` });
   assert.match(forkertSvar.stderr, /svarede ikke 9\.9\.9 paa --version/, 'en brugerindgang der svarer en anden version blev godkendt');
-  const doer = koerHentServer({ cli: `throw new Error('braekket')` });
+  const doer = koerHentServer({ cli: `#!/usr/bin/env node\nthrow new Error('braekket')` });
   assert.match(doer.stderr, /svarede ikke 9\.9\.9 paa --version \(exit 1\)/, 'en brugerindgang der doer blev godkendt');
+  // 27/9 (Astra R2): npx koerer kommandoen gennem shebang'en - `node cli.js` saa det ikke.
+  const udenShebang = koerHentServer({ cli: `console.log('9.9.9')` });
+  assert.notEqual(udenShebang.status, 0, 'en brugerindgang UDEN shebang blev godkendt - npx kan ikke starte den');
+  assert.match(udenShebang.stderr, /npm-kommandoen browser-mcp (kan ikke startes|svarede ikke 9\.9\.9)/, udenShebang.stderr);
+  const forkertFortolker = koerHentServer({ cli: `#!/findes/ikke/node\nconsole.log('9.9.9')` });
+  assert.notEqual(forkertFortolker.status, 0, 'en shebang til en fortolker der ikke findes blev godkendt');
+  const intetLink = koerHentServer({ link: false });
+  assert.match(intetLink.stderr, /npm lavede ingen kommando «browser-mcp»/, 'en pakke uden npm-kommando blev godkendt');
   const forkertVersion = koerHentServer({ version: '9.9.8' });
   assert.match(forkertVersion.stderr, /npm udleverede 9\.9\.8, ikke 9\.9\.9/);
 });
@@ -223,4 +232,31 @@ test('flow-isoleret og flow-testen skriver hvad de FAKTISK maaler, med samme udt
   assert.match(iso, /console\.log\(`MAALT-SERVER: \$\{process\.env\.BMCP_SERVER_INDEX \|\| 'repoets'\}`\);\n\s+server = spawn\(process\.execPath, \[process\.env\.BMCP_SERVER_INDEX \|\|/);
   const run = readFileSync(join(rod, 'test/flow/run.mjs'), 'utf8');
   assert.match(run, /console\.log\(`FLOW-SERVER: \$\{process\.env\.BMCP_SERVER_INDEX \|\| 'repoets'\}`\);\nconst srv = spawn\(process\.execPath, \[process\.env\.BMCP_SERVER_INDEX \|\|/);
+});
+
+test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2: pipefail)', () => {
+  const wf = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
+  const trin = wf.slice(wf.indexOf('- name: spaerren, isoleret'), wf.indexOf('- name: gem loggen'));
+  assert.match(trin, /\n\s+shell: bash\n/, 'spaerretrinnet koerer uden pipefail - tee skjuler flowets exitkode');
+  const run = trin.slice(trin.indexOf('run: |') + 'run: |'.length).split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  const d = mkdtempSync(join(tmpdir(), 'spaerre-trin-'));
+  try {
+    mkdirSync(join(d, 'scripts')); mkdirSync(join(d, 'shim'));
+    writeFileSync(join(d, 'scripts/flow-daekning.sh'), readFileSync(join(rod, 'scripts/flow-daekning.sh'), 'utf8'));
+    const koer = (log, kode) => {
+      // Et falsk `node`: skriver en koersels-udskrift og svarer med flowets exitkode.
+      writeFileSync(join(d, 'shim/node'), `#!/bin/bash\ncat <<'LOG'\n${log}LOG\nexit ${kode}\n`);
+      execFileSync('chmod', ['+x', join(d, 'shim/node')]);
+      // Som GitHubs `shell: bash`: bash --noprofile --norc -eo pipefail
+      return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', run], { cwd: d, encoding: 'utf8',
+        env: { PATH: `${join(d, 'shim')}:${process.env.PATH}` } });
+    };
+    const groen = koer('DAEKNING: 40/40 vaerktoejer beroert · 52 OK · 0 FEJL · 0 SPRUNGET\n', 0);
+    assert.equal(groen.status, 0, groen.stdout + groen.stderr);
+    const fejl = koer('FEJL:\n  browser_click: noget gik galt\n====\nDAEKNING: 40/40 vaerktoejer beroert · 51 OK · 1 FEJL · 0 SPRUNGET\n', 1);
+    assert.notEqual(fejl.status, 0, 'et flow med 1 FEJL og fuld daekning blev groent');
+    assert.match(fejl.stdout, /::error::flow-spaerren endte med exit 1: .*browser_click/, fejl.stdout);
+    const kastede = koer('DAEKNING: 40/40 vaerktoejer beroert · 52 OK · 0 FEJL · 0 SPRUNGET\n', 3);
+    assert.notEqual(kastede.status, 0, 'et flow der sluttede med exit 3 blev groent');
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });
