@@ -3913,7 +3913,7 @@ async function dispatch(port, method, params) {
         // side der afviste vaerdien (feltet stod stille) fra en side der formaterede den (feltet aendrede sig).
         const foer = await laesFelt();
         if (fristUdloeb && foer === params.value) {
-          return { ok: true, method: 'debugger', note: 'landede trods fristen' };
+          return { ok: true, method: 'debugger', note: 'landed despite the timeout' };
         }
         // Fallback to executeScript if debugger fails
         const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
@@ -4024,7 +4024,7 @@ async function dispatch(port, method, params) {
             const v = await readBackValue(tab.id, params.selector).catch(() => null);
             tried.push({ path: 'masked', error: e.message, value: v });
             if (valueLooksLikeIso(v, iso, fmt)) {
-              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landede trods fejl i afsendelsen' };
+              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landed despite an error while sending' };
             }
           }
         } else {
@@ -4192,7 +4192,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, key, error: tastFejl.message,
           ...(frist ? { maybe_landed: true,
-            note: 'Chrome kvitterede ikke inden fristen. Tasten kan alligevel have virket ' +
+            note: 'Chrome did not acknowledge in time. The key may still have worked ' +
                   '(for example a form that was submitted) - check the page before pressing again.' } : {}),
         };
       }
@@ -4528,13 +4528,13 @@ async function dispatch(port, method, params) {
         const valg = await debuggerEval(tab.id, `
           (function() {
             const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ found: false, error: 'select ikke fundet' });
+            if (!sel) return JSON.stringify({ found: false, error: 'select not found' });
             const oensket = ${JSON.stringify(oensket)};
             const opt = Array.from(sel.options).find(o => o.value === oensket)
                      || Array.from(sel.options).find(o => o.text.trim() === oensket)
                      || Array.from(sel.options).find(o => o.text.includes(oensket));
             if (!opt) {
-              return JSON.stringify({ found: false, error: 'Ingen mulighed matchede: ' + oensket,
+              return JSON.stringify({ found: false, error: 'No option matched: ' + oensket,
                 available: Array.from(sel.options).map(o => o.text.trim()).slice(0, 25) });
             }
             const foer = ${aftryk};
@@ -4587,7 +4587,7 @@ async function dispatch(port, method, params) {
           return {
             ok: true, type: 'native_select', landed: null, selected: r.text, value: e.value, ...unknown,
             note: `The field reset itself to "${e.value}", and the page changed - but the change ` +
-                  'beviser ikke at det var valget. ' + unknown.note,
+                  'does not prove it was the selection. ' + unknown.note,
           };
         }
         // Kunne aftrykket slet ikke laeses, er det ogsaa unknown. Her stod et haardt "rullet tilbage".
@@ -4666,7 +4666,7 @@ async function dispatch(port, method, params) {
 
       const timer = setTimeout(() => {
         afvaebnDialog(tab.id);
-        opfyld({ ok: false, error: `Ingen dialog dukkede op inden for ${levetid} ms` });
+        opfyld({ ok: false, error: `No dialog appeared within ${levetid} ms` });
       }, levetid);
 
       armeredeDialoger.set(tab.id, { listener, timer, action, opfyld });
@@ -5396,7 +5396,7 @@ async function dispatch(port, method, params) {
                     : [params.files || params.file || params.file_path].filter(Boolean);
         if (!files.length) {
           await debuggerDetach(tab.id);
-          return { ok: false, error: 'Ingen fil angivet. Brug `files` (array) eller `file` (enkelt sti).' };
+          return { ok: false, error: 'No file given. Use `files` (array) or `file` (a single path).' };
         }
         await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,
