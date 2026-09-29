@@ -14,6 +14,7 @@
  * Vaerktoejer der kraever et menneske markeres SPRUNGET - de er ikke daekket, og det
  * skal staa i rapporten frem for at blive talt som groenne.
  */
+import { diagnoseFejl } from './diagnosedom.mjs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
@@ -539,9 +540,11 @@ try {
     // én forbundet udvidelse, og dens version er serverens.
     const miljoe = r.data?.environment || {};
     const aktiv = (miljoe.extensions_connected || []).filter((e) => e.active);
-    skalVaere(['current', 'unknown'].includes(r.data?.verdict), `forkert dom: ${r.data?.verdict} - udvidelsen er foraeldet, i konflikt eller ikke forbundet`);
-    skalVaere((miljoe.extensions_connected || []).length === 1, `${(miljoe.extensions_connected || []).length} Browser MCP-udvidelser forbundet - slaa de andre fra, ellers testes ikke kandidaten`);
-    skalVaere(aktiv.length === 1 && aktiv[0].version === miljoe.mcp_server_version, `udvidelsen er ${aktiv[0]?.version}, serveren er ${miljoe.mcp_server_version} - indlaes kandidaten`);
+    // Kandidat eller det udgivne i udgivelsesvinduet? Reglen staar i test/flow/diagnosedom.mjs og er proevet
+    // uden Chrome i test/diagnosedom.test.mjs (backlog 1.30.2 #12).
+    const { fejl: domFejl, vindue } = diagnoseFejl(r.data, { publiceretUdvidelse: Boolean(process.env.BMCP_UDVIDELSE_KILDE) });
+    if (vindue) console.log(`UDGIVELSESVINDUE: butik ${aktiv[0]?.version} < server ${miljoe.mcp_server_version} - dommen skal vaere outdated`);
+    skalVaere(domFejl.length === 0, domFejl.join(' · '));
     // Plan 1.10 / R2 (Astra): versionsnummeret beviser ikke hvilken KODE der koerer. Udvidelsen sender et fingeraftryk af
     // sin egen background.js i haandtrykket; her sammenlignes det med repoets fil, saa gaten ikke kan passere mod en
     // gammel kopi med samme nummer.
