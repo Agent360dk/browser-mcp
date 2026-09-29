@@ -135,11 +135,15 @@ async function harServer(port) {
 const SCAN_MAX_MS = 15000;
 // Porte med en probe i luften. Uden den kan ventilen fordoble antallet af haengende kald.
 const iLuften = new Set();
+// MAALT 26/9 af Astra (A#16): ventilen slipper laasen, en ny skanning tager den, og naar den gamle endelig
+// afgoeres, slap dens `finally` laasen midt i den nye. Hver skanning faar et nummer; kun ejeren slipper.
+let skanEjer = 0;
 
 async function scanPorts() {
   if (skanner) return;            // skanningen er nu asynkron; undgaa overlap
   skanner = true;
-  const ventil = setTimeout(() => { skanner = false; }, SCAN_MAX_MS);
+  const mig = ++skanEjer;
+  const ventil = setTimeout(() => { if (skanEjer === mig) skanner = false; }, SCAN_MAX_MS);
   try {
     const kandidater = [];
     for (let port = BASE_PORT; port <= MAX_PORT; port++) {
@@ -172,7 +176,7 @@ async function scanPorts() {
     }
   } finally {
     clearTimeout(ventil);
-    skanner = false;
+    if (skanEjer === mig) skanner = false;
   }
 }
 
