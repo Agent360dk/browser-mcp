@@ -4562,15 +4562,26 @@ async function dispatch(port, method, params) {
 
         // Feltet holder ikke vaerdien. Giv rammen tid til at gen-rendere, og se saa efter
         // om NOGET andet aendrede sig. Gjorde det det, blev valget taget imod.
-        await new Promise((res) => setTimeout(res, 150));
-        const efter = await debuggerEval(tab.id, `
-          (function() {
-            const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ value: null, aftryk: null });
-            return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
-          })()
-        `);
-        let e; try { e = JSON.parse(efter); } catch { e = null; }
+        // MAALT 28/9 paa Railway (backlog 1.30.2 #11): ét kig efter 150 ms kaldte et valg «rullet tilbage»,
+        // som siden gemte asynkront - en frisk indlaesning viste det gemt. Derfor kigges der igen i op til
+        // ~2,2 s og stoppes ved foerste tegn (vaerdien staar der, eller siden aendrede sig). Et felt der
+        // VIRKELIG afviser valget, koster de 2,2 s og er stadig «rullet tilbage».
+        const laesEfter = async () => {
+          const efter = await debuggerEval(tab.id, `
+            (function() {
+              const sel = document.querySelector(${JSON.stringify(params.selector)});
+              if (!sel) return JSON.stringify({ value: null, aftryk: null });
+              return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
+            })()
+          `);
+          try { return JSON.parse(efter); } catch { return null; }
+        };
+        let e = null;
+        for (const vent of [150, 250, 400, 600, 800]) {
+          await new Promise((res) => setTimeout(res, vent));
+          e = await laesEfter();
+          if (!e || !e.aftryk || !r.foer || e.value === r.wanted || e.aftryk !== r.foer) break;
+        }
 
         if (e && e.value === r.wanted) {
           return { ok: true, type: 'native_select', selected: r.text, value: e.value };
