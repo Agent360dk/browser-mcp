@@ -3881,7 +3881,7 @@ async function dispatch(port, method, params) {
         if (efterTekst === '') {
           return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'er i baggrunden, hvor Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
         }
         return { ok: true, method: 'debugger', differs: true, value: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
@@ -4807,7 +4807,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false,
           error: 'domain-missing',
-          hint: 'Angiv `domain`. Uden det ville kaldet returnere HVER cookie i profilen — ' +
+          hint: 'Give `domain`. Without it the call would return EVERY cookie in the profile — ' +
                 'including from pages that have nothing to do with the task.',
         };
       }
@@ -4845,7 +4845,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was read - otherwise ' +
-                'den almindelige profils cookies blive leveret i stedet.',
+                'the regular profile\'s cookies would be returned instead.',
         };
       }
       const vaertsnavne = sider.map((x) => x.vaert);
@@ -4938,7 +4938,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was written - otherwise ' +
-                'cookien lande i den almindelige profil i stedet.',
+                'the cookie would land in the regular profile instead.',
         };
       }
       // Sidens vaert faar cookies fra sig selv og fra sine overdomaener - ikke fra et underdomaene den ikke har aabnet.
@@ -5267,7 +5267,7 @@ async function dispatch(port, method, params) {
             error: 'not-ours',
             hint: 'The most recent new tab was not opened from one of your own tabs, so it ' +
                   'belongs to the user. Use browser_navigate(new_tab: true) if you need to ' +
-                  'have en ny fane.',
+                  'open a new tab.',
             tab_id: tab.id,
           };
         }
