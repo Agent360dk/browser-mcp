@@ -1193,7 +1193,7 @@ async function handleProvideFeedback(args) {
         // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
         // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
         : 'If the extension is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload. Kommer den fra Chrome Web Store: den nye version ' +
+          'chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome Web Store: the new version ' +
           'is probably in review (1-3 days after a release), and ↻ reload does NOT fetch it before Google has ' +
           'approved - that is expected and passes by itself. Everything else works meanwhile.',
     );
