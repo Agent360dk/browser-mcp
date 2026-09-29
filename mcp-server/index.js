@@ -79,7 +79,7 @@ function advarOmKonflikt(conn) {
   const alle = distinctExtensions();
   if (alle.length < 2) return;
   // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
-  const noegle = alle.map(c => `${c.extensionId || 'ukendt'}@${c.version || '?'}`).sort().join('|');
+  const noegle = alle.map(c => `${c.extensionId || 'unknown'}@${c.version || '?'}`).sort().join('|');
   if (noegle === sidsteKonfliktNoegle) return;
   sidsteKonfliktNoegle = noegle;
   const aktiv = activeConnection();
@@ -89,7 +89,7 @@ function advarOmKonflikt(conn) {
   const kanVaelge = alle.some(c => c.version);
   process.stderr.write(
     `[MCP] WARNING: ${alle.length} Browser MCP extensions are connected to this server at the same time ` +
-    `(${alle.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
+    `(${alle.map(c => `${c.extensionId || 'unknown id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
     'They share tabs and session state, so tabs can appear to vanish. ' +
     (kanVaelge
       ? `Commands are only sent to the newest one (${aktiv?.extensionId}). `
@@ -978,12 +978,12 @@ function forklarSkaevhed(besked) {
       const aktiv = activeConnection();
       return `Error: ${besked}\n\n` +
         `FIRST: ${alle.length} Browser MCP extensions are connected at the same time ` +
-        `(${alle.map((c) => c.extensionId || 'ukendt id').join(', ')}). Chrome tillader kun ÉN ` +
+        `(${alle.map((c) => c.extensionId || 'unknown id').join(', ')}). Chrome allows only ONE ` +
         'debugger per tab, so they fight over it, and every mouse, keyboard or file action ' +
         'fails like this. It is probably not the page.\n\n' +
-        'To veje ud:\n' +
+        'Two ways out:\n' +
         '1. Disable all but one on chrome://extensions (the user has to do it - ' +
-        'chrome:// kan ikke styres herfra).\n' +
+        'chrome:// cannot be controlled from here).\n' +
         `2. Without touching Chrome: set BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
         'in the client configuration, so this server talks only to that one.';
     }
@@ -1148,7 +1148,7 @@ async function handleProvideFeedback(args) {
     const kanVaelge = exts.some(c => c.version);
     findings.push(
       `${exts.length} Browser MCP extensions are loaded in Chrome and connected to this server at the same time ` +
-      `(${exts.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ' (oplyser ikke version)'}`).join(' + ')}). ` +
+      `(${exts.map(c => `${c.extensionId || 'unknown id'}${c.version ? ' v' + c.version : ' (does not report its version)'}`).join(' + ')}). ` +
       'Each keeps its own session map and its own tab groups in the same browser, ' +
       'so tabs can appear to vanish and sessions to merge. ' +
       (kanVaelge
