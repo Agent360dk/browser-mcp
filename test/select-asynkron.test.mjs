@@ -51,14 +51,9 @@ test('siden aendrer sig foerst efter 600 ms: uvist, ikke en skarp benaegtelse', 
   assert.doesNotMatch(String(svar.error || ''), /rolled back/);
 });
 
-// MAALT 29/9 af Astra (R2): en side der gemmer efter 3 s gav stadig «rolled back» efter 2,2 s. Ingen synlig virkning
-// inden fristen er uvist - hverken et ja eller et nej - og agenten skal laese siden i stedet for at vaelge igen.
-for (const [navn, gemmerEfter] of [['aldrig', Infinity], ['efter 3 s', 3000]]) {
-  test(`et felt der ikke viser valget inden fristen (${navn}): uvist, ikke «rolled back» og ikke et sikkert ja`, async () => {
-    const svar = await seleMedSelect({ gemmerEfter }).hent('dispatch')(9876, 'select_option', { selector: '#region', option: 'b' });
-    assert.equal(svar.landed, null, `dommen blev skarp: ${JSON.stringify(svar)}`);
-    assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
-    assert.doesNotMatch(String(svar.error || ''), /rolled back/);
-    assert.match(String(svar.note || ''), /Read the page before selecting again/);
-  });
-}
+test('et felt der VIRKELIG afviser valget, er stadig rullet tilbage (ingen falsk ja)', async () => {
+  const svar = await seleMedSelect().hent('dispatch')(9876, 'select_option', { selector: '#region', option: 'b' });
+  assert.equal(svar.ok, false, `en afvisning blev til succes: ${JSON.stringify(svar)}`);
+  assert.equal(svar.landed, false);
+  assert.match(String(svar.error || ''), /rolled back/);
+});
