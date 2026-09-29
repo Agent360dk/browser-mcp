@@ -77,7 +77,10 @@ const LOG = /(?:console\.(?:log|warn|error|info|debug)|process\.stderr\.write)$/
 const SIDEORD = new Set(['vælg dato', 'åbn', 'næste', 'ikke nu', 'køb', 'log ud']);
 // Et sideord kan ogsaa CITERES i engelsk tekst (tools.js: «text content (Skip/Cancel/Ikke nu/...)»). Det skaeres ud foer maalingen.
 const udenSideord = (t) => [...SIDEORD].reduce((a, o) => a.replace(new RegExp(o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), ' '), t);
-const ER_KODE = /\bfunction\b|=>|\bconst\b|\breturn\b/;
+// MAALT 29/9 af Astra (R2): ét kodeord var nok - «return gav ikke noget: » blev laest som kode og slap igennem.
+// Nu kraeves mindst tre forskellige kodetegn; prosa med et enkelt «return» er stadig tekst.
+const KODETEGN = [/\bfunction\b/, /=>/, /\bconst\s+\w+\s*=/, /\breturn\b/, /;/, /[{}]/, /\bdocument\./];
+const ER_KODE = { test: (t) => KODETEGN.filter((r) => r.test(t)).length >= 3 };
 const ER_REGEX = /\[a-z[^\]]*æøå|\\d|\\s/;
 
 // Returnerer [{ tekst, linje, iLog }] for hver streng/skabelon-del uden for kommentarer.
