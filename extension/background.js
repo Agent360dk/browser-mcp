@@ -4607,14 +4607,9 @@ async function dispatch(port, method, params) {
           return { ok: true, type: 'native_select', landed: null, selected: r.text,
                    value: e ? e.value: r.actual, ...unknown };
         }
-        // MAALT 29/9 af Astra (R2): med en side der gemmer efter 3 s var svaret stadig «rolled back» efter 2,2 s - og
-        // vaerdien stod der 0,9 s senere. Laengere ventetid flytter kun fejlen. Ingen synlig virkning inden fristen er
-        // IKKE et bevis paa afvisning, saa det er uvist - og agenten faar at vide at den skal laese siden, ikke vaelge igen.
-        const uvist = uvisVurdering({ landed: null, unverified: true },
-          `The field shows "${e.value}" again, and nothing else on the page changed within about 2 seconds. ` +
-          'A rejected selection looks like that - but so does a page that saves in the background and redraws later ' +
-          '(measured on Railway). Read the page before selecting again.');
-        return { ok: true, type: 'native_select', landed: null, selected: r.text, value: e.value, ...uvist };
+        return { ok: false, type: 'native_select', landed: false,
+          error: `The selection was rolled back: set "${r.wanted}", the field is on "${e ? e.value: r.actual}", ` +
+                 'and nothing else on the page changed.' };
       }
 
       // Custom dropdown (Angular Material, React Select, etc.)
