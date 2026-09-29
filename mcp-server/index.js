@@ -436,7 +436,7 @@ function createWSS(port = BASE_PORT) {
 
     ws.on('close', () => {
       connections.delete(conn);
-      afvisVentende('udvidelsen koblede fra');
+      afvisVentende('the extension disconnected');
       process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
     });
   });
@@ -997,9 +997,9 @@ function forklarSkaevhed(besked) {
   const alt = ERSTATNINGER[m[1]];
   return `Error: browser_${m[1]} exists in this server, but not in your Chrome extension.\n\n` +
     'The extension is updated through the Chrome Web Store and can be 1-3 days behind after a ' +
-    'udgivelse - serveren opdateres med det samme via npm. Alt andet virker imens.\n' +
+    'release - the server updates immediately via npm. Everything else works meanwhile.\n' +
     (alt ? `\nUntil then: ${alt}.\n` : '') +
-    '\nTjek om en opdatering venter: chrome://extensions → Agent360 Browser MCP. ' +
+    '\nCheck whether an update is waiting: chrome://extensions → Agent360 Browser MCP. ' +
     'If it is loaded as "unpacked", run `npx @agent360/browser-mcp install`.';
 }
 
@@ -1152,7 +1152,7 @@ async function handleProvideFeedback(args) {
       'Each keeps its own session map and its own tab groups in the same browser, ' +
       'so tabs can appear to vanish and sessions to merge. ' +
       (kanVaelge
-        ? `Denne server sender kun til den nyeste (${active?.extensionId}).`
+        ? `This server only sends to the newest one (${active?.extensionId}).`
         : `None of them reports its version, so which one is driven (${active?.extensionId}) is arbitrary and can change between sessions.`),
     );
     fix_steps.push(
