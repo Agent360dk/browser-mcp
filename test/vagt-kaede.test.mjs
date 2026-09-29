@@ -48,7 +48,9 @@ test('en ukendt fejl tolkes som i live - vi draeber ikke paa tvivl', () => {
 
 test('den aegte process.kill giver det rigtige svar paa denne maskine', () => {
   assert.equal(ledErDoedt(process.pid), false, 'vores egen proces lever');
-  assert.equal(ledErDoedt(1), false, 'launchd lever - det er hele fejlen fra 22/8');
+  // PID 1 er launchd/init paa mac og Linux; paa Windows findes den ikke, og systemprocessen er PID 4 (MAALT 29/9 paa GitHub).
+  const system = process.platform === 'win32' ? 4 : 1;
+  assert.equal(ledErDoedt(system), false, `systemprocessen (pid ${system}) lever - det er hele fejlen fra 22/8`);
   assert.equal(ledErDoedt(999999), true, 'et pid der ikke findes er doedt');
 });
 

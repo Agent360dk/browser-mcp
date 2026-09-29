@@ -3881,7 +3881,7 @@ async function dispatch(port, method, params) {
         if (efterTekst === '') {
           return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'er i baggrunden, hvor Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
         }
         return { ok: true, method: 'debugger', differs: true, value: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
@@ -3913,7 +3913,7 @@ async function dispatch(port, method, params) {
         // side der afviste vaerdien (feltet stod stille) fra en side der formaterede den (feltet aendrede sig).
         const foer = await laesFelt();
         if (fristUdloeb && foer === params.value) {
-          return { ok: true, method: 'debugger', note: 'landede trods fristen' };
+          return { ok: true, method: 'debugger', note: 'landed despite the timeout' };
         }
         // Fallback to executeScript if debugger fails
         const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
@@ -4024,7 +4024,7 @@ async function dispatch(port, method, params) {
             const v = await readBackValue(tab.id, params.selector).catch(() => null);
             tried.push({ path: 'masked', error: e.message, value: v });
             if (valueLooksLikeIso(v, iso, fmt)) {
-              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landede trods fejl i afsendelsen' };
+              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landed despite an error while sending' };
             }
           }
         } else {
@@ -4192,7 +4192,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, key, error: tastFejl.message,
           ...(frist ? { maybe_landed: true,
-            note: 'Chrome kvitterede ikke inden fristen. Tasten kan alligevel have virket ' +
+            note: 'Chrome did not acknowledge in time. The key may still have worked ' +
                   '(for example a form that was submitted) - check the page before pressing again.' } : {}),
         };
       }
@@ -4528,13 +4528,13 @@ async function dispatch(port, method, params) {
         const valg = await debuggerEval(tab.id, `
           (function() {
             const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ found: false, error: 'select ikke fundet' });
+            if (!sel) return JSON.stringify({ found: false, error: 'select not found' });
             const oensket = ${JSON.stringify(oensket)};
             const opt = Array.from(sel.options).find(o => o.value === oensket)
                      || Array.from(sel.options).find(o => o.text.trim() === oensket)
                      || Array.from(sel.options).find(o => o.text.includes(oensket));
             if (!opt) {
-              return JSON.stringify({ found: false, error: 'Ingen mulighed matchede: ' + oensket,
+              return JSON.stringify({ found: false, error: 'No option matched: ' + oensket,
                 available: Array.from(sel.options).map(o => o.text.trim()).slice(0, 25) });
             }
             const foer = ${aftryk};
@@ -4562,15 +4562,26 @@ async function dispatch(port, method, params) {
 
         // Feltet holder ikke vaerdien. Giv rammen tid til at gen-rendere, og se saa efter
         // om NOGET andet aendrede sig. Gjorde det det, blev valget taget imod.
-        await new Promise((res) => setTimeout(res, 150));
-        const efter = await debuggerEval(tab.id, `
-          (function() {
-            const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ value: null, aftryk: null });
-            return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
-          })()
-        `);
-        let e; try { e = JSON.parse(efter); } catch { e = null; }
+        // MAALT 28/9 paa Railway (backlog 1.30.2 #11): ét kig efter 150 ms kaldte et valg «rullet tilbage»,
+        // som siden gemte asynkront - en frisk indlaesning viste det gemt. Derfor kigges der igen i op til
+        // ~2,2 s og stoppes ved foerste tegn (vaerdien staar der, eller siden aendrede sig). Et felt der
+        // VIRKELIG afviser valget, koster de 2,2 s og er stadig «rullet tilbage».
+        const laesEfter = async () => {
+          const efter = await debuggerEval(tab.id, `
+            (function() {
+              const sel = document.querySelector(${JSON.stringify(params.selector)});
+              if (!sel) return JSON.stringify({ value: null, aftryk: null });
+              return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
+            })()
+          `);
+          try { return JSON.parse(efter); } catch { return null; }
+        };
+        let e = null;
+        for (const vent of [150, 250, 400, 600, 800]) {
+          await new Promise((res) => setTimeout(res, vent));
+          e = await laesEfter();
+          if (!e || !e.aftryk || !r.foer || e.value === r.wanted || e.aftryk !== r.foer) break;
+        }
 
         if (e && e.value === r.wanted) {
           return { ok: true, type: 'native_select', selected: r.text, value: e.value };
@@ -4587,7 +4598,7 @@ async function dispatch(port, method, params) {
           return {
             ok: true, type: 'native_select', landed: null, selected: r.text, value: e.value, ...unknown,
             note: `The field reset itself to "${e.value}", and the page changed - but the change ` +
-                  'beviser ikke at det var valget. ' + unknown.note,
+                  'does not prove it was the selection. ' + unknown.note,
           };
         }
         // Kunne aftrykket slet ikke laeses, er det ogsaa unknown. Her stod et haardt "rullet tilbage".
@@ -4666,7 +4677,7 @@ async function dispatch(port, method, params) {
 
       const timer = setTimeout(() => {
         afvaebnDialog(tab.id);
-        opfyld({ ok: false, error: `Ingen dialog dukkede op inden for ${levetid} ms` });
+        opfyld({ ok: false, error: `No dialog appeared within ${levetid} ms` });
       }, levetid);
 
       armeredeDialoger.set(tab.id, { listener, timer, action, opfyld });
@@ -4796,7 +4807,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false,
           error: 'domain-missing',
-          hint: 'Angiv `domain`. Uden det ville kaldet returnere HVER cookie i profilen — ' +
+          hint: 'Give `domain`. Without it the call would return EVERY cookie in the profile — ' +
                 'including from pages that have nothing to do with the task.',
         };
       }
@@ -4834,7 +4845,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was read - otherwise ' +
-                'den almindelige profils cookies blive leveret i stedet.',
+                'the regular profile\'s cookies would be returned instead.',
         };
       }
       const vaertsnavne = sider.map((x) => x.vaert);
@@ -4927,7 +4938,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was written - otherwise ' +
-                'cookien lande i den almindelige profil i stedet.',
+                'the cookie would land in the regular profile instead.',
         };
       }
       // Sidens vaert faar cookies fra sig selv og fra sine overdomaener - ikke fra et underdomaene den ikke har aabnet.
@@ -5256,7 +5267,7 @@ async function dispatch(port, method, params) {
             error: 'not-ours',
             hint: 'The most recent new tab was not opened from one of your own tabs, so it ' +
                   'belongs to the user. Use browser_navigate(new_tab: true) if you need to ' +
-                  'have en ny fane.',
+                  'open a new tab.',
             tab_id: tab.id,
           };
         }
@@ -5396,7 +5407,7 @@ async function dispatch(port, method, params) {
                     : [params.files || params.file || params.file_path].filter(Boolean);
         if (!files.length) {
           await debuggerDetach(tab.id);
-          return { ok: false, error: 'Ingen fil angivet. Brug `files` (array) eller `file` (enkelt sti).' };
+          return { ok: false, error: 'No file given. Use `files` (array) or `file` (a single path).' };
         }
         await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,

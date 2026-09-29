@@ -79,7 +79,7 @@ function advarOmKonflikt(conn) {
   const alle = distinctExtensions();
   if (alle.length < 2) return;
   // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
-  const noegle = alle.map(c => `${c.extensionId || 'ukendt'}@${c.version || '?'}`).sort().join('|');
+  const noegle = alle.map(c => `${c.extensionId || 'unknown'}@${c.version || '?'}`).sort().join('|');
   if (noegle === sidsteKonfliktNoegle) return;
   sidsteKonfliktNoegle = noegle;
   const aktiv = activeConnection();
@@ -89,7 +89,7 @@ function advarOmKonflikt(conn) {
   const kanVaelge = alle.some(c => c.version);
   process.stderr.write(
     `[MCP] WARNING: ${alle.length} Browser MCP extensions are connected to this server at the same time ` +
-    `(${alle.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
+    `(${alle.map(c => `${c.extensionId || 'unknown id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
     'They share tabs and session state, so tabs can appear to vanish. ' +
     (kanVaelge
       ? `Commands are only sent to the newest one (${aktiv?.extensionId}). `
@@ -436,7 +436,7 @@ function createWSS(port = BASE_PORT) {
 
     ws.on('close', () => {
       connections.delete(conn);
-      afvisVentende('udvidelsen koblede fra');
+      afvisVentende('the extension disconnected');
       process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
     });
   });
@@ -978,12 +978,12 @@ function forklarSkaevhed(besked) {
       const aktiv = activeConnection();
       return `Error: ${besked}\n\n` +
         `FIRST: ${alle.length} Browser MCP extensions are connected at the same time ` +
-        `(${alle.map((c) => c.extensionId || 'ukendt id').join(', ')}). Chrome tillader kun ÉN ` +
+        `(${alle.map((c) => c.extensionId || 'unknown id').join(', ')}). Chrome allows only ONE ` +
         'debugger per tab, so they fight over it, and every mouse, keyboard or file action ' +
         'fails like this. It is probably not the page.\n\n' +
-        'To veje ud:\n' +
+        'Two ways out:\n' +
         '1. Disable all but one on chrome://extensions (the user has to do it - ' +
-        'chrome:// kan ikke styres herfra).\n' +
+        'chrome:// cannot be controlled from here).\n' +
         `2. Without touching Chrome: set BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
         'in the client configuration, so this server talks only to that one.';
     }
@@ -997,9 +997,9 @@ function forklarSkaevhed(besked) {
   const alt = ERSTATNINGER[m[1]];
   return `Error: browser_${m[1]} exists in this server, but not in your Chrome extension.\n\n` +
     'The extension is updated through the Chrome Web Store and can be 1-3 days behind after a ' +
-    'udgivelse - serveren opdateres med det samme via npm. Alt andet virker imens.\n' +
+    'release - the server updates immediately via npm. Everything else works meanwhile.\n' +
     (alt ? `\nUntil then: ${alt}.\n` : '') +
-    '\nTjek om en opdatering venter: chrome://extensions → Agent360 Browser MCP. ' +
+    '\nCheck whether an update is waiting: chrome://extensions → Agent360 Browser MCP. ' +
     'If it is loaded as "unpacked", run `npx @agent360/browser-mcp install`.';
 }
 
@@ -1148,11 +1148,11 @@ async function handleProvideFeedback(args) {
     const kanVaelge = exts.some(c => c.version);
     findings.push(
       `${exts.length} Browser MCP extensions are loaded in Chrome and connected to this server at the same time ` +
-      `(${exts.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ' (oplyser ikke version)'}`).join(' + ')}). ` +
+      `(${exts.map(c => `${c.extensionId || 'unknown id'}${c.version ? ' v' + c.version : ' (does not report its version)'}`).join(' + ')}). ` +
       'Each keeps its own session map and its own tab groups in the same browser, ' +
       'so tabs can appear to vanish and sessions to merge. ' +
       (kanVaelge
-        ? `Denne server sender kun til den nyeste (${active?.extensionId}).`
+        ? `This server only sends to the newest one (${active?.extensionId}).`
         : `None of them reports its version, so which one is driven (${active?.extensionId}) is arbitrary and can change between sessions.`),
     );
     fix_steps.push(
@@ -1193,7 +1193,7 @@ async function handleProvideFeedback(args) {
         // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
         // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
         : 'If the extension is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload. Kommer den fra Chrome Web Store: den nye version ' +
+          'chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome Web Store: the new version ' +
           'is probably in review (1-3 days after a release), and ↻ reload does NOT fetch it before Google has ' +
           'approved - that is expected and passes by itself. Everything else works meanwhile.',
     );
