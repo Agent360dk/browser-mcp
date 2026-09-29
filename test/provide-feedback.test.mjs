@@ -124,6 +124,23 @@ test('gammel udvidelse med kendt version: raadet naevner ogsaa butikkens venteti
   assert.match(tekst, /1-3 days|review/i, 'ventetiden skal siges, saa den ikke ligner en fejl');
 });
 
+// MAALT 28/9 (backlog 1.30.2 #13): raadet med kendt version skiftede sprog midt i saetningen - «Kommer den fra
+// Chrome Web Store: den nye version is probably in review». Agenten viderebringer fix_steps ordret til brugeren.
+test('fix-skridtene er paa engelsk i alle tilfaelde (intet dansk midt i en saetning)', async () => {
+  const dansk = /[æøåÆØÅ]|\b(?:Kommer|den|nye|fra|og|ikke|er|med|skal)\b/;
+  const tilfaelde = [
+    { serverVersion: '1.29.1', npmLatest: '1.29.1', udvidelser: [ext('1.29.0', 'a')] },
+    { serverVersion: '1.28.0', npmLatest: '1.28.0', udvidelser: [ext('1.26.0', 'a')] },
+    { serverVersion: '1.25.0', npmLatest: '1.28.0' },
+    { udvidelser: [] },
+    { udvidelser: [ext('1.28.0', 'a'), ext('1.28.0', 'b')] },
+  ];
+  for (const t of tilfaelde) {
+    const r = await byg(t)({ what_happened: 'x' });
+    for (const s of r.fix_steps) assert.doesNotMatch(s, dansk, `dansk i et engelsk raad: «${s}»`);
+  }
+});
+
 test('udvidelse uden haandtryk regnes som for gammel', async () => {
   const r = await byg({ udvidelser: [ext(null, null)] })({ what_happened: 'noget gik galt' });
   assert.equal(r.verdict, 'outdated');
