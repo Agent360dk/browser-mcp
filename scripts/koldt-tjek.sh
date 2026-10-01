@@ -3,53 +3,30 @@
 #
 # Findes som eget script (1/10, Astra runde 3) fordi det koerer i jobbet «efter» i udgivelses-workflowet: UDEN udgivelsesrettigheder,
 # uden hemmeligheder, uden skrivbart token. npx opsloeser afhaengighederne efter INTERVAL paa udgivelsesdagen; den kode maa ikke koere i
-# det job der kan udgive. Samme logik som trin 5c i runbrowsermcpupdate.sh (som stadig bruges ved en udgivelse fra en anden maskine).
+# det job der kan udgive. Selve forsoeget er scripts/koldt-forsoeg.mjs (Astra runde 5): det holder pakken i live efter svaret, draeber hele
+# procesgruppen ved frist og validerer svaret strengt. Dette script staar for de seks forsoeg og pauserne.
 #
 #   bash scripts/koldt-tjek.sh 1.30.1        # KOLDT_PAUSE=30 (sekunder mellem forsoeg; 0 i proever)
-# Exit 0 = pakken svarer. Exit 1 = den svarede ikke efter seks forsoeg: se raadet om tilbagerulning nederst.
+# Exit 0 = pakken svarer. Exit 1 = den svarede ikke efter seks forsoeg: se raadet nederst.
 set -uo pipefail
 V="${1:?brug: koldt-tjek.sh <version>}"
 PAUSE="${KOLDT_PAUSE:-30}"
-# MAALT 13/9 (Fable): kaldet havde ingen tidsgraense. npx henter fra registret, og et haengende download ville staa her for evigt.
-# MAALT 19/9: en TOM bash-array udvidet som "${ARR[@]}" fejler under `set -u` paa macOS' bash 3.2 - brug ${ARR[@]+"${ARR[@]}"}.
-if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD=(timeout 90)
-elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD=(gtimeout 90)
-# 1/10 (Astra runde 4): macos-latest har hverken timeout eller gtimeout. perl findes paa macOS, og en alarm overlever exec.
-elif command -v perl >/dev/null 2>&1; then TIMEOUT_CMD=(perl -e 'alarm shift; exec @ARGV' 90)
-else TIMEOUT_CMD=(); echo "  ! ingen timeout(1) eller perl paa maskinen - det kolde tjek kan haenge"; fi
-
-# 1/10 (Astra runde 4): her stod to substring-kontroller paa foerste linje («serverInfo» og «agent360-browser»). De godkendte ugyldig JSON,
-# et JSON-RPC-fejlsvar med de samme ord, forkert request-id og enhver version. Nu kraeves et rigtigt MCP-initialize-svar fra DENNE version:
-# samme krav som pakke-roegtest.mjs (id 1, ingen error, protocolVersion, capabilities.tools, serverInfo.name) plus serverInfo.version == versionen.
-gyldigt_svar() {
-  printf '%s' "$1" | node -e '
-let s = "";
-process.stdin.on("data", (c) => { s += c; }).on("end", () => {
-  try {
-    const m = JSON.parse(s); const r = m && m.result;
-    const ok = m.id === 1 && !m.error && r && typeof r.protocolVersion === "string" && r.protocolVersion !== "" &&
-      r.capabilities && typeof r.capabilities.tools === "object" && r.capabilities.tools !== null &&
-      r.serverInfo && r.serverInfo.name === "agent360-browser" && r.serverInfo.version === process.argv[1];
-    process.exit(ok ? 0 : 1);
-  } catch { process.exit(1); }
-});' "$2"
-}
+FORSOEG_PROGRAM="$(cd "$(dirname "$0")" && pwd)/koldt-forsoeg.mjs"
+SIDSTE=""
 for forsoeg in 1 2 3 4 5 6; do
   HJEM="$(mktemp -d)"
   echo "  npx @agent360/browser-mcp@${V} (frisk HOME, tomt miljoe, forsoeg ${forsoeg}/6)"
-  SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
-    | env -i HOME="$HJEM" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-C}" npm_config_ignore_scripts=true ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${V}" 2>"$HJEM/fejl.log" | head -1 || true)"
-  if gyldigt_svar "$SVAR" "$V"; then
+  if SIDSTE="$(node "$FORSOEG_PROGRAM" "$V" "$HJEM" 2>&1)"; then
     rm -rf "$HJEM" 2>/dev/null || true
-    echo "  ✓ den udgivne pakke svarer paa MCP-haandtrykket"
+    echo "  ✓ den udgivne pakke svarer paa MCP-haandtrykket og lever videre"
+    echo "    $SIDSTE"
     exit 0
   fi
-  [[ -s "$HJEM/fejl.log" ]] && tail -5 "$HJEM/fejl.log" | sed 's/^/    /'
+  printf '%s\n' "$SIDSTE" | sed 's/^/    /' | tail -6
   rm -rf "$HJEM" 2>/dev/null || true
   # MAALT 13/9 under den AEGTE udgivelse: tre forsoeg a 15 s var for lidt (npm skrev selv «may take a few minutes»).
   [[ $forsoeg -lt 6 ]] && { echo "  registret har maaske ikke indekseret endnu - venter ${PAUSE} s"; sleep "$PAUSE"; }
 done
-echo "  sidste svar: ${SVAR:0:200}"
 echo "  Seks forsoeg gav ikke et gyldigt MCP-svar fra ${V} (ca. 150 s pause i alt). Det kan ogsaa vaere registret eller nettet, ikke pakken:"
 echo "     proev SELV foer du ruller noget tilbage:  npx -y @agent360/browser-mcp@${V}   (og send et initialize)"
 echo "  ⛔ Hvis pakken ER brudt, er tilbagerulningen smal:"

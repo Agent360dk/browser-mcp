@@ -295,16 +295,16 @@ function koldt(npxKilde, miljoe = {}) {
   const d = mkdtempSync(join(tmpdir(), 'isolation-koldt-'));
   const stubs = join(d, 'stubs'); mkdirSync(stubs);
   const miljoeFil = join(d, 'npx-miljoe.txt');
-  writeFileSync(join(stubs, 'npx'), `#!/bin/sh\ncat >/dev/null\nenv | sed 's/=.*//' > "${miljoeFil}"\n${npxKilde}\n`);
+  writeFileSync(join(stubs, 'npx'), `#!/bin/sh\nread -r _\nenv | sed 's/=.*//' > "${miljoeFil}"\n${npxKilde}\n`);
   chmodSync(join(stubs, 'npx'), 0o755);
   const r = spawnSync('bash', [join(rod, 'scripts/koldt-tjek.sh'), '9.9.9'], { encoding: 'utf8', timeout: 60000,
-    env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME, KOLDT_PAUSE: '0', ...miljoe } });
+    env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME, KOLDT_PAUSE: '0', KOLDT_EFTERTID_MS: '300', KOLDT_FRIST_MS: '4000', ...miljoe } });
   const set = existsSync(miljoeFil) ? readFileSync(miljoeFil, 'utf8') : '';
   return { r, set, ryd: () => rmSync(d, { recursive: true, force: true }) };
 }
 
 test('koldt-tjek.sh: et gyldigt svar godkendes, og npx ser INGEN af udgivelsens hemmeligheder', { skip: POSIX }, () => {
-  const k = koldt(`echo '${GYLDIGT}'`, HEMMELIGHEDER);
+  const k = koldt(`echo '${GYLDIGT}'\nsleep 3`, HEMMELIGHEDER);
   try {
     assert.equal(k.r.status, 0, `et gyldigt svar blev afvist: ${k.r.stdout} ${k.r.stderr}`);
     assert.ok(k.set.length > 0, 'npx-stubben optog ikke sit miljoe - proeven kan ikke maale noget');
@@ -335,7 +335,7 @@ for (const [navn, svar] of Object.entries(AFVISES)) {
   });
 }
 test('koldt-tjek.sh (modsat): et fuldt og rigtigt svar godkendes stadig', { skip: POSIX }, () => {
-  const k = koldt(`echo '${forkert({})}'`);
+  const k = koldt(`echo '${forkert({})}'\nsleep 3`);
   try { assert.equal(k.r.status, 0, `${k.r.stdout} ${k.r.stderr}`); } finally { k.ryd(); }
 });
 
@@ -388,4 +388,53 @@ test('trin 5 (modsat): rigtig udgivelse via OIDC udgiver med provenance; med NPM
   assert.equal(dobbelt.status, 0, dobbelt.stdout);
   assert.match(dobbelt.stdout, /already on npm/);
   assert.ok(!/RUN:/.test(dobbelt.stdout));
+});
+
+// ── Astra runde 5: svar-og-nedbrud, procestræets frist, stoejen foer svaret, og en strammere validering ──────────────
+
+const STRENGE = {
+  'jsonrpc er ikke 2.0': JSON.stringify({ jsonrpc: 'garbage', id: 1, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } }),
+  'error: null ved siden af result': JSON.stringify({ jsonrpc: '2.0', id: 1, error: null, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } }),
+  'capabilities.tools er en liste': JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: { tools: [] }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } }),
+  'protocolVersion er ikke en dato': JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 'bogus', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } }),
+};
+for (const [navn, svar] of Object.entries(STRENGE)) {
+  test(`koldt-tjek.sh: afviser «${navn}»`, { skip: POSIX }, () => {
+    const k = koldt(`echo '${svar.replace(/'/g, "'\\''")}'\nsleep 3`);
+    try { assert.notEqual(k.r.status, 0, `blev godkendt: ${svar}`); } finally { k.ryd(); }
+  });
+}
+
+test('koldt-tjek.sh: et korrekt svar efterfulgt af et NEDBRUD er ikke groent (pakken skal blive i live)', { skip: POSIX }, () => {
+  const k = koldt(`echo '${GYLDIGT}'\nexit 42`);
+  try {
+    assert.notEqual(k.r.status, 0, `en pakke der svarede og straks stoppede blev godkendt: ${k.r.stdout}`);
+    assert.match(k.r.stdout, /stoppede/i, 'fejlen siger ikke at pakken stoppede lige efter sit svar');
+  } finally { k.ryd(); }
+});
+
+test('koldt-tjek.sh: en JSON-RPC-notifikation foer svaret er tilladt; tekst paa stdout er det ikke', { skip: POSIX }, () => {
+  const notifikation = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/message', params: { level: 'info' } });
+  const a = koldt(`echo '${notifikation}'\necho '${GYLDIGT}'\nsleep 3`);
+  const b = koldt(`echo 'velkommen til serveren'\necho '${GYLDIGT}'\nsleep 3`);
+  try {
+    assert.equal(a.r.status, 0, `en lovlig notifikation foer svaret blev afvist: ${a.r.stdout}`);
+    assert.notEqual(b.r.status, 0, 'almindelig tekst paa stdout (ikke MCP) blev godkendt');
+  } finally { a.ryd(); b.ryd(); }
+});
+
+test('koldt-tjek.sh: fristen gaelder HELE procestræet - et barnebarn der holder stdout aaben overlever ikke', { skip: POSIX }, () => {
+  const pidFil = join(tmpdir(), `koldt-barnebarn-${process.pid}-${Date.now()}.pid`);
+  // npx-stubben starter en baggrundsproces der arver stdout og aldrig svarer; foer fristen holdt den roeret aabent til den doede selv
+  const k = koldt(`sleep 30 &\necho $! > "${pidFil}"\nwait`);
+  try {
+    const t0 = Date.now();
+    assert.notEqual(k.r.status, 0);
+    assert.ok(Date.now() - t0 < 25000, `fristen holdt ikke: ${(Date.now() - t0) / 1000} s`);
+    assert.ok(existsSync(pidFil), 'stubben startede ikke sit barnebarn - proeven maaler intet');
+    const pid = Number(readFileSync(pidFil, 'utf8').trim());
+    let lever = true;
+    try { process.kill(pid, 0); } catch { lever = false; }
+    assert.equal(lever, false, `barnebarnet (pid ${pid}) lever stadig efter fristen`);
+  } finally { k.ryd(); rmSync(pidFil, { force: true }); }
 });
