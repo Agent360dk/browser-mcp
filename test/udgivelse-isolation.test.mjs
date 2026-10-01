@@ -357,6 +357,7 @@ function koerNpmBlok({ ship, oidc = false, token = false, publiceret = false }) 
 step() { :; }; warn() { echo "WARN: $*"; }; die() { echo "DIE: $*"; exit 7; }; say() { echo "SAY: $*"; }; run() { echo "RUN: $*"; }
 SKIP_NPM=0; NEW_VERSION=9.9.9; REPO_ROOT=/x; SHIP=${ship ? 1 : 0}; NPM_VIA_OIDC=${oidc ? 1 : 0}
 ${token ? 'NPM_TOKEN=tok' : ''}
+echo "DIAG npm=$(command -v npm) view=[$(npm view x@9.9.9 version 2>&1 | head -2 | tr '\\n' ' ')] sh=$(ls -l "$(command -v npm)" 2>&1 | cut -c1-12)"
 ${s.slice(a, b)}
 echo SLUT`], { encoding: 'utf8', env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME } });
   rmSync(d, { recursive: true, force: true });
