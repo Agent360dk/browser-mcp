@@ -783,7 +783,12 @@ step "2. Pakke-tjek (pack → udpak → start)"
   SMOKE_DIR="$(mktemp -d)"
   ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
   ( cd "$SMOKE_DIR" && tar xzf agent360-browser-mcp-*.tgz ) || die "kunne ikke pakke tarballen ud"
-  ( cd "$SMOKE_DIR/package" && npm install --silent --no-audit --no-fund >/dev/null 2>&1 ) || die "npm install i tarballen fejlede"
+  # ⛔ MAALT 1/10 (Astra + en Opus-agent): `npm install` her opsloeste afhaengighederne efter INTERVAL paa udgivelsesdagen (tarballen
+  # har ingen laasefil) og koerte deres installationsscripts, mens butikkens hemmeligheder og OIDC-adgangen var i miljoeet. Nu
+  # installeres den NOEJAGTIGE afhaengighedsmaengde repoet har laast og proevet, uden scripts. Pakketjekket skal bevise at TARBALLEN
+  # er hel (mangler der en fil i `files`?), ikke hvad npm opsloeser i dag; det beviser det kolde tjek efter udgivelsen.
+  cp "$REPO_ROOT/mcp-server/package-lock.json" "$SMOKE_DIR/package/package-lock.json" || die "kunne ikke kopiere laasefilen ind i den udpakkede pakke"
+  ( cd "$SMOKE_DIR/package" && npm ci --ignore-scripts --silent --no-audit --no-fund >/dev/null 2>&1 ) || die "npm ci i tarballen fejlede (laasefilen og tarballens package.json er ude af trit?)"
   # MAALT 11/9 (Astra): her grep'ede tjekket kun efter modul- og syntaksfejl, og en manglende
   # "server running"-linje gav kun en advarsel. En pakke der crashede af enhver anden grund
   # blev godkendt. Nu kraeves et gyldigt svar paa MCP-haandtrykket (scripts/pakke-roegtest.mjs).
@@ -913,7 +918,7 @@ else
     KOLD_HJEM="$(mktemp -d)"
     say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, forsoeg ${forsoeg}/3)"
     KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
-      | HOME="$KOLD_HJEM" ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
+      | env -i HOME="$KOLD_HJEM" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-C}" npm_config_ignore_scripts=true ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
     if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
       KOLD_OK=1; rm -rf "$KOLD_HJEM" 2>/dev/null || true; break
     fi
