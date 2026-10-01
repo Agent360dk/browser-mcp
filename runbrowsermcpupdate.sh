@@ -1108,7 +1108,12 @@ fi
 # ── done ──────────────────────────────────────────────────────────────────────
 echo
 if [[ "$SHIP" == 1 ]]; then
-  ok "${B}Released v${NEW_VERSION}${Z} across all enabled channels."
+  if [[ "$REGISTRY_EGET_JOB" == 1 ]]; then
+    # Astra runde 5: i workflowet er kolde tjek og MCP-registret IKKE koert endnu naar dette script slutter. Slutlinjen maa ikke sige «alle kanaler».
+    ok "${B}v${NEW_VERSION}: dette trin er faerdigt for butik, GitHub og npm.${Z} Det kolde tjek og MCP-registret foelger i jobbene «efter» og «registry» (en genoptagelse springer butikken over, hvis den allerede har versionen)."
+  else
+    ok "${B}Released v${NEW_VERSION}${Z} across all enabled channels."
+  fi
   echo "   • npm: live next \`npx ...@latest\` run"
   echo "   • CWS: in review queue (1-3 days; email on approval)"
   echo "   • GitHub: tag + release pushed"
