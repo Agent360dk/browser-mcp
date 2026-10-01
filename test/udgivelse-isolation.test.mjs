@@ -87,7 +87,8 @@ function koerPakkeBlok() {
   assert.ok(start > -1, 'pakke-blokken blev ikke fundet i release-scriptet');
   const slut = s.indexOf('rm -rf "$SMOKE_DIR"', start);
   assert.ok(slut > -1, 'pakke-blokkens slutning blev ikke fundet');
-  const blok = s.slice(start, s.indexOf('}', slut) + 1);
+  // blokken er nu `if [[ "$SKIP_PACK" == 1 ]]; then ... else { ... }; fi`: slut efter den afsluttende `fi`
+  const blok = s.slice(start, s.indexOf('\nfi\n', slut) + 3);
 
   const arbejde = mkdtempSync(join(tmpdir(), 'isolation-blok-'));
   // en falsk repo-rod med en laasefil og en falsk pakke der kan svare paa initialize
@@ -113,6 +114,7 @@ exit 0
   chmodSync(join(stubs, 'npm'), 0o755);
   const r = spawnSync('bash', ['-c', `set -u
 step() { :; }; ok() { echo "OK: $*"; }; die() { echo "DIE: $*"; exit 1; }; warn() { echo "WARN: $*"; }
+SKIP_PACK=0
 REPO_ROOT="${repo.replace(/"/g, '\\"')}"
 cp "${roegtest}" /dev/null
 REPO_ROOT_SCRIPTS="${rod}"
@@ -147,4 +149,122 @@ test('det kolde npx-tjek koeres med tomt miljoe (env -i), ikke med udgivelsens h
   assert.match(omkring, /env -i /, `det kolde npx-tjek arver hele miljoeet (OIDC-adgang, GH_TOKEN, CWS_*): ${omkring}`);
   assert.match(omkring, /HOME="\$KOLD_HJEM"/, 'det kolde tjek faar ikke sit eget friske hjem');
   assert.match(omkring, /PATH="\$PATH"/, 'env -i fjerner PATH, saa npx ikke kan findes - vagten er for streng');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fuld adskillelse (Astra runde 3, 1/10): tests, pakkekørsel og kold pakkekørsel ligger i job UDEN udgivelsesrettigheder.
+// Det privilegerede job (`udgiv`) har contents:write + id-token:write; afhængighedskode der kører dér, kan hente et OIDC-token og
+// udgive en ondsindet version med ægte provenance. Derfor kører ingen afhængighedskode i `udgiv`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const workflow = () => readFileSync(join(rod, '.github/workflows/udgivelse.yml'), 'utf8');
+/** Teksten for ét job: fra «  navn:» til næste job på samme niveau (eller filens slutning). */
+function job(navn) {
+  const t = workflow();
+  const m = t.match(new RegExp(`^  ${navn}:\\n[\\s\\S]*?(?=^  [a-z][a-z0-9_-]*:\\n|(?![\\s\\S]))`, 'm'));
+  assert.ok(m, `jobbet «${navn}» findes ikke i udgivelses-workflowet`);
+  // ⛔ kun rigtige trin: en kommentar der FORKLARER hvorfor `npm ci` er udtaget, maa ikke faelde proeven om at der ingen npm ci er
+  return m[0].split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+}
+
+test('workflow: «kandidat» koerer tests og pakketjek UDEN rettigheder, token eller miljoe', () => {
+  const j = job('kandidat');
+  assert.match(j, /needs:\s*spaerre/);
+  assert.match(j, /permissions:\s*\n\s+contents: read/, 'kandidat-jobbet har ikke «contents: read»');
+  assert.doesNotMatch(j, /id-token|contents: write/, 'kandidat-jobbet har udgivelsesrettigheder: tests ville koere med dem');
+  assert.doesNotMatch(j, /environment:/, 'kandidat-jobbet har et miljoe (og dermed butikkens noegler)');
+  assert.doesNotMatch(j, /secrets\./, 'kandidat-jobbet faar hemmeligheder');
+  assert.match(j, /persist-credentials: false/, 'checkout efterlader et skrivbart token i .git/config');
+  assert.match(j, /runbrowsermcpupdate\.sh/);
+  assert.doesNotMatch(j, /--ship/, 'kandidat-jobbet maa aldrig udgive');
+});
+
+test('workflow: «udgiv» venter paa kandidaten, koerer INGEN afhaengighedskode og har ingen npm ci', () => {
+  const j = job('udgiv');
+  assert.match(j, /needs:\s*\[\s*spaerre,\s*kandidat\s*\]/, 'udgiv venter ikke paa kandidat-jobbet');
+  for (const flag of ['--skip-tests', '--skip-pack', '--skip-cold']) assert.match(j, new RegExp(flag), `udgiv-jobbet sender ikke ${flag}`);
+  assert.match(j, /UDGIVELSE_ISOLERET:\s*'?1'?/, 'udgiv-jobbet siger ikke at de tunge tjek koerte isoleret');
+  assert.doesNotMatch(j, /npm ci|npm install --prefix/, 'udgiv-jobbet installerer afhaengigheder med udgivelsesrettighederne');
+  assert.match(j, /id-token: write/, 'kalibrering: udgiv-jobbet SKAL stadig have id-token (ellers kan det ikke udgive)');
+});
+
+test('workflow: «efter» koerer det kolde tjek UDEN rettigheder, kun ved en rigtig udgivelse', () => {
+  const j = job('efter');
+  assert.match(j, /needs:\s*udgiv/);
+  assert.match(j, /if:.*inputs\.ship/, 'det kolde tjek koerer ogsaa i en proevekoersel');
+  assert.match(j, /permissions:\s*\n\s+contents: read/);
+  assert.doesNotMatch(j, /id-token|contents: write|secrets\./);
+  assert.match(j, /scripts\/koldt-tjek\.sh/);
+});
+
+// ── vagten: skip-flagene maa kun bruges i den isolerede udgivelse ───────────
+
+function koerVagt(args, miljoe = {}) {
+  const s = script();
+  const a = s.indexOf('# <<ISOLERET-VAGT');
+  const b = s.indexOf('# ISOLERET-VAGT>>');
+  assert.ok(a > -1 && b > a, 'vagt-blokken (# <<ISOLERET-VAGT ... # ISOLERET-VAGT>>) findes ikke i scriptet');
+  const blok = s.slice(a, b);
+  const r = spawnSync('bash', ['-c', `set -u
+die() { echo "DIE: $*"; exit 7; }
+SHIP=0; SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0
+for arg in "$@"; do case "$arg" in --ship) SHIP=1 ;; --skip-tests) SKIP_TESTS=1 ;; --skip-pack) SKIP_PACK=1 ;; --skip-cold) SKIP_COLD=1 ;; esac; done
+${blok}
+echo "PASSERET tests=$SKIP_TESTS pack=$SKIP_PACK cold=$SKIP_COLD cws_skip=\${CWS_SKIP_TESTS:-}"`, '_', ...args],
+  { encoding: 'utf8', env: { PATH: process.env.PATH, ...miljoe } });
+  return r;
+}
+
+test('vagten: en rigtig udgivelse maa ikke springe tests/pakke/kold over uden den isolerede workflow', { skip: POSIX }, () => {
+  for (const flag of ['--skip-tests', '--skip-pack', '--skip-cold']) {
+    const r = koerVagt(['--ship', flag]);
+    assert.equal(r.status, 7, `${flag} i en rigtig udgivelse uden UDGIVELSE_ISOLERET slap igennem: ${r.stdout}`);
+    assert.match(r.stdout, /DIE:.*UDGIVELSE_ISOLERET/);
+  }
+});
+
+test('vagten (modsat): med UDGIVELSE_ISOLERET=1, og i en proevekoersel, maa flagene bruges', { skip: POSIX }, () => {
+  const a = koerVagt(['--ship', '--skip-tests', '--skip-pack', '--skip-cold'], { UDGIVELSE_ISOLERET: '1' });
+  assert.equal(a.status, 0, `den isolerede udgivelse blev afvist: ${a.stdout}`);
+  assert.match(a.stdout, /tests=1 pack=1 cold=1/);
+  const b = koerVagt(['--skip-tests', '--skip-pack']);
+  assert.equal(b.status, 0, `en proevekoersel blev afvist: ${b.stdout}`);
+  const c = koerVagt(['--ship']);
+  assert.equal(c.status, 0, `en almindelig udgivelse (uden flag) blev afvist: ${c.stdout}`);
+});
+
+test('vagten: --skip-tests faar butiksscriptet til ikke at koere testene en gang til', { skip: POSIX }, () => {
+  const r = koerVagt(['--skip-tests'], { UDGIVELSE_ISOLERET: '1' });
+  assert.match(r.stdout, /cws_skip=1/, 'CWS_SKIP_TESTS blev ikke sat: butiksscriptet koerer testene igen i det privilegerede job');
+  const cws = readFileSync(join(rod, 'scripts/publish-cws.sh'), 'utf8');
+  assert.match(cws, /CWS_SKIP_TESTS:-\}"\s*==\s*"?1"?/, 'publish-cws.sh respekterer ikke CWS_SKIP_TESTS');
+});
+
+// ── det kolde tjek som eget script ─────────────────────────────────────────
+
+function koldt(npxKilde, miljoe = {}) {
+  const d = mkdtempSync(join(tmpdir(), 'isolation-koldt-'));
+  const stubs = join(d, 'stubs'); mkdirSync(stubs);
+  const miljoeFil = join(d, 'npx-miljoe.txt');
+  writeFileSync(join(stubs, 'npx'), `#!/bin/sh\ncat >/dev/null\nenv | sed 's/=.*//' > "${miljoeFil}"\n${npxKilde}\n`);
+  chmodSync(join(stubs, 'npx'), 0o755);
+  const r = spawnSync('bash', [join(rod, 'scripts/koldt-tjek.sh'), '9.9.9'], { encoding: 'utf8', timeout: 60000,
+    env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME, KOLDT_PAUSE: '0', ...miljoe } });
+  const set = existsSync(miljoeFil) ? readFileSync(miljoeFil, 'utf8') : '';
+  return { r, set, ryd: () => rmSync(d, { recursive: true, force: true }) };
+}
+
+test('koldt-tjek.sh: et gyldigt svar godkendes, og npx ser INGEN af udgivelsens hemmeligheder', { skip: POSIX }, () => {
+  const k = koldt(`echo '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"agent360-browser","version":"9.9.9"}}}'`, HEMMELIGHEDER);
+  try {
+    assert.equal(k.r.status, 0, `et gyldigt svar blev afvist: ${k.r.stdout} ${k.r.stderr}`);
+    assert.ok(k.set.length > 0, 'npx-stubben optog ikke sit miljoe - proeven kan ikke maale noget');
+    for (const nokkel of Object.keys(HEMMELIGHEDER)) assert.doesNotMatch(k.set, new RegExp(`^${nokkel}$`, 'm'), `npx saa ${nokkel}`);
+    assert.match(k.set, /^npm_config_ignore_scripts$/m, 'installationsscripts er ikke slaaet fra');
+  } finally { k.ryd(); }
+});
+
+test('koldt-tjek.sh (modsat): en pakke der ikke svarer afvises efter alle forsoeg', { skip: POSIX }, () => {
+  const k = koldt('echo "ikke json"');
+  try { assert.notEqual(k.r.status, 0, 'en pakke der ikke svarede blev godkendt'); } finally { k.ryd(); }
 });

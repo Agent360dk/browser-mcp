@@ -74,6 +74,7 @@ dage_til_udloeb() {
 NEW_VERSION=""
 SHIP=0
 SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0; SKIP_AERLIGHED=0
+SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0
 PREPARE=0; GENOPTAG=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
@@ -88,6 +89,9 @@ for arg in "$@"; do
     --skip-aerlighed) SKIP_AERLIGHED=1 ;;
     --skip-github) SKIP_GITHUB=1 ;;
     --skip-local)  SKIP_LOCAL=1 ;;
+    --skip-tests)  SKIP_TESTS=1 ;;
+    --skip-pack)   SKIP_PACK=1 ;;
+    --skip-cold)   SKIP_COLD=1 ;;
     --cws-draft)   CWS_DRAFT=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
     -h|--help)     grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -100,6 +104,17 @@ done
 
 [[ -n "$NEW_VERSION" ]] || die "Usage: ./runbrowsermcpupdate.sh <X.Y.Z> [--ship | --prepare]  (see --help)"
 [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version '$NEW_VERSION' is not semver X.Y.Z"
+
+# <<ISOLERET-VAGT
+# ⛔ 1/10 (Astra runde 3, uafhaengigt review): det job der har udgivelsesrettighederne (contents:write + id-token:write) maa ikke koere
+# afhaengighedskode. Tests, pakketjek og det kolde npx-tjek koerer derfor i egne job UDEN rettigheder (udgivelse.yml: kandidat, efter);
+# --skip-tests/--skip-pack/--skip-cold er KUN til den arbejdsgang. En udgivelse fra en anden maskine (fx din Mac) skal koere dem selv:
+# uden UDGIVELSE_ISOLERET=1 afviser en rigtig udgivelse flagene.
+if [[ "$SHIP" == 1 && ( "$SKIP_TESTS" == 1 || "$SKIP_PACK" == 1 || "$SKIP_COLD" == 1 ) && "${UDGIVELSE_ISOLERET:-}" != 1 ]]; then
+  die "--skip-tests/--skip-pack/--skip-cold er kun til udgivelses-workflowet (UDGIVELSE_ISOLERET=1), hvor de tunge tjek koerte i et eget job uden udgivelsesrettigheder. Fjern flagene og koer dem selv."
+fi
+if [[ "$SKIP_TESTS" == 1 ]]; then export CWS_SKIP_TESTS=1; fi   # butiksscriptet koerer ellers testene en gang til
+# ISOLERET-VAGT>>
 
 # Load secrets ONCE, early + exported, so both the npm pre-flight and `npm publish`
 # see NPM_TOKEN (.npmrc references ${NPM_TOKEN}) and the CWS step sees CWS_*. Both
@@ -319,7 +334,9 @@ gate() { if [[ "$SHIP" == 1 ]]; then die "$1"; else warn "$1 ${Y}(dry-run: conti
 # Der var INGEN test-gate her. Udgivelsen kunne - og gjorde det - sende en kopi af
 # udvidelsen af sted som var 88 linjer bagud for kilden, uden at noget sagde fra.
 # Testene er rene node:test-filer uden Chrome-afhaengighed, saa de koster to sekunder.
-if TEST_OUT="$(node --test "$REPO_ROOT"/test/*.test.mjs 2>&1)"; then
+if [[ "$SKIP_TESTS" == 1 ]]; then
+  warn "tests sprunget over (--skip-tests): de koerte i jobbet «kandidat» uden udgivelsesrettigheder"
+elif TEST_OUT="$(node --test "$REPO_ROOT"/test/*.test.mjs 2>&1)"; then
   # MAALT 8/9: her stod kun `grep '^# pass'`. node --test skriver nu `ℹ pass 257`, saa
   # tallet blev tomt og linjen sagde "tests groenne ( bestaaet)". Spaerren SELV var i
   # orden - den hviler paa exit-koden - men rapporten sagde ingenting. Et tal der tavst
@@ -779,6 +796,9 @@ step "2. Pakke-tjek (pack → udpak → start)"
 # groen, mens en pakke der ikke kan starte foerst blev opdaget EFTER Gustavs ja - og efter at
 # butikken allerede havde faaet sin upload. Trinnet udgiver intet (pakker til en midlertidig
 # mappe og taler med den dér), saa det koerer nu ogsaa i proevekoerslen.
+if [[ "$SKIP_PACK" == 1 ]]; then
+  warn "pakketjek sprunget over (--skip-pack): det koerte i jobbet «kandidat» uden udgivelsesrettigheder"
+else
 {
   SMOKE_DIR="$(mktemp -d)"
   ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
@@ -797,6 +817,7 @@ step "2. Pakke-tjek (pack → udpak → start)"
   ok "tarballen starter og svarer paa initialize"
   rm -rf "$SMOKE_DIR"
 }
+fi
 
 
 # ── 2d. Tag: bindingen FOER noget uigenkaldeligt ───────────────────────────────
@@ -900,6 +921,7 @@ fi
 step "5c. Koldt tjek: henter den udgivne pakke og taler med den"
 if [[ "$SKIP_NPM" == 1 ]]; then warn "sprunget over (--skip-npm: der blev ikke udgivet noget)"
 elif [[ "$SHIP" != 1 ]]; then say "ville hente @agent360/browser-mcp@${NEW_VERSION} med npx og sende initialize"
+elif [[ "$SKIP_COLD" == 1 ]]; then warn "koldt tjek sprunget over (--skip-cold): det koerer i jobbet «efter» uden udgivelsesrettigheder (scripts/koldt-tjek.sh)"
 else
   KOLD_OK=0
   # MAALT 13/9 af Fable: kaldet havde ingen tidsgraense. `npx` henter fra registret, og et haengende
