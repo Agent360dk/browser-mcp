@@ -902,7 +902,12 @@ else
       # (Fable 24/9). --provenance knytter pakken synligt til netop denne GitHub-koersel.
       run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public --provenance"
     else
-    [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env - needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
+    # ⛔ 1/10 (Astra runde 5): her stod et UBETINGET die. Jobbet «kandidat» koerer scriptet uden --ship, uden npm-token og uden id-token,
+    # saa hver proevekoersel af en ny version doede her. Kravet gaelder den FAKTISKE udgivelse; en proevekoersel skal kunne beskrive den.
+    if [[ -z "${NPM_TOKEN:-}" ]]; then
+      if [[ "$SHIP" == 1 ]]; then die "NPM_TOKEN missing in .env - needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
+      else warn "proevekoersel: ingen NPM_TOKEN og ingen id-token her - en rigtig udgivelse kraever en af dem (i workflowet er det id-token i jobbet «udgiv»)"; fi
+    fi
     # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
     # not the secret) and is expanded by the inner bash -c from the exported env.
     run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"

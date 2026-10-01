@@ -338,3 +338,54 @@ test('koldt-tjek.sh (modsat): et fuldt og rigtigt svar godkendes stadig', { skip
   const k = koldt(`echo '${forkert({})}'`);
   try { assert.equal(k.r.status, 0, `${k.r.stdout} ${k.r.stderr}`); } finally { k.ryd(); }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Astra runde 5 (1/10): «kandidat» har hverken npm-token eller id-token, men scriptets trin 5 havde et UBETINGET
+// `die "NPM_TOKEN missing"` - ogsaa i proevetilstand. Hver normal proevekoersel af en ny version ville dermed doe i kandidat-jobbet.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function koerNpmBlok({ ship, oidc = false, token = false, publiceret = false }) {
+  const s = script();
+  const a = s.indexOf('step "5. npm publish');
+  const b = s.indexOf('# ── 2b. MCP registry');
+  assert.ok(a > -1 && b > a, 'npm-blokken (trin 5) findes ikke i scriptet');
+  const d = mkdtempSync(join(tmpdir(), 'isolation-npm-'));
+  const stubs = join(d, 'stubs'); mkdirSync(stubs);
+  writeFileSync(join(stubs, 'npm'), `#!/bin/sh\nif [ "$1" = view ]; then ${publiceret ? 'echo 9.9.9' : 'true'}; fi\nexit 0\n`);
+  chmodSync(join(stubs, 'npm'), 0o755);
+  const r = spawnSync('bash', ['-c', `set -u
+step() { :; }; warn() { echo "WARN: $*"; }; die() { echo "DIE: $*"; exit 7; }; say() { echo "SAY: $*"; }; run() { echo "RUN: $*"; }
+SKIP_NPM=0; NEW_VERSION=9.9.9; REPO_ROOT=/x; SHIP=${ship ? 1 : 0}; NPM_VIA_OIDC=${oidc ? 1 : 0}
+${token ? 'NPM_TOKEN=tok' : ''}
+${s.slice(a, b)}
+echo SLUT`], { encoding: 'utf8', env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME } });
+  rmSync(d, { recursive: true, force: true });
+  return r;
+}
+
+test('trin 5: en PROEVEkoersel af en ny version dør ikke af manglende npm-legitimation (kandidat-jobbet har ingen)', { skip: POSIX }, () => {
+  const r = koerNpmBlok({ ship: false });
+  assert.equal(r.status, 0, `en proevekoersel uden npm-token stoppede: ${r.stdout}`);
+  assert.match(r.stdout, /RUN: .*npm publish/, 'proevekoerslen beskriver ikke hvad npm-udgivelsen ville goere');
+  assert.match(r.stdout, /SLUT/);
+});
+
+test('trin 5 (modsat): en RIGTIG udgivelse uden npm-legitimation stopper stadig foer noget udgives', { skip: POSIX }, () => {
+  const r = koerNpmBlok({ ship: true });
+  assert.equal(r.status, 7, `en rigtig udgivelse uden token slap igennem: ${r.stdout}`);
+  assert.match(r.stdout, /DIE: NPM_TOKEN missing/);
+  assert.ok(!/RUN:/.test(r.stdout), 'npm publish blev forsoegt uden legitimation');
+});
+
+test('trin 5 (modsat): rigtig udgivelse via OIDC udgiver med provenance; med NPM_TOKEN bruges tokenet; allerede udgivet springes over', { skip: POSIX }, () => {
+  const oidc = koerNpmBlok({ ship: true, oidc: true });
+  assert.equal(oidc.status, 0, oidc.stdout);
+  assert.match(oidc.stdout, /RUN: .*--provenance/);
+  const tok = koerNpmBlok({ ship: true, token: true });
+  assert.equal(tok.status, 0, tok.stdout);
+  assert.match(tok.stdout, /RUN: .*_authToken/);
+  const dobbelt = koerNpmBlok({ ship: true, publiceret: true });
+  assert.equal(dobbelt.status, 0, dobbelt.stdout);
+  assert.match(dobbelt.stdout, /already on npm/);
+  assert.ok(!/RUN:/.test(dobbelt.stdout));
+});
