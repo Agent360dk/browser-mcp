@@ -38,6 +38,11 @@ on:
         description: 'Commit/tag der testes (tom = den der udloeste koerslen). Genoptagelse sender tagget.'
         type: string
         default: ''
+    # Astra runde 6 (1/10): udgivelsen skal vide HVILKEN commit spaerren faktisk testede, saa kandidaten kan afvise en anden (et flyttet tag).
+    outputs:
+      sha:
+        description: 'Den commit spaerren faktisk testede (git rev-parse HEAD efter checkout)'
+        value: ${{ jobs.spaerre.outputs.sha }}
   # 25/9: INGEN stifilter. Spaerren skal kunne vaere et paakraevet tjek paa main, og et paakraevet
   # tjek der aldrig starter, staar som «Expected» for evigt - saa kan en PR der kun roerer docs
   # aldrig merges. Et filter der springer den over er en port der aldrig kan passere.
@@ -50,6 +55,8 @@ jobs:
   spaerre:
     runs-on: macos-latest
     timeout-minutes: 30
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +64,10 @@ jobs:
           fetch-depth: 0
           # Tom ved PR/dispatch (= den udloesende commit); tagget ved genoptagelse af en udgivelse.
           ref: ${{ inputs.ref || '' }}
+
+      - name: den testede commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:

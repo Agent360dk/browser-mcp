@@ -536,3 +536,51 @@ echo "LATEST_TAG=[$LATEST_TAG]"`], { encoding: 'utf8' });
     assert.match(r.stdout, /LATEST_TAG=\[1\.10\.2\]/);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Astra runde 5-6: spaerre og kandidat opløste hver for sig tagget ved genoptagelse. Spaerrens EGEN checkout-commit meldes nu som output
+// (workflow_call), og kandidaten stopper hvis den har tjekket en anden commit ud. Billigere end et nyt job, og kæden afprøves allerede i en
+// normal proevekoersel (ship=false).
+// ═══════════════════════════════════════════════════════════════════════════
+
+const spaerreYml = () => readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
+
+test('spaerre.yml melder den commit den faktisk testede som workflow_call-output', () => {
+  const t = spaerreYml();
+  assert.match(t, /workflow_call:[\s\S]*?outputs:\s*\n\s+sha:[\s\S]*?value:\s*\$\{\{\s*jobs\.spaerre\.outputs\.sha\s*\}\}/, 'workflow_call har intet sha-output');
+  const j = t.slice(t.indexOf('\njobs:'));
+  assert.match(j, /outputs:\s*\n\s+sha:\s*\$\{\{\s*steps\.sha\.outputs\.sha\s*\}\}/, 'jobbet eksporterer ikke steps.sha.outputs.sha');
+  assert.match(j, /id: sha[\s\S]*?git rev-parse HEAD[\s\S]*?GITHUB_OUTPUT/, 'sha-trinnet laeser ikke HEAD ind i GITHUB_OUTPUT');
+  assert.ok(j.indexOf('actions/checkout') < j.indexOf('id: sha'), 'sha-trinnet staar foer checkout');
+});
+
+function kandidatSammenligning() {
+  const j = job('kandidat');
+  const trin = j.split(/\n      - /).find((t) => /needs\.spaerre\.outputs\.sha/.test(t));
+  assert.ok(trin, 'kandidat sammenligner ikke sin commit med spaerrens');
+  return { trin, j };
+}
+
+test('kandidat: stopper hvis den ikke har tjekket SAMME commit ud som spaerren testede (og foer testene)', () => {
+  const { trin, j } = kandidatSammenligning();
+  assert.doesNotMatch(trin, /continue-on-error|\|\|\s*true/, 'sammenligningen kan ignoreres');
+  assert.ok(j.indexOf('needs.spaerre.outputs.sha') < j.indexOf('npm --prefix mcp-server test'), 'sammenligningen staar efter testene');
+});
+
+test('kandidat: sammenligningstrinnets shell - ens commit godkendes, anden commit og manglende output stopper', { skip: POSIX }, () => {
+  const { trin } = kandidatSammenligning();
+  const run = trin.match(/run:\s*\|\n([\s\S]*)$/)?.[1].split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
+  assert.ok(run, 'kunne ikke laese trinnets shell');
+  const d = mkdtempSync(join(tmpdir(), 'isolation-sha-'));
+  try {
+    const git = (a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: d, encoding: 'utf8' });
+    git(['init', '-q', '.']); git(['commit', '-q', '--allow-empty', '-m', 'a']);
+    const head = git(['rev-parse', 'HEAD']).stdout.trim();
+    git(['commit', '-q', '--allow-empty', '-m', 'b']);
+    const kor = (sha) => spawnSync('bash', ['-c', `set -e\n${run}`], { cwd: d, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, SPAERRE_SHA: sha } });
+    const nu = git(['rev-parse', 'HEAD']).stdout.trim();
+    assert.equal(kor(nu).status, 0, 'samme commit blev afvist');
+    assert.notEqual(kor(head).status, 0, 'en anden commit blev godkendt');
+    assert.notEqual(kor('').status, 0, 'et manglende output blev godkendt');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
