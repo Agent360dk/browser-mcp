@@ -20,7 +20,7 @@ const script = join(rod, 'scripts/registry-udgiv.sh');
 const SERVER_VERSION = JSON.parse(readFileSync(join(rod, 'mcp-server/server.json'), 'utf8')).version;
 
 /** Falsk mcp-publisher + curl. Registret holder sin version i en fil; en vellykket `publish` skriver server.json's version dertil. */
-function opsaet({ foer = '0.0.1', loginFejler = false, publishFejler = false, opdatererIkke = false } = {}) {
+function opsaet({ foer = '0.0.1', loginFejler = false, publishFejler = false, opdatererIkke = false, navn = 'io.github.Agent360dk/browser-mcp', andenServer = null, versionDefekt = false, opslagFejler = false } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'registry-udgiv-'));
   const stubs = join(d, 'stubs'); mkdirSync(stubs);
   const reg = join(d, 'registry-version'); writeFileSync(reg, foer);
@@ -28,14 +28,16 @@ function opsaet({ foer = '0.0.1', loginFejler = false, publishFejler = false, op
   writeFileSync(join(stubs, 'mcp-publisher'), `#!/bin/sh
 echo "$*" >> "${log}"
 case "$1" in
+  --version) ${versionDefekt ? 'echo BROKEN; exit 126' : 'echo "mcp-publisher 1.8.1"; exit 0'} ;;
   login) ${loginFejler ? 'exit 3' : 'exit 0'} ;;
   publish) ${publishFejler ? 'exit 4' : opdatererIkke ? 'exit 0' : `node -e "process.stdout.write(require('./server.json').version)" > "${reg}"; exit 0`} ;;
 esac
 exit 0
 `);
   writeFileSync(join(stubs, 'curl'), `#!/bin/sh
+${opslagFejler ? 'exit 22' : ''}
 v="$(cat "${reg}")"
-printf '{"servers":[{"server":{"version":"%s"},"_meta":{"io.modelcontextprotocol.registry/official":{"isLatest":true}}}]}' "$v"
+printf '{"servers":[%s{"server":{"name":"${navn}","version":"%s"},"_meta":{"io.modelcontextprotocol.registry/official":{"isLatest":true}}}]}' '${andenServer ? JSON.stringify({ server: { name: andenServer.navn, version: andenServer.version }, _meta: { 'io.modelcontextprotocol.registry/official': { isLatest: true } } }) + ',' : ''}' "$v"
 `);
   for (const f of ['mcp-publisher', 'curl']) chmodSync(join(stubs, f), 0o755);
   const koer = (args, miljoe = {}) => spawnSync('bash', [script, ...args], {
@@ -118,4 +120,72 @@ test('registry-udgiv: hvis registret aldrig viser versionen efter publish, fejle
     assert.notEqual(r.status, 0, `en udgivelse registret ikke viser blev meldt groen: ${r.stdout}`);
     assert.match(r.stderr + r.stdout, /still advertises|viser stadig/i);
   } finally { o.ryd(); }
+});
+
+// ═══ Astra runde 5 (1/10): falske grønne udfald i registry-scriptet ═══════════════════════════════════════════════
+
+function falskServerJson(indhold) {
+  const d = mkdtempSync(join(tmpdir(), 'registry-sj-'));
+  const f = join(d, 'server.json'); writeFileSync(f, JSON.stringify(indhold));
+  return { f, ryd: () => rmSync(d, { recursive: true, force: true }) };
+}
+
+test('registry-udgiv: en defekt mcp-publisher (--version fejler) bestaar IKKE proevekoerslen', { skip: POSIX }, () => {
+  const o = opsaet({ versionDefekt: true });
+  try {
+    const r = o.koer([SERVER_VERSION], OIDC);
+    assert.notEqual(r.status, 0, `en binaer der ikke kan koeres bestod proevekoerslen: ${r.stdout}`);
+  } finally { o.ryd(); }
+});
+
+test('registry-udgiv: en ANDEN server med navn som substring (browser-mcp-other) tæller ikke som vores', { skip: POSIX }, () => {
+  const o = opsaet({ andenServer: { navn: 'io.github.Agent360dk/browser-mcp-other', version: SERVER_VERSION } });
+  try {
+    const r = o.koer([SERVER_VERSION, '--ship'], OIDC);
+    assert.equal(r.status, 0, `${r.stdout} ${r.stderr}`);
+    assert.ok(o.kald().some((l) => l.startsWith('publish')), 'en anden servers version fik scriptet til at tro at vi allerede var udgivet');
+  } finally { o.ryd(); }
+});
+
+test('registry-udgiv: tilbagelaesningen godkender ikke en anden servers version', { skip: POSIX }, () => {
+  const o = opsaet({ opdatererIkke: true, andenServer: { navn: 'io.github.Agent360dk/browser-mcp-other', version: SERVER_VERSION } });
+  try { assert.notEqual(o.koer([SERVER_VERSION, '--ship'], OIDC).status, 0, 'en anden servers version blev laest som vores'); } finally { o.ryd(); }
+});
+
+for (const [navn, indhold] of Object.entries({
+  'tom {}': {},
+  'ingen topversion': { packages: [{ version: SERVER_VERSION }] },
+  'ingen packages': { version: SERVER_VERSION },
+  'pakke uden version': { version: SERVER_VERSION, packages: [{}] },
+  'tom packages-liste': { version: SERVER_VERSION, packages: [] },
+})) {
+  test(`registry-udgiv: server.json uden versionsfelter afvises (${navn})`, { skip: POSIX }, () => {
+    const o = opsaet(); const sj = falskServerJson(indhold);
+    try {
+      const r = o.koer([SERVER_VERSION], { ...OIDC, REGISTRY_SERVER_JSON: sj.f });
+      assert.notEqual(r.status, 0, `en server.json uden versionsfelt gav grøn: ${r.stdout}`);
+    } finally { o.ryd(); sj.ryd(); }
+  });
+}
+test('registry-udgiv (modsat): en komplet server.json godkendes', { skip: POSIX }, () => {
+  const o = opsaet(); const sj = falskServerJson({ version: SERVER_VERSION, packages: [{ version: SERVER_VERSION }] });
+  try { assert.equal(o.koer([SERVER_VERSION], { ...OIDC, REGISTRY_SERVER_JSON: sj.f }).status, 0); } finally { o.ryd(); sj.ryd(); }
+});
+
+test('registry-udgiv: et opslag der FEJLER er ikke "ukendt version": proevekoersel og rigtig udgivelse stopper', { skip: POSIX }, () => {
+  for (const args of [[SERVER_VERSION], [SERVER_VERSION, '--ship']]) {
+    const o = opsaet({ opslagFejler: true });
+    try {
+      const r = o.koer(args, OIDC);
+      assert.notEqual(r.status, 0, `${args.join(' ')}: et fejlet registeropslag gav grøn: ${r.stdout}`);
+      assert.ok(!o.kald().some((l) => /^(login|publish)/.test(l)), 'der blev logget ind/publiceret uden at kunne laese registret');
+    } finally { o.ryd(); }
+  }
+});
+
+test('registry-udgiv: ukendte argumenter afvises', { skip: POSIX }, () => {
+  for (const args of [[SERVER_VERSION, '--typo'], [SERVER_VERSION, '--typo', '--ship'], [SERVER_VERSION, '--ship', '--ekstra']]) {
+    const o = opsaet();
+    try { assert.notEqual(o.koer(args, OIDC).status, 0, `${args.join(' ')} blev accepteret`); } finally { o.ryd(); }
+  }
 });
