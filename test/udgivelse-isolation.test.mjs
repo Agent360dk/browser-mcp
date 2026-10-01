@@ -508,3 +508,31 @@ test('koldt-forsoeg.mjs: SIGTERM til hjælperen draeber stadig npx-gruppen (inge
     assert.equal(lever, false, `npx' barn (pid ${pid}) lever efter SIGTERM til hjælperen`);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
+
+// Astra runde 6 (1/10): `grep` returnerer 1 naar intet matcher, og med `set -eo pipefail` doede scriptet TAVST paa LATEST_TAG-linjen i et checkout
+// uden semver-tags (ingen `tag:none` blev vist). Paa runneren er der tags, men forudsaetningen var implicit.
+test('LATEST_TAG: et checkout uden semver-tags stopper ikke scriptet tavst', { skip: POSIX }, () => {
+  const linje = script().split('\n').find((l) => l.startsWith('LATEST_TAG='));
+  assert.ok(linje, 'LATEST_TAG-linjen findes ikke');
+  const d = mkdtempSync(join(tmpdir(), 'isolation-tags-'));
+  try {
+    const r = spawnSync('bash', ['-c', `set -euo pipefail
+cd "${d}" && git init -q . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m x && git tag minetiket
+${linje}
+echo "LATEST_TAG=[$LATEST_TAG]"`], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `scriptet doede paa en tom tagliste: ${r.stdout} ${r.stderr}`);
+    assert.match(r.stdout, /LATEST_TAG=\[\]/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+test('LATEST_TAG (modsat): med semver-tags vaelges det hoejeste', { skip: POSIX }, () => {
+  const linje = script().split('\n').find((l) => l.startsWith('LATEST_TAG='));
+  const d = mkdtempSync(join(tmpdir(), 'isolation-tags-'));
+  try {
+    const r = spawnSync('bash', ['-c', `set -euo pipefail
+cd "${d}" && git init -q . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m x && git tag v1.9.0 && git tag v1.10.2 && git tag v1.2.0 && git tag noget
+${linje}
+echo "LATEST_TAG=[$LATEST_TAG]"`], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /LATEST_TAG=\[1\.10\.2\]/);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});

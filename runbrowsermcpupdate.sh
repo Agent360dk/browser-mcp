@@ -177,7 +177,7 @@ say "current → extension:${CUR_EXT}  npm-package:${CUR_PKG}  npm-latest:${NPM_
 # (a cross-channel resume legitimately re-runs a version whose tag/release already
 # shipped but whose npm publish failed). The per-channel guards below (npm view,
 # tag rev-parse, commit-diff, gh release view) make every other channel idempotent.
-LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"   # Astra runde 6: tom tagliste -> grep exit 1 -> set -e dræbte scriptet tavst
 # MAALT 11/9 (Astra, efterproevet): her stoppede scriptet naar NEW_VERSION == npm-latest.
 # Men npm koerer som trin 5 og MCP-registret EFTER npm. Fejlede registret, kunne udgivelsen
 # ikke genoptages, selvom npm-trinnet selv springer en allerede udgivet version over.
