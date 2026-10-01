@@ -14,13 +14,32 @@ PAUSE="${KOLDT_PAUSE:-30}"
 # MAALT 19/9: en TOM bash-array udvidet som "${ARR[@]}" fejler under `set -u` paa macOS' bash 3.2 - brug ${ARR[@]+"${ARR[@]}"}.
 if command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD=(timeout 90)
 elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD=(gtimeout 90)
-else TIMEOUT_CMD=(); echo "  ! ingen timeout(1) paa maskinen - det kolde tjek kan haenge"; fi
+# 1/10 (Astra runde 4): macos-latest har hverken timeout eller gtimeout. perl findes paa macOS, og en alarm overlever exec.
+elif command -v perl >/dev/null 2>&1; then TIMEOUT_CMD=(perl -e 'alarm shift; exec @ARGV' 90)
+else TIMEOUT_CMD=(); echo "  ! ingen timeout(1) eller perl paa maskinen - det kolde tjek kan haenge"; fi
+
+# 1/10 (Astra runde 4): her stod to substring-kontroller paa foerste linje («serverInfo» og «agent360-browser»). De godkendte ugyldig JSON,
+# et JSON-RPC-fejlsvar med de samme ord, forkert request-id og enhver version. Nu kraeves et rigtigt MCP-initialize-svar fra DENNE version:
+# samme krav som pakke-roegtest.mjs (id 1, ingen error, protocolVersion, capabilities.tools, serverInfo.name) plus serverInfo.version == versionen.
+gyldigt_svar() {
+  printf '%s' "$1" | node -e '
+let s = "";
+process.stdin.on("data", (c) => { s += c; }).on("end", () => {
+  try {
+    const m = JSON.parse(s); const r = m && m.result;
+    const ok = m.id === 1 && !m.error && r && typeof r.protocolVersion === "string" && r.protocolVersion !== "" &&
+      r.capabilities && typeof r.capabilities.tools === "object" && r.capabilities.tools !== null &&
+      r.serverInfo && r.serverInfo.name === "agent360-browser" && r.serverInfo.version === process.argv[1];
+    process.exit(ok ? 0 : 1);
+  } catch { process.exit(1); }
+});' "$2"
+}
 for forsoeg in 1 2 3 4 5 6; do
   HJEM="$(mktemp -d)"
   echo "  npx @agent360/browser-mcp@${V} (frisk HOME, tomt miljoe, forsoeg ${forsoeg}/6)"
   SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
     | env -i HOME="$HJEM" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-C}" npm_config_ignore_scripts=true ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${V}" 2>"$HJEM/fejl.log" | head -1 || true)"
-  if [[ "$SVAR" == *'"serverInfo"'* && "$SVAR" == *'agent360-browser'* ]]; then
+  if gyldigt_svar "$SVAR" "$V"; then
     rm -rf "$HJEM" 2>/dev/null || true
     echo "  ✓ den udgivne pakke svarer paa MCP-haandtrykket"
     exit 0
@@ -31,7 +50,9 @@ for forsoeg in 1 2 3 4 5 6; do
   [[ $forsoeg -lt 6 ]] && { echo "  registret har maaske ikke indekseret endnu - venter ${PAUSE} s"; sleep "$PAUSE"; }
 done
 echo "  sidste svar: ${SVAR:0:200}"
-echo "  ⛔ TILBAGERULNING - og den er smal:"
+echo "  Seks forsoeg gav ikke et gyldigt MCP-svar fra ${V} (ca. 150 s pause i alt). Det kan ogsaa vaere registret eller nettet, ikke pakken:"
+echo "     proev SELV foer du ruller noget tilbage:  npx -y @agent360/browser-mcp@${V}   (og send et initialize)"
+echo "  ⛔ Hvis pakken ER brudt, er tilbagerulningen smal:"
 echo "     npm unpublish @agent360/browser-mcp@${V}   # kun inden for 72 timer, og kun uden dependents"
 echo "     Versionsnummeret er braendt for evigt. Vaelg ÉN vej: a) unpublish (latest falder selv tilbage), eller"
 echo "     b) udgiv en rettelse og flyt kun latest tilbage hvis du IKKE udgiver en ny:  npm dist-tag add @agent360/browser-mcp@<forrige> latest"

@@ -242,6 +242,9 @@ test('vagten: --skip-tests faar butiksscriptet til ikke at koere testene en gang
 
 // ── det kolde tjek som eget script ─────────────────────────────────────────
 
+/** Et svar som serveren faktisk sender (maalt 1/10: serverInfo.version er pakkens version). */
+const GYLDIGT = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } });
+
 function koldt(npxKilde, miljoe = {}) {
   const d = mkdtempSync(join(tmpdir(), 'isolation-koldt-'));
   const stubs = join(d, 'stubs'); mkdirSync(stubs);
@@ -255,7 +258,7 @@ function koldt(npxKilde, miljoe = {}) {
 }
 
 test('koldt-tjek.sh: et gyldigt svar godkendes, og npx ser INGEN af udgivelsens hemmeligheder', { skip: POSIX }, () => {
-  const k = koldt(`echo '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"agent360-browser","version":"9.9.9"}}}'`, HEMMELIGHEDER);
+  const k = koldt(`echo '${GYLDIGT}'`, HEMMELIGHEDER);
   try {
     assert.equal(k.r.status, 0, `et gyldigt svar blev afvist: ${k.r.stdout} ${k.r.stderr}`);
     assert.ok(k.set.length > 0, 'npx-stubben optog ikke sit miljoe - proeven kan ikke maale noget');
@@ -267,4 +270,25 @@ test('koldt-tjek.sh: et gyldigt svar godkendes, og npx ser INGEN af udgivelsens 
 test('koldt-tjek.sh (modsat): en pakke der ikke svarer afvises efter alle forsoeg', { skip: POSIX }, () => {
   const k = koldt('echo "ikke json"');
   try { assert.notEqual(k.r.status, 0, 'en pakke der ikke svarede blev godkendt'); } finally { k.ryd(); }
+});
+
+// Astra runde 4 (1/10): to substring-kontroller paa foerste linje godkendte ugyldig JSON, fejlsvar, forkert version og forkert id.
+const forkert = (andet) => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' }, ...andet } });
+const AFVISES = {
+  'forkert version (0.0.0)': JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '0.0.0' } } }),
+  'JSON-RPC-fejl med de samme ord': JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -1, message: 'initialize fejlede', data: { serverInfo: { name: 'agent360-browser' } } } }),
+  'ugyldig JSON med markoererne': '{"serverInfo": agent360-browser',
+  'forkert request-id': JSON.stringify({ jsonrpc: '2.0', id: 2, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } }),
+  'manglende protocolVersion': JSON.stringify({ jsonrpc: '2.0', id: 1, result: { capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } }),
+  'en anden server': JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'noget-andet', version: '9.9.9' } } }),
+};
+for (const [navn, svar] of Object.entries(AFVISES)) {
+  test(`koldt-tjek.sh: afviser «${navn}» (kraever et rigtigt MCP-svar, ikke to ord)`, { skip: POSIX }, () => {
+    const k = koldt(`echo '${svar.replace(/'/g, "'\\''")}'`);
+    try { assert.notEqual(k.r.status, 0, `blev godkendt: ${svar}`); } finally { k.ryd(); }
+  });
+}
+test('koldt-tjek.sh (modsat): et fuldt og rigtigt svar godkendes stadig', { skip: POSIX }, () => {
+  const k = koldt(`echo '${forkert({})}'`);
+  try { assert.equal(k.r.status, 0, `${k.r.stdout} ${k.r.stderr}`); } finally { k.ryd(); }
 });
