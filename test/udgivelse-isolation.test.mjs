@@ -358,6 +358,7 @@ step() { :; }; warn() { echo "WARN: $*"; }; die() { echo "DIE: $*"; exit 7; }; s
 SKIP_NPM=0; NEW_VERSION=9.9.9; REPO_ROOT=/x; SHIP=${ship ? 1 : 0}; NPM_VIA_OIDC=${oidc ? 1 : 0}
 ${token ? 'NPM_TOKEN=tok' : ''}
 echo "DIAG npm=$(command -v npm) view=[$(npm view x@9.9.9 version 2>&1 | head -2 | tr '\\n' ' ')] sh=$(ls -l "$(command -v npm)" 2>&1 | cut -c1-12)"
+echo "DIAG2 stubdir=${stubs} ls=[$(ls -la "${stubs}" 2>&1 | tr '\\n' '|' | cut -c1-200)] test-x=$([ -x "${stubs}/npm" ] && echo ja || echo nej) path1=$(echo "$PATH" | cut -d: -f1) bash=$BASH_VERSION"
 ${s.slice(a, b)}
 echo SLUT`], { encoding: 'utf8', env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME } });
   rmSync(d, { recursive: true, force: true });
