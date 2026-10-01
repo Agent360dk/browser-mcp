@@ -20,7 +20,7 @@
  * Koer:  node test/aerlighed/maal.mjs [--kun os|playwright|devtools]
  * Den henter konkurrenternes pakker med npx. Intet sendes nogen steder.
  */
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
@@ -253,8 +253,22 @@ async function maalEn(noegle, url) {
   } finally { k.luk(); }
 }
 
+/**
+ * Dommen over VORES EGET vaerktoej, som udgivelsen kan laese (27/9). Foer skrev maalingen kun en tabel,
+ * og udgivelsens port 2c sammenlignede datoer: et resultat med en LOEGN i - eller maalt paa en anden kode
+ * end den der udgives - slap igennem, bare det var nyere. Kun «0 LOEGN» er en bestaaet maaling; et
+ * manglende eller uventet udfald er IKKE MAALT, aldrig groent.
+ */
+export function osDom(r) {
+  const udfald = [r?.dom, r?.dom_select, r?.dom_upload];
+  if (udfald.includes('LOEGN')) return 'LOEGN';
+  const kendte = new Set(['SAND-JA', 'SAND-NEJ', 'UVIST']);
+  return udfald.every((u) => kendte.has(u)) ? '0 LOEGN' : 'IKKE MAALT';
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const kun = process.argv.includes('--kun') ? process.argv[process.argv.indexOf('--kun') + 1] : null;
+  let osResultat = null;
   const { s, url } = await server();
   const noegler = kun ? [kun] : Object.keys(DELTAGERE);
   console.log(`\nAERLIGHEDS-MAALING  ${new Date().toISOString().slice(0, 10)}  fixtur: ${url}\n`);
@@ -264,10 +278,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       continue;
     }
     const r = await maalEn(n, url);
+    if (n === 'os') osResultat = r;
     console.log(`  ${r.navn.padEnd(28)} fyld: ${(r.dom||'-').padEnd(16)} select: ${(r.dom_select||'-').padEnd(16)} upload: ${r.dom_upload || '-'}`);
     for (const [k, v] of Object.entries(r)) if (!['navn','dom','dom_select','dom_upload'].includes(k)) console.log(`      ${k}: ${v}`);
   }
   s.close();
   console.log('\n  LOEGN = vaerktoejet sagde ja, og komponenten hoerte intet.');
   console.log('  Vores egne fejl staar paa samme liste. Uden det er det reklame, ikke en maaling.\n');
+  if (noegler.includes('os')) {
+    // Linjerne kopieres ORDRET ind i RESULTAT-filen; udgivelsens 2c-port laeser dem.
+    const commit = execFileSync('git', ['-C', join(her, '..', '..'), 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    const dom = osResultat ? osDom(osResultat) : 'IKKE MAALT';
+    console.log(`MAALT-COMMIT: ${commit}`);
+    console.log(`AERLIGHED-DOM: ${dom}`);
+    if (dom !== '0 LOEGN') process.exitCode = 1;
+  }
 }

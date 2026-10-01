@@ -15,6 +15,9 @@ const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 // 27/9: hent-udgivet.py koerer kun i spaerre.yml paa macos-latest. Paa Windows finder Python `npm.cmd`
 // i stedet for proevens falske npm, og npm-linket er ikke en symlink der kan koeres - miljoe, ikke kode.
 const KUN_MACOS = process.platform === 'win32' && 'hent-udgivet.py koerer kun paa macOS (spaerre.yml)';
+// Spaerretrinnet skaeres ud til NAESTE trin, hvad det end hedder - 27/9 kom aerligheds-trinnet ind
+// mellem det og «gem loggen», og en skaering til «gem loggen» fik det andet trins kode med.
+const spaerretrin = (wf) => { const fra = wf.indexOf('- name: spaerren, isoleret'); return wf.slice(fra, wf.indexOf('\n      - name:', fra + 1) + 1); };
 const py = (kode) => execFileSync('python3', ['-c', `import importlib.util, sys, json
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
@@ -195,7 +198,7 @@ test('spaerre.yml: det udgivne kommer fra hent-trinnets OUTPUTS, ikke fra arvet 
   assert.match(hent, />> "\$GITHUB_OUTPUT"/, 'hent-trinnet skriver ikke til sine outputs');
   // Bundet til STRUKTUREN (en skrivning til filen), ikke ordet - trinnets egen kommentar naevner $GITHUB_ENV.
   assert.doesNotMatch(wf, />>\s*"\$GITHUB_ENV"/, 'det udgivne sendes stadig gennem miljoeet, som alle senere trin arver');
-  const spaerre = wf.slice(wf.indexOf('- name: spaerren, isoleret'), wf.indexOf('- name: gem loggen'));
+  const spaerre = spaerretrin(wf);
   const env = spaerre.slice(spaerre.indexOf('env:'), spaerre.indexOf('run: |'));
   assert.match(env, /UDGIVET_UDVIDELSE: \$\{\{ steps\.hent\.outputs\.UDGIVET_UDVIDELSE \}\}/,
     'spaerretrinnet saetter ikke UDGIVET_UDVIDELSE eksplicit - et arvet vaerdi kan genaktivere en fremmed udvidelse');
@@ -205,7 +208,7 @@ test('spaerre.yml: det udgivne kommer fra hent-trinnets OUTPUTS, ikke fra arvet 
 
 test('spaerre.yml: loggen skal BEVISE at det udgivne blev maalt - ellers roedt', () => {
   const wf = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
-  const spaerre = wf.slice(wf.indexOf('- name: spaerren, isoleret'), wf.indexOf('- name: gem loggen'));
+  const spaerre = spaerretrin(wf);
   const fra = spaerre.indexOf("grep -m1 '^DAEKNING:' spaerre.log");
   assert.ok(fra > 0, 'efter-tjekket blev ikke fundet');
   const blok = spaerre.slice(fra).split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
@@ -239,7 +242,7 @@ test('flow-isoleret og flow-testen skriver hvad de FAKTISK maaler, med samme udt
 
 test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2: pipefail)', () => {
   const wf = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
-  const trin = wf.slice(wf.indexOf('- name: spaerren, isoleret'), wf.indexOf('- name: gem loggen'));
+  const trin = spaerretrin(wf);
   assert.match(trin, /\n\s+shell: bash\n/, 'spaerretrinnet koerer uden pipefail - tee skjuler flowets exitkode');
   const run = trin.slice(trin.indexOf('run: |') + 'run: |'.length).split('\n').map((l) => l.replace(/^ {10}/, '')).join('\n');
   const d = mkdtempSync(join(tmpdir(), 'spaerre-trin-'));
