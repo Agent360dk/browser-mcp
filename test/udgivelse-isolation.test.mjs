@@ -423,18 +423,88 @@ test('koldt-tjek.sh: en JSON-RPC-notifikation foer svaret er tilladt; tekst paa 
   } finally { a.ryd(); b.ryd(); }
 });
 
-test('koldt-tjek.sh: fristen gaelder HELE procestræet - et barnebarn der holder stdout aaben overlever ikke', { skip: POSIX }, () => {
+test('koldt-tjek.sh: fristen gaelder hele procesgruppen - et barnebarn der holder stdout aaben overlever ikke (ALLE forsoeg)', { skip: POSIX }, () => {
   const pidFil = join(tmpdir(), `koldt-barnebarn-${process.pid}-${Date.now()}.pid`);
   // npx-stubben starter en baggrundsproces der arver stdout og aldrig svarer; foer fristen holdt den roeret aabent til den doede selv
-  const k = koldt(`sleep 30 &\necho $! > "${pidFil}"\nwait`);
+  const t0 = Date.now(); // ⛔ Astra runde 6: starttiden stod EFTER det synkrone kald, saa proeven maalte intet
+  const k = koldt(`sleep 30 &\necho $! >> "${pidFil}"\nwait`);
   try {
-    const t0 = Date.now();
+    const brugt = Date.now() - t0;
     assert.notEqual(k.r.status, 0);
-    assert.ok(Date.now() - t0 < 25000, `fristen holdt ikke: ${(Date.now() - t0) / 1000} s`);
+    assert.ok(brugt < 45000, `fristen holdt ikke: ${brugt / 1000} s for seks forsoeg a 4 s`);
     assert.ok(existsSync(pidFil), 'stubben startede ikke sit barnebarn - proeven maaler intet');
-    const pid = Number(readFileSync(pidFil, 'utf8').trim());
-    let lever = true;
-    try { process.kill(pid, 0); } catch { lever = false; }
-    assert.equal(lever, false, `barnebarnet (pid ${pid}) lever stadig efter fristen`);
+    const pids = readFileSync(pidFil, 'utf8').split('\n').filter(Boolean).map(Number);
+    assert.equal(pids.length, 6, `forventede ét barnebarn pr. forsoeg, fik ${pids.length}`);
+    const levende = pids.filter((pid) => { try { process.kill(pid, 0); return true; } catch { return false; } });
+    assert.deepEqual(levende, [], `barnebarn lever stadig efter fristen: ${levende}`);
   } finally { k.ryd(); rmSync(pidFil, { force: true }); }
+});
+
+// ── Astra runde 6 (1/10): frist tæt paa graensen, afkortet diagnostik, afbrydelse, MCP-livscyklus ──────────────────────
+
+test('koldt-tjek.sh: et svar tæt paa fristen afvises ikke (svartimeren afmeldes ved et gyldigt svar)', { skip: POSIX }, () => {
+  const k = koldt(`sleep 1.2\necho '${GYLDIGT}'\nsleep 5`, { KOLDT_FRIST_MS: '1500', KOLDT_EFTERTID_MS: '600' });
+  try { assert.equal(k.r.status, 0, `et gyldigt svar efter 1,2 s af 1,5 s blev afvist: ${k.r.stdout}`); } finally { k.ryd(); }
+});
+
+test('koldt-tjek.sh: en stor stderr-udskrift afkorter ikke diagnostikken (slutmarkoeren naar frem)', { skip: POSIX }, () => {
+  const k = koldt(`head -c 600000 /dev/zero | tr '\\0' 'x' >&2\necho >&2\necho SLUTMARKOER-FRA-NPX >&2\nexit 1`);
+  try {
+    assert.notEqual(k.r.status, 0);
+    assert.match(k.r.stdout, /SLUTMARKOER-FRA-NPX/, 'diagnostikken blev afkortet af process.exit() foer den var skrevet');
+  } finally { k.ryd(); }
+});
+
+test('koldt-tjek.sh: et lovligt server-ping foer svaret afvises ikke; en notifikation med forkert jsonrpc gør', { skip: POSIX }, () => {
+  const ping = JSON.stringify({ jsonrpc: '2.0', id: 0, method: 'ping' });
+  const brudt = JSON.stringify({ jsonrpc: 'broken', method: 'not-a-real-notification' });
+  const a = koldt(`echo '${ping}'\necho '${GYLDIGT}'\nsleep 3`);
+  const b = koldt(`echo '${brudt}'\necho '${GYLDIGT}'\nsleep 3`);
+  try {
+    assert.equal(a.r.status, 0, `et lovligt ping foer svaret blev afvist: ${a.r.stdout}`);
+    assert.notEqual(b.r.status, 0, 'en notifikation med jsonrpc «broken» blev godkendt');
+  } finally { a.ryd(); b.ryd(); }
+});
+
+test('koldt-tjek.sh: tekst paa stdout EFTER svaret er ogsaa en fejl (kontrollen stopper ikke ved det foerste svar)', { skip: POSIX }, () => {
+  const k = koldt(`echo '${GYLDIGT}'\nsleep 0.1\necho 'ikke json efter svaret'\nsleep 3`, { KOLDT_EFTERTID_MS: '1000' });
+  try { assert.notEqual(k.r.status, 0, 'stoej efter svaret blev godkendt'); } finally { k.ryd(); }
+});
+
+for (const pv of ['9999-99-99', '2026-01-01']) {
+  test(`koldt-tjek.sh: protocolVersion ${pv} er ikke en MCP-version vi taler (eksplicit liste)`, { skip: POSIX }, () => {
+    const svar = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: pv, capabilities: { tools: {} }, serverInfo: { name: 'agent360-browser', version: '9.9.9' } } });
+    const k = koldt(`echo '${svar}'\nsleep 3`);
+    try { assert.notEqual(k.r.status, 0, `${pv} blev godkendt`); } finally { k.ryd(); }
+  });
+}
+
+test('koldt-tjek.sh: klienten sender notifications/initialized, og en server der doer paa den fanges', { skip: POSIX }, () => {
+  const dod = koldt(`echo '${GYLDIGT}'\nread -r _\nexit 42`);
+  const levende = koldt(`echo '${GYLDIGT}'\nread -r _\nsleep 3`);
+  try {
+    assert.notEqual(dod.r.status, 0, 'en server der doer paa notifications/initialized blev godkendt');
+    assert.equal(levende.r.status, 0, `en server der klarer notifications/initialized blev afvist: ${levende.r.stdout}`);
+  } finally { dod.ryd(); levende.ryd(); }
+});
+
+test('koldt-forsoeg.mjs: SIGTERM til hjælperen draeber stadig npx-gruppen (ingen forældreløs proces)', { skip: POSIX }, async () => {
+  const { spawn } = await import('node:child_process');
+  const d = mkdtempSync(join(tmpdir(), 'koldt-sigterm-'));
+  const stubs = join(d, 'stubs'); mkdirSync(stubs);
+  const pidFil = join(d, 'pid');
+  writeFileSync(join(stubs, 'npx'), `#!/bin/sh\nread -r _\nsleep 40 &\necho $! > "${pidFil}"\nwait\n`);
+  chmodSync(join(stubs, 'npx'), 0o755);
+  const barn = spawn(process.execPath, [join(rod, 'scripts/koldt-forsoeg.mjs'), '9.9.9', d], { env: { PATH: `${stubs}:${process.env.PATH}`, HOME: d, KOLDT_FRIST_MS: '30000' }, stdio: 'ignore' });
+  try {
+    for (let i = 0; i < 50 && !existsSync(pidFil); i++) await new Promise((r) => setTimeout(r, 100));
+    assert.ok(existsSync(pidFil), 'stubben naaede ikke at starte sit barn');
+    const pid = Number(readFileSync(pidFil, 'utf8').trim());
+    const afsluttet = new Promise((r) => barn.on('exit', r));
+    barn.kill('SIGTERM');
+    await afsluttet;
+    await new Promise((r) => setTimeout(r, 300));
+    let lever = true; try { process.kill(pid, 0); } catch { lever = false; }
+    assert.equal(lever, false, `npx' barn (pid ${pid}) lever efter SIGTERM til hjælperen`);
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });
