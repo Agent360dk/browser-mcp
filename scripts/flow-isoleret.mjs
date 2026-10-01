@@ -47,7 +47,7 @@ const WebSocket = krav('ws');
 // indlaest», og det passede: bare ikke om den browser vi lige havde startet.
 // Forklarer moenstret praecis: foerste koersel virker, de naeste fejler.
 const CDP_PORT = 19340 + Math.floor(Math.random() * 400);
-const PORTE = '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
+const PORTE = process.env.BMCP_PORTE || '19900-19904';       // aldrig 9876-9895: det er menneskets eget spaend
 const BEHOLD = process.argv.includes('--behold');
 const SPAERRE = process.argv.includes('--spaerre');
 // `--koer <script> [args]`: koer et andet maaleinstrument i den samme isolerede browser.

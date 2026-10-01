@@ -1,0 +1,46 @@
+name: sessioner-20
+
+# Maaler at N samtidige sessioner (standard 20) hver faar sin egen forbindelse, egne faner og oprydning - i en isoleret Chrome
+# paa GitHubs Mac. Findes fordi «op til 20 agenter» i butikken, README og filmen hidtil kun var portgraensen (9876-9895 = 20
+# porte), ikke en maaling: maaleren koerer som standard 10 og bruger Gustavs RIGTIGE Chrome. Her bruges den isolerede bane.
+on:
+  workflow_dispatch:
+    inputs:
+      antal:
+        description: 'Antal samtidige sessioner'
+        required: true
+        default: '20'
+
+permissions:
+  contents: read
+
+jobs:
+  sessioner:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: installer serveren
+        run: npm install --prefix mcp-server --no-audit --no-fund
+      - name: cache Chrome for Testing
+        uses: actions/cache@v4
+        with:
+          path: chrome
+          key: cft-${{ runner.os }}-${{ runner.arch }}-stable
+      - name: sessionerne, isoleret
+        shell: bash
+        env:
+          BMCP_PORTE: 19900-19929
+          SESSIONER: ${{ inputs.antal }}
+        run: |
+          node scripts/flow-isoleret.mjs --koer test/flow/sessions.mjs 2>&1 | tee sessioner.log
+      - name: gem loggen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessioner-log
+          path: sessioner.log
+          retention-days: 14
