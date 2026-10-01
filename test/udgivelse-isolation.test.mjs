@@ -349,19 +349,15 @@ function koerNpmBlok({ ship, oidc = false, token = false, publiceret = false }) 
   const a = s.indexOf('step "5. npm publish');
   const b = s.indexOf('# ── 2b. MCP registry');
   assert.ok(a > -1 && b > a, 'npm-blokken (trin 5) findes ikke i scriptet');
-  const d = mkdtempSync(join(tmpdir(), 'isolation-npm-'));
-  const stubs = join(d, 'stubs'); mkdirSync(stubs);
-  writeFileSync(join(stubs, 'npm'), `#!/bin/sh\nif [ "$1" = view ]; then ${publiceret ? 'echo 9.9.9' : 'true'}; fi\nexit 0\n`);
-  chmodSync(join(stubs, 'npm'), 0o755);
+  // ⛔ 1/10 (maalt paa GitHubs macOS-runner): en falsk `npm` som FIL i en mappe forrest i PATH blev ikke fundet i `bash -c` med minimalt miljoe
+  // (PATH's foerste led var en anden mappe), saa den aegte npm blev kaldt. En shell-FUNKTION slaar altid PATH og er uafhaengig af opstartsfiler.
   const r = spawnSync('bash', ['-c', `set -u
 step() { :; }; warn() { echo "WARN: $*"; }; die() { echo "DIE: $*"; exit 7; }; say() { echo "SAY: $*"; }; run() { echo "RUN: $*"; }
+npm() { if [ "$1" = view ]; then ${publiceret ? 'echo 9.9.9' : 'true'}; fi; return 0; }
 SKIP_NPM=0; NEW_VERSION=9.9.9; REPO_ROOT=/x; SHIP=${ship ? 1 : 0}; NPM_VIA_OIDC=${oidc ? 1 : 0}
 ${token ? 'NPM_TOKEN=tok' : ''}
-echo "DIAG npm=$(command -v npm) view=[$(npm view x@9.9.9 version 2>&1 | head -2 | tr '\\n' ' ')] sh=$(ls -l "$(command -v npm)" 2>&1 | cut -c1-12)"
-echo "DIAG2 stubdir=${stubs} ls=[$(ls -la "${stubs}" 2>&1 | tr '\\n' '|' | cut -c1-200)] test-x=$([ -x "${stubs}/npm" ] && echo ja || echo nej) path1=$(echo "$PATH" | cut -d: -f1) bash=$BASH_VERSION"
 ${s.slice(a, b)}
-echo SLUT`], { encoding: 'utf8', env: { PATH: `${stubs}:${process.env.PATH}`, HOME: process.env.HOME } });
-  rmSync(d, { recursive: true, force: true });
+echo SLUT`], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME } });
   return r;
 }
 
