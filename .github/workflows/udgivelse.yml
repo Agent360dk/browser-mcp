@@ -43,51 +43,56 @@ jobs:
     with:
       ref: ${{ inputs.genoptag && format('v{0}', inputs.version) || '' }}
 
-  # ⛔ 1/10 (Astra runde 3, uafhaengigt review): TESTS, PAKKETJEK og alle foerudgivelses-tjek koerer HER, i et job UDEN udgivelsesrettigheder:
+  # ⛔ 1/10 (Astra runde 3 og 4, uafhaengigt review): TESTS, PAKKETJEK og alle foerudgivelses-tjek koerer HER, i et job UDEN udgivelsesrettigheder:
   # ingen contents:write, ingen id-token, intet miljoe, ingen hemmeligheder, intet efterladt token i .git/config. Afhaengighedskode
   # (testenes SDK og ws, pakketjekkets installation) maa aldrig koere i det job der kan hente et OIDC-token og udgive.
-  # Jobbet er den samme proevekoersel som ship=false, paa SAMME commit; `udgiv` venter paa den.
+  # Testsuiten er sit EGET trin: scriptets gate() ADVARER kun uden --ship, saa en fejlet suite ville ellers give et groent job (Astra runde 4).
+  # Ved genoptagelse (genoptag=true) koeres kun testene paa den taggede commit; scriptet afviser --genoptag uden --ship, og pakketjekket
+  # koerte i den oprindelige koersel paa SAMME tagged commit. `sha` er den commit der blev testet; udgiv/efter/registry tjekker netop den ud.
   kandidat:
     needs: spaerre
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
       contents: read
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           ref: ${{ inputs.genoptag && format('v{0}', inputs.version) || '' }}
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      # Samme versioner som udgiv-jobbet, saa scriptets forudsaetnings-tjek (npm >= 11.5.1, mcp-publisher validate) giver samme svar.
+      # Samme npm-version som udgiv-jobbet, saa scriptets forudsaetnings-tjek (npm >= 11.5.1) giver samme svar.
       - name: opgrader npm til trusted publishing
         run: npm install -g npm@12.1.0 && npm --version
 
-      - name: installer mcp-publisher
-        run: brew install mcp-publisher
-
       - name: installer serveren
         run: npm ci --prefix mcp-server --no-audit --no-fund
+
+      - name: den testede commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: hele testsuiten (exitkoden er jobbets resultat)
+        run: npm --prefix mcp-server test
 
       - name: git-identitet
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: tests, pakketjek og foerudgivelses-tjek (intet sendes ud)
+      - name: pakketjek og foerudgivelses-tjek (intet sendes ud)
+        if: ${{ !inputs.genoptag }}
         env:
           VERSION: ${{ inputs.version }}
-          GENOPTAG: ${{ inputs.genoptag }}
-        run: |
-          flag=(--skip-local --skip-flow --skip-cws)
-          [[ "$GENOPTAG" == "true" ]] && flag+=(--genoptag)
-          ./runbrowsermcpupdate.sh "$VERSION" "${flag[@]}"
+        run: ./runbrowsermcpupdate.sh "$VERSION" --skip-local --skip-flow --skip-cws --skip-tests --registry-eget-job
 
   udgiv:
     needs: [spaerre, kandidat]
@@ -98,14 +103,15 @@ jobs:
     environment: ${{ inputs.ship && 'udgivelse' || '' }}
     permissions:
       contents: write   # tag og release paa GitHub - aldrig et push til main (26/9)
-      id-token: write   # npm trusted publishing + MCP-registret via github-oidc
+      id-token: write   # npm trusted publishing
     steps:
-      - uses: actions/checkout@v4
+      # Ved genoptagelse tjekkes PRAECIS den commit kandidat testede ud (ikke tagget igen: et flyttet tag kunne ellers give en anden commit).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.genoptag && format('v{0}', inputs.version) || '' }}
+          ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -117,11 +123,9 @@ jobs:
       - name: opgrader npm til trusted publishing
         run: npm install -g npm@12.1.0 && npm --version
 
-      - name: installer mcp-publisher
-        run: brew install mcp-publisher
-
-      # 1/10: her stod `npm ci --prefix mcp-server`. Det er udtaget: ingen hjaelper i udgivelsesstien importerer afhaengigheder (tests, pakketjek
-      # og kold pakkekoersel koerer i jobbene kandidat/efter), og afhaengighedernes installationsscripts maa ikke koere med id-token til raadighed.
+      # 1/10: her stod `brew install mcp-publisher` og `npm ci --prefix mcp-server`. Begge er udtaget: ingen hjaelper i udgivelsesstien
+      # importerer afhaengigheder (tests, pakketjek og kold pakkekoersel koerer i jobbene kandidat/efter), afhaengighedernes
+      # installationsscripts maa ikke koere med id-token til raadighed, og mcp-publisher (ufastlaast) bruges nu kun i jobbet «registry».
 
       - name: git-identitet
         run: |
@@ -141,12 +145,13 @@ jobs:
           GENOPTAG: ${{ inputs.genoptag }}
           # Spaerrens RESULTAT, ikke et flag: kun det maa fjerne advarslen «udgiver i blinde».
           SPAERRE_RESULTAT: ${{ needs.spaerre.result }}
-          # Fortaeller scriptet at tests, pakketjek og kold pakkekoersel er koert i de isolerede job - uden dette afviser en rigtig udgivelse flagene.
+          # Fortaeller scriptet at tests, pakketjek, kold pakkekoersel og registret koerer i de isolerede job - uden dette afviser en rigtig udgivelse flagene.
           UDGIVELSE_ISOLERET: '1'
         run: |
-          flag=(--skip-local --skip-flow --skip-tests --skip-pack --skip-cold)
+          flag=(--skip-local --skip-flow --skip-tests --skip-pack --skip-cold --registry-eget-job)
           # --skip-flow: spaerren HAR koert - i jobbet ovenfor, og dette job kan ikke starte uden.
           # --skip-tests/--skip-pack/--skip-cold: de koerte i jobbet «kandidat» (og koerer i «efter») uden udgivelsesrettigheder.
+          # --registry-eget-job: MCP-registret udgives af jobbet «registry», FOERST naar det kolde tjek er groent.
           # --skip-local: at genindlaese udvidelsen paa en Mac er Gustavs maskine, ikke runnerens.
           if [[ "$SHIP" == "true" ]]; then
             flag=(--ship "${flag[@]}")
@@ -162,22 +167,23 @@ jobs:
           ./runbrowsermcpupdate.sh "$VERSION" "${flag[@]}"
 
   # ⛔ 1/10: det kolde tjek af den UDGIVNE pakke koerer HER, uden udgivelsesrettigheder. npx opsloeser afhaengighederne efter interval
-  # paa udgivelsesdagen; den kode maa ikke koere i `udgiv`. Falder det kolde tjek, er pakken allerede udgivet - jobbet bliver roedt og
-  # printer raadet om tilbagerulning (scripts/koldt-tjek.sh).
+  # paa udgivelsesdagen; den kode maa ikke koere i `udgiv`. Falder det kolde tjek, er pakken allerede udgivet - jobbet bliver roedt,
+  # `registry` koerer IKKE (registret annoncerer aldrig en pakke der ikke starter), og scripts/koldt-tjek.sh printer raadet.
+  # Er `udgiv` roedt EFTER npm-udgivelsen, koerer dette job ikke: genoptag (genoptag=true), saa koeres det kolde tjek og registret.
   efter:
-    needs: udgiv
+    needs: [kandidat, udgiv]
     if: ${{ inputs.ship }}
     runs-on: macos-latest
     timeout-minutes: 20
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.genoptag && format('v{0}', inputs.version) || '' }}
+          ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}
           persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
 
@@ -185,3 +191,51 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: bash scripts/koldt-tjek.sh "$VERSION"
+
+  # MCP-registret, EFTER det kolde tjek (Astra runde 4: efter flytningen laa registret foer det). Ingen skriverettigheder, ingen hemmeligheder
+  # og intet miljoe (en ekstra godkendelse): jobbet koerer kun hvis `udgiv` (godkendt) og `efter` (groent) er lykkedes. Kun id-token til registret.
+  # I en proevekoersel koerer det UDEN --ship: det henter og kontrollerer den fastlaaste mcp-publisher og server.json, men udgiver intet.
+  registry:
+    needs: [kandidat, udgiv, efter]
+    if: ${{ !cancelled() && needs.udgiv.result == 'success' && (!inputs.ship || needs.efter.result == 'success') }}
+    runs-on: macos-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      # mcp-publisher er en tredjepartsbinaer med id-token til raadighed: fastlaast til en version og verificeret mod en kontrolsum
+      # (beregnet 1/10-2026 af den officielle udgivelse v1.8.1 paa github.com/modelcontextprotocol/registry), ikke `brew install`.
+      - name: installer mcp-publisher (fastlaast og verificeret)
+        run: |
+          set -euo pipefail
+          VER=1.8.1
+          case "$(uname -m)" in
+            arm64)  ARCH=arm64; SUM=e45e520892460732a4bdf37255576415d4a53ec171f8b913faf15bb1aef7cb77 ;;
+            x86_64) ARCH=amd64; SUM=88126981225e7714fcc6b7a10cdba4a80ae5901e9740a8c06d0d5195c8bc294c ;;
+            *) echo "ukendt arkitektur $(uname -m): ingen kontrolsum at verificere mod"; exit 1 ;;
+          esac
+          F="mcp-publisher_darwin_${ARCH}.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$F" "https://github.com/modelcontextprotocol/registry/releases/download/v${VER}/$F"
+          echo "${SUM}  $RUNNER_TEMP/$F" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/mcp-publisher-bin"
+          tar xzf "$RUNNER_TEMP/$F" -C "$RUNNER_TEMP/mcp-publisher-bin" mcp-publisher
+          echo "$RUNNER_TEMP/mcp-publisher-bin" >> "$GITHUB_PATH"
+
+      - name: MCP-registret (kun hvis det kolde tjek er groent)
+        env:
+          VERSION: ${{ inputs.version }}
+          SHIP: ${{ inputs.ship }}
+        run: |
+          flag=()
+          [[ "$SHIP" == "true" ]] && flag+=(--ship)
+          bash scripts/registry-udgiv.sh "$VERSION" ${flag[@]+"${flag[@]}"}

@@ -28,6 +28,7 @@
 #   --ship            Actually do it (default is dry-run)
 #   --skip-npm        Don't publish to npm (e.g. token expired - fix with `npm login`)
 #   --skip-registry   Don't publish to the MCP registry (needs mcp-publisher + gh read:org)
+#   --registry-eget-job  Registry publishes in its own job AFTER the cold check (scripts/registry-udgiv.sh); only the pre-checks run here
 #   --skip-cws        Don't publish to Chrome Web Store
 #   --skip-flow       Skip the live browser gate in step 2b AND step 3 (you publish blind)
 #   --skip-github     Don't commit/tag/push/release on GitHub
@@ -74,7 +75,7 @@ dage_til_udloeb() {
 NEW_VERSION=""
 SHIP=0
 SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0; SKIP_AERLIGHED=0
-SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0
+SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0; REGISTRY_EGET_JOB=0
 PREPARE=0; GENOPTAG=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
@@ -92,6 +93,7 @@ for arg in "$@"; do
     --skip-tests)  SKIP_TESTS=1 ;;
     --skip-pack)   SKIP_PACK=1 ;;
     --skip-cold)   SKIP_COLD=1 ;;
+    --registry-eget-job) REGISTRY_EGET_JOB=1 ;;
     --cws-draft)   CWS_DRAFT=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
     -h|--help)     grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -108,10 +110,10 @@ done
 # <<ISOLERET-VAGT
 # ⛔ 1/10 (Astra runde 3, uafhaengigt review): det job der har udgivelsesrettighederne (contents:write + id-token:write) maa ikke koere
 # afhaengighedskode. Tests, pakketjek og det kolde npx-tjek koerer derfor i egne job UDEN rettigheder (udgivelse.yml: kandidat, efter);
-# --skip-tests/--skip-pack/--skip-cold er KUN til den arbejdsgang. En udgivelse fra en anden maskine (fx din Mac) skal koere dem selv:
+# --skip-tests/--skip-pack/--skip-cold er KUN til den arbejdsgang; det samme er --registry-eget-job (registret udgives af jobbet «registry» EFTER det kolde tjek). En udgivelse fra en anden maskine (fx din Mac) skal koere dem selv:
 # uden UDGIVELSE_ISOLERET=1 afviser en rigtig udgivelse flagene.
-if [[ "$SHIP" == 1 && ( "$SKIP_TESTS" == 1 || "$SKIP_PACK" == 1 || "$SKIP_COLD" == 1 ) && "${UDGIVELSE_ISOLERET:-}" != 1 ]]; then
-  die "--skip-tests/--skip-pack/--skip-cold er kun til udgivelses-workflowet (UDGIVELSE_ISOLERET=1), hvor de tunge tjek koerte i et eget job uden udgivelsesrettigheder. Fjern flagene og koer dem selv."
+if [[ "$SHIP" == 1 && ( "$SKIP_TESTS" == 1 || "$SKIP_PACK" == 1 || "$SKIP_COLD" == 1 || "$REGISTRY_EGET_JOB" == 1 ) && "${UDGIVELSE_ISOLERET:-}" != 1 ]]; then
+  die "--skip-tests/--skip-pack/--skip-cold/--registry-eget-job er kun til udgivelses-workflowet (UDGIVELSE_ISOLERET=1), hvor de tunge tjek koerte i et eget job uden udgivelsesrettigheder. Fjern flagene og koer dem selv."
 fi
 if [[ "$SKIP_TESTS" == 1 ]]; then export CWS_SKIP_TESTS=1; fi   # butiksscriptet koerer ellers testene en gang til
 # ISOLERET-VAGT>>
@@ -559,6 +561,7 @@ else
   AERLIGHED_FILER=(extension/background.js extension/offscreen.js mcp-server/tools.js mcp-server/index.js)
   # 1/10 (Astra runde 3): stderr maa ikke blandes ind i listen over aendrede filer - en harmloes git-advarsel blev laest som en produktforskel.
   AERLIGHED_FEJL="$(mktemp)"
+  trap 'rm -f "$AERLIGHED_FEJL"' EXIT   # Astra runde 4: gate() afslutter via die(), saa oprydningen nedenfor naas ikke ved en afvisning under ship
   MAALT_COMMIT="$(sed -n 's/^MAALT-COMMIT: *\([0-9a-f]\{7,40\}\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
   AERLIGHED_DOM="$(sed -n 's/^AERLIGHED-DOM: *\(.*[^ ]\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
   KOER_IGEN="Koer: AERLIGHED_MED_OS=1 node scripts/flow-isoleret.mjs --koer test/aerlighed/maal.mjs --kun os, og kopier MAALT-COMMIT og AERLIGHED-DOM ind i en ny RESULTAT-fil"
@@ -972,6 +975,7 @@ fi
 
 step "5b. MCP registry publish"
 if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
+elif [[ "$REGISTRY_EGET_JOB" == 1 ]]; then warn "registret udgives IKKE her: jobbet «registry» goer det efter det kolde tjek (scripts/registry-udgiv.sh). Forkontrollen af server.json er koert ovenfor."
 elif ! command -v mcp-publisher >/dev/null 2>&1; then
   # MAALT 7/9: her stod `warn` + fortsaet. Konsekvensen var at 1.28.0 og 1.28.1 begge
   # gik paa npm mens registret blev staaende paa 1.25.0 - og scriptet sluttede GROENT.

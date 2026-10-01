@@ -177,24 +177,70 @@ test('workflow: «kandidat» koerer tests og pakketjek UDEN rettigheder, token e
   assert.match(j, /persist-credentials: false/, 'checkout efterlader et skrivbart token i .git/config');
   assert.match(j, /runbrowsermcpupdate\.sh/);
   assert.doesNotMatch(j, /--ship/, 'kandidat-jobbet maa aldrig udgive');
+  assert.doesNotMatch(j, /brew install/, 'kandidat-jobbet henter en ufastlaast tredjepartsbinaer');
 });
 
-test('workflow: «udgiv» venter paa kandidaten, koerer INGEN afhaengighedskode og har ingen npm ci', () => {
+// Astra runde 4 (1/10): scriptets gate() ADVARER kun uden --ship, saa en fejlet testsuite lod kandidat-jobbet vaere groent. Testsuiten
+// er derfor sit EGET trin hvis exitkode er jobbets resultat, og scriptet faar --skip-tests.
+test('workflow: testsuiten er et eget obligatorisk trin i «kandidat» (exitkoden ER jobbets resultat)', () => {
+  const j = job('kandidat');
+  const trin = j.split(/\n      - /).find((t) => /npm (--prefix mcp-server )?test/.test(t));
+  assert.ok(trin, 'kandidat-jobbet har intet selvstaendigt testtrin: en fejlet testsuite kan give et groent job');
+  assert.doesNotMatch(trin, /continue-on-error|\|\|\s*true|if:/, `testtrinnet kan ignoreres: ${trin}`);
+  const scriptTrin = j.split(/\n      - /).find((t) => /runbrowsermcpupdate\.sh/.test(t));
+  assert.match(scriptTrin, /--skip-tests/, 'scriptet koerer testene en gang til (og dets gate() advarer kun)');
+});
+
+// Astra runde 4: --genoptag uden --ship afvises af scriptet, saa genoptagelse kunne ikke passere kandidat-jobbet.
+test('workflow: genoptagelse passerer «kandidat» (testene koerer, scriptet koeres ikke med --genoptag uden --ship)', () => {
+  const j = job('kandidat');
+  const scriptTrin = j.split(/\n      - /).find((t) => /runbrowsermcpupdate\.sh/.test(t));
+  assert.doesNotMatch(scriptTrin, /--genoptag/, 'kandidat sender --genoptag uden --ship, og scriptet afviser det');
+  assert.match(scriptTrin, /if:\s*\$\{\{\s*!inputs\.genoptag\s*\}\}/, 'scriptet springes ikke over ved genoptagelse');
+  const sha = j.match(/outputs:\s*\n\s+sha:/);
+  assert.ok(sha, 'kandidat melder ikke hvilken commit den testede (genoptagelse kan ikke bindes til den)');
+});
+
+test('workflow: «udgiv» venter paa kandidaten, koerer INGEN afhaengighedskode, ingen npm ci og ingen ufastlaast binaer', () => {
   const j = job('udgiv');
   assert.match(j, /needs:\s*\[\s*spaerre,\s*kandidat\s*\]/, 'udgiv venter ikke paa kandidat-jobbet');
-  for (const flag of ['--skip-tests', '--skip-pack', '--skip-cold']) assert.match(j, new RegExp(flag), `udgiv-jobbet sender ikke ${flag}`);
+  for (const flag of ['--skip-tests', '--skip-pack', '--skip-cold', '--registry-eget-job']) assert.match(j, new RegExp(flag), `udgiv-jobbet sender ikke ${flag}`);
   assert.match(j, /UDGIVELSE_ISOLERET:\s*'?1'?/, 'udgiv-jobbet siger ikke at de tunge tjek koerte isoleret');
   assert.doesNotMatch(j, /npm ci|npm install --prefix/, 'udgiv-jobbet installerer afhaengigheder med udgivelsesrettighederne');
+  assert.doesNotMatch(j, /brew install/, 'udgiv-jobbet henter en ufastlaast tredjepartsbinaer med udgivelsesrettighederne (Astra runde 4)');
   assert.match(j, /id-token: write/, 'kalibrering: udgiv-jobbet SKAL stadig have id-token (ellers kan det ikke udgive)');
+  assert.match(j, /ref:.*needs\.kandidat\.outputs\.sha/, 'ved genoptagelse tjekker udgiv ikke den commit kandidat testede ud');
 });
 
 test('workflow: «efter» koerer det kolde tjek UDEN rettigheder, kun ved en rigtig udgivelse', () => {
   const j = job('efter');
-  assert.match(j, /needs:\s*udgiv/);
+  assert.match(j, /needs:\s*\[\s*kandidat,\s*udgiv\s*\]/);
   assert.match(j, /if:.*inputs\.ship/, 'det kolde tjek koerer ogsaa i en proevekoersel');
   assert.match(j, /permissions:\s*\n\s+contents: read/);
   assert.doesNotMatch(j, /id-token|contents: write|secrets\./);
   assert.match(j, /scripts\/koldt-tjek\.sh/);
+});
+
+// Astra runde 4: registret laa FOER det kolde tjek efter flytningen. Det er nu et eget job der venter paa det.
+test('workflow: «registry» venter paa det kolde tjek, har KUN id-token, og henter mcp-publisher fastlaast med kontrolsum', () => {
+  const j = job('registry');
+  assert.match(j, /needs:\s*\[\s*kandidat,\s*udgiv,\s*efter\s*\]/, 'registry venter ikke paa det kolde tjek');
+  assert.match(j, /needs\.efter\.result\s*==\s*'success'/, 'registry kraever ikke at det kolde tjek er groent ved en rigtig udgivelse');
+  assert.match(j, /id-token: write/);
+  assert.doesNotMatch(j, /contents: write|secrets\.|environment:/, 'registry-jobbet har skriverettigheder, hemmeligheder eller et miljoe (ekstra godkendelse)');
+  assert.doesNotMatch(j, /brew install/, 'registry henter mcp-publisher uden fast version');
+  assert.match(j, /shasum -a 256 -c/, 'mcp-publisher verificeres ikke mod en kontrolsum');
+  assert.match(j, /mcp-publisher[^\n]*1\.8\.1|VER=1\.8\.1/, 'mcp-publisher er ikke fastlaast til en version');
+  assert.match(j, /scripts\/registry-udgiv\.sh/);
+});
+
+test('workflow: tredjeparts-actions i de privilegerede job er fastlaast til commit-id, ikke flytbare tags', () => {
+  for (const navn of ['udgiv', 'registry']) {
+    const j = job(navn);
+    const uses = [...j.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]);
+    assert.ok(uses.length > 0, `${navn}: ingen uses`);
+    for (const u of uses) assert.match(u, /@[0-9a-f]{40}$/, `${navn}: «${u}» er et flytbart tag, ikke et commit-id`);
+  }
 });
 
 // ── vagten: skip-flagene maa kun bruges i den isolerede udgivelse ───────────
@@ -207,8 +253,8 @@ function koerVagt(args, miljoe = {}) {
   const blok = s.slice(a, b);
   const r = spawnSync('bash', ['-c', `set -u
 die() { echo "DIE: $*"; exit 7; }
-SHIP=0; SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0
-for arg in "$@"; do case "$arg" in --ship) SHIP=1 ;; --skip-tests) SKIP_TESTS=1 ;; --skip-pack) SKIP_PACK=1 ;; --skip-cold) SKIP_COLD=1 ;; esac; done
+SHIP=0; SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0; REGISTRY_EGET_JOB=0
+for arg in "$@"; do case "$arg" in --ship) SHIP=1 ;; --skip-tests) SKIP_TESTS=1 ;; --skip-pack) SKIP_PACK=1 ;; --skip-cold) SKIP_COLD=1 ;; --registry-eget-job) REGISTRY_EGET_JOB=1 ;; esac; done
 ${blok}
 echo "PASSERET tests=$SKIP_TESTS pack=$SKIP_PACK cold=$SKIP_COLD cws_skip=\${CWS_SKIP_TESTS:-}"`, '_', ...args],
   { encoding: 'utf8', env: { PATH: process.env.PATH, ...miljoe } });
@@ -216,7 +262,7 @@ echo "PASSERET tests=$SKIP_TESTS pack=$SKIP_PACK cold=$SKIP_COLD cws_skip=\${CWS
 }
 
 test('vagten: en rigtig udgivelse maa ikke springe tests/pakke/kold over uden den isolerede workflow', { skip: POSIX }, () => {
-  for (const flag of ['--skip-tests', '--skip-pack', '--skip-cold']) {
+  for (const flag of ['--skip-tests', '--skip-pack', '--skip-cold', '--registry-eget-job']) {
     const r = koerVagt(['--ship', flag]);
     assert.equal(r.status, 7, `${flag} i en rigtig udgivelse uden UDGIVELSE_ISOLERET slap igennem: ${r.stdout}`);
     assert.match(r.stdout, /DIE:.*UDGIVELSE_ISOLERET/);
@@ -224,7 +270,7 @@ test('vagten: en rigtig udgivelse maa ikke springe tests/pakke/kold over uden de
 });
 
 test('vagten (modsat): med UDGIVELSE_ISOLERET=1, og i en proevekoersel, maa flagene bruges', { skip: POSIX }, () => {
-  const a = koerVagt(['--ship', '--skip-tests', '--skip-pack', '--skip-cold'], { UDGIVELSE_ISOLERET: '1' });
+  const a = koerVagt(['--ship', '--skip-tests', '--skip-pack', '--skip-cold', '--registry-eget-job'], { UDGIVELSE_ISOLERET: '1' });
   assert.equal(a.status, 0, `den isolerede udgivelse blev afvist: ${a.stdout}`);
   assert.match(a.stdout, /tests=1 pack=1 cold=1/);
   const b = koerVagt(['--skip-tests', '--skip-pack']);
