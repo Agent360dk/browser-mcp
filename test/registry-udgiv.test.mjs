@@ -20,7 +20,7 @@ const script = join(rod, 'scripts/registry-udgiv.sh');
 const SERVER_VERSION = JSON.parse(readFileSync(join(rod, 'mcp-server/server.json'), 'utf8')).version;
 
 /** Falsk mcp-publisher + curl. Registret holder sin version i en fil; en vellykket `publish` skriver server.json's version dertil. */
-function opsaet({ foer = '0.0.1', loginFejler = false, publishFejler = false, opdatererIkke = false, navn = 'io.github.Agent360dk/browser-mcp', andenServer = null, versionDefekt = false, opslagFejler = false } = {}) {
+function opsaet({ foer = '0.0.1', loginFejler = false, publishFejler = false, opdatererIkke = false, navn = 'io.github.Agent360dk/browser-mcp', andenServer = null, versionDefekt = false, opslagFejler = false, foerstFejler = 0 } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'registry-udgiv-'));
   const stubs = join(d, 'stubs'); mkdirSync(stubs);
   const reg = join(d, 'registry-version'); writeFileSync(reg, foer);
@@ -36,6 +36,8 @@ exit 0
 `);
   writeFileSync(join(stubs, 'curl'), `#!/bin/sh
 ${opslagFejler ? 'exit 22' : ''}
+n=$(cat "${join(d, 'curl-taeller')}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${join(d, 'curl-taeller')}"
+[ "$n" -le ${foerstFejler} ] && exit 28
 v="$(cat "${reg}")"
 printf '{"servers":[%s{"server":{"name":"${navn}","version":"%s"},"_meta":{"io.modelcontextprotocol.registry/official":{"isLatest":true}}}]}' '${andenServer ? JSON.stringify({ server: { name: andenServer.navn, version: andenServer.version }, _meta: { 'io.modelcontextprotocol.registry/official': { isLatest: true } } }) + ',' : ''}' "$v"
 `);
@@ -188,4 +190,23 @@ test('registry-udgiv: ukendte argumenter afvises', { skip: POSIX }, () => {
     const o = opsaet();
     try { assert.notEqual(o.koer(args, OIDC).status, 0, `${args.join(' ')} blev accepteret`); } finally { o.ryd(); }
   }
+});
+
+// Maalt 1/10: det ægte register har en koldstart paa op til 27 s (første opslag), derefter ~1 s. En kort frist uden gentagelser
+// ville have faaet første opslag i en rigtig koersel til at fejle.
+test('registry-udgiv: et opslag der fejler en-to gange (koldstart) gentages og lykkes', { skip: POSIX }, () => {
+  const o = opsaet({ foerstFejler: 2 });
+  try {
+    const r = o.koer([SERVER_VERSION], OIDC);
+    assert.equal(r.status, 0, `to forbigaaende opslagsfejl stoppede proeven: ${r.stdout} ${r.stderr}`);
+  } finally { o.ryd(); }
+});
+test('registry-udgiv: et opslag der fejler tre gange i traek giver op (ingen uendelig loekke)', { skip: POSIX }, () => {
+  const o = opsaet({ foerstFejler: 3 });
+  try { assert.notEqual(o.koer([SERVER_VERSION], OIDC).status, 0); } finally { o.ryd(); }
+});
+test('registry-udgiv: opslagets frist er mindst 45 s (registrets koldstart er maalt til 27 s)', { skip: POSIX }, () => {
+  const kilde = readFileSync(script, 'utf8');
+  const m = kilde.match(/--max-time (\d+)/);
+  assert.ok(m && Number(m[1]) >= 45, `fristen er ${m ? m[1] : 'ukendt'} s - for kort til registrets koldstart`);
 });

@@ -40,9 +40,15 @@ ok "server.json baerer $V"
 # 2 · hvad viser registret nu? Astra runde 5: (a) opslaget er en SUBSTRING-soegning, saa en anden server (`...browser-mcp-other`) kunne taelle som vores;
 # nu kraeves det praecise servernavn. (b) et opslag der fejler er IKKE «ukendt version»: det giver en fejl (kun «serveren findes ikke endnu» er tom).
 # (c) curl havde ingen tidsfrister.
+# (d) MAALT 1/10: det aegte register har en koldstart paa op til 27 s paa det foerste opslag (derefter ~1 s). 20 s uden gentagelse ville have faaet
+# foerste opslag i en rigtig koersel til at fejle. Nu 45 s og op til tre forsoeg.
 registrets_version() {
-  local ud
-  ud="$(curl -fsS --connect-timeout 10 --max-time 20 "https://registry.modelcontextprotocol.io/v0/servers?search=${NAVN}&limit=100" 2>/dev/null)" || return 1
+  local ud="" forsoeg
+  for forsoeg in 1 2 3; do
+    ud="$(curl -fsS --connect-timeout 10 --max-time 45 "https://registry.modelcontextprotocol.io/v0/servers?search=${NAVN}&limit=100" 2>/dev/null)" && [[ -n "$ud" ]] && break
+    ud=""; [[ $forsoeg -lt 3 ]] && sleep "$PAUSE"
+  done
+  [[ -n "$ud" ]] || return 1
   printf '%s' "$ud" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
