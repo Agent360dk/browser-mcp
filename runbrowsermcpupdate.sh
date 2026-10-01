@@ -557,6 +557,8 @@ else
   # dommen skal vaere «0 LOEGN», og den maalte commit skal have PRAECIS den kode der udgives, i de filer
   # der bestemmer hvad vaerktoejerne svarer (udvidelsen, vaerktoejslisten og serveren der formidler svaret).
   AERLIGHED_FILER=(extension/background.js extension/offscreen.js mcp-server/tools.js mcp-server/index.js)
+  # 1/10 (Astra runde 3): stderr maa ikke blandes ind i listen over aendrede filer - en harmloes git-advarsel blev laest som en produktforskel.
+  AERLIGHED_FEJL="$(mktemp)"
   MAALT_COMMIT="$(sed -n 's/^MAALT-COMMIT: *\([0-9a-f]\{7,40\}\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
   AERLIGHED_DOM="$(sed -n 's/^AERLIGHED-DOM: *\(.*[^ ]\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
   KOER_IGEN="Koer: AERLIGHED_MED_OS=1 node scripts/flow-isoleret.mjs --koer test/aerlighed/maal.mjs --kun os, og kopier MAALT-COMMIT og AERLIGHED-DOM ind i en ny RESULTAT-fil"
@@ -566,13 +568,14 @@ else
     gate "aerligheds-maalingen af vores eget vaerktoej siger «${AERLIGHED_DOM}» ($(basename "$SENESTE_AERLIGHED")) - vi udgiver ikke en loegn om os selv"
   elif ! git cat-file -e "${MAALT_COMMIT}^{commit}" 2>/dev/null; then
     gate "den maalte commit ${MAALT_COMMIT} findes ikke i repoet - resultatet kan ikke bindes til koden. $KOER_IGEN"
-  elif ! AERLIGHED_FORSKEL="$(git diff --name-only "$MAALT_COMMIT" HEAD -- "${AERLIGHED_FILER[@]}" 2>&1)"; then
-    gate "kunne ikke sammenligne den maalte kode med den der udgives: ${AERLIGHED_FORSKEL}"
+  elif ! AERLIGHED_FORSKEL="$(git diff --name-only "$MAALT_COMMIT" HEAD -- "${AERLIGHED_FILER[@]}" 2>"$AERLIGHED_FEJL")"; then
+    gate "kunne ikke sammenligne den maalte kode med den der udgives: $(cat "$AERLIGHED_FEJL")"
   elif [[ -n "$AERLIGHED_FORSKEL" ]]; then
     gate "aerligheds-maalingen gaelder ${MAALT_COMMIT:0:7}, men koden er aendret siden: $(printf '%s' "$AERLIGHED_FORSKEL" | tr '\n' ' ')- $KOER_IGEN"
   else
     ok "aerligheds-maalingen gaelder den kode der udgives: 0 LOEGN, maalt paa ${MAALT_COMMIT:0:7} ($(basename "$SENESTE_AERLIGHED"))"
   fi
+  rm -f "$AERLIGHED_FEJL"
 fi
 fi
 

@@ -36,7 +36,7 @@ test('maal.mjs skriver dommen og commit\'en for os selv og svarer 1 paa alt ande
 });
 
 /** Koerer scriptets EGEN 2c-blok i et lille repo. */
-function koer2c({ resultat, efterMaaling = null }) {
+function koer2c({ resultat, efterMaaling = null, gitAdvarsel = false }) {
   const s = readFileSync(join(rod, 'runbrowsermcpupdate.sh'), 'utf8');
   const blok = s.slice(s.indexOf('step "2c.'), s.indexOf('step "1. Version'));
   assert.ok(blok.includes('MAALT_COMMIT'), '2c-blokken blev ikke fundet');
@@ -53,10 +53,19 @@ function koer2c({ resultat, efterMaaling = null }) {
     writeFileSync(join(d, 'test/aerlighed/RESULTAT-proeve.md'), resultat(maalt));
     git('add', '.'); git('commit', '-q', '-m', 'resultat');
     if (efterMaaling) { writeFileSync(join(d, efterMaaling), 'aendret\n'); git('commit', '-q', '-am', 'efter'); }
+    // Astra runde 3 (1/10): en lokal git-launcher skrev en `confstr()`-advarsel paa STDERR, og 2c blandede stderr ind i listen over
+    // aendrede filer (`2>&1`) - saa en tom diff blev laest som en produktforskel. Skyggen genskaber det: advarsel paa stderr, tom diff paa stdout.
+    let pathen = process.env.PATH;
+    if (gitAdvarsel) {
+      const rigtigGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+      const skygge = join(d, '.skygge'); mkdirSync(skygge);
+      writeFileSync(join(skygge, 'git'), `#!/bin/sh\n[ "$1" = "diff" ] && echo "warning: harmloes advarsel fra git" >&2\nexec "${rigtigGit}" "$@"\n`, { mode: 0o755 });
+      pathen = `${skygge}:${process.env.PATH}`;
+    }
     const r = spawnSync('bash', ['-c', `set -euo pipefail
       ok(){ echo "OK:$*"; }; gate(){ echo "GATE:$*"; }; warn(){ echo "WARN:$*"; }; step(){ :; }
       cd '${d}'; SKIP_AERLIGHED=0
-      ${blok}`], { encoding: 'utf8' });
+      ${blok}`], { encoding: 'utf8', env: { ...process.env, PATH: pathen } });
     return { kode: r.status, ud: r.stdout + r.stderr };
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
@@ -105,4 +114,16 @@ test('spaerre.yml kan tage aerligheds-maalingen paa GitHub, og en LOEGN er roed'
   assert.match(trin, /if \[\[ "\$KODE" != 0 \]\]; then[\s\S]*?exit 1/, 'en maaling med exitkode 1 blev ikke roed');
   const gem = wf.slice(wf.indexOf('- name: gem loggen'));
   assert.match(gem, /aerlighed\.log/, 'aerligheds-loggen gemmes ikke');
+});
+
+test('2c: en harmloes advarsel fra git paa stderr er ikke en produktforskel (Astra runde 3)', { skip: POSIX_SKRIPT }, () => {
+  const r = koer2c({ resultat: god, gitAdvarsel: true });
+  assert.equal(r.kode, 0, r.ud);
+  assert.match(r.ud, /OK:aerligheds-maalingen gaelder den kode der udgives/,
+    `en gyldig maaling blev afvist fordi git skrev en advarsel paa stderr: ${r.ud}`);
+});
+
+test('2c (modsat): en ÆGTE produktforskel afvises stadig, ogsaa naar git skriver en advarsel', { skip: POSIX_SKRIPT }, () => {
+  const r = koer2c({ resultat: god, efterMaaling: 'extension/offscreen.js', gitAdvarsel: true });
+  assert.match(r.ud, /GATE:aerligheds-maalingen gaelder/, `en aendret produktfil slap igennem: ${r.ud}`);
 });
