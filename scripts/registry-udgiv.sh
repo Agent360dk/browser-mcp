@@ -1,5 +1,5 @@
 #!/bin/bash
-# registry-udgiv.sh <version> [--ship] - udgiv MCP-registret som EGET trin, efter det kolde tjek (Astra runde 4 og 5, 1/10-2026).
+# registry-udgiv.sh <version> [--ship] - udgiv MCP-registret som EGET trin, efter det kolde tjek (Astra runde 4-6, 1/10-2026).
 #
 #   bash scripts/registry-udgiv.sh 1.30.1          # proevekoersel: tjekker og melder hvad der ville ske, skriver intet
 #   bash scripts/registry-udgiv.sh 1.30.1 --ship   # logger ind med GitHubs id-token, publicerer og laeser tilbage
@@ -18,46 +18,64 @@ SHIP=0
 if [[ $# -eq 2 && "$2" == "--ship" ]]; then SHIP=1
 elif [[ $# -ne 1 ]]; then die "ukendte argumenter: ${*:2} (brug: registry-udgiv.sh <version> [--ship])"; fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FORSOEG="${REGISTRY_FORSOEG:-20}"; PAUSE="${REGISTRY_PAUSE:-3}"
+PAUSE="${REGISTRY_PAUSE:-3}"
+BUDGET="${REGISTRY_BUDGET:-240}"    # samlet tid til at vente paa at registret viser versionen efter publish (jobbets graense er 15 min)
 NAVN="io.github.Agent360dk/browser-mcp"
+NAVN_URL="${NAVN//\//%2F}"
+URL="https://registry.modelcontextprotocol.io/v0/servers/${NAVN_URL}/versions/latest"
 
-# 1 · server.json skal baere netop den version der udgives (baade foerst og i hver pakke), ellers publicerer vi noget andet end vi har proevet.
-# Astra runde 5: `{}`, manglende topversion, en pakke uden version og manglende `packages` gav alle groen proeve, fordi de manglende
-# vaerdier forsvandt i join()/ordopdelingen. Nu KRAEVES felterne foer lighed testes.
+# 1 · server.json skal baere netop den version der udgives - baade foerst og i HVER pakke - og det rigtige servernavn, ellers publicerer vi
+# noget andet end vi har proevet. Hvert felt sammenlignes HELT i Node (Astra runde 6: join/ordopdeling lod « » og «1.30.1 1.30.1» passere).
+# REGISTRY_SERVER_JSON er kun til proever; publicering bruger altid mcp-server/server.json, saa overstyringen maa ikke bruges med --ship.
 SJ="${REGISTRY_SERVER_JSON:-$REPO_ROOT/mcp-server/server.json}"
+if [[ $SHIP == 1 && -n "${REGISTRY_SERVER_JSON:-}" ]]; then die "REGISTRY_SERVER_JSON er kun til proever og maa ikke bruges med --ship (validering og publicering skal vaere samme fil)"; fi
 [[ -f "$SJ" ]] || die "server.json findes ikke: $SJ"
-SJ_VERSIONER="$(node -e '
-const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+node -e '
+const [fil, forventet, navn] = process.argv.slice(1);
+const d = JSON.parse(require("fs").readFileSync(fil, "utf8"));
 const pakker = Array.isArray(d.packages) ? d.packages : [];
-const alle = [d.version, ...pakker.map((p) => p && p.version)];
-if (pakker.length === 0 || !alle.every((x) => typeof x === "string" && x !== "")) { console.error("version mangler i server.json (topniveau eller en pakke), eller packages er tom"); process.exit(2); }
-console.log(alle.join(" "));' "$SJ")" || die "server.json kunne ikke laeses eller mangler versionsfelter ($SJ)"
-for v in $SJ_VERSIONER; do
-  [[ "$v" == "$V" ]] || die "server.json siger ${SJ_VERSIONER// /, } men der udgives $V - registret ville faa en anden version end npm"
-done
+const fejl = [];
+if (d.name !== navn) fejl.push(`name er ${JSON.stringify(d.name)}, ikke ${navn}`);
+if (d.version !== forventet) fejl.push(`version er ${JSON.stringify(d.version)}, ikke ${forventet}`);
+if (pakker.length === 0) fejl.push("packages mangler eller er tom");
+pakker.forEach((p, i) => { if (!p || p.version !== forventet) fejl.push(`packages[${i}].version er ${JSON.stringify(p && p.version)}, ikke ${forventet}`); });
+if (fejl.length) { console.error(fejl.join("; ")); process.exit(2); }' "$SJ" "$V" "$NAVN" \
+  || die "server.json passer ikke til det der udgives ($V, $NAVN): registret ville faa en anden version end npm"
 ok "server.json baerer $V"
 
-# 2 · hvad viser registret nu? Astra runde 5: (a) opslaget er en SUBSTRING-soegning, saa en anden server (`...browser-mcp-other`) kunne taelle som vores;
-# nu kraeves det praecise servernavn. (b) et opslag der fejler er IKKE «ukendt version»: det giver en fejl (kun «serveren findes ikke endnu» er tom).
-# (c) curl havde ingen tidsfrister.
-# (d) MAALT 1/10: det aegte register har en koldstart paa op til 27 s paa det foerste opslag (derefter ~1 s). 20 s uden gentagelse ville have faaet
-# foerste opslag i en rigtig koersel til at fejle. Nu 45 s og op til tre forsoeg.
+# 2 · hvad viser registret nu? Opslag paa PRAECIST servernavn (Astra runde 6): ingen substring-soegning, ingen paginering.
+#   404            = serveren findes ikke endnu -> tom version (ikke en fejl)
+#   200 + vores    = versionen
+#   alt andet      = FEJLET opslag (netfejl, 5xx, fejlobjekt, anden server, forkert form) -> exit 1; aldrig tolket som «ingen version»
+# MAALT 1/10: det aegte register har en koldstart paa op til 27 s paa det foerste opslag (derefter ~1 s): 45 s og op til tre forsoeg.
 registrets_version() {
-  local ud="" forsoeg
-  for forsoeg in 1 2 3; do
-    ud="$(curl -fsS --connect-timeout 10 --max-time 45 "https://registry.modelcontextprotocol.io/v0/servers?search=${NAVN}&limit=100" 2>/dev/null)" && [[ -n "$ud" ]] && break
-    ud=""; [[ $forsoeg -lt 3 ]] && sleep "$PAUSE"
+  local max="${1:-3}" forsoeg=0 tmp http rc
+  tmp="$(mktemp)"
+  while (( forsoeg < max )); do
+    forsoeg=$((forsoeg + 1))
+    http="$(curl -sS --connect-timeout 10 --max-time 45 -o "$tmp" -w '%{http_code}' "$URL" 2>/dev/null)"; rc=$?
+    if [[ $rc -eq 0 && "$http" == 404 ]]; then rm -f "$tmp"; echo ""; return 0; fi
+    [[ $rc -eq 0 && "$http" == 200 ]] && break
+    http=""
+    [[ $forsoeg -lt $max ]] && sleep "$PAUSE"
   done
-  [[ -n "$ud" ]] || return 1
-  printf '%s' "$ud" | python3 -c "
+  if [[ "$http" != 200 ]]; then rm -f "$tmp"; return 1; fi
+  python3 - "$tmp" "$NAVN" <<'PY'
 import json, sys
-d = json.load(sys.stdin)
-navn = sys.argv[1]
-print(next((e['server']['version'] for e in d.get('servers', [])
-            if e.get('server', {}).get('name') == navn
-            and e.get('_meta', {}).get('io.modelcontextprotocol.registry/official', {}).get('isLatest')), ''))" "$NAVN" 2>/dev/null
+try:
+    d = json.load(open(sys.argv[1]))
+    s = d["server"]
+    assert isinstance(s, dict) and s.get("name") == sys.argv[2], "forkert servernavn"
+    v = s.get("version")
+    assert isinstance(v, str) and v, "version mangler"
+except Exception as e:
+    print(f"uventet svar fra registret: {e}", file=sys.stderr)
+    sys.exit(1)
+print(v)
+PY
+  rc=$?; rm -f "$tmp"; return $rc
 }
-LIVE="$(registrets_version)" || die "registret kunne ikke laeses - kan hverken afgoere om $V allerede er udgivet eller bevise kontakt til registret"
+LIVE="$(registrets_version)" || die "registret kunne ikke laeses (eller svarede med noget der ikke er vores server) - kan hverken afgoere om $V allerede er udgivet eller bevise kontakt til registret"
 if [[ "$LIVE" == "$V" ]]; then ok "registret viser allerede v$V - intet at goere (genoptagelse)"; exit 0; fi
 say "registret viser '${LIVE:-ingen version endnu}'"
 
@@ -77,12 +95,14 @@ mcp-publisher login github-oidc || die "registret afviste GitHubs id-token (krae
 ( cd "$REPO_ROOT/mcp-server" && mcp-publisher publish server.json ) \
   || die "registry publish failed - se fejlen ovenfor (beskrivelsen maa hoejst vaere 100 tegn)"
 
-# Registret indekserer IKKE med det samme (maalt 7/9: 1.29.0 stod i registret 6 sekunder senere). Derfor pollet, ikke ét kig.
-EFTER=""
-for _ in $(seq 1 "$FORSOEG"); do
+# Registret indekserer IKKE med det samme (maalt 7/9: 1.29.0 stod i registret 6 sekunder senere). Derfor pollet, ikke ét kig - inden for ET samlet
+# budget (Astra runde 6: 20 runder a op til 141 s kunne overstige jobbets 15 min og lade runneren afbryde EFTER en faktisk publicering).
+EFTER=""; START=$SECONDS
+while :; do
   sleep "$PAUSE"
-  EFTER="$(registrets_version)" || EFTER=""
+  EFTER="$(registrets_version 1)" || EFTER=""
   [[ "$EFTER" == "$V" ]] && break
+  (( SECONDS - START >= BUDGET )) && break
 done
-[[ "$EFTER" == "$V" ]] || die "registry still advertises '${EFTER:-ukendt}' efter publish - paastaa IKKE at udgivelsen er ude"
+[[ "$EFTER" == "$V" ]] || die "registry still advertises '${EFTER:-ukendt}' ${BUDGET} s efter publish - paastaa IKKE at udgivelsen er ude"
 ok "registret viser nu v$V (laest tilbage)"
