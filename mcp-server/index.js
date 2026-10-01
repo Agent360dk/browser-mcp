@@ -409,11 +409,14 @@ function createWSS(port = BASE_PORT) {
     // forklaring, "kommandoen tog for lang tid". For extract_list er timeouten 180
     // sekunder, altsaa tre minutters tavshed hvor sandheden var kendt med det samme.
     const afvisVentende = (grund) => {
-      // Kun naar ingen anden levende forbindelse kan svare - ellers ville et helt
-      // normalt skift mellem to udvidelser afbryde kald der er fuldt i orden.
-      if (!pending.size || liveConnections().length) return;
-      const antal = pending.size;
-      for (const [id, p] of pending) {
+      // ⛔ MAALT 1/10 af Astra: siden svarbindingen maa KUN den forbindelse et kald blev sendt til besvare det.
+      // Doer DEN, kan ingen anden svare - ogsaa selv om en anden udvidelse stadig lever. Foer sprang vi over saa laenge
+      // NOGEN levede, og kaldet ventede til sin frist (30 s, 180 s for extract_list) med en forkert forklaring.
+      // Kald sendt til ANDRE forbindelser roeres ikke: et normalt skift mellem to udvidelser afbryder dem ikke.
+      const mine = [...pending].filter(([, p]) => p.conn === conn);
+      if (!mine.length) return;
+      const antal = mine.length;
+      for (const [id, p] of mine) {
         clearTimeout(p.timer);
         pending.delete(id);
         p.reject(new Error(
