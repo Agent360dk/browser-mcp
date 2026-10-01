@@ -584,3 +584,27 @@ test('kandidat: sammenligningstrinnets shell - ens commit godkendes, anden commi
     assert.notEqual(kor('').status, 0, 'et manglende output blev godkendt');
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
+
+// ── Astra runde 7 (1/10): kuverten paa server-beskeder og rest-stdout uden linjeskift ───────────────────────────────
+
+for (const [navn, besked] of Object.entries({
+  'request-id som objekt': { jsonrpc: '2.0', id: { x: 1 }, method: 'ping' },
+  'params er false': { jsonrpc: '2.0', method: 'notifications/message', params: false },
+  'method er tom': { jsonrpc: '2.0', method: '' },
+})) {
+  test(`koldt-tjek.sh: server-besked med ugyldig kuvert afvises (${navn})`, { skip: POSIX }, () => {
+    const k = koldt(`echo '${JSON.stringify(besked)}'\necho '${GYLDIGT}'\nsleep 3`);
+    try { assert.notEqual(k.r.status, 0, `${navn} blev godkendt`); } finally { k.ryd(); }
+  });
+}
+test('koldt-tjek.sh: en lovlig server-besked (streng-id, params som objekt eller liste) afvises ikke', { skip: POSIX }, () => {
+  const a = { jsonrpc: '2.0', id: 'srv-1', method: 'ping' };
+  const b = { jsonrpc: '2.0', method: 'notifications/message', params: { level: 'info' } };
+  const c = { jsonrpc: '2.0', method: 'notifications/x', params: [1] };
+  const k = koldt(`echo '${JSON.stringify(a)}'\necho '${JSON.stringify(b)}'\necho '${JSON.stringify(c)}'\necho '${GYLDIGT}'\nsleep 3`);
+  try { assert.equal(k.r.status, 0, `lovlige beskeder blev afvist: ${k.r.stdout}`); } finally { k.ryd(); }
+});
+test('koldt-tjek.sh: stoej uden afsluttende linjeskift efter svaret er ogsaa en fejl', { skip: POSIX }, () => {
+  const k = koldt(`echo '${GYLDIGT}'\nsleep 0.1\nprintf 'halv linje uden linjeskift'\nsleep 3`, { KOLDT_EFTERTID_MS: '800' });
+  try { assert.notEqual(k.r.status, 0, 'en ufuldstaendig linje paa stdout blev godkendt'); } finally { k.ryd(); }
+});

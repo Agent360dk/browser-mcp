@@ -76,7 +76,9 @@ function koer(version, hjem) {
     if (!m || typeof m !== 'object' || Array.isArray(m)) return slut(1, `stdout indeholder JSON der ikke er en JSON-RPC-besked: ${raa.slice(0, 120)}`);
     // Server-notifikationer og server-requests (fx ping) maa komme foer og efter svaret, men skal have en gyldig kuvert.
     if (typeof m.method === 'string') {
-      if (m.jsonrpc !== '2.0') slut(1, `besked fra serveren har jsonrpc ${JSON.stringify(m.jsonrpc)}, ikke "2.0": ${raa.slice(0, 120)}`);
+      const idOk = m.id === undefined || typeof m.id === 'string' || typeof m.id === 'number';
+      const paramsOk = m.params === undefined || (m.params !== null && typeof m.params === 'object'); // objekt eller liste
+      if (m.jsonrpc !== '2.0' || m.method === '' || !idOk || !paramsOk) slut(1, `besked fra serveren har en ugyldig JSON-RPC-kuvert: ${raa.slice(0, 120)}`);
       return;
     }
     if (svaret) return slut(1, `uventet svar efter initialize: ${raa.slice(0, 120)}`);
@@ -86,7 +88,11 @@ function koer(version, hjem) {
     svaret = true;
     clearTimeout(ur); // svartimeren afmeldes: eftertiden har sin egen frist
     barn.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
-    efter = setTimeout(() => slut(0, `pakken svarer som vores server (${SERVERNAVN} ${version}) og koerer stadig efter ${EFTERTID} ms`), EFTERTID);
+    efter = setTimeout(() => {
+      // En rest paa stdout uden afsluttende linjeskift er ikke en komplet JSON-RPC-besked (stoej, eller en server der skriver midt i en linje).
+      if (ud.trim()) return slut(1, `stdout slutter med en ufuldstaendig linje: ${ud.trim().slice(0, 120)}`);
+      slut(0, `pakken svarer som vores server (${SERVERNAVN} ${version}) og koerer stadig efter ${EFTERTID} ms`);
+    }, EFTERTID);
   };
 
   barn.stdout.setEncoding('utf8');

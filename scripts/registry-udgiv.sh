@@ -19,7 +19,7 @@ if [[ $# -eq 2 && "$2" == "--ship" ]]; then SHIP=1
 elif [[ $# -ne 1 ]]; then die "ukendte argumenter: ${*:2} (brug: registry-udgiv.sh <version> [--ship])"; fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PAUSE="${REGISTRY_PAUSE:-3}"
-BUDGET="${REGISTRY_BUDGET:-240}"    # samlet tid til at vente paa at registret viser versionen efter publish (jobbets graense er 15 min)
+BUDGET="${REGISTRY_BUDGET:-240}"    # tid til at STARTE nye opslag efter publish; ét opslag (op til 45 s) og én pause kan overskride det (Astra runde 7). Jobbets graense er 15 min
 NAVN="io.github.Agent360dk/browser-mcp"
 NAVN_URL="${NAVN//\//%2F}"
 URL="https://registry.modelcontextprotocol.io/v0/servers/${NAVN_URL}/versions/latest"

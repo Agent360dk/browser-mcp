@@ -265,7 +265,8 @@ test('registry-udgiv: opslagets frist er mindst 45 s, og pollingen har et samlet
   const wf = readFileSync(join(rod, '.github/workflows/udgivelse.yml'), 'utf8');
   const jobTid = Number(wf.slice(wf.indexOf('\n  registry:')).match(/timeout-minutes:\s*(\d+)/)[1]) * 60;
   // foerste opslag (3 x 45 s + pauser) + budget + installation/publicering skal rummes af jobbets grænse
-  assert.ok(3 * 45 + 2 * 3 + Number(b[1]) + 120 < jobTid, `${3 * 45 + Number(b[1]) + 126} s kan ikke rummes af jobbets ${jobTid} s`);
+  // + ét opslag og én pause efter budgettet (45 + 3 s): budgettet styrer hvornaar nye opslag STARTER, ikke hvornaar det sidste ender (Astra runde 7)
+  assert.ok(3 * 45 + 2 * 3 + Number(b[1]) + 48 + 120 < jobTid, `${3 * 45 + Number(b[1]) + 174} s kan ikke rummes af jobbets ${jobTid} s`);
 });
 
 test('registry-udgiv: ukendte argumenter afvises', { skip: POSIX }, () => {
