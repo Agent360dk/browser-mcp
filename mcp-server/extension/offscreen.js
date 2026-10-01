@@ -181,6 +181,14 @@ async function scanPorts() {
 }
 
 function tryConnect(port) {
+  // ⛔ MAALT 1/10 af Astra (uafhaengigt review af 1.30.1-kandidaten): scanPorts kalder tryConnect EFTER en `await`.
+  // Hang en probe laenge nok til at sikkerhedsventilen slap laasen, naaede en ny skanning at forbinde til porten;
+  // og naar den gamle skannings probe svarede, forbandt den igen og `connections.set` OVERSKREV den foerste sokkel
+  // uden at lukke den. Den forældreløse sokkel kunne senere udløse `session_disconnect` for en LEVENDE session, og saa
+  // lukker releaseSession sessionens faner (maalt af Astra). Derfor tjekkes kortet her, ved forbindelsen, og ikke kun
+  // naar kandidaterne blev samlet (test/dobbelt-sokkel.test.mjs).
+  const eksisterende = connections.get(port);
+  if (eksisterende && (eksisterende.readyState === WebSocket.OPEN || eksisterende.readyState === WebSocket.CONNECTING)) return;
   let ws;
   try {
     ws = new WebSocket(`ws://127.0.0.1:${port}`);
