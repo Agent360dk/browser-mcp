@@ -5,8 +5,8 @@
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { join, dirname } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join, dirname, resolve } from 'node:path';
 // ws kommer fra mcp-server (npm ci der); Chrome fra $CHROME eller macOS' standardplacering.
 const rod = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const WebSocket = createRequire(join(rod, 'mcp-server/index.js'))('ws');
@@ -26,7 +26,8 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++id; af.se
 await send('Page.enable'); await send('Runtime.enable');
 await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'no-preference' }] });
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
-await send('Page.navigate', { url: 'file://' + fil }); await vent(1200);
+const nav = await send('Page.navigate', { url: pathToFileURL(resolve(fil)).href }); await vent(1200);
+if (nav.result?.errorText) throw new Error('Kunne ikke aabne ' + fil + ': ' + nav.result.errorText);
 await send('Runtime.evaluate', { expression: 'document.getAnimations().forEach(x=>x.pause()); document.getAnimations().length' });
 const VED = arg('--ved', null)?.split(',').map(Number);
 const n = VED ? VED.length : SEK * FPS;
