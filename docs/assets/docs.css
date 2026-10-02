@@ -41,7 +41,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2rem 0}
 .code{margin:1.1rem 0;background:var(--surface);border:1px solid var(--line);border-radius:12px;position:relative}
 .code pre{margin:0;padding:1rem 4.8rem 1rem 1.1rem;overflow-x:auto;font-family:var(--mono);font-size:.88rem;line-height:1.55;color:var(--ink)}
 .copy{position:absolute;top:.55rem;right:.55rem;font:600 .8rem var(--sans);color:var(--ink);background:var(--tint);border:1px solid var(--line);padding:.4rem .75rem;min-height:2rem;border-radius:8px;cursor:pointer;touch-action:manipulation}
-.copy:active{transform:scale(.97)}
+@media (prefers-reduced-motion:no-preference){.copy:active{transform:scale(.97)}}
 .copy.done{color:var(--green);border-color:var(--green)}
 blockquote{margin:1.2rem 0;padding:.85rem 1.1rem;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:0 12px 12px 0}
 blockquote p:first-child{margin-top:0}blockquote p:last-child{margin-bottom:0}
@@ -60,7 +60,7 @@ tr:last-child td{border-bottom:0}
 @media (max-width:40rem){.related ul{grid-template-columns:1fr}.code pre{padding:3rem 1.1rem 1rem}}
 @media (prefers-contrast:more){:root{--line:#8A93A0;--muted:#3A424D}}
 @media (prefers-contrast:more) and (prefers-color-scheme:dark){:root{--line:#7A838F;--muted:#C9CFD8}}
-.shell.solo{grid-template-columns:minmax(0,46rem);justify-content:center}
+.shell.solo{grid-template-columns:minmax(0,46rem);grid-template-areas:"main";justify-content:center}
 .updated{color:var(--muted);font-size:.9rem}
 .notfound .go{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.5rem}
 .notfound .go a{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600;background:var(--surface)}
@@ -70,3 +70,5 @@ tr:last-child td{border-bottom:0}
 @media (pointer:coarse){.side a{padding-block:.7rem;min-height:2.75rem}.copy{min-height:2.75rem;min-width:2.75rem}.tn a,.logo{min-height:2.75rem;display:inline-flex;align-items:center}}
 .copy:focus-visible{outline-offset:-2px}
 .scroll:focus-visible,.code pre:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+@media (pointer:coarse){.related a{display:block;min-height:2.75rem}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}}

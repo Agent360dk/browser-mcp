@@ -334,7 +334,7 @@ def jsonld(title, desc, url, section, faq, datoer=None):
         "author":{"@type":"Organization","name":"Agent360","url":"https://agent360.dk"},
         "publisher":{"@type":"Organization","name":"Agent360","url":"https://agent360.dk"},
         "about":{"@type":"SoftwareApplication","name":"Browser MCP","applicationCategory":"DeveloperApplication",
-            "operatingSystem":"Chrome","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}})
+            "operatingSystem":"Any system that runs desktop Chrome and Node.js 20 or newer","softwareRequirements":"Google Chrome (desktop), Node.js 20 or newer","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}})
     blocks.append(_ta)
     # FAQPage
     if faq:

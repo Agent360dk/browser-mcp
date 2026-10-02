@@ -141,3 +141,17 @@ test('privacy-teksten er ordret den fra main (hash af den synlige tekst) og 404 
   assert.match(docs('404.html'), /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(rod, 'docs/sitemap.xml'), 'utf8'), /404\.html/);
 });
+
+test('udgivelsens tool-sweep omskriver vores tal men lader konkurrentens stå (Opus/Astra 2/10)', () => {
+  // Samme tre regexes som runbrowsermcpupdate.sh trin 1d; scriptet tjekkes for at de stadig står der.
+  const script = readFileSync(join(rod, 'runbrowsermcpupdate.sh'), 'utf8');
+  for (const r of ['s/\\b[0-9]+ browser tools\\b/${TOOL_COUNT} browser tools/g', 's/\\b[0-9]+ tools\\b/${TOOL_COUNT} tools/g']) {
+    assert.ok(script.includes(r), `sweepet er aendret: ${r} findes ikke laengere, saa testens kopi er forkert`);
+  }
+  const sweep = (t, n) => t.replace(/\b[0-9]+ browser tools\b/g, `${n} browser tools`).replace(/\b[0-9]+ tools\b/g, `${n} tools`).replace(/\b[0-9]+ Tools\b/g, `${n} Tools`);
+  const readme = sweep(readFileSync(join(rod, 'README.md'), 'utf8'), 41);
+  assert.match(readme, new RegExp(`${PLAYWRIGHT} documented tools`), 'README: Playwright-tallet overlever ikke sweepet');
+  const side = sweep(html, 41);
+  assert.match(side, new RegExp(`<td>${PLAYWRIGHT} \\(counted \\d{4}-\\d{2}-\\d{2}\\)</td>`), 'forsiden: Playwright-cellen overlever ikke sweepet');
+  assert.match(side, /<span class="check">41 tools<\/span>/, 'forsiden: vores celle opdateres ikke af sweepet');
+});
