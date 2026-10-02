@@ -485,7 +485,7 @@ account and no server of ours between you and the page.
   DOM. When any of them runs, that value goes to your MCP client like any other
   tool result. Nowhere else, and never to us.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
-  analytics in the extension or the server. (The website itself currently runs Cloudflare Web Analytics.)
+  analytics in the extension or the server.
 - Everything the server does runs on `localhost` between the extension and the
   MCP client on the same machine. That bridge is **local and unauthenticated**:
   another program running as you on the same machine can connect to it. Browser
