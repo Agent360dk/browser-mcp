@@ -66,7 +66,7 @@ Restart your Codex session. Full walkthrough: [Install for Codex](/docs/install-
 Yes. The tool does not care where the code came from - it asks, you type.
 
 **Can it read the code from my Gmail instead of asking me?**
-If the Gmail tab is already open in the same Chrome, yes: `browser_switch_tab` to it, read the code, switch back. That is a different flow and it works, but it needs your mail to be in that browser.
+Yes, if your mail is signed in in the same Chrome: the agent opens Gmail with `browser_navigate`, reads the code, and switches back to the login tab with `browser_switch_tab`. That is a different flow and it works, but it needs your mail to be in that browser. (The agent works in tabs its own session opened, not in tabs you opened yourself.)
 
 **What if I am not at my desk when it asks?**
 It waits. There is a timeout, and when it expires the tool says so rather than guessing.

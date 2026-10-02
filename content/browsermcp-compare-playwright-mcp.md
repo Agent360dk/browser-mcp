@@ -1,4 +1,4 @@
-// KILDE: alle tal genmålt 2026-09-19 (npm downloads-API, GitHub repos-API, microsoft/playwright-mcp README rå-fetch, microsoft/playwright packages/extension README rå-fetch). Playwright-tool-tal 73 = optalt som unikke browser_*-navne i deres README. ⚠️ RETTET 19/9: siden hævdede indtil i dag at Playwright MCP altid starter logget ud. Det er falsk - deres Chrome-udvidelse bruger din egen indloggede browser og giver hver klient sin egen farvede fanegruppe. Skriv aldrig en række her uden at have læst deres nuværende README samme dag.
+// KILDE: alle tal genmålt 2026-09-19 (npm downloads-API, GitHub repos-API, microsoft/playwright-mcp README rå-fetch, microsoft/playwright packages/extension README rå-fetch). Playwright-tool-tal 72 (var 73 foer genoptaellingen 2026-09-19) = optalt som unikke browser_*-navne i deres README. ⚠️ RETTET 19/9: siden hævdede indtil i dag at Playwright MCP altid starter logget ud. Det er falsk - deres Chrome-udvidelse bruger din egen indloggede browser og giver hver klient sin egen farvede fanegruppe. Skriv aldrig en række her uden at have læst deres nuværende README samme dag.
 
 # Browser MCP vs Playwright MCP: when you need a real, logged-in browser
 
@@ -22,7 +22,7 @@ One difference is left, and it is the only one we will defend: **their 72 tools 
 | Logged-in state | Fresh by default; your own session in extension mode | Inherited (cookies, 2FA, extensions) |
 | CI / headless | Yes - core use case | No |
 | Parallel instances | Yes, and several clients share one browser in extension mode (one tab group each) | One browser, 20 concurrent sessions, one tab group each |
-| Tools | 73 documented, none of which can stop and ask you for anything | 40, including `browser_ask_user` for a 2FA code or a CAPTCHA mid-run |
+| Tools | 72 documented, none of which can stop and ask you for anything | 40, including `browser_ask_user` for a 2FA code or a CAPTCHA mid-run |
 | Install | `npx @playwright/mcp` | Chrome extension + `claude mcp add` (two parts) |
 | Scale signal | 5,968,258 npm dl/week (2026-09-19) | 1,456 npm dl/week (2026-09-19) |
 | Maintenance | Last push 2026-09-17 · v0.0.81 (2026-09-14) | Last push 2026-09-18 · v1.29.1 (2026-09-13) |

@@ -31,7 +31,7 @@
 
 **4 - Say this, to check it worked:**
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -62,7 +62,7 @@ Same paths on macOS, Linux and Windows. Both are merged, and workspace wins on a
 
 ## What Kiro can do with your real browser
 
-It browses **as you**. Your AWS console already signed in, the 2FA code from the Gmail tab you already have open, the form on the page you were looking at.
+It browses **as you**. Your AWS console already signed in, the 2FA code from your signed-in Gmail, the form on the page you were looking at.
 
 And when it hits something only you can decide, `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 

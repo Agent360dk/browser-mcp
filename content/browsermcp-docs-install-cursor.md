@@ -27,7 +27,7 @@
 
 **4 - Say this, to check it worked.** Paste it to Cursor's agent:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#now-what-things-to-actually-say)
 
@@ -95,7 +95,7 @@ Reload the window (`Cmd/Ctrl+Shift+P` → "Reload Window") or fully quit and reo
 
 Paste this to Cursor's agent:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 If you get an image back instead of *"I don't have browser access"*, both halves are talking to each other. That is the whole test.
 
@@ -103,7 +103,7 @@ If you get an image back instead of *"I don't have browser access"*, both halves
 
 Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start with these:
 
-> Open my Gmail tab and tell me who sent my last 3 emails.
+> Open Gmail and tell me who sent my last 3 emails.
 
 The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here.
 
@@ -115,7 +115,7 @@ Any dashboard you are already logged into. No API key, no export, no integration
 
 You stay in the loop - the agent hands control back for passwords, payment details, or anything it should not decide alone.
 
-> Log me in here. If it emails a code, read it from my Gmail tab and continue.
+> Log me in here. If it emails a code, open Gmail, read the code and continue.
 
 The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.
 
@@ -154,7 +154,7 @@ Browser MCP is a standard stdio MCP server - it doesn't know or care which clien
 
 ### The 2FA killer move
 
-This is the reason people install Browser MCP: Cursor's agent hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
+This is the reason people install Browser MCP: Cursor's agent hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can open your Gmail, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 

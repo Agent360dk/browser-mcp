@@ -31,7 +31,7 @@
 
 **4 - Say this, to check it worked.** Paste it to Cline:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -47,7 +47,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 ## What Cline can do with your real browser
 
-The point is not "Cline can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from the Gmail tab you already have open, and fills the form on the page you were looking at. Nothing to re-authenticate, because it is your authenticated browser.
+The point is not "Cline can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you were looking at. Nothing to re-authenticate, because it is your authenticated browser.
 
 And when it hits something only you can decide - a 2FA code, a CAPTCHA, a choice between three accounts - `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 

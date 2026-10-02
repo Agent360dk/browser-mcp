@@ -13,9 +13,9 @@
 One exchange tells you more than any amount of config-reading:
 
 ```
-You:     Take a screenshot of my current Chrome tab.
+You:     Open example.com and take a screenshot.
 
-Claude:  [browser_screenshot]
+Claude:  [browser_navigate, then browser_screenshot]
          <image>
 ```
 
