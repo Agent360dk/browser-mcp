@@ -22,9 +22,9 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 [![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](https://vscode.dev/redirect/mcp/install?name=browser-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
 [![Glama quality](https://glama.ai/mcp/servers/Agent360dk/browser-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Agent360dk/browser-mcp)
 
-[![Browser MCP Demo](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)
+[![Four agents, each in its own tab group. One reaches a 2FA code, asks you, and carries on](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)
 
-▶ **[Watch the 37-second demo with sound →](https://browsermcp.dev)**
+▶ **[Watch the 15-second film →](https://browsermcp.dev/film.mp4)**
 
 Browser MCP gives Claude Code (and any MCP client - Cursor, VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
