@@ -1,6 +1,6 @@
 /* Delt design for alle genererede sider (docs, learn, compare, use-cases, migrate). Samme tokens som forsiden (2/10-2026):
    Chrome-neutral lys/mørk, systemskrift, Chromes egne gruppefarver kun som accent, ingen tredjepartsskrift. */
-:root{color-scheme:light dark;--paper:#F6F7F9;--surface:#fff;--ink:#1B1F24;--muted:#566070;--line:#D9DDE3;--tint:#EDEFF3;--blue:#1A73E8;--green:#1E7A3A;--focus:#1A73E8;--ease-out:cubic-bezier(.23,1,.32,1);--sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
+:root{color-scheme:light dark;--paper:#F6F7F9;--surface:#fff;--ink:#1B1F24;--muted:#566070;--line:#D9DDE3;--tint:#EDEFF3;--blue:#1558B0;--green:#1E7A3A;--focus:#1A73E8;--ease-out:cubic-bezier(.23,1,.32,1);--sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace}
 @media (prefers-color-scheme:dark){:root{--paper:#121418;--surface:#1B1E24;--ink:#ECEFF3;--muted:#A3ABB6;--line:#2C313A;--tint:#23272E;--blue:#8AB4F8;--green:#81C995;--focus:#8AB4F8}}
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;scroll-padding-top:5rem}
