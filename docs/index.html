@@ -265,7 +265,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 @media (prefers-contrast:more){:root{--line:#8A93A0;--muted:#3A424D}}
 @media (prefers-contrast:more) and (prefers-color-scheme:dark){:root{--line:#7A838F;--muted:#C9CFD8}}
 </style>
-<script>try{if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('hold')}catch(e){}</script>
+<script>try{if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches){var r=document.documentElement;r.classList.add('hold');setTimeout(function(){r.classList.remove('hold')},30000)}}catch(e){}</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
