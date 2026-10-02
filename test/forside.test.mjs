@@ -9,6 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,14 +26,19 @@ test('forsiden har praecis een h1 og et skip-link der rammer et element der find
   assert.ok(html.includes(`id="${m[1]}"`), `skip-linket peger paa #${m[1]}, som ikke findes`);
 });
 
-test('forsiden naevner kun det rigtige vaerktoejstal', () => {
+const PIN = JSON.parse(readFileSync(join(rod, 'data/konkurrent-pin.json'), 'utf8'));
+const PLAYWRIGHT = PIN['playwright-mcp'].vaerktoejer.length;
+
+test('forsiden naevner kun det rigtige vaerktoejstal, og sammenligningsraekken matcher begge datakilder', () => {
   assert.ok(VAERKTOEJER >= 30, `tools.js gav ${VAERKTOEJER}`);
-  // 73 er Playwright MCP's tal i sammenligningstabellen (konkurrent-vagten ejer det).
-  const forkerte = [...html.matchAll(/\b(\d+)\s+(?:browser\s+)?tools\b/gi)].filter((m) => Number(m[1]) !== VAERKTOEJER && Number(m[1]) !== 73);
+  const forkerte = [...html.matchAll(/\b(\d+)\s+(?:browser\s+)?tools\b/gi)].filter((m) => Number(m[1]) !== VAERKTOEJER);
   assert.deepEqual(forkerte.map((m) => m[0]), [], `forsiden siger andre tal end ${VAERKTOEJER}`);
-  const raekke = html.match(/<th scope="row">Tool count<\/th><td class="us"><span class="check">(\d+)<\/span>/);
-  assert.ok(raekke, 'sammenligningstabellens vaerktoejstal-raekke mangler');
-  assert.equal(Number(raekke[1]), VAERKTOEJER);
+  // Vores celle staar som "N tools", saa udgivelsens tool-sweep (runbrowsermcpupdate.sh 1d) opdaterer den.
+  // Playwrights celle er et BART tal med dato, saa samme sweep ikke omskriver en konkurrents tal til vores.
+  const raekke = html.match(/<th scope="row">Tool count<\/th><td class="us"><span class="check">(\d+) tools<\/span><\/td><td>(\d+) \(counted (\d{4}-\d{2}-\d{2})\)<\/td>/);
+  assert.ok(raekke, 'sammenligningstabellens "Tool count"-raekke har ikke den forventede form');
+  assert.equal(Number(raekke[1]), VAERKTOEJER, 'vores tal i tabellen');
+  assert.equal(Number(raekke[2]), PLAYWRIGHT, `Playwright-tallet i tabellen skal vaere det pinnede (${PLAYWRIGHT}, data/konkurrent-pin.json)`);
 });
 
 test('"20 samtidige" staar ikke som maalt: kapacitet hedder "op til 20"', () => {
@@ -55,8 +61,10 @@ test('FAQPage-data er ordret det der staar paa siden (Googles krav)', () => {
   });
 });
 
-test('softwareVersion staar som X.Y.Z (release-scriptet omskriver den)', () => {
-  assert.match(html, /"softwareVersion":\s*"\d+\.\d+\.\d+"/);
+test('softwareVersion staar som X.Y.Z og er pakkens version', () => {
+  const m = html.match(/"softwareVersion":\s*"(\d+\.\d+\.\d+)"/);
+  assert.ok(m, 'softwareVersion mangler (release-scriptet omskriver den)');
+  assert.equal(m[1], JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).version);
 });
 
 test('forsiden kalder ingen tredjepart ved indlaesning', () => {
@@ -79,13 +87,39 @@ test('de billeder siderne peger paa findes og har det maal der staar', () => {
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [1280, 640]);
   const og = readFileSync(join(rod, 'docs/og-image.png'));
   assert.deepEqual([og.readUInt32BE(16), og.readUInt32BE(20)], [1200, 630]);
+  // JPG'en er den metadata faktisk peger paa: maal dens SOF-segment.
+  const jpg = readFileSync(join(rod, 'docs/og-image.jpg'));
+  let i = 2, dim = null;
+  while (i < jpg.length && !dim) {
+    assert.equal(jpg[i], 0xff, 'ugyldigt JPEG-segment');
+    const mk = jpg[i + 1], len = jpg.readUInt16BE(i + 2);
+    if (mk >= 0xc0 && mk <= 0xc3) dim = [jpg.readUInt16BE(i + 7), jpg.readUInt16BE(i + 5)];
+    i += 2 + len;
+  }
+  assert.deepEqual(dim, [1200, 630], 'docs/og-image.jpg skal vaere 1200x630');
 });
 
-test('bevaegelse er til at slaa fra og animerer ikke alt', () => {
-  assert.match(html, /prefers-reduced-motion\s*:\s*reduce/);
+test('bevaegelse er til at slaa fra, ogsaa det usynlige fokusstop, og animerer ikke alt', () => {
+  const reduce = html.match(/@media \(prefers-reduced-motion:reduce\)\{([^\n]*)\}/);
+  assert.ok(reduce, 'reduced-motion-reglen mangler');
+  assert.match(reduce[1], /\.pause-input\{display:none\}/, 'pause-afkrydsningsfeltet skjules ikke: usynligt fokusstop');
+  assert.match(reduce[1], /animation:none!important/);
+  assert.match(reduce[1], /transition:none!important/);
   assert.doesNotMatch(html, /transition\s*:\s*all\b/);
+  assert.doesNotMatch(html, /@keyframes[^{]+\{[^@]*\bfilter\s*:/, 'keyframes animerer filter (kun transform/opacity er lovet)');
   assert.match(html, /name="color-scheme" content="light dark"/);
   assert.match(html, /name="theme-color"[^>]*prefers-color-scheme: dark/);
+});
+
+test('forsiden lover ikke det koden ikke goer (Astra 2/10)', () => {
+  const t = synlig(html);
+  for (const [m, hvorfor] of [
+    [/current Chrome tab/i, 'agenten arbejder ikke i faner brugeren selv har aabnet; en frisk session screenshotter about:blank og fejler'],
+    [/Gmail tab/i, 'samme: agenten aabner selv Gmail'],
+    [/leftover state/i, '~/.browser-mcp/ kan indeholde feedback-log og udpakket udvidelse'],
+    [/\bEvery chat\b/i, 'gruppen følger MCP-sessionen, ikke chatten'],
+    [/about a minute/i, 'tiden er ikke målt; installationen kræver Node 20 og en klient'],
+  ]) assert.doesNotMatch(t, m, hvorfor);
 });
 
 test('ingen lange tankestreger i forsidens synlige tekst', () => {
@@ -93,9 +127,11 @@ test('ingen lange tankestreger i forsidens synlige tekst', () => {
   assert.doesNotMatch(udenKode, /[–—]|&[mn]dash;|&#821[12];/);
 });
 
-test('privacy er uaendret i substans og 404 holdes ude af indekset', () => {
-  const p = synlig(docs('privacy.html'));
-  for (const s of ['Nothing is sent to Agent360', 'is not password-protected', 'hello@agent360.dk']) assert.ok(p.includes(s), `privacy mangler "${s}"`);
+test('privacy-teksten er ordret den fra main (hash af den synlige tekst) og 404 holdes ude af indekset', () => {
+  const body = docs('privacy.html').match(/<body>([\s\S]*)<\/body>/)[1].replace(/<a class="skip"[\s\S]*?<\/header>/, '');
+  const tekst = body.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  // Aendres politikken med vilje, opdateres hashen i samme commit og begrundelsen staar i commit-beskeden.
+  assert.equal(createHash('sha256').update(tekst).digest('hex'), '9c0426fde4904a770442dd38f9e8f5a7af953d47050617c89e05579fc29d4da3');
   assert.match(docs('404.html'), /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(rod, 'docs/sitemap.xml'), 'utf8'), /404\.html/);
 });

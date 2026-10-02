@@ -27,9 +27,9 @@
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Browser MCP", "alternateName": ["Browser MCP by Agent360", "@agent360/browser-mcp"], "description": "An MCP server that gives your AI agent control of your real, already-logged-in Chrome - so it works on 2FA and CAPTCHA sites where headless tools get blocked. 40 tools, MIT-licensed, runs on your own machine.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Chrome", "softwareVersion": "1.30.1", "url": "https://browsermcp.dev/", "downloadUrl": "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl", "license": "https://opensource.org/licenses/MIT", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "author": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "publisher": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "sameAs": ["https://github.com/Agent360dk/browser-mcp", "https://www.npmjs.com/package/@agent360/browser-mcp", "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl"]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Browser MCP", "alternateName": ["Browser MCP by Agent360", "@agent360/browser-mcp"], "description": "An MCP server that gives your AI agent control of your real, already-logged-in Chrome - so it works on 2FA and CAPTCHA sites where headless tools get blocked. 40 tools, MIT-licensed, runs on your own machine.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Any system that runs desktop Chrome and Node.js 20 or newer", "softwareRequirements": "Google Chrome (desktop), Node.js 20 or newer", "softwareVersion": "1.30.1", "url": "https://browsermcp.dev/", "downloadUrl": "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl", "license": "https://opensource.org/licenses/MIT", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "author": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "publisher": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "sameAs": ["https://github.com/Agent360dk/browser-mcp", "https://www.npmjs.com/package/@agent360/browser-mcp", "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl"]}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Agent360", "url": "https://agent360.dk", "sameAs": ["https://github.com/Agent360dk", "https://computermcp.dev", "https://jesperai.com"]}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "I installed the extension from the Chrome Web Store and it says “not connected”. What now?", "acceptedAnswer": {"@type": "Answer", "text": "That is expected - the extension is only half of it. Browser MCP is an extension plus a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest - then restart it. The popup keeps saying \"Not connected\" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it."}}, {"@type": "Question", "name": "What is Browser MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Browser MCP is a free, open-source MCP server and Chrome extension that lets an AI agent (Claude Code, Cursor, VS Code) control your real, already-logged-in Chrome instead of a fresh headless browser. It works on 2FA-, CAPTCHA- and login-gated sites where headless tools get blocked, and runs on your own machine - nothing is sent to us."}}, {"@type": "Question", "name": "How is this different from Playwright MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Playwright MCP is a fine tool, and it is not headless-only - Microsoft's own README documents a persistent profile as the default, plus a browser extension. The difference is concurrency: their docs state that a persistent profile can only be used by one browser instance at a time, so concurrent MCP clients sharing a workspace will conflict. Browser MCP runs up to 20 agent sessions against the same logged-in Chrome, each in its own tab group."}}, {"@type": "Question", "name": "Is my data safe? What does the extension see?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing is sent to Agent360 - there is no server of ours to send it to. The extension talks to an MCP server on 127.0.0.1 that you started; there is no telemetry and no analytics. What your agent reads is handed to your AI client, which sends it to its model provider like anything else you show it. Cookies and tokens are read only when your agent explicitly asks. Source is open and auditable on GitHub."}}, {"@type": "Question", "name": "Why does it need so many permissions?", "acceptedAnswer": {"@type": "Answer", "text": "Browser MCP is a developer tool that controls Chrome on your behalf. Each permission has a specific reason: tabs/scripting for navigation and clicking, cookies for token extraction (Stripe/HubSpot/etc.), debugger for real input events on CSP-protected sites like Google Cloud, <all_urls> because the AI must navigate to whatever URL you ask it to. A full per-permission breakdown is on the permissions & data page."}}, {"@type": "Question", "name": "Does it work with anything other than Claude Code?", "acceptedAnswer": {"@type": "Answer", "text": "Yes - it speaks the standard MCP (Model Context Protocol) wire format, so any MCP-compatible client works: Claude Desktop, Cline, Continue, Cursor, etc. Setup is the same: run the local MCP server, point your client at it."}}, {"@type": "Question", "name": "How does CAPTCHA assistance actually work?", "acceptedAnswer": {"@type": "Answer", "text": "Three layers. (1) Auto-detect reCAPTCHA, hCaptcha, Turnstile checkboxes and click them automatically. (2) For image-grid challenges, AI vision identifies cells. (3) If automated assistance fails, browser_ask_user shows an overlay so you can solve the challenge once and the AI continues. Nothing is sent to third-party CAPTCHA services."}}, {"@type": "Question", "name": "Is it really free? What's the catch?", "acceptedAnswer": {"@type": "Answer", "text": "It's MIT-licensed, open source, no paywall. Built and maintained by Agent360 as part of our developer-tools ecosystem. No catch - the catch (if there is one) is that bug reports and PRs are welcome."}}, {"@type": "Question", "name": "How do I uninstall it?", "acceptedAnswer": {"@type": "Answer", "text": "Two parts: remove the Chrome extension from chrome://extensions, and drop the browser-mcp entry from your MCP config (claude mcp remove --scope user browser-mcp, or delete the block from your Cursor/VS Code/Codex config). Nothing was installed globally - npx only caches the package - so there is no leftover state. Full details & permissions."}}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "I installed the extension from the Chrome Web Store and it says “not connected”. What now?", "acceptedAnswer": {"@type": "Answer", "text": "That is expected - the extension is only half of it. Browser MCP is an extension plus a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest - then restart it. The popup keeps saying \"Not connected\" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it."}}, {"@type": "Question", "name": "What is Browser MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Browser MCP is a free, open-source MCP server and Chrome extension that lets an AI agent (Claude Code, Cursor, VS Code) control your real, already-logged-in Chrome instead of a fresh headless browser. It works on 2FA-, CAPTCHA- and login-gated sites where headless tools get blocked, and runs on your own machine - nothing is sent to us."}}, {"@type": "Question", "name": "How is this different from Playwright MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Playwright MCP is a fine tool, and it is not headless-only - Microsoft's own README documents a persistent profile as the default, plus a browser extension that connects to your real Chrome, with a tab group for each client. The difference is what each is built around. Browser MCP only ever drives the Chrome you already use, and it has a tool, browser_ask_user, that puts a question in front of you (a 2FA code, a CAPTCHA, a choice) and waits for your answer. Playwright MCP's tool list has nothing that asks you."}}, {"@type": "Question", "name": "Is my data safe? What does the extension see?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing is sent to Agent360 - there is no server of ours to send it to. The extension talks to an MCP server on 127.0.0.1 that you started; there is no telemetry and no analytics. What your agent reads is handed to your AI client, which sends it to its model provider like anything else you show it. The cookie tools run only when your agent calls them, but an ordinary page read can contain sensitive text too, such as a token shown on a page, and that text goes to your AI client. Source is open and auditable on GitHub."}}, {"@type": "Question", "name": "Why does it need so many permissions?", "acceptedAnswer": {"@type": "Answer", "text": "Browser MCP is a developer tool that controls Chrome on your behalf. Each permission has a specific reason: tabs/scripting for navigation and clicking, cookies for the cookie tools, debugger for real input events on CSP-protected sites like Google Cloud, <all_urls> because the AI must navigate to whatever URL you ask it to. A full per-permission breakdown is on the permissions & data page."}}, {"@type": "Question", "name": "Does it work with anything other than Claude Code?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is a standard MCP (Model Context Protocol) server that runs locally over stdio, so an MCP client that can run local servers can use it: Cursor, VS Code, Codex, Cline, Continue and more. Setup is the same: run the local server, point your client at it. The install guides have the exact config for each."}}, {"@type": "Question", "name": "How does CAPTCHA assistance actually work?", "acceptedAnswer": {"@type": "Answer", "text": "Three steps. (1) browser_solve_captcha detects reCAPTCHA, hCaptcha and Turnstile, and for a reCAPTCHA v2 checkbox it clicks it, which is often enough when you are signed into Google. (2) If a challenge is left, it hands your AI client a screenshot to look at, so the model you already use does any image reading. (3) If that does not clear it, the agent can ask you with browser_ask_user and carry on after you solve it. No CAPTCHA-solving service is involved. It does not pass every CAPTCHA: what it can and cannot get past says which we have measured."}}, {"@type": "Question", "name": "Is it really free? What's the catch?", "acceptedAnswer": {"@type": "Answer", "text": "It's MIT-licensed, open source, no paywall. Built and maintained by Agent360 as part of our developer-tools ecosystem. No catch - the catch (if there is one) is that bug reports and PRs are welcome."}}, {"@type": "Question", "name": "How do I uninstall it?", "acceptedAnswer": {"@type": "Answer", "text": "Two parts: remove the Chrome extension from chrome://extensions, and drop the browser-mcp entry from your MCP config (claude mcp remove --scope user browser-mcp, or delete the block from your Cursor/VS Code/Codex config). Nothing was installed globally - npx only caches the package - and a small local log may sit in ~/.browser-mcp/ (the unpacked install also copies the extension there), so delete that folder to leave nothing behind. Full details & permissions."}}]}</script>
 <style>
 :root{
   color-scheme:light dark;
@@ -78,7 +78,7 @@ p{margin:0}
 .nav{display:flex;gap:1.35rem;margin-left:auto;align-items:center;font-size:.97rem}
 .nav a{text-decoration:none;color:var(--muted);padding-block:.75rem}
 .nav a:hover{color:var(--ink)}
-.nav .gh{color:var(--ink);font-weight:600;display:inline-flex;gap:.45rem;align-items:center;border:1px solid var(--line);border-radius:999px;padding:.35rem .8rem;background:var(--surface)}
+.nav .gh{min-height:2.75rem;color:var(--ink);font-weight:600;display:inline-flex;gap:.45rem;align-items:center;border:1px solid var(--line);border-radius:999px;padding:.35rem .8rem;background:var(--surface)}
 .nav .gh svg{width:1rem;height:1rem;fill:currentColor}
 .nav .gh .n{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:500}
 @media (max-width:48rem){.nav a.opt{display:none}.nav{gap:1rem}}
@@ -94,6 +94,7 @@ p{margin:0}
 .cmd code{flex:1;min-width:0;padding:.85rem 1rem;white-space:pre-wrap;overflow-wrap:anywhere;font-size:.88rem;line-height:1.5}
 .cmd button{border:0;border-left:1px solid var(--line);background:var(--tint);color:var(--ink);font:600 .85rem var(--sans);padding:0 1rem;min-width:4.6rem;cursor:pointer;touch-action:manipulation}
 .cmd button:active{background:var(--line)}
+.cmd button:focus-visible{outline:2px solid var(--focus);outline-offset:-3px}
 /* hero */
 .hero{padding-block:clamp(2.25rem,5vw,4.5rem) clamp(2.5rem,6vw,5rem)}
 .hero .wrap{display:grid;gap:clamp(2rem,5vw,3.25rem);align-items:center}
@@ -104,8 +105,8 @@ p{margin:0}
 .fine{font-size:.93rem;color:var(--muted);margin-top:1.25rem;max-width:34rem}
 /* ---- hero scene: one orchestrated moment, pure CSS, rests on its last frame ---- */
 .scene{container-type:inline-size;margin:0;position:relative}
-.win{--u:1cqw;border-radius:calc(1.7 * var(--u));overflow:hidden;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,25,35,.06),0 18px 44px -14px rgba(20,25,35,.28);font-size:max(9.5px,2.3cqw);user-select:none}
-.strip{background:var(--strip);padding:1.5cqw 1.8cqw 0;display:flex;gap:1.2cqw;align-items:flex-end;height:7.4cqw}
+.win{--u:1cqw;border-radius:calc(1.7 * var(--u));overflow:hidden;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,25,35,.06),0 18px 44px -14px rgba(20,25,35,.28);font-size:max(11px,2.3cqw);user-select:none}
+.strip{background:var(--strip);padding:1.5cqw 1.8cqw 0;display:flex;gap:1.2cqw;align-items:flex-end;height:max(7.4cqw,3.1em)}
 .g{display:flex;align-items:flex-end;gap:.5cqw;padding-bottom:.9cqw}
 .chip{font:600 1em/1 var(--sans);padding:.62em .95em;border-radius:.7em;background:var(--c);color:var(--on);white-space:nowrap}
 .g1{--c:var(--blue);--on:var(--on-blue)}.g2{--c:var(--green);--on:var(--on-green)}.g3{--c:var(--yellow);--on:var(--on-yellow)}.g4{--c:var(--red);--on:var(--on-red)}.g5{--c:var(--pink);--on:var(--on-pink)}
@@ -137,7 +138,7 @@ p{margin:0}
 .signed .ok{color:var(--ok);font-weight:650}
 .dim{position:absolute;inset:0;background:rgba(0,0,0,.6);opacity:0}
 .ask{position:absolute;left:50%;top:50%;width:62cqw;margin:-15cqw 0 0 -31cqw;opacity:0;background:#1e293b;color:#e2e8f0;border-radius:1.4cqw;padding:2.4cqw;box-shadow:0 20px 60px rgba(0,0,0,.5);font-family:var(--sans);line-height:1.45}
-.ask .ti{font-size:1.08em;font-weight:600;color:#3b82f6}
+.ask .ti{font-size:1.08em;font-weight:600;color:#60a5fa}
 .ask .bd{font-size:.77em;color:#94a3b8;margin:.3em 0 1.1em}
 .ask .ms{color:#cbd5e1;margin-bottom:1.2em}
 .ask label{display:block;font-size:.85em;color:#94a3b8;margin-bottom:.3em}
@@ -145,21 +146,21 @@ p{margin:0}
 .ask .in span{display:block;white-space:nowrap}
 .ask .bt{display:flex;gap:.7em;margin-top:1.3em}
 .ask .bt b{flex:1;text-align:center;padding:.75em;border-radius:.5em;font-size:1em;font-weight:500}
-.ask .go{background:#3b82f6;color:#fff}.ask .sk{background:#334155;color:#94a3b8}
+.ask .go{background:#2563eb;color:#fff}.ask .sk{background:#334155;color:#cbd5e1}
 .pop{background:#0f172a;color:#e2e8f0;padding:1.6cqw 2.2cqw;border-top:1px solid #1e293b}
 .pop .ph{font:600 .86em/1 var(--sans);color:#94a3b8;margin-bottom:1.1cqw}
 .pop .log{display:grid;gap:0;font-size:.9em}
 .pop .le{display:flex;gap:1.6cqw;align-items:baseline;padding:.42cqw 0;border-bottom:1px solid #1e293b;font-family:var(--sans);min-height:2.7cqw}
 .pop .le:last-child{border:0}
-.le .tm{color:#64748b;min-width:7.2cqw;font-variant-numeric:tabular-nums}
+.le .tm{color:#94a3b8;min-width:7.2cqw;font-variant-numeric:tabular-nums}
 .le .me{color:#22c55e;font-weight:500}
-.le .se{color:#64748b;font-size:.85em}
+.le .se{color:#94a3b8;font-size:.85em}
 .scene figcaption{margin-top:.85rem;font-size:.88rem;color:var(--muted);display:flex;gap:.5rem 1rem;flex-wrap:wrap;align-items:center;justify-content:space-between}
-.sbtn{font:600 .85rem var(--sans);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:.4rem .85rem;min-height:2.25rem;cursor:pointer;touch-action:manipulation}
+.sbtn{display:inline-flex;align-items:center;justify-content:center;font:600 .85rem var(--sans);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:.4rem 1rem;min-height:2.75rem;cursor:pointer;touch-action:manipulation}
 .pause-input:focus-visible~figcaption label{outline:2px solid var(--focus);outline-offset:2px}
 .scene .rp{display:none}
 .sbtn .p2{display:none}.pause-input:checked~figcaption .p1{display:none}.pause-input:checked~figcaption .p2{display:inline}
-.js .scene .rp{display:inline-block}
+.js .scene .rp{display:inline-flex}
 /* the scene's states are written as the FINAL frame; the animation only supplies earlier frames */
 .win.run *{animation-duration:var(--d,.3s);animation-delay:var(--w,0s);animation-fill-mode:backwards;animation-timing-function:var(--ease-out)}
 @keyframes winin{from{opacity:0;transform:translateY(8px)}}
@@ -171,7 +172,7 @@ p{margin:0}
 @keyframes dimlife{0%{opacity:0}7%,91%{opacity:1}100%{opacity:0}}
 @keyframes asklife{0%{opacity:0;transform:translateY(30px) scale(.95)}9%{opacity:1;transform:none}92%{opacity:1;transform:none}100%{opacity:0;transform:none}}
 @keyframes typing{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
-@keyframes press{50%{transform:scale(.96);filter:brightness(.9)}}
+@keyframes press{50%{transform:scale(.96)}}
 @keyframes tabup{from{transform:none;background:color-mix(in srgb,var(--surface) 55%,transparent)}}
 .win.run{--w0:0s}
 .win.run{animation:winin .45s var(--ease-out) backwards}
@@ -190,8 +191,8 @@ p{margin:0}
 .win.run .in span{animation-name:typing;--d:1.3s;--w:5.3s;animation-timing-function:steps(6,end)}
 .win.run .go{animation-name:press;--d:.2s;--w:7.9s;animation-fill-mode:none;animation-timing-function:ease-out}
 .win.run .g3 .tab{animation-name:tabup;--d:.2s;--w:3.4s}
-.pause-input:checked~.win.run *,.pause-input:checked~.win.run{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){.win.run,.win.run *{animation:none!important}.scene figcaption span:last-child{display:none}}
+.pause-input:checked~.win.run *,.pause-input:checked~.win.run,.hold .win.run,.hold .win.run *{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}.pause-input{display:none}.win.run,.win.run *{animation:none!important}.scene figcaption span:last-child{display:none}}
 /* sections */
 .pair{display:grid;gap:clamp(1.75rem,4vw,3.5rem);align-items:center}
 @media (min-width:56rem){.pair{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pair.rev>:first-child{order:2}}
@@ -200,9 +201,9 @@ p{margin:0}
 .item p+p{margin-top:.8rem}
 .more{display:inline-block;margin-top:1rem;font-weight:600}
 .askcard{--w0:0;position:relative;max-width:26rem;background:#1e293b;color:#e2e8f0;border-radius:14px;padding:1.5rem;box-shadow:0 18px 50px -12px rgba(15,23,42,.55);font-family:var(--sans);font-size:.9rem;line-height:1.5;margin-inline:auto}
-.askcard .ti{font-size:.95rem;font-weight:600;color:#3b82f6}.askcard .bd{font-size:.7rem;color:#94a3b8;margin:.2rem 0 .8rem}.askcard .ms{color:#cbd5e1;margin-bottom:1rem}
-.askcard label{display:block;font-size:.76rem;color:#94a3b8;margin-bottom:.3rem}.askcard .in{padding:.55rem .7rem;background:#0f172a;border:1px solid #3b82f6;border-radius:6px;font:500 .95rem var(--mono);letter-spacing:.14em}
-.askcard .bt{display:flex;gap:.55rem;margin-top:1.1rem}.askcard .bt b{flex:1;text-align:center;padding:.65rem;border-radius:6px;font-weight:500}.askcard .go{background:#3b82f6;color:#fff}.askcard .sk{background:#334155;color:#94a3b8}
+.askcard .ti{font-size:.95rem;font-weight:600;color:#60a5fa}.askcard .bd{font-size:.7rem;color:#94a3b8;margin:.2rem 0 .8rem}.askcard .ms{color:#cbd5e1;margin-bottom:1rem}
+.askcard .lb{display:block;font-size:.76rem;color:#94a3b8;margin-bottom:.3rem}.askcard .in{padding:.55rem .7rem;background:#0f172a;border:1px solid #3b82f6;border-radius:6px;font:500 .95rem var(--mono);letter-spacing:.14em}
+.askcard .bt{display:flex;gap:.55rem;margin-top:1.1rem}.askcard .bt b{flex:1;text-align:center;padding:.65rem;border-radius:6px;font-weight:500}.askcard .go{background:#2563eb;color:#fff}.askcard .sk{background:#334155;color:#cbd5e1}
 .groups{display:flex;flex-wrap:wrap;gap:.55rem .6rem;padding:1.1rem 1.2rem;background:var(--strip);border:1px solid var(--line);border-radius:14px}
 .groups span{font:600 .92rem/1 var(--sans);padding:.55rem .85rem;border-radius:.6rem;background:var(--c);color:var(--on)}
 .groups .rpt{outline:2px dashed color-mix(in srgb,var(--ink) 40%,transparent);outline-offset:2px}
@@ -258,11 +259,13 @@ footer{padding-block:3rem 3.5rem;color:var(--muted);font-size:.95rem}
 footer .cols{display:grid;gap:2rem;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))}
 footer h2{font-size:.9rem;font-weight:600;letter-spacing:0;color:var(--ink);margin-bottom:.7rem}
 footer ul{list-style:none;margin:0;padding:0;display:grid;gap:.35rem}
-footer a{text-decoration:none}footer a:hover{text-decoration:underline;color:var(--ink)}
+@media (pointer:coarse){.brand,.more,footer a,.nav a{display:inline-flex;align-items:center;min-height:2.75rem}}
+footer a{display:inline-block;padding-block:.35rem;text-decoration:none}footer a:hover{text-decoration:underline;color:var(--ink)}
 footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;justify-content:space-between}
 @media (prefers-contrast:more){:root{--line:#8A93A0;--muted:#3A424D}}
 @media (prefers-contrast:more) and (prefers-color-scheme:dark){:root{--line:#7A838F;--muted:#C9CFD8}}
 </style>
+<script>try{if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('hold')}catch(e){}</script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -286,7 +289,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
   <div class="wrap">
     <div>
       <h1><span translate="no">Browser MCP</span> lets your agent work in the Chrome you’re already signed into.</h1>
-      <p class="lede">A free, open-source Chrome extension and MCP server. Your agent uses your real browser, with your logins, in its own tab group. When it hits a 2FA code, a CAPTCHA or a choice only you can make, it stops and asks you.</p>
+      <p class="lede">A free, open-source Chrome extension and MCP server. Your agent uses your real browser, with your logins, in its own tab group. It is set up to stop and ask you when it hits a 2FA code, a CAPTCHA or a choice only you can make.</p>
       <div class="acts">
         <a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome</a>
         <a class="btn sec2" href="#install">How to install</a>
@@ -298,7 +301,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 
     <figure class="scene" id="scene">
       <input type="checkbox" id="pause" class="vh pause-input">
-      <div class="win run" id="win" role="img" aria-label="Illustration of a Chrome window. Four agent sessions, Claude 1 to Claude 4, each have their own colour-coded tab group. Claude 3 reaches a two-factor login. Its tab comes to the front and a box asks the person for the code. The person types it, presses Submit, and the agent carries on and reads the signed-in page. An activity log shows each step.">
+      <div class="win run" id="win" role="img" aria-label="Illustration of a Chrome window. Several agent sessions, named Claude 1, Claude 2 and so on, each have their own colour-coded tab group. Claude 3 reaches a two-factor login. Its tab comes to the front and a box asks the person for the code. The person types it, presses Submit, and the agent carries on and reads the signed-in page. An activity log shows each step.">
         <div class="strip" aria-hidden="true">
           <div class="g g1"><span class="chip">Claude 1</span><span class="tab"></span></div>
           <div class="g g2"><span class="chip">Claude 2</span><span class="tab"></span></div>
@@ -320,7 +323,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
             </div>
           </div>
           <div class="dim"></div>
-          <div class="ask"><div class="ti">Claude 3 - Action Required</div><div class="bd">Claude 3</div><div class="ms">Enter the 6-digit code from your authenticator app</div><label>2FA code</label><div class="in"><span>482916</span></div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>
+          <div class="ask"><div class="ti">Agent360 - Action Required</div><div class="bd">Claude 3</div><div class="ms">Enter the 6-digit code from your authenticator app</div><label>2FA code</label><div class="in"><span>482916</span></div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>
         </div>
         <div class="pop" aria-hidden="true"><div class="ph">Browser MCP · activity</div>
           <div class="log">
@@ -333,7 +336,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
           </div>
         </div>
       </div>
-      <figcaption><span>Simplified illustration. The tab groups, the box and the log follow the real extension; the page is made up.</span><span><label for="pause" class="sbtn"><span class="p1">Pause</span><span class="p2">Play</span></label> <button type="button" class="sbtn rp" id="replay">Replay</button></span></figcaption>
+      <figcaption><span>Simplified illustration. The tab groups, the box and the log follow the real extension (the real log lists the newest line first); the page is made up.</span><span><label for="pause" class="sbtn"><span class="p1">Pause</span><span class="p2">Play</span></label> <button type="button" class="sbtn rp" id="replay">Replay</button></span></figcaption>
     </figure>
   </div>
 </section>
@@ -345,42 +348,42 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
     <div class="item pair">
       <div>
         <h3>It asks you instead of guessing</h3>
-        <p class="measure">A 2FA code, a CAPTCHA, a password: the agent calls <code translate="no">browser_ask_user</code> and a box appears in that tab, with a short chime. You answer, and it carries on. The agent is told to ask, not to guess.</p>
+        <p class="measure">The agent is instructed to call <code translate="no">browser_ask_user</code> when it needs a code, a password or a decision from you. A box appears in that tab, with a short chime. You answer, and it carries on.</p>
         <a class="more" href="/use-cases/codex-2fa/">See it ask for a 2FA code</a>
       </div>
-      <div class="askcard" aria-label="The box the extension shows (recreated)"><div class="ti">Claude 3 - Action Required</div><div class="bd">Claude 3</div><div class="ms">Enter the 6-digit code from your authenticator app</div><label>2FA code</label><div class="in">482916</div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>
+      <div class="askcard" role="img" aria-label="The box the extension shows, recreated: a dark card titled Agent360 - Action Required, labelled Claude 3, asking for a 6-digit code, with a Submit and a Skip button"><div class="ti">Agent360 - Action Required</div><div class="bd">Claude 3</div><div class="ms">Enter the 6-digit code from your authenticator app</div><div class="lb">2FA code</div><div class="in">482916</div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>
     </div>
 
     <div class="item">
-      <h3>Every chat gets its own tab group</h3>
-      <p class="measure" style="margin-bottom:1.25rem">Each agent session opens its own named, colour-coded tab group and only sees its own tabs. Up to 20 sessions can run at once against the same signed-in Chrome.</p>
-      <div class="groups" role="img" aria-label="Nine tab group labels, Claude 1 to Claude 9, in Chrome's eight group colours; Claude 9 repeats the colour of Claude 1">
+      <h3>Each agent session gets its own tab group</h3>
+      <p class="measure" style="margin-bottom:1.25rem">Each session opens its own named, colour-coded tab group and works only in its own tabs. There is room for up to 20 sessions at once, one local port each, against the same signed-in Chrome.</p>
+      <div class="groups" role="img" aria-label="Nine tab group labels, Claude 1 to Claude 9, in eight of Chrome's group colours; Claude 9 repeats the colour of Claude 1">
         <span style="--c:var(--blue);--on:var(--on-blue)">Claude 1</span><span style="--c:var(--green);--on:var(--on-green)">Claude 2</span><span style="--c:var(--yellow);--on:var(--on-yellow)">Claude 3</span><span style="--c:var(--red);--on:var(--on-red)">Claude 4</span><span style="--c:var(--pink);--on:var(--on-pink)">Claude 5</span><span style="--c:var(--purple);--on:var(--on-purple)">Claude 6</span><span style="--c:var(--cyan);--on:var(--on-cyan)">Claude 7</span><span style="--c:var(--orange);--on:var(--on-orange)">Claude 8</span><span class="rpt" style="--c:var(--blue);--on:var(--on-blue)">Claude 9</span>
       </div>
-      <p class="groupnote">Chrome has eight group colours. After the eighth they repeat; the names don’t. <a href="/use-cases/concurrent-sessions/">Running several sessions in one Chrome</a>.</p>
+      <p class="groupnote">Browser MCP uses eight of Chrome’s group colours. After the eighth they repeat; the names don’t. <a href="/use-cases/concurrent-sessions/">Running several sessions in one Chrome</a>.</p>
     </div>
 
     <div class="item pair rev">
       <div>
         <h3>It works where you’re already logged in</h3>
-        <p class="measure">Your cookies, your sessions, your 2FA. It even reads the one-time code out of your own Gmail tab and finishes the sign-in, which a headless browser would stop short of.</p>
+        <p class="measure">Your cookies, your sessions, your 2FA. When a sign-in emails a one-time code, it can open Gmail in the same signed-in browser, read the code and finish the sign-in. A fresh headless browser starts without any of that.</p>
         <a class="more" href="/use-cases/read-2fa-from-gmail/">How it reads a code from Gmail</a>
       </div>
-      <div><p class="say"><b>You say</b>“Log me in here. If it emails a code, read it from my Gmail tab and continue.”</p></div>
+      <div><p class="say"><b>You say</b>“Log me in here. If it emails a code, open Gmail, read the code and continue.”</p></div>
     </div>
   </div>
 </section>
 
 <section class="sec" id="install" style="background:var(--tint)">
   <div class="wrap">
-    <h2>Install in about a minute</h2>
-    <p class="measure muted" style="margin:-1rem 0 2rem">Browser MCP is two halves: a Chrome extension and a local MCP server. You need both.</p>
+    <h2>Install</h2>
+    <p class="measure muted" style="margin:-1rem 0 2rem">Browser MCP is two halves: a Chrome extension and a local MCP server. You need both, and Node.js 20 or newer.</p>
     <ol class="steps">
       <li><div><h3>Add the Chrome extension</h3><p>One click. Chrome keeps it updated for you.</p><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome</a></div></li>
       <li><div><h3>Add the MCP server, then restart Claude Code</h3><p>Paste this in a terminal. Restarting is what starts the server.</p><div class="cmd"><code id="c2" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c2" hidden>Copy</button></div></div></li>
-      <li><div><h3>Say this to check it worked</h3><p>Paste it to Claude Code. You get an image back instead of “I don’t have browser access”, and you’re running. The extension shows no badge until your agent first uses the browser; then a green badge with the number of connected agents appears.</p><div class="cmd"><code id="c3">Take a screenshot of my current Chrome tab.</code><button type="button" class="copy" data-for="c3" hidden>Copy</button></div></div></li>
+      <li><div><h3>Say this to check it worked</h3><p>Paste it to Claude Code. You get a screenshot back instead of “I don’t have browser access”, and you’re running. The extension shows no badge until your agent first uses the browser; then a green badge with the number of connected agents appears.</p><div class="cmd"><code id="c3">Open example.com and take a screenshot.</code><button type="button" class="copy" data-for="c3" hidden>Copy</button></div></div></li>
     </ol>
-    <p class="guides">Using Cursor, VS Code, Codex or Windsurf? Same server, that client’s own config: see the <a href="/docs/install-claude-code/">per-client guides</a>. No Chrome Web Store? The guides cover the unpacked install too.</p>
+    <p class="guides">Using another client? Same server, that client’s own config: <a href="/docs/install-cursor/">Cursor</a>, <a href="/docs/install-vscode/">VS Code</a>, <a href="/docs/install-codex/">Codex</a>, <a href="/docs/install-windsurf/">Windsurf</a> and more in the guides. No Chrome Web Store? The guides cover the unpacked install too.</p>
   </div>
 </section>
 
@@ -388,12 +391,12 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
   <div class="wrap">
     <h2>Try these first</h2>
     <ul class="try">
-      <li><blockquote>“Open my Gmail tab and tell me who sent my last 3 emails.”</blockquote><p>This one shows the difference. It works because it is your browser, already signed in; a headless tool would hit a login wall.</p></li>
-      <li><blockquote>“Go to my analytics dashboard, pull this month’s numbers, and put them in a table.”</blockquote><p>Any dashboard you’re logged into. No API key, no export, no integration to build first.</p></li>
-      <li><blockquote>“Fill in this signup form with my details. Stop and ask me before anything sensitive.”</blockquote><p>The agent works the page while you stay in the loop. It hands control back for passwords, payment details, or anything it shouldn’t decide alone.</p></li>
+      <li><blockquote>“Open Gmail and tell me who sent my last 3 emails.”</blockquote><p>This one shows the difference. It uses the Gmail you’re already signed into in this Chrome; a fresh headless browser would hit a login wall.</p></li>
+      <li><blockquote>“Go to my analytics dashboard, pull this month’s numbers, and put them in a table.”</blockquote><p>A dashboard you’re signed into in this Chrome. No API key, no export, no integration to build first.</p></li>
+      <li><blockquote>“Fill in this signup form with my details. Stop and ask me before anything sensitive.”</blockquote><p>The agent works the page while you stay in the loop, and it can pause to ask you before anything it shouldn’t decide alone.</p></li>
       <li><blockquote>“Walk through my app’s signup flow as a real user and tell me where it breaks.”</blockquote><p>End-to-end QA in the same browser your users have: cookies, extensions, session and all.</p></li>
     </ul>
-    <p class="muted measure" style="margin-top:1.5rem">The pattern: anything you’d do yourself in a browser, on a site you’re already signed into. It’s strongest where there is no API: internal dashboards, admin panels, portals, LinkedIn.</p>
+    <p class="muted measure" style="margin-top:1.5rem">It is strongest where you’re signed in and there is no API: internal dashboards, admin panels, portals. CAPTCHAs and bot checks can still stop it: <a href="/docs/capability-matrix/">what it can and cannot get past</a>.</p>
   </div>
 </section>
 
@@ -407,12 +410,12 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
         <tbody>
           <tr><th scope="row">Browser</th><td class="us">Your real Chrome</td><td>Own profile by default; your real Chrome via their extension</td><td>Your real Chrome</td></tr>
           <tr><th scope="row">Already logged in</th><td class="us"><span class="check">Yes</span></td><td><span class="check">Yes, in extension mode</span></td><td><span class="check">Yes</span></td></tr>
-          <tr><th scope="row">CAPTCHA assistance</th><td class="us"><span class="check">AI + auto-click + human</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
+          <tr><th scope="row">CAPTCHA assistance</th><td class="us"><span class="check">Checkbox click, screenshot, then you</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
           <tr><th scope="row">Multi-session</th><td class="us"><span class="check">Up to 20</span></td><td><span class="check">One tab group per client</span></td><td>Not documented</td></tr>
           <tr><th scope="row">Human-in-the-loop</th><td class="us"><span class="check">browser_ask_user</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
-          <tr><th scope="row">Provider integrations</th><td class="us"><span class="check">9 built-in</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
-          <tr><th scope="row">Tool count</th><td class="us"><span class="check">40</span></td><td>73</td><td>Not published</td></tr>
-          <tr><th scope="row">Install</th><td class="us"><code>claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code></td><td><code>npx @playwright/mcp</code></td><td>npm + extension</td></tr>
+          <tr><th scope="row">Token-finding guides</th><td class="us"><span class="check">9 providers</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
+          <tr><th scope="row">Tool count</th><td class="us"><span class="check">40 tools</span></td><td>72 (counted 2026-09-19)</td><td>Not published</td></tr>
+          <tr><th scope="row">Install</th><td class="us"><code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code></td><td><code translate="no">npx @playwright/mcp</code></td><td>npm + extension</td></tr>
         </tbody>
       </table>
     </div>
@@ -424,7 +427,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
     <h2>Questions</h2>
     <details open>
     <summary>I installed the extension from the Chrome Web Store and it says &ldquo;not connected&rdquo;. What now?</summary>
-    <div class="answer">That is expected - the extension is only half of it. Browser MCP is an extension <i>plus</i> a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is <code>claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code> - then restart it. The popup keeps saying "Not connected" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it.</div>
+    <div class="answer">That is expected - the extension is only half of it. Browser MCP is an extension <i>plus</i> a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is <code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code> - then restart it. The popup keeps saying "Not connected" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it.</div>
   </details>
     <details>
     <summary>What is Browser MCP?</summary>
@@ -432,23 +435,23 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
   </details>
     <details>
     <summary>How is this different from Playwright MCP?</summary>
-    <div class="answer">Playwright MCP is a fine tool, and it is <strong>not</strong> headless-only - Microsoft's own README documents a persistent profile as the default, plus a browser extension. The difference is concurrency: their docs state that a persistent profile can only be used by one browser instance at a time, so concurrent MCP clients sharing a workspace will conflict. Browser MCP runs up to 20 agent sessions against the same logged-in Chrome, each in its own tab group.</div>
+    <div class="answer">Playwright MCP is a fine tool, and it is <strong>not</strong> headless-only - Microsoft's own README documents a persistent profile as the default, plus a browser extension that connects to your real Chrome, with a tab group for each client. The difference is what each is built around. Browser MCP only ever drives the Chrome you already use, and it has a tool, <code translate="no">browser_ask_user</code>, that puts a question in front of you (a 2FA code, a CAPTCHA, a choice) and waits for your answer. Playwright MCP's tool list has nothing that asks you.</div>
   </details>
     <details>
     <summary>Is my data safe? What does the extension see?</summary>
-    <div class="answer">Nothing is sent to Agent360 - there is no server of ours to send it to. The extension talks to an MCP server on <code>127.0.0.1</code> that you started; there is no telemetry and no analytics. What your agent reads is handed to your AI client, which sends it to its model provider like anything else you show it. Cookies and tokens are read only when your agent explicitly asks. Source is <a href="https://github.com/Agent360dk/browser-mcp">open and auditable on GitHub</a>.</div>
+    <div class="answer">Nothing is sent to Agent360 - there is no server of ours to send it to. The extension talks to an MCP server on <code translate="no">127.0.0.1</code> that you started; there is no telemetry and no analytics. What your agent reads is handed to your AI client, which sends it to its model provider like anything else you show it. The cookie tools run only when your agent calls them, but an ordinary page read can contain sensitive text too, such as a token shown on a page, and that text goes to your AI client. Source is <a href="https://github.com/Agent360dk/browser-mcp">open and auditable on GitHub</a>.</div>
   </details>
     <details>
     <summary>Why does it need so many permissions?</summary>
-    <div class="answer">Browser MCP is a developer tool that controls Chrome on your behalf. Each permission has a specific reason: <code>tabs</code>/<code>scripting</code> for navigation and clicking, <code>cookies</code> for token extraction (Stripe/HubSpot/etc.), <code>debugger</code> for real input events on CSP-protected sites like Google Cloud, <code>&lt;all_urls&gt;</code> because the AI must navigate to whatever URL you ask it to. A full per-permission breakdown is on the <a href="/docs/uninstall/">permissions &amp; data page</a>.</div>
+    <div class="answer">Browser MCP is a developer tool that controls Chrome on your behalf. Each permission has a specific reason: <code translate="no">tabs</code>/<code translate="no">scripting</code> for navigation and clicking, <code translate="no">cookies</code> for the cookie tools, <code translate="no">debugger</code> for real input events on CSP-protected sites like Google Cloud, <code translate="no">&lt;all_urls&gt;</code> because the AI must navigate to whatever URL you ask it to. A full per-permission breakdown is on the <a href="/docs/uninstall/">permissions &amp; data page</a>.</div>
   </details>
     <details>
     <summary>Does it work with anything other than Claude Code?</summary>
-    <div class="answer">Yes - it speaks the standard MCP (Model Context Protocol) wire format, so any MCP-compatible client works: Claude Desktop, Cline, Continue, Cursor, etc. Setup is the same: run the local MCP server, point your client at it.</div>
+    <div class="answer">Yes. It is a standard MCP (Model Context Protocol) server that runs locally over stdio, so an MCP client that can run local servers can use it: Cursor, VS Code, Codex, Cline, Continue and more. Setup is the same: run the local server, point your client at it. The <a href="/docs/install-claude-code/">install guides</a> have the exact config for each.</div>
   </details>
     <details>
     <summary>How does CAPTCHA assistance actually work?</summary>
-    <div class="answer">Three layers. (1) Auto-detect reCAPTCHA, hCaptcha, Turnstile checkboxes and click them automatically. (2) For image-grid challenges, AI vision identifies cells. (3) If automated assistance fails, <code>browser_ask_user</code> shows an overlay so you can solve the challenge once and the AI continues. Nothing is sent to third-party CAPTCHA services.</div>
+    <div class="answer">Three steps. (1) <code translate="no">browser_solve_captcha</code> detects reCAPTCHA, hCaptcha and Turnstile, and for a reCAPTCHA v2 checkbox it clicks it, which is often enough when you are signed into Google. (2) If a challenge is left, it hands your AI client a screenshot to look at, so the model you already use does any image reading. (3) If that does not clear it, the agent can ask you with <code translate="no">browser_ask_user</code> and carry on after you solve it. No CAPTCHA-solving service is involved. It does not pass every CAPTCHA: <a href="/docs/capability-matrix/">what it can and cannot get past</a> says which we have measured.</div>
   </details>
     <details>
     <summary>Is it really free? What's the catch?</summary>
@@ -456,7 +459,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
   </details>
     <details>
     <summary>How do I uninstall it?</summary>
-    <div class="answer">Two parts: remove the Chrome extension from <code>chrome://extensions</code>, and drop the <code>browser-mcp</code> entry from your MCP config (<code>claude mcp remove --scope user browser-mcp</code>, or delete the block from your Cursor/VS Code/Codex config). Nothing was installed globally - <code>npx</code> only caches the package - so there is no leftover state. <a href="/docs/uninstall/">Full details &amp; permissions</a>.</div>
+    <div class="answer">Two parts: remove the Chrome extension from <code translate="no">chrome://extensions</code>, and drop the <code translate="no">browser-mcp</code> entry from your MCP config (<code translate="no">claude mcp remove --scope user browser-mcp</code>, or delete the block from your Cursor/VS Code/Codex config). Nothing was installed globally - <code translate="no">npx</code> only caches the package - and a small local log may sit in <code translate="no">~/.browser-mcp/</code> (the unpacked install also copies the extension there), so delete that folder to leave nothing behind. <a href="/docs/uninstall/">Full details &amp; permissions</a>.</div>
   </details>
   </div>
 </section>
@@ -492,15 +495,28 @@ document.querySelectorAll('.copy').forEach(function (b) {
   b.addEventListener('click', function () {
     var code = document.getElementById(b.dataset.for);
     var reset = function () { setTimeout(function () { b.textContent = 'Copy'; }, 1800); };
-    navigator.clipboard.writeText(code.textContent).then(function () { b.textContent = 'Copied'; reset(); }, function () {
+    var fallback = function () {
       b.textContent = 'Select & copy';
       var r = document.createRange(); r.selectNodeContents(code);
       var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); reset();
-    });
+    };
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) return fallback();
+      navigator.clipboard.writeText(code.textContent).then(function () { b.textContent = 'Copied'; reset(); }, fallback);
+    } catch (e) { fallback(); }
   });
 });
 var rp = document.getElementById('replay'), win = document.getElementById('win');
-if (rp && win) rp.addEventListener('click', function () { win.classList.remove('run'); void win.offsetWidth; win.classList.add('run'); document.getElementById('pause').checked = false; });
+var root = document.documentElement;
+if (root.classList.contains('hold') && win) {
+  var release = function () { root.classList.remove('hold'); };
+  try {
+    var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); release(); } }, { threshold: 0.4 });
+    io.observe(win);
+  } catch (e) { release(); }
+  setTimeout(release, 30000);
+}
+if (rp && win) rp.addEventListener('click', function () { root.classList.remove('hold'); win.classList.remove('run'); void win.offsetWidth; win.classList.add('run'); document.getElementById('pause').checked = false; });
 </script>
 </body>
 </html>

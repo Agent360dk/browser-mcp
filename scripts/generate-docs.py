@@ -119,7 +119,7 @@ def related(url):
 
 def inline(t):
     t=html.escape(t,quote=False)
-    t=re.sub(r'`([^`]+)`',r'<code>\1</code>',t); t=re.sub(r'\*\*([^*]+)\*\*',r'<b>\1</b>',t)
+    t=re.sub(r'`([^`]+)`',r'<code translate="no">\1</code>',t); t=re.sub(r'\*\*([^*]+)\*\*',r'<b>\1</b>',t)
     t=re.sub(r'(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)',r'<i>\1</i>',t)
     # Sitet serverer hver side paa en adresse der ender paa skraastreg; uden den svarer
     # serveren 301 og sender laeser og crawler et ekstra hop. Maalt 8/9-2026: 18 links paa
@@ -171,11 +171,11 @@ def md_to_html(lines):
         if line.strip().startswith('```'):
             i+=1;code=[]
             while i<n and not lines[i].strip().startswith('```'): code.append(lines[i]);i+=1
-            i+=1;out.append('<div class="code"><pre>'+html.escape('\n'.join(code))+'</pre><button class="copy">Copy</button></div>');continue
+            i+=1;out.append('<div class="code"><pre tabindex="0" translate="no">'+html.escape('\n'.join(code))+'</pre><button class="copy">Copy</button></div>');continue
         if '|' in line and i+1<n and re.match(r'^\s*\|?[\s:|-]+\|?\s*$',lines[i+1]) and '-' in lines[i+1]:
             hd=split_tabelrække(line.strip().strip('|'));i+=2;rows=[]
             while i<n and '|' in lines[i] and lines[i].strip(): rows.append(split_tabelrække(lines[i].strip().strip('|')));i+=1
-            t='<div class="scroll"><table><tr>'+''.join('<th>%s</th>'%inline(h) for h in hd)+'</tr>'
+            t='<div class="scroll" tabindex="0" role="group" aria-label="Table, scrolls sideways on small screens"><table><tr>'+''.join('<th scope="col">%s</th>'%(inline(h) or '<span class="vh">Feature</span>') for h in hd)+'</tr>'
             for r in rows: t+='<tr>'+''.join('<td>%s</td>'%inline(c) for c in r)+'</tr>'
             out.append(t+'</table></div>');continue
         m=re.match(r'^(#{1,4})\s+(.*)$',line)
@@ -361,7 +361,7 @@ for fn,grp,label,url in LIVE:
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq,git_datoer(fn))+'\n</head><body>'
     # 2/10-2026: samme header som den nye forside (rigtigt logo, skip-link, <main id>, navigation med aria-label).
     page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star" href="https://github.com/Agent360dk/browser-mcp">GitHub</a></nav></div></header>'
-    page+='<div class="shell"><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav><main class="content" id="main">'+body+related(url)+'</main></div>'
+    page+='<div class="shell"><main class="content" id="main">'+body+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
     page+='<script src="/assets/docs.js"></script></body></html>'
     disk=REPO+url.strip('/')+'/index.html'
     os.makedirs(os.path.dirname(disk),exist_ok=True)
