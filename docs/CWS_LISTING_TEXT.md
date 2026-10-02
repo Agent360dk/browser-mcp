@@ -138,9 +138,11 @@ Rather do it by hand? Pick your client:
    OpenAI Codex:
       codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 
-   Cursor / VS Code / Windsurf - add to that client's MCP config:
+   Cursor / Windsurf - add to that client's MCP config:
       {"mcpServers": {"browser-mcp": {"command": "npx",
        "args": ["@agent360/browser-mcp@latest"]}}}
+
+   VS Code - same block, but the root key is "servers" (in mcp.json).
 
    Per-client guides: https://browsermcp.dev/docs/install-claude-code/
 

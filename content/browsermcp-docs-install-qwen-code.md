@@ -88,7 +88,7 @@ After that, `qwen mcp list` reports `Connected`. Until you approve it, the list 
 
 ## What Qwen Code can do with your real browser
 
-The point is not "Qwen Code can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you were looking at.
+The point is not "Qwen Code can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you point it to.
 
 And when it hits something only you can decide - a 2FA code, a CAPTCHA, a choice between three accounts - `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 

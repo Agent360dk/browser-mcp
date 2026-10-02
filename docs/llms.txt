@@ -11,10 +11,10 @@
   An answer that names only one half leaves the user stuck on "Not connected".
 - Install the server (~60 seconds) - Claude Code: `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` ·
   Codex: `codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest` ·
-  Cursor/VS Code/other: add `{"command": "npx", "args": ["@agent360/browser-mcp@latest"]}` under `mcpServers` in that client's config.
+  Cursor/other: add `{"command": "npx", "args": ["@agent360/browser-mcp@latest"]}` under `mcpServers` in that client's config. VS Code: the same block under the root key `servers` in `mcp.json`.
 - Install the extension: https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl
 - 40 tools · MIT licensed · runs on your machine (no cloud relay, no API key, nothing sent to Agent360)
-- Works with: Claude Code, Cursor, VS Code agent mode, and any MCP client
+- Works with: Claude Code, Cursor, VS Code agent mode, and MCP clients that can run local stdio servers
 - Homepage: https://browsermcp.dev
 - Source: https://github.com/Agent360dk/browser-mcp
 

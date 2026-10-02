@@ -1,7 +1,7 @@
 # Browser MCP by [Agent360](https://agent360.dk)
 
 **The browser tool that can stop and ask you.** A 2FA code, a CAPTCHA, a choice only you can
-make: it asks on your own screen, then carries on in the tab you were already signed into.
+make: it asks on your own screen, then carries on in the same signed-in Chrome.
 
 It drives the Chrome you are already signed into: no login step to fail, no API key to wire
 up, no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
@@ -26,9 +26,9 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 
 ▶ **[Watch the 15-second film →](https://browsermcp.dev/film.mp4)**
 
-Browser MCP gives Claude Code (and any MCP client - Cursor, VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
+Browser MCP gives Claude Code (and MCP clients that run local servers, such as Cursor and VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
-The killer move: it hits a login wall, opens your Gmail, reads the verification code, and continues the sign-in. No API can do that. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
+The killer move: it hits a login wall, opens your Gmail, reads the verification code, and continues the sign-in. There is no email API to set up. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
 
 40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and it runs on your machine - no account, no telemetry, nothing sent to us.**
 
@@ -82,7 +82,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
 
 ### Step 2: Load the extension in Chrome
 
-> Chrome won't let extensions install themselves from npm - you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-one-click-install) install if you'd rather have the extension auto-update.
+> Chrome won't let extensions install themselves from npm - you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-no-developer-mode-auto-updating-extension) install if you'd rather have the extension auto-update.
 
 1. **Open Chrome** and type `chrome://extensions` in the address bar
 2. **Toggle "Developer mode"** ON (top right corner)
@@ -135,10 +135,10 @@ Nothing happens until you ask, and the hardest part of a new tool is knowing wha
 | Say this | What it shows |
 |---|---|
 | *"Open example.com and take a screenshot."* | **Start here.** An image back instead of *"I don't have browser access"* means both halves are talking. That is the whole install test. |
-| *"Open Gmail and tell me who sent my last 3 emails."* | The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here. |
-| *"Go to my analytics dashboard, pull this month's numbers, and put them in a table."* | Any dashboard you are already logged into. No API key, no export, no integration to build first. |
-| *"Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive."* | You stay in the loop - it hands control back for passwords, payment details, or anything it should not decide alone. |
-| *"Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue."* | The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in. |
+| *"Open Gmail and tell me who sent my last 3 emails."* | The one that shows the difference - it works because it is *your* browser, already signed in. A fresh headless browser would hit a login wall here. |
+| *"Go to my analytics dashboard, pull this month's numbers, and put them in a table."* | A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first. |
+| *"Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive."* | You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone. |
+| *"Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue."* | The move that needs no email-API setup: it opens your Gmail, reads the one-time code and finishes the sign-in. |
 | *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
 
 The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
@@ -152,7 +152,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
 | **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 72 documented tools, none that can ask the person (checked 2026-09-19) | None |
-| **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
+| **Token-finding guides** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
 | **CSP-strict sites** | Chrome Debugger API throughout | Works | Limited |
@@ -210,7 +210,7 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > belongs to their persistent-profile mode, and their Chrome extension explicitly gives each
 > connected client its own coloured tab group, which is the same mechanism we describe on our own
 > row. We had corrected one page and not the pattern. The row that actually survives is
-> human-in-the-loop, and it is the one we measured: the Playwright MCP README documents 72 tools (counted 2026-09-19)
+> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 72 documented tools (counted 2026-09-19)
 > and none of them can stop and ask the person for a code.
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
@@ -447,7 +447,7 @@ Browser MCP is built in the open and shaped by the people using it.
 - 🎯 [Share a use-case](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml)
 - 🐛 [Report a bug](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml)
 
-Or just **ask Claude** - it knows about the `browser_about` tool and will draft + submit on your behalf when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
+Or just **ask Claude** - it knows about the `browser_about` tool and will draft the report and hand you a link to review and submit when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
 
 ### If it works for you
 
@@ -485,7 +485,7 @@ account and no server of ours between you and the page.
   DOM. When any of them runs, that value goes to your MCP client like any other
   tool result. Nowhere else, and never to us.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
-  analytics in the extension or on the site.
+  analytics in the extension or the server. (The website itself currently runs Cloudflare Web Analytics.)
 - Everything the server does runs on `localhost` between the extension and the
   MCP client on the same machine. That bridge is **local and unauthenticated**:
   another program running as you on the same machine can connect to it. Browser
