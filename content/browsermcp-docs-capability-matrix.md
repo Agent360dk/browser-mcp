@@ -76,7 +76,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 
 | Wall | State | Note |
 |---|---|---|
-| CAPTCHA | **Partly** | `browser_solve_captcha` tries the checkbox first (often enough when you are signed into Google), then hands the model a screenshot to look at, then asks you. There is no success-rate claim on this page on purpose: we have not measured one, and a number we cannot show the working for is worth nothing. |
+| CAPTCHA | **Partly** | `browser_solve_captcha` tries the checkbox first (often enough when you are signed into Google), then lets the agent take its own screenshot and click grid cells (`click_grid`), then asks you. There is no success-rate claim on this page on purpose: we have not measured one, and a number we cannot show the working for is worth nothing. |
 | Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries DOM reads. On main, script evaluations are no longer retried automatically, because some of them click. One known gap remains: `browser_execute_script` still retries your own code on a detach. |
 
 ## Walls we will not cross

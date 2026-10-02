@@ -106,7 +106,13 @@ test('bevaegelse er til at slaa fra, ogsaa det usynlige fokusstop, og animerer i
   assert.match(reduce[1], /animation:none!important/);
   assert.match(reduce[1], /transition:none!important/);
   assert.doesNotMatch(html, /transition\s*:\s*all\b/);
-  assert.doesNotMatch(html, /@keyframes[^{]+\{[^@]*\bfilter\s*:/, 'keyframes animerer filter (kun transform/opacity er lovet)');
+  // Kun transform/opacity animeres; clip-path er den ene bevidste undtagelse (skrivningen af koden i scenen).
+  const tilladt = new Set(['transform', 'opacity', 'clip-path']);
+  const ulovlige = [];
+  for (const k of html.matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\}\s*(?=@keyframes|\.|@media|\/\*|\n)/g)) {
+    for (const p of k[2].matchAll(/([a-z-]+)\s*:/g)) if (!tilladt.has(p[1])) ulovlige.push(`${k[1]}:${p[1]}`);
+  }
+  assert.deepEqual(ulovlige, [], 'keyframes animerer andet end transform/opacity/clip-path');
   assert.match(html, /name="color-scheme" content="light dark"/);
   assert.match(html, /name="theme-color"[^>]*prefers-color-scheme: dark/);
 });

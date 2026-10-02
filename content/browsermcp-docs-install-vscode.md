@@ -130,11 +130,11 @@ The one that shows the difference - it works because it is *your* browser, alrea
 
 Any dashboard you are already logged into. No API key, no export, no integration to build first.
 
-> Fill in this signup form with my details. Stop and ask me before anything sensitive.
+> Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
 You stay in the loop - the agent hands control back for passwords, payment details, or anything it should not decide alone.
 
-> Log me in here. If it emails a code, open Gmail, read the code and continue.
+> Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue.
 
 The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.
 

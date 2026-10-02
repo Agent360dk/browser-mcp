@@ -137,8 +137,8 @@ Nothing happens until you ask, and the hardest part of a new tool is knowing wha
 | *"Open example.com and take a screenshot."* | **Start here.** An image back instead of *"I don't have browser access"* means both halves are talking. That is the whole install test. |
 | *"Open Gmail and tell me who sent my last 3 emails."* | The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here. |
 | *"Go to my analytics dashboard, pull this month's numbers, and put them in a table."* | Any dashboard you are already logged into. No API key, no export, no integration to build first. |
-| *"Fill in this signup form with my details. Stop and ask me before anything sensitive."* | You stay in the loop - it hands control back for passwords, payment details, or anything it should not decide alone. |
-| *"Log me in here. If it emails a code, open Gmail, read the code and continue."* | The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in. |
+| *"Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive."* | You stay in the loop - it hands control back for passwords, payment details, or anything it should not decide alone. |
+| *"Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue."* | The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in. |
 | *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
 
 The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
@@ -151,7 +151,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | **Maintained** | Actively - latest release v1.30.1 (2026-09-27) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
-| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 40 tools, none that can ask the person (checked 2026-09-19) | None |
+| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 72 documented tools, none that can ask the person (checked 2026-09-19) | None |
 | **Provider integrations** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
 | **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
@@ -210,7 +210,7 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > belongs to their persistent-profile mode, and their Chrome extension explicitly gives each
 > connected client its own coloured tab group, which is the same mechanism we describe on our own
 > row. We had corrected one page and not the pattern. The row that actually survives is
-> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 72 tools (counted 2026-09-19)
+> human-in-the-loop, and it is the one we measured: the Playwright MCP README documents 72 tools (counted 2026-09-19)
 > and none of them can stop and ask the person for a code.
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)

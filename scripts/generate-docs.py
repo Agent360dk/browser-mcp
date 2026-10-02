@@ -349,7 +349,7 @@ def sidebar(active):
     for grp,items in groups.items():
         h+='<div class="grp">%s</div>'%grp
         for label,url in items:
-            cls=' class="active"' if url==active else ''
+            cls=' class="active" aria-current="page"' if url==active else ''
             h+='<a href="%s/"%s>%s</a>'%(url,cls,label)
     return h
 
