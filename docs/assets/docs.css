@@ -60,3 +60,8 @@ tr:last-child td{border-bottom:0}
 @media (max-width:40rem){.related ul{grid-template-columns:1fr}.code pre{padding:3rem 1.1rem 1rem}}
 @media (prefers-contrast:more){:root{--line:#8A93A0;--muted:#3A424D}}
 @media (prefers-contrast:more) and (prefers-color-scheme:dark){:root{--line:#7A838F;--muted:#C9CFD8}}
+.shell.solo{grid-template-columns:minmax(0,46rem);justify-content:center}
+.updated{color:var(--muted);font-size:.9rem}
+.notfound .go{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.5rem}
+.notfound .go a{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border:1px solid var(--line);border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600;background:var(--surface)}
+.notfound .go a.pri{background:var(--ink);color:var(--paper);border-color:var(--ink)}
