@@ -150,8 +150,67 @@ test('udgivelsens tool-sweep omskriver vores tal men lader konkurrentens stå (O
   }
   const sweep = (t, n) => t.replace(/\b[0-9]+ browser tools\b/g, `${n} browser tools`).replace(/\b[0-9]+ tools\b/g, `${n} tools`).replace(/\b[0-9]+ Tools\b/g, `${n} Tools`);
   const readme = sweep(readFileSync(join(rod, 'README.md'), 'utf8'), 41);
-  assert.match(readme, new RegExp(`${PLAYWRIGHT} documented tools`), 'README: Playwright-tallet overlever ikke sweepet');
+  // Begge steder i README (tabellen og rettelsesafsnittet) skal overleve; en tilbagefoersel af kun det ene maa ikke slippe igennem.
+  assert.ok((readme.match(new RegExp(`${PLAYWRIGHT} documented tools`, 'g')) || []).length >= 2, 'README: Playwright-tallet skal overleve sweepet paa begge steder');
+  assert.match(readme, new RegExp(`lists ${PLAYWRIGHT} documented tools \\(counted`), 'README: rettelsesafsnittets Playwright-tal');
   const side = sweep(html, 41);
   assert.match(side, new RegExp(`<td>${PLAYWRIGHT} \\(counted \\d{4}-\\d{2}-\\d{2}\\)</td>`), 'forsiden: Playwright-cellen overlever ikke sweepet');
   assert.match(side, /<span class="check">41 tools<\/span>/, 'forsiden: vores celle opdateres ikke af sweepet');
+});
+
+// ---- Scenens start- og fallback-logik, kørt med sidens EGNE scripts mod en minimal falsk DOM og et falsk ur.
+// Astra R3 (2/10) fandt at en ubetinget 30 s-timer satte .still midt i en afspilning og gjorde Replay virkningsløs.
+function simulerSide({ reducedMotion = false, utenObserver = false, observerKaster = false, kunHoved = false } = {}) {
+  const sider = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  const hoved = sider.find((s) => s.includes("'hold'") && s.includes('IntersectionObserver'));
+  const bund = sider[sider.length - 1];
+  assert.ok(hoved && bund && hoved !== bund, 'kunne ikke finde sidens to inline-scripts');
+  const klasseSaet = () => { const k = new Set(); return { k, classList: { add: (...c) => c.forEach((x) => k.add(x)), remove: (...c) => c.forEach((x) => k.delete(x)), contains: (c) => k.has(c) } }; };
+  const rod = klasseSaet(), vindue = klasseSaet(), pause = { checked: true };
+  let replayKlik = null; const replay = { addEventListener: (_, f) => { replayKlik = f; } };
+  vindue.offsetWidth = 0; vindue.classList.add('run');
+  const timere = new Map(); let nu = 0, nr = 0;
+  const setTimeout_ = (f, ms) => { timere.set(++nr, { f, at: nu + ms }); return nr; };
+  const clearTimeout_ = (i) => { timere.delete(i); };
+  const gaaFrem = (ms) => { nu += ms; for (const [i, t] of [...timere]) if (t.at <= nu) { timere.delete(i); t.f(); } };
+  let observer = null;
+  class IO { constructor(cb, opt) { if (observerKaster) throw new Error('IO kan ikke oprettes'); this.cb = cb; this.opt = opt; this.frakoblet = false; observer = this; } observe() {} disconnect() { this.frakoblet = true; } }
+  const win = { bmcpHold: undefined }; if (!utenObserver) win.IntersectionObserver = IO;
+  const doc = { documentElement: rod, querySelectorAll: () => [], getElementById: (id) => ({ win: vindue, replay, pause }[id]) };
+  const kor = (kode) => new Function('document', 'window', 'matchMedia', 'IntersectionObserver', 'setTimeout', 'clearTimeout', 'navigator', kode)(doc, win, () => ({ matches: reducedMotion }), IO, setTimeout_, clearTimeout_, {});
+  kor(hoved);
+  if (!kunHoved) kor(bund);
+  return { rod, vindue, pause, timere, gaaFrem, get observer() { return observer; }, replay: () => replayKlik(), win };
+}
+
+test('scenen: observeren styrer starten, og fallbacken fryser aldrig en scene der spiller', () => {
+  const s = simulerSide();
+  assert.ok(s.rod.k.has('hold') && s.rod.k.has('js'));
+  assert.equal(s.timere.size, 0, 'fallback-timeren skal annulleres naar observeren er sat op');
+  assert.equal(s.observer.opt.threshold, 0.4);
+  s.observer.cb([{ isIntersecting: true, intersectionRatio: 0.01 }]);
+  assert.ok(s.rod.k.has('hold'), '1 % synlig maa ikke starte scenen');
+  s.observer.cb([{ isIntersecting: true, intersectionRatio: 0.45 }]);
+  assert.ok(!s.rod.k.has('hold') && s.observer.frakoblet, '45 % synlig starter scenen');
+  s.gaaFrem(120000);
+  assert.ok(!s.rod.k.has('still'), 'efter 2 minutter maa scenen ikke staa i .still');
+  s.replay();
+  assert.ok(s.vindue.k.has('run') && !s.rod.k.has('hold') && !s.rod.k.has('still'), 'Replay skal virke');
+  assert.equal(s.pause.checked, false, 'Replay slaar pausen fra');
+});
+
+test('scenen: hvis bundscriptet aldrig koerer, viser fallbacken den faerdige scene efter 5 s', () => {
+  const s = simulerSide({ kunHoved: true });
+  assert.ok(s.rod.k.has('hold'));
+  s.gaaFrem(4900); assert.ok(s.rod.k.has('hold') && !s.rod.k.has('still'));
+  s.gaaFrem(200); assert.ok(!s.rod.k.has('hold') && s.rod.k.has('still'));
+});
+
+test('scenen: observer der kaster giver sluttilstanden straks, og reduceret bevaegelse / manglende observer holder ikke scenen tilbage', () => {
+  const k = simulerSide({ observerKaster: true });
+  assert.ok(!k.rod.k.has('hold') && k.rod.k.has('still') && k.timere.size === 0);
+  k.replay();
+  assert.ok(!k.rod.k.has('still') && k.vindue.k.has('run'), 'Replay skal rydde .still, ellers er knappen doed efter en fejl');
+  assert.ok(!simulerSide({ reducedMotion: true }).rod.k.has('hold'));
+  assert.ok(!simulerSide({ utenObserver: true }).rod.k.has('hold'));
 });

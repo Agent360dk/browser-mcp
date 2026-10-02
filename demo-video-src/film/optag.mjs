@@ -19,10 +19,13 @@ const PORT = 19900 + Math.floor(Math.random() * 90);
 const proc = spawn(CH, [/headless-shell/.test(CH) ? '--headless' : '--headless=new', '--no-sandbox', '--disable-gpu', '--hide-scrollbars', `--remote-debugging-port=${PORT}`, `--user-data-dir=/tmp/optag-${PORT}`, 'about:blank'], { stdio: 'ignore' });
 const vent = (ms) => new Promise((r) => setTimeout(r, ms));
 let mål; for (let i = 0; i < 50 && !mål; i++) { try { mål = (await (await fetch(`http://127.0.0.1:${PORT}/json`)).json()).find((t) => t.type === 'page'); } catch {} if (!mål) await vent(200); }
+if (!mål) { proc.kill(); throw new Error('Chrome startede ikke'); }
 const ws = new WebSocket(mål.webSocketDebuggerUrl); await new Promise((r) => ws.on('open', r));
 let id = 0; const af = new Map();
 ws.on('message', (m) => { const d = JSON.parse(m); if (d.id && af.has(d.id)) { af.get(d.id)(d); af.delete(d.id); } });
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; af.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+// Alt herfra ligger i try/finally: ogsaa en kastet fejl (fx en side der ikke kan aabnes) lukker Chrome og forbindelsen.
+try {
 await send('Page.enable'); await send('Runtime.enable');
 await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }, { name: 'prefers-reduced-motion', value: 'no-preference' }] });
 await send('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: 1, mobile: false });
@@ -38,4 +41,5 @@ for (let f = 0; f < n; f++) {
   writeFileSync(VED ? `${ud}/t${VED[f]}.jpg` : `${ud}/f${String(f).padStart(4, '0')}.jpg`, Buffer.from(r.result.data, 'base64'));
   if (f % 60 === 0) process.stdout.write(`${f}/${n} `);
 }
-ws.close(); proc.kill(); console.log('\nfaerdig', n, 'billeder');
+console.log('\nfaerdig', n, 'billeder');
+} finally { try { ws.close(); } catch {} proc.kill(); }
