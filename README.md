@@ -210,8 +210,8 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > belongs to their persistent-profile mode, and their Chrome extension explicitly gives each
 > connected client its own coloured tab group, which is the same mechanism we describe on our own
 > row. We had corrected one page and not the pattern. The row that actually survives is
-> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 40 tools and
-> none of them can stop and ask the person for a code.
+> human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 72 tools (counted 2026-09-19)
+> and none of them can stop and ask the person for a code.
 
 > **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 

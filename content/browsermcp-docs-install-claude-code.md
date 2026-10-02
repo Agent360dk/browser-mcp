@@ -1,9 +1,9 @@
 // KILDE: mcp-server/bin/cli.js (install registrerer med `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`) - kontrolleret mod cli.js og en falsk claude-shim 26/9 (fuld review D). Claude Codes egen dokumentation er ikke hentet paa ny.
 # Add Browser MCP to Claude Code
-*Suggested meta description: "Four steps, about a minute. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
+*Suggested meta description: "Four steps. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
 
 
-**Give Claude Code control of your real, already-logged-in Chrome - about a minute, four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give Claude Code control of your real, already-logged-in Chrome - four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 ## The whole thing, in four steps
 
