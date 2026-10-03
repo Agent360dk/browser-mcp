@@ -73,7 +73,7 @@ jobs:
           [ -n "$SPAERRE_SHA" ] || { echo "::error::spaerren meldte ingen commit"; exit 1; }
           [ "$(git rev-parse HEAD)" = "$SPAERRE_SHA" ] || { echo "::error::kandidaten har tjekket $(git rev-parse HEAD) ud, men spaerren testede $SPAERRE_SHA"; exit 1; }
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -120,7 +120,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -192,7 +192,7 @@ jobs:
           ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
 
@@ -218,7 +218,7 @@ jobs:
           ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}
           persist-credentials: false
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
 
