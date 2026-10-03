@@ -57,6 +57,8 @@ async function koerSkan({ levende = [], fremmede = [], allerede = new Map() } = 
     'let skanner = false;',
     // Porte med en probe i luften - samme mekanik som i produktet, se offscreen.js.
     'const iLuften = new Set();',
+    // Ejeren af skannings-laasen (Astra A#16) - samme mekanik som i produktet, se offscreen.js.
+    'let skanEjer = 0;',
     'function tryConnect(p) { new WebSocket(`ws://127.0.0.1:${p}`); }',
     udklip('harServer'),
     udklip('scanPorts'),

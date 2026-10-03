@@ -77,13 +77,19 @@ KENDTE_FEJL=()
 #
 # En port med en aaben doer ved siden af er ingen port.
 echo "→ Automatiske tests"
-if ! npm --prefix mcp-server test > /tmp/bmcp-unit.log 2>&1; then
-  echo "  ⛔ automatiske tests fejler - udgivelsen er stoppet:"
-  grep -E "^not ok|^# (pass|fail)" /tmp/bmcp-unit.log | head -12 | sed 's/^/     /'
-  exit 1
+if [[ "${CWS_SKIP_TESTS:-}" == "1" ]]; then
+  # ⛔ 1/10: udgivelses-workflowet koerer testene i jobbet «kandidat» UDEN udgivelsesrettigheder (--skip-tests). Her ville de koere igen
+  # i det job der har butikkens noegler og OIDC-adgang - med afhaengighedskode i processen.
+  echo "  (sprunget over: de koerte i jobbet «kandidat», uden udgivelsesrettigheder)"
+else
+  if ! npm --prefix mcp-server test > /tmp/bmcp-unit.log 2>&1; then
+    echo "  ⛔ automatiske tests fejler - udgivelsen er stoppet:"
+    grep -E "^not ok|^# (pass|fail)" /tmp/bmcp-unit.log | head -12 | sed 's/^/     /'
+    exit 1
+  fi
+  grep -E "^# (pass|fail)" /tmp/bmcp-unit.log | sed 's/^/  /'
+  echo "  ✅ alle groenne"
 fi
-grep -E "^# (pass|fail)" /tmp/bmcp-unit.log | sed 's/^/  /'
-echo "  ✅ alle groenne"
 
 if [[ "${BMCP_FLOW_OK:-}" == "1" ]]; then
   # MAALT 13/9 af Astra: udgivelsesscriptet koerer nu spaerren som trin 2b, FOER versionsbumpet. Koerte vi den

@@ -28,6 +28,7 @@
 #   --ship            Actually do it (default is dry-run)
 #   --skip-npm        Don't publish to npm (e.g. token expired - fix with `npm login`)
 #   --skip-registry   Don't publish to the MCP registry (needs mcp-publisher + gh read:org)
+#   --registry-eget-job  Registry publishes in its own job AFTER the cold check (scripts/registry-udgiv.sh); only the pre-checks run here
 #   --skip-cws        Don't publish to Chrome Web Store
 #   --skip-flow       Skip the live browser gate in step 2b AND step 3 (you publish blind)
 #   --skip-github     Don't commit/tag/push/release on GitHub
@@ -74,6 +75,7 @@ dage_til_udloeb() {
 NEW_VERSION=""
 SHIP=0
 SKIP_NPM=0; SKIP_CWS=0; SKIP_GITHUB=0; SKIP_LOCAL=0; SKIP_REGISTRY=0; SKIP_FLOW=0; SKIP_AERLIGHED=0
+SKIP_TESTS=0; SKIP_PACK=0; SKIP_COLD=0; REGISTRY_EGET_JOB=0
 PREPARE=0; GENOPTAG=0
 CWS_DRAFT=0; ALLOW_DIRTY=0
 for arg in "$@"; do
@@ -88,6 +90,10 @@ for arg in "$@"; do
     --skip-aerlighed) SKIP_AERLIGHED=1 ;;
     --skip-github) SKIP_GITHUB=1 ;;
     --skip-local)  SKIP_LOCAL=1 ;;
+    --skip-tests)  SKIP_TESTS=1 ;;
+    --skip-pack)   SKIP_PACK=1 ;;
+    --skip-cold)   SKIP_COLD=1 ;;
+    --registry-eget-job) REGISTRY_EGET_JOB=1 ;;
     --cws-draft)   CWS_DRAFT=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
     -h|--help)     grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -100,6 +106,17 @@ done
 
 [[ -n "$NEW_VERSION" ]] || die "Usage: ./runbrowsermcpupdate.sh <X.Y.Z> [--ship | --prepare]  (see --help)"
 [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version '$NEW_VERSION' is not semver X.Y.Z"
+
+# <<ISOLERET-VAGT
+# ⛔ 1/10 (Astra runde 3, uafhaengigt review): det job der har udgivelsesrettighederne (contents:write + id-token:write) maa ikke koere
+# afhaengighedskode. Tests, pakketjek og det kolde npx-tjek koerer derfor i egne job UDEN rettigheder (udgivelse.yml: kandidat, efter);
+# --skip-tests/--skip-pack/--skip-cold er KUN til den arbejdsgang; det samme er --registry-eget-job (registret udgives af jobbet «registry» EFTER det kolde tjek). En udgivelse fra en anden maskine (fx din Mac) skal koere dem selv:
+# uden UDGIVELSE_ISOLERET=1 afviser en rigtig udgivelse flagene.
+if [[ "$SHIP" == 1 && ( "$SKIP_TESTS" == 1 || "$SKIP_PACK" == 1 || "$SKIP_COLD" == 1 || "$REGISTRY_EGET_JOB" == 1 ) && "${UDGIVELSE_ISOLERET:-}" != 1 ]]; then
+  die "--skip-tests/--skip-pack/--skip-cold/--registry-eget-job er kun til udgivelses-workflowet (UDGIVELSE_ISOLERET=1), hvor de tunge tjek koerte i et eget job uden udgivelsesrettigheder. Fjern flagene og koer dem selv."
+fi
+if [[ "$SKIP_TESTS" == 1 ]]; then export CWS_SKIP_TESTS=1; fi   # butiksscriptet koerer ellers testene en gang til
+# ISOLERET-VAGT>>
 
 # Load secrets ONCE, early + exported, so both the npm pre-flight and `npm publish`
 # see NPM_TOKEN (.npmrc references ${NPM_TOKEN}) and the CWS step sees CWS_*. Both
@@ -160,7 +177,7 @@ say "current → extension:${CUR_EXT}  npm-package:${CUR_PKG}  npm-latest:${NPM_
 # (a cross-channel resume legitimately re-runs a version whose tag/release already
 # shipped but whose npm publish failed). The per-channel guards below (npm view,
 # tag rev-parse, commit-diff, gh release view) make every other channel idempotent.
-LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+LATEST_TAG="$(git tag | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"   # Astra runde 6: tom tagliste -> grep exit 1 -> set -e dræbte scriptet tavst
 # MAALT 11/9 (Astra, efterproevet): her stoppede scriptet naar NEW_VERSION == npm-latest.
 # Men npm koerer som trin 5 og MCP-registret EFTER npm. Fejlede registret, kunne udgivelsen
 # ikke genoptages, selvom npm-trinnet selv springer en allerede udgivet version over.
@@ -319,7 +336,9 @@ gate() { if [[ "$SHIP" == 1 ]]; then die "$1"; else warn "$1 ${Y}(dry-run: conti
 # Der var INGEN test-gate her. Udgivelsen kunne - og gjorde det - sende en kopi af
 # udvidelsen af sted som var 88 linjer bagud for kilden, uden at noget sagde fra.
 # Testene er rene node:test-filer uden Chrome-afhaengighed, saa de koster to sekunder.
-if TEST_OUT="$(node --test "$REPO_ROOT"/test/*.test.mjs 2>&1)"; then
+if [[ "$SKIP_TESTS" == 1 ]]; then
+  warn "tests sprunget over (--skip-tests): de koerte i jobbet «kandidat» uden udgivelsesrettigheder"
+elif TEST_OUT="$(node --test "$REPO_ROOT"/test/*.test.mjs 2>&1)"; then
   # MAALT 8/9: her stod kun `grep '^# pass'`. node --test skriver nu `ℹ pass 257`, saa
   # tallet blev tomt og linjen sagde "tests groenne ( bestaaet)". Spaerren SELV var i
   # orden - den hviler paa exit-koden - men rapporten sagde ingenting. Et tal der tavst
@@ -535,13 +554,31 @@ if [[ -z "$SENESTE_AERLIGHED" ]]; then
   gate "der findes intet aerligheds-resultat i test/aerlighed/. Koer: node test/aerlighed/maal.mjs"
 else
   # Sammenlign resultatets alder med den nyeste aendring i det maalingen faktisk daekker.
-  KODE_AENDRET="$(git log -1 --format=%ct -- extension/background.js extension/offscreen.js mcp-server/tools.js 2>/dev/null || echo 0)"
-  RESULTAT_SKREVET="$(git log -1 --format=%ct -- "$SENESTE_AERLIGHED" 2>/dev/null || echo 0)"
-  if [[ "$RESULTAT_SKREVET" -lt "$KODE_AENDRET" ]]; then
-    gate "aerligheds-resultatet ($(basename "$SENESTE_AERLIGHED")) er AELDRE end den kode der udgives. Koer: node test/aerlighed/maal.mjs --kun os  - eller udgiv med --skip-aerlighed og skriv hvorfor"
+  # 27/9: her stod en DATO-sammenligning. Et resultat med en LOEGN i - eller maalt paa en anden kode -
+  # slap igennem, bare filen var nyere end koden. Nu laeses maalingens egne linjer (maal.mjs skriver dem):
+  # dommen skal vaere «0 LOEGN», og den maalte commit skal have PRAECIS den kode der udgives, i de filer
+  # der bestemmer hvad vaerktoejerne svarer (udvidelsen, vaerktoejslisten og serveren der formidler svaret).
+  AERLIGHED_FILER=(extension/background.js extension/offscreen.js mcp-server/tools.js mcp-server/index.js)
+  # 1/10 (Astra runde 3): stderr maa ikke blandes ind i listen over aendrede filer - en harmloes git-advarsel blev laest som en produktforskel.
+  AERLIGHED_FEJL="$(mktemp)"
+  trap 'rm -f "$AERLIGHED_FEJL"' EXIT   # Astra runde 4: gate() afslutter via die(), saa oprydningen nedenfor naas ikke ved en afvisning under ship
+  MAALT_COMMIT="$(sed -n 's/^MAALT-COMMIT: *\([0-9a-f]\{7,40\}\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
+  AERLIGHED_DOM="$(sed -n 's/^AERLIGHED-DOM: *\(.*[^ ]\) *$/\1/p' "$SENESTE_AERLIGHED" | head -1)"
+  KOER_IGEN="Koer: AERLIGHED_MED_OS=1 node scripts/flow-isoleret.mjs --koer test/aerlighed/maal.mjs --kun os, og kopier MAALT-COMMIT og AERLIGHED-DOM ind i en ny RESULTAT-fil"
+  if [[ -z "$MAALT_COMMIT" || -z "$AERLIGHED_DOM" ]]; then
+    gate "aerligheds-resultatet ($(basename "$SENESTE_AERLIGHED")) har ingen MAALT-COMMIT/AERLIGHED-DOM - udgivelsen kan ikke se hvad der blev maalt. $KOER_IGEN"
+  elif [[ "$AERLIGHED_DOM" != "0 LOEGN" ]]; then
+    gate "aerligheds-maalingen af vores eget vaerktoej siger «${AERLIGHED_DOM}» ($(basename "$SENESTE_AERLIGHED")) - vi udgiver ikke en loegn om os selv"
+  elif ! git cat-file -e "${MAALT_COMMIT}^{commit}" 2>/dev/null; then
+    gate "den maalte commit ${MAALT_COMMIT} findes ikke i repoet - resultatet kan ikke bindes til koden. $KOER_IGEN"
+  elif ! AERLIGHED_FORSKEL="$(git diff --name-only "$MAALT_COMMIT" HEAD -- "${AERLIGHED_FILER[@]}" 2>"$AERLIGHED_FEJL")"; then
+    gate "kunne ikke sammenligne den maalte kode med den der udgives: $(cat "$AERLIGHED_FEJL")"
+  elif [[ -n "$AERLIGHED_FORSKEL" ]]; then
+    gate "aerligheds-maalingen gaelder ${MAALT_COMMIT:0:7}, men koden er aendret siden: $(printf '%s' "$AERLIGHED_FORSKEL" | tr '\n' ' ')- $KOER_IGEN"
   else
-    ok "aerligheds-resultatet er nyere end koden det daekker: $(basename "$SENESTE_AERLIGHED")"
+    ok "aerligheds-maalingen gaelder den kode der udgives: 0 LOEGN, maalt paa ${MAALT_COMMIT:0:7} ($(basename "$SENESTE_AERLIGHED"))"
   fi
+  rm -f "$AERLIGHED_FEJL"
 fi
 fi
 
@@ -765,11 +802,19 @@ step "2. Pakke-tjek (pack → udpak → start)"
 # groen, mens en pakke der ikke kan starte foerst blev opdaget EFTER Gustavs ja - og efter at
 # butikken allerede havde faaet sin upload. Trinnet udgiver intet (pakker til en midlertidig
 # mappe og taler med den dér), saa det koerer nu ogsaa i proevekoerslen.
+if [[ "$SKIP_PACK" == 1 ]]; then
+  warn "pakketjek sprunget over (--skip-pack): det koerte i jobbet «kandidat» uden udgivelsesrettigheder"
+else
 {
   SMOKE_DIR="$(mktemp -d)"
   ( cd "$REPO_ROOT/mcp-server" && npm pack --pack-destination "$SMOKE_DIR" >/dev/null ) || die "npm pack fejlede"
   ( cd "$SMOKE_DIR" && tar xzf agent360-browser-mcp-*.tgz ) || die "kunne ikke pakke tarballen ud"
-  ( cd "$SMOKE_DIR/package" && npm install --silent --no-audit --no-fund >/dev/null 2>&1 ) || die "npm install i tarballen fejlede"
+  # ⛔ MAALT 1/10 (Astra + en Opus-agent): `npm install` her opsloeste afhaengighederne efter INTERVAL paa udgivelsesdagen (tarballen
+  # har ingen laasefil) og koerte deres installationsscripts, mens butikkens hemmeligheder og OIDC-adgangen var i miljoeet. Nu
+  # installeres den NOEJAGTIGE afhaengighedsmaengde repoet har laast og proevet, uden scripts. Pakketjekket skal bevise at TARBALLEN
+  # er hel (mangler der en fil i `files`?), ikke hvad npm opsloeser i dag; det beviser det kolde tjek efter udgivelsen.
+  cp "$REPO_ROOT/mcp-server/package-lock.json" "$SMOKE_DIR/package/package-lock.json" || die "kunne ikke kopiere laasefilen ind i den udpakkede pakke"
+  ( cd "$SMOKE_DIR/package" && npm ci --ignore-scripts --silent --no-audit --no-fund >/dev/null 2>&1 ) || die "npm ci i tarballen fejlede (laasefilen og tarballens package.json er ude af trit?)"
   # MAALT 11/9 (Astra): her grep'ede tjekket kun efter modul- og syntaksfejl, og en manglende
   # "server running"-linje gav kun en advarsel. En pakke der crashede af enhver anden grund
   # blev godkendt. Nu kraeves et gyldigt svar paa MCP-haandtrykket (scripts/pakke-roegtest.mjs).
@@ -778,6 +823,7 @@ step "2. Pakke-tjek (pack → udpak → start)"
   ok "tarballen starter og svarer paa initialize"
   rm -rf "$SMOKE_DIR"
 }
+fi
 
 
 # ── 2d. Tag: bindingen FOER noget uigenkaldeligt ───────────────────────────────
@@ -856,7 +902,12 @@ else
       # (Fable 24/9). --provenance knytter pakken synligt til netop denne GitHub-koersel.
       run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public --provenance"
     else
-    [[ -n "${NPM_TOKEN:-}" ]] || die "NPM_TOKEN missing in .env - needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
+    # ⛔ 1/10 (Astra runde 5): her stod et UBETINGET die. Jobbet «kandidat» koerer scriptet uden --ship, uden npm-token og uden id-token,
+    # saa hver proevekoersel af en ny version doede her. Kravet gaelder den FAKTISKE udgivelse; en proevekoersel skal kunne beskrive den.
+    if [[ -z "${NPM_TOKEN:-}" ]]; then
+      if [[ "$SHIP" == 1 ]]; then die "NPM_TOKEN missing in .env - needed for npm publish (Bypass-2FA token, see npmjs.com Access Tokens)"
+      else warn "proevekoersel: ingen NPM_TOKEN og ingen id-token her - en rigtig udgivelse kraever en af dem (i workflowet er det id-token i jobbet «udgiv»)"; fi
+    fi
     # \${NPM_TOKEN} stays literal in the outer shell (so dry-run echoes the var name,
     # not the secret) and is expanded by the inner bash -c from the exported env.
     run bash -c "cd '$REPO_ROOT/mcp-server' && npm publish --access public '--//registry.npmjs.org/:_authToken=\${NPM_TOKEN}'"
@@ -881,6 +932,7 @@ fi
 step "5c. Koldt tjek: henter den udgivne pakke og taler med den"
 if [[ "$SKIP_NPM" == 1 ]]; then warn "sprunget over (--skip-npm: der blev ikke udgivet noget)"
 elif [[ "$SHIP" != 1 ]]; then say "ville hente @agent360/browser-mcp@${NEW_VERSION} med npx og sende initialize"
+elif [[ "$SKIP_COLD" == 1 ]]; then warn "koldt tjek sprunget over (--skip-cold): det koerer i jobbet «efter» uden udgivelsesrettigheder (scripts/koldt-tjek.sh)"
 else
   KOLD_OK=0
   # MAALT 13/9 af Fable: kaldet havde ingen tidsgraense. `npx` henter fra registret, og et haengende
@@ -899,7 +951,7 @@ else
     KOLD_HJEM="$(mktemp -d)"
     say "npx @agent360/browser-mcp@${NEW_VERSION} (frisk HOME, forsoeg ${forsoeg}/3)"
     KOLD_SVAR="$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"koldt-tjek","version":"1"}}}' \
-      | HOME="$KOLD_HJEM" ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
+      | env -i HOME="$KOLD_HJEM" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" LANG="${LANG:-C}" npm_config_ignore_scripts=true ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} npx -y "@agent360/browser-mcp@${NEW_VERSION}" 2>"$KOLD_HJEM/fejl.log" | head -1 || true)"
     if [[ "$KOLD_SVAR" == *'"serverInfo"'* && "$KOLD_SVAR" == *'agent360-browser'* ]]; then
       KOLD_OK=1; rm -rf "$KOLD_HJEM" 2>/dev/null || true; break
     fi
@@ -928,6 +980,7 @@ fi
 
 step "5b. MCP registry publish"
 if [[ "$SKIP_REGISTRY" == 1 ]]; then warn "skipped (--skip-registry)"
+elif [[ "$REGISTRY_EGET_JOB" == 1 ]]; then warn "registret udgives IKKE her: jobbet «registry» goer det efter det kolde tjek (scripts/registry-udgiv.sh). Forkontrollen af server.json er koert ovenfor."
 elif ! command -v mcp-publisher >/dev/null 2>&1; then
   # MAALT 7/9: her stod `warn` + fortsaet. Konsekvensen var at 1.28.0 og 1.28.1 begge
   # gik paa npm mens registret blev staaende paa 1.25.0 - og scriptet sluttede GROENT.
@@ -1055,7 +1108,12 @@ fi
 # ── done ──────────────────────────────────────────────────────────────────────
 echo
 if [[ "$SHIP" == 1 ]]; then
-  ok "${B}Released v${NEW_VERSION}${Z} across all enabled channels."
+  if [[ "$REGISTRY_EGET_JOB" == 1 ]]; then
+    # Astra runde 5: i workflowet er kolde tjek og MCP-registret IKKE koert endnu naar dette script slutter. Slutlinjen maa ikke sige «alle kanaler».
+    ok "${B}v${NEW_VERSION}: dette trin er faerdigt for butik, GitHub og npm.${Z} Det kolde tjek og MCP-registret foelger i jobbene «efter» og «registry» (en genoptagelse springer butikken over, hvis den allerede har versionen)."
+  else
+    ok "${B}Released v${NEW_VERSION}${Z} across all enabled channels."
+  fi
   echo "   • npm: live next \`npx ...@latest\` run"
   echo "   • CWS: in review queue (1-3 days; email on approval)"
   echo "   • GitHub: tag + release pushed"

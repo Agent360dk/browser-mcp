@@ -1029,11 +1029,21 @@ test('--genoptag koerer paa den taggede commit (detached) - en almindelig udgive
 test('genoptagelse checker tagget ud, og spaerren tester den samme commit (Astra R3)', () => {
   const wf = readFileSync(join(rod, '.github/workflows/udgivelse.yml'), 'utf8');
   const ref = "ref: ${{ inputs.genoptag && format('v{0}', inputs.version) || '' }}";
-  const spaerreJob = wf.slice(wf.indexOf('  spaerre:'), wf.indexOf('  udgiv:'));
+  // 1/10 (Astra runde 4): udsnittet maa ende ved naeste job. Foer sluttede det ved «  udgiv:» og lob ind i «kandidat», saa proeven kunne bestaa
+  // selv om spaerren ikke fik tagget.
+  const jobStykke = (navn, naeste) => wf.slice(wf.indexOf(`\n  ${navn}:`), naeste ? wf.indexOf(`\n  ${naeste}:`) : undefined);
+  const spaerreJob = jobStykke('spaerre', 'kandidat');
   assert.ok(spaerreJob.includes('with:') && spaerreJob.includes(ref), 'spaerren faar ikke tagget ved genoptagelse - den tester main');
-  const udgivJob = wf.slice(wf.indexOf('  udgiv:'));
-  const checkout = udgivJob.slice(udgivJob.indexOf('actions/checkout'), udgivJob.indexOf('actions/setup-node'));
-  assert.ok(checkout.includes(ref), 'udgivelsen checker ikke tagget ud ved genoptagelse - main kan have flyttet sig');
+  // Kandidat-jobbet tjekker tagget ud og melder den commit det testede; resten tjekker NETOP den commit ud (et flyttet tag kan ikke give en anden).
+  const kandidatJob = jobStykke('kandidat', 'udgiv');
+  const kCheckout = kandidatJob.slice(kandidatJob.indexOf('actions/checkout'), kandidatJob.indexOf('actions/setup-node'));
+  assert.ok(kCheckout.includes(ref), 'kandidat checker ikke tagget ud ved genoptagelse - main kan have flyttet sig');
+  const sharef = "ref: ${{ inputs.genoptag && needs.kandidat.outputs.sha || '' }}";
+  for (const [navn, naeste] of [['udgiv', 'efter'], ['efter', 'registry'], ['registry', null]]) {
+    const j = jobStykke(navn, naeste);
+    const checkout = j.slice(j.indexOf('actions/checkout'), j.indexOf('actions/setup-node'));
+    assert.ok(checkout.includes(sharef), `${navn} checker ikke den commit kandidat testede ud ved genoptagelse`);
+  }
   const sp = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
   assert.match(sp, /workflow_call:\s*\n\s+inputs:\s*\n\s+ref:/, 'spaerren tager ikke imod en ref');
   const spCheckout = sp.slice(sp.indexOf('actions/checkout'), sp.indexOf('actions/setup-node'));
