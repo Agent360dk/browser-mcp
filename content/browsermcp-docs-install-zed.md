@@ -31,7 +31,7 @@
 
 **4 - Say this, to check it worked.** In the agent panel:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -43,7 +43,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 ## Where the settings file actually lives
 
-| | |
+| System | File |
 |---|---|
 | macOS | `~/.config/zed/settings.json` |
 | Linux / FreeBSD | `$XDG_CONFIG_HOME/zed/settings.json` (usually the same) |

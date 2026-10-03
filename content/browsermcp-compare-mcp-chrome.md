@@ -27,9 +27,9 @@ We are the smaller project by every measure of adoption, and there is no point p
 ## What using it looks like
 
 ```
-You:     Take a screenshot of my current Chrome tab.
+You:     Open example.com and take a screenshot.
 
-Claude:  [browser_screenshot]
+Claude:  [browser_navigate, then browser_screenshot]
          <image>
 ```
 

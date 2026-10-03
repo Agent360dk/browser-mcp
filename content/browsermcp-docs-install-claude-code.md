@@ -1,9 +1,9 @@
 // KILDE: mcp-server/bin/cli.js (install registrerer med `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`) - kontrolleret mod cli.js og en falsk claude-shim 26/9 (fuld review D). Claude Codes egen dokumentation er ikke hentet paa ny.
 # Add Browser MCP to Claude Code
-*Suggested meta description: "Four steps, about a minute. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
+*Suggested meta description: "Four steps. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
 
 
-**Give Claude Code control of your real, already-logged-in Chrome - about a minute, four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give Claude Code control of your real, already-logged-in Chrome - four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 ## The whole thing, in four steps
 
@@ -19,7 +19,7 @@ claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 
 **4 - Say this, to check it worked.** Paste it to Claude Code:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -85,7 +85,7 @@ Restart Claude Code so it picks up the new MCP server. You'll see the Browser MC
 
 Paste this to Claude Code:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 If you get an image back instead of *"I don't have browser access"*, both halves are talking to each other. That is the whole test.
 
@@ -93,21 +93,21 @@ If you get an image back instead of *"I don't have browser access"*, both halves
 
 Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start with these:
 
-> Open my Gmail tab and tell me who sent my last 3 emails.
+> Open Gmail and tell me who sent my last 3 emails.
 
-The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here.
+The one that shows the difference - it works because it is *your* browser, already signed in. A fresh headless browser would hit a login wall here.
 
 > Go to my analytics dashboard, pull this month's numbers, and put them in a table.
 
-Any dashboard you are already logged into. No API key, no export, no integration to build first.
+A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first.
 
-> Fill in this signup form with my details. Stop and ask me before anything sensitive.
+> Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
-You stay in the loop - the agent hands control back for passwords, payment details, or anything it should not decide alone.
+You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone.
 
-> Log me in here. If it emails a code, read it from my Gmail tab and continue.
+> Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue.
 
-The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.
+The move that needs no email-API setup: it opens your Gmail, reads the one-time code and finishes the sign-in.
 
 > Walk through my app's signup flow as a real user and tell me where it breaks.
 
@@ -163,7 +163,7 @@ That registers the server and leaves your store-installed extension alone. Resta
 
 ### The 2FA killer move
 
-This is the reason people install Browser MCP: Claude Code hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
+This is the reason people install Browser MCP: Claude Code hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can open your Gmail, read the code, and finish the sign-in itself. There is no email API to set up and no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
@@ -213,13 +213,13 @@ Each conversation gets its own MCP server on its own port (9876-9895), and the e
 Run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`. That is Claude Code's built-in command for registering an MCP server, so no manual JSON is required. Restart Claude Code afterward so it picks up the new server.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives Claude Code - or any MCP client, including Cursor and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
+An MCP (Model Context Protocol) server that gives Claude Code - or any MCP client that can run local stdio servers, including Cursor and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with Claude Code, or also Cursor / VS Code?**
-Any MCP-compatible client. The install command wires up Claude Code specifically. For Cursor or VS Code agent mode, add the same block to that client's MCP config instead:
+Any MCP client that can run local stdio servers. The install command wires up Claude Code specifically. For Cursor or VS Code agent mode, add the same block to that client's MCP config instead:
 ```json
 {"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}
 ```

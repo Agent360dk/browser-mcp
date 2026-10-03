@@ -41,7 +41,7 @@ Then install the [Chrome extension](https://chromewebstore.google.com/detail/age
 
 **4 - Say this, to check it worked.** In the agent panel:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 

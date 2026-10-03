@@ -20,7 +20,7 @@ codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 
 **4 - Say this, to check it worked.** Paste it to Codex:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#now-what-things-to-actually-say)
 
@@ -77,21 +77,21 @@ Restart your Codex CLI session so it picks up the new server, then in the compos
 
 Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start here:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 If you get an image back instead of *"I don't have browser access"*, both halves are talking. Then:
 
-> Open my Gmail tab and tell me who sent my last 3 emails.
+> Open Gmail and tell me who sent my last 3 emails.
 
 The one that shows the difference - it works because it is *your* browser, already signed in.
 
 > Go to my analytics dashboard, pull this month's numbers, and put them in a table.
 
-Any dashboard you are already logged into. No API key, no export, no integration to build first.
+A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first.
 
-> Fill in this signup form with my details. Stop and ask me before anything sensitive.
+> Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
-You stay in the loop - the agent hands control back for anything it should not decide alone.
+You stay in the loop - the agent can pause and ask you before anything it should not decide alone.
 
 The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** Strongest where there is no API. [More examples](https://browsermcp.dev/#try).
 
@@ -99,7 +99,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 ### The 2FA-killer move
 
-This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail tab, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. No API can do that. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
+This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
 ### 40 tools, no server-side moving parts
 

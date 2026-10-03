@@ -67,4 +67,4 @@ No - using an existing server is a config entry in your client. Writing one requ
 No, and you shouldn't treat it as one. A local server runs with your permissions. Install servers you trust, and prefer ones whose source you can read.
 
 **Where do I start?**
-Pick a client you already use and add one server. If you want the browser one, [installing Browser MCP](/docs/install-claude-code/) takes about a minute.
+Pick a client you already use and add one server. If you want the browser one, [installing Browser MCP](/docs/install-claude-code/) takes four steps.

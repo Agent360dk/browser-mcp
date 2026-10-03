@@ -18,7 +18,7 @@ That's it. There is no uninstaller to run, no account to close, and no data of y
 ## Checking it is really gone
 
 ```
-You:     Take a screenshot of my current Chrome tab.
+You:     Open example.com and take a screenshot.
 
 Claude:  I don't have browser access.
 ```

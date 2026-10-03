@@ -31,7 +31,7 @@ The file is `~/.codeium/windsurf/mcp_config.json`. The `codeium` in that path is
 
 **4 - Say this, to check it worked.** In Cascade:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 

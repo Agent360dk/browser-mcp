@@ -27,7 +27,7 @@ mcpServers:
 
 **4 - Switch to agent mode and say this:**
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -51,7 +51,7 @@ Continue also reads standalone files from `.continue/mcpServers/`. Drop a `brows
 
 ## What Continue can do with your real browser
 
-It browses **as you**. Your internal dashboard already signed in, the 2FA code from the Gmail tab you already have open, the form on the page you were looking at.
+It browses **as you**. Your internal dashboard already signed in, the 2FA code from your signed-in Gmail, the form on the page you point it to.
 
 And when it hits something only you can decide, `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 
