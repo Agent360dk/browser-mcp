@@ -3302,8 +3302,18 @@ async function dispatch(port, method, params) {
                   + 'or keyboard input to it. Measured 19 Sept. Pass fokuser:true, and place it with vindue_x.'),
           };
         }
-        tab = await chrome.tabs.create({ url: params.url, active: false });
-        await addTabToSession(port, tab.id);
+        // getSessionTab() above hands a fresh session its empty about:blank placeholder.
+        // new_tab means "keep the current page"; an empty placeholder is not a page anyone
+        // keeps. Measured 2026-10-04: navigate(new_tab) as a session's first call left that
+        // about:blank in the group for the session's whole life. Use it instead.
+        const isPlaceholder = tab && (tab.url === 'about:blank' ||
+          (tab.url === '' && tab.pendingUrl === 'about:blank'));
+        if (isPlaceholder) {
+          await chrome.tabs.update(tab.id, { url: params.url });
+        } else {
+          tab = await chrome.tabs.create({ url: params.url, active: false });
+          await addTabToSession(port, tab.id);
+        }
       } else {
         await chrome.tabs.update(tab.id, { url: params.url });
       }
