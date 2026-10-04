@@ -1194,6 +1194,23 @@ async function clearFieldAttached(tabId) {
   await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
 }
 
+// Clear only when the focused field has something in it. Backspace in an EMPTY
+// multi-select search input deletes the previous chip (Ant Design Select/TreeSelect,
+// react-select, MUI Autocomplete) - the same reason setCombobox never presses it on an
+// empty field. Measured 2026-10-04 on Ant Design TreeSelect: fill removed the selected
+// chip on every call. When the value cannot be read, clear as before.
+async function clearFieldIfFilledAttached(tabId) {
+  const current = await evalAttached(tabId, `
+    (function() {
+      const el = document.activeElement;
+      return el && 'value' in el ? String(el.value) : null;
+    })()
+  `).catch(() => null);
+  if (current === '') return false;
+  await clearFieldAttached(tabId);
+  return true;
+}
+
 /**
  * Tre-vejs dom paa hvad der FAKTISK staar i feltet. Delt af fill's to grene.
  *
@@ -1276,7 +1293,7 @@ async function debuggerFill(tabId, selector, value) {
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    await clearFieldAttached(tabId);
+    await clearFieldIfFilledAttached(tabId);
 
     // ── Blev feltet FAKTISK tomt? (MAALT 8/9) ────────────────────────────────
     //
@@ -1349,7 +1366,7 @@ async function debuggerFill(tabId, selector, value) {
     let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
     let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     if (!landed) {
-      await clearFieldAttached(tabId);
+      await clearFieldIfFilledAttached(tabId);
       await typeCharsAttached(tabId, value);
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
