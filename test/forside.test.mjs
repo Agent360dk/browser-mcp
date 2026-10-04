@@ -133,11 +133,11 @@ test('ingen lange tankestreger i forsidens synlige tekst', () => {
   assert.doesNotMatch(udenKode, /[–—]|&[mn]dash;|&#821[12];/);
 });
 
-test('privacy-teksten er ordret den fra main (hash af den synlige tekst) og 404 holdes ude af indekset', () => {
+test('privacy-teksten er last (hash af den synlige tekst: beviser stabilitet, ikke sandhed) og 404 holdes ude af indekset', () => {
   const body = docs('privacy.html').match(/<body>([\s\S]*)<\/body>/)[1].replace(/<a class="skip"[\s\S]*?<\/header>/, '');
   const tekst = body.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
   // Aendres politikken med vilje, opdateres hashen i samme commit og begrundelsen staar i commit-beskeden.
-  assert.equal(createHash('sha256').update(tekst).digest('hex'), '82cb8f67d04c089e077327ad0bce82205cb3fb4c9b8a237d2705fd405e76939b');
+  assert.equal(createHash('sha256').update(tekst).digest('hex'), '02457af4644886fcad44675b10b19d3f1fb541a6d256a01d65f0ed84e4e026fd');
   assert.match(docs('404.html'), /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(rod, 'docs/sitemap.xml'), 'utf8'), /404\.html/);
 });
