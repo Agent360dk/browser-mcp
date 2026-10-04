@@ -21,8 +21,14 @@ const frist = Number(process.env.PAKKE_ROEGTEST_FRIST_MS || 20000);
 // nyere. Et tjek af en kandidat der endnu ikke er udgivet, skrev derfor i brugerens rigtige udvidelsesmappe.
 // Kandidaten koeres med et midlertidigt hjem.
 const hjem = mkdtempSync(join(tmpdir(), 'pakke-roegtest-hjem-'));
+// ⛔ MAALT 1/10 (Astra + en Opus-agent, uafhaengigt review af udgivelsesvejen): her stod `...process.env`. I udgivelsesjobbet
+// betyder det butikkens fem CWS_*-hemmeligheder, adgang til at hente et OIDC-token og GITHUB_TOKEN, givet til en pakke vi endnu
+// ikke har udgivet og hvis afhaengigheder er opsloest efter interval. Pakken faar nu kun det den skal bruge for at starte.
+// (test/udgivelse-isolation.test.mjs.) Hvidliste, ikke sortliste: en ny hemmelighed i miljoeet skal ikke skulle huskes her.
+const TILLADT = ['PATH', 'Path', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'PATHEXT', 'windir'];
+const renMiljoe = Object.fromEntries(TILLADT.filter((k) => process.env[k] !== undefined).map((k) => [k, process.env[k]]));
 const barn = spawn(process.execPath, [join(mappe, 'bin/cli.js')], {
-  cwd: mappe, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, HOME: hjem, USERPROFILE: hjem },
+  cwd: mappe, stdio: ['pipe', 'pipe', 'pipe'], env: { ...renMiljoe, HOME: hjem, USERPROFILE: hjem },
 });
 let ud = '';
 let fejl = '';

@@ -24,6 +24,13 @@ on:
         description: 'Version fra npm, fx 1.30.1 (tom = repoets server)'
         required: false
         default: ''
+      # 27/9: udgivelsens port 2c kraever en aerligheds-maaling af den kode der udgives. Den kunne kun
+      # tages paa Gustavs Mac, og den lokale maaler fejlede 26/9 og igen 27/9. Her tages den paa samme
+      # maskine som spaerren - og dens MAALT-COMMIT/AERLIGHED-DOM kopieres ind i en RESULTAT-fil.
+      aerlighed:
+        description: 'Tag ogsaa aerligheds-maalingen af vores eget vaerktoej (test/aerlighed/maal.mjs --kun os)'
+        type: boolean
+        default: false
   # Kaldes af udgivelses-arbejdsgangen, saa en udgivelse ikke kan starte uden en groen spaerre.
   workflow_call:
     inputs:
@@ -31,6 +38,11 @@ on:
         description: 'Commit/tag der testes (tom = den der udloeste koerslen). Genoptagelse sender tagget.'
         type: string
         default: ''
+    # Astra runde 6 (1/10): udgivelsen skal vide HVILKEN commit spaerren faktisk testede, saa kandidaten kan afvise en anden (et flyttet tag).
+    outputs:
+      sha:
+        description: 'Den commit spaerren faktisk testede (git rev-parse HEAD efter checkout)'
+        value: ${{ jobs.spaerre.outputs.sha }}
   # 25/9: INGEN stifilter. Spaerren skal kunne vaere et paakraevet tjek paa main, og et paakraevet
   # tjek der aldrig starter, staar som «Expected» for evigt - saa kan en PR der kun roerer docs
   # aldrig merges. Et filter der springer den over er en port der aldrig kan passere.
@@ -43,6 +55,8 @@ jobs:
   spaerre:
     runs-on: macos-latest
     timeout-minutes: 30
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +64,10 @@ jobs:
           fetch-depth: 0
           # Tom ved PR/dispatch (= den udloesende commit); tagget ved genoptagelse af en udgivelse.
           ref: ${{ inputs.ref || '' }}
+
+      - name: den testede commit
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -117,10 +135,26 @@ jobs:
             done
           fi
 
+      - name: aerligheds-maalingen (kun ved haandkoersel med aerlighed)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.aerlighed }}
+        shell: bash
+        run: |
+          . scripts/flow-daekning.sh
+          flow_nulstil_arv
+          if AERLIGHED_MED_OS=1 node scripts/flow-isoleret.mjs --koer test/aerlighed/maal.mjs --kun os 2>&1 | tee aerlighed.log; then KODE=0; else KODE=$?; fi
+          # Linjerne der kopieres ORDRET ind i RESULTAT-filen (udgivelsens 2c-port laeser dem).
+          grep -E '^(MAALT-COMMIT|AERLIGHED-DOM):' aerlighed.log || true
+          if [[ "$KODE" != 0 ]]; then
+            echo "::error::aerligheds-maalingen endte med exit $KODE - en LOEGN, eller ingen maaling"
+            exit 1
+          fi
+
       - name: gem loggen
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: spaerre-log
-          path: spaerre.log
+          path: |
+            spaerre.log
+            aerlighed.log
           retention-days: 14

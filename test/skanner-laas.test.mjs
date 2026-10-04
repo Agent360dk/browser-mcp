@@ -91,3 +91,32 @@ test('en port med et kald i luften probes ikke igen - heller ikke naar ventilen 
     `en ny skanning probede de samme porte igen (${b.kald.length} kald i alt). Saa fordobles de `
     + 'haengende kald hver gang ventilen fyrer, og Chromes forbindelses-graense aedes op');
 });
+
+// MAALT 26/9 af Astra (A#16): ventilen slipper laasen, en NY skanning tager den - og naar den gamle Promise.all
+// endelig afgoeres, slipper dens `finally` laasen midt i den nye. Saa kan en tredje starte oveni.
+// Tidslinje (ventil 200 ms): skanning 1 kl. 0 (probes afgoeres kl. 350) · ventil kl. 200 · skanning 2 kl. 250
+// (en ny ledig port, haenger) · kl. 350 koerer skanning 1's finally · maales kl. 400 (skanning 2's ventil: kl. 450).
+test('en gammel skanning maa ikke slippe en nyere skannings laas (Astra A#16)', async () => {
+  const m = kilde.match(/const SCAN_MAX_MS = \d+;[\s\S]*?\nasync function scanPorts\(\) \{[\s\S]*?\n\}/);
+  assert.ok(m, 'scanPorts blev ikke fundet');
+  const src = m[0].replace(/const SCAN_MAX_MS = \d+;/, 'const SCAN_MAX_MS = 200;');
+  const fabrik = new Function('harServer', 'tryConnect', 'connections', 'BASE_PORT', 'MAX_PORT', 'WebSocket', `
+    let skanner = false;
+    ${src}
+    return { scanPorts, laast: () => skanner };`);
+  const forbindelser = new Map([[19902, { readyState: 1 }]]);   // porten er optaget under skanning 1
+  const b = fabrik(
+    (port) => (port === 19902 ? new Promise(() => {}) : new Promise((ok) => setTimeout(() => ok(false), 350))),
+    () => {}, forbindelser, 19900, 19902, { OPEN: 1, CONNECTING: 0 },
+  );
+  b.scanPorts();
+  await vent(250);
+  assert.equal(b.laast(), false, 'ventilen slap ikke laasen - saa maaler proeven noget andet');
+  forbindelser.delete(19902);
+  b.scanPorts();
+  await vent(30);
+  assert.equal(b.laast(), true, 'skanning 2 tog ikke laasen - saa maaler proeven intet');
+  await vent(120);   // kl. ~400: skanning 1's probes er afgjort, dens finally har koert
+  assert.equal(b.laast(), true,
+    'skanning 1 slap skanning 2\'s laas i sin finally - en tredje skanning kan nu starte oveni');
+});
