@@ -53,7 +53,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided.',
+    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -96,7 +96,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click_xy',
-    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Combine with browser_screenshot for coordinates.',
+    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Coordinates are CSS pixels, NOT image pixels: convert with the viewport line browser_screenshot returns (x_css = x_in_image / image_width * css_width).',
     inputSchema: {
       type: 'object',
       properties: {

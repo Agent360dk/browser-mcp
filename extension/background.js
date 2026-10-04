@@ -1177,6 +1177,48 @@ async function evalAttached(tabId, expression) {
   return result.result?.value;
 }
 
+// CSS viewport and devicePixelRatio for a screenshot. Page.captureScreenshot returns DEVICE
+// pixels, but browser_click_xy takes CSS pixels. Measured 2026-10-04 at devicePixelRatio 1.65
+// (display scaling 150 % x page zoom 110 %): a position read off the image and passed to
+// click_xy missed by ~450 px, and click_xy still answered landed:true. Read through CDP, so it
+// also works where page scripts are blocked. Best-effort: a screenshot never fails because of it.
+function pngSize(dataUrl) {
+  try {
+    const b64 = String(dataUrl || '').replace(/^data:image\/png;base64,/, '');
+    const bin = atob(b64.slice(0, 44));   // signature (8) + IHDR length/type (8) + width/height (8)
+    if (bin.slice(12, 16) !== 'IHDR') return null;
+    const u32 = (i) => ((bin.charCodeAt(i) << 24) | (bin.charCodeAt(i + 1) << 16) |
+                        (bin.charCodeAt(i + 2) << 8) | bin.charCodeAt(i + 3)) >>> 0;
+    return { width: u32(16), height: u32(20) };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function screenshotViewport(tabId, image) {
+  try {
+    let timer;
+    const m = await Promise.race([
+      cdpSend(tabId, 'Page.getLayoutMetrics', {}),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 1500); }),
+    ]).finally(() => clearTimeout(timer));
+    const css = m?.cssVisualViewport;
+    if (!css?.clientWidth || !css?.clientHeight) return undefined;
+    // The image's own width is the truth; visualViewport (device pixels) is the fallback.
+    const png = pngSize(image);
+    const deviceWidth = png?.width || m?.visualViewport?.clientWidth;
+    if (!deviceWidth) return undefined;
+    return {
+      css_width: Math.round(css.clientWidth),
+      css_height: Math.round(css.clientHeight),
+      device_pixel_ratio: Math.round((deviceWidth / css.clientWidth) * 1000) / 1000,
+      ...(png ? { image_width: png.width, image_height: png.height } : {}),
+    };
+  } catch (e) {
+    return undefined;
+  }
+}
+
 // En tast ned og op igen - og op igen UANSET hvad. MAALT 10/9 af Astra (anden runde): press_key fik
 // keyUp-altid i foerste runde, men de tre hjaelpere der ogsaa sender taster gjorde ikke. Timede et
 // keyDown ud efter at det VAR landet, forlod hjaelperen funktionen foer sit keyUp, og tasten sad fast
@@ -3588,9 +3630,14 @@ async function dispatch(port, method, params) {
         }
       };
 
+      const withViewport = async (shot) => {
+        const viewport = await screenshotViewport(tab.id, shot?.image);
+        return viewport ? { ...shot, viewport } : shot;
+      };
+
       // Attempt 1 — focus-neutral. Handles the vast majority (background-but-visible window).
       try {
-        return await tryCapture();
+        return await withViewport(await tryCapture());
       } catch (firstErr) {
         // 10/9 (Astra, R2) stod her: en frist betyder at kompositoren ikke svarede, saa en ny runde fordobler kun
         // ventetiden. MAALT 11/9 af Fable: paa en TILDAEKKET skaerm haenger begge optagelser netop indtil vinduet haeves -
@@ -3608,7 +3655,7 @@ async function dispatch(port, method, params) {
           await chrome.windows.update(tab.windowId, { focused: true, state: 'normal' });
           await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
           await new Promise(r => setTimeout(r, 250)); // let it composite
-          return await tryCapture({ sidsteUdvej: true });   // resten af budgettet - der er ikke en runde mere efter denne
+          return await withViewport(await tryCapture({ sidsteUdvej: true }));   // resten af budgettet - der er ikke en runde mere efter denne
         } catch (secondErr) {
           throw new Error(
             `Screenshot failed after focus-neutral AND raised attempts. ` +
