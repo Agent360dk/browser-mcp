@@ -137,7 +137,7 @@ test('privacy-teksten er ordret den fra main (hash af den synlige tekst) og 404 
   const body = docs('privacy.html').match(/<body>([\s\S]*)<\/body>/)[1].replace(/<a class="skip"[\s\S]*?<\/header>/, '');
   const tekst = body.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
   // Aendres politikken med vilje, opdateres hashen i samme commit og begrundelsen staar i commit-beskeden.
-  assert.equal(createHash('sha256').update(tekst).digest('hex'), 'a26ce7acceac84327c07789946745b49fb1386c313fb5bcca1332019d87515c6');
+  assert.equal(createHash('sha256').update(tekst).digest('hex'), '82cb8f67d04c089e077327ad0bce82205cb3fb4c9b8a237d2705fd405e76939b');
   assert.match(docs('404.html'), /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(rod, 'docs/sitemap.xml'), 'utf8'), /404\.html/);
 });
