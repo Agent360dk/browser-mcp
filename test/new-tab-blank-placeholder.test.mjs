@@ -18,7 +18,7 @@ function browser(startTabs = []) {
   let u;
   const complete = (id) => setTimeout(() => u.fyr('tabs.onUpdated', id, { status: 'complete' }, tabs.get(id)), 5);
   u = indlaesUdvidelse({ svar: {
-    'tabs.create': ({ url }) => { const t = { id: next++, url, title: url, windowId: 1, active: false }; tabs.set(t.id, t); complete(t.id); return t; },
+    'tabs.create': ({ url }) => { const t = { id: next++, url, title: url, windowId: 1, active: false, status: 'complete' }; tabs.set(t.id, t); complete(t.id); return t; },
     'tabs.get': (id) => { if (!tabs.has(id)) throw new Error('No tab with id: ' + id); return tabs.get(id); },
     'tabs.update': (id, p) => { Object.assign(tabs.get(id), p, p.url ? { title: p.url } : {}); complete(id); return tabs.get(id); },
     'tabs.remove': (id) => { tabs.delete(id); },
@@ -45,7 +45,7 @@ test('a fresh session navigating with new_tab ends up with one tab, not an extra
 // OWN load-complete event arrived after navigate started waiting, so the wait ended before the
 // real URL had loaded. The same race exists on main for a plain navigate as a session's first
 // call: getSessionTab() creates the placeholder and tabs.update() loads into it.
-function browserWithSlowLoad() {
+function browserWithSlowLoad({ placeholderEventUrl } = {}) {
   const tabs = new Map();
   let next = 100;
   let u;
@@ -53,7 +53,8 @@ function browserWithSlowLoad() {
   u = indlaesUdvidelse({ svar: {
     // The placeholder's own load completes 20 ms after create - after navigate is waiting.
     'tabs.create': ({ url }) => { const t = { id: next++, url, title: url, windowId: 1, active: false, status: 'loading' };
-      tabs.set(t.id, t); setTimeout(() => { t.status = 'complete'; fire(t.id); }, 20); return { ...t }; },
+      tabs.set(t.id, t); setTimeout(() => { t.status = 'complete';
+        u.fyr('tabs.onUpdated', t.id, { status: 'complete' }, { ...t, url: placeholderEventUrl ?? t.url }); }, 20); return { ...t }; },
     'tabs.get': (id) => { if (!tabs.has(id)) throw new Error('No tab with id: ' + id); return { ...tabs.get(id) }; },
     // A real URL takes 120 ms to load; until then the tab still shows its old url.
     'tabs.update': (id, p) => { const t = tabs.get(id);
@@ -69,9 +70,11 @@ function browserWithSlowLoad() {
   return { u, tabs };
 }
 
-for (const new_tab of [true, false]) {
-  test(`a first navigate (new_tab: ${new_tab}) waits for the real URL, not the placeholder's own load`, async () => {
-    const { u } = browserWithSlowLoad();
+// The event's tab snapshot cannot be trusted to say about:blank: real Chrome was still measured
+// answering "about:blank" with the url check alone. Covered here with an empty url in the event.
+for (const [new_tab, placeholderEventUrl] of [[true, undefined], [false, undefined], [true, '']]) {
+  test(`a first navigate (new_tab: ${new_tab}, placeholder event url ${JSON.stringify(placeholderEventUrl ?? 'about:blank')}) waits for the real URL`, async () => {
+    const { u } = browserWithSlowLoad({ placeholderEventUrl });
     const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/', new_tab });
     assert.equal(svar.url, 'https://example.com/', `navigate answered before the page loaded: ${JSON.stringify(svar)}`);
   });
