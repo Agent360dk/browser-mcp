@@ -3318,9 +3318,13 @@ async function dispatch(port, method, params) {
         await chrome.tabs.update(tab.id, { url: params.url });
       }
 
-      // Wait for load
+      // Wait for load. A 'complete' while the tab still shows about:blank is the placeholder's
+      // OWN load (getSessionTab() created it a moment ago), not the URL we asked for. Measured
+      // 2026-10-05: taking it made a session's first navigate answer url "about:blank".
+      const awaitingRealUrl = !String(params.url).startsWith('about:');
       await new Promise(resolve => {
-        const listener = (tabId, info) => {
+        const listener = (tabId, info, changedTab) => {
+          if (awaitingRealUrl && String(changedTab?.url || '').startsWith('about:blank')) return;
           if (tabId === tab.id && info.status === 'complete') {
             chrome.tabs.onUpdated.removeListener(listener);
             resolve();
