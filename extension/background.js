@@ -3318,20 +3318,33 @@ async function dispatch(port, method, params) {
         await chrome.tabs.update(tab.id, { url: params.url });
       }
 
-      // Wait for load. A 'complete' while the tab still shows about:blank is the placeholder's
-      // OWN load (getSessionTab() created it a moment ago), not the URL we asked for. Measured
-      // 2026-10-05: taking it made a session's first navigate answer url "about:blank".
+      // Wait for load. A 'complete' can be the about:blank placeholder's OWN load
+      // (getSessionTab() created it a moment ago), not the URL we asked for. Measured
+      // 2026-10-05: taking it made a session's first navigate answer url "about:blank", and
+      // checking the url in the event's tab snapshot was not enough against real Chrome. So
+      // each 'complete' is confirmed against the tab as it is NOW.
       const awaitingRealUrl = !String(params.url).startsWith('about:');
+      const loadedNow = async () => {
+        if (!awaitingRealUrl) return true;
+        const now = await chrome.tabs.get(tab.id).catch(() => null);
+        if (!now) return true;   // tab gone - nothing left to wait for
+        return now.status === 'complete' && !String(now.url || '').startsWith('about:blank');
+      };
       await new Promise(resolve => {
-        const listener = (tabId, info, changedTab) => {
-          if (awaitingRealUrl && String(changedTab?.url || '').startsWith('about:blank')) return;
-          if (tabId === tab.id && info.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(listener);
-            resolve();
-          }
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          chrome.tabs.onUpdated.removeListener(listener);
+          clearTimeout(timer);
+          resolve();
+        };
+        const listener = (tabId, info) => {
+          if (tabId !== tab.id || info.status !== 'complete') return;
+          loadedNow().then((ok) => { if (ok) finish(); });
         };
         chrome.tabs.onUpdated.addListener(listener);
-        setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 15000);
+        const timer = setTimeout(finish, 15000);
       });
 
       // Set as active tab for this session
