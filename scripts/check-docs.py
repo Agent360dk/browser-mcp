@@ -98,7 +98,10 @@ TOOL_CLAIM_EKSTRA = [
 ]
 # MAALT 9/9: forsidens tal stod i en tabel hvor etiketten "Tool count" er paa ÉN linje og
 # tallet paa den naeste. Ingen linje-baseret vagt kan se det, saa raekken tjekkes for sig.
-TOOLCOUNT_RAEKKE = re.compile(r'Tool count', re.I)
+# 6/10 (3c): kun en tabelCELLE med etiketten. Som fri tekst ramte reglen meta-beskrivelsen
+# («…tool counts, and when…») og loeb fire linjer frem til et stjernetal - en falsk alarm, der
+# kom og gik med sidens linjeskift.
+TOOLCOUNT_RAEKKE = re.compile(r'>\s*Tool count\s*<', re.I)
 # Overskrifter undtages. Vaerktoejssiden grupperer efter kategori - "Interaction - 14
 # tools" er et AFSNITS-tal og skal ikke vaere lig totalen. Alt andet er en paastand om
 # hvor mange vaerktoejer produktet har, og den skal passe.

@@ -353,11 +353,129 @@ def sidebar(active):
             h+='<a href="%s/"%s>%s</a>'%(url,cls,label)
     return h
 
+# ── Topsektion (6/10-2026, 3c) ───────────────────────────────────────────────
+# Gustav 6/10: «hver side åbner med noget at se på, ikke en tekstvæg» - samme princip som
+# computermcp.dev's undersider. Figuren bygges KUN af sidens eget indhold (kommandoen, den prompt
+# siden selv beder en om at sige, værktøjskategorierne, samtalen i sidens første eksempel,
+# overskrifterne), så den aldrig kan påstå noget siden ikke selv siger. Ingen billeder, intet script.
+CWS_URL='https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl'
+GRUPPEFARVER=['blue','green','yellow','red','pink','purple','cyan','orange']  # = SESSION_COLORS i extension/background.js
+_TALER=r'(You|Claude Code|Claude|Codex|Cursor|Copilot|Gemini|Agent|Windsurf|Cline)'
+
+def _pre_tekster(body):
+    return [html.unescape(p) for p in re.findall(r'<pre[^>]*>(.*?)</pre>', body, re.S)]
+
+def _samtale(tekst):
+    """Et eksempel som «You: … / Claude: […] …» -> [(taler, [(er_handling, tekst)])], eller None."""
+    ture=[]
+    for linje in tekst.split('\n'):
+        m=re.match(r'^%s:\s*(.*)$'%_TALER, linje)
+        if m: ture.append([m.group(1), m.group(2).strip()]); continue
+        if ture and linje.strip(): ture[-1][1]+='\n'+linje.strip()
+    if len(ture)<2 or ture[0][0]!='You': return None
+    ud=[]
+    for taler,t in ture[:4]:
+        dele=[]
+        for stk in re.split(r'(\[[^\]]*\])', t):
+            stk=' '.join(stk.split())
+            if stk: dele.append((stk.startswith('[') and stk.endswith(']'), stk.strip('[]') if stk.startswith('[') else stk))
+        ud.append((taler,dele))
+    return ud
+
+def _vis_samtale(ture):
+    h='<div class="chat">'
+    for taler,dele in ture:
+        h+='<div class="turn %s"><span class="who">%s</span><div class="say">'%('you' if taler=='You' else 'ai', html.escape(taler))
+        for handling,t in dele:
+            h+=('<span class="act" translate="no">%s</span>' if handling else '<span>%s</span>')%html.escape(t)
+        h+='</div></div>'
+    return h+'</div>'
+
+def _gruppeliste(tekst):
+    """«● blue    Claude 1  - Claude Code, reading …» -> [(farve, navn, rest)]"""
+    r=[]
+    for linje in tekst.split('\n'):
+        m=re.match(r'^\s*●\s+(\w+)\s+(Claude \d+)\s+-\s+(.*)$', linje)
+        if m and m.group(1) in GRUPPEFARVER: r.append(m.groups())
+    return r if len(r)>=2 else None
+
+def _boks(tekst):
+    """En ASCII-tegnet spørgeboks (┌ │ └) -> beskeden indeni, ellers None."""
+    if '┌' not in tekst or '│' not in tekst: return None
+    inde=[l.strip().strip('│').strip() for l in tekst.split('\n') if l.strip().startswith('│')]
+    besked=[l for l in inde if l and not re.fullmatch(r'\[_*\]', l)]
+    return besked[0] if besked else None
+
+def _figur(url, grp, body):
+    pre=_pre_tekster(body)
+    if url.startswith('/docs/install-'):
+        kmd=next((p for p in pre if '@agent360/browser-mcp' in p), None)
+        if kmd is None: return None
+        linjer=kmd.strip('\n').split('\n')
+        kort='\n'.join(linjer[:9])+('\n…' if len(linjer)>9 else '')
+        h='<div class="steps"><div class="step"><b>1</b><div><strong>The Chrome extension</strong><a class="pill" href="%s">Add to Chrome</a></div></div>'%CWS_URL
+        h+='<div class="step"><b>2</b><div><strong>The server, in your client</strong><pre class="term" translate="no">%s</pre></div></div>'%html.escape(kort)
+        if 'Open example.com and take a screenshot.' in body:
+            h+='<div class="step"><b>3</b><div><strong>Then say</strong><span class="prompt">Open example.com and take a screenshot.</span></div></div>'
+        return 'Two halves, both required', h+'</div>'
+    if url=='/docs/tools':
+        kat=[(html.unescape(re.sub(r'<[^>]+>','',a)).strip(), int(b)) for a,b in re.findall(r'<h2[^>]*>(.*?) - (\d+) tools?</h2>', body)]
+        if not kat: return None
+        h='<div class="big"><b>%d</b><span>tools, in %d groups</span></div><div class="cats">'%(sum(n for _,n in kat), len(kat))
+        h+=''.join('<span><em>%d</em>%s</span>'%(n, html.escape(k)) for k,n in kat)
+        return 'What your agent can call', h+'</div>'
+    for p in pre[:3]:
+        g=_gruppeliste(p)
+        if g:
+            h='<div class="groups">'+''.join('<div><span class="chip" style="--c:var(--g-%s);--on:var(--on-%s)">%s</span><span>%s</span></div>'%(f,f,html.escape(n),html.escape(r)) for f,n,r in g)+'</div>'
+            return 'Your tab strip', h
+    for p in pre[:3]:
+        b=_boks(p)
+        if b:
+            kode=re.search(r'^You:\s*(\d{6})\s*$', p, re.M)
+            h='<div class="askcard"><div class="ti">Agent360 - Action Required</div><div class="bd">Claude 1</div><div class="ms">%s</div>'%html.escape(b)
+            h+='<div class="in">%s</div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>'%(kode.group(1) if kode else '&nbsp;')
+            return 'The box that appears in the tab', h
+    if url=='/docs/troubleshooting':
+        sym=[html.unescape(re.sub(r'<[^>]+>','',t)).strip() for i,t in re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', body)]
+        sym=[s for s in sym if s and not re.match(r'(First|Why publish|Related)', s)]
+        if sym: return 'Symptoms on this page', '<div class="sym">'+''.join('<a href="#%s">%s</a>'%(i,html.escape(html.unescape(re.sub(r'<[^>]+>','',t)).strip())) for i,t in re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', body) if html.unescape(re.sub(r'<[^>]+>','',t)).strip() in sym)+'</div>'
+    if grp in ('Use cases','Learn','Compare'):
+        # Kun et eksempel der staar foer sidens andet afsnit: saa flyttes det op i figuren og fjernes
+        # nedenfor (ellers stod samme samtale to gange paa én skaerm). Et eksempel dybere nede hoerer
+        # til sit afsnit og bliver der.
+        h2=[m.start() for m in re.finditer(r'<h2[ >]', body)]
+        graense=h2[1] if len(h2)>1 else len(body)
+        for m in list(re.finditer(r'<div class="code"><pre[^>]*>(.*?)</pre><button class="copy">Copy</button></div>', body, re.S))[:2]:
+            if m.start()>graense: break
+            s=_samtale(html.unescape(m.group(1)))
+            if s: return 'What it looks like', _vis_samtale(s), m.group(0)
+    afsnit=[(i,html.unescape(re.sub(r'<[^>]+>','',t)).strip()) for i,t in re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', body)]
+    afsnit=[(i,t) for i,t in afsnit if t and t not in ('Related','FAQ','Frequently asked questions')]
+    if len(afsnit)<3: return None
+    return 'On this page', '<ol class="toc">'+''.join('<li><a href="#%s">%s</a></li>'%(i,html.escape(t)) for i,t in afsnit[:7])+'</ol>'
+
+def subhero(url, grp, body):
+    m=re.match(r'\s*(<h1[^>]*>.*?</h1>)\s*(?:<hr>\s*)?(<p>.*?</p>)?', body, re.S)
+    if not m: return body
+    fig=_figur(url, grp, body)
+    tekst='<p class="crumb">%s</p>%s%s'%(html.escape(grp), m.group(1), m.group(2) or '')
+    rest=re.sub(r'^\s*<hr>\s*', '', body[m.end():])  # topsektionens egen kant erstatter den foerste streg
+    if fig is None:
+        return '<header class="subhero">%s</header>'%tekst+rest
+    titel,indhold=fig[0],fig[1]
+    if len(fig)>2:
+        rest=rest.replace(fig[2],'',1)
+        rest=re.sub(r'(<h2[^>]*>[^<]*</h2>)\s*(?=<h2|<hr>|$)', '', rest, count=1)  # et afsnit der kun bestod af eksemplet
+    return ('<header class="subhero">%s<figure class="viz"><div class="bar"><i></i><i></i><i></i><span>%s</span></div><div class="vin">%s</div></figure></header>'
+            %(tekst, html.escape(titel), indhold))+rest
+
 nfaq=0
 for fn,grp,label,url in LIVE:
     lines=clean_lines(SOURCES[url])
     title=title_of(lines); desc=meta_desc(lines, SOURCES[url]); faq=extract_faq(lines); nfaq+=1 if faq else 0
     body=md_to_html(lines)
+    body=subhero(url,grp,body)
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq,git_datoer(fn))+'\n</head><body>'
     # 2/10-2026: samme header som den nye forside (rigtigt logo, skip-link, <main id>, navigation med aria-label).
     page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star" href="https://github.com/Agent360dk/browser-mcp">GitHub</a></nav></div></header>'
