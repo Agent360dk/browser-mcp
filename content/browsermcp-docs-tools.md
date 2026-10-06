@@ -1,6 +1,6 @@
 # Tools
 
-Browser MCP exposes **40 tools** to the connected agent. Page and tab tools act on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. `browser_fetch` sends its request from the extension in the background, without a tab, and `browser_about` and `browser_provide_feedback` are answered by the local server. It all runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
+Browser MCP exposes **40 tools** to the connected agent. Page and tab tools act on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. `browser_fetch` sends its request from the extension in the background, without a tab, and `browser_about` and `browser_provide_feedback` are answered by the local server. The browser work runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
 
 ---
 

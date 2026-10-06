@@ -141,7 +141,7 @@ Because the store can only give you the extension, and the extension is a bridge
 No - that is Chrome's standard notice whenever the Debugger API is attached. It disappears when the session ends.
 
 **Do these bugs affect what data leaves my machine?**
-No. None of the issues above send anything anywhere. The server and the extension bridge run locally, and what your agent reads goes only to your AI client, as always.
+No. None of the issues above send anything anywhere. The server and the extension bridge run locally, and what your agent reads goes to your AI client (and, if that client uses a cloud model, on to its model provider), as always.
 
 **Where do I report something not listed here?**
 [Open a bug report](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml) - the template takes two minutes, and dogfooding plus user reports is exactly how the list above got built.

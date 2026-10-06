@@ -486,8 +486,9 @@ account and no server of ours between you and the page.
   tool result. Nowhere else, and never to us.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
   analytics in the extension or the server.
-- Everything the server does runs on `localhost` between the extension and the
-  MCP client on the same machine. That bridge is **local and unauthenticated**:
+- The bridge between the extension and the MCP client runs on `localhost`, on
+  the same machine; the server reaches the network only for the npm version check
+  you can turn on with `BROWSER_MCP_CHECK_NPM=1`. That bridge is **local and unauthenticated**:
   another program running as you on the same machine can connect to it. Browser
   MCP does not protect you from software you already run.
 
