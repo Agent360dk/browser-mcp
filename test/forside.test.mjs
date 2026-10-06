@@ -128,6 +128,14 @@ test('forsiden lover ikke det koden ikke goer (Astra 2/10)', () => {
   ]) assert.doesNotMatch(t, m, hvorfor);
 });
 
+test('popup og README lover heller ikke fanen brugeren selv har aaben (3c 5/10: rettet paa forsiden, stod stadig i popup og npm-README)', () => {
+  for (const fil of ['extension/popup.html', 'mcp-server/extension/popup.html', 'README.md', 'mcp-server/README.md']) {
+    const t = readFileSync(join(rod, fil), 'utf8');
+    assert.doesNotMatch(t, /current Chrome tab/i, `${fil}: agenten screenshotter kun egne faner; en frisk session ser about:blank`);
+    assert.doesNotMatch(t, /\bmy Gmail tab\b|own Gmail tab/i, `${fil}: agenten aabner selv Gmail i sin egen fane`);
+  }
+});
+
 test('ingen lange tankestreger i forsidens synlige tekst', () => {
   const udenKode = html.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '');
   assert.doesNotMatch(udenKode, /[–—]|&[mn]dash;|&#821[12];/);
