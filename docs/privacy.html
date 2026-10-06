@@ -22,7 +22,7 @@
 <a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star" href="https://github.com/Agent360dk/browser-mcp">GitHub</a></nav></div></header>
 <div class="shell solo"><main class="content" id="main">
   <h1>Privacy Policy</h1>
-  <p class="updated">Last updated: October 4, 2026</p>
+  <p class="updated">Last updated: October 6, 2026</p>
 
   <p><strong>Browser MCP</strong> is an open source Chrome extension + MCP server by <a href="https://agent360.dk">Agent360</a>. We take your privacy seriously.</p>
 
@@ -42,7 +42,7 @@
   <ul>
     <li>The Chrome extension communicates with a local MCP server via WebSocket (localhost only)</li>
     <li>The MCP server communicates with Claude Code (or other MCP clients) via stdio</li>
-    <li>Browser MCP itself contacts no server of ours or any third party, unless you turn on its optional npm version check (<code>BROWSER_MCP_CHECK_NPM=1</code>). What does leave your machine: the pages your agent reads go to your AI client and on to its model provider; the browser visits the sites your agent opens; and <code>npx @agent360/browser-mcp@latest</code> looks the package up on npm once when the server starts</li>
+    <li>Browser MCP itself contacts no server of ours or any third party, unless you turn on its optional npm version check (<code>BROWSER_MCP_CHECK_NPM=1</code>). What does leave your machine: the pages your agent reads go to your AI client and, if that client uses a cloud model, on to its model provider; the browser visits the sites your agent opens, and <code>browser_fetch</code> requests the addresses your agent asks for; and <code>npx @agent360/browser-mcp@latest</code> may look the package up on npm when the server starts</li>
   </ul>
 
   <p>The localhost WebSocket bridge is not password-protected - it trusts connections from your own machine. That means the extension is only as private as your computer: any software already running on it could, in principle, connect to the same local port. Browser MCP never exposes this bridge beyond <code>localhost</code>, and the bridge itself sends nothing off your machine. If you share your computer with untrusted software, disable or remove the extension when you are not using it.</p>
