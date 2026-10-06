@@ -129,10 +129,12 @@ test('forsiden lover ikke det koden ikke goer (Astra 2/10)', () => {
 });
 
 test('popup og README lover heller ikke fanen brugeren selv har aaben (3c 5/10: rettet paa forsiden, stod stadig i popup og npm-README)', () => {
-  for (const fil of ['extension/popup.html', 'mcp-server/extension/popup.html', 'README.md', 'mcp-server/README.md']) {
+  for (const fil of ['extension/popup.html', 'mcp-server/extension/popup.html', 'README.md', 'mcp-server/README.md', 'content/browsermcp-docs-what-is-browser-mcp.md', 'docs/docs/what-is-browser-mcp/index.html']) {
     const t = readFileSync(join(rod, fil), 'utf8');
     assert.doesNotMatch(t, /current Chrome tab/i, `${fil}: agenten screenshotter kun egne faner; en frisk session ser about:blank`);
     assert.doesNotMatch(t, /\bmy Gmail tab\b|own Gmail tab/i, `${fil}: agenten aabner selv Gmail i sin egen fane`);
+    assert.doesNotMatch(t, /another tab you have open/i, `${fil}: agenten ser kun sessionens egne faner (Opus R18)`);
+    assert.doesNotMatch(t, /example\.com\/signup|app\.example\.com/i, `${fil}: forsoegsprompter maa ikke pege paa adresser der ikke er en formular eller app (Opus R18)`);
   }
 });
 

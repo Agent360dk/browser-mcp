@@ -63,7 +63,7 @@ If your task is "verify my checkout flow still works in a clean environment," re
 
 Most of the software a person actually uses in a day - a CRM, an internal admin panel, LinkedIn, a bank portal, a SaaS dashboard with no public API - is guarded by exactly the things headless automation struggles with: a login wall, a 2FA prompt, or a bot-detection layer that headless browsers trip by default (see [Chrome Web Store distribution model](https://developer.chrome.com/docs/webstore) for how the extension itself is delivered like any other Chrome extension, not a special automation binary).
 
-Because Browser MCP drives your real, already-authenticated Chrome, an agent using it doesn't need to solve the login problem at all - it's already logged in, the same way you are. When a site does throw a one-time verification step mid-flow, the agent can pause, read the code from another tab you have open (your email client, an authenticator page), and continue - with you watching and able to step in via `browser_ask_user` at any point that needs a human decision.
+Because Browser MCP drives your real, already-authenticated Chrome, an agent using it doesn't need to solve the login problem at all - it's already logged in, the same way you are. When a site does throw a one-time verification step mid-flow, the agent can pause, open your email in a tab of its own (you are already signed in there), read the code, and continue - with you watching and able to step in via `browser_ask_user` at any point that needs a human decision.
 
 ## Is Browser MCP free, and where does my data go?
 
