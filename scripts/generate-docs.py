@@ -374,7 +374,7 @@ def _samtale(tekst):
         if ture and linje.strip(): ture[-1][1]+='\n'+linje.strip()
     if len(ture)<2 or ture[0][0]!='You': return None
     ud=[]
-    for taler,t in ture[:4]:
+    for taler,t in ture:   # alle ture: eksemplet fjernes nedenfor, saa intet maa forsvinde (R25)
         dele=[]
         for stk in re.split(r'(\[[^\]]*\])', t):
             stk=' '.join(stk.split())
@@ -409,7 +409,9 @@ def _boks(tekst):
 def _figur(url, grp, body):
     pre=_pre_tekster(body)
     if url.startswith('/docs/install-'):
-        kmd=next((p for p in pre if '@agent360/browser-mcp' in p), None)
+        # `npx … install` tilmelder kun Claude Code, Codex, VS Code og Cursor (cli.js:200-204); paa andre
+        # klienters sider er det ikke «serveren i din klient» (R25, ZCode-siden).
+        kmd=next((p for p in pre if '@agent360/browser-mcp' in p and not re.search(r'@agent360/browser-mcp(?:@latest)?\s+install\b', p)), None)
         if kmd is None: return None
         linjer=kmd.strip('\n').split('\n')
         kort='\n'.join(linjer[:9])+('\n…' if len(linjer)>9 else '')
@@ -465,8 +467,12 @@ def subhero(url, grp, body):
         return '<header class="subhero">%s</header>'%tekst+rest
     titel,indhold=fig[0],fig[1]
     if len(fig)>2:
-        rest=rest.replace(fig[2],'',1)
-        rest=re.sub(r'(<h2[^>]*>[^<]*</h2>)\s*(?=<h2|<hr>|$)', '', rest, count=1)  # et afsnit der kun bestod af eksemplet
+        # Overskriften lige over eksemplet hoerer til eksemplet, som nu staar i figuren - ellers stod
+        # «What it looks like» tilbage over en kommentar til et eksempel, der var flyttet (R25).
+        med_overskrift=re.compile(r'<h2[^>]*>[^<]*</h2>\s*'+re.escape(fig[2]))
+        rest=med_overskrift.sub('', rest, count=1) if med_overskrift.search(rest) else rest.replace(fig[2],'',1)
+        rest=re.sub(r'^\s*(<hr>\s*)+', '', rest)
+        rest=re.sub(r'<hr>\s*(?=<hr>)', '', rest)
     return ('<header class="subhero">%s<figure class="viz"><div class="bar"><i></i><i></i><i></i><span>%s</span></div><div class="vin">%s</div></figure></header>'
             %(tekst, html.escape(titel), indhold))+rest
 

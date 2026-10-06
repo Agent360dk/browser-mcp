@@ -193,7 +193,12 @@ test('ingen flade lover en installationstid, der aldrig er maalt', () => {
   const fund = [];
   for (const fil of filer) {
     readFileSync(join(rod, fil), 'utf8').split('\n').forEach((linje, i) => {
-      if (/about (?:60|90|a few) seconds|about a minute|in (?:under )?(?:a|one) minute|(?:60|90)[- ]second (?:install|setup)/i.test(linje)) fund.push(`${fil}:${i + 1}`);
+      // R25: «in 90 seconds» og «in under two minutes» gled igennem. Tiden taeller kun naer et ord om
+      // installation/opsaetning, saa «Contribute in 30 seconds» og «takes two minutes» (en fejlrapport) er fri.
+      const tid = String.raw`\b(?:in|under|takes?|within)\s+(?:about\s+|under\s+|less than\s+)?(?:\d+|a|one|two|three|a few)[- ](?:seconds?|minutes?)\b`;
+      const op = String.raw`(?:install|set ?up|setup|up and running|four steps|get started)`;
+      if (/about (?:60|90|a few) seconds|about a minute|(?:60|90)[- ]second (?:install|setup)/i.test(linje)
+        || new RegExp(`${op}[^.\\n]{0,60}${tid}|${tid}[^.\\n]{0,40}${op}`, 'i').test(linje)) fund.push(`${fil}:${i + 1}`);
     });
   }
   assert.deepEqual(fund, [], `umaalt installationstid:\n  ${fund.join('\n  ')}`);

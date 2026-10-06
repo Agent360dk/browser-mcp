@@ -15,9 +15,9 @@ An agent automating a real task hits a login that sends a one-time code to your 
 ## The walkthrough
 
 1. **The agent hits the 2FA prompt.** It's filling a login on some site (using `browser_fill` and `browser_click`) and the site says "we've emailed you a code."
-2. **It opens your Gmail - already signed in.** `browser_navigate` to `mail.google.com`. There's no login step, because this is the Chrome where you're already authenticated. Your session, your cookies.
+2. **It opens your Gmail - already signed in.** `browser_navigate` to `mail.google.com` with `new_tab: true`. There's no login step, because this is the Chrome where you're already authenticated. Your session, your cookies.
 3. **It reads the newest message.** `browser_get_page_content` returns the inbox text; the agent finds the latest sender/subject that matches and reads the code out of the body.
-4. **It types the code back and continues.** Back to the login tab, `browser_fill` the code, submit, done - the task carries on past the wall.
+4. **It types the code back and continues.** `browser_switch_tab` back to the login tab, `browser_fill` the code, submit, done - the task carries on past the wall.
 5. **If it's unsure, it asks you.** `browser_ask_user` lets the agent pause and confirm with a human before doing anything sensitive - a built-in checkpoint, not an afterthought.
 
 That's the whole move. No new integration, no secret to store. The code goes back to your agent like any tool result, and is never sent to us.

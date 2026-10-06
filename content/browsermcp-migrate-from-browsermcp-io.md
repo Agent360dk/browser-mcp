@@ -48,7 +48,7 @@ browser access"*, the client is still holding the old server - restart it.
 
 `browser_click` · `browser_hover` · `browser_navigate` · `browser_press_key` · `browser_screenshot` · `browser_select_option` · `browser_wait`
 
-Those work unchanged. Prompts and scripts that name them keep working.
+The names match, but their arguments are not always the same. Our `browser_wait` waits for a selector, not a number of seconds, so a call like `{"time": 1}` fails here. Check each call before you switch.
 
 ## Three have a different name
 
@@ -79,7 +79,7 @@ No. Two teams, two GitHub organisations, two npm packages, two Chrome extensions
 You can install both extensions, but you should not. Chrome allows one debugger per tab, so the two fight over it and every mouse, key and file tool starts failing with errors that point at the page rather than at the conflict.
 
 **Will my existing prompts break?**
-Only where they name `browser_type`, `browser_snapshot`, `browser_get_console_logs`, or one of the three we do not have.
+Where they name `browser_type`, `browser_snapshot`, `browser_get_console_logs` or one of the three we do not have, and where they call a matching tool with arguments ours does not take - `browser_wait` with a number of seconds is the one to look for.
 
 **Is it a drop-in replacement?**
-For seven of thirteen tools, yes. We would rather say "mostly, and here is the list" than "yes".
+No. Seven tool names match, but their arguments and behaviour are not necessarily the same - our `browser_wait` waits for a selector rather than a number of seconds. We would rather say "close, and here is the list" than "yes".

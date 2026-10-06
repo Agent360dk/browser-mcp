@@ -166,7 +166,7 @@ the code did not keep it. Both names are on every answer now.
 out, the tool is supposed to answer `maybe_landed` - the third answer this whole page argues for -
 and warn against repeating blindly. It recognised that timeout by matching the *text of its own
 error message*, in four separate places. We translated the agent-facing strings to English in the
-same release (a few Danish ones are still left in the code and are being translated). Had we shipped the translation without noticing, the timeout would have stopped being
+same release (a few Danish ones are still left in the code). Had we shipped the translation without noticing, the timeout would have stopped being
 recognised, `maybe_landed` would have quietly become a plain failure, and the agent would have been
 told to retry an action that may already have gone through. The behaviour we are proudest of was
 resting on a sentence in Danish. It now carries a flag.

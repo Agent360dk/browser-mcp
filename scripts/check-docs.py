@@ -77,7 +77,8 @@ if _dubletter:
 # ---- 1. tool count ----------------------------------------------------------
 TOOLCOUNT = len(re.findall(r"""name: ['\"]browser_""", open(os.path.join(ROOT, 'mcp-server', 'tools.js')).read()))
 claim_files = glob.glob(DOCS + '/**/*.html', recursive=True) + \
-              glob.glob(os.path.join(ROOT, 'content', '*.md')) + [os.path.join(ROOT, 'README.md')]
+              glob.glob(os.path.join(ROOT, 'content', '*.md')) + [os.path.join(ROOT, 'README.md')] + \
+              [os.path.join(DOCS, 'llms.txt'), os.path.join(ROOT, 'llms-install.md')]   # R25: det AI'erne laeser
 claim_files = [f for f in claim_files if os.path.isfile(f)]
 # MAALT 21/8: moenstret var kun "N browser tools". Formen "N tools" - som er den
 # der bruges paa naesten hver side - slap forbi, saa 45 paastande om "40 tools"
@@ -101,7 +102,7 @@ TOOL_CLAIM_EKSTRA = [
 # 6/10 (3c): kun en tabelCELLE med etiketten. Som fri tekst ramte reglen meta-beskrivelsen
 # («…tool counts, and when…») og loeb fire linjer frem til et stjernetal - en falsk alarm, der
 # kom og gik med sidens linjeskift.
-TOOLCOUNT_RAEKKE = re.compile(r'>\s*Tool count\s*<', re.I)
+TOOLCOUNT_ETIKET = re.compile(r'Tool count\b(?:\s*\([^)]*\))?\s*$', re.I)
 # Overskrifter undtages. Vaerktoejssiden grupperer efter kategori - "Interaction - 14
 # tools" er et AFSNITS-tal og skal ikke vaere lig totalen. Alt andet er en paastand om
 # hvor mange vaerktoejer produktet har, og den skal passe.
@@ -146,13 +147,19 @@ for f in claim_files:
                 if andres and tal in KONKURRENT_TAL:
                     continue
                 fail('%s claims "%s" but tools.js defines %d' % (os.path.relpath(f, ROOT), m.group(0).strip(), TOOLCOUNT))
-        # Tabelraekken "Tool count" har etiketten paa én linje og tallet paa de naeste.
-        if TOOLCOUNT_RAEKKE.search(linje):
-            naeste = ' '.join(linjer[nr + 1:nr + 5])
-            vores = re.findall(r'>(\d+)<', naeste)
-            if vores and int(vores[0]) != TOOLCOUNT:
+    # Tabelraekken "Tool count" (ogsaa «Tool count (ours)») laeses som HEL raekke, uanset linjeskift:
+    # etiketten skal staa i raekkens foerste celle, og tallet tages fra raekkens egne celler (R25).
+    tekst = '\n'.join(linjer)
+    for raekke in re.findall(r'<tr[^>]*>(.*?)</tr>', tekst, re.S | re.I):
+        celler = [re.sub(r'<[^>]+>', ' ', c).strip() for c in re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', raekke, re.S | re.I)]
+        if celler and TOOLCOUNT_ETIKET.match(celler[0]):
+            tal = [int(t) for c in celler[1:] for t in re.findall(r'\b(\d+)\b', c)]
+            if tal and tal[0] != TOOLCOUNT:
                 fail('%s: "Tool count"-raekken siger %s, tools.js definerer %d'
-                     % (os.path.relpath(f, ROOT), vores[0], TOOLCOUNT))
+                     % (os.path.relpath(f, ROOT), tal[0], TOOLCOUNT))
+    for m in re.finditer(r'^\|\s*Tool count[^|]*\|\s*\D*?(\d+)', tekst, re.M | re.I):
+        if int(m.group(1)) != TOOLCOUNT:
+            fail('%s: "Tool count"-raekken siger %s, tools.js definerer %d' % (os.path.relpath(f, ROOT), m.group(1), TOOLCOUNT))
 
 # ---- 1b. tools reference page lists exactly the tools.js tool set ----------
 tools_page = os.path.join(DOCS, 'docs', 'tools', 'index.html')

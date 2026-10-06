@@ -223,7 +223,7 @@ Chrome blocks extensions from self-installing from npm or any script - that's a 
 Not to us. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. What your agent reads goes to your AI client and on to its model provider, like anything else you show it - there is no Agent360 server.
 
 **How do I update it?**
-The MCP server updates itself as long as your config says `@agent360/browser-mcp@latest` - without `@latest`, npx keeps reusing its cached copy. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
+Use `@agent360/browser-mcp@latest` in your config to ask for the latest release each time the server starts; restart Cursor to update. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" - what do I check?**
 First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to your `mcp.json`, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart Cursor. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2-3 seconds - it scans ports 9876-9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).
