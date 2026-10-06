@@ -134,7 +134,7 @@ test('popup og README lover heller ikke fanen brugeren selv har aaben (3c 5/10: 
     assert.doesNotMatch(t, /current Chrome tab/i, `${fil}: agenten screenshotter kun egne faner; en frisk session ser about:blank`);
     assert.doesNotMatch(t, /\bmy Gmail tab\b|own Gmail tab/i, `${fil}: agenten aabner selv Gmail i sin egen fane`);
     assert.doesNotMatch(t, /another tab you have open/i, `${fil}: agenten ser kun sessionens egne faner (Opus R18)`);
-    assert.doesNotMatch(t, /<your [^>]*>/i, `${fil}: vinkelparenteser forsvinder i GitHubs og npms markdown (Opus R19)`);
+    assert.doesNotMatch(t, /<(?:your|url|site|page|app)\b[^>]*>/i, `${fil}: vinkelparenteser forsvinder i GitHubs og npms markdown (Opus R19)`);
   }
 });
 
