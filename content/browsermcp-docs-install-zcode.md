@@ -1,10 +1,10 @@
 // KILDE: https://zcode.z.ai/en/docs/mcp-services
 
 # Add Browser MCP to ZCode
-*Suggested meta description: "About 90 seconds. Your agent works in your real, already-logged-in Chrome instead of a separate browser, so nothing needs logging in twice."*
+*Suggested meta description: "Four steps. Your agent works in your real, already-logged-in Chrome instead of a separate browser, so nothing needs logging in twice."*
 
 
-**Give your ZCode agent control of your real, already-logged-in Chrome - about 90 seconds, four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give your ZCode agent control of your real, already-logged-in Chrome in four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 ## The whole thing, in four steps
 

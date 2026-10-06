@@ -4,7 +4,7 @@
 *Suggested meta description: "Copilot gets your real, already-logged-in Chrome rather than a fresh profile, so it can work on pages that need a session."*
 
 
-**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome - about 90 seconds, four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome in four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 ## One click
 

@@ -184,6 +184,21 @@ test('en citeret sessions-fejl naevner sessionen ved dens rigtige navn, Claude N
   assert.deepEqual(fund, [], `sessionen hedder Claude N i koden:\n  ${fund.join('\n  ')}`);
 });
 
+// 6/10 (3c): forsiden maa ikke love «about a minute» (forside.test), fordi installationstiden aldrig er
+// maalt - men 13 installationssider lovede «about 90 seconds» og «about 60 seconds». Samme loefte,
+// anden ordlyd. Vagten daekker nu alle flader, ogsaa meta-beskrivelserne i kilderne.
+test('ingen flade lover en installationstid, der aldrig er maalt', () => {
+  const filer = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md')).map((f) => `content/${f}`)
+    .concat(['README.md', 'mcp-server/README.md', 'llms-install.md', 'docs/index.html', 'docs/llms.txt']);
+  const fund = [];
+  for (const fil of filer) {
+    readFileSync(join(rod, fil), 'utf8').split('\n').forEach((linje, i) => {
+      if (/about (?:60|90|a few) seconds|about a minute|in (?:under )?(?:a|one) minute|(?:60|90)[- ]second (?:install|setup)/i.test(linje)) fund.push(`${fil}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(fund, [], `umaalt installationstid:\n  ${fund.join('\n  ')}`);
+});
+
 // ── Et citat i anfoerselstegn skal vaere et CITAT ───────────────────────────
 // FUNDET 19/9 af Fable: /learn/tools-that-lie/ satte remedien i anfoerselstegn som det
 // vaerktoejet svarer - «"this tab is in the background, call `browser_switch_tab`"» - mens

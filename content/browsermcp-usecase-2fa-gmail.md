@@ -67,4 +67,4 @@ Yes - the `browser_ask_user` tool lets it pause for a human decision at any step
 Yes - any webmail you're logged into in your Chrome. Gmail is just the common case; the mechanism is "read the tab you're already signed into."
 
 **How do I set this up?**
-[Install Browser MCP for Claude Code](/docs/install-claude-code/) (about 60 seconds), then ask your agent to complete a flow that hits a 2FA wall.
+[Install Browser MCP for Claude Code](/docs/install-claude-code/), then ask your agent to complete a flow that hits a 2FA wall.

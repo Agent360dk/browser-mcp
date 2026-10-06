@@ -34,7 +34,7 @@
 
 ## Docs
 
-- [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the ~60-second setup, both halves. Cursor, VS Code, Codex and ZCode guides are alongside it.
+- [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the setup, both halves. Cursor, VS Code, Codex and ZCode guides are alongside it.
 - [All 40 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, generated from source.
 - [Uninstall & data](https://browsermcp.dev/docs/uninstall/): full removal + every Chrome permission explained.
 - [When NOT to use it](https://browsermcp.dev/docs/when-not-to-use/): honest guide - CI/headless/scale belong to other tools.
