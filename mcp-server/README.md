@@ -137,8 +137,8 @@ Nothing happens until you ask, and the hardest part of a new tool is knowing wha
 | *"Open example.com and take a screenshot."* | **Start here.** An image back instead of *"I don't have browser access"* means both halves are talking. That is the whole install test. |
 | *"Open Gmail and tell me who sent my last 3 emails."* | The one that shows the difference - it works because it is *your* browser, already signed in. A fresh headless browser would hit a login wall here. |
 | *"Go to my analytics dashboard, pull this month's numbers, and put them in a table."* | A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first. |
-| *"Fill in the signup form at <your page> with my details. Stop and ask me before anything sensitive."* | You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone. |
-| *"Log me in at <your app>. If it emails a code, open Gmail, read the code and continue."* | The move that needs no email-API setup: it opens your Gmail, reads the one-time code and finishes the sign-in. |
+| *"Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive."* | You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone. |
+| *"Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue."* | The move that needs no email-API setup: it opens your Gmail, reads the one-time code and finishes the sign-in. |
 | *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
 
 The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
