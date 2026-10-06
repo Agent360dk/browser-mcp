@@ -170,6 +170,20 @@ test('hver citeret fejlbesked paa siderne findes ogsaa i koden', () => {
   assert.deepEqual(fund, [], `fejlbeskeder der ikke findes i koden:\n  ${fund.join('\n  ')}`);
 });
 
+// 6/10 (3c): vagten ovenfor skaerer parentesen fra, saa «(green)» slap igennem, selv om koden
+// skriver sessionens NAVN der: `does not belong to this session (${session.label})`, og navnet er
+// altid «Claude N» (background.js), uanset klient og farve.
+test('en citeret sessions-fejl naevner sessionen ved dens rigtige navn, Claude N', () => {
+  const fund = [];
+  for (const fil of readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'))) {
+    readFileSync(join(rod, 'content', fil), 'utf8').split('\n').forEach((linje, i) => {
+      const m = linje.match(/does not belong to this session \(([^)]*)\)/);
+      if (m && !/^Claude \d+$/.test(m[1])) fund.push(`content/${fil}:${i + 1}  (${m[1]})`);
+    });
+  }
+  assert.deepEqual(fund, [], `sessionen hedder Claude N i koden:\n  ${fund.join('\n  ')}`);
+});
+
 // ── Et citat i anfoerselstegn skal vaere et CITAT ───────────────────────────
 // FUNDET 19/9 af Fable: /learn/tools-that-lie/ satte remedien i anfoerselstegn som det
 // vaerktoejet svarer - «"this tab is in the background, call `browser_switch_tab`"» - mens

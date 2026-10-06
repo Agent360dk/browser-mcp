@@ -1,8 +1,6 @@
 # Tools
 
-Browser MCP exposes **40 tools** to the connected agent. Every tool acts on the active Chrome tab (or a tab/frame you target explicitly) via the Browser MCP extension - no headless browser, no Playwright binary.
-
-Source of truth: `mcp-server/tools.js` (`TOOLS` array). Regenerate this page from that file if tool names, params, or descriptions change.
+Browser MCP exposes **40 tools** to the connected agent. Every tool acts on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. It all runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
 
 ---
 

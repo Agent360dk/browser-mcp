@@ -45,6 +45,7 @@ hr{border:0;border-top:1px solid var(--line);margin:2rem 0}
 .copy.done{color:var(--green);border-color:var(--green)}
 blockquote{margin:1.2rem 0;padding:.85rem 1.1rem;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:0 12px 12px 0}
 blockquote p:first-child{margin-top:0}blockquote p:last-child{margin-bottom:0}
+.scroll td:first-child code{white-space:nowrap}
 .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin:1.2rem 0}
 table{width:100%;border-collapse:collapse;font-size:.93rem;min-width:30rem}
 th,td{text-align:left;padding:.65rem .9rem;border-bottom:1px solid var(--line);vertical-align:top}
