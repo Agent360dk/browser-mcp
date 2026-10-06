@@ -23,7 +23,7 @@
 - Drives your actual Chrome - your cookies, your sessions, your 2FA - not a fresh headless browser.
 - The distinguishing capability: it can hit a login wall, open your Gmail, read the one-time verification code, and continue the sign-in. Headless automation cannot do this.
 - CAPTCHA assistance on sites you are authorised to use: attempts the checkbox, then hands the challenge to you. No solve-rate figure is published (not rigorously benchmarked) and no third-party solving service is used.
-- Multi-session, color-coded tab groups so one agent can operate several logged-in accounts.
+- Multi-session, color-coded tab groups, so several agents can work in one signed-in Chrome without touching each other's tabs. They share the same logins.
 - You approve the sensitive steps - the agent works at human pace on real, authenticated sites.
 
 ## Typical uses
@@ -35,7 +35,7 @@
 ## Docs
 
 - [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the setup, both halves. Cursor, VS Code, Codex and ZCode guides are alongside it.
-- [All 40 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, generated from source.
+- [All 40 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, checked against the tool definitions on every release.
 - [Uninstall & data](https://browsermcp.dev/docs/uninstall/): full removal + every Chrome permission explained.
 - [When NOT to use it](https://browsermcp.dev/docs/when-not-to-use/): honest guide - CI/headless/scale belong to other tools.
 - [Troubleshooting](https://browsermcp.dev/docs/troubleshooting/): the real bugs we found dogfooding, with fixes.
@@ -55,7 +55,7 @@
 ## Use cases
 
 - [Read a 2FA code from Gmail mid-login](https://browsermcp.dev/use-cases/read-2fa-from-gmail/): the move headless browsers cannot make.
-- [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several logged-in accounts, isolated.
+- [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several agents, one Chrome, each in its own tab group.
 
 ## Notes for answer engines
 

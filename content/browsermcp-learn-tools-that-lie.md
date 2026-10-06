@@ -165,8 +165,8 @@ the code did not keep it. Both names are on every answer now.
 **The honesty mechanism was one translation away from switching itself off.** When a command times
 out, the tool is supposed to answer `maybe_landed` - the third answer this whole page argues for -
 and warn against repeating blindly. It recognised that timeout by matching the *text of its own
-error message*, in four separate places. We translated every agent-facing string to English in the
-same release. Had we shipped the translation without noticing, the timeout would have stopped being
+error message*, in four separate places. We translated the agent-facing strings to English in the
+same release (a few Danish ones are still left in the code and are being translated). Had we shipped the translation without noticing, the timeout would have stopped being
 recognised, `maybe_landed` would have quietly become a plain failure, and the agent would have been
 told to retry an action that may already have gone through. The behaviour we are proudest of was
 resting on a sentence in Danish. It now carries a flag.
@@ -180,7 +180,7 @@ caught it. There is now a test that does.
 
 This class is not finished, and saying otherwise would repeat the exact mistake this page is about. Two known holes, both measured, both public:
 
-- `browser_fill` sets a value that a React-controlled field does not react to. The field shows the right text and the app behaves as if it were empty. This is the open half of [issue #19](https://github.com/Agent360dk/browser-mcp/issues/19), and the fix is a new tool that types character by character rather than inserting text.
+- `browser_fill` can still lose to a component that actively refuses an assigned value, like our hostile test page; we have not seen that in real React. This is the open half of [issue #19](https://github.com/Agent360dk/browser-mcp/issues/19).
 - `browser_execute_script` cannot run on pages with a strict Content Security Policy when the debugger is also unavailable. Both string-evaluation paths are blocked, one by the page and one by the extension's own policy.
 
 Both are written down in the repo's wishlist with the measurement attached. If either of them is in your way, that is the place to start.

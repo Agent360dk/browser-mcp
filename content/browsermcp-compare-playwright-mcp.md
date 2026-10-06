@@ -45,11 +45,11 @@ Browser MCP:     [browser_navigate]
 That is the whole difference, and everything below follows from it. The second exchange
 has no login step because the tab is in the Chrome you use.
 
-We measured the reverse case too, on 19 September 2026: on a controlled `<select>`
-built by a framework, **Playwright MCP lands the choice and we do not**. We answer
-honestly that it did not land - but no is still no. That measurement is on
-[/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/) with the method,
-because a comparison page that only lists what we win is not a comparison.
+We measured the reverse case too, on 19 September 2026, and reported a miss on a
+framework-controlled `<select>`. The fault was our own test page, not React: 1.30.0
+lands the choice on real React. The measurement and the retraction are on
+[/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), because a
+comparison page that only lists what we win is not a comparison.
 
 ## Can Playwright MCP use my real browser too?
 
@@ -67,7 +67,7 @@ We list these plainly in [When NOT to use Browser MCP](/docs/when-not-to-use/) -
 ## When Browser MCP is the right choice
 
 - The workflow starts behind a login you already have - dashboards, admin panels, webmail
-- 2FA-gated sites: the agent can wait while you approve, or read the code from a tab you are signed into
+- 2FA-gated sites: the agent can wait while you approve, or open your signed-in mail in a tab of its own and read the code
 - Sites where fresh headless profiles get blocked or endlessly challenged
 - "Do this in *my* browser" tasks: triage my tabs, fill this form as me, pull a token from my dashboard
 
@@ -80,7 +80,7 @@ No. It is a Chrome extension using the Chrome Debugger API on your running brows
 Yes - they register as separate MCP servers and many setups use Playwright MCP for CI and Browser MCP for logged-in interactive work.
 
 **Which is safer for credentials?**
-Both run locally. Browser MCP never asks for your passwords - it operates a browser where you are already signed in, and your cookies stay in that browser unless your agent explicitly reads them.
+Both run locally. Browser MCP does not need your passwords for sites you are already signed into. If a step does need one, `browser_ask_user` asks you on your own screen, and what you type goes to your AI client like any other tool result. It operates a browser where you are already signed in, and your cookies stay in that browser unless your agent explicitly reads them.
 
 **Is Playwright MCP really maintained by Microsoft?**
 Yes - the repository lives under the `microsoft` GitHub organization (checked 2026-07-21).

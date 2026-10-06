@@ -24,7 +24,7 @@ Every number below was measured on 2026-09-18, both columns on the same day, fro
 | Chrome Web Store rating | 4.8 / 5 (718 ratings) | no ratings yet |
 | Open GitHub issues | 130 | 4 |
 | License | Apache-2.0 | MIT |
-| Tools exposed | Not publicly documented (not audited here) | 40, auto-listed at [`/docs/tools`](/docs/tools) |
+| Tools exposed | Not publicly documented (not audited here) | 40, all listed at [`/docs/tools`](/docs/tools) |
 | Install | `npx @browsermcp/mcp` (npm) or Chrome Web Store | Chrome Web Store extension + `claude mcp add` |
 
 *All figures above were re-pulled live on 2026-09-18. npm's public download API reports some days as zero for every package, including both of these, so the 30-day totals understate both projects equally. Originally pulled via the GitHub REST API, the public npm registry API, and the Chrome Web Store listing pages for both extensions (`bjfgambnhccakkhmkepdoekmckoijdlc` and `jdehgalffmffhfhmmhaokfbfnafnmgcl`). See "How we verified this" below.*
@@ -99,4 +99,4 @@ This table will go stale - that's the nature of a dated comparison. We'll refres
 
 ---
 
-*Unknowns / not verified on this page: who currently maintains `browsermcp.io` or why its commit activity stopped - we did not investigate and make no claim either way. The exact current Chrome Web Store rating **count** (number of individual ratings behind the 4.8/5 average) was verified at 675 in an earlier check on 2026-07-07 but was not re-extracted in the 2026-07-15 pass (the star average itself, 4.8/5, was re-confirmed live); treat the count as approximate. Whether `browsermcp.io` has undocumented equivalents of our multi-session, human-in-the-loop, or provider-integration features was not audited - we deliberately did not claim they lack these, only that we could not find them publicly documented.*
+*Not verified on this page: who maintains `browsermcp.io` or why its commits stopped, and whether it has undocumented equivalents of our multi-session or human-in-the-loop features.*

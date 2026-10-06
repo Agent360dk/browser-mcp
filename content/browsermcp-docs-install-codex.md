@@ -105,13 +105,13 @@ This is the thing headless tools can't do: Codex hits a login wall, reads the on
 
 | Category | What it gives your agent |
 |---|---|
-| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script` |
-| **Interaction** | `browser_click`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key`, `browser_wait`, `browser_handle_dialog` |
+| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script`, `browser_extract_list` |
+| **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key`, `browser_wait`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab` (for OAuth popups), `browser_list_frames` / `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch` (bypasses CORS from the extension), `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA codes, CAPTCHA grids, or any credential Codex shouldn't guess at |
-| **Meta** | `browser_about` - session/extension info |
+| **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - but it isn't limited to those. Point it at any provider's API-settings page and it'll navigate there and walk you through pulling the token the same way; the 9 are just shortcuts, not a whitelist.
 
@@ -139,10 +139,10 @@ Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes,
 Yes - MIT-licensed, open source, no paywall, no account, no API key. Built by [Agent360](https://agent360.dk) as part of its developer-tools work.
 
 **How do I remove it?**
-`codex mcp remove browser-mcp` drops the entry from `config.toml`, then remove the extension from `chrome://extensions`. There's no global npm install to clean up - `npx` runs the server directly each time, it's never installed persistently.
+`codex mcp remove browser-mcp` drops the entry from `config.toml`, then remove the extension from `chrome://extensions`. There's no global npm install to clean up - `npx` runs the server directly each time. Delete `~/.browser-mcp/` too: it holds a local problem log and, for an unpacked install, the extension files.
 
 **What if I already have Browser MCP set up for Claude Code?**
-The Chrome extension is shared - you only load it once, regardless of how many MCP clients point at it. You just need one more `codex mcp add` (or manual config.toml entry) so Codex knows about the same local server.
+The Chrome extension is shared - you only load it once, regardless of how many MCP clients point at it. You just need one more `codex mcp add` (or manual config.toml entry) so Codex starts its own copy of the server, and that copy finds the same extension.
 
 ---
 

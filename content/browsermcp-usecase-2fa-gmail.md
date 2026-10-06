@@ -20,7 +20,7 @@ An agent automating a real task hits a login that sends a one-time code to your 
 4. **It types the code back and continues.** Back to the login tab, `browser_fill` the code, submit, done - the task carries on past the wall.
 5. **If it's unsure, it asks you.** `browser_ask_user` lets the agent pause and confirm with a human before doing anything sensitive - a built-in checkpoint, not an afterthought.
 
-That's the whole move. No new integration, no secret to store, no code leaving your machine.
+That's the whole move. No new integration, no secret to store. The code goes back to your agent like any tool result, and is never sent to us.
 
 ## What it looks like
 
@@ -30,7 +30,7 @@ You:     Log into the billing portal and download this month's statement.
 Claude:  [browser_navigate, browser_fill, browser_click]
          The site says it has emailed a code.
 
-         [browser_navigate  mail.google.com]
+         [browser_navigate  mail.google.com, new_tab: true]
          [browser_get_page_content]
          The newest message is from billing@ - the code is 418293.
 
@@ -39,7 +39,7 @@ Claude:  [browser_navigate, browser_fill, browser_click]
          Signed in. statement-2026-08.pdf is in your Downloads.
 ```
 
-Four tools, no new integration, and nothing typed by you. The Gmail tab needed no
+Five tools, no new integration, and nothing typed by you. The Gmail tab needed no
 login because it is the Chrome you were already signed into.
 
 ## Why most tools can't do this
@@ -64,7 +64,7 @@ No. The whole point is that it uses the Gmail you're already signed into in Chro
 Yes - the `browser_ask_user` tool lets it pause for a human decision at any step you care about.
 
 **Does it work with Outlook / other webmail?**
-Yes - any webmail you're logged into in your Chrome. Gmail is just the common case; the mechanism is "read the tab you're already signed into."
+Yes - any webmail you're logged into in your Chrome. Gmail is just the common case; the mechanism is "open your signed-in mail in a tab of its own and read it."
 
 **How do I set this up?**
 [Install Browser MCP for Claude Code](/docs/install-claude-code/), then ask your agent to complete a flow that hits a 2FA wall.

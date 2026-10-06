@@ -34,6 +34,8 @@ third one is the agent saying what it cannot do instead of failing quietly.
 |---|---|
 | **Measured** | We ran it against the released version and watched it work. Date in the note. |
 | **Fixed in 1.29.1** | Broken in v1.29.0, fixed and tested, and shipped in v1.29.1. Update the extension and the npm package to get it. |
+| **Works in 1.30.0** | Measured against the released v1.30.0. |
+| **Fixed on `main`** | Fixed and tested in the code, not yet in a release. |
 | **By design** | The mechanism is there and reviewed, but we have no dated measurement. Treat as likely, not proven. |
 | **Not yet** | We ran it and it did not work. Open, with the reason. |
 | **Won't** | A deliberate non-goal. The reason is given, not hidden. |
@@ -44,7 +46,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 |---|---|---|
 | Site requires a login | **Measured** | It is the Chrome you are already signed into. There is no login step to fail. |
 | Session expires mid-task | **By design** | Same session as your own tab; it expires when yours does, not sooner. |
-| One-time code sent to your email | **Measured** | `browser_navigate` to the webmail tab you are already in, `browser_get_page_content`, read it, type it back. |
+| One-time code sent to your email | **Measured** | `browser_navigate` with `new_tab: true` to your webmail (already signed in), `browser_get_page_content`, read it, switch back, type it in. |
 | One-time code from an authenticator app | **By design** | `browser_ask_user` puts the question on the page in front of you. The agent never guesses it. |
 | Password or payment step | **By design** | Same dialog. This is a checkpoint, not a limitation. |
 | SSO / corporate identity provider | **By design** | Already signed in, same as any other session. |
@@ -77,7 +79,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | Wall | State | Note |
 |---|---|---|
 | CAPTCHA | **Partly** | `browser_solve_captcha` tries the checkbox first (often enough when you are signed into Google), then lets the agent take its own screenshot and click grid cells (`click_grid`), then asks you. There is no success-rate claim on this page on purpose: we have not measured one, and a number we cannot show the working for is worth nothing. |
-| Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries DOM reads. On main, script evaluations are no longer retried automatically, because some of them click. One known gap remains: `browser_execute_script` still retries your own code on a detach. |
+| Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries DOM reads. On main, script evaluations are no longer retried automatically, because some of them click. That includes your own code in `browser_execute_script`: once sent, it is not retried. |
 
 ## Walls we will not cross
 

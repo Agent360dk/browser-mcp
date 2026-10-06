@@ -52,7 +52,7 @@ Browser MCP's tools surface inside Copilot Chat, so you need the **GitHub Copilo
 npx @agent360/browser-mcp install
 ```
 
-This copies the extension to `~/.browser-mcp/extension/` and prints the path - copy it, you'll need it in Step 3. (It also writes a Claude Code config entry if you have Claude Code installed; harmless to ignore if you don't.)
+This copies the extension to `~/.browser-mcp/extension/` and prints the path - copy it, you'll need it in Step 3. (It also registers the server with Claude Code, Codex, VS Code and Cursor if it finds them, so Step 2 may already be done.)
 
 ### Step 2 - Register the MCP server with VS Code
 
@@ -70,7 +70,7 @@ Writes the server into your VS Code **user profile** config, so it's available i
 
 1. `Cmd+Shift+P` / `Ctrl+Shift+P` → **MCP: Add Server**
 2. Choose **Workspace** (writes `.vscode/mcp.json` in this project, good for committing so teammates get it too) or **Global** (user profile, same result as method A)
-3. Pick **stdio** as the server type, `npx` as the command, `@agent360/browser-mcp` as the argument
+3. Pick **stdio** as the server type, `npx` as the command, `@agent360/browser-mcp@latest` as the argument
 
 **C. Edit the JSON by hand**
 
@@ -108,7 +108,7 @@ Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-m
 
 - After you save the config (Step 2), start the server: run **MCP: List Servers** from the Command Palette and choose **Start**/**Enable** (VS Code may also show an inline Start action directly above the server entry when you open the config file - check for it, but `MCP: List Servers` always works). A trust prompt appears the first time; approve it.
 - Open Copilot Chat and switch the mode dropdown to **Agent**.
-- The Browser MCP icon appears in your Chrome toolbar once the extension connects. 40 browser tools are now available in Agent mode.
+- The extension shows a green badge with the number of connected agents once your agent first uses the browser. 40 browser tools are now available in Agent mode.
 
 ### Verify it's working
 
@@ -175,13 +175,13 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 
 | Category | Tools |
 |---|---|
-| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script` |
-| **Interaction** | `browser_click`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
+| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script`, `browser_extract_list` |
+| **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
-| **Meta** | `browser_about` - session/extension info |
+| **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common services (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) - but it isn't limited to those. For anything else, your agent falls back to `browser_navigate` + `browser_get_page_content` on the provider's own dashboard, so it works for any service, not just the pre-wired nine.
 

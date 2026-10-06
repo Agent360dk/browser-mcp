@@ -199,6 +199,22 @@ test('ingen flade lover en installationstid, der aldrig er maalt', () => {
   assert.deepEqual(fund, [], `umaalt installationstid:\n  ${fund.join('\n  ')}`);
 });
 
+// 6/10 (3c): fem installationssider havde overskriften «40 tools» over en tabel med 34. En side der
+// lister vaerktoejerne (mindst 30 forskellige navne), skal liste dem alle, og kun dem der findes.
+test('en side der lister vaerktoejerne, lister alle i tools.js og intet andet', () => {
+  const alle = new Set([...readFileSync(join(rod, 'mcp-server/tools.js'), 'utf8').matchAll(/name:\s*['"](browser_[a-z0-9_]+)['"]/g)].map((m) => m[1]));
+  const fund = [];
+  for (const fil of readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'))) {
+    const navne = new Set(readFileSync(join(rod, 'content', fil), 'utf8').match(/\bbrowser_[a-z0-9_]+\b/g) ?? []);
+    if (navne.size < 30) continue;
+    const mangler = [...alle].filter((n) => !navne.has(n));
+    const ukendte = [...navne].filter((n) => !alle.has(n) && !/^browser_(go_|drag|wait_for$|tab_|snapshot|type$|navigate_back)/.test(n));
+    if (mangler.length) fund.push(`content/${fil} mangler ${mangler.join(', ')}`);
+    if (ukendte.length) fund.push(`content/${fil} naevner ${ukendte.join(', ')}, som ikke findes`);
+  }
+  assert.deepEqual(fund, []);
+});
+
 // ── Et citat i anfoerselstegn skal vaere et CITAT ───────────────────────────
 // FUNDET 19/9 af Fable: /learn/tools-that-lie/ satte remedien i anfoerselstegn som det
 // vaerktoejet svarer - «"this tab is in the background, call `browser_switch_tab`"» - mens

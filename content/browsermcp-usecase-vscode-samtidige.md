@@ -80,7 +80,7 @@ What differs is what happens when a run needs a human: none of Playwright MCP's 
 
 ## Two things to know before you rely on it
 
-**Only the visible tab gets mouse and keyboard.** Chrome does not deliver input to a tab that is not the visible one in its window - so with three sessions running, only the one you are looking at can click and type. Reading works everywhere. Since 1.29.2 the tools say which case you are in instead of reporting a success that did not happen.
+**Only the visible tab gets mouse and keyboard.** Chrome does not deliver input to a tab that is not the visible one in its window - so with three sessions running, only the one you are looking at gets key presses, hover, double- and right-click and coordinate clicks. Reading, clicking and filling a field by CSS selector work in every session. Since 1.29.2 the tools say which case you are in instead of reporting a success that did not happen.
 
 We measured whether giving each session its own window would fix that. **It does not** - what matters is whether the window has focus, not whether the tab is visible in it. [The measurement](https://github.com/Agent360dk/browser-mcp/blob/main/test/aerlighed/RESULTAT-vindueshypotesen-2026-09-19.md).
 

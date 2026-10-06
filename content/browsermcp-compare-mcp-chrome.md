@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** these two are the closest direct equivalents in the MCP world - both are a Chrome extension plus a local MCP server that let an AI agent drive your **real, already-logged-in browser** rather than a headless one. [mcp-chrome](https://github.com/hangwin/mcp-chrome) is by far the bigger project (12,197 stars to our 24). The difference that decides it for most people is activity: mcp-chrome's last commit was **6 January 2026** - a little over six months ago - while this project ships regularly. If you want the larger community, take mcp-chrome. If you want something being maintained right now with English-language support, that is the gap we fill.
+**Short answer:** these two are the closest direct equivalents in the MCP world - both are a Chrome extension plus a local MCP server that let an AI agent drive your **real, already-logged-in browser** rather than a headless one. [mcp-chrome](https://github.com/hangwin/mcp-chrome) is by far the bigger project (12,324 stars to our 35, both on 2026-08-19). The difference that decides it for most people is activity: mcp-chrome's last commit was **6 January 2026** - a little over six months ago - while this project ships regularly. If you want the larger community, take mcp-chrome. If you want something being maintained right now with English-language support, that is the gap we fill.
 
 ## The numbers, dated
 
@@ -40,7 +40,7 @@ numbers below are where they part.
 
 This is the question people actually search for, and it has no clear English-language answer - which is part of why we wrote this page.
 
-The honest reading of the public record: **the repository has not received a commit since 6 January 2026**, and 223 issues are open. It is not archived, and the maintainer has not announced anything, so "abandoned" would be too strong a word - projects go quiet and come back. But if you are choosing a dependency today, "no commits in six months and 223 open issues" is the fact to weigh, and you should check the repo yourself rather than take our word for it: [github.com/hangwin/mcp-chrome](https://github.com/hangwin/mcp-chrome).
+The honest reading of the public record: **the repository has not received a commit since 6 January 2026**, and 224 issues are open. It is not archived, and the maintainer has not announced anything, so "abandoned" would be too strong a word - projects go quiet and come back. But if you are choosing a dependency today, "no commits in seven and a half months and 224 open issues" is the fact to weigh, and you should check the repo yourself rather than take our word for it: [github.com/hangwin/mcp-chrome](https://github.com/hangwin/mcp-chrome).
 
 One practical note that has nothing to do with quality: mcp-chrome's issue tracker is largely in Chinese. If you file a bug in English, you may wait. That is a real support consideration for English-speaking teams, and it is not a criticism of the project.
 
@@ -48,7 +48,7 @@ One practical note that has nothing to do with quality: mcp-chrome's issue track
 
 We would rather you choose correctly than choose us:
 
-- **You want the larger, more proven user base.** 12,197 stars and 1,037 weekly downloads represent a lot more real-world usage than we have.
+- **You want the larger, more proven user base.** 12,324 stars represent a lot more real-world usage than we have.
 - **You already run it and it works.** A quiet repo is not a broken one. If mcp-chrome does what you need today, switching costs you time for no gain.
 - **You read Chinese** - in which case the support-language gap disappears entirely.
 
@@ -65,7 +65,7 @@ Neither of these is the biggest browser-automation MCP server. Google's [chrome-
 ## FAQ
 
 **Is mcp-chrome dead?**
-No announcement says so, and it is not archived. The verifiable fact is no commits since 2026-01-06 and 223 open issues (checked 2026-07-22).
+No announcement says so, and it is not archived. The verifiable fact is no commits since 2026-01-06 and 224 open issues (checked 2026-08-19).
 
 **Are these two projects related?**
 No. Different authors, different codebases, independently built around the same idea.

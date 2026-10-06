@@ -22,7 +22,7 @@ An AI agent connected to it can navigate pages, read and fill forms, click by CS
 ## How does Browser MCP work, mechanically?
 
 1. Your MCP client - Claude Code, Cursor, VS Code agent mode, or any other MCP-compatible client - starts a conversation and spawns the Browser MCP server as a subprocess over stdio.
-2. That server binds to the first free port in its 9876-9895 range.
+2. The first time a tool actually needs the browser, that server binds the first free port in its 9876-9895 range.
 3. The Chrome extension's offscreen document polls that port range every ~2 seconds and opens a WebSocket connection once it finds a live server.
 4. From then on, tool calls flow: **your AI client → MCP server → Chrome extension → Chrome's extension/debugger APIs → the page.**
 5. Each conversation gets its own color-coded Chrome tab group and can only see and act on tabs it opened - so several agent sessions can run against the same Chrome instance without stepping on each other (up to 20 concurrent sessions).
@@ -50,7 +50,7 @@ Headless frameworks like Playwright and Puppeteer are excellent at what they wer
 |---|---|---|
 | **Browser instance** | Your actual Chrome - the one you already use | A new, disposable browser context |
 | **Logins & cookies** | Inherited from your real session | None - must authenticate every run |
-| **2FA / OTP mid-flow** | Can switch to another open tab (e.g. Gmail) to read the code, then return and continue - with `browser_ask_user` available to hand off to you if the step genuinely needs a human | Not supported - typically blocks or requires a stored/bypassed credential |
+| **2FA / OTP mid-flow** | Can open your webmail in a tab of its own, already signed in, read the code, then go back to the login tab - with `browser_ask_user` available to hand off to you if the step genuinely needs a human | Not supported - typically blocks or requires a stored/bypassed credential |
 | **CAPTCHA-gated walls** | Dedicated `browser_solve_captcha` tool; Attempts the checkbox challenge, then shows it to you to finish (human-in-the-loop). We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one. | Frequently detected and blocked outright - these tools identify as automation by default |
 | **Best fit** | Operating real accounts on sites with no API: dashboards, LinkedIn, internal tools, your own app as a logged-in user | Fast, repeatable CI/E2E test suites against your own app in a clean, reproducible state |
 | **Session persistence** | Native - it's your live browser | Requires manually saving/restoring storage state |
@@ -99,4 +99,4 @@ Not for testing your own app in a clean environment - that's still Playwright's 
 Any MCP-compatible client: Claude Code, Cursor, VS Code in agent mode, and others that implement the [Model Context Protocol](https://modelcontextprotocol.io) client side.
 
 **How many tools does it expose?**
-34, spanning navigation, page content, interaction (click/fill/select/date-pickers), tabs and iframes, cookies and storage, network waiting, CAPTCHA assistance, and human-in-the-loop handoff. Full reference: [/docs/tools](/docs/tools).
+40, spanning navigation, page content, interaction (click/fill/select/date-pickers), tabs and iframes, cookies and storage, network waiting, CAPTCHA assistance, and human-in-the-loop handoff. Full reference: [/docs/tools](/docs/tools).

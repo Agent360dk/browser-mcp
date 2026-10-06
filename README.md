@@ -78,7 +78,7 @@ Want the extension files on disk for the unpacked install in Step 2? Also run:
 npx @agent360/browser-mcp install
 ```
 
-It copies the extension to `~/.browser-mcp/extension/` and **prints that path in the terminal - copy it.** (Use it for the extension files only; register the server with `claude mcp add` above.)
+It copies the extension to `~/.browser-mcp/extension/` and **prints that path in the terminal - copy it.** (It also registers the server with Claude Code, Codex, VS Code and Cursor if it finds them.)
 
 ### Step 2: Load the extension in Chrome
 
@@ -157,7 +157,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 | **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
 | **CSP-strict sites** | Chrome Debugger API throughout | Works | Limited |
 | **Custom dropdowns** | Angular Material, React Select support | Works | Limited |
-| **Install** | `claude mcp add` + extension from the Chrome Web Store | `npx @playwright/mcp` | Manual clone |
+| **Install** | `claude mcp add` + extension from the Chrome Web Store | `npx @playwright/mcp` | `npx @browsermcp/mcp` + Chrome Web Store |
 
 ### The pages that defeat everything else
 
@@ -296,7 +296,7 @@ All three are optional. None is needed for normal use.
 ### Diagnostics & feedback
 | Tool | Description |
 |------|-------------|
-| `browser_provide_feedback` | Self-check + report in one call. Compares this server against the latest on npm, the connected extension against this server, and detects **more than one Browser MCP extension connected at once** - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
+| `browser_provide_feedback` | Self-check + report in one call. Compares the connected extension against this server and detects **more than one Browser MCP extension connected at once**; with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
 | `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
 
 ## Multi-Session Support
@@ -394,7 +394,7 @@ mcp-server/
 
 ### How It Works
 1. Claude Code starts → spawns MCP server via stdio
-2. MCP server binds to first available port (9876-9895)
+2. MCP server binds the first free port (9876-9895) the first time a tool needs the browser
 3. Extension's offscreen document scans ports every 2s
 4. WebSocket connection established
 5. Commands flow: Claude Code → MCP → Extension → Chrome APIs

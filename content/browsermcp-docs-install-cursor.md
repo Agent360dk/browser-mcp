@@ -58,7 +58,7 @@ If you want the full walkthrough, keep reading. If you just needed the config bl
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension files to `~/.browser-mcp/extension/` - the terminal prints the path, copy it, you'll need it in Step 3. It also tries to register the server with Claude Code if you have it installed; harmless to leave in place if you don't use Claude Code - Cursor is configured separately in Step 2.
+This copies the Chrome extension files to `~/.browser-mcp/extension/` - the terminal prints the path, copy it, you'll need it in Step 3. It also registers the server with every client it finds - Claude Code, Codex, VS Code and Cursor - so Step 2 may already be done; check `~/.cursor/mcp.json`.
 
 ### Step 2 - Point Cursor at the MCP server
 
@@ -162,13 +162,13 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 
 | Category | Tools |
 |---|---|
-| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script` |
-| **Interaction** | `browser_click`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
+| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script`, `browser_extract_list` |
+| **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
-| **Meta** | `browser_about` - session/extension info |
+| **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common services (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - but it isn't limited to them. For any other provider, the agent falls back to `browser_navigate` + `browser_get_page_content` to find and extract the token itself.
 
@@ -211,7 +211,7 @@ An MCP (Model Context Protocol) server that gives Cursor - or any MCP client tha
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with Cursor, or also Claude Code / VS Code?**
-Any MCP client that can run local stdio servers. It's the exact same server and the exact same config block - `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` - only the file you paste it into changes per client.
+Any MCP client that can run local stdio servers. It's the exact same server. Most clients take the same block - `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` - in their own config file; VS Code uses the root key `servers` instead (see the [VS Code guide](/docs/install-vscode/)).
 
 **Should I use the global or project config?**
 Global (`~/.cursor/mcp.json`) if you want Browser MCP available in every Cursor project, which is what most people want. Project-scoped (`.cursor/mcp.json` inside one repo) if you only want it active there - useful if you're on a team and don't want it turning up in a shared repo's config for everyone else.
@@ -223,7 +223,7 @@ Chrome blocks extensions from self-installing from npm or any script - that's a 
 Not to us. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. What your agent reads goes to your AI client and on to its model provider, like anything else you show it - there is no Agent360 server.
 
 **How do I update it?**
-The MCP server updates itself - every run uses `npx @agent360/browser-mcp`, so there's nothing to pin or bump. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
+The MCP server updates itself as long as your config says `@agent360/browser-mcp@latest` - without `@latest`, npx keeps reusing its cached copy. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" - what do I check?**
 First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to your `mcp.json`, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart Cursor. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2-3 seconds - it scans ports 9876-9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).

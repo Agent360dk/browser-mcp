@@ -80,7 +80,7 @@ Trae:    [browser_navigate]
 
 ## Frequently asked questions
 
-**Why does the extension badge stay grey after step 3?**
+**Why is there no badge on the extension after step 3?**
 The server only takes a port the first time real work arrives. Ask for a screenshot and the badge appears.
 
 **Can I decode the install link before using it?**
