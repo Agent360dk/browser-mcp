@@ -18,7 +18,7 @@
 | [browsermcp.io](https://github.com/BrowserMCP/mcp) | 7,108 | **2025-04-24** | 9,107 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
 | [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 44 | 2026-09-18 | 1,456 | 1.29.1 (2026-09-13) | **Your real Chrome** (extension) - only mode |
 
-*(Figures fetched 2026-09-19 to 2026-09-24 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
+*(Figures fetched 2026-09-18 to 2026-09-24 from the GitHub API, npm downloads API and PyPI; our own row predates v1.29.2 (2026-09-18), and our latest release is now v1.30.1 (2026-10-07). Star counts and downloads move daily; the maintenance dates are the durable signal.)*
 
 ## The one question that separates them
 

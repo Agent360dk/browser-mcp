@@ -79,7 +79,7 @@ test('et samtale-eksempel flyttet op i figuren mister ingen ture (R25: det blev 
   // Kør generatorens egen _samtale paa et eksempel med seks ture.
   const py = [
     'import re, html',
-    "src = open('scripts/generate-docs.py').read()",
+    "src = open('scripts/generate-docs.py', encoding='utf-8').read()",
     "ns = {'re': re, 'html': html}",
     "exec(src[src.index('_TALER='):src.index('def _gruppeliste')], ns)",
     "print(len(ns['_samtale']('You: a\\nClaude: b\\nYou: c\\nClaude: d\\nYou: e\\nClaude: f')))",
