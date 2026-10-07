@@ -84,7 +84,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_solve_captcha` | Detect and attempt reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, or FunCaptcha - auto-click checkbox, then AI-vision-guided grid click, then human fallback for the rest. |
+| `browser_solve_captcha` | Detect reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile or FunCaptcha and work through it one step per call: try the reCAPTCHA checkbox, click the reCAPTCHA image-challenge cells the agent picks from a screenshot it takes first, or hand it to you through `browser_ask_user`. |
 
 ## Human-in-the-Loop - 1 tool
 

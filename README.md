@@ -275,7 +275,7 @@ All three are optional. None is needed for normal use.
 ### CAPTCHA Solving
 | Tool | Description |
 |------|-------------|
-| `browser_solve_captcha` | Detect and solve CAPTCHAs. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (auto-click, often passes when signed into Google), `click_grid` (AI vision guided), `ask_human` (fallback) |
+| `browser_solve_captcha` | Detect CAPTCHAs and work through them one step per call. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (tries the reCAPTCHA checkbox), `click_grid` (clicks the reCAPTCHA cells you choose; it returns no image, so take a screenshot first), `ask_human` (returns the message to show with `browser_ask_user`) |
 
 ### Human-in-the-Loop
 | Tool | Description |
@@ -475,7 +475,7 @@ account and no server of ours between you and the page.
 - **Page content** - what a tool reads from a tab goes to the MCP client you
   configured, and nowhere else. We never see it.
 - **Cookies, local storage and tokens** are not copied anywhere by default, and
-  the server keeps no store of its own - but they are reachable. Three tools read
+  the server keeps no copy of them - but they are reachable. Three tools read
   them directly (`browser_get_cookies`, `browser_get_local_storage`,
   `browser_extract_token`), two more write them (`browser_set_cookies`,
   `browser_set_local_storage`), and three more can get

@@ -682,14 +682,14 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - browser_press_key("a", ctrl=true) - select all
 
 ## CAPTCHA handling
-Use browser_solve_captcha to detect and solve CAPTCHAs automatically:
-1. Call browser_solve_captcha() - detects CAPTCHA type on page
-2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") - auto-clicks; often passes when signed into Google
-3. If image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
-4. If all else fails → call browser_solve_captcha(action="ask_human") to show overlay to user
+browser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:
+1. Call browser_solve_captcha() - detects the CAPTCHA type on the page
+2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action="click_checkbox") - tries the checkbox and detects again
+3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
+4. If that does not clear it → call browser_ask_user and let the user solve it (action="ask_human" only returns that message)
 5. After solving, retry the action that was blocked
 
-For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15.
+For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. click_grid reads the grid as 4x4 only when an index is 9 or higher; with lower indices it reads it as 3x3.
 
 ## OAuth popups
 - OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group

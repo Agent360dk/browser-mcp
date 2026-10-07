@@ -292,7 +292,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_list_tabs',
-    description: 'List all open browser tabs with their URLs and titles.',
+    description: 'List the tabs this session owns (tabs it opened or adopted): id, URL, title, and each tab\'s active flag (whether Chrome shows it in front of its window, not which tab this session is working in). Tabs of other sessions are not included.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -453,15 +453,15 @@ export const TOOLS = [
   },
   {
     name: 'browser_solve_captcha',
-    description: 'Detect and solve CAPTCHAs on the current page. Auto-detects reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, and FunCaptcha. Tries auto-click first (often clears reCAPTCHA v2 when signed into Google), then returns a screenshot for AI vision analysis, then falls back to asking the user. Returns detection info and solving status.',
+    description: 'Detect CAPTCHAs on the current page and work through them, one action per call. "detect" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. "click_checkbox" tries the reCAPTCHA checkbox and detects again. "click_grid" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. "ask_human" returns the message to show the user with browser_ask_user.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['detect', 'click_checkbox', 'click_grid', 'ask_human'], description: 'Action to take. "detect" scans for CAPTCHAs. "click_checkbox" clicks the reCAPTCHA checkbox. "click_grid" clicks specific grid cells (pass cells param). "ask_human" shows overlay to user. Default: "detect"' },
+        action: { type: 'string', enum: ['detect', 'click_checkbox', 'click_grid', 'ask_human'], description: 'Action to take. "detect" scans for CAPTCHAs. "click_checkbox" clicks the reCAPTCHA checkbox. "click_grid" clicks specific reCAPTCHA grid cells (pass cells param). "ask_human" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: "detect"' },
         cells: {
           type: 'array',
           items: { type: 'number' },
-          description: 'Grid cell indices to click (0-indexed, left-to-right, top-to-bottom) for image challenges. E.g. [2, 5, 7] to click cells 3, 6, 8.',
+          description: 'Grid cell indices to click (0-indexed, left-to-right, top-to-bottom) for image challenges. E.g. [2, 5, 7] to click cells 3, 6, 8. The grid is read as 4x4 only when an index is 9 or higher; with lower indices it is read as 3x3.',
         },
       },
     },
@@ -490,7 +490,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_provide_feedback',
-    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap, read-only, and safe to call speculatively - never sends anything anywhere by itself.',
+    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (not again for a repeat of the same report while the server runs; logged_locally says whether a line was written; the free text is stored as the agent wrote it). With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.',
     inputSchema: {
       type: 'object',
       properties: {

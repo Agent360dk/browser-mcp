@@ -298,3 +298,182 @@ test('fill tjekker at feltet faktisk blev tomt, i stedet for at stole paa tastet
   assert.ok(blok.indexOf('Input.insertText') > iRest,
     'teksten indsaettes FOER kontrollen af at feltet er tomt - saa virker kontrollen ikke');
 });
+
+// MAALT 7/10 (1.30.2, skive 1): tre beskrivelser lovede noget koden ikke goer. list_tabs sagde «all open
+// browser tabs», men case'et returnerer kun sessionens egne. solve_captcha sagde «returns a screenshot» og
+// at ask_human «shows overlay», men intet trin tager et billede eller viser noget. provide_feedback sagde
+// «read-only» og «never sends anything anywhere», men den skriver en linje i ~/.browser-mcp/feedback.jsonl.
+// Hvert loefte bindes nu til koden (konsulentrunde 32 fandt mutanter der slap igennem foerste udgave).
+const beskrivelse = (navn) => TOOLS.find(t => t.name === navn).description;
+// Serverens instruktioner (INSTRUCTIONS i index.js) gaar til agenten ved hver tilslutning - konsulentrunde 33 fandt
+// at de stadig lovede overlay og «often passes», efter at tools.js var rettet.
+const captchaInstruks = () => {
+  const i = indexSrc.indexOf('## CAPTCHA handling');
+  assert.ok(i > -1, 'INSTRUCTIONS har et CAPTCHA-afsnit');
+  const j = indexSrc.indexOf('\n## ', i + 5);
+  return indexSrc.slice(i, j).trimEnd();
+};
+const funktionKrop = (src, navn) => {
+  const i = src.indexOf(`async function ${navn}(`);
+  assert.ok(i > -1, `fandt ikke ${navn}`);
+  const n = src.slice(i + 10).search(/\n(async )?function /);
+  return n < 0 ? src.slice(i) : src.slice(i, i + 10 + n);
+};
+
+test('list_tabs lover kun sessionens egne faner, og det er dem case\'et returnerer', () => {
+  const blok = caseBlok(bgSrc, 'list_tabs');
+  assert.match(blok, /getSession\(port\)/, 'list_tabs slaar sessionen op');
+  assert.match(blok, /session\.tabIds/, 'og gennemloeber kun dens egne faner');
+  const d = beskrivelse('browser_list_tabs');
+  assert.doesNotMatch(d, /\b(all|every)\b[^.]{0,40}\btabs?\b/i, 'beskrivelsen maa ikke love alle faner, naar koden kun ser sessionens');
+  assert.match(d, /session/i, 'beskrivelsen siger hvis faner det er');
+  assert.match(blok, /active: tab\.active/, 'vagten forudsaetter at `active` er Chromes tab.active - ellers ret tekst og kontrakt');
+  assert.match(d, /in front of its window/i, '`active` er Chromes forgrundsfane, ikke sessionens arbejdsfane - det skal staa');
+});
+
+test('solve_captcha lover hverken billede eller overlay, som hverken case eller hjaelpere leverer', () => {
+  const kode = caseBlok(bgSrc, 'solve_captcha') + ['detectCaptcha', 'clickRecaptchaCheckbox', 'clickCaptchaGridCells'].map(n => funktionKrop(bgSrc, n)).join('\n');
+  const tool = TOOLS.find(t => t.name === 'browser_solve_captcha');
+  const tekst = tool.description + ' ' + tool.inputSchema.properties.action.description + ' ' + captchaInstruks();
+  const tagerBillede = /captureScreenshot|captureVisibleTab/.test(kode);
+  const viserOverlay = /showOverlay|ask_user|askUser\(/.test(kode.replace(/Call browser_ask_user[^']*/g, ''));
+  const loeverBillede = /(returns?|attach(es|ed)?|with)\s+(a|an|the)\s+(screenshot|image)|screenshot attached/i.test(tekst);
+  assert.equal(loeverBillede, tagerBillede, 'teksten og koden er uenige om, hvorvidt der kommer et billede tilbage');
+  if (!tagerBillede) assert.match(tool.description, /returns no image/i, 'uden billede skal beskrivelsen sige det');
+  if (!viserOverlay) assert.doesNotMatch(tekst, /overlay/i, 'ask_human viser intet selv - ingen overlay-loefter');
+  assert.doesNotMatch(tekst, /automatically|often passes/i, 'intet trin loeser af sig selv, og en succesrate er aldrig maalt');
+});
+
+test('provide_feedback beskriver logbogen og npm-opslaget som koden goer dem', () => {
+  const d = beskrivelse('browser_provide_feedback');
+  assert.ok(/appendFileSync\(FEEDBACK_LOG/.test(indexSrc), 'vagten forudsaetter at logbogen skrives med appendFileSync(FEEDBACK_LOG - ellers skal testen skrives om');
+  assert.doesNotMatch(d, /read[- ]?only|never sends|sends nothing/i, 'den skriver feedback.jsonl, saa den er ikke read-only');
+  assert.match(d, /feedback\.jsonl/, 'beskrivelsen naevner filen, den skriver');
+  assert.match(indexSrc, /setteFingeraftryk\.has\(/, 'vagten forudsaetter at gentagelser springes over via fingeraftrykket - ellers ret tekst og kontrakt');
+  assert.match(d, /tries to add one line/i, 'en gentagelse skrives ikke, og en fejlet skrivning giver ingen linje - «tries»');
+  assert.match(d, /not again for a repeat/i, 'gentagelser springes over - det skal staa');
+  assert.match(indexSrc, /execFile\('npm', \['view'/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
+  assert.match(indexSrc, /^const TJEK_NPM = process\.env\.BROWSER_MCP_CHECK_NPM === '1';$/m, 'npm-tjekket er et tilvalg (=1) - teksterne siger «off by default»');
+  assert.match(indexSrc, /^const FEEDBACK_LOG = join\(homedir\(\), '\.browser-mcp', 'feedback\.jsonl'\);$/m, 'teksten naevner stien ~/.browser-mcp/feedback.jsonl');
+  assert.match(d, /npm view/, 'npm-tjekket er `npm view` mod brugerens opsaetning, ikke et fast offentligt register');
+});
+
+// Tekstkontrakt (konsulentrunde 32, Astra): regulaere udtryk kan ikke bevise betydning - en omskrivning med andre ord
+// slipper igennem. De godkendte ordlyde er derfor laast her. Aendres en af dem, skal den nye tekst
+// holdes op mod koden igen (case, hjaelpere, logbog og npm-opslag) foer kontrakten opdateres.
+const KONTRAKT = {
+  "lt": "List the tabs this session owns (tabs it opened or adopted): id, URL, title, and each tab's active flag (whether Chrome shows it in front of its window, not which tab this session is working in). Tabs of other sessions are not included.",
+  "sc": "Detect CAPTCHAs on the current page and work through them, one action per call. \"detect\" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. \"click_checkbox\" tries the reCAPTCHA checkbox and detects again. \"click_grid\" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. \"ask_human\" returns the message to show the user with browser_ask_user.",
+  "act": "Action to take. \"detect\" scans for CAPTCHAs. \"click_checkbox\" clicks the reCAPTCHA checkbox. \"click_grid\" clicks specific reCAPTCHA grid cells (pass cells param). \"ask_human\" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: \"detect\"",
+  "fbHel": "Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user \"browser-mcp cannot do X\". It first CHECKS THE INSTALL - the connected Chrome extension's version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really \"your copy is outdated\" or \"you have two extensions loaded\" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (not again for a repeat of the same report while the server runs; logged_locally says whether a line was written; the free text is stored as the agent wrote it). With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.",
+  "capt": "## CAPTCHA handling\nbrowser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:\n1. Call browser_solve_captcha() - detects the CAPTCHA type on the page\n2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action=\"click_checkbox\") - tries the checkbox and detects again\n3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action=\"click_grid\", cells=[2,5,7]) with the correct cell indices\n4. If that does not clear it → call browser_ask_user and let the user solve it (action=\"ask_human\" only returns that message)\n5. After solving, retry the action that was blocked\n\nFor image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. click_grid reads the grid as 4x4 only when an index is 9 or higher; with lower indices it reads it as 3x3."
+};
+test('de godkendte beskrivelser og CAPTCHA-instruksen staar ordret som gennemgaaet', () => {
+  const sc = TOOLS.find(t => t.name === 'browser_solve_captcha');
+  assert.equal(beskrivelse('browser_list_tabs'), KONTRAKT.lt);
+  assert.equal(sc.description, KONTRAKT.sc);
+  assert.equal(sc.inputSchema.properties.action.description, KONTRAKT.act);
+  assert.equal(beskrivelse('browser_provide_feedback'), KONTRAKT.fbHel);
+  assert.equal(captchaInstruks(), KONTRAKT.capt);
+});
+
+test('list_tabs gennemloeber sessionens egne faner og spoerger ikke Chrome om alle', () => {
+  const blok = caseBlok(bgSrc, 'list_tabs');
+  assert.match(blok, /for \(const tabId of session\.tabIds\)/, 'listen bygges af sessionens egne id\'er');
+  assert.doesNotMatch(blok, /chrome\.tabs\.query/, 'en forespoergsel paa alle faner ville vise brugerens og andre sessioners');
+});
+
+// Adfaerdsprøver (konsulentrunde 33, Astra): kildeord kan ikke vise at koden GOER det teksten lover. Her
+// koeres de udtrukne blokke med falske Chrome-kald, saa en tom liste, et forkert `active`, et sprunget
+// gen-tjek eller et overlay der alligevel vises bliver roedt.
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const helFunktion = (src, navn) => {
+  const i = src.search(new RegExp(`(async )?function ${navn}\\(`));
+  assert.ok(i > -1, `fandt ikke ${navn}`);
+  return src.slice(i, src.indexOf('\n}', i) + 2);
+};
+
+test('list_tabs returnerer sessionens egne faner med Chromes active, og spoerger aldrig om andres', async () => {
+  const session = { tabIds: new Set([11, 12, 13]), activeTabId: 11, label: 'Claude 1', color: 'blue' };
+  const faner = new Map([
+    [11, { id: 11, url: 'https://egen.example/a', title: 'Egen A', active: false }],
+    [12, { id: 12, url: 'https://egen.example/b', title: 'Egen B', active: true }],
+    [21, { id: 21, url: 'https://anden-session.example/', title: 'Anden', active: false }],
+    [99, { id: 99, url: 'https://bruger.example/', title: 'Bruger', active: true }],
+  ]);
+  const opslag = [];
+  const chrome = { tabs: { get: async (id) => { opslag.push(id); if (!faner.has(id)) throw new Error('No tab with id: ' + id); return faner.get(id); } } };
+  const h = new AsyncFunction('chrome', 'getSession', 'port', `switch ('list_tabs') { ${caseBlok(bgSrc, 'list_tabs')} }`);
+  const svar = await h(chrome, () => session, 9876);
+  assert.deepEqual(svar.tabs, [
+    { id: 11, url: 'https://egen.example/a', title: 'Egen A', active: false },
+    { id: 12, url: 'https://egen.example/b', title: 'Egen B', active: true },
+  ], 'kun egne faner, felterne som Chrome har dem, active = Chromes - ikke sessionens arbejdsfane (11)');
+  assert.deepEqual(opslag, [11, 12, 13], 'kun sessionens egne id\'er slaas op');
+  assert.deepEqual([...session.tabIds], [11, 12], 'en lukket fane fjernes fra sessionen');
+});
+
+test('solve_captcha koerer praecis den valgte handling og viser intet ved ask_human', async () => {
+  const koer = async (action, cells = [0]) => {
+    const kald = [];
+    const h = new AsyncFunction('getSessionTab', 'port', 'params', 'detectCaptcha', 'clickRecaptchaCheckbox', 'clickCaptchaGridCells', 'setTimeout', 'dispatch', 'chrome',
+      `switch ('solve_captcha') { ${caseBlok(bgSrc, 'solve_captcha')} }`);
+    const params = action === undefined ? {} : { action, cells };
+    const svar = await h(async () => ({ id: 11 }), 9876, params,
+      async () => { kald.push('detect'); return { found: true }; },
+      async () => { kald.push('checkbox'); return { clicked: true }; },
+      async (tabId, valgte) => { kald.push('grid:' + tabId + ':' + JSON.stringify(valgte)); return { clicked: true }; },
+      (cb) => cb(),
+      async (_p, metode) => { kald.push('dispatch:' + metode); return {}; },
+      new Proxy({}, { get: () => { kald.push('chrome'); return new Proxy(() => {}, { get: () => () => {} }); } }));
+    return { svar, kald };
+  };
+  assert.deepEqual((await koer(undefined)).kald, ['detect'], 'uden action er standarden detect (\"Default: detect\") - intet klik');
+  assert.deepEqual((await koer('detect')).kald, ['detect']);
+  assert.deepEqual((await koer('click_checkbox')).kald, ['checkbox', 'detect'], 'click_checkbox tjekker igen bagefter, som teksten siger');
+  assert.deepEqual((await koer('click_grid', [3, 7])).kald, ['grid:11:[3,7]'], 'click_grid sender de valgte celler uaendret til hjaelperen, paa sessionens fane');
+  const menneske = await koer('ask_human');
+  assert.deepEqual(menneske.kald, [], 'ask_human kalder intet - den viser ikke selv noget');
+  assert.equal(menneske.svar.method, 'human');
+  assert.match(menneske.svar.instructions, /browser_ask_user/, 'den returnerer beskeden til browser_ask_user');
+});
+
+test('click_grid laeser gitteret som 4x4 kun ved et indeks paa 9 eller mere, som parameterteksten siger', () => {
+  const krop = helFunktion(bgSrc, 'clickCaptchaGridCells');
+  assert.match(krop, /const cols = cells\.some\(c => c >= 9\) \? 4 : 3;/, 'aendres reglen, skal cells-teksten i tools.js og kontrakten foelge med');
+  const cells = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties.cells.description;
+  assert.match(cells, /4x4 only when an index is 9 or higher/);
+});
+
+test('BROWSER_MCP_CHECK_NPM taendes kun af vaerdien 1', () => {
+  const linje = indexSrc.match(/^const TJEK_NPM = [^\n]+$/m);
+  assert.ok(linje, 'index.js laeser flaget i én linje `const TJEK_NPM = ...`');
+  const tolk = (env) => new Function('process', linje[0] + '\nreturn TJEK_NPM;')({ env });
+  assert.equal(tolk({}), false);
+  for (const v of ['', '0', 'false', 'no', 'true', ' 1']) assert.equal(tolk({ BROWSER_MCP_CHECK_NPM: v }), false, `vaerdien ${JSON.stringify(v)} maa ikke taende npm-tjekket`);
+  assert.equal(tolk({ BROWSER_MCP_CHECK_NPM: '1' }), true);
+});
+
+test('npm-tjekket koerer kun med BROWSER_MCP_CHECK_NPM=1, som `npm view`, og husker svaret', async () => {
+  const lav = (tilvalgt) => {
+    const kald = [];
+    const f = new Function('TJEK_NPM', 'execFile', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
+      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); });
+    return { f, kald };
+  };
+  const fra = lav(false);
+  assert.equal(await fra.f(), null); assert.equal(await fra.f(), null);
+  assert.deepEqual(fra.kald, [], 'uden tilvalg startes ingen npm-proces');
+  const til = lav(true);
+  assert.equal(await til.f(), '1.30.1'); assert.equal(await til.f(), '1.30.1');
+  assert.deepEqual(til.kald, [['npm', 'view', '@agent360/browser-mcp', 'version']], 'med tilvalg: ét `npm view`, derefter cache');
+});
+
+test('CAPTCHA-raekkerne i README\'erne og paa /docs/tools har ikke de gamle loefter', () => {
+  for (const fil of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md']) {
+    const raekke = laes(fil).split('\n').find(l => l.startsWith('| `browser_solve_captcha` |'));
+    assert.ok(raekke, `${fil} har en raekke for browser_solve_captcha`);
+    assert.doesNotMatch(raekke, /automatically|often passes|AI vision guided|overlay|returns? (a|the) screenshot|then .* then/i, `${fil}: CAPTCHA-raekken lover igen noget koden ikke goer`);
+    assert.match(raekke, /one (step|action) per call/i, `${fil}: raekken siger at trinene koeres ét ad gangen`);
+  }
+});
