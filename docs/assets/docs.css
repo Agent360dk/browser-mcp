@@ -91,7 +91,7 @@ tr:last-child td{border-bottom:0}
 .step strong{display:block;margin:.15rem 0 .45rem;font-size:.95rem}
 .pill{display:inline-block;background:var(--ink);color:var(--paper);text-decoration:none;font-weight:600;font-size:.9rem;padding:.5rem .95rem;border-radius:10px}
 .pill:hover{opacity:.9}
-.term{margin:0;background:#14161A;color:#E6E8EC;font:.84rem/1.55 var(--mono);padding:.85rem 1rem;border-radius:10px;overflow-x:auto;white-space:pre}
+.term{margin:0;background:#14161A;color:#E6E8EC;font:.84rem/1.55 var(--mono);padding:.85rem 1rem;border-radius:10px;white-space:pre-wrap;overflow-wrap:anywhere}
 .prompt{display:inline-block;font:.9rem/1.4 var(--mono);background:var(--tint);border:1px solid var(--line);border-radius:10px;padding:.5rem .8rem}
 .big{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.9rem}
 .big b{font-size:2.6rem;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
@@ -129,4 +129,3 @@ tr:last-child td{border-bottom:0}
 .toc a:hover{text-decoration:underline}
 @media (max-width:30rem){.turn{grid-template-columns:1fr;gap:.2rem}.turn .who{text-align:left;line-height:1.4}.vin{padding:.9rem}}
 .subhero+h2{border-top:0;padding-top:0;margin-top:0}
-@media (max-width:40rem){.term{white-space:pre-wrap;overflow-wrap:anywhere}}
