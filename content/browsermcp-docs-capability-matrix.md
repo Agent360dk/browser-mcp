@@ -34,6 +34,8 @@ third one is the agent saying what it cannot do instead of failing quietly.
 |---|---|
 | **Measured** | We ran it against the released version and watched it work. Date in the note. |
 | **Fixed in 1.29.1** | Broken in v1.29.0, fixed and tested, and shipped in v1.29.1. Update the extension and the npm package to get it. |
+| **Works in 1.30.0** | Measured against the released v1.30.0. |
+| **Fixed in 1.30.1** | Fixed, tested, and shipped in v1.30.1. |
 | **By design** | The mechanism is there and reviewed, but we have no dated measurement. Treat as likely, not proven. |
 | **Not yet** | We ran it and it did not work. Open, with the reason. |
 | **Won't** | A deliberate non-goal. The reason is given, not hidden. |
@@ -44,7 +46,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 |---|---|---|
 | Site requires a login | **Measured** | It is the Chrome you are already signed into. There is no login step to fail. |
 | Session expires mid-task | **By design** | Same session as your own tab; it expires when yours does, not sooner. |
-| One-time code sent to your email | **Measured** | `browser_navigate` to the webmail tab you are already in, `browser_get_page_content`, read it, type it back. |
+| One-time code sent to your email | **Measured** | `browser_navigate` with `new_tab: true` to your webmail (already signed in), `browser_get_page_content`, read it, switch back, type it in. |
 | One-time code from an authenticator app | **By design** | `browser_ask_user` puts the question on the page in front of you. The agent never guesses it. |
 | Password or payment step | **By design** | Same dialog. This is a checkpoint, not a limitation. |
 | SSO / corporate identity provider | **By design** | Already signed in, same as any other session. |
@@ -60,7 +62,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | React / Vue controlled input that "resets itself" | **Fixed in 1.29.1** | In v1.29.0 `browser_fill` could append instead of replacing. Fixed 2026-09-08: it now reads the field back after clearing it. |
 | Native `<select>` | **Measured** | `browser_select_option`, 9 ms, 2026-09-09. |
 | A `<select>` inside a React controlled component | **Works in 1.30.0** | ⚠️ This row said **Open** for part of 2026-09-21, and that was wrong. We had measured ourselves against our own test page, which put a value setter and a `_valueTracker` on a `<select>` and called that "the same mechanism React uses". React does neither of those to a `<select>` - it installs a tracker on `input` and `textarea` only, and reads a select's value on the native `change` event. Measured against real React 18.3.1: the plain assignment 1.30.0 already makes does land, and `onChange` fires. So there was no React bug, and we published one about ourselves. |
-| A `<select>` that really does put a value setter on the element | **Fixed on `main`** | Some component could do what our test page did, and then a plain assignment is rolled back. The one-line change - go through the prototype's setter, as five other paths in the same file already did - handles it and costs nothing. We have not found a real library that does this to a `<select>`, so treat this row as a precaution, not a measurement. |
+| A `<select>` that really does put a value setter on the element | **Fixed in 1.30.1** | Some component could do what our test page did, and then a plain assignment is rolled back. The one-line change - go through the prototype's setter, as five other paths in the same file already did - handles it and costs nothing. We have not found a real library that does this to a `<select>`, so treat this row as a precaution, not a measurement. |
 | A `<select>` whose framework stores the value elsewhere | **Fixed in 1.29.1** | In v1.29.0 the guard could call a working choice a rollback. Fixed 2026-09-08: it fingerprints the page and only reports a rollback when nothing else changed. |
 | Custom combobox / autocomplete (div + listbox) | **By design** | `browser_set_combobox` types a prefix, waits for options, clicks the match. |
 | **Custom dropdown that opens on a plain `click`** | **Fixed in 1.29.1** | In v1.29.0 the click fallback fired *two* click events, so anything that toggles opened and closed again. Measured 2026-09-10 in a real page: one click 11\|53\|…\|0 → 11\|69\|…\|1, two clicks unchanged. It now fires one, and judges success by whether the page changed. The tool itself has not been re-run live since. |
@@ -76,8 +78,8 @@ third one is the agent saying what it cannot do instead of failing quietly.
 
 | Wall | State | Note |
 |---|---|---|
-| CAPTCHA | **Partly** | `browser_solve_captcha` tries the checkbox first (often enough when you are signed into Google), then hands the model a screenshot to look at, then asks you. There is no success-rate claim on this page on purpose: we have not measured one, and a number we cannot show the working for is worth nothing. |
-| Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries DOM reads. On main, script evaluations are no longer retried automatically, because some of them click. One known gap remains: `browser_execute_script` still retries your own code on a detach. |
+| CAPTCHA | **Partly** | `browser_solve_captcha` tries the checkbox first (often enough when you are signed into Google), then lets the agent take its own screenshot and click grid cells (`click_grid`), then asks you. There is no success-rate claim on this page on purpose: we have not measured one, and a number we cannot show the working for is worth nothing. |
+| Anti-automation sites that detach the debugger | **Partly** | The CDP layer re-attaches and retries DOM reads. Since 1.29.1, script evaluations are no longer retried automatically, because some of them click. That includes your own code in `browser_execute_script`: once sent, it is not retried. |
 
 ## Walls we will not cross
 

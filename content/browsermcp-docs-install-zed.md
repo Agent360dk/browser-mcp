@@ -6,7 +6,7 @@
 
 ---
 
-**Give Zed's agent control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+**Give Zed's agent control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
 ## The whole thing, in four steps
 
@@ -31,7 +31,7 @@
 
 **4 - Say this, to check it worked.** In the agent panel:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -43,7 +43,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 ## Where the settings file actually lives
 
-| | |
+| System | File |
 |---|---|
 | macOS | `~/.config/zed/settings.json` |
 | Linux / FreeBSD | `$XDG_CONFIG_HOME/zed/settings.json` (usually the same) |

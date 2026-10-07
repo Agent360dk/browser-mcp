@@ -6,7 +6,7 @@
 
 ---
 
-**Give Copilot agent mode control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+**Give Copilot agent mode control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
 ## The whole thing, in four steps
 
@@ -30,7 +30,7 @@
 
 **4 - Say this, to check it worked.** In agent mode:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -52,7 +52,7 @@ Every other client on this site uses `mcpServers`. VS Code does not. If you past
 
 ## What Copilot can do with your real browser
 
-It browses **as you**. Your admin dashboard already signed in, the 2FA code from the Gmail tab you already have open, the form on the page you were looking at. Nothing to re-authenticate, because it is your authenticated browser.
+It browses **as you**. Your admin dashboard already signed in, the 2FA code from your signed-in Gmail, the form on the page you point it to. Nothing to re-authenticate, because it is your authenticated browser.
 
 And when it hits something only you can decide, `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 

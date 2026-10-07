@@ -170,6 +170,56 @@ test('hver citeret fejlbesked paa siderne findes ogsaa i koden', () => {
   assert.deepEqual(fund, [], `fejlbeskeder der ikke findes i koden:\n  ${fund.join('\n  ')}`);
 });
 
+// 6/10 (3c): vagten ovenfor skaerer parentesen fra, saa «(green)» slap igennem, selv om koden
+// skriver sessionens NAVN der: `does not belong to this session (${session.label})`, og navnet er
+// altid «Claude N» (background.js), uanset klient og farve.
+test('en citeret sessions-fejl naevner sessionen ved dens rigtige navn, Claude N', () => {
+  const fund = [];
+  for (const fil of readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'))) {
+    readFileSync(join(rod, 'content', fil), 'utf8').split('\n').forEach((linje, i) => {
+      const m = linje.match(/does not belong to this session \(([^)]*)\)/);
+      if (m && !/^Claude \d+$/.test(m[1])) fund.push(`content/${fil}:${i + 1}  (${m[1]})`);
+    });
+  }
+  assert.deepEqual(fund, [], `sessionen hedder Claude N i koden:\n  ${fund.join('\n  ')}`);
+});
+
+// 6/10 (3c): forsiden maa ikke love «about a minute» (forside.test), fordi installationstiden aldrig er
+// maalt - men 13 installationssider lovede «about 90 seconds» og «about 60 seconds». Samme loefte,
+// anden ordlyd. Vagten daekker nu alle flader, ogsaa meta-beskrivelserne i kilderne.
+test('ingen flade lover en installationstid, der aldrig er maalt', () => {
+  const filer = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md')).map((f) => `content/${f}`)
+    .concat(['README.md', 'mcp-server/README.md', 'llms-install.md', 'docs/index.html', 'docs/llms.txt']);
+  const fund = [];
+  for (const fil of filer) {
+    readFileSync(join(rod, fil), 'utf8').split('\n').forEach((linje, i) => {
+      // R25: «in 90 seconds» og «in under two minutes» gled igennem. Tiden taeller kun naer et ord om
+      // installation/opsaetning, saa «Contribute in 30 seconds» og «takes two minutes» (en fejlrapport) er fri.
+      const tid = String.raw`\b(?:in|under|takes?|within)\s+(?:about\s+|under\s+|less than\s+)?(?:\d+|a|one|two|three|a few)[- ](?:seconds?|minutes?)\b`;
+      const op = String.raw`(?:install|set ?up|setup|up and running|four steps|get started)`;
+      if (/about (?:60|90|a few) seconds|about a minute|(?:60|90)[- ]second (?:install|setup)/i.test(linje)
+        || new RegExp(`${op}[^.\\n]{0,60}${tid}|${tid}[^.\\n]{0,40}${op}`, 'i').test(linje)) fund.push(`${fil}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(fund, [], `umaalt installationstid:\n  ${fund.join('\n  ')}`);
+});
+
+// 6/10 (3c): fem installationssider havde overskriften «40 tools» over en tabel med 34. En side der
+// lister vaerktoejerne (mindst 30 forskellige navne), skal liste dem alle, og kun dem der findes.
+test('en side der lister vaerktoejerne, lister alle i tools.js og intet andet', () => {
+  const alle = new Set([...readFileSync(join(rod, 'mcp-server/tools.js'), 'utf8').matchAll(/name:\s*['"](browser_[a-z0-9_]+)['"]/g)].map((m) => m[1]));
+  const fund = [];
+  for (const fil of readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'))) {
+    const navne = new Set(readFileSync(join(rod, 'content', fil), 'utf8').match(/\bbrowser_[a-z0-9_]+\b/g) ?? []);
+    if (navne.size < 30) continue;
+    const mangler = [...alle].filter((n) => !navne.has(n));
+    const ukendte = [...navne].filter((n) => !alle.has(n) && !/^browser_(go_|drag|wait_for$|tab_|snapshot|type$|navigate_back)/.test(n));
+    if (mangler.length) fund.push(`content/${fil} mangler ${mangler.join(', ')}`);
+    if (ukendte.length) fund.push(`content/${fil} naevner ${ukendte.join(', ')}, som ikke findes`);
+  }
+  assert.deepEqual(fund, []);
+});
+
 // ── Et citat i anfoerselstegn skal vaere et CITAT ───────────────────────────
 // FUNDET 19/9 af Fable: /learn/tools-that-lie/ satte remedien i anfoerselstegn som det
 // vaerktoejet svarer - «"this tab is in the background, call `browser_switch_tab`"» - mens

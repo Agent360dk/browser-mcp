@@ -2,11 +2,11 @@
 
 # Moving from @browsermcp/mcp to Browser MCP by Agent360
 
-*Suggested URL: `/migrate/from-browsermcp-io` · Suggested title tag: "Migrate from browsermcp.io to Browser MCP by Agent360 (2026)" · Suggested meta description: "Same idea, different package. Nine of thirteen tools have the same name. Here is the config diff, the four that differ, and the three we do not have." · Last verified: September 19, 2026*
+*Suggested URL: `/migrate/from-browsermcp-io` · Suggested title tag: "Migrate from browsermcp.io to Browser MCP by Agent360 (2026)" · Suggested meta description: "Same idea, different package. Seven of thirteen tools have the same name. Here is the config diff, the three that are renamed, and the three we do not have." · Last verified: September 19, 2026*
 
 ---
 
-**Short answer:** change one line in your config. Nine of their thirteen tool names are identical, three have a different name, and three of theirs do not exist here. That last list is the reason to read on before you switch.
+**Short answer:** change one line in your config. Seven of their thirteen tool names are identical, three have a different name, and three of theirs do not exist here. That last list is the reason to read on before you switch.
 
 ## Why you might be here
 
@@ -35,20 +35,20 @@ You also need **our** Chrome extension - theirs will not talk to this server, an
 ## Checking it worked
 
 ```
-You:     Take a screenshot of my current Chrome tab.
+You:     Open example.com and take a screenshot.
 
-Claude:  [browser_screenshot]
+Claude:  [browser_navigate, then browser_screenshot]
          <image>
 ```
 
 If you get an image back, the migration is done. If you get *"I don't have
 browser access"*, the client is still holding the old server - restart it.
 
-## Tool names: nine are identical
+## Tool names: seven are identical
 
 `browser_click` · `browser_hover` · `browser_navigate` · `browser_press_key` · `browser_screenshot` · `browser_select_option` · `browser_wait`
 
-Those work unchanged. Prompts and scripts that name them keep working.
+The names match, but four of the seven take different arguments: our `browser_click`, `browser_hover` and `browser_select_option` take a CSS `selector` (and `option` rather than `values`) instead of a snapshot `ref`, and our `browser_wait` waits for a selector rather than a number of seconds, so a call like `{"time": 1}` fails here. Check each call before you switch.
 
 ## Three have a different name
 
@@ -66,7 +66,7 @@ We do not have them. If your flow depends on browser history navigation or dragg
 
 ## What you get that is not in the thirteen
 
-The useful half of the difference is not the tools with matching names. It is the twenty-seven that have no counterpart: `browser_ask_user` (it stops and asks you for a 2FA code, then carries on in the same tab), `browser_solve_captcha`, `browser_upload_file`, `browser_extract_token`, `browser_set_cookies`, `browser_wait_for_network`, `browser_list_frames` and `browser_select_frame` for cross-origin iframes, and twenty concurrent sessions each in its own colour-coded tab group.
+The useful half of the difference is not the tools with matching names. It is the thirty that have no counterpart: `browser_ask_user` (it stops and asks you for a 2FA code, then carries on in the same tab), `browser_solve_captcha`, `browser_upload_file`, `browser_extract_token`, `browser_set_cookies`, `browser_wait_for_network`, `browser_list_frames` and `browser_select_frame` for cross-origin iframes, and twenty concurrent sessions each in its own colour-coded tab group.
 
 And one difference that does not show up in a tool list: since 1.29.2 these tools measure whether the page actually received the action, rather than trusting that Chrome accepted the command. Nine of them used to answer yes when nothing had happened. [The whole story is written up here](/learn/tools-that-lie/), including the parts that went badly.
 
@@ -79,7 +79,7 @@ No. Two teams, two GitHub organisations, two npm packages, two Chrome extensions
 You can install both extensions, but you should not. Chrome allows one debugger per tab, so the two fight over it and every mouse, key and file tool starts failing with errors that point at the page rather than at the conflict.
 
 **Will my existing prompts break?**
-Only where they name `browser_type`, `browser_snapshot`, `browser_get_console_logs`, or one of the three we do not have.
+Where they name `browser_type`, `browser_snapshot`, `browser_get_console_logs` or one of the three we do not have, and where they call `browser_click`, `browser_hover`, `browser_select_option` or `browser_wait` with their arguments: a snapshot `ref`, `values`, or a number of seconds.
 
 **Is it a drop-in replacement?**
-For nine of thirteen tools, yes. We would rather say "mostly, and here is the list" than "yes".
+No. Seven tool names match, but four of them take different arguments: ours take a CSS selector instead of a snapshot `ref`, and our `browser_wait` waits for a selector rather than a number of seconds. We would rather say "close, and here is the list" than "yes".

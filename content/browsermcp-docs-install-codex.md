@@ -1,10 +1,10 @@
 // KILDE: https://developers.openai.com/codex/mcp (canonical; redirects to https://learn.chatgpt.com/docs/extend/mcp?surface=cli - verified 15/7: `codex mcp add <name> -- <command>` syntax, `~/.codex/config.toml` default path, `[mcp_servers.<name>]` TOML table, `/mcp` verify command, and config shared across ChatGPT desktop app / Codex CLI / IDE extension)
 
 # Install Browser MCP for OpenAI Codex
-*Suggested meta description: "Four steps, about 90 seconds. Codex drives the Chrome you are already signed in to, with your cookies and logged-in sessions intact."*
+*Suggested meta description: "Four steps. Codex drives the Chrome you are already signed in to, with your cookies and logged-in sessions intact."*
 
 
-**Give Codex control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank headless browser that gets blocked on every login wall.
+**Give Codex control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank headless browser that gets blocked on every login wall.
 
 ## The whole thing, in four steps
 
@@ -20,7 +20,7 @@ codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 
 **4 - Say this, to check it worked.** Paste it to Codex:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#now-what-things-to-actually-say)
 
@@ -77,21 +77,21 @@ Restart your Codex CLI session so it picks up the new server, then in the compos
 
 Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start here:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 If you get an image back instead of *"I don't have browser access"*, both halves are talking. Then:
 
-> Open my Gmail tab and tell me who sent my last 3 emails.
+> Open Gmail and tell me who sent my last 3 emails.
 
 The one that shows the difference - it works because it is *your* browser, already signed in.
 
 > Go to my analytics dashboard, pull this month's numbers, and put them in a table.
 
-Any dashboard you are already logged into. No API key, no export, no integration to build first.
+A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first.
 
-> Fill in this signup form with my details. Stop and ask me before anything sensitive.
+> Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
-You stay in the loop - the agent hands control back for anything it should not decide alone.
+You stay in the loop - the agent can pause and ask you before anything it should not decide alone.
 
 The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** Strongest where there is no API. [More examples](https://browsermcp.dev/#try).
 
@@ -99,19 +99,19 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 ### The 2FA-killer move
 
-This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail tab, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. No API can do that. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
+This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
 ### 40 tools, no server-side moving parts
 
 | Category | What it gives your agent |
 |---|---|
-| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script` |
-| **Interaction** | `browser_click`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key`, `browser_wait`, `browser_handle_dialog` |
+| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script`, `browser_extract_list` |
+| **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key`, `browser_wait`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab` (for OAuth popups), `browser_list_frames` / `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch` (bypasses CORS from the extension), `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA codes, CAPTCHA grids, or any credential Codex shouldn't guess at |
-| **Meta** | `browser_about` - session/extension info |
+| **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - but it isn't limited to those. Point it at any provider's API-settings page and it'll navigate there and walk you through pulling the token the same way; the 9 are just shortcuts, not a whitelist.
 
@@ -139,10 +139,10 @@ Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes,
 Yes - MIT-licensed, open source, no paywall, no account, no API key. Built by [Agent360](https://agent360.dk) as part of its developer-tools work.
 
 **How do I remove it?**
-`codex mcp remove browser-mcp` drops the entry from `config.toml`, then remove the extension from `chrome://extensions`. There's no global npm install to clean up - `npx` runs the server directly each time, it's never installed persistently.
+`codex mcp remove browser-mcp` drops the entry from `config.toml`, then remove the extension from `chrome://extensions`. There's no global npm install to clean up - `npx` runs the server directly each time. Delete `~/.browser-mcp/` too: it holds a local problem log and, for an unpacked install, the extension files.
 
 **What if I already have Browser MCP set up for Claude Code?**
-The Chrome extension is shared - you only load it once, regardless of how many MCP clients point at it. You just need one more `codex mcp add` (or manual config.toml entry) so Codex knows about the same local server.
+The Chrome extension is shared - you only load it once, regardless of how many MCP clients point at it. You just need one more `codex mcp add` (or manual config.toml entry) so Codex starts its own copy of the server, and that copy finds the same extension.
 
 ---
 

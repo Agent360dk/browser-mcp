@@ -72,7 +72,7 @@
     <p><b>Otherwise: this extension is only half of Browser MCP.</b> It needs a local MCP server to talk to - the Chrome Web Store cannot install that part. Register it once, then restart your agent. Claude Code:</p>
     <code id="setupCmd">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code>
     <p class="clients">Codex: <code>codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest</code><br>
-      Cursor, VS Code and the rest: run <code>npx @agent360/browser-mcp install</code> - it registers with the clients you have.</p>
+      VS Code and Cursor: run <code>npx @agent360/browser-mcp install</code> - it registers with Claude Code, Codex, VS Code and Cursor if it finds them. Other clients: see the setup guide.</p>
     <div class="row">
       <button id="copyCmd">Copy command</button>
       <a href="https://browsermcp.dev/docs/install-claude-code/" target="_blank" rel="noopener">Setup guide</a>
@@ -81,8 +81,8 @@
 
   <div class="try" id="try">
     <p><b>Connected - you're ready.</b> Nothing happens until you ask your agent for something. Try saying:</p>
-    <span class="prompt">"Take a screenshot of my current Chrome tab."</span>
-    <span class="prompt">"Open my Gmail tab and tell me who sent my last 3 emails."</span>
+    <span class="prompt">"Open example.com and take a screenshot."</span>
+    <span class="prompt">"Open Gmail and tell me who sent my last 3 emails."</span>
     <a href="https://browsermcp.dev/#try" target="_blank" rel="noopener">More things to try</a>
   </div>
 

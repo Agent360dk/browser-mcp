@@ -43,7 +43,7 @@ Messages are JSON-RPC. The practical consequence for you: a local server is just
 
 This is the part people get wrong, and it decides what a given server can actually do:
 
-- **Local (stdio)** servers run on your machine, with your files, your network position and your logged-in state. That's what makes things like driving your own browser possible - and it means nothing has to leave your computer.
+- **Local (stdio)** servers run on your machine, with your files, your network position and your logged-in state. That's what makes things like driving your own browser possible. A local server talks to your client through stdin and stdout, it can still make network requests of its own, and what it returns goes to your AI client and its model provider.
 - **Remote (HTTP)** servers run somewhere else. Easier to distribute, but they only ever see what you send them.
 
 Neither is better; they answer different questions. A server that needs to touch *your* environment has to be local.
@@ -67,4 +67,4 @@ No - using an existing server is a config entry in your client. Writing one requ
 No, and you shouldn't treat it as one. A local server runs with your permissions. Install servers you trust, and prefer ones whose source you can read.
 
 **Where do I start?**
-Pick a client you already use and add one server. If you want the browser one, [installing Browser MCP](/docs/install-claude-code/) takes about a minute.
+Pick a client you already use and add one server. If you want the browser one, [installing Browser MCP](/docs/install-claude-code/) takes four steps.

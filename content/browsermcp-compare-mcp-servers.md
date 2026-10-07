@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** for CI/CD and headless scale, use **Playwright MCP**. For performance tracing and DevTools-grade debugging, use **Chrome DevTools MCP**. For a Python agent framework with an optional cloud browser, use **Browser Use**. If the job needs your **real, already-logged-in Chrome** - your cookies, your 2FA, your sessions - that is the niche the two projects named "Browser MCP" occupy: **browsermcp.io** (larger, but no code change since April 24, 2025) and **Browser MCP by Agent360** (this site - smaller, actively maintained). All numbers below were pulled from public APIs on 2026-07-21 and are individually dated.
+**Short answer:** for CI/CD and headless scale, use **Playwright MCP**. For performance tracing and DevTools-grade debugging, use **Chrome DevTools MCP**. For a Python agent framework with an optional cloud browser, use **Browser Use**. If the job needs your **real, already-logged-in Chrome** - your cookies, your 2FA, your sessions - that is the niche the two projects named "Browser MCP" occupy: **browsermcp.io** (larger, but no code change since April 24, 2025) and **Browser MCP by Agent360** (this site - smaller, actively maintained). All numbers below were pulled from public APIs between 2026-09-19 and 2026-09-24 and are individually dated.
 
 ## The five projects at a glance
 
@@ -18,7 +18,7 @@
 | [browsermcp.io](https://github.com/BrowserMCP/mcp) | 7,108 | **2025-04-24** | 9,107 | 0.1.3 (2025-04-11) | **Your real Chrome** (extension) |
 | [Browser MCP by Agent360](https://github.com/Agent360dk/browser-mcp) | 44 | 2026-09-18 | 1,456 | 1.29.1 (2026-09-13) | **Your real Chrome** (extension) - only mode |
 
-*(All figures fetched 2026-09-19 from the GitHub API, npm downloads API and PyPI. Star counts and downloads move daily; the maintenance dates are the durable signal.)*
+*(Figures fetched 2026-09-18 to 2026-09-24 from the GitHub API, npm downloads API and PyPI; our own row predates v1.29.2 (2026-09-18), and our latest release is now v1.30.1 (2026-10-07). Star counts and downloads move daily; the maintenance dates are the durable signal.)*
 
 ## The one question that separates them
 
@@ -33,7 +33,7 @@ A server that drives yours:
          Here's the invoice total for August.
 ```
 
-Every other difference in the table below - tool count, maintenance, CI support - matters
+Every other difference in the table below - maintenance, stars, downloads - matters
 less than which of those two answers you get.
 
 ## Which browser does each one actually drive?
@@ -47,11 +47,11 @@ Honest note: Playwright MCP does offer an opt-in `--extension` mode to connect t
 
 ## What about the two projects both called "Browser MCP"?
 
-An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way - a Chrome extension plus a local stdio MCP server. The practical difference in 2026 is maintenance: browsermcp.io's repository has had no code change since 2025-04-24 and has never shipped a GitHub release (checked 2026-07-21), while this project ships regularly (40 tools as of v1.24.0). We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
+An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way - a Chrome extension plus a local stdio MCP server. The practical difference in 2026 is maintenance: browsermcp.io's repository has had no code change since 2025-04-24 and has never shipped a GitHub release (checked 2026-07-21), while this project ships regularly (40 tools in the current release). We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
 
 ## Which is most actively maintained?
 
-As of 2026-07-21, by last commit: Browser Use and Chrome DevTools MCP (2026-07-20), Playwright MCP (2026-07-15), Browser MCP by Agent360 (2026-07-21). browsermcp.io: 2025-04-24. The archived official **Puppeteer MCP** (`@modelcontextprotocol/server-puppeteer`) deserves a mention because it still shows ~36k npm downloads/week: it was moved to `modelcontextprotocol/servers-archived` and last saw a commit 2025-05-15 - if you are choosing today, choose something maintained.
+By last commit, from the table above: Chrome DevTools MCP (2026-09-24), Playwright MCP and Browser MCP by Agent360 (2026-09-18), Browser Use (2026-09-15). browsermcp.io: 2025-04-24. The archived official **Puppeteer MCP** (`@modelcontextprotocol/server-puppeteer`) deserves a mention because it still shows ~36k npm downloads/week: it was moved to `modelcontextprotocol/servers-archived` and last saw a commit 2025-05-15 - if you are choosing today, choose something maintained.
 
 ## When should you *not* pick each?
 

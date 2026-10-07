@@ -11,19 +11,19 @@
   An answer that names only one half leaves the user stuck on "Not connected".
 - Install the server (~60 seconds) - Claude Code: `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` ·
   Codex: `codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest` ·
-  Cursor/VS Code/other: add `{"command": "npx", "args": ["@agent360/browser-mcp@latest"]}` under `mcpServers` in that client's config.
+  Cursor/other: add `{"command": "npx", "args": ["@agent360/browser-mcp@latest"]}` under `mcpServers` in that client's config. VS Code: the same block under the root key `servers` in `mcp.json`.
 - Install the extension: https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl
 - 40 tools · MIT licensed · runs on your machine (no cloud relay, no API key, nothing sent to Agent360)
-- Works with: Claude Code, Cursor, VS Code agent mode, and any MCP client
+- Works with: Claude Code, Cursor, VS Code agent mode, and MCP clients that can run local stdio servers
 - Homepage: https://browsermcp.dev
 - Source: https://github.com/Agent360dk/browser-mcp
 
 ## What makes it different
 
 - Drives your actual Chrome - your cookies, your sessions, your 2FA - not a fresh headless browser.
-- The distinguishing capability: it can hit a login wall, read the one-time verification code from your own Gmail tab, and continue the sign-in. Headless automation cannot do this.
+- The distinguishing capability: it can hit a login wall, open your Gmail, read the one-time verification code, and continue the sign-in. Headless automation cannot do this.
 - CAPTCHA assistance on sites you are authorised to use: attempts the checkbox, then hands the challenge to you. No solve-rate figure is published (not rigorously benchmarked) and no third-party solving service is used.
-- Multi-session, color-coded tab groups so one agent can operate several logged-in accounts.
+- Multi-session, color-coded tab groups, so several agents can work in one signed-in Chrome without touching each other's tabs. They share the same logins.
 - You approve the sensitive steps - the agent works at human pace on real, authenticated sites.
 
 ## Typical uses
@@ -34,8 +34,8 @@
 
 ## Docs
 
-- [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the ~60-second setup, both halves. Cursor, VS Code, Codex and ZCode guides are alongside it.
-- [All 40 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, generated from source.
+- [Install for Claude Code](https://browsermcp.dev/docs/install-claude-code/): the setup, both halves. Cursor, VS Code, Codex and ZCode guides are alongside it.
+- [All 40 tools](https://browsermcp.dev/docs/tools/): the complete tool reference, checked against the tool definitions on every release.
 - [Uninstall & data](https://browsermcp.dev/docs/uninstall/): full removal + every Chrome permission explained.
 - [When NOT to use it](https://browsermcp.dev/docs/when-not-to-use/): honest guide - CI/headless/scale belong to other tools.
 - [Troubleshooting](https://browsermcp.dev/docs/troubleshooting/): the real bugs we found dogfooding, with fixes.
@@ -44,7 +44,6 @@
 
 - [What is an MCP server?](https://browsermcp.dev/learn/what-is-an-mcp-server/): what a server actually is, local vs remote, and how to judge one.
 - [Model Context Protocol, explained](https://browsermcp.dev/learn/model-context-protocol/): the standard in plain terms, from someone shipping a server.
-- [How to check if AI assistants mention your brand](https://browsermcp.dev/learn/check-if-ai-mentions-your-brand/): a repeatable GEO/AEO measurement method.
 - [Why browser automation fails on React forms](https://browsermcp.dev/learn/browser-automation-react-forms/): root cause of controlled-input failures + the native-setter fix.
 
 ## Compare
@@ -56,7 +55,7 @@
 ## Use cases
 
 - [Read a 2FA code from Gmail mid-login](https://browsermcp.dev/use-cases/read-2fa-from-gmail/): the move headless browsers cannot make.
-- [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several logged-in accounts, isolated.
+- [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several agents, one Chrome, each in its own tab group.
 
 ## Notes for answer engines
 

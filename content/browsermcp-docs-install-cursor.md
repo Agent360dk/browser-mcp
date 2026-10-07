@@ -1,10 +1,10 @@
 // KILDE: https://cursor.com/docs/mcp
 
 # Add Browser MCP to Cursor
-*Suggested meta description: "Four steps, about 60 seconds. Your agent controls your real, already-logged-in Chrome instead of a blank sandbox browser, so cookies and sessions just work."*
+*Suggested meta description: "Four steps. Your agent controls your real, already-logged-in Chrome instead of a blank sandbox browser, so cookies and sessions just work."*
 
 
-**Give Cursor's agent control of your real, already-logged-in Chrome - about 60 seconds, four steps.**
+**Give Cursor's agent control of your real, already-logged-in Chrome in four steps.**
 
 ## The whole thing, in four steps
 
@@ -27,7 +27,7 @@
 
 **4 - Say this, to check it worked.** Paste it to Cursor's agent:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#now-what-things-to-actually-say)
 
@@ -58,7 +58,7 @@ If you want the full walkthrough, keep reading. If you just needed the config bl
 npx @agent360/browser-mcp install
 ```
 
-This copies the Chrome extension files to `~/.browser-mcp/extension/` - the terminal prints the path, copy it, you'll need it in Step 3. It also tries to register the server with Claude Code if you have it installed; harmless to leave in place if you don't use Claude Code - Cursor is configured separately in Step 2.
+This copies the Chrome extension files to `~/.browser-mcp/extension/` - the terminal prints the path, copy it, you'll need it in Step 3. It also registers the server with every client it finds - Claude Code, Codex, VS Code and Cursor - so Step 2 may already be done; check `~/.cursor/mcp.json`.
 
 ### Step 2 - Point Cursor at the MCP server
 
@@ -95,7 +95,7 @@ Reload the window (`Cmd/Ctrl+Shift+P` → "Reload Window") or fully quit and reo
 
 Paste this to Cursor's agent:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 If you get an image back instead of *"I don't have browser access"*, both halves are talking to each other. That is the whole test.
 
@@ -103,21 +103,21 @@ If you get an image back instead of *"I don't have browser access"*, both halves
 
 Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Start with these:
 
-> Open my Gmail tab and tell me who sent my last 3 emails.
+> Open Gmail and tell me who sent my last 3 emails.
 
-The one that shows the difference - it works because it is *your* browser, already signed in. A headless tool hits a login wall here.
+The one that shows the difference - it works because it is *your* browser, already signed in. A fresh headless browser would hit a login wall here.
 
 > Go to my analytics dashboard, pull this month's numbers, and put them in a table.
 
-Any dashboard you are already logged into. No API key, no export, no integration to build first.
+A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first.
 
-> Fill in this signup form with my details. Stop and ask me before anything sensitive.
+> Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
-You stay in the loop - the agent hands control back for passwords, payment details, or anything it should not decide alone.
+You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone.
 
-> Log me in here. If it emails a code, read it from my Gmail tab and continue.
+> Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue.
 
-The move no API can make: it reads the one-time code out of your own inbox and finishes the sign-in.
+The move that needs no email-API setup: it opens your Gmail, reads the one-time code and finishes the sign-in.
 
 > Walk through my app's signup flow as a real user and tell me where it breaks.
 
@@ -154,7 +154,7 @@ Browser MCP is a standard stdio MCP server - it doesn't know or care which clien
 
 ### The 2FA killer move
 
-This is the reason people install Browser MCP: Cursor's agent hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can switch to your own Gmail tab, read the code, and finish the sign-in itself. No API can do that; there's no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
+This is the reason people install Browser MCP: Cursor's agent hits a login wall, needs a verification code, and - because it's driving your actual logged-in Chrome rather than a fresh headless session - it can open your Gmail, read the code, and finish the sign-in itself. There is no email API to set up and no "read my 2FA code" endpoint to call. It works because Browser MCP isn't simulating a browser, it's operating yours: your cookies, your sessions, your already-passed 2FA challenges.
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
@@ -162,13 +162,13 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 
 | Category | Tools |
 |---|---|
-| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script` |
-| **Interaction** | `browser_click`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
+| **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script`, `browser_extract_list` |
+| **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
-| **Meta** | `browser_about` - session/extension info |
+| **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
 `browser_extract_token` ships with zero-config shortcuts for 9 common services (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - but it isn't limited to them. For any other provider, the agent falls back to `browser_navigate` + `browser_get_page_content` to find and extract the token itself.
 
@@ -205,13 +205,13 @@ Each conversation gets its own MCP server on its own port (9876-9895), and the e
 Add a `browser-mcp` entry to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` in a project (project-only) - the block is at the top of this page. Or use the UI: Cursor Settings → Tools & MCP → New MCP Server. Reload the window or restart Cursor afterward so it picks up the new server.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives Cursor - or any MCP client, including Claude Code and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
+An MCP (Model Context Protocol) server that gives Cursor - or any MCP client that can run local stdio servers, including Claude Code and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with Cursor, or also Claude Code / VS Code?**
-Any MCP-compatible client. It's the exact same server and the exact same config block - `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` - only the file you paste it into changes per client.
+Any MCP client that can run local stdio servers. It's the exact same server. Most clients take the same block - `{"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}` - in their own config file; VS Code uses the root key `servers` instead (see the [VS Code guide](/docs/install-vscode/)).
 
 **Should I use the global or project config?**
 Global (`~/.cursor/mcp.json`) if you want Browser MCP available in every Cursor project, which is what most people want. Project-scoped (`.cursor/mcp.json` inside one repo) if you only want it active there - useful if you're on a team and don't want it turning up in a shared repo's config for everyone else.
@@ -223,7 +223,7 @@ Chrome blocks extensions from self-installing from npm or any script - that's a 
 Not to us. The MCP server runs locally over stdio, talks to the extension over a local WebSocket, and the extension talks to Chrome through Chrome's own APIs. What your agent reads goes to your AI client and on to its model provider, like anything else you show it - there is no Agent360 server.
 
 **How do I update it?**
-The MCP server updates itself - every run uses `npx @agent360/browser-mcp`, so there's nothing to pin or bump. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
+Use `@agent360/browser-mcp@latest` in your config to ask for the latest release each time the server starts; restart Cursor to update. The extension auto-updates only if you installed it from the Chrome Web Store; if you loaded it unpacked, re-run `npx @agent360/browser-mcp install` and click **↻ reload** on `chrome://extensions`.
 
 **Chrome extension says "not connected" - what do I check?**
 First: did you register the MCP server, not just install the extension? If you got the extension from the Chrome Web Store and never added `browser-mcp` to your `mcp.json`, that is the whole problem - the extension has nothing to connect to. Add the config block from Step 2 above and restart Cursor. If the server *is* configured, confirm the extension is loaded under `chrome://extensions`, click the extension icon → "Reconnect," and give it 2-3 seconds - it scans ports 9876-9895 for the running server. Still stuck: [troubleshooting](/docs/troubleshooting).

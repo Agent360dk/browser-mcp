@@ -6,7 +6,7 @@
 
 ---
 
-**Give opencode control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+**Give opencode control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
 ## The whole thing, in four steps
 
@@ -30,7 +30,7 @@
 
 **4 - Say this, to check it worked:**
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -67,7 +67,7 @@ If you copy a config from a Claude Code or Cursor guide, this is the line that b
 
 **No one-click link.** Trae and VS Code publish install-link formats; opencode does not, as of September 2026. The four lines above are the whole install.
 
-**The badge stays grey until you ask for something.** The server only takes a port the first time real work arrives. Ask for a screenshot and it appears.
+**There is no badge until you ask for something.** The server only takes a port the first time real work arrives. Ask for a screenshot and a green badge appears.
 
 ## Frequently asked questions
 
