@@ -6,7 +6,7 @@
 
 ---
 
-**Give Kiro control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+**Give Kiro control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
 ## The whole thing, in four steps
 
@@ -31,7 +31,7 @@
 
 **4 - Say this, to check it worked:**
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -45,7 +45,7 @@ This is not a Browser MCP quirk. It hits every MCP server in Kiro, and it is the
 
 ## Where the files live
 
-| | |
+| Scope | File |
 |---|---|
 | Global (all workspaces) | `~/.kiro/settings/mcp.json` |
 | Workspace | `.kiro/settings/mcp.json` |
@@ -56,13 +56,13 @@ Same paths on macOS, Linux and Windows. Both are merged, and workspace wins on a
 
 **Hot-reload, no restart.** Saving the file restarts only the servers that changed, at the next quiet moment between turns.
 
-**`autoApprove: ["*"]` approves everything from that server.** It exists, and for a browser tool that can read any page you are signed in to, it is worth leaving off until you know what you are approving.
+The setting `autoApprove: ["*"]` approves everything from that server. It exists, and for a browser tool that can read any page you are signed in to, it is worth leaving off until you know what you are approving.
 
 **Environment variables get a security prompt.** Kiro asks before passing them through. Expected, not a fault.
 
 ## What Kiro can do with your real browser
 
-It browses **as you**. Your AWS console already signed in, the 2FA code from the Gmail tab you already have open, the form on the page you were looking at.
+It browses **as you**. Your AWS console already signed in, the 2FA code from your signed-in Gmail, the form on the page you point it to.
 
 And when it hits something only you can decide, `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 

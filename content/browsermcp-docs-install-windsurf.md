@@ -6,7 +6,7 @@
 
 ---
 
-**Give Cascade control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+**Give Cascade control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
 ## The whole thing, in four steps
 
@@ -31,7 +31,7 @@ The file is `~/.codeium/windsurf/mcp_config.json`. The `codeium` in that path is
 
 **4 - Say this, to check it worked.** In Cascade:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -43,7 +43,7 @@ Browser MCP is 40 of them. That is a large share of the budget, and it is a real
 
 - Running Browser MCP plus two or three other large servers will push you over, and tools start disappearing from Cascade's view rather than announcing themselves.
 - If you are near the limit, turn off servers you are not using in that session instead of trying to guess which tools got dropped.
-- If you only ever use Browser MCP for logged-in pages and screenshots, you are still paying for all 40 definitions. There is no way to load a subset today, in Windsurf or anywhere else.
+- If you only ever use Browser MCP for logged-in pages and screenshots, you are still paying for all 40 definitions. Browser MCP always offers all 40. Whether you can switch single tools off depends on the client, and we have not found that switch in Windsurf.
 
 We would rather you knew that before installing than found it as a mystery three servers later.
 
@@ -65,7 +65,7 @@ So: the config above is for **Cascade**, which is the agent most Windsurf users 
 
 ## Frequently asked questions
 
-**Why does the extension badge stay grey after step 3?**
+**Why is there no badge on the extension after step 3?**
 The server only takes a port the first time real work arrives. Ask for a screenshot and the badge appears.
 
 **Do I need to restart Windsurf after editing the file?**

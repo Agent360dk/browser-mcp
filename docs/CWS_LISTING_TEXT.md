@@ -138,9 +138,11 @@ Rather do it by hand? Pick your client:
    OpenAI Codex:
       codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 
-   Cursor / VS Code / Windsurf - add to that client's MCP config:
+   Cursor / Windsurf - add to that client's MCP config:
       {"mcpServers": {"browser-mcp": {"command": "npx",
        "args": ["@agent360/browser-mcp@latest"]}}}
+
+   VS Code - same block, but the root key is "servers" (in mcp.json).
 
    Per-client guides: https://browsermcp.dev/docs/install-claude-code/
 
@@ -154,10 +156,10 @@ Stuck on "Not connected"? https://browsermcp.dev/docs/troubleshooting/
 
 Nothing happens until you ask. Paste one of these to your agent:
 
-  "Take a screenshot of my current Chrome tab."
-     Start here - an image back means both halves are talking.
+  "Open example.com and take a screenshot."
+     Start here - a screenshot back means both halves are talking.
 
-  "Open my Gmail tab and tell me who sent my last 3 emails."
+  "Open Gmail and tell me who sent my last 3 emails."
      The one that shows the difference: it works because it is YOUR
      browser, already signed in. A headless tool hits a login wall here.
 
@@ -165,12 +167,12 @@ Nothing happens until you ask. Paste one of these to your agent:
    them in a table."
      Any dashboard you are already logged into - no API key, no export.
 
-  "Fill in this signup form with my details. Stop and ask me before
-   anything sensitive."
+  "Fill in the signup form at example.com/signup with my details. Stop
+   and ask me before anything sensitive."
      You stay in the loop for passwords and payment details.
 
-  "Log me in here. If it emails a code, read it from my Gmail tab and
-   continue."
+  "Log me in at app.example.com. If it emails a code, open Gmail, read
+   the code and continue."
      The move no API can make.
 
 The pattern: anything you would do yourself in a browser, on a site you

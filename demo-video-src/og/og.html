@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- Delingsbillede for browsermcp.dev (2/10-2026). Samme sprog som forsiden: lys papirflade, Chromes egne gruppefarver,
+     udvidelsens eget overlay som sidens ene moerke flade. Ingen tredjepartsfonte (systemskrift).
+     Render (headless Chrome, 1200x630): chrome --headless --screenshot=og.png --window-size=1200,630 --hide-scrollbars og.html
+     derefter: sips -s format jpeg -s formatOptions 88 og.png --out docs/og-image.jpg
+     ?s=gh giver 1280x640 til GitHubs social preview. -->
+<meta charset="utf-8">
+<title>Browser MCP delingsbillede</title>
+<style>
+:root{--paper:#F6F7F9;--ink:#1B1F24;--muted:#566070;--line:#D9DDE3;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box;margin:0}
+html,body{width:1200px;height:630px;background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+body.gh,body.gh html{width:1280px;height:640px}
+.stage{position:relative;width:100%;height:100%;padding:56px 64px}
+.logo{display:flex;align-items:center;gap:14px;font-weight:700;font-size:26px;letter-spacing:-.01em}
+.logo i{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#4F8EF7,#1A73E8);display:grid;place-items:center}
+.logo svg{width:22px;height:22px}
+h1{font-size:62px;line-height:1.05;letter-spacing:-.035em;font-weight:700;max-width:620px;margin-top:62px;text-wrap:balance}
+.sub{margin-top:26px;font-size:25px;line-height:1.4;color:var(--muted);max-width:560px}
+.url{position:absolute;left:64px;bottom:50px;font-size:24px;font-weight:600}
+.url span{color:var(--muted);font-weight:500}
+.right{position:absolute;right:64px;top:120px;width:430px}
+.strip{display:flex;gap:8px;background:#DEE1E6;border-radius:12px 12px 0 0;padding:10px 10px 0}
+.chip{font-size:15px;font-weight:600;color:#1B1F24;padding:8px 12px;border-radius:8px 8px 0 0}
+.chip.off{opacity:.55;background:transparent}
+.page{background:#fff;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;height:96px}
+.page b{display:block;height:12px;border-radius:6px;background:#EDEFF3;margin:18px 20px 0;width:60%}
+.page b+b{width:40%;margin-top:10px}
+.card{position:absolute;left:28px;right:0;top:128px;background:#1e293b;border-radius:14px;padding:26px 28px 28px;color:#e2e8f0;box-shadow:0 1px 2px rgba(15,23,42,.18),0 24px 48px -12px rgba(15,23,42,.45)}
+.card h3{font-size:19px;font-weight:700;color:#60a5fa}
+.card .bdg{font-size:13px;color:#94a3b8;margin-top:3px}
+.card p{font-size:16px;margin-top:10px;color:#cbd5e1}
+.fld{margin-top:16px;background:#0f172a;border:1px solid #334155;border-radius:9px;padding:13px 16px;font:600 26px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.32em;color:#f8fafc}
+.btns{display:flex;gap:10px;margin-top:16px}
+.btns span{flex:1;text-align:center;padding:12px;border-radius:9px;font-weight:700;font-size:17px}
+.go{background:#2563eb;color:#fff}.skip{background:#334155;color:#cbd5e1}
+</style>
+<body>
+<div class="stage">
+  <div class="logo"><i><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8z"/><path d="M19 14l.9 2.6L22.5 17.5l-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9z"/></svg></i><span>Browser MCP</span></div>
+  <h1>Your agent works in the Chrome you’re already signed into.</h1>
+  <p class="sub">Free, open-source Chrome extension and MCP server. It is set up to ask you when a code or a choice is yours to make.</p>
+  <div class="url">browsermcp.dev <span>&nbsp;by Agent360</span></div>
+  <div class="right">
+    <div class="strip"><div class="chip" style="background:#1558B0;color:#fff">Claude 1</div><div class="chip" style="background:#188038;color:#fff">Claude 2</div><div class="chip" style="background:#F9AB00">Claude 3</div><div class="chip" style="background:#D93025;color:#fff">Claude 4</div></div>
+    <div class="page"><b></b><b></b></div>
+    <div class="card"><h3>Agent360 - Action Required</h3><div class="bdg">Claude 3</div><p>Enter the 6-digit code from your authenticator app</p><div class="fld">4 8 2 9 1 6</div><div class="btns"><span class="go">Submit</span><span class="skip">✗ Skip</span></div></div>
+  </div>
+</div>
+<script>if(location.search.includes('s=gh'))document.body.className='gh'</script>

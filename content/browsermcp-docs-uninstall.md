@@ -13,18 +13,18 @@
 1. **Remove the Chrome extension.** Open `chrome://extensions`, find Browser MCP, and click **Remove**. If you loaded it unpacked, delete the extension folder too.
 2. **Remove the MCP server from your client.** Delete the `browser-mcp` entry from your MCP config (e.g. `claude mcp remove browser-mcp`, or delete the block from your Cursor/VS Code/Codex config). If you installed globally, `npm uninstall -g @agent360/browser-mcp`.
 
-That's it. There is no uninstaller to run, no account to close, and no data of yours on any server to delete.
+Then delete `~/.browser-mcp/` too: it holds a local log of problems your agent reported and, for an unpacked install, the extension files. There is no uninstaller to run, no account to close, and no data of yours on any server to delete.
 
 ## Checking it is really gone
 
 ```
-You:     Take a screenshot of my current Chrome tab.
+You:     Open example.com and take a screenshot.
 
 Claude:  I don't have browser access.
 ```
 
 That answer is what a clean uninstall looks like. If you still get an image back, the
-MCP server is still registered with your client - step 2 below.
+MCP server is still registered with your client - step 2 above.
 
 ## Exactly what the extension can access - and why
 
@@ -50,13 +50,13 @@ What does leave your machine is what you would expect from any AI agent: the pag
 ## FAQ
 
 **Does uninstalling delete my data from your servers?**
-There's nothing to delete - Browser MCP has no account and no server that stores your data. Removing the extension and the config entry is complete removal.
+There's nothing to delete - Browser MCP has no account and no server that stores your data. Removing the extension, the config entry and the `~/.browser-mcp/` folder is complete removal. If you ran `npx @agent360/browser-mcp install`, remove `browser-mcp` from every client it registered with (Claude Code, Codex, VS Code, Cursor).
 
 **Why does it need access to all sites and my cookies?**
 Because it drives *your* logged-in browser on whatever site you choose. Cookies are how you stay logged in; `<all_urls>` is so you're not limited to a pre-approved list. Neither is sent to us.
 
 **Is the debugger permission dangerous?**
-It's what lets the agent send trusted clicks and reads that work on strict sites. Chrome shows its standard "Browser MCP started debugging this browser" banner while a session is active; it clears when the session ends.
+It's what lets the agent send trusted clicks and reads that work on strict sites. Chrome shows its standard "Agent360 Browser MCP" started debugging this browser banner while a session is active; it clears when the session ends.
 
 **Can I verify the "nothing is sent to you" claim myself?**
 Yes - it's MIT-licensed open source. Read `extension/background.js` and `mcp-server/index.js`; there is no outbound analytics or telemetry endpoint.

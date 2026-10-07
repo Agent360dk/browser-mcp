@@ -6,7 +6,7 @@
 
 ---
 
-**Give Gemini CLI control of your real, already-logged-in Chrome - about 90 seconds, four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+**Give Gemini CLI control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
 ## The whole thing, in four steps
 
@@ -24,7 +24,7 @@ Add `-s user` if you want it available in every project rather than just this on
 
 **4 - Say this, to check it worked.** Paste it to Gemini:
 
-> Take a screenshot of my current Chrome tab.
+> Open example.com and take a screenshot.
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.**
 
@@ -55,7 +55,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 ## What Gemini CLI can do with your real browser
 
-The point is not "Gemini can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from the Gmail tab you already have open, and fills the form on the page you were looking at.
+The point is not "Gemini can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you point it to.
 
 And when it hits something only you can decide - a 2FA code, a CAPTCHA, a choice between three accounts - `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
 

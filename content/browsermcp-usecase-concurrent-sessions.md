@@ -20,7 +20,7 @@ Browser MCP scopes each session to its own set of tabs, visually separated into 
 
 - **Session A - research:** navigating docs and dashboards, pulling content with `browser_get_page_content`. Blue group.
 - **Session B - testing:** driving a form flow with `browser_fill` / `browser_click`, checking `browser_console_logs`. Green group.
-- **Session C - monitoring:** watching a status page, taking periodic `browser_screenshot`s. Orange group.
+- **Session C - monitoring:** watching a status page, taking periodic `browser_screenshot`s. Yellow group.
 
 All three run in the same Chrome, at the same time, on your real logged-in profile. None of them can accidentally act on another's tabs.
 

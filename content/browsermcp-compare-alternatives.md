@@ -64,11 +64,11 @@ It cannot be fixed by configuration, and it will not be fixed there.
 
 **Wins:** the connection lives in an offscreen document rather than the service worker, so the eviction failure above does not occur. And when a step genuinely needs a person - a 2FA code, a CAPTCHA, a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab. We could not find another MCP server in this group with a tool that does that.
 
-**Loses:** on a framework-controlled `<select>`, Playwright MCP lands the choice and we do not. We answer honestly that it did not land, but no is still no. Method and raw results: [/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), where we also publish the nine cases our own tools got wrong before we fixed them.
+**Lost, then retracted:** on 19 September we reported a miss on a framework-controlled `<select>`. The fault was our own test page, not React; 1.30.0 lands the choice on real React. Method, raw results and the retraction: [/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), where we also publish the nine cases our own tools got wrong before we fixed them.
 
 ## If you are switching from `@browsermcp/mcp`
 
-Nine of the thirteen tool names are identical, so an existing config is mostly a one-line change. The full diff, including the three of theirs that do not exist here, is on [/migrate/from-browsermcp-io/](https://browsermcp.dev/migrate/from-browsermcp-io/).
+Seven of the thirteen tool names are identical, so an existing config is mostly a one-line change. The full diff, including the three of theirs that do not exist here, is on [/migrate/from-browsermcp-io/](https://browsermcp.dev/migrate/from-browsermcp-io/).
 
 ## Frequently asked questions
 

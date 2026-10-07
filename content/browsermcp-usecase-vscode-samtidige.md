@@ -15,12 +15,12 @@ Browser MCP gives each session its own colour-coded Chrome tab group. A session 
 Three conversations running against one Chrome:
 
 ```
-  ● blue    Claude Code   - reading the analytics dashboard
-  ● green   Copilot agent - filling a form in the admin panel
-  ● orange  Codex         - watching a deploy log
+  ● blue    Claude 1  - Claude Code, reading the analytics dashboard
+  ● green   Claude 2  - Copilot agent, filling a form in the admin panel
+  ● yellow  Claude 3  - Codex, watching a deploy log
 ```
 
-Three groups in your tab strip, three colours, three names. `browser_list_tabs` in the blue session returns blue's tabs. It cannot close green's.
+Three groups in your tab strip, three colours, three numbered names. The names count sessions, not clients: a Codex session is still called Claude 3. `browser_list_tabs` in the blue session returns blue's tabs. It cannot close green's.
 
 And this is the exchange when one session reaches for another's tab:
 
@@ -28,14 +28,14 @@ And this is the exchange when one session reaches for another's tab:
 You:     Close the tab with the deploy log.
 
 Copilot: [browser_list_tabs]
-         I can see three tabs, all green - the analytics dashboard, the admin
-         form and a blank tab. The deploy log is not among them; it belongs to
-         another session.
+         I can see two tabs, both in my group, Claude 2 - the admin form and
+         a blank tab. The deploy log is not among them; it belongs to another
+         session.
 
 You:     Close it anyway.
 
 Copilot: [browser_close_tab  tab_id: 481]
-         Error: Tab 481 does not belong to this session (green)
+         Error: Tab 481 does not belong to this session (Claude 2)
          I cannot. That is the isolation doing its job, not a bug.
 ```
 
@@ -80,7 +80,7 @@ What differs is what happens when a run needs a human: none of Playwright MCP's 
 
 ## Two things to know before you rely on it
 
-**Only the visible tab gets mouse and keyboard.** Chrome does not deliver input to a tab that is not the visible one in its window - so with three sessions running, only the one you are looking at can click and type. Reading works everywhere. Since 1.29.2 the tools say which case you are in instead of reporting a success that did not happen.
+**Only the visible tab gets mouse and keyboard.** Chrome does not deliver input to a tab that is not the visible one in its window - so with three sessions running, only the one you are looking at gets key presses, hover, double- and right-click and coordinate clicks. Reading, clicking and filling a field by CSS selector work in every session. Since 1.29.2 the tools say which case you are in instead of reporting a success that did not happen.
 
 We measured whether giving each session its own window would fix that. **It does not** - what matters is whether the window has focus, not whether the tab is visible in it. [The measurement](https://github.com/Agent360dk/browser-mcp/blob/main/test/aerlighed/RESULTAT-vindueshypotesen-2026-09-19.md).
 

@@ -6,16 +6,16 @@
 
 ---
 
-**Short answer:** the four issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.24.0** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
+**Short answer:** the five issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.29.1** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
 
 ## First: is it actually installed?
 
 One exchange tells you more than any amount of config-reading:
 
 ```
-You:     Take a screenshot of my current Chrome tab.
+You:     Open example.com and take a screenshot.
 
-Claude:  [browser_screenshot]
+Claude:  [browser_navigate, then browser_screenshot]
          <image>
 ```
 
@@ -69,7 +69,7 @@ Codex:
 codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-Cursor, VS Code, Windsurf or anything else - add this to that client's MCP config:
+Cursor, Windsurf or most other clients - add this to that client's MCP config (VS Code uses the root key `servers` instead of `mcpServers`):
 
 ```json
 {"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}
@@ -77,12 +77,12 @@ Cursor, VS Code, Windsurf or anything else - add this to that client's MCP confi
 
 Then **restart your agent** so it launches the server, and click the extension icon again. Per-client walkthroughs: [Claude Code](/docs/install-claude-code) · [Cursor](/docs/install-cursor) · [VS Code](/docs/install-vscode) · [Codex](/docs/install-codex).
 
-**Note on `npx @agent360/browser-mcp install`:** that command copies the extension files to `~/.browser-mcp/extension/`, which is useful for an unpacked install - but do not rely on it to register the server with Claude Code. Use `claude mcp add` above.
+**Note on `npx @agent360/browser-mcp install`:** that command copies the extension files to `~/.browser-mcp/extension/`, which is useful for an unpacked install, and registers the server with Claude Code, Codex, VS Code and Cursor if it finds them. Any other client: add the block above to its config.
 
 **How to tell this apart from a real fault:** if you have never run an `npx @agent360/browser-mcp …` command on this machine, this is your problem - not the sections below. A quick check that a server is running at all:
 
 ```bash
-lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux - expect one line per active agent session
+lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux - expect one line per session using the browser right now
 ```
 
 Nothing listed means no server, which means nothing for the extension to find. (The server is not a daemon: it starts when your agent starts and exits when it disconnects, so an empty list while no agent is running is also normal.)
@@ -126,7 +126,7 @@ So v1.25.0 does both: `fill` now sends one `Input.insertText`, verifies the fiel
 
 **Cause:** layered content-security-policy restrictions: the isolated-world path is constrained by the extension's own CSP, the main-world path by the site's, and the debugger fallback inherits the detach quirk above.
 
-**Workaround (and honestly, the better pattern):** use the purpose-built tools - `fill`, `click`, `set_date`, `set_combobox`, `get_page_content` run through the debugger/trusted-event layer and work on CSP-strict and React/Angular sites. Reach for `execute_script` last, not first. A hardened fallback chain shipped in the staged reliability batch.
+**Workaround (and honestly, the better pattern):** use the purpose-built tools - `fill`, `click`, `set_date`, `set_combobox`, `get_page_content` run through the debugger/trusted-event layer and work on CSP-strict and React/Angular sites. Reach for `execute_script` last, not first. A hardened fallback chain shipped in v1.24.0.
 
 ## Why publish our own bug list?
 
@@ -137,11 +137,11 @@ Because we use Browser MCP all day on real work, the failure modes above are fac
 **I installed it from the Chrome Web Store. Why do I still have to run a terminal command?**
 Because the store can only give you the extension, and the extension is a bridge - it needs the local MCP server on the other end. That server is the npm package your agent runs, and Google has no way to register it for you. One command, once: `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` (or the equivalent for your client).
 
-**Does the debugger banner ("Browser MCP started debugging this browser") mean something is wrong?**
+**Does the debugger banner ("Agent360 Browser MCP" started debugging this browser) mean something is wrong?**
 No - that is Chrome's standard notice whenever the Debugger API is attached. It disappears when the session ends.
 
 **Do these bugs affect what data leaves my machine?**
-No. None of the issues above send anything anywhere. The server and the extension bridge run locally, and what your agent reads goes only to your AI client, as always.
+No. None of the issues above send anything anywhere. The server and the extension bridge run locally, and what your agent reads goes to your AI client (and, if that client uses a cloud model, on to its model provider), as always.
 
 **Where do I report something not listed here?**
 [Open a bug report](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml) - the template takes two minutes, and dogfooding plus user reports is exactly how the list above got built.
