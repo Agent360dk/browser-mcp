@@ -187,15 +187,13 @@ test('parameter-aliasser findes hvor navnene historisk er blevet forvekslet', ()
   // execute_script fik `script` som alias for `code` i v1.26 efter samme faelde.
   // De her tre gav tavse fejl: [undefined] som filsti, "undefined" som soegetekst.
   const par = [
-    ["case 'upload_file'", /params\.file_path/, 'upload_file mangler file_path-alias'],
-    ["case 'drop_file'", /params\.file_path/, 'drop_file mangler file_path-alias'],
-    ["case 'select_option'", /params\.option \?\? params\.value \?\? params\.label/, 'select_option mangler value/label-alias'],
-    ["case 'select_frame'", /params\.script/, 'select_frame mangler script-alias'],
+    ['upload_file', /params\.file_path/, 'upload_file mangler file_path-alias'],
+    ['drop_file', /params\.file_path/, 'drop_file mangler file_path-alias'],
+    ['select_option', /params\.option \?\? params\.value \?\? params\.label/, 'select_option mangler value/label-alias'],
+    ['select_frame', /params\.script/, 'select_frame mangler script-alias'],
   ];
-  for (const [anker, moenster, besked] of par) {
-    const i = bgSrc.indexOf(anker);
-    assert.ok(i > -1, `fandt ikke ${anker}`);
-    assert.match(bgSrc.slice(i, i + 3200), moenster, besked);
+  for (const [navn, moenster, besked] of par) {
+    assert.match(caseBlok(bgSrc, navn), moenster, besked);
   }
 });
 

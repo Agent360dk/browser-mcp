@@ -18,6 +18,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { caseBlok } from './hjaelp/kildeblok.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -78,10 +79,7 @@ test('click videregiver debuggerClick-resultatet i sit svar', () => {
   // 9/9-2026: her stod `kilde.slice(i, i + 2000)`. To tilfoejede kommentarlinjer skubbede
   // spredningen ud over de 2000 tegn, og testen blev roed uden at koden var forkert.
   // En magisk tegn-afstand er ikke en blok - nu klippes ved case'ens EGNE graenser.
-  const i = kilde.indexOf("case 'click': {");
-  assert.ok(i > -1, "case 'click' findes");
-  const naeste = kilde.indexOf("case 'fill': {", i);
-  const blok = kilde.slice(i, naeste > -1 ? naeste : i + 6000);
+  const blok = caseBlok(kilde, 'click');
   assert.match(blok, /const clickResult = await debuggerClick\(/, 'resultatet skal fanges');
   assert.match(blok, /\.\.\.\(clickResult \|\| \{\}\)/, 'og spredes ud i svaret til kalderen');
   // Og selve kontrakten: `ok` maa ikke vaere en konstant. Adfaerden proeves i klik-aerlighed.
@@ -135,8 +133,7 @@ test('hver 0x0-vagt staar FOER koordinaterne beregnes', () => {
 });
 
 test('click klikker ikke naar elementet er skjult - den svarer ok:false', () => {
-  const i = kilde.indexOf("case 'click': {");
-  const blok = kilde.slice(i, i + 2000);
+  const blok = caseBlok(kilde, 'click');
   const vagt = blok.indexOf('if (el.hidden)');
   const klik = blok.indexOf('await debuggerClick(');
   assert.ok(vagt > -1, 'hidden-vagten findes i click');
