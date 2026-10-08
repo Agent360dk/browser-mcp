@@ -10,13 +10,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
-function browser({ drawFails = null, startUrl = null } = {}) {
+function browser({ drawFails = null, startUrl = null, startPending } = {}) {
   const tabs = new Map();
   let next = 100;
   let u;
   u = indlaesUdvidelse({ svar: {
     'tabs.create': ({ url }) => {
-      const t = { id: next++, url: startUrl || url, title: url, windowId: 1, active: false, status: 'complete' };
+      const t = { id: next++, url: startUrl ?? url, pendingUrl: startPending, title: url, windowId: 1, active: false, status: 'complete' };
       tabs.set(t.id, t);
       setTimeout(() => u.fyr('tabs.onUpdated', t.id, { status: 'complete' }, t), 5);
       return t;
@@ -311,4 +311,14 @@ test('a prompt with fields on a local file is bound to that file', async () => {
   assert.equal(a.settled(), false, 'another local file answered the prompt');
   await u.fyr('webNavigation.onDOMContentLoaded', { tabId: a.tabId, frameId: 0, url: 'file:///Downloads/unrelated.html' });
   assert.equal((await a.pending).action, 'navigated', 'the prompt followed the tab to another local file');
+});
+
+// R52 (Opus): en fane, Chrome stadig rapporterer med url '' og en pendingUrl, maatte ogsaa faa en prompt med felter -
+// bundet til den adresse, den er paa vej til. Ingen proeve daekkede det.
+test('a tab that is still loading is bound to its pendingUrl', async () => {
+  const u = browser({ startUrl: '', startPending: 'https://bank.example/login' });
+  const a = await ask(u, { fields: [{ name: 'code', label: 'Code' }] });
+  assert.equal(draws(u)[0].args[0].origin, 'https://bank.example');
+  await u.fyr('runtime.onMessage', { type: 'ask_user_answer', askId: a.askId, action: 'skip', values: {} }, fromPrompt(u, a.tabId, 'https://bank.example'));
+  assert.equal((await a.pending).action, 'skip');
 });

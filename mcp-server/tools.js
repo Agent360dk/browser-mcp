@@ -442,7 +442,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_token',
-    description: 'Open a known provider\'s API page (stripe, hubspot, slack, shopify, mailchimp, pipedrive, calendly, google, linkedin) and get instructions for finding or creating its API credentials there. It reads nothing itself: read the page with browser_get_page_content or browser_screenshot afterwards. For HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token. Any other provider answers Unknown provider; use browser_navigate and read the page yourself.',
+    description: 'Open a known provider\'s API page (stripe, hubspot, slack, shopify, mailchimp, pipedrive, calendly, google, linkedin) and get instructions for finding or creating its API credentials there. It reads nothing itself: read the page with browser_get_page_content or browser_screenshot afterwards. For HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list on the way to the token, not the token page itself. Any other provider answers Unknown provider; use browser_navigate and read the page yourself.',
     inputSchema: {
       type: 'object',
       properties: {

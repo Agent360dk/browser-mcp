@@ -589,8 +589,10 @@ test('extract_token beskriver de udbydere og sider, koden faktisk har', async ()
   assert.match(t.description, /reads nothing itself/, 'beskrivelsen lover at vaerktoejet laeser tokenet');
   assert.match(t.description, /Unknown provider/, 'en ukendt udbyder er ikke beskrevet');
   const etTrinFoer = Object.entries(PROVIDER_PAGES).filter(([, v]) => !/apikeys|account\/api|settings\/api|api_webhooks|apis\/credentials/.test(v.url)).map(([k]) => k);
-  assert.deepEqual(etTrinFoer.sort(), ['hubspot', 'linkedin', 'shopify', 'slack'], 'listen over sider et trin foer tokenet passer ikke laengere med koden');
-  assert.match(t.description, /HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token/);
+  assert.deepEqual(etTrinFoer.sort(), ['hubspot', 'linkedin', 'shopify', 'slack'], 'listen over sider uden selve tokenet passer ikke laengere med koden');
+  // R52 (Opus): «one step before the token» passede ikke - kodens egne instruktioner siger 2-5 trin.
+  assert.match(t.description, /HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list on the way to the token, not the token page itself/);
+  assert.doesNotMatch(t.description, /one step before the token/);
   assert.doesNotMatch(t.description, /read its API token from the page/);
 });
 

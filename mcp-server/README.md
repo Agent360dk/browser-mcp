@@ -363,7 +363,7 @@ Replace `server-name`, then `systemctl --user enable --now browser-mcp-tunnel.se
 
 ## Built-in Provider Integrations
 
-`browser_extract_token` opens the provider's API page and returns instructions for finding or creating the credentials. It reads nothing itself, and for HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token. Any other provider answers `Unknown provider`.
+`browser_extract_token` opens the provider's API page and returns instructions for finding or creating the credentials. It reads nothing itself, and for HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list on the way to the token, not the token page itself. Any other provider answers `Unknown provider`.
 
 | Provider | Token Format | Dashboard |
 |----------|-------------|-----------|

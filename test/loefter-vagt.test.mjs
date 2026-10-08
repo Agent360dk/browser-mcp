@@ -59,6 +59,9 @@ const LOEFTER = [
   [/hands? (the challenge|it) to you if (it|they) (cannot|can't)|if the first two miss|\bthen (hands|shows) (the challenge|it) to you\b|kicking in when the last fails/i, 'CAPTCHA-trin der kaeder af sig selv'],
   // R47 (Astra): Cursor-siden sagde «The challenge stays in your browser» - et skaermbillede til grid-cellerne gaar til AI-klienten.
   [/challenge stays in your browser/i, 'CAPTCHA-billedet bliver i browseren'],
+  // R52 (Opus, MAALT): installationssiderne lovede at extract_token «isn't limited to» de ni og virker for «any provider»;
+  // en ukendt udbyder svarer «Unknown provider» uden at navigere.
+  [/isn't limited to th(ose|em)|not a whitelist|works for any provider/i, 'extract_token lover alle udbydere'],
   // MAALT 13/9 af Astra og Fable i den faelles runde: "genstart, saa bliver ikonet groent" var falsk fra 1.29.0,
   // hvor serveren begyndte at tage sin port ved foerste browserkald i stedet for ved opstart. Jeg rettede den i
   // haanden 13 steder - og missede tre, fordi jeg soegte paa "turns green" og ikke paa "goes green". De tre stod
@@ -149,6 +152,8 @@ test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('three layers, each one kicking in when the last fails'));
   assert.ok(regel('umaalt CAPTCHA-loefte').test('it often clears it when you are signed in to Google'));
   assert.ok(regel('CAPTCHA-billedet bliver i browseren').test('The challenge stays in your browser.'));
+  assert.ok(regel('extract_token lover alle udbydere').test("the 9 are just shortcuts, not a whitelist"));
+  assert.ok(regel('extract_token lover alle udbydere').test("- but it isn't limited to those."));
   assert.ok(regel('intet forlader maskinen').test('the one thing that matters most: nothing it reads ever leaves your machine'), 'ord imellem maa ikke skjule loeftet');
   assert.ok(regel('sender aldrig data nogen steder').test('never sends your browsing data anywhere'));
   assert.ok(FORKERTE_TAL[0][0].test('Restart Claude Code - 29 browser tools are now available'));
