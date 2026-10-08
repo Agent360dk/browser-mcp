@@ -278,7 +278,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_fetch',
-    description: 'Make an HTTP request from the extension background (NOT subject to CORS). Use this when page-context fetch would be blocked by CORS or CSP. Useful for API calls to Google, Stripe, Slack APIs while on their pages.',
+    description: 'Make an HTTPS request from the extension background. It is not subject to the page\'s CORS or CSP, so it works for API calls (Google, Stripe, Slack) where a fetch from the page would be blocked. Plain http works only to 127.0.0.1.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -615,3 +615,20 @@ test('extract_token answers Unknown provider for names that only exist on the pr
   await h({ provider: 'stripe' });
   assert.deepEqual(navigeret, ['https://dashboard.stripe.com/apikeys'], 'a known provider no longer navigates');
 });
+
+// 1.30.2 skive 20 (Opus R38, MAALT 9/10 i headless Chrome): udvidelsens egen CSP (connect-src 'self' ws://127.0.0.1:*
+// http://127.0.0.1:*) blokerede browser_fetch mod ENHVER ekstern adresse - ogsaa i den udgivne 1.30.1 - mens beskrivelsen
+// lovede API-kald til Google, Stripe og Slack. connect-src faar https:, og beskrivelsen siger graensen.
+test('browser_fetch kan naa https-adresser, og beskrivelsen siger at http kun gaar til 127.0.0.1', async () => {
+  for (const f of ['extension/manifest.json', 'mcp-server/extension/manifest.json']) {
+    const csp = JSON.parse(readFileSync(join(rod, f), 'utf8')).content_security_policy.extension_pages;
+    const connect = (csp.match(/connect-src ([^;]*)/) || [])[1] || '';
+    assert.match(connect, /(^|\s)https:(\s|$)/, `${f}: connect-src mangler https: - browser_fetch kan ikke naa en ekstern API`);
+    assert.doesNotMatch(connect, /(^|\s)(http:|\*)(\s|$)/, `${f}: connect-src aabner for almindelig http eller alt`);
+    assert.match(connect, /http:\/\/127\.0\.0\.1:\*/, `${f}: broen til serveren paa 127.0.0.1 er lukket`);
+  }
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const d = TOOLS.find((t) => t.name === 'browser_fetch').description;
+  assert.match(d, /HTTPS request/);
+  assert.match(d, /Plain http works only to 127\.0\.0\.1/);
+});
