@@ -171,14 +171,14 @@ test('udgivelsens tool-sweep omskriver vores tal men lader konkurrentens stå (O
 // ---- Heroens film (8/10-2026): afløste den tegnede CSS-scene og dens start/fallback-logik. Proeverne koerer
 // sidens EGET bundscript mod en falsk video, saa en aendring der faar filmen til at spille under «reduceret
 // bevaegelse», eller en Pause-knap der ikke stopper den, bliver roed.
-function simulerFilm({ reduceret = false, afvis = false } = {}) {
+function simulerFilm({ reduceret = false, afvis = false, smal = false } = {}) {
   const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
   let spiller = false, kald = 0;
-  const video = { play: () => { kald++; if (afvis) return Promise.reject(new Error('nej')); spiller = true; return Promise.resolve(); }, pause: () => { spiller = false; } };
+  const video = { src: '/film-v2.mp4', poster: '/film-v2.jpg', play: () => { kald++; if (afvis) return Promise.reject(new Error('nej')); spiller = true; return Promise.resolve(); }, pause: () => { spiller = false; } };
   let skift = null; const pause = { checked: false, addEventListener: (_, f) => { skift = f; } }, lbl = { textContent: 'Pause' };
   const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], getElementById: (id) => ({ filmv: video, pause, pauselbl: lbl }[id]) };
-  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, () => ({ matches: reduceret }), {});
-  return { get spiller() { return spiller; }, get kald() { return kald; }, pause, lbl, tryk: (v) => { pause.checked = v; skift(); } };
+  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, (q) => ({ matches: /reduce/.test(q) ? reduceret : smal }), {});
+  return { get spiller() { return spiller; }, get kald() { return kald; }, pause, lbl, video, tryk: (v) => { pause.checked = v; skift(); } };
 }
 
 test('filmen: spiller uden reduceret bevaegelse, og Pause/Play styrer den', () => {
@@ -194,6 +194,18 @@ test('filmen: spiller ikke under reduceret bevaegelse, og en afvist afspilning v
   assert.equal(r.lbl.textContent, 'Play');
   const a = simulerFilm({ afvis: true }); await new Promise((ok) => setTimeout(ok, 0));
   assert.ok(a.pause.checked && a.lbl.textContent === 'Play', 'en afvist play() skal vise Play, ikke en Pause der intet goer');
+});
+
+test('filmen: en smal skaerm faar 4:5-klippet, en bred beholder 16:10, og brudpunktet er det samme som i CSS', () => {
+  const s = simulerFilm({ smal: true }), b = simulerFilm();
+  assert.equal(s.video.src, '/film-v2-mobil.mp4'); assert.equal(s.video.poster, '/film-v2-mobil.jpg');
+  assert.equal(b.video.src, '/film-v2.mp4'); assert.equal(b.video.poster, '/film-v2.jpg');
+  assert.ok(s.spiller, 'klippet skal ogsaa spille');
+  assert.match(html, /@media \(max-width:37\.5rem\)\{\.hero \.film video\{aspect-ratio:4\/5\}\}/, 'CSS-rammen skal skifte til 4:5 ved samme brudpunkt');
+  assert.ok(html.includes("matchMedia('(max-width:37.5rem)')"), 'scriptet skal bruge samme brudpunkt');
+  const mp4 = statSync(join(rod, 'docs/film-v2-mobil.mp4')).size, jpg = statSync(join(rod, 'docs/film-v2-mobil.jpg')).size;
+  assert.ok(mp4 > 10_000 && mp4 < 3_000_000, `film-v2-mobil.mp4 er ${mp4} byte`);
+  assert.ok(jpg > 5_000 && jpg < 300_000, `film-v2-mobil.jpg er ${jpg} byte`);
 });
 
 test('filmen: tavs, i loop, inline, uden autoplay-attribut, og filerne findes i fornuftig stoerrelse', () => {

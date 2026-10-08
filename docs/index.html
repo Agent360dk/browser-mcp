@@ -299,7 +299,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 .proof li span{font-size:.85rem;color:var(--muted)}
 .works{margin-top:1rem;font-size:.9rem;color:var(--muted)}
 .film{width:min(100%,64rem);margin-top:clamp(1.5rem,4vw,2.5rem)}
-@media (max-width:30rem){.proof{grid-template-columns:1fr;gap:.6rem}.proof li{padding:0;border:0!important;text-align:center}.hsteps .btn{width:100%}}
+@media (max-width:30rem){.proof{grid-template-columns:repeat(3,minmax(0,1fr))}.proof li{padding:0 .6rem;text-align:center}.proof b{font-size:1.1rem}.proof li span{font-size:.75rem}.hsteps .btn{width:100%}}
 .cv{position:relative}
 .cv .agent{position:absolute;top:.55rem;left:.55rem;font:600 .68rem/1 var(--sans);padding:.3rem .5rem;border-radius:.35rem;background:var(--blue);color:var(--on-blue)}
 .mini-ask .bt{display:flex;gap:.3rem;margin-top:.35rem}
@@ -361,6 +361,8 @@ td code{word-break:normal;overflow-wrap:anywhere}
 .hero .proof li+li{border-left-color:rgba(255,255,255,.14)}
 .hero .proof b{color:#fff}.hero .proof li span,.hero .works{color:#8F98A5}
 .hero :focus-visible{outline-color:#8AB4F8}
+/* runde 5: paa telefonen spiller et 4:5-klip med stoerre tekst (byttes i bundscriptet, samme brudpunkt) */
+@media (max-width:37.5rem){.hero .film video{aspect-ratio:4/5}}
 @media (max-width:30rem){.herocta{flex-wrap:wrap}.herocta .btn{flex:1}.watch{width:100%;text-align:center}}
 </style>
 
@@ -619,6 +621,9 @@ if (g20) { try { var o20 = new IntersectionObserver(function (e) { if (e[0].isIn
 // Filmen: spiller kun uden «reduceret bevægelse». Pause-knappen styrer den; afspilningsfejl (fx en browser der
 // nægter autoplay) giver blot plakatbilledet og knappen «Play».
 var film = document.getElementById('filmv'), pz = document.getElementById('pause'), pl = document.getElementById('pauselbl');
+// Paa en smal skaerm faar filmen sit 4:5-klip, hvor browservinduet fylder bredden, saa teksten kan laeses.
+var smal = false; try { smal = matchMedia('(max-width:37.5rem)').matches; } catch (e) {}
+if (film && smal) { film.poster = '/film-v2-mobil.jpg'; film.src = '/film-v2-mobil.mp4'; }
 if (film && pz) {
   var mark = function () { if (pl) pl.textContent = pz.checked ? 'Play' : 'Pause'; };
   var spil = function () { try { var p = film.play(); if (p && p.catch) p.catch(function () { pz.checked = true; mark(); }); } catch (e) { pz.checked = true; } mark(); };
