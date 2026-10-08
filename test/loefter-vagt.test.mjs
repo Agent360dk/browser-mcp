@@ -32,7 +32,7 @@ const STIER = ['docs', 'content', 'README.md', 'mcp-server/README.md', 'mcp-serv
 // CHANGELOG.md staar bevidst UDENFOR: den CITERER de gamle formuleringer og tal for at forklare hvad der blev rettet
 // ("Several pages promised that 'nothing leaves your machine'"). Samme grund som revisionsdokumentet nedenfor.
 // Revisionsdokumentet citerer den gamle butikstekst for at forklare hvorfor den skal ud.
-const UNDTAGET = new Set(['docs/CWS_LISTING_TEXT.md']);
+const UNDTAGET = new Set(['noter/CWS_LISTING_TEXT.md']);
 const ENDELSER = /\.(md|html|txt|js|mjs|ts|tsx|json)$/;
 
 const LOEFTER = [

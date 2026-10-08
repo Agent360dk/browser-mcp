@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -234,5 +234,15 @@ test('manifestets korte beskrivelse siger «the Chrome you\'re signed into», ik
     assert.ok(d.length <= 132, `${f}: ${d.length} tegn - Chrome Web Store tillader 132`);
     assert.match(d, /the Chrome you're signed into/, `${f}: siger ikke at det er brugerens Chrome`);
     assert.doesNotMatch(d, /the tab you were already signed into|carries on in the tab/, `${f}: kan laeses som brugerens egen fane`);
+  }
+});
+
+// 1.30.2 skive 11 (F9): docs/ serveres som browsermcp.dev. Tre interne noter (butikstekst-revision, opsaetning af
+// butiksudgivelse, en performance-maaling) laa der og blev serveret med status 200. De ligger nu i noter/.
+test('docs/ indeholder ingen interne noter, kun den genererede llms-install.md', () => {
+  const md = readdirSync(join(rod, 'docs')).filter((f) => f.endsWith('.md'));
+  assert.deepEqual(md, ['llms-install.md'], `markdown i docs/ bliver serveret offentligt: ${md.join(', ')}`);
+  for (const f of ['CWS_LISTING_TEXT.md', 'CWS_PUBLISH_SETUP.md', 'PERFORMANCE-2026-09-08.md']) {
+    assert.ok(existsSync(join(rod, 'noter', f)), `noter/${f} mangler - en henvisning peger paa en fil der ikke findes`);
   }
 });
