@@ -2245,6 +2245,267 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+// ── ask_user: the wait lives in the background, not in the page ────────────
+//
+// MEASURED 2026-10-08: the prompt used to be a Promise inside the page. "Please log in, then
+// click Done" is the common case - and submitting the login form navigates the page. The
+// prompt vanished with the old document, executeScript rejected, and the agent got an error
+// for the very step it had asked the user to do. Now the page only draws the prompt and
+// messages the answer back; the background owns the wait and redraws the prompt on every new
+// document in the tab until it is answered, skipped, timed out or the tab is closed.
+const pendingAsks = new Map(); // askId -> { tabId, spec, finish }
+let lastAskPosition = null;    // where the user last dragged the floating card
+
+// Runs in the page's ISOLATED world. It is serialized by executeScript, so it must not use
+// anything from the service worker's scope.
+function renderAskPrompt(spec, replay) {
+  const old = document.getElementById('a360-overlay');
+  if (old) {
+    if (old.dataset.askId === spec.askId) return;
+    old.remove();
+  }
+  const send = (msg) => chrome.runtime.sendMessage({ ...msg, askId: spec.askId }).catch(() => {});
+
+  // Notification sound — short pleasant chime. Not again when the prompt is redrawn after a
+  // navigation: the user is already looking at it.
+  if (!replay) {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+      // Second tone (higher, pleasant ding-dong)
+      setTimeout(() => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.frequency.value = 1320;
+        osc2.type = 'sine';
+        gain2.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc2.start(ctx.currentTime);
+        osc2.stop(ctx.currentTime + 0.3);
+      }, 150);
+    } catch {}
+  }
+
+  // The prompt lives in a CLOSED shadow root on a host element. The page's own
+  // scripts get no reference into it, so they cannot read what the user types
+  // (codes, passwords) or reach the buttons; the page's CSS cannot restyle it.
+  const host = document.createElement('div');
+  host.id = 'a360-overlay';
+  host.dataset.askId = spec.askId;
+  host.style.cssText = 'all:initial';
+  const root = host.attachShadow({ mode: 'closed' });
+  // Keystrokes in the prompt would still bubble out of the shadow root to the
+  // page's document listeners. Stop them at the host.
+  for (const type of ['keydown', 'keyup', 'keypress', 'input', 'beforeinput']) {
+    host.addEventListener(type, (e) => e.stopPropagation());
+  }
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  `;
+  root.appendChild(style);
+
+  const card = document.createElement('div');
+  const anim = replay ? '' : 'animation:a360-slide-up 0.4s ease-out;';
+  if (spec.hasFields) {
+    // Asking for values: a modal is right, the answer goes to the agent, not the page.
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;' + (replay ? '' : 'animation:a360-fade-in 0.3s ease-out');
+    card.style.cssText = 'background:#1e293b;border-radius:12px;padding:24px;max-width:420px;width:90%;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.5);' + anim;
+    overlay.appendChild(card);
+    root.appendChild(overlay);
+  } else {
+    // Asking the user to act ON the page (log in, solve a CAPTCHA): a full-screen modal
+    // covered the very form they had to fill in. A small card bottom-left instead - not
+    // bottom-right, where OS notifications appear - that can be dragged out of the way.
+    card.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:2147483647;box-sizing:border-box;width:320px;max-width:calc(100vw - 32px);background:#1e293b;border-radius:12px;padding:16px;color:#e2e8f0;box-shadow:0 12px 40px rgba(0,0,0,0.45);font-family:-apple-system,BlinkMacSystemFont,sans-serif;' + anim;
+    root.appendChild(card);
+  }
+
+  const h = document.createElement('div');
+  h.style.cssText = 'font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:4px';
+  const title = spec.title;
+  h.textContent = title || 'Agent360 - Action Required';
+  card.appendChild(h);
+  const badge = document.createElement('div');
+  badge.style.cssText = 'font-size:10px;color:#94a3b8;margin-bottom:12px';
+  badge.textContent = spec.sessionLabel;
+  card.appendChild(badge);
+  const msg = document.createElement('div');
+  msg.style.cssText = 'font-size:13px;color:#cbd5e1;margin-bottom:16px;line-height:1.5';
+  msg.textContent = spec.message;
+  card.appendChild(msg);
+  const inputs = {};
+  if (spec.hasFields) {
+    spec.fields.forEach(f => {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;margin-top:8px';
+      label.textContent = f.label || f.name;
+      card.appendChild(label);
+      const input = document.createElement('input');
+      input.type = f.type || 'text';
+      input.placeholder = f.label || f.name;
+      input.style.cssText = 'width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box';
+      input.addEventListener('focus', () => input.style.borderColor = '#3b82f6');
+      input.addEventListener('blur', () => input.style.borderColor = '#334155');
+      card.appendChild(input);
+      inputs[f.name] = input;
+    });
+  }
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:16px';
+  const doneBtn = document.createElement('button');
+  doneBtn.textContent = spec.hasFields ? 'Submit' : '✓ Done';
+  doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
+  const answer = (action) => {
+    const values = {};
+    if (action === 'done') Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
+    host.dataset.closed = '1';
+    host.remove();
+    send({ type: 'ask_user_answer', action, values });
+  };
+  // Only a real click or keypress counts. A synthetic event dispatched by the
+  // page (isTrusted false) must never answer on the user's behalf.
+  doneBtn.addEventListener('click', (e) => { if (e.isTrusted) answer('done'); });
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = '✗ Skip';
+  skipBtn.style.cssText = 'flex:1;padding:10px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
+  skipBtn.addEventListener('click', (e) => { if (e.isTrusted) answer('skip'); });
+  btnRow.appendChild(doneBtn);
+  btnRow.appendChild(skipBtn);
+  card.appendChild(btnRow);
+  card.addEventListener('keydown', (e) => { if (e.isTrusted && e.key === 'Enter') answer('done'); });
+  (document.body || document.documentElement).appendChild(host);
+  // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> by script after
+  // DOMContentLoaded, and the prompt went with it - the form had posted to a JSON endpoint.
+  // Pages that re-render their whole body do the same. Put the prompt back until it is
+  // answered or the background erases it (both mark it closed first).
+  new MutationObserver((_, obs) => {
+    if (host.dataset.closed) return obs.disconnect();
+    if (!host.isConnected) (document.body || document.documentElement).appendChild(host);
+  }).observe(document.documentElement, { childList: true, subtree: true });
+
+  if (!spec.hasFields) {
+    // The whole card drags, except its buttons and inputs. A grip bar on top, a grab
+    // cursor and a highlighted border say so. The position is kept in the viewport and sent
+    // to the background, so the card comes back where the user put it after a navigation.
+    const place = (x, y) => {
+      const maxX = Math.max(0, window.innerWidth - card.offsetWidth);
+      const maxY = Math.max(0, window.innerHeight - card.offsetHeight);
+      card.style.left = Math.min(Math.max(0, x), maxX) + 'px';
+      card.style.top = Math.min(Math.max(0, y), maxY) + 'px';
+      card.style.bottom = 'auto';
+    };
+    const grip = document.createElement('div');
+    grip.title = 'Drag to move';
+    grip.style.cssText = 'width:40px;height:5px;border-radius:3px;background:#475569;margin:-6px auto 10px';
+    card.prepend(grip);
+    card.style.border = '1px solid #334155';
+    card.style.cursor = 'grab';
+    card.style.userSelect = 'none';
+    for (const b of [doneBtn, skipBtn]) b.style.cursor = 'pointer';
+    const hot = (on) => {
+      card.style.borderColor = on ? '#3b82f6' : '#334155';
+      grip.style.background = on ? '#3b82f6' : '#475569';
+    };
+    card.addEventListener('pointerenter', () => hot(true));
+    card.addEventListener('pointerleave', () => { if (!drag) hot(false); });
+    if (spec.position) place(spec.position.left, spec.position.top);
+    let drag = null;
+    card.addEventListener('pointerdown', (e) => {
+      if (!e.isTrusted || e.button !== 0) return;
+      if (e.composedPath().some((el) => el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return;
+      const r = card.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      card.setPointerCapture(e.pointerId);
+      card.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    card.addEventListener('pointermove', (e) => { if (drag) place(e.clientX - drag.dx, e.clientY - drag.dy); });
+    const drop = () => {
+      if (!drag) return;
+      drag = null;
+      card.style.cursor = 'grab';
+      if (!card.matches(':hover')) hot(false);
+      const r = card.getBoundingClientRect();
+      send({ type: 'ask_user_moved', left: Math.round(r.left), top: Math.round(r.top) });
+    };
+    card.addEventListener('pointerup', drop);
+    card.addEventListener('pointercancel', drop);
+  }
+
+  const firstInput = Object.values(inputs)[0];
+  if (firstInput) setTimeout(() => firstInput.focus(), 100);
+}
+
+function drawAskPrompt(ask, replay) {
+  return chrome.scripting.executeScript({
+    target: { tabId: ask.tabId },
+    func: renderAskPrompt,
+    args: [{ ...ask.spec, position: lastAskPosition }, Boolean(replay)],
+    world: 'ISOLATED',
+  });
+}
+
+function eraseAskPrompt(tabId, askId) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    func: (id) => {
+      const host = document.getElementById('a360-overlay');
+      if (host && host.dataset.askId === id) { host.dataset.closed = '1'; host.remove(); }
+    },
+    args: [askId],
+    world: 'ISOLATED',
+  }).catch(() => {});
+}
+
+// A new document in the tab (the login form submitted, a redirect) wiped the prompt with
+// the old one. Draw it again - as soon as the DOM is there, and once more when the page has
+// loaded, in case a script replaced the document in between. A prompt already on the page
+// is left alone, so the second draw is a no-op when the first one held.
+function redrawAskPrompts({ tabId, frameId }) {
+  if (frameId !== 0) return;
+  for (const ask of pendingAsks.values()) {
+    if (ask.tabId === tabId) drawAskPrompt(ask, true).catch(() => {});
+  }
+}
+chrome.webNavigation.onDOMContentLoaded.addListener(redrawAskPrompts);
+chrome.webNavigation.onCompleted.addListener(redrawAskPrompts);
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const ask of [...pendingAsks.values()]) {
+    if (ask.tabId === tabId) ask.finish({ acknowledged: false, action: 'tab_closed', values: {} });
+  }
+});
+
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type !== 'ask_user_answer' && msg?.type !== 'ask_user_moved') return;
+  const ask = pendingAsks.get(msg.askId);
+  // Only the prompt we drew, in the tab we drew it in, can answer it.
+  if (!ask || sender.id !== chrome.runtime.id || sender.tab?.id !== ask.tabId) return;
+  if (msg.type === 'ask_user_moved') {
+    if (Number.isFinite(msg.left) && Number.isFinite(msg.top)) lastAskPosition = { left: msg.left, top: msg.top };
+    return;
+  }
+  const values = {};
+  if (msg.action === 'done') {
+    for (const f of ask.spec.fields) values[f.name] = String(msg.values?.[f.name] ?? '');
+  }
+  ask.finish({ acknowledged: true, action: msg.action === 'done' ? 'done' : 'skip', values });
+});
+
 // ── OAuth Popup Interception ─────────────────────────────────────────────────
 
 const OAUTH_DOMAINS = ['accounts.google.com', 'login.microsoftonline.com', 'github.com/login/oauth', 'slack.com/oauth', 'app.hubspot.com/oauth'];
@@ -5224,8 +5485,8 @@ async function dispatch(port, method, params) {
 
     case 'ask_user': {
       const tab = await getSessionTab(port, true);
-      const timeout = params.timeout || 120000;
-      const fields = params.fields || [];
+      const timeout = Number(params.timeout) || 120000;
+      const fields = Array.isArray(params.fields) ? params.fields : [];
       const hasFields = fields.length > 0;
       const session = getSession(port);
 
@@ -5244,151 +5505,63 @@ async function dispatch(port, method, params) {
         priority: 2,
       });
 
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (message, title, fields, hasFields, timeout, sessionLabel) => {
-          return new Promise((resolve) => {
-            document.getElementById('a360-overlay')?.remove();
+      // A newer question in the same tab replaces the old one. Before, the old prompt was
+      // removed from the page but its caller was left waiting until the server gave up.
+      for (const ask of [...pendingAsks.values()]) {
+        if (ask.tabId === tab.id) ask.finish({ acknowledged: false, action: 'replaced', values: {} });
+      }
 
-            // Notification sound — short pleasant chime
-            try {
-              const ctx = new AudioContext();
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.connect(gain);
-              gain.connect(ctx.destination);
-              osc.frequency.value = 880;
-              osc.type = 'sine';
-              gain.gain.setValueAtTime(0.3, ctx.currentTime);
-              gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-              osc.start(ctx.currentTime);
-              osc.stop(ctx.currentTime + 0.4);
-              // Second tone (higher, pleasant ding-dong)
-              setTimeout(() => {
-                const osc2 = ctx.createOscillator();
-                const gain2 = ctx.createGain();
-                osc2.connect(gain2);
-                gain2.connect(ctx.destination);
-                osc2.frequency.value = 1320;
-                osc2.type = 'sine';
-                gain2.gain.setValueAtTime(0.2, ctx.currentTime);
-                gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                osc2.start(ctx.currentTime);
-                osc2.stop(ctx.currentTime + 0.3);
-              }, 150);
-            } catch {}
+      // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
+      // med standarden "Agent360 - Action Required", men udelades den, er vaerdien
+      // undefined — og chrome.scripting.executeScript afviser hele kaldet med
+      // "Error at property 'args': Error at index 1: Value is unserializable".
+      // Altsaa styrtede human-in-the-loop-vaerktoejet hver gang en agent fulgte sit
+      // eget skema. Det blev aldrig fanget, fordi ask_user stod som "springes over"
+      // i flowtesten — den eneste der kunne have set det.
+      //
+      // Alle vaerdier tvinges nu til serialiserbare vaerdier, og standarden
+      // anvendes der hvor den er lovet.
+      const askId = 'ask-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      const spec = {
+        askId,
+        message: String(params.message ?? ''),
+        title: String(params.title ?? 'Agent360 - Action Required'),
+        fields: fields.map((f) => ({
+          name: String(f?.name ?? ''),
+          label: String(f?.label ?? f?.name ?? ''),
+          type: String(f?.type ?? 'text'),
+        })),
+        hasFields: Boolean(hasFields),
+        sessionLabel: String(session.label ?? 'Claude'),
+      };
 
-            // The prompt lives in a CLOSED shadow root on a host element. The page's own
-            // scripts get no reference into it, so they cannot read what the user types
-            // (codes, passwords) or reach the buttons; the page's CSS cannot restyle it.
-            const host = document.createElement('div');
-            host.id = 'a360-overlay';
-            host.style.cssText = 'all:initial';
-            const root = host.attachShadow({ mode: 'closed' });
-            // Keystrokes in the prompt would still bubble out of the shadow root to the
-            // page's document listeners. Stop them at the host.
-            for (const type of ['keydown', 'keyup', 'keypress', 'input', 'beforeinput']) {
-              host.addEventListener(type, (e) => e.stopPropagation());
-            }
-            const style = document.createElement('style');
-            style.textContent = `
-              @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
-              @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-            `;
-            root.appendChild(style);
-
-            const overlay = document.createElement('div');
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;animation:a360-fade-in 0.3s ease-out';
-
-            const card = document.createElement('div');
-            card.style.cssText = 'background:#1e293b;border-radius:12px;padding:24px;max-width:420px;width:90%;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:a360-slide-up 0.4s ease-out';
-
-            const h = document.createElement('div');
-            h.style.cssText = 'font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:4px';
-            h.textContent = title || 'Agent360 - Action Required';
-            card.appendChild(h);
-            const badge = document.createElement('div');
-            badge.style.cssText = 'font-size:10px;color:#94a3b8;margin-bottom:12px';
-            badge.textContent = sessionLabel;
-            card.appendChild(badge);
-            const msg = document.createElement('div');
-            msg.style.cssText = 'font-size:13px;color:#cbd5e1;margin-bottom:16px;line-height:1.5';
-            msg.textContent = message;
-            card.appendChild(msg);
-            const inputs = {};
-            if (hasFields) {
-              fields.forEach(f => {
-                const label = document.createElement('label');
-                label.style.cssText = 'display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;margin-top:8px';
-                label.textContent = f.label || f.name;
-                card.appendChild(label);
-                const input = document.createElement('input');
-                input.type = f.type || 'text';
-                input.placeholder = f.label || f.name;
-                input.style.cssText = 'width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box';
-                input.addEventListener('focus', () => input.style.borderColor = '#3b82f6');
-                input.addEventListener('blur', () => input.style.borderColor = '#334155');
-                card.appendChild(input);
-                inputs[f.name] = input;
-              });
-            }
-            const btnRow = document.createElement('div');
-            btnRow.style.cssText = 'display:flex;gap:8px;margin-top:16px';
-            const doneBtn = document.createElement('button');
-            doneBtn.textContent = hasFields ? 'Submit' : '✓ Done';
-            doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
-            const submit = () => {
-              const values = {};
-              Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
-              host.remove();
-              resolve({ acknowledged: true, action: 'done', values });
-            };
-            // Only a real click or keypress counts. A synthetic event dispatched by the
-            // page (isTrusted false) must never answer on the user's behalf.
-            doneBtn.addEventListener('click', (e) => { if (e.isTrusted) submit(); });
-            const skipBtn = document.createElement('button');
-            skipBtn.textContent = '✗ Skip';
-            skipBtn.style.cssText = 'flex:1;padding:10px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
-            skipBtn.addEventListener('click', (e) => { if (!e.isTrusted) return; host.remove(); resolve({ acknowledged: true, action: 'skip', values: {} }); });
-            btnRow.appendChild(doneBtn);
-            btnRow.appendChild(skipBtn);
-            card.appendChild(btnRow);
-            overlay.appendChild(card);
-            root.appendChild(overlay);
-            (document.body || document.documentElement).appendChild(host);
-            const firstInput = Object.values(inputs)[0];
-            if (firstInput) setTimeout(() => firstInput.focus(), 100);
-            card.addEventListener('keydown', (e) => { if (e.isTrusted && e.key === 'Enter') submit(); });
-            setTimeout(() => { if (host.isConnected) { host.remove(); resolve({ acknowledged: false, action: 'timeout', values: {} }); } }, timeout);
-          });
-        },
-        // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
-        // med standarden "Agent360 - Action Required", men udelades den, er vaerdien
-        // undefined — og chrome.scripting.executeScript afviser hele kaldet med
-        // "Error at property 'args': Error at index 1: Value is unserializable".
-        // Altsaa styrtede human-in-the-loop-vaerktoejet hver gang en agent fulgte sit
-        // eget skema. Det blev aldrig fanget, fordi ask_user stod som "springes over"
-        // i flowtesten — den eneste der kunne have set det.
-        //
-        // Alle argumenter tvinges nu til serialiserbare vaerdier, og standarden
-        // anvendes der hvor den er lovet.
-        args: [
-          String(params.message ?? ''),
-          String(params.title ?? 'Agent360 - Action Required'),
-          Array.isArray(fields) ? fields : [],
-          Boolean(hasFields),
-          Number(timeout) || 120000,
-          String(session.label ?? 'Claude'),
-        ],
-        world: 'ISOLATED',
+      let finish;
+      const answered = new Promise((resolve) => {
+        let timer;
+        finish = (result) => {
+          if (!pendingAsks.has(askId)) return;
+          pendingAsks.delete(askId);
+          clearTimeout(timer);
+          if (result.action !== 'done' && result.action !== 'skip') eraseAskPrompt(tab.id, askId);
+          // Restore badge
+          const count = sessions.size;
+          chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
+          chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
+          chrome.notifications.clear(notifId);
+          resolve(result);
+        };
+        timer = setTimeout(() => finish({ acknowledged: false, action: 'timeout', values: {} }), timeout);
       });
+      const ask = { tabId: tab.id, spec, finish };
+      pendingAsks.set(askId, ask);
 
-      // Restore badge
-      const count = sessions.size;
-      chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
-      chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
-      chrome.notifications.clear(notifId);
-      return result.result;
+      try {
+        await drawAskPrompt(ask, false);
+      } catch (e) {
+        finish({ acknowledged: false, action: 'error', values: {} });
+        throw e;
+      }
+      return answered;
     }
 
     case 'select_frame': {
