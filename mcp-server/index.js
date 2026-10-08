@@ -642,7 +642,7 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
 const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP server. Each session gets its own color-coded Chrome Tab Group.
 
 ## Key behaviors
-- **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens.
+- **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens. The page in the tab can see what is typed into the prompt, so ask only for secrets that belong to that page.
 - **ALWAYS close tabs when done** with browser_close_tab after completing each task. Don't leave tabs open - close them immediately after extracting the data you need. Use browser_list_tabs to find and close all session tabs when a task is complete.
 - **Check existing tabs first** with browser_list_tabs before navigating - reuse tabs instead of opening duplicates.
 - **One task per tab** - navigate to a URL, do your work, then close or move on.

@@ -2259,12 +2259,16 @@ let lastAskPosition = null;    // where the user last dragged the floating card
 // Runs in the page's ISOLATED world. It is serialized by executeScript, so it must not use
 // anything from the service worker's scope.
 function renderAskPrompt(spec, replay) {
-  const old = document.getElementById('a360-overlay');
-  if (old) {
-    if (old.dataset.askId === spec.askId) return;
-    old.remove();
-  }
+  // R48 (Astra og Opus, MAALT): siden kunne saette data-closed og saa fjerne prompten, saa den aldrig kom igen, og
+  // en falsk vaert med samme data-ask-id fik en gentegning til at springe over. Hvilke prompter vi har tegnet, og om
+  // de er lukket, staar nu i udvidelsens egen (ISOLATED) verden, som siden ikke kan se - ikke i DOM'en.
+  const reg = (globalThis.__a360Asks ||= new Map());
+  const prior = reg.get(spec.askId);
+  if (prior && prior.host.isConnected) return;
+  for (const [id, other] of reg) if (id !== spec.askId) other.close();
   const send = (msg) => chrome.runtime.sendMessage({ ...msg, askId: spec.askId }).catch(() => {});
+  // Sidens egen frist (R48, Opus: efter et workerstop stod en foraeldreloes prompt tilbage efter fristen).
+  if (Number.isFinite(spec.deadline) && spec.deadline <= Date.now()) return;
 
   // Notification sound — short pleasant chime. Not again when the prompt is redrawn after a
   // navigation: the user is already looking at it.
@@ -2298,8 +2302,11 @@ function renderAskPrompt(spec, replay) {
   }
 
   // The prompt lives in a CLOSED shadow root on a host element. The page's own
-  // scripts get no reference into it, so they cannot read what the user types
-  // (codes, passwords) or reach the buttons; the page's CSS cannot restyle it.
+  // scripts get no reference into it, so they cannot read the field values or press the
+  // buttons, and the page's CSS cannot restyle it. It is NOT keyboard isolation: keydown and
+  // input events still pass the page's capture listeners on window and document, also in a
+  // password field (measured in Chrome 154, R48), so the page can see what is typed. A secret
+  // that does not belong to this page must not be asked for here.
   const host = document.createElement('div');
   host.id = 'a360-overlay';
   host.dataset.askId = spec.askId;
@@ -2369,11 +2376,20 @@ function renderAskPrompt(spec, replay) {
   const doneBtn = document.createElement('button');
   doneBtn.textContent = spec.hasFields ? 'Submit' : '✓ Done';
   doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
+  let closed = false;
+  let observer = null;
+  const close = () => {
+    closed = true;
+    if (observer) observer.disconnect();
+    host.remove();
+    reg.delete(spec.askId);
+  };
+  reg.set(spec.askId, { host, close });
   const answer = (action) => {
+    if (closed) return;
     const values = {};
     if (action === 'done') Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
-    host.dataset.closed = '1';
-    host.remove();
+    close();
     send({ type: 'ask_user_answer', action, values });
   };
   // Only a real click or keypress counts. A synthetic event dispatched by the
@@ -2391,11 +2407,22 @@ function renderAskPrompt(spec, replay) {
   // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> by script after
   // DOMContentLoaded, and the prompt went with it - the form had posted to a JSON endpoint.
   // Pages that re-render their whole body do the same. Put the prompt back until it is
-  // answered or the background erases it (both mark it closed first).
-  new MutationObserver((_, obs) => {
-    if (host.dataset.closed) return obs.disconnect();
-    if (!host.isConnected) (document.body || document.documentElement).appendChild(host);
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  // answered or the background erases it - but at most 20 times. R48 (Opus, MAALT): a page
+  // that removes the prompt every time it comes back made the two observers chase each other,
+  // 633,333 removals in 2 s with the tab frozen. After the 20th the prompt stays gone, and the
+  // background is told, so the agent gets an answer instead of a timeout.
+  let reinserts = 0;
+  observer = new MutationObserver(() => {
+    if (closed || host.isConnected) return;
+    if (++reinserts > 20) {
+      close();
+      send({ type: 'ask_user_lost' });
+      return;
+    }
+    (document.body || document.documentElement).appendChild(host);
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  if (Number.isFinite(spec.deadline)) setTimeout(close, Math.max(0, spec.deadline - Date.now()));
 
   if (!spec.hasFields) {
     // The whole card drags, except its buttons and inputs. A grip bar on top, a grab
@@ -2463,8 +2490,9 @@ function eraseAskPrompt(tabId, askId) {
   return chrome.scripting.executeScript({
     target: { tabId },
     func: (id) => {
-      const host = document.getElementById('a360-overlay');
-      if (host && host.dataset.askId === id) { host.dataset.closed = '1'; host.remove(); }
+      const reg = globalThis.__a360Asks;
+      const ask = reg && reg.get(id);
+      if (ask) ask.close();
     },
     args: [askId],
     world: 'ISOLATED',
@@ -2475,10 +2503,23 @@ function eraseAskPrompt(tabId, askId) {
 // the old one. Draw it again - as soon as the DOM is there, and once more when the page has
 // loaded, in case a script replaced the document in between. A prompt already on the page
 // is left alone, so the second draw is a no-op when the first one held.
-function redrawAskPrompts({ tabId, frameId }) {
+// R48 (Opus, MAALT ende-til-ende): en prompt med felter blev tegnet igen paa et FREMMED origin efter en navigation;
+// dets capture-lyttere fik koden, og svaret derfra blev godtaget som svar til den foerste side. En prompt med felter
+// hoerer nu til sit origin: skifter fanen origin, slutter kaldet med action 'navigated'. En prompt uden felter
+// foelger med, for et SSO-login skifter netop origin.
+function askOrigin(url) {
+  try { return new URL(url).origin; } catch { return null; }
+}
+
+function redrawAskPrompts({ tabId, frameId, url }) {
   if (frameId !== 0) return;
-  for (const ask of pendingAsks.values()) {
-    if (ask.tabId === tabId) drawAskPrompt(ask, true).catch(() => {});
+  for (const ask of [...pendingAsks.values()]) {
+    if (ask.tabId !== tabId) continue;
+    if (ask.origin && askOrigin(url) !== ask.origin) {
+      ask.finish({ acknowledged: false, action: 'navigated', values: {} });
+      continue;
+    }
+    drawAskPrompt(ask, true).catch(() => {});
   }
 }
 chrome.webNavigation.onDOMContentLoaded.addListener(redrawAskPrompts);
@@ -2491,10 +2532,16 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
-  if (msg?.type !== 'ask_user_answer' && msg?.type !== 'ask_user_moved') return;
+  if (msg?.type !== 'ask_user_answer' && msg?.type !== 'ask_user_moved' && msg?.type !== 'ask_user_lost') return;
   const ask = pendingAsks.get(msg.askId);
-  // Only the prompt we drew, in the tab we drew it in, can answer it.
+  // Only the prompt we drew, in the tab we drew it in - and for a prompt with fields, on the
+  // origin it was asked on - can answer it.
   if (!ask || sender.id !== chrome.runtime.id || sender.tab?.id !== ask.tabId) return;
+  if (ask.origin && sender.origin !== ask.origin) return;
+  if (msg.type === 'ask_user_lost') {
+    ask.finish({ acknowledged: false, action: 'removed_by_page', values: {} });
+    return;
+  }
   if (msg.type === 'ask_user_moved') {
     if (Number.isFinite(msg.left) && Number.isFinite(msg.top)) lastAskPosition = { left: msg.left, top: msg.top };
     return;
@@ -5533,6 +5580,7 @@ async function dispatch(port, method, params) {
         })),
         hasFields: Boolean(hasFields),
         sessionLabel: String(session.label ?? 'Claude'),
+        deadline: Date.now() + timeout,
       };
 
       let finish;
@@ -5552,7 +5600,7 @@ async function dispatch(port, method, params) {
         };
         timer = setTimeout(() => finish({ acknowledged: false, action: 'timeout', values: {} }), timeout);
       });
-      const ask = { tabId: tab.id, spec, finish };
+      const ask = { tabId: tab.id, spec, finish, origin: hasFields ? askOrigin(tab.url) : null };
       pendingAsks.set(askId, ask);
 
       try {

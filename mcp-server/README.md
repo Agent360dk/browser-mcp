@@ -280,7 +280,7 @@ All three are optional. None is needed for normal use.
 ### Human-in-the-Loop
 | Tool | Description |
 |------|-------------|
-| `browser_ask_user` | Show overlay dialog for 2FA, CAPTCHA, credentials, or any user input |
+| `browser_ask_user` | Ask you to act or answer: a small card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code. The page can see what you type into it, so it is for secrets that belong to that page |
 
 ### Data
 | Tool | Description |

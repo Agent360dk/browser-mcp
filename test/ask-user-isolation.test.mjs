@@ -50,8 +50,7 @@ test('keystrokes in the prompt do not bubble out to the page', () => {
 test('a page that wipes its body does not take the prompt with it', () => {
   // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> after DOMContentLoaded.
   assert.match(blok, /new MutationObserver\(/);
-  assert.match(blok, /if \(!host\.isConnected\) \(document\.body \|\| document\.documentElement\)\.appendChild\(host\)/);
-  // ...but an answered or erased prompt must stay gone.
-  assert.match(blok, /host\.dataset\.closed = '1';\n\s*host\.remove\(\);/);
-  assert.match(fnBlok('eraseAskPrompt'), /host\.dataset\.closed = '1'; host\.remove\(\);/);
+
+  // ...but an answered or erased prompt must stay gone. That is run, not read: test/ask-user-prompt.test.mjs
+  // (R48 - the state lives in the extension's isolated world now, not in a data attribute the page can set).
 });

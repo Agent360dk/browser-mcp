@@ -10,13 +10,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
-function browser({ drawFails = null } = {}) {
+function browser({ drawFails = null, startUrl = null } = {}) {
   const tabs = new Map();
   let next = 100;
   let u;
   u = indlaesUdvidelse({ svar: {
     'tabs.create': ({ url }) => {
-      const t = { id: next++, url, title: url, windowId: 1, active: false, status: 'complete' };
+      const t = { id: next++, url: startUrl || url, title: url, windowId: 1, active: false, status: 'complete' };
       tabs.set(t.id, t);
       setTimeout(() => u.fyr('tabs.onUpdated', t.id, { status: 'complete' }, t), 5);
       return t;
@@ -52,7 +52,7 @@ async function ask(u, params = {}) {
   return { pending, askId: draw.args[0].askId, tabId: draw.target.tabId, settled: () => settled };
 }
 
-const fromPrompt = (u, tabId) => ({ id: u.chrome.runtime.id, tab: { id: tabId } });
+const fromPrompt = (u, tabId, origin) => ({ id: u.chrome.runtime.id, tab: { id: tabId }, origin });
 
 test('the prompt is drawn in the isolated world and the answer comes back as a message', async () => {
   const u = browser();
@@ -99,11 +99,11 @@ test('only the prompt in its own tab can answer it', async () => {
 });
 
 test('only declared fields come back, as strings', async () => {
-  const u = browser();
+  const u = browser({ startUrl: 'https://bank.example/login' });
   const a = await ask(u, { fields: [{ name: 'code', label: '2FA code' }] });
   assert.deepEqual(plain(draws(u)[0].args[0].fields), [{ name: 'code', label: '2FA code', type: 'text' }]);
   await u.fyr('runtime.onMessage',
-    { type: 'ask_user_answer', askId: a.askId, action: 'done', values: { code: 123456, extra: 'x' } }, fromPrompt(u, a.tabId));
+    { type: 'ask_user_answer', askId: a.askId, action: 'done', values: { code: 123456, extra: 'x' } }, fromPrompt(u, a.tabId, 'https://bank.example'));
   assert.deepEqual(plain((await a.pending).values), { code: '123456' });
 });
 
@@ -169,4 +169,97 @@ test('the prompt is drawn again when the page has finished loading', async () =>
   await u.fyr('webNavigation.onCompleted', { tabId: a.tabId, frameId: 0 });
   await tick();
   assert.equal(draws(u).length, 3, 'an answered prompt was drawn again');
+});
+
+// R48 (Opus, MAALT ende-til-ende i Chrome 154): en prompt med felter blev tegnet igen paa et fremmed origin efter en
+// navigation, siden dér fik koden via sine capture-lyttere, og svaret blev godtaget. Den hoerer nu til sit origin.
+test('a prompt with fields ends when the tab moves to another origin, and is redrawn on the same origin', async () => {
+  const u = browser({ startUrl: 'https://bank.example/login' });
+  const a = await ask(u, { fields: [{ name: 'code', label: '2FA code' }] });
+  await u.fyr('webNavigation.onDOMContentLoaded', { tabId: a.tabId, frameId: 0, url: 'https://bank.example/step2' });
+  await tick();
+  assert.equal(draws(u).length, 2, 'the same origin must redraw it');
+  assert.equal(a.settled(), false);
+  await u.fyr('webNavigation.onDOMContentLoaded', { tabId: a.tabId, frameId: 0, url: 'https://evil.example/' });
+  await tick();
+  assert.equal(draws(u).length, 2, 'a prompt with fields was drawn on another origin');
+  assert.deepEqual(plain(await a.pending), { acknowledged: false, action: 'navigated', values: {} });
+});
+
+test('an answer to a prompt with fields counts only from its own origin', async () => {
+  const u = browser({ startUrl: 'https://bank.example/login' });
+  const a = await ask(u, { fields: [{ name: 'code', label: '2FA code' }] });
+  const svar = { type: 'ask_user_answer', askId: a.askId, action: 'done', values: { code: '482913' } };
+  await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, 'https://evil.example'));
+  await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, undefined));
+  await tick();
+  assert.equal(a.settled(), false, 'an answer from another origin was taken');
+  await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, 'https://bank.example'));
+  assert.deepEqual(plain((await a.pending).values), { code: '482913' });
+});
+
+test('a prompt without fields follows the login to another origin (SSO)', async () => {
+  const u = browser({ startUrl: 'https://app.example/' });
+  const a = await ask(u);
+  await u.fyr('webNavigation.onDOMContentLoaded', { tabId: a.tabId, frameId: 0, url: 'https://login.idp.example/' });
+  await tick();
+  assert.equal(draws(u).length, 2, 'the card must follow an SSO login');
+  await u.fyr('runtime.onMessage', { type: 'ask_user_answer', askId: a.askId, action: 'done', values: {} }, fromPrompt(u, a.tabId, 'https://login.idp.example'));
+  assert.equal((await a.pending).action, 'done');
+});
+
+test('a page that keeps removing the prompt ends the wait with removed_by_page', async () => {
+  const u = browser();
+  const a = await ask(u);
+  await u.fyr('runtime.onMessage', { type: 'ask_user_lost', askId: a.askId }, fromPrompt(u, a.tabId));
+  assert.deepEqual(plain(await a.pending), { acknowledged: false, action: 'removed_by_page', values: {} });
+});
+
+test('the page gets the deadline, so an orphaned prompt removes itself', async () => {
+  const u = browser();
+  const foer = Date.now();
+  const a = await ask(u, { timeout: 5000 });
+  const d = draws(u)[0].args[0].deadline;
+  assert.ok(d >= foer + 5000 && d <= Date.now() + 5000, `deadline ${d} is not now + timeout`);
+  await u.fyr('runtime.onMessage', { type: 'ask_user_answer', askId: a.askId, action: 'skip', values: {} }, fromPrompt(u, a.tabId));
+  await a.pending;
+});
+
+// Hvert udfald koden kan give, staar i beskrivelsen, og beskrivelsen lover ikke tastatur-isolation (R48).
+test('the tool description names every action the code can return, and the keystroke limit', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const bg = readFileSync(join(ROD, 'extension/background.js'), 'utf8');
+  const fra = bg.indexOf('const pendingAsks'), til = bg.indexOf('// ── OAuth Popup Interception');
+  const caseStart = bg.indexOf("case 'ask_user': {");
+  const kode = bg.slice(fra, til) + bg.slice(caseStart, bg.indexOf('return answered;', caseStart));
+  const actions = new Set([...kode.matchAll(/action: '([a-z_]+)'/g)].map((m) => m[1]));
+  actions.add('done'); actions.add('skip');
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const d = TOOLS.find((t) => t.name === 'browser_ask_user').description;
+  for (const a of actions) if (a !== 'error') assert.match(d, new RegExp(`\\b${a}\\b`), `the description does not name action ${a}`);
+  assert.ok(actions.size >= 7, `only ${actions.size} actions found - the measurement reads nothing`);
+  assert.match(d, /can see the keystrokes/, 'the description must not promise keyboard isolation');
+});
+
+// One change, every surface: README (both copies), /docs/tools and the install pages say what the prompt is now.
+test('every page that lists browser_ask_user describes the card, not a full-screen overlay', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const filer = ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md',
+    ...['claude-code', 'codex', 'cursor', 'vscode', 'zcode'].map((f) => `content/browsermcp-docs-install-${f}.md`)];
+  for (const f of filer) {
+    const alle = readFileSync(join(ROD, f), 'utf8').split('\n').filter((l) => l.includes('`browser_ask_user`'));
+    for (const l of alle) assert.doesNotMatch(l, /overlay/i, `${f}: still describes a full-screen overlay`);
+    // The row that describes the tool: its own row in the tool tables, «Human-in-the-loop» on the install pages.
+    const rk = alle.filter((l) => l.startsWith('| `browser_ask_user` |') || (f.includes('install-') && l.startsWith('| **Human-in-the-loop** |')));
+    assert.equal(rk.length, 1, `${f}: expected one row describing browser_ask_user, found ${rk.length}`);
+    assert.match(rk[0], /drag aside/, `${f}: does not say the card can be dragged aside`);
+  }
+  for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md']) {
+    const l = readFileSync(join(ROD, f), 'utf8').split('\n').find((x) => x.startsWith('| `browser_ask_user`'));
+    assert.match(l, /can see (what you type|the keystrokes)/, `${f}: promises the page cannot see what is typed`);
+  }
 });
