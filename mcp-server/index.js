@@ -728,7 +728,7 @@ If browser_provide_feedback reports that the extension is older than this server
 You cannot navigate to chrome:// pages - the user must do this manually.
 
 ## When Browser MCP itself is the obstacle - call browser_provide_feedback
-Before you tell the user "browser-mcp can't do X", or give up on a tool that errored, timed out, or did something other than what it promised: call **browser_provide_feedback** with what_happened. Do it yourself, without asking. It checks the install first - the extension against this server, whether more than one Browser MCP extension is connected at once, and (only when BROWSER_MCP_CHECK_NPM=1) this server against the latest on npm - because those explain most "it's broken" moments, and none of them are visible to you otherwise. Read the verdict:
+Before you tell the user "browser-mcp can't do X", or give up on a tool that errored, timed out, or did something other than what it promised: call **browser_provide_feedback** with what_happened, and with worked if another route did work in the end. Do it yourself, without asking. It checks the install first - the extension against this server, whether more than one Browser MCP extension is connected at once, and (only when BROWSER_MCP_CHECK_NPM=1) this server against the latest on npm - because those explain most "it's broken" moments, and none of them are visible to you otherwise. Read the verdict:
 - **outdated** or **disconnected** → relay fix_steps to the user, then retry the action. An outdated install explains most failures, so try the fix first - but if the behaviour still looks wrong after that, report it anyway. A release window is not a reason to stay silent about a real bug.
 - **conflict** → more than one extension is loaded; tabs and sessions will keep behaving randomly until the user disables the extras at chrome://extensions. Say so plainly.
 - **current** → the install is fine, so this is a genuine gap. Offer the returned submit_url as a clickable link.
@@ -1093,6 +1093,16 @@ function npmLatestVersion() {
 const FEEDBACK_LOG = join(homedir(), '.browser-mcp', 'feedback.jsonl');
 const setteFingeraftryk = new Set();   // samme graense logges én gang pr. serverliv
 
+// 1.30.2 skive 5 (Gustavs ja, T25 punkt 2): tal og e-mailadresser fjernes fra fritekstfelterne, foer de skrives -
+// i logbogen og i issue-linket. Samme regel og samme loft som computer-mcp's rensLaering (mcp-server/index.js der),
+// saa de to vaerktoejers logboeger kan laeses ens. Linjeskift bevares (dér afviger vi): issue-titlen er foerste linje.
+function rensFritekst(t, loft = 600) {
+  return String(t ?? '').replace(/[^\S\n]+/g, ' ').trim()
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]')
+    .replace(/\+?\d[\d ,.\-]{4,}\d/g, '[number]')
+    .slice(0, loft);
+}
+
 function fingeraftryk(kind, tool, what) {
   // Tal, id'er og lange hex-strenge varierer fra gang til gang og maa ikke goere to ens
   // haendelser forskellige.
@@ -1112,12 +1122,13 @@ function afkortUrl(u) {
 
 function skrivTilLogbog(post) {
   const fp = fingeraftryk(post.kind, post.tool, post.what_happened);
-  const foerste = !setteFingeraftryk.has(fp);
-  setteFingeraftryk.add(fp);
-  if (!foerste) return { logged: false, reason: 'already logged in this server run', fingerprint: fp };
+  if (setteFingeraftryk.has(fp)) return { logged: false, reason: 'already logged in this server run', fingerprint: fp };
   try {
     mkdirSync(dirname(FEEDBACK_LOG), { recursive: true });
     appendFileSync(FEEDBACK_LOG, JSON.stringify({ ...post, fingerprint: fp }) + '\n');
+    // Foerst efter en lykket skrivning (skive 5, T25 punkt 4): foer blev aftrykket sat inden forsoeget, saa en
+    // skrivning der fejlede, spaerrede for den samme rapport resten af serverlivet - og den blev aldrig skrevet.
+    setteFingeraftryk.add(fp);
     return { logged: true, path: FEEDBACK_LOG, fingerprint: fp };
   } catch (e) {
     // En logbog der ikke kan skrives maa aldrig vaere det der braekker vaerktoejet.
@@ -1126,11 +1137,13 @@ function skrivTilLogbog(post) {
 }
 
 async function handleProvideFeedback(args) {
-  const what = String(args?.what_happened || '').trim();
+  const what = rensFritekst(args?.what_happened);
   const kind = args?.kind || 'blocked';
   const tool = args?.tool || null;
   const url = args?.url || null;
-  const attempted = args?.attempted || null;
+  const attempted = rensFritekst(args?.attempted) || null;
+  // Samme felt som computer-mcp's computer_learning: den vej der virkede til sidst er den mest brugbare del.
+  const worked = rensFritekst(args?.worked) || null;
 
   const npmLatest = await npmLatestVersion();
   const exts = distinctExtensions();
@@ -1250,6 +1263,7 @@ async function handleProvideFeedback(args) {
     // OFFENTLIGT GitHub-issue. Praecis den forkerte vej rundt.
     url && `\n**URL**: ${afkortUrl(url)}`,
     attempted && `\n**Already tried**\n${attempted}`,
+    worked && `\n**What worked**\n${worked}`,
     `\n**Environment**\n\`\`\`json\n${JSON.stringify(environment, null, 2)}\n\`\`\``,
   ].filter(Boolean).join('\n');
 
@@ -1273,7 +1287,7 @@ async function handleProvideFeedback(args) {
 
   const logbog = skrivTilLogbog({
     at: new Date().toISOString(),
-    kind, tool, what_happened: what, attempted,
+    kind, tool, what_happened: what, attempted, worked,
     url: afkortUrl(url),
     verdict,
     server_version: PKG_VERSION,
@@ -1285,7 +1299,7 @@ async function handleProvideFeedback(args) {
     content: [{
       type: 'text',
       text: JSON.stringify({
-        reported: { kind, what_happened: what, tool, url, attempted },
+        reported: { kind, what_happened: what, tool, url, attempted, worked },
         verdict,
         findings,
         fix_steps,

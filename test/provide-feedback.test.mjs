@@ -38,7 +38,7 @@ const ext = (version, id) => ({ ws: { readyState: AABEN }, seq: ++seq, extension
 
 // Bygger handleProvideFeedback med kontrolleret omverden: hvilke udvidelser der er
 // forbundet, hvad npm siger, og hvilken version serveren selv har.
-function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')], activePort = 9876 } = {}) {
+function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')], activePort = 9876, skrivFejl = () => null } = {}) {
   const connections = new Set(udvidelser);
   // fingeraftryk/afkortUrl/skrivTilLogbog hentes ud af den RIGTIGE kilde. Kun
   // filsystemet stubbes - ellers ville testen maale sin egen attrap i stedet for
@@ -46,7 +46,7 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
   const src = [
     udtraek('cmpVersion'), udtraek('liveConnections'),
     udtraek('activeConnection'), udtraek('distinctExtensions'),
-    udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
+    udtraek('rensFritekst'), udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
     udtraek('handleProvideFeedback'),
   ].join('\n\n');
   // laastForbindelse/harSendtKommando er modul-variable i index.js; de erklaeres her
@@ -73,7 +73,7 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
     { wish: 'wish.yml', use_case: 'use-case.yml', bug: 'bug.yml' },
     async () => npmLatest,
     { version: 'v22.0.0', platform: 'darwin', arch: 'arm64' },
-    (_sti, linje) => { skrevet.push(JSON.parse(linje)); },   // appendFileSync
+    (_sti, linje) => { const f = skrivFejl(); if (f) throw new Error(f); skrevet.push(JSON.parse(linje)); },   // appendFileSync
     () => {},                                                 // mkdirSync
     (x) => x, (...x) => x.join('/'), () => '/attrap',          // dirname, join, homedir
     class { toISOString() { return '2026-08-21T00:00:00.000Z'; } },
@@ -206,7 +206,64 @@ test('flerlinjet beskrivelse giver enkeltlinjet titel', async () => {
 
 test('rapporten spejler det der blev meldt ind', async () => {
   const r = await byg()({ what_happened: 'x', kind: 'missing', tool: 'browser_hover', url: 'https://a.dk', attempted: 'proevede text=-selector' });
-  assert.deepEqual(r.reported, { kind: 'missing', what_happened: 'x', tool: 'browser_hover', url: 'https://a.dk', attempted: 'proevede text=-selector' });
+  assert.deepEqual(r.reported, { kind: 'missing', what_happened: 'x', tool: 'browser_hover', url: 'https://a.dk', attempted: 'proevede text=-selector', worked: null });
+});
+
+// ── skive 5 (1.30.2): worked, rensning og aftryk efter skrivning ────────────
+// Gustavs ja (T25 punkt 2 og 4): feltet worked som i computer-mcp; tal og e-mailadresser fjernes fra fritekstfelterne,
+// foer de skrives; fingeraftrykket markeres foerst efter en lykket skrivning.
+
+test('worked kommer med i logbogen, i issue-linket og i svaret', async () => {
+  const h = byg();
+  const r = await h({ what_happened: 'browser_click ramte ikke', tool: 'browser_click', worked: 'browser_click_xy paa knappens midte' });
+  assert.equal(h.skrevet[0].worked, 'browser_click_xy paa knappens midte', 'worked blev ikke skrevet i logbogen');
+  assert.match(decodeURIComponent(r.submit_url), /\*\*What worked\*\*\nbrowser_click_xy paa knappens midte/, 'worked mangler i issue-linket');
+  assert.equal(r.reported.worked, 'browser_click_xy paa knappens midte');
+});
+
+test('e-mailadresser og lange tal fjernes fra alle tre fritekstfelter, i logbogen og i linket', async () => {
+  const h = byg();
+  const r = await h({
+    what_happened: 'Kunne ikke sende til jens.hansen+kunde@firma.dk, ordre 4471 9920 3381',
+    attempted: 'ringede +45 12 34 56 78 og proevede kort 4571-1234-5678-9010',
+    worked: 'skrev til support@example.co.uk med kundenr 99887766',
+  });
+  const linje = h.skrevet[0];
+  const link = decodeURIComponent(r.submit_url);
+  for (const hemmelig of ['jens.hansen', 'firma.dk', '4471', '12 34 56 78', '4571', '5678', 'support@', '99887766']) {
+    assert.ok(!JSON.stringify(linje).includes(hemmelig), `logbogen bar «${hemmelig}»`);
+    assert.ok(!link.includes(hemmelig), `issue-linket bar «${hemmelig}»`);
+  }
+  assert.equal(linje.what_happened, 'Kunne ikke sende til [email], ordre [number]');
+  assert.equal(linje.attempted, 'ringede [number] og proevede kort [number]');
+  assert.equal(linje.worked, 'skrev til [email] med kundenr [number]');
+});
+
+test('korte tal bevares - fejltekstens tal er ofte det brugbare', async () => {
+  const h = byg();
+  await h({ what_happened: 'timeout efter 30000 ms paa trin 3' });
+  assert.equal(h.skrevet[0].what_happened, 'timeout efter 30000 ms paa trin 3', 'rensningen tog tal under seks tegn');
+});
+
+test('fritekst afkortes til 600 tegn, som i computer-mcp', async () => {
+  const h = byg();
+  await h({ what_happened: 'a'.repeat(900), attempted: 'b'.repeat(700) });
+  assert.equal(h.skrevet[0].what_happened.length, 600);
+  assert.equal(h.skrevet[0].attempted.length, 600);
+});
+
+test('en skrivning der fejler, spaerrer ikke den samme rapport resten af serverlivet', async () => {
+  let fejl = 'ENOSPC: no space left on device';
+  const h = byg({ skrivFejl: () => fejl });
+  const r1 = await h({ what_happened: 'klik landede ikke', tool: 'browser_click' });
+  assert.equal(r1.logged_locally.logged, false);
+  assert.match(r1.logged_locally.reason, /ENOSPC/);
+  fejl = null;
+  const r2 = await h({ what_happened: 'klik landede ikke', tool: 'browser_click' });
+  assert.equal(r2.logged_locally.logged, true, 'aftrykket blev sat foer skrivningen - den samme rapport kan aldrig skrives');
+  const r3 = await h({ what_happened: 'klik landede ikke', tool: 'browser_click' });
+  assert.equal(r3.logged_locally.logged, false, 'efter en lykket skrivning skal gentagelsen springes over');
+  assert.equal(h.skrevet.length, 1);
 });
 
 // ── kontrakter mod resten af systemet ───────────────────────────────────────
@@ -220,7 +277,7 @@ test('vaerktoejet er registreret og routet', async () => {
   const t = TOOLS.find(x => x.name === 'browser_provide_feedback');
   assert.ok(t, 'browser_provide_feedback mangler i tools.js');
   assert.deepEqual(t.inputSchema.required, ['what_happened']);
-  assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['attempted', 'kind', 'tool', 'url', 'what_happened']);
+  assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['attempted', 'kind', 'tool', 'url', 'what_happened', 'worked']);
   assert.match(kilde, /name === 'browser_provide_feedback'/, 'ikke routet i index.js');
 });
 

@@ -495,7 +495,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_provide_feedback',
-    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (not again for a repeat of the same report while the server runs; logged_locally says whether a line was written; the free text is stored as the agent wrote it). With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.',
+    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (a report with the same kind, tool and first 160 characters of what_happened, with numbers and long hex strings ignored, is written once per server run, and again only if the earlier write failed; logged_locally says whether a line was written). Email addresses and numbers of six or more characters are replaced with [email] and [number] in what_happened, attempted and worked before they are written or put in the issue link. With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -519,6 +519,10 @@ export const TOOLS = [
         attempted: {
           type: 'string',
           description: 'What you already tried (other selectors, other tools, retries) so the report does not suggest what you have ruled out.',
+        },
+        worked: {
+          type: 'string',
+          description: 'The route that did work in the end, if any. This is the most useful part.',
         },
       },
       required: ['what_happened'],
