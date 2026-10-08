@@ -49,7 +49,7 @@ Restart your agent. Other clients: [the install guides](/docs/install-cursor/).
 
 ## Two things to know before you rely on it
 
-**It is one careful user, not a load test.** It walks the flow once, the way you would. For hundreds of runs in CI, use a headless tool such as Playwright.
+**It walks the flow once, as one careful user.** That is the way you would test it by hand. For hundreds of runs in CI, use a headless tool such as Playwright.
 
 **Stop before anything real.** Tell it where to stop, for example before a real payment. It can also ask you with `browser_ask_user` before a step it should not decide alone.
 

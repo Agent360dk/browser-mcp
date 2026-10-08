@@ -29,7 +29,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "Browser MCP", "alternateName": ["Browser MCP by Agent360", "@agent360/browser-mcp"], "description": "An MCP server that gives your AI agent control of your real, already-logged-in Chrome - so it can work on 2FA-gated and login-gated sites where headless tools get blocked. 40 tools, MIT-licensed, runs on your own machine.", "applicationCategory": "DeveloperApplication", "operatingSystem": "Any system that runs desktop Chrome and Node.js 20 or newer", "softwareRequirements": "Google Chrome (desktop), Node.js 20 or newer", "softwareVersion": "1.30.1", "url": "https://browsermcp.dev/", "downloadUrl": "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl", "license": "https://opensource.org/licenses/MIT", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "author": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "publisher": {"@type": "Organization", "name": "Agent360", "url": "https://agent360.dk"}, "sameAs": ["https://github.com/Agent360dk/browser-mcp", "https://www.npmjs.com/package/@agent360/browser-mcp", "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl"], "creator": {"@type": "Person", "name": "Gustav Louv", "url": "https://gustavlouv.com/"}}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "Agent360", "url": "https://agent360.dk", "sameAs": ["https://github.com/Agent360dk", "https://computermcp.dev", "https://jesperai.com"]}</script>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "I installed the extension from the Chrome Web Store and it says “not connected”. What now?", "acceptedAnswer": {"@type": "Answer", "text": "That is expected - the extension is only half of it. Browser MCP is an extension plus a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest - then restart it. The popup keeps saying \"Not connected\" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it."}}, {"@type": "Question", "name": "What is Browser MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Browser MCP is a free, open-source MCP server and Chrome extension that lets an AI agent (Claude Code, Cursor, VS Code) control your real, already-logged-in Chrome instead of a fresh headless browser. It is built for 2FA-, CAPTCHA- and login-gated sites where headless tools get blocked (some CAPTCHAs still need you), and runs on your own machine - nothing is sent to us."}}, {"@type": "Question", "name": "How is this different from Playwright MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Playwright MCP is a fine tool, and it is not headless-only - Microsoft's own README documents a persistent profile as the default, plus a browser extension that connects to your real Chrome, with a tab group for each client. The difference is what each is built around. Browser MCP only ever drives the Chrome you already use, and it has a tool, browser_ask_user, that puts a question in front of you (a 2FA code, a CAPTCHA, a choice) and waits for your answer. Playwright MCP's tool list has nothing that asks you."}}, {"@type": "Question", "name": "Is my data safe? What does the extension see?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing is sent to Agent360 - there is no server of ours to send it to. The extension talks to a local MCP server on 127.0.0.1; that link has no password, so it is only as private as your computer (the privacy page says more). The extension and the server have no telemetry and no analytics. What your agent reads is handed to your AI client, which sends it to its model provider like anything else you show it. The cookie tools run only when your agent calls them, but an ordinary page read can contain sensitive text too, such as a token shown on a page, and that text goes to your AI client. Source is open and auditable on GitHub."}}, {"@type": "Question", "name": "Why does it need so many permissions?", "acceptedAnswer": {"@type": "Answer", "text": "Browser MCP is a developer tool that controls Chrome on your behalf. Each permission has a specific reason: tabs/scripting for navigation and clicking, cookies for the cookie tools, debugger for real input events on CSP-protected sites like Google Cloud, <all_urls> because the AI must navigate to whatever URL you ask it to. A full per-permission breakdown is on the permissions & data page."}}, {"@type": "Question", "name": "Does it work with anything other than Claude Code?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is a standard MCP (Model Context Protocol) server that runs locally over stdio, so an MCP client that can run local servers can use it: Cursor, VS Code, Codex, Cline, Continue and more. Setup is the same: run the local server, point your client at it. The install guides have the exact config for each."}}, {"@type": "Question", "name": "How does CAPTCHA assistance actually work?", "acceptedAnswer": {"@type": "Answer", "text": "Three steps. (1) browser_solve_captcha first detects the kind (reCAPTCHA, hCaptcha, Turnstile); the agent can then ask it to click a reCAPTCHA v2 checkbox, which is often enough when you are signed into Google. (2) If a challenge is left, the agent can take a screenshot itself and tell the tool which grid cells to click, so the model you already use does any image reading. (3) If that does not clear it, the agent can ask you with browser_ask_user and carry on after you solve it. No CAPTCHA-solving service is involved. It does not pass every CAPTCHA: what it can and cannot get past says which we have measured."}}, {"@type": "Question", "name": "Is it really free? What's the catch?", "acceptedAnswer": {"@type": "Answer", "text": "It's MIT-licensed, open source, no paywall. Built and maintained by Agent360 as part of our developer-tools ecosystem. No catch - the catch (if there is one) is that bug reports and PRs are welcome."}}, {"@type": "Question", "name": "How do I uninstall it?", "acceptedAnswer": {"@type": "Answer", "text": "Two parts: remove the Chrome extension from chrome://extensions, and drop the browser-mcp entry from your MCP config (claude mcp remove --scope user browser-mcp, or delete the block from your Cursor/VS Code/Codex config). Nothing was installed globally - npx only caches the package - and a small local log may sit in ~/.browser-mcp/ (the unpacked install also copies the extension there). Delete that folder to remove those files; the npm cache keeps its own copy of the package. Full details & permissions."}}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "I installed the extension from the Chrome Web Store and it says “not connected”. What now?", "acceptedAnswer": {"@type": "Answer", "text": "That is normal: the store gives you only half of it. Paste claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest in a terminal and restart Claude Code. The badge turns green the first time your agent uses the browser."}}, {"@type": "Question", "name": "What is Browser MCP?", "acceptedAnswer": {"@type": "Answer", "text": "A free, open-source Chrome extension plus a small local MCP server. It lets Claude Code, Cursor, Codex or VS Code work in the Chrome you are already signed into, so your logins, cookies and 2FA work as they do for you."}}, {"@type": "Question", "name": "How is this different from Playwright MCP?", "acceptedAnswer": {"@type": "Answer", "text": "Playwright MCP is a fine tool, and its extension can also use your real Chrome. What it has no tool for is stopping to ask you. Browser MCP has browser_ask_user: a box in the tab for a code or a choice."}}, {"@type": "Question", "name": "Is my data safe? What does the extension see?", "acceptedAnswer": {"@type": "Answer", "text": "Nothing is sent to Agent360; there is no server of ours. The extension talks to a local server on 127.0.0.1. What your agent reads goes to your AI client and its model provider. Details on the privacy page; the source is on GitHub."}}, {"@type": "Question", "name": "Why does it need so many permissions?", "acceptedAnswer": {"@type": "Answer", "text": "It drives Chrome for you: tabs and scripting to open pages and click, the debugger for real input on strict sites, cookies for the cookie tools, and all URLs so it can open what you ask for. Every permission, explained."}}, {"@type": "Question", "name": "Does it work with anything other than Claude Code?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. It is a standard local MCP server, so Cursor, VS Code, Codex, Windsurf, Cline, Continue and others can use it. The install guides have the exact config for each client."}}, {"@type": "Question", "name": "How does CAPTCHA assistance actually work?", "acceptedAnswer": {"@type": "Answer", "text": "It detects the CAPTCHA and can tick a reCAPTCHA checkbox, which often clears it when you are signed into Google. If a challenge is left, your agent can read the images itself or ask you in the tab. What it can and cannot get past."}}, {"@type": "Question", "name": "Is it really free? What's the catch?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. MIT-licensed, no account, no paid tier. Agent360 builds and maintains it, and bug reports and pull requests are welcome."}}, {"@type": "Question", "name": "How do I uninstall it?", "acceptedAnswer": {"@type": "Answer", "text": "Remove the extension in chrome://extensions, run claude mcp remove --scope user browser-mcp (or delete the block in your client’s config), and delete ~/.browser-mcp/. Full details and permissions."}}]}</script>
 <style>
 :root{
   color-scheme:light dark;
@@ -334,6 +334,34 @@ td code{word-break:normal;overflow-wrap:anywhere}
   .btn.sec2{border-color:#3A404B}
   .film video{filter:brightness(.9);border-color:#2C313A}
 }
+
+/* runde 4 (Gustav 8/10 «drager den en ind?»): moerkt hero-baand, krog i h1, vis foer fortael */
+.hero{background:radial-gradient(70rem 32rem at 50% -6rem,rgba(26,115,232,.32),transparent 62%),radial-gradient(40rem 22rem at 85% 30%,rgba(147,52,230,.14),transparent 70%),#0B0D10;color:#ECEFF3;padding-block:clamp(2.75rem,6vw,5rem) clamp(2.5rem,6vw,4.5rem)}
+.hero h1{color:#fff;font-size:clamp(2.6rem,7vw,4.6rem);letter-spacing:-.04em}
+.hero .lede{color:#A9B1BD}
+.hero .oss{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14);color:#ECEFF3}
+.hero .oss:hover{border-color:rgba(255,255,255,.4)}
+.hero .btn.pri{background:#fff;color:#0B0D10}
+.hero .hn{background:#fff;color:#0B0D10;margin-top:0}
+.herocta{justify-content:center;align-items:center;gap:.9rem;margin:1.9rem 0 0}
+.watch{color:#C9D1DD;font-weight:600;text-decoration:none;padding:.6rem .4rem}
+.watch:hover{color:#fff}
+.hero .film{width:min(100%,66rem);margin-top:clamp(2rem,4vw,3rem)}
+.hero .film video{border-color:rgba(255,255,255,.12);box-shadow:0 0 0 1px rgba(255,255,255,.04),0 30px 80px -20px rgba(26,115,232,.45),0 18px 40px -18px rgba(0,0,0,.8)}
+.hero .film figcaption{color:#8F98A5}
+.hero .sbtn{background:rgba(255,255,255,.06);color:#ECEFF3;border-color:rgba(255,255,255,.18)}
+.trin2{display:grid;grid-template-columns:2rem minmax(0,1fr);gap:.8rem;width:100%;max-width:38rem;margin:2rem auto 0;text-align:left}
+.trin2 .cmdlbl{color:#A9B1BD;margin:.3rem 0 .45rem}
+.trin2 .cmdnote{color:#8F98A5}.trin2 .cmdnote a{color:#C9D1DD}
+.hero .cmd{background:#14171C;border-color:rgba(255,255,255,.14)}
+.hero .cmd code{color:#ECEFF3}
+.hero .cmd button{background:rgba(255,255,255,.08);color:#ECEFF3;border-left-color:rgba(255,255,255,.14)}
+.hero .ctabs label{background:rgba(255,255,255,.04);color:#8F98A5;border-color:rgba(255,255,255,.14)}
+.hero #kl1:checked+label,.hero #kl2:checked+label{background:#14171C;color:#fff}
+.hero .proof li+li{border-left-color:rgba(255,255,255,.14)}
+.hero .proof b{color:#fff}.hero .proof li span,.hero .works{color:#8F98A5}
+.hero :focus-visible{outline-color:#8AB4F8}
+@media (max-width:30rem){.herocta{flex-wrap:wrap}.herocta .btn{flex:1}.watch{width:100%;text-align:center}}
 </style>
 
 </head>
@@ -361,11 +389,18 @@ td code{word-break:normal;overflow-wrap:anywhere}
   <div class="wrap">
     <div class="hero-t">
       <a class="oss" href="https://github.com/Agent360dk/browser-mcp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span><b>Free and open source</b> · MIT</span></a>
-      <h1>Your agent,<br>in your Chrome.</h1>
-      <p class="lede">A Chrome extension plus a small local server. It can read an emailed 2FA code and tick the CAPTCHA box. When it can’t, it asks you in the tab.</p>
-      <ol class="hsteps">
-        <li><span class="hn" aria-hidden="true">1</span><div><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome, free</a></div></li>
-        <li><span class="hn" aria-hidden="true">2</span><div>
+      <h1>Your agent,<br>past the login.</h1>
+      <p class="lede">A Chrome extension and a small local server that let your agent work in the Chrome you’re already signed into. It can read an emailed 2FA code, tick the CAPTCHA box, and ask you when it can’t.</p>
+      <div class="acts herocta"><span class="hn" aria-hidden="true">1</span><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome, free</a><a class="watch" href="#film">Watch it work ↓</a></div>
+    </div>
+
+    <figure class="film" id="film">
+      <input type="checkbox" id="pause" class="vh pause-input">
+      <video id="filmv" src="/film-v2.mp4" poster="/film-v2.jpg" width="1280" height="800" muted loop playsinline preload="metadata" aria-label="A 22-second illustration of Browser MCP. An agent works in its own colour-coded tab group in Chrome, signed in. A login asks for a code sent by email; the agent opens Gmail in a new tab in its group, reads the code and types it in. It ticks a CAPTCHA checkbox itself. Then the tab groups grow from four to twenty agents, Claude 1 to Claude 20, in one Chrome."></video>
+      <figcaption><span>Illustration, 22 seconds. The tab groups and the log follow the real extension; the pages are made up.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
+    </figure>
+
+    <div class="trin2"><span class="hn" aria-hidden="true">2</span><div>
           <p class="cmdlbl">Paste this in your terminal, then restart your agent:</p>
           <div class="ctabs">
             <input type="radio" name="klient" id="kl1" checked><label for="kl1">Claude Code</label>
@@ -374,8 +409,8 @@ td code{word-break:normal;overflow-wrap:anywhere}
             <div class="cmd k2"><code id="c1b" translate="no">npx @agent360/browser-mcp install --skip-extension</code><button type="button" class="copy" data-for="c1b" hidden>Copy</button></div>
           </div>
           <p class="cmdnote">Windsurf and the rest: <a href="/docs/install-windsurf/">see the guides</a>.</p>
-        </div></li>
-      </ol>
+    </div></div>
+    <div class="hero-t">
       <ul class="proof">
         <li><b data-tal="cws-brugere">1,000</b><span>Chrome users</span></li>
         <li><b data-tal="npm-maaned">5,165</b><span>npm downloads last month</span></li>
@@ -383,12 +418,6 @@ td code{word-break:normal;overflow-wrap:anywhere}
       </ul>
       <p class="works">Works with Claude Code · Cursor · Codex · VS Code · Windsurf</p>
     </div>
-
-    <figure class="film" id="film">
-      <input type="checkbox" id="pause" class="vh pause-input">
-      <video id="filmv" src="/film-v2.mp4" poster="/film-v2.jpg" width="1280" height="800" muted loop playsinline preload="metadata" aria-label="A 22-second illustration of Browser MCP. An agent works in its own colour-coded tab group in Chrome, signed in. A login asks for a code sent by email; the agent opens Gmail in a new tab in its group, reads the code and types it in. It ticks a CAPTCHA checkbox itself. Then the tab groups grow from four to twenty agents, Claude 1 to Claude 20, in one Chrome."></video>
-      <figcaption><span>Illustration, 22 seconds. The tab groups and the log follow the real extension; the pages are made up.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
-    </figure>
   </div>
 </section>
 
@@ -505,39 +534,39 @@ td code{word-break:normal;overflow-wrap:anywhere}
     <h2>Questions</h2>
     <details>
     <summary>I installed the extension from the Chrome Web Store and it says &ldquo;not connected&rdquo;. What now?</summary>
-    <div class="answer">That is expected - the extension is only half of it. Browser MCP is an extension <i>plus</i> a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is <code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code> - then restart it. The popup keeps saying "Not connected" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it.</div>
+    <div class="answer">That is normal: the store gives you only half of it. Paste <code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code> in a terminal and restart Claude Code. The badge turns green the first time your agent uses the browser.</div>
   </details>
     <details>
     <summary>What is Browser MCP?</summary>
-    <div class="answer"><b>Browser MCP</b> is a free, open-source MCP server and Chrome extension that lets an AI agent (Claude Code, Cursor, VS Code) control your real, already-logged-in Chrome instead of a fresh headless browser. It is built for 2FA-, CAPTCHA- and login-gated sites where headless tools get blocked (some CAPTCHAs still need you), and runs on your own machine - nothing is sent to us.</div>
+    <div class="answer">A free, open-source Chrome extension plus a small local MCP server. It lets Claude Code, Cursor, Codex or VS Code work in the Chrome you are already signed into, so your logins, cookies and 2FA work as they do for you.</div>
   </details>
     <details>
     <summary>How is this different from Playwright MCP?</summary>
-    <div class="answer">Playwright MCP is a fine tool, and it is <strong>not</strong> headless-only - Microsoft's own README documents a persistent profile as the default, plus a browser extension that connects to your real Chrome, with a tab group for each client. The difference is what each is built around. Browser MCP only ever drives the Chrome you already use, and it has a tool, <code translate="no">browser_ask_user</code>, that puts a question in front of you (a 2FA code, a CAPTCHA, a choice) and waits for your answer. Playwright MCP's tool list has nothing that asks you.</div>
+    <div class="answer">Playwright MCP is a fine tool, and its extension can also use your real Chrome. What it has no tool for is stopping to ask you. Browser MCP has <code translate="no">browser_ask_user</code>: a box in the tab for a code or a choice.</div>
   </details>
     <details>
     <summary>Is my data safe? What does the extension see?</summary>
-    <div class="answer">Nothing is sent to Agent360 - there is no server of ours to send it to. The extension talks to a local MCP server on <code translate="no">127.0.0.1</code>; that link has no password, so it is only as private as your computer (the <a href="/privacy.html">privacy page</a> says more). The extension and the server have no telemetry and no analytics. What your agent reads is handed to your AI client, which sends it to its model provider like anything else you show it. The cookie tools run only when your agent calls them, but an ordinary page read can contain sensitive text too, such as a token shown on a page, and that text goes to your AI client. Source is <a href="https://github.com/Agent360dk/browser-mcp">open and auditable on GitHub</a>.</div>
+    <div class="answer">Nothing is sent to Agent360; there is no server of ours. The extension talks to a local server on 127.0.0.1. What your agent reads goes to your AI client and its model provider. Details on the <a href="/privacy.html">privacy page</a>; the source is <a href="https://github.com/Agent360dk/browser-mcp">on GitHub</a>.</div>
   </details>
     <details>
     <summary>Why does it need so many permissions?</summary>
-    <div class="answer">Browser MCP is a developer tool that controls Chrome on your behalf. Each permission has a specific reason: <code translate="no">tabs</code>/<code translate="no">scripting</code> for navigation and clicking, <code translate="no">cookies</code> for the cookie tools, <code translate="no">debugger</code> for real input events on CSP-protected sites like Google Cloud, <code translate="no">&lt;all_urls&gt;</code> because the AI must navigate to whatever URL you ask it to. A full per-permission breakdown is on the <a href="/docs/uninstall/">permissions &amp; data page</a>.</div>
+    <div class="answer">It drives Chrome for you: tabs and scripting to open pages and click, the debugger for real input on strict sites, cookies for the cookie tools, and all URLs so it can open what you ask for. <a href="/docs/uninstall/">Every permission, explained</a>.</div>
   </details>
     <details>
     <summary>Does it work with anything other than Claude Code?</summary>
-    <div class="answer">Yes. It is a standard MCP (Model Context Protocol) server that runs locally over stdio, so an MCP client that can run local servers can use it: Cursor, VS Code, Codex, Cline, Continue and more. Setup is the same: run the local server, point your client at it. The <a href="/docs/install-claude-code/">install guides</a> have the exact config for each.</div>
+    <div class="answer">Yes. It is a standard local MCP server, so Cursor, VS Code, Codex, Windsurf, Cline, Continue and others can use it. The <a href="/docs/install-claude-code/">install guides</a> have the exact config for each client.</div>
   </details>
     <details>
     <summary>How does CAPTCHA assistance actually work?</summary>
-    <div class="answer">Three steps. (1) <code translate="no">browser_solve_captcha</code> first detects the kind (reCAPTCHA, hCaptcha, Turnstile); the agent can then ask it to click a reCAPTCHA v2 checkbox, which is often enough when you are signed into Google. (2) If a challenge is left, the agent can take a screenshot itself and tell the tool which grid cells to click, so the model you already use does any image reading. (3) If that does not clear it, the agent can ask you with <code translate="no">browser_ask_user</code> and carry on after you solve it. No CAPTCHA-solving service is involved. It does not pass every CAPTCHA: <a href="/docs/capability-matrix/">what it can and cannot get past</a> says which we have measured.</div>
+    <div class="answer">It detects the CAPTCHA and can tick a reCAPTCHA checkbox, which often clears it when you are signed into Google. If a challenge is left, your agent can read the images itself or ask you in the tab. <a href="/docs/capability-matrix/">What it can and cannot get past</a>.</div>
   </details>
     <details>
     <summary>Is it really free? What's the catch?</summary>
-    <div class="answer">It's MIT-licensed, open source, no paywall. Built and maintained by <a href="https://agent360.dk">Agent360</a> as part of our developer-tools ecosystem. No catch - the catch (if there is one) is that bug reports and PRs are welcome.</div>
+    <div class="answer">Yes. MIT-licensed, no account, no paid tier. <a href="https://agent360.dk">Agent360</a> builds and maintains it, and bug reports and pull requests are welcome.</div>
   </details>
     <details>
     <summary>How do I uninstall it?</summary>
-    <div class="answer">Two parts: remove the Chrome extension from <code translate="no">chrome://extensions</code>, and drop the <code translate="no">browser-mcp</code> entry from your MCP config (<code translate="no">claude mcp remove --scope user browser-mcp</code>, or delete the block from your Cursor/VS Code/Codex config). Nothing was installed globally - <code translate="no">npx</code> only caches the package - and a small local log may sit in <code translate="no">~/.browser-mcp/</code> (the unpacked install also copies the extension there). Delete that folder to remove those files; the npm cache keeps its own copy of the package. <a href="/docs/uninstall/">Full details &amp; permissions</a>.</div>
+    <div class="answer">Remove the extension in chrome://extensions, run <code translate="no">claude mcp remove --scope user browser-mcp</code> (or delete the block in your client’s config), and delete <code translate="no">~/.browser-mcp/</code>. <a href="/docs/uninstall/">Full details and permissions</a>.</div>
   </details>
   </div>
 </section>

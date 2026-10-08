@@ -32,7 +32,7 @@
 <h2 id="what-it-checks-well">What it checks well</h2>
 <ul><li><b>Real filling.</b> <code translate="no">browser_fill</code> fills each field and checks that a framework form (React, Angular) actually took the value.</li><li><b>What the page said.</b> <code translate="no">browser_console_logs</code> returns the console messages from its first call onwards, so ask for it before the step you are testing.</li><li><b>Waiting for the network.</b> <code translate="no">browser_wait_for_network</code> waits until the page has gone quiet, so a slow API is not mistaken for a broken button.</li><li><b>Proof.</b> <code translate="no">browser_screenshot</code> shows you the screen at the moment it stopped.</li></ul>
 <h2 id="two-things-to-know-before-you-rely-on-it">Two things to know before you rely on it</h2>
-<p><b>It is one careful user, not a load test.</b> It walks the flow once, the way you would. For hundreds of runs in CI, use a headless tool such as Playwright.</p>
+<p><b>It walks the flow once, as one careful user.</b> That is the way you would test it by hand. For hundreds of runs in CI, use a headless tool such as Playwright.</p>
 <p><b>Stop before anything real.</b> Tell it where to stop, for example before a real payment. It can also ask you with <code translate="no">browser_ask_user</code> before a step it should not decide alone.</p>
 <h2 id="frequently-asked-questions">Frequently asked questions</h2>
 <p><b>Can it test a site on localhost?</b> Yes. It opens whatever address you give it in its own tab, including your local development server.</p>
