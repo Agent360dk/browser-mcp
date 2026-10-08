@@ -103,7 +103,7 @@ class Node {
   }
 }
 
-export function lavDom() {
+export function lavDom({ origin = 'https://bank.example' } = {}) {
   observatoerer = [];
   leveringer = 0;
   class HTMLButtonElement extends Node {}
@@ -136,14 +136,14 @@ export function lavDom() {
   const chrome = { runtime: { sendMessage: (m) => { beskeder.push(JSON.parse(JSON.stringify(m))); return Promise.resolve(); } } };
   const window = { innerWidth: 1280, innerHeight: 800 };
   Object.assign(dom, { document, window, chrome, MutationObserver, HTMLButtonElement, HTMLInputElement,
-    beskeder, global: {}, leveringer: () => leveringer, LOEBSK });
+    beskeder, global: {}, leveringer: () => leveringer, LOEBSK, location: { origin } });
   return dom;
 }
 
 /** Goer en udtrukket funktion kaldbar med DOM'ens globale navne (globalThis er udvidelsens ISOLATED-verden). */
 export function iDom(kilde, navn, dom) {
-  return new Function('document', 'window', 'chrome', 'MutationObserver', 'HTMLButtonElement', 'HTMLInputElement', 'globalThis',
-    `${kilde}\nreturn ${navn};`)(dom.document, dom.window, dom.chrome, dom.MutationObserver, dom.HTMLButtonElement, dom.HTMLInputElement, dom.global);
+  return new Function('document', 'window', 'chrome', 'MutationObserver', 'HTMLButtonElement', 'HTMLInputElement', 'globalThis', 'location',
+    `${kilde}\nreturn ${navn};`)(dom.document, dom.window, dom.chrome, dom.MutationObserver, dom.HTMLButtonElement, dom.HTMLInputElement, dom.global, dom.location);
 }
 
 export const vent = (ms = 0) => new Promise((r) => setTimeout(r, ms));

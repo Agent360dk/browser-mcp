@@ -15,7 +15,7 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 const fane = { id: 1, url: 'https://x.example', windowId: 1, active: true };
 
-function side({ readOnly = false, disabled = false, value = '', landerTrodsReadonly = false } = {}) {
+function side({ readOnly = false, disabled = false, value = '', landerTrodsReadonly = false, disabledVedFokus = false } = {}) {
   const s = { value, input: [] };
   const svar = (v) => ({ result: { value: v } });
   const u = indlaesUdvidelse({ svar: {
@@ -35,6 +35,7 @@ function side({ readOnly = false, disabled = false, value = '', landerTrodsReado
           class Input {}
           Object.defineProperty(Input.prototype, 'value', { set(v) { s.value = v; }, get() { return s.value; } });
           const felt = Object.create(Input.prototype, { readOnly: { value: readOnly }, disabled: { value: disabled }, tagName: { value: 'INPUT' } });
+          felt.matches = (q) => q === ':disabled' && disabledVedFokus;
           felt.dispatchEvent = () => true;
           return svar(vm.runInNewContext(x, { document: { activeElement: felt }, HTMLInputElement: Input, HTMLTextAreaElement: Input, Event: class {} }));
         }
@@ -45,8 +46,9 @@ function side({ readOnly = false, disabled = false, value = '', landerTrodsReado
       }
       if (metode === 'Input.insertText' || metode === 'Input.dispatchKeyEvent') {
         s.input.push(metode);
-        if (metode === 'Input.insertText' && ((!readOnly && !disabled) || landerTrodsReadonly)) s.value += p.text;
-        if (metode === 'Input.dispatchKeyEvent' && p.text && p.type !== 'keyUp' && ((!readOnly && !disabled) || landerTrodsReadonly)) s.value += p.text;
+        const lander = ((!readOnly && !disabled) || landerTrodsReadonly) && !disabledVedFokus;
+        if (metode === 'Input.insertText' && lander) s.value += p.text;
+        if (metode === 'Input.dispatchKeyEvent' && p.text && p.type !== 'keyUp' && lander) s.value += p.text;
       }
       return {};
     },
@@ -168,4 +170,12 @@ test('the text-selector branch also lets a field that is readonly until focus ta
   const svar = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Search', value: 'your' });
   assert.equal(svar.ok, true, `the text branch refused a field that took the text: ${JSON.stringify(svar)}`);
   assert.equal(s.value, 'your');
+});
+
+// R51 (Astra): setter-rydningen tjekkede el.disabled, men ikke :disabled - et felt i en fieldset, der bliver
+// deaktiveret ved fokus, fik sin vaerdi slettet.
+test('the setter clear does not empty a field that is disabled through its fieldset', async () => {
+  const { u, s } = side({ value: 'OLD', disabledVedFokus: true });
+  await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'NEW' });
+  assert.equal(s.value, 'OLD', 'the setter cleared a field disabled through its fieldset');
 });

@@ -263,3 +263,24 @@ test('every page that lists browser_ask_user describes the card, not a full-scre
     assert.match(l, /can see (what you type|the keystrokes)/, `${f}: promises the page cannot see what is typed`);
   }
 });
+
+// R51 (Astra, MAALT): en tom tab.url gav origin null, og saa slog begge kontroller fra.
+test('a prompt with fields is refused on a tab without a web origin', async () => {
+  const u = browser({ startUrl: 'about:blank' });
+  const foer = draws(u).length;
+  await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'code?', fields: [{ name: 'code', label: 'Code' }] }),
+    /needs the tab to be on a web page/);
+  assert.equal(draws(u).length, foer, 'the prompt was drawn without an origin to bind it to');
+  assert.equal(u.hent('pendingAsks').size, 0);
+});
+
+test('the prompt is sent its origin, and an unknown address after a navigation ends a prompt with fields', async () => {
+  const u = browser({ startUrl: 'https://bank.example/login' });
+  const a = await ask(u, { fields: [{ name: 'code', label: '2FA code' }] });
+  assert.equal(draws(u)[0].args[0].origin, 'https://bank.example', 'the renderer cannot check the origin it was not given');
+  await u.fyr('webNavigation.onDOMContentLoaded', { tabId: a.tabId, frameId: 0, url: '' });
+  assert.equal((await a.pending).action, 'navigated', 'an unknown address let the prompt with fields be drawn again');
+  const v = browser({ startUrl: 'https://app.example/' });
+  await ask(v);
+  assert.equal(draws(v)[0].args[0].origin, null, 'a prompt without fields is not bound');
+});

@@ -140,3 +140,19 @@ test('baggrunden sletter prompten, og den kommer ikke igen', async () => {
   await vent();
   assert.equal(vaert.isConnected, false, 'en slettet prompt satte sig selv paa igen');
 });
+
+test('a prompt with fields is not drawn on another origin (R51, Astra)', () => {
+  const fremmed = tegn(feltSpec({ origin: 'https://bank.example' }), true, lavDom({ origin: 'https://evil.example' }));
+  assert.equal(fremmed.vaert, undefined, 'the prompt was drawn on a document from another origin');
+  const egen = tegn(feltSpec({ origin: 'https://bank.example' }), true, lavDom({ origin: 'https://bank.example' }));
+  assert.ok(egen.vaert, 'the prompt was not drawn on its own origin');
+});
+
+test('the prompt is visible: nothing hides the host or the card (R51, Astra: display:none survived)', () => {
+  for (const s of [spec(), feltSpec()]) {
+    const { vaert, inde } = tegn(s);
+    for (const n of [vaert, ...inde]) {
+      assert.doesNotMatch(n.style.cssText, /display:\s*none|visibility:\s*hidden|opacity:\s*0(?![.\d])/, `a prompt element is hidden: ${n.style.cssText}`);
+    }
+  }
+});

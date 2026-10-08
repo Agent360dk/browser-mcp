@@ -1400,7 +1400,7 @@ async function debuggerFill(tabId, selector, value) {
         (function() {
           const el = document.activeElement;
           // R50: et readonly- eller disabled-felt ryddes ikke med setteren - 875b160 slettede saadan en vaerdi.
-          if (!el || !('value' in el) || el.readOnly || el.disabled) return false;
+          if (!el || !('value' in el) || el.readOnly || el.disabled || (el.matches && el.matches(':disabled'))) return false;
           const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
           if (setter) setter.call(el, ''); else el.value = '';
@@ -2259,6 +2259,9 @@ let lastAskPosition = null;    // where the user last dragged the floating card
 // Runs in the page's ISOLATED world. It is serialized by executeScript, so it must not use
 // anything from the service worker's scope.
 function renderAskPrompt(spec, replay) {
+  // R51 (Astra): en tegning, der allerede var planlagt, kunne lande paa et dokument fra et andet origin. En prompt med
+  // felter tegnes kun paa det origin, den blev stillet paa.
+  if (spec.origin && location.origin !== spec.origin) return;
   // R48 (Astra og Opus, MAALT): siden kunne saette data-closed og saa fjerne prompten, saa den aldrig kom igen, og
   // en falsk vaert med samme data-ask-id fik en gentegning til at springe over. Hvilke prompter vi har tegnet, og om
   // de er lukket, staar nu i udvidelsens egen (ISOLATED) verden, som siden ikke kan se - ikke i DOM'en.
@@ -2507,15 +2510,17 @@ function eraseAskPrompt(tabId, askId) {
 // dets capture-lyttere fik koden, og svaret derfra blev godtaget som svar til den foerste side. En prompt med felter
 // hoerer nu til sit origin: skifter fanen origin, slutter kaldet med action 'navigated'. En prompt uden felter
 // foelger med, for et SSO-login skifter netop origin.
+// Kun et http(s)-origin kan baere en binding. R51 (Astra, MAALT): en tom tab.url gav origin null, og saa slog
+// begge kontroller fra, fordi de begyndte med `if (ask.origin && ...)` - et svar fra et fremmed origin blev godtaget.
 function askOrigin(url) {
-  try { return new URL(url).origin; } catch { return null; }
+  try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin : null; } catch { return null; }
 }
 
 function redrawAskPrompts({ tabId, frameId, url }) {
   if (frameId !== 0) return;
   for (const ask of [...pendingAsks.values()]) {
     if (ask.tabId !== tabId) continue;
-    if (ask.origin && askOrigin(url) !== ask.origin) {
+    if (ask.spec.hasFields && askOrigin(url) !== ask.origin) {
       ask.finish({ acknowledged: false, action: 'navigated', values: {} });
       continue;
     }
@@ -2537,7 +2542,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   // Only the prompt we drew, in the tab we drew it in - and for a prompt with fields, on the
   // origin it was asked on - can answer it.
   if (!ask || sender.id !== chrome.runtime.id || sender.tab?.id !== ask.tabId) return;
-  if (ask.origin && sender.origin !== ask.origin) return;
+  if (ask.spec.hasFields && (!ask.origin || sender.origin !== ask.origin)) return;
   if (msg.type === 'ask_user_lost') {
     ask.finish({ acknowledged: false, action: 'removed_by_page', values: {} });
     return;
@@ -5536,6 +5541,13 @@ async function dispatch(port, method, params) {
       const fields = Array.isArray(params.fields) ? params.fields : [];
       const hasFields = fields.length > 0;
       const session = getSession(port);
+      // En prompt med felter hoerer til det site, fanen staar paa. Uden et http(s)-origin kan svaret ikke bindes til
+      // noget, saa den stilles ikke (R51).
+      const origin = hasFields ? askOrigin(tab.url || tab.pendingUrl) : null;
+      if (hasFields && !origin) {
+        throw new Error('browser_ask_user with fields needs the tab to be on a web page (http or https), so the answer ' +
+          'can be tied to that site. Navigate to the page first, or ask without fields.');
+      }
 
       // Activate tab + alert badge
       await chrome.tabs.update(tab.id, { active: true });
@@ -5581,6 +5593,7 @@ async function dispatch(port, method, params) {
         hasFields: Boolean(hasFields),
         sessionLabel: String(session.label ?? 'Claude'),
         deadline: Date.now() + timeout,
+        origin,
       };
 
       let finish;
@@ -5600,7 +5613,7 @@ async function dispatch(port, method, params) {
         };
         timer = setTimeout(() => finish({ acknowledged: false, action: 'timeout', values: {} }), timeout);
       });
-      const ask = { tabId: tab.id, spec, finish, origin: hasFields ? askOrigin(tab.url) : null };
+      const ask = { tabId: tab.id, spec, finish, origin };
       pendingAsks.set(askId, ask);
 
       try {
