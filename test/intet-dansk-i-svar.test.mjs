@@ -141,3 +141,15 @@ for (const fil of FILER) {
     assert.deepEqual(fund, [], 'dansk i en tekst agenten kan faa:\n' + fund.join('\n'));
   });
 }
+
+// Kalibrering (konsulentrunde 42): disse danske svar slap igennem den gamle ordliste, fordi de hverken havde
+// æøå eller et ord fra den. En vagt der ikke kan se dem, er ikke en vagt - de skal altid fanges.
+test('vagten fanger de danske svar, der slap igennem foer (kalibrering)', () => {
+  for (const t of ['settle-opslaget gav intet svar', 'DOM.getDocument gav intet rod-element',
+    'allerede logget i denne session', 'kald `browser_click` to gange', 'intet svar']) {
+    assert.ok(FUNKTIONSORD.test(udenSideord(t)), `vagten ser ikke «${t}» som dansk`);
+  }
+  for (const t of ['the settle lookup returned nothing', 'already logged in this server run', 'call `browser_click` twice']) {
+    assert.ok(!FUNKTIONSORD.test(udenSideord(t)), `vagten kalder den engelske «${t}» dansk`);
+  }
+});
