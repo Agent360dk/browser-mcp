@@ -881,6 +881,16 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const prefix = isJpeg ? /^data:image\/jpeg;base64,/ : /^data:image\/png;base64,/;
       const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
       const base64 = result.image.replace(prefix, '');
+      // The image is in DEVICE pixels; browser_click_xy takes CSS pixels. Measured 2026-10-04 at
+      // devicePixelRatio 1.65: a position read off the image missed by ~450 px. Say how to convert.
+      const vp = result.viewport;
+      const viewportNote = vp && vp.css_width && vp.css_height && vp.device_pixel_ratio
+        ? [{ type: 'text', text:
+            `Viewport: ${vp.css_width}×${vp.css_height} CSS pixels, devicePixelRatio ${vp.device_pixel_ratio}` +
+            (vp.image_width ? `, image ${vp.image_width}×${vp.image_height} pixels` : '') + '. ' +
+            `browser_click_xy takes CSS pixels: for a point at (x, y) in an image shown W pixels wide, ` +
+            `click (x / W × ${vp.css_width}, y / W × ${vp.css_width}).` }]
+        : [];
 
       if (args && args.path) {
         // MAALT 23/8: ingen indeslutning. En sti med ../../.. skrev til
@@ -919,12 +929,13 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         return {
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
-            { type: 'image', data: base64, mimeType }
+            { type: 'image', data: base64, mimeType },
+            ...viewportNote,
           ]
         };
       }
 
-      return { content: [{ type: 'image', data: base64, mimeType }] };
+      return { content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] };
     }
 
     const response = {
