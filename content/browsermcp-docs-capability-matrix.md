@@ -37,6 +37,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | **Works in 1.30.0** | Measured against the released v1.30.0. |
 | **Fixed in 1.30.1** | Fixed, tested, and shipped in v1.30.1. |
 | **By design** | The mechanism is there and reviewed, but we have no dated measurement. Treat as likely, not proven. |
+| **Needs a switch** | The mechanism is there, but Chrome blocks it until you turn on a setting yourself. The row names the setting and what else it allows. |
 | **Not yet** | We ran it and it did not work. Open, with the reason. |
 | **Won't** | A deliberate non-goal. The reason is given, not hidden. |
 

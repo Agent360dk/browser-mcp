@@ -429,6 +429,11 @@ Browser MCP has two parts, and they update independently - how the **extension**
 - Try text selector: `browser_click("text=Submit")`
 - Uses real mouse events via Chrome Debugger API automatically
 
+**Upload fails with "Not allowed"**
+- Chrome only hands a file to the page when "Allow access to file URLs" is on for the Agent360 Browser MCP extension (chrome://extensions, Agent360 Browser MCP, Details). It is off by default for Chrome Web Store installs
+- The switch also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself
+- From 1.30.2 a "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on
+
 **Stale processes**
 - Processes auto-exit when Claude Code closes (stdin detection)
 - Idle timeout: 4 hours without commands → auto-exit

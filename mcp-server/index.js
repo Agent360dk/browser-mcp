@@ -706,7 +706,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 ## Hard inputs - use the specialised tools first
 - **Date inputs** → use browser_set_date (NOT browser_fill). Handles native date inputs, masked text inputs (MM/DD/YYYY etc.), AND calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). 3-path fallback with read-back verification.
 - **Autocomplete / combobox** (Languages on Meta Ads, country selects, async dropdowns) → use browser_set_combobox (NOT browser_select_option). Types partial query, waits for filtered listbox, clicks option. Supports multi-value chips.
-- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). Finds hidden input in subtree/parent.
+- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). It looks for a hidden input in the target, then up to 2 parent levels, and as a last resort takes the first file input on the page. If an upload answers file-access-off, follow its note.
 - **Annoying popups blocking the flow** (cookie banners, "Don't show again", Advantage+ tooltips, draft-confirm prompts) → call browser_dismiss_overlays before each major step. It only clicks safe close affordances by default; preserves forms with editable text fields.
 
 ## When things fail

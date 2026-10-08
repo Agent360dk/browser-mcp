@@ -150,7 +150,7 @@ test('drop_file via opfanget filvaelger: «Not allowed» uden filadgang giver fi
 // filvaelger uden node giver andre fejl, foer Chrome overhovedet faar filen. Hver flade, der naevner fejlkoden, skal have
 // samme betingelse som koden: kun et «Not allowed» ved overleveringen, og ikke naar Chrome bekraefter adgang.
 test('hver flade der naevner file-access-off, siger betingelsen', () => {
-  const flader = ['README.md', 'mcp-server/README.md', 'mcp-server/tools.js', 'content/browsermcp-docs-tools.md', 'content/browsermcp-docs-capability-matrix.md'];
+  const flader = ['README.md', 'mcp-server/README.md', 'mcp-server/tools.js', 'content/browsermcp-docs-tools.md', 'content/browsermcp-docs-capability-matrix.md', 'content/browsermcp-docs-troubleshooting.md'];
   let set = 0;
   for (const f of flader) {
     readFileSync(join(rod, f), 'utf8').split('\n').forEach((linje, i) => {
@@ -160,4 +160,40 @@ test('hver flade der naevner file-access-off, siger betingelsen', () => {
     });
   }
   assert.ok(set >= 6, `kun ${set} linjer naevner file-access-off - vagten maaler ikke det den skal`);
+});
+
+// R46 (Opus): syv tekstmutanter overlevede, fordi intet bandt dem - et raad om at slaa kontakten til, raadet om at vedhaefte
+// flyttet bagerst, genindlaesningen fjernet, drop_file's sidste udvej fjernet, og README/kapabilitets-raekken med
+// konkurrentens navn, uden prisen eller tilbage paa «By design».
+test('noten: foerst at vedhaefte, prisen og genindlaesningen, og intet raad om at slaa kontakten til', async () => {
+  const u = sele({ setFilesFejl: 'Not allowed', filAdgang: false });
+  const { note } = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png'] });
+  const vedhaeft = note.indexOf('Ask the user to attach the file.'), kontakt = note.indexOf('If you tell them about the setting');
+  assert.ok(vedhaeft >= 0 && kontakt > vedhaeft, 'det foerste raad skal vaere at brugeren selv vedhaefter filen');
+  assert.match(note, /changing it reloads the extension/, 'noten naevner ikke at et skift genindlaeser udvidelsen');
+  assert.doesNotMatch(note, /\b(ask|tell) (them|the user) to (turn|switch) it on|turn it on and|enable (it|the setting)/i, 'noten raader til at slaa kontakten til');
+});
+
+test('fladerne naevner vores kort og prisen, og drop_file siger sin sidste udvej', async () => {
+  const laes = (f) => readFileSync(join(rod, f), 'utf8');
+  const raekke = (f, start) => laes(f).split('\n').filter((l) => l.startsWith(start));
+  const tjek = (navn, linjer) => {
+    assert.ok(linjer.length, `${navn}: raekken findes ikke`);
+    for (const l of linjer) {
+      assert.match(l, /Agent360 Browser MCP extension/, `${navn} naevner ikke vores kort ved navn`);
+      assert.match(l, /open any local file as a page/, `${navn} naevner kontakten uden prisen`);
+    }
+  };
+  for (const f of ['README.md', 'mcp-server/README.md']) tjek(`${f} upload`, raekke(f, '| `browser_upload_file`'));
+  tjek('/docs/tools upload', raekke('content/browsermcp-docs-tools.md', '| `browser_upload_file`'));
+  const kap = raekke('content/browsermcp-docs-capability-matrix.md', '| File upload');
+  tjek('kapabilitets-raekken', kap);
+  assert.match(kap[0], /\*\*Needs a switch\*\*/, 'kapabilitets-raekken skal sige at upload kraever en kontakt');
+  assert.match(laes('content/browsermcp-docs-capability-matrix.md'), /^\| \*\*Needs a switch\*\* \| /m, 'markeringen «Needs a switch» er ikke forklaret i oversigten');
+  for (const f of ['README.md', 'mcp-server/README.md']) {
+    assert.match(raekke(f, '| `browser_drop_file`')[0], /as a last resort the first file input on the page/, `${f}: drop-raekken mangler sidste udvej`);
+  }
+  assert.match(raekke('content/browsermcp-docs-tools.md', '| `browser_drop_file`')[0], /as a last resort the first file input on the page/, '/docs/tools: drop-raekken mangler sidste udvej');
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  assert.match(TOOLS.find((t) => t.name === 'browser_drop_file').description, /as a last resort the first file input anywhere on the page/, 'drop_file-beskrivelsen mangler sidste udvej');
 });
