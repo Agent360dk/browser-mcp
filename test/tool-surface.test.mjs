@@ -474,6 +474,9 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
   assert.equal(forkert.clicked, false); assert.match(forkert.error, /grid must be 3 or 4/);
   const props = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties;
   assert.deepEqual(props.grid.enum, [3, 4], 'skemaet tillader kun 3 og 4');
+  assert.equal(props.grid.type, 'number', 'grid er et tal i skemaet, ikke en tekst');
+  const skema = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema;
+  assert.ok(!(skema.required || []).includes('grid'), 'grid er valgfri - et kald uden grid skal stadig vaere gyldigt');
   assert.match(props.cells.description, /Pass grid to say which grid you see; without it, the grid is read as 4x4 only when an index is 9 or higher/);
 });
 
