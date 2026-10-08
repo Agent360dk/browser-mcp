@@ -1436,7 +1436,7 @@ async function filAdgangsSvar(besked) {
     file_access: tilladt,
     note: (tilladt === false ? 'Chrome refused to hand the file to the page because ' : 'Chrome refused to hand the file to the page; this usually means ') +
           '"Allow access to file URLs" is off for the Browser MCP extension (chrome://extensions, Browser MCP, Details). ' +
-          'It is off by default for Chrome Web Store installs. Attach the file yourself, or tell the user about that setting.',
+          'It is off by default for Chrome Web Store installs. Ask the user to attach the file manually, or tell them about that setting.',
   };
 }
 

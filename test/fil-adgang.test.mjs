@@ -87,5 +87,36 @@ test('upload_file og drop_file siger paa forhaand at kontakten skal vaere slaaet
     const d = TOOLS.find(t => t.name === navn).description;
     assert.match(d, /Allow access to file URLs/, `${navn} naevner ikke kontakten`);
     assert.match(d, /file-access-off/, `${navn} naevner ikke fejlkoden agenten vil se`);
+    assert.match(d, /Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms/, `${navn} lover file-access-off ubetinget - andre fejl kan komme foerst (R45)`);
   }
+});
+
+// R45 (Astra): filvaelger-vejen havde ingen egen proeve - diagnosen kunne fjernes dér, uden at noget blev roedt.
+// Elementopslaget faar lov at haenge, og saa affyres Page.fileChooserOpened, mens setFileInputFiles svarer «Not allowed».
+test('drop_file via opfanget filvaelger: «Not allowed» uden filadgang giver file-access-off', async () => {
+  const fane = { id: 1, url: 'https://x.example', windowId: 1, active: false };
+  let opfangerFiler = false;
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': fane,
+    'debugger.sendCommand': (_m, metode) => {
+      if (metode === 'Page.setInterceptFileChooserDialog') { opfangerFiler = true; return {}; }
+      if (metode === 'DOM.setFileInputFiles') throw new Error('Not allowed');
+      if (opfangerFiler && (metode === 'Runtime.evaluate' || metode === 'DOM.getDocument' || metode === 'DOM.querySelector')) return new Promise(() => {});
+      return {};
+    },
+  } });
+  u.ctx.chrome.extension = { isAllowedFileSchemeAccess: async () => false };
+  u.ctx.chrome.scripting.executeScript = () => new Promise(() => {}); // elementopslaget haenger, saa filvaelgeren naar foerst
+  const svarP = u.hent('interceptFileChooser')(1, '#zone', ['/tmp/a.png']);
+  for (let i = 0; i < 400 && !(u.lyttere.get('debugger.onEvent') || []).length; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.ok((u.lyttere.get('debugger.onEvent') || []).length, 'filvaelger-lytteren blev aldrig sat');
+  await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.fileChooserOpened', { backendNodeId: 5, mode: 'selectSingle' });
+  const svar = await svarP;
+  assert.equal(svar.ok, false);
+  assert.equal(svar.error, 'file-access-off', `filvaelger-vejen gentager bare Chromes ord: ${JSON.stringify(svar)}`);
+  assert.equal(svar.method, 'native-chooser-intercepted');
+  assert.match(svar.note, /Allow access to file URLs/);
 });
