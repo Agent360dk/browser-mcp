@@ -127,3 +127,9 @@ test('a complete event while the tab itself is still loading does not end the wa
   await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.test/', new_tab: true });
   assert.equal(faerdig(), true, 'navigate returned on a complete event the tab itself did not confirm');
 });
+
+test('the new_tab text names the placeholder exception', async () => {
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const d = TOOLS.find((t) => t.name === 'browser_navigate').inputSchema.properties.new_tab.description;
+  assert.match(d, /empty about:blank placeholder, that tab is used instead of opening another/, 'new_tab promises a new tab also when the placeholder is reused');
+});

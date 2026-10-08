@@ -30,8 +30,14 @@ function side({ readOnly = false, disabled = false, value = '', landerTrodsReado
         const x = p.expression || '';
         if (x.includes('getBoundingClientRect')) return svar({ x: 10, y: 10, tag: 'INPUT', found: true });
         if (x.includes('isContentEditable')) return svar(false);
-        // R50: rydningen med setteren springer readonly/disabled over - modellen goer det samme som siden.
-        if (x.includes("setter.call(el, '')")) { if (!readOnly && !disabled) s.value = ''; return svar(!readOnly && !disabled); }
+        // R50: rydningen med setteren KOERES mod et felt - stubben afgoer ikke selv, om et readonly-felt ryddes.
+        if (x.includes("setter.call(el, '')")) {
+          class Input {}
+          Object.defineProperty(Input.prototype, 'value', { set(v) { s.value = v; }, get() { return s.value; } });
+          const felt = Object.create(Input.prototype, { readOnly: { value: readOnly }, disabled: { value: disabled }, tagName: { value: 'INPUT' } });
+          felt.dispatchEvent = () => true;
+          return svar(vm.runInNewContext(x, { document: { activeElement: felt }, HTMLInputElement: Input, HTMLTextAreaElement: Input, Event: class {} }));
+        }
         if (x.includes('readOnly')) return svar(disabled ? 'disabled' : readOnly ? 'readonly' : null);
         if (x.includes('_valueTracker')) return svar({ v: s.value, ramme: null });
         if (x.includes('activeElement')) return svar(s.value);
@@ -40,6 +46,7 @@ function side({ readOnly = false, disabled = false, value = '', landerTrodsReado
       if (metode === 'Input.insertText' || metode === 'Input.dispatchKeyEvent') {
         s.input.push(metode);
         if (metode === 'Input.insertText' && ((!readOnly && !disabled) || landerTrodsReadonly)) s.value += p.text;
+        if (metode === 'Input.dispatchKeyEvent' && p.text && p.type !== 'keyUp' && ((!readOnly && !disabled) || landerTrodsReadonly)) s.value += p.text;
       }
       return {};
     },
@@ -154,4 +161,11 @@ test('the fallback does not write into a readonly or disabled field', async () =
     assert.equal(svar.error, fejl, JSON.stringify(svar));
     assert.equal(el.value, 'OLD', 'the fallback wrote into the field');
   }
+});
+
+test('the text-selector branch also lets a field that is readonly until focus take the text', async () => {
+  const { u, s } = side({ readOnly: true, landerTrodsReadonly: true });
+  const svar = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Search', value: 'your' });
+  assert.equal(svar.ok, true, `the text branch refused a field that took the text: ${JSON.stringify(svar)}`);
+  assert.equal(s.value, 'your');
 });
