@@ -87,3 +87,43 @@ test('new_tab still keeps a real page open', async () => {
   assert.notEqual(svar.tab_id, 1, 'the page that was open must not be navigated away');
   assert.deepEqual([...tabs.values()].map((t) => t.url).sort(), ['https://example.com/', 'https://keep.example/']);
 });
+
+// R50 (Opus, MAALT i Chrome): tabs.create('about:blank') svarer {url: '', pendingUrl: 'about:blank', status: 'loading'},
+// saa rigtig Chrome tager ALTID pendingUrl-grenen - og den var ikke daekket. Og en 'complete'-haendelse, mens fanen
+// selv stadig staar 'loading', maa ikke afslutte ventetiden (Astra).
+function somChrome({ falskComplete = false } = {}) {
+  const fane = { id: 1, url: '', pendingUrl: 'about:blank', windowId: 1, status: 'loading' };
+  const faner = new Map([[1, fane]]);
+  let naeste = 2, u, rigtigtFaerdig = false;
+  const opdater = (id, p) => {
+    const t = faner.get(id);
+    if (p.url) {
+      if (falskComplete) setTimeout(() => { t.url = p.url; t.status = 'loading'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...t, status: 'complete' }); }, 10);
+      setTimeout(() => { t.url = p.url; t.pendingUrl = undefined; t.status = 'complete'; rigtigtFaerdig = true; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...t }); }, 70);
+    }
+    return { ...t };
+  };
+  u = indlaesUdvidelse({ svar: {
+    'tabs.get': (id) => ({ ...faner.get(id) }), 'tabs.query': () => [...faner.values()],
+    'tabs.update': opdater,
+    'tabs.create': (p) => { const t = { id: naeste++, url: '', pendingUrl: 'about:blank', windowId: 1, status: 'loading' }; faner.set(t.id, t); return opdater(t.id, p); },
+    'tabs.group': 7, 'scripting.executeScript': [{ result: { found: false, types: [] } }],
+    'debugger.sendCommand': { result: { value: null } }, 'debugger.getTargets': [],
+  } });
+  u.ctx.detectCaptcha = async () => ({ found: false, types: [] });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 7, label: 't', color: 'blue' });
+  return { u, faner, faerdig: () => rigtigtFaerdig };
+}
+
+test('a placeholder that Chrome reports with url "" and pendingUrl about:blank is reused', async () => {
+  const { u, faner } = somChrome();
+  const r = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.test/', new_tab: true });
+  assert.equal(r.tab_id, 1, 'a second tab was opened next to the placeholder');
+  assert.equal(faner.size, 1);
+});
+
+test('a complete event while the tab itself is still loading does not end the wait', async () => {
+  const { u, faerdig } = somChrome({ falskComplete: true });
+  await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.test/', new_tab: true });
+  assert.equal(faerdig(), true, 'navigate returned on a complete event the tab itself did not confirm');
+});

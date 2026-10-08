@@ -1195,23 +1195,32 @@ function pngSize(dataUrl) {
   }
 }
 
-async function screenshotViewport(tabId, image) {
+// R50 (Astra, MAALT): maalingen laa uden for skaermbilledets budget - et billede der kom efter 29 s, fulgt af en
+// maaling der hang i 1,5 s, naaede ikke serverens frist paa 30 s. Den faar nu kun det, der er tilbage (maxMs).
+async function screenshotViewport(tabId, image, maxMs = 1500) {
+  const frist = Math.min(1500, maxMs);
+  if (!(frist > 0)) return undefined;
   try {
     let timer;
     const m = await Promise.race([
       cdpSend(tabId, 'Page.getLayoutMetrics', {}),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 1500); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), frist); }),
     ]).finally(() => clearTimeout(timer));
     const css = m?.cssVisualViewport;
     if (!css?.clientWidth || !css?.clientHeight) return undefined;
-    // The image's own width is the truth; visualViewport (device pixels) is the fallback.
+    // R50 (Opus, MAALT i Chrome med en klassisk rullebjaelke): billedet rummer rullebjaelken, men
+    // cssVisualViewport goer ikke, saa forholdet blev 2,033 i stedet for 2 og et klik ved hoejre kant
+    // ramte op til 15 px skaevt. Forholdet tages fra Chromes to maal af SAMME flade (visualViewport i
+    // enhedspixel og cssVisualViewport i CSS-pixel, begge uden rullebjaelke), og billedets CSS-stoerrelse
+    // er billedets stoerrelse delt med forholdet.
     const png = pngSize(image);
-    const deviceWidth = png?.width || m?.visualViewport?.clientWidth;
-    if (!deviceWidth) return undefined;
+    const dpr = m?.visualViewport?.clientWidth ? m.visualViewport.clientWidth / css.clientWidth
+      : (png ? png.width / css.clientWidth : 0);
+    if (!dpr) return undefined;
     return {
-      css_width: Math.round(css.clientWidth),
-      css_height: Math.round(css.clientHeight),
-      device_pixel_ratio: Math.round((deviceWidth / css.clientWidth) * 1000) / 1000,
+      css_width: Math.round(png ? png.width / dpr : css.clientWidth),
+      css_height: Math.round(png ? png.height / dpr : css.clientHeight),
+      device_pixel_ratio: Math.round(dpr * 1000) / 1000,
       ...(png ? { image_width: png.width, image_height: png.height } : {}),
     };
   } catch (e) {
@@ -1306,7 +1315,7 @@ function fieldBlockedExpression(selector) {
   return `(function() {
     const el = ${el};
     if (!el || !('value' in el)) return null;
-    if (el.disabled) return 'disabled';
+    if (el.disabled || (el.matches && el.matches(':disabled'))) return 'disabled';
     if (el.readOnly) return 'readonly';
     return null;
   })()`;
@@ -1319,8 +1328,8 @@ async function fieldBlocked(tabId, selector) {
 
 function fieldBlockedAnswer(blocked, method) {
   return { ok: false, method, error: 'field-is-' + blocked,
-    note: `The field is ${blocked === 'readonly' ? 'read-only' : 'disabled'}, so it does not take typed text ` +
-          'and nothing was typed. If it opens a list (select, combobox, multi-select), click it with ' +
+    note: `The field is ${blocked === 'readonly' ? 'read-only' : 'disabled'}, so it does not take typed text, ` +
+          'and the text did not land. If it opens a list (select, combobox, multi-select), click it with ' +
           'browser_click and pick the option, or use browser_select_option / browser_set_combobox.' };
 }
 
@@ -1358,8 +1367,11 @@ async function debuggerFill(tabId, selector, value) {
     return { value: ceTekst, rammeHoerte: null };
   }
 
-  const blocked = await fieldBlocked(tabId, selector);
-  if (blocked) return { value: null, blocked };
+  // R50 (Opus, MAALT i Chrome): Ant Design 5 saetter readOnly paa sine soegefelter, indtil de faar fokus, og
+  // anti-autofill-felter goer det samme - i en baggrundsfane forbliver de readonly efter el.focus(). En
+  // kontrol FOER fokus afviste dem med «read-only». Kun disabled afvises nu foerst; readonly navngives
+  // foerst, naar teksten ikke landede.
+  if (await fieldBlocked(tabId, selector) === 'disabled') return { value: null, blocked: 'disabled' };
 
   // Standard input/textarea — focus, clear, fill
   await debuggerFocus(tabId, selector);
@@ -1387,7 +1399,8 @@ async function debuggerFill(tabId, selector, value) {
       await evalAttached(tabId, `
         (function() {
           const el = document.activeElement;
-          if (!el || !('value' in el)) return false;
+          // R50: et readonly- eller disabled-felt ryddes ikke med setteren - 875b160 slettede saadan en vaerdi.
+          if (!el || !('value' in el) || el.readOnly || el.disabled) return false;
           const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
           if (setter) setter.call(el, ''); else el.value = '';
@@ -1437,6 +1450,10 @@ async function debuggerFill(tabId, selector, value) {
     `);
     let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
     let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
+    if (landed !== String(value)) {
+      const nu = await evalAttached(tabId, fieldBlockedExpression(null)).catch(() => null);
+      if (nu === 'readonly' || nu === 'disabled') return { value: null, blocked: nu };
+    }
     if (!landed) {
       await clearFieldIfFilledAttached(tabId);
       await typeCharsAttached(tabId, value);
@@ -3688,7 +3705,7 @@ async function dispatch(port, method, params) {
       };
 
       const withViewport = async (shot) => {
-        const viewport = await screenshotViewport(tab.id, shot?.image);
+        const viewport = await screenshotViewport(tab.id, shot?.image, budgetSlut - Date.now());
         return viewport ? { ...shot, viewport } : shot;
       };
 
@@ -4014,8 +4031,8 @@ async function dispatch(port, method, params) {
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         await debuggerClick(tab.id, el.x, el.y);
         await new Promise(r => setTimeout(r, 100));
-        const blocked = await fieldBlocked(tab.id, null);
-        if (blocked) return fieldBlockedAnswer(blocked, 'debugger');
+        // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
+        if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
         await debuggerType(tab.id, params.value);
         // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
         // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
@@ -4030,6 +4047,8 @@ async function dispatch(port, method, params) {
                   'it landed. Read the field with browser_execute_script if it matters.' };
         }
         if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
+        const spaerret = await fieldBlocked(tab.id, null);
+        if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
         if (efterTekst === '') {
           return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst, actual: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
@@ -4074,6 +4093,9 @@ async function dispatch(port, method, params) {
           if (!el) return { ok: false, error: 'Element not found: ' + sel };
           el.scrollIntoView({ block: 'center', behavior: 'instant' });
           el.focus();
+          // R50 (Astra, MAALT): reservevejen skrev med setteren i et readonly-felt og svarede ok:true.
+          if (el.disabled || (el.matches && el.matches(':disabled'))) return { ok: false, blocked: 'disabled' };
+          if (el.readOnly) return { ok: false, blocked: 'readonly' };
           // Use nativeInputValueSetter to bypass React controlled input
           const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
@@ -4083,6 +4105,7 @@ async function dispatch(port, method, params) {
           return { ok: true };
         }, [parsed.selector, params.value]);
         if (scriptResult.cspBlocked) return { ok: false, error: e.message, method: 'debugger' };
+        if (scriptResult.result?.blocked) return fieldBlockedAnswer(scriptResult.result.blocked, 'fallback');
         if (!scriptResult.result?.ok) return scriptResult.result;
         await new Promise((r) => setTimeout(r, 300));
         const endelig = await laesFelt();

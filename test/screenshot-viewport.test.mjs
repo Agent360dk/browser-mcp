@@ -131,3 +131,51 @@ test('without viewport data the server answers with the image alone, as before',
   assert.ok(svar, 'no answer from the server');
   assert.deepEqual(svar.content.map((c) => c.type), ['image']);
 });
+
+// ── R50: rigtig PNG, klassisk rullebjaelke, tidsbudget og formlen i teksterne ──────────
+
+// Et PNG-hoved med en given bredde og hoejde - pngSize laeser kun de foerste 33 bytes.
+function pngHoved(w, h) {
+  const b = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(b, 0);
+  b.write('IHDR', 12, 'latin1');
+  b.writeUInt32BE(w, 16);
+  b.writeUInt32BE(h, 20);
+  return 'data:image/png;base64,' + b.toString('base64');
+}
+
+test('with a classic scrollbar the ratio still comes out right (R50, Opus: 2.033 instead of 2)', async () => {
+  const u = indlaesUdvidelse();
+  // Chrome 154, measured: 2000 px image (incl. a 16 CSS px scrollbar), visualViewport 1968, cssVisualViewport 984.
+  u.ctx.cdpSend = async () => ({ visualViewport: { clientWidth: 1968, clientHeight: 1200 }, cssVisualViewport: { clientWidth: 984, clientHeight: 600 } });
+  const vp = await u.hent('screenshotViewport')(1, pngHoved(2000, 1200));
+  assert.equal(vp.device_pixel_ratio, 2, 'the ratio included the scrollbar');
+  assert.equal(vp.css_width, 1000, 'the CSS width of the IMAGE is image width / ratio, scrollbar included');
+  assert.equal(vp.css_height, 600);
+  assert.equal(vp.image_width, 2000, 'the PNG header was not read');
+  assert.equal(vp.image_height, 1200);
+});
+
+test('the layout measurement only gets what is left of the screenshot budget (R50, Astra)', async () => {
+  const u = indlaesUdvidelse();
+  let kald = 0;
+  u.ctx.cdpSend = () => { kald++; return new Promise(() => {}); };
+  assert.equal(await u.hent('screenshotViewport')(1, pngHoved(10, 10), 0), undefined);
+  assert.equal(kald, 0, 'with no time left the measurement must not start');
+  const t0 = Date.now();
+  assert.equal(await u.hent('screenshotViewport')(1, pngHoved(10, 10), 40), undefined);
+  assert.ok(Date.now() - t0 < 400, `the measurement waited ${Date.now() - t0} ms past its budget`);
+  const kilde = (await import('node:fs')).readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  assert.match(kilde, /screenshotViewport\(tab\.id, shot\?\.image, budgetSlut - Date\.now\(\)\)/, 'the screenshot passes its remaining budget');
+});
+
+test('click_xy and the screenshot note give the same conversion, by the width the image is shown at', async () => {
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const d = TOOLS.find((t) => t.name === 'browser_click_xy').description;
+  assert.doesNotMatch(d, /x_in_image \/ image_width/, 'tools.js used the image width; a client that scales the image down misses by the scale factor');
+  assert.match(d, /x_css = x \/ W \* css_width and y_css = y \/ W \* css_width, where \(x, y\) is the point in the image and W is the width the image is shown to you at/);
+  const index = (await import('node:fs')).readFileSync(new URL('../mcp-server/index.js', import.meta.url), 'utf8');
+  assert.match(index, /for a point at \(x, y\) in an image shown W pixels wide, ` \+\s*`click \(x \/ W × \$\{vp\.css_width\}, y \/ W × \$\{vp\.css_width\}\)/);
+  const s = TOOLS.find((t) => t.name === 'browser_screenshot').description;
+  assert.match(s, /when Chrome reports them in time/, 'the screenshot description promised the viewport line unconditionally');
+});

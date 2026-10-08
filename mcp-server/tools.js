@@ -18,7 +18,7 @@ export const TOOLS = [
         vindue_bredde: { type: 'number', description: 'With eget_vindue: window width in points.' },
         vindue_hoejde: { type: 'number', description: 'With eget_vindue: window height in points.' },
         url: { type: 'string', description: 'URL to navigate to' },
-        new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false)' },
+        new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false). If the session\'s only tab is still an empty about:blank placeholder, that tab is used instead of opening another.' },
       },
       required: ['url'],
     },
@@ -53,7 +53,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need.',
+    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; when Chrome reports them in time, the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -96,7 +96,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click_xy',
-    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Coordinates are CSS pixels, NOT image pixels: convert with the viewport line browser_screenshot returns (x_css = x_in_image / image_width * css_width).',
+    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Coordinates are CSS pixels, NOT image pixels: convert with the viewport line browser_screenshot returns: x_css = x / W * css_width and y_css = y / W * css_width, where (x, y) is the point in the image and W is the width the image is shown to you at.',
     inputSchema: {
       type: 'object',
       properties: {

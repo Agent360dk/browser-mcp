@@ -77,3 +77,18 @@ test('fill still replaces old text in a field that has some', async () => {
   assert.equal(svar.ok, true, JSON.stringify(svar));
   assert.equal(s.value, 'new', 'the old text has to be cleared before writing');
 });
+
+// R50 (Astra): kun en vaerdi der er KENDT tom springer rydningen over; en ulaeselig vaerdi ryddes som foer.
+test('only a field known to be empty skips the clearing; unreadable and filled fields are cleared', async () => {
+  const u = indlaesUdvidelse();
+  let ryddet = 0;
+  u.ctx.clearFieldAttached = async () => { ryddet++; };
+  for (const v of ['', null, 'old']) {
+    u.ctx.evalAttached = async () => v;
+    await u.hent('clearFieldIfFilledAttached')(1);
+  }
+  assert.equal(ryddet, 2, "'' must skip, null and 'old' must clear");
+  u.ctx.evalAttached = async () => { throw new Error('unreadable'); };
+  await u.hent('clearFieldIfFilledAttached')(1);
+  assert.equal(ryddet, 3, 'an unreadable field must be cleared as before');
+});
