@@ -1421,6 +1421,25 @@ async function laesVedhaeftedeFiler(tabId, selector) {
 }
 
 /** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
+// 1.30.2 skive 6 (maalt i Chromium-kilden 8/10): DOM.setFileInputFiles svarer «Not allowed», naar udvidelsen
+// ikke har «Allow access to file URLs» (content/browser/devtools/protocol/dom_handler.cc; for chrome.debugger er
+// MayReadLocalFiles() = util::AllowFileAccess). Butiksinstallationer har kontakten slaaet fra som standard. Fejlen
+// skal sige det, i stedet for at gentage Chromes to ord, saa agenten ikke proever igen og igen.
+async function filAdgangsSvar(besked) {
+  if (!/Not allowed/i.test(String(besked || ''))) return null;
+  let tilladt = null;
+  try { tilladt = await chrome.extension.isAllowedFileSchemeAccess(); } catch {}
+  if (tilladt === true) return null;
+  return {
+    error: 'file-access-off',
+    detail: String(besked),
+    file_access: tilladt,
+    note: (tilladt === false ? 'Chrome refused to hand the file to the page because ' : 'Chrome refused to hand the file to the page; this usually means ') +
+          '"Allow access to file URLs" is off for the Browser MCP extension (chrome://extensions, Browser MCP, Details). ' +
+          'It is off by default for Chrome Web Store installs. Attach the file yourself, or tell the user about that setting.',
+  };
+}
+
 function fildSvar(vedhaeftet, oenskede, ekstra) {
   if (!vedhaeftet) {
     return { ok: true, ...ekstra, unknown: true,
@@ -3106,6 +3125,8 @@ async function dropFileOnTarget(tabId, selector, files) {
     }
     if (result) return result;
     if (caughtError) {
+      const filAdgang = await filAdgangsSvar(caughtError);
+      if (filAdgang) return { ok: false, method: 'hidden-input', ...filAdgang };
       return {
         ok: false,
         error: 'setFileInputFiles-failed',
@@ -3173,7 +3194,11 @@ async function interceptFileChooser(tabId, selector, fileList) {
             files: fileList,
             mode: eventParams.mode,
           }))
-          .catch(e => finish({ ok: false, error: 'setFileInputFiles-failed', detail: e?.message || String(e) }));
+          .catch(async e => {
+            const m = e?.message || String(e);
+            const filAdgang = await filAdgangsSvar(m);
+            finish(filAdgang ? { ok: false, method: 'native-chooser-intercepted', ...filAdgang } : { ok: false, error: 'setFileInputFiles-failed', detail: m });
+          });
       };
       chrome.debugger.onEvent.addListener(listener);
 
@@ -5420,6 +5445,8 @@ async function dispatch(port, method, params) {
         return fildSvar(vedhaeftet, files, { files: files, input: info });
       } catch (e) {
         try { await debuggerDetach(tab.id); } catch {}
+        const filAdgang = await filAdgangsSvar(e.message);
+        if (filAdgang) return { ok: false, ...filAdgang };
         return { ok: false, error: e.message };
       }
     }

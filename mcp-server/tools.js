@@ -228,7 +228,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_drop_file',
-    description: 'Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree or up to 2 ancestor levels; (2) if there is no input at all, intercepts the NATIVE OS file-chooser - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 handles sites like Google Ads that never put a file input in the DOM. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
+    description: 'Needs "Allow access to file URLs" turned on for the Browser MCP extension, which is off by default for Chrome Web Store installs; without it the answer is error file-access-off. Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree or up to 2 ancestor levels; (2) if there is no input at all, intercepts the NATIVE OS file-chooser - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 handles sites like Google Ads that never put a file input in the DOM. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -429,7 +429,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_upload_file',
-    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
+    description: 'Needs "Allow access to file URLs" turned on for the Browser MCP extension, which is off by default for Chrome Web Store installs; without it the answer is error file-access-off. Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
       type: 'object',
       properties: {
