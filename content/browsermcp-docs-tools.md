@@ -69,8 +69,8 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_upload_file` | Upload file(s) to an `<input type="file">` via the Chrome Debugger API - no OS file dialog needed. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
-| `browser_drop_file` | Upload into a drag-drop zone by locating a hidden file input in its subtree or parent (up to 2 levels); use when `browser_upload_file` finds no input. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
+| `browser_upload_file` | Upload file(s) to an `<input type="file">` via the Chrome Debugger API - no OS file dialog needed. Files must be regular files inside the folder your agent's server runs in; anything else is refused. Chrome only hands a file to the page when "Allow access to file URLs" is on for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); the switch also lets the extension open any local file as a page, so turning it on is your call. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on. |
+| `browser_drop_file` | Upload into a drag-drop zone by locating a hidden file input in its subtree, then up to 2 parent levels, and as a last resort the first file input on the page (which can belong to a different upload field); with no input at all it intercepts the native file chooser. Use when `browser_upload_file` finds no input. Needs the same switch as `browser_upload_file`. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
 
 ## Network - 3 tools
 

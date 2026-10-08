@@ -290,7 +290,7 @@ All three are optional. None is needed for normal use.
 | `browser_get_local_storage` | Read localStorage from page |
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
-| `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog). Needs "Allow access to file URLs" for the Agent360 Browser MCP extension, which is off by default for Chrome Web Store installs and also lets the extension open any local file as a page; without it the answer is `file-access-off` |
+| `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog). Needs "Allow access to file URLs" for the Agent360 Browser MCP extension, which is off by default for Chrome Web Store installs and also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on |
 | `browser_drop_file` | Upload via drop-zones: finds a hidden `<input type="file">` in the target, then up to 2 parent levels, and as a last resort the first file input on the page; with no input at all it intercepts the native file chooser. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
 
 ### Diagnostics & feedback

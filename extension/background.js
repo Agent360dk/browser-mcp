@@ -1437,7 +1437,7 @@ async function filAdgangsSvar(besked) {
     file_access: tilladt,
     note: (tilladt === false ? 'Chrome refused to hand the file to the page because ' : 'Chrome refused to hand the file to the page; this usually means ') +
           `"Allow access to file URLs" is off for the Agent360 Browser MCP extension (chrome://extensions/?id=${chrome.runtime?.id}). ` +
-          'It is off by default for Chrome Web Store installs, and browser_upload_file and browser_drop_file fail the same way until it is on. ' +
+          'It is off by default for Chrome Web Store installs, and browser_upload_file and browser_drop_file both hand files over this way. ' +
           'Ask the user to attach the file. If you tell them about the setting, also tell them that it lets this extension, and so you, ' +
           'open and read any local file as a page, and that changing it reloads the extension; whether to turn it on is their call.',
   };

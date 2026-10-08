@@ -145,3 +145,19 @@ test('drop_file via opfanget filvaelger: «Not allowed» uden filadgang giver fi
   assert.equal(svar.method, 'native-chooser-intercepted');
   assert.match(svar.note, /Allow access to file URLs/);
 });
+
+// R46 (Astra): README-raekken lovede «without it the answer is file-access-off» - men tom filliste, et manglende felt og en
+// filvaelger uden node giver andre fejl, foer Chrome overhovedet faar filen. Hver flade, der naevner fejlkoden, skal have
+// samme betingelse som koden: kun et «Not allowed» ved overleveringen, og ikke naar Chrome bekraefter adgang.
+test('hver flade der naevner file-access-off, siger betingelsen', () => {
+  const flader = ['README.md', 'mcp-server/README.md', 'mcp-server/tools.js', 'content/browsermcp-docs-tools.md', 'content/browsermcp-docs-capability-matrix.md'];
+  let set = 0;
+  for (const f of flader) {
+    readFileSync(join(rod, f), 'utf8').split('\n').forEach((linje, i) => {
+      if (!linje.includes('file-access-off') || /^\s*\/\//.test(linje)) return;
+      set++;
+      assert.match(linje, /unless Chrome confirms that file access is on/, `${f}:${i + 1} lover file-access-off uden betingelsen`);
+    });
+  }
+  assert.ok(set >= 6, `kun ${set} linjer naevner file-access-off - vagten maaler ikke det den skal`);
+});
