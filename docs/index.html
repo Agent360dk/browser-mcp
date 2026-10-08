@@ -241,6 +241,31 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 .mini-form .no::after{content:"✗";font-weight:700}
 .mini-groups{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:center;font-size:.8rem}
 .casenote{margin-top:1.5rem;font-size:.95rem}
+
+/* runde 2 (Gustav 8/10): butiksknap i topbjælken, open source-maerke, butikstal, agenten henter koden, 20 grupper */
+.navcta{background:var(--ink);color:var(--paper)!important;text-decoration:none;font-weight:600;font-size:.9rem;padding:.5rem .85rem;border-radius:10px;white-space:nowrap}
+.navcta:hover{opacity:.9}
+.oss{display:inline-flex;align-items:center;gap:.55rem;text-decoration:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:.45rem .9rem .45rem .6rem;font-size:1rem;margin:0 0 1.1rem}
+.oss svg{width:1.15rem;height:1.15rem;fill:currentColor}
+.oss b{font-weight:700}
+.oss:hover{border-color:var(--ink)}
+.proof .fn{color:var(--muted)}
+.mini-fetch{display:grid;gap:.4rem;width:min(100%,16rem);font-size:.78rem;justify-items:center}
+.mf-mail{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:.45rem .65rem;display:flex;gap:.55rem}
+.mf-mail em{font-style:normal;font-weight:700;background:color-mix(in srgb,var(--blue) 18%,transparent);border-radius:4px;padding:0 .2rem}
+.mf-arrow{color:var(--muted);font-weight:700}
+.mf-arrow i{font-style:normal;font-weight:500;font-size:.72rem}
+.mf-field{width:100%;display:flex;align-items:center;gap:.5rem;background:var(--surface);border:1px solid var(--ok);border-radius:9px;padding:.4rem .65rem}
+.mf-field span{color:var(--muted)}
+.mf-field em{font-style:normal;font:600 .85rem var(--mono);letter-spacing:.12em;flex:1}
+.mf-field b{color:var(--ok)}
+.mini-cap .cb.on{display:grid;place-items:center;color:var(--ok);border-color:var(--ok);font-weight:800}
+.mini-cap em{background:var(--blue);color:var(--on-blue)}
+.cv20{padding:.6rem}
+.g20{gap:.25rem;font-size:.62rem;padding:.5rem}
+.g20 span{padding:.3rem .42rem;border-radius:.4rem}
+@media (prefers-reduced-motion:no-preference){.g20 .ny{animation:g20ind 6s var(--ease-out) infinite;animation-delay:calc(var(--i) * .18s)}}
+@keyframes g20ind{0%{opacity:0;transform:scale(.85)}8%,88%{opacity:1;transform:none}100%{opacity:0;transform:scale(.85)}}
 </style>
 
 </head>
@@ -257,6 +282,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
       <a class="opt" href="#faq">FAQ</a>
       <a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a>
       <a href="/docs/install-claude-code/">Docs</a>
+      <a class="navcta" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome</a>
       <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 52 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 8 Oct 2026">52</span></a>
     </nav>
   </div>
@@ -266,7 +292,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 <section class="hero">
   <div class="wrap">
     <div>
-      <p class="eyebrow"><span translate="no">Browser MCP</span> · free and open source</p>
+      <a class="oss" href="https://github.com/Agent360dk/browser-mcp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span><b>Free and open source</b> · MIT</span></a>
       <h1>Your agent, in your Chrome.</h1>
       <p class="lede">It works in the Chrome you’re already signed into, in its own tab group. When it hits a 2FA code or a CAPTCHA, it is set up to ask you.</p>
       <div class="acts">
@@ -276,6 +302,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
       <p class="cmdlbl">Then connect your agent with one command:</p>
       <div class="cmd"><code id="c1" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c1" hidden>Copy</button></div>
       <ul class="proof">
+        <li><a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl"><b data-tal="cws-rating">5.0</b>★ · <b data-tal="cws-brugere">1,000</b> users on the Chrome Web Store</a> <span class="fn">(<span data-tal="cws-antal">3 ratings</span>)</span></li>
         <li><a href="https://github.com/Agent360dk/browser-mcp"><b data-tal="stjerner">52</b> stars on GitHub</a></li>
         <li><b data-tal="npm-maaned">5,165</b> npm downloads last month</li>
         <li>Claude Code · Cursor · Codex · VS Code · Windsurf</li>
@@ -295,23 +322,23 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
     <h2>Hand it the jobs with a login</h2>
     <div class="cases">
       <article class="case">
-        <div class="cv" role="img" aria-label="Illustration: the box the extension shows, asking for a 6-digit code"><div class="mini-ask"><b>Agent360 - Action Required</b><i>Claude 1</i><span>Enter the 6-digit code from your app</span><em>418293</em></div></div>
-        <h3>Asks you for the 2FA code</h3>
-        <p>Then finishes the sign-in in the same tab.</p>
-        <p class="say"><b>Say</b>“Log into the admin dashboard and export last month’s invoices.”</p>
-        <a class="more" href="/use-cases/codex-2fa/">See how</a>
-      </article>
-      <article class="case">
-        <div class="cv" role="img" aria-label="Illustration: an inbox where the newest mail holds a sign-in code"><div class="mini-mail"><div class="hot"><b>billing@</b><span>Your sign-in code is 418293</span></div><div><b>team@</b><span>Weekly update</span></div><div><b>news@</b><span>October issue</span></div></div></div>
-        <h3>Reads the code from Gmail</h3>
-        <p>Your mail is already signed in, so it can look.</p>
+        <div class="cv" role="img" aria-label="Illustration: the sign-in code is read from an email and typed into the verify field by the agent"><div class="mini-fetch"><div class="mf-mail"><b>Acme</b><span>Your sign-in code is <em>418293</em></span></div><div class="mf-arrow">↓ <i>Claude 1 reads it</i></div><div class="mf-field"><span>Verify</span><em>418293</em><b>✓</b></div></div></div>
+        <h3>Gets the 2FA code from your mail</h3>
+        <p>Opens your Gmail in its own tab, reads the code, types it in.</p>
         <p class="say"><b>Say</b>“Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue.”</p>
         <a class="more" href="/use-cases/read-2fa-from-gmail/">See how</a>
       </article>
       <article class="case">
-        <div class="cv" role="img" aria-label="Illustration: a CAPTCHA checkbox, and a label saying it is your turn"><div class="mini-cap"><span class="cb"></span><span>I’m not a robot</span><em>Your turn</em></div></div>
-        <h3>Tries the CAPTCHA, then asks you</h3>
-        <p>It clicks the checkbox. If that isn’t enough, the tab is yours.</p>
+        <div class="cv" role="img" aria-label="Illustration: the box the extension shows, asking for the code from an authenticator app"><div class="mini-ask"><b>Agent360 - Action Required</b><i>Claude 1</i><span>Enter the 6-digit code from your authenticator app</span><em>&nbsp;</em></div></div>
+        <h3>Asks you only when it must</h3>
+        <p>Like a code that only your phone has. You answer, it carries on.</p>
+        <p class="say"><b>Say</b>“Log into the admin dashboard and export last month’s invoices.”</p>
+        <a class="more" href="/use-cases/codex-2fa/">See how</a>
+      </article>
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: the agent has ticked the CAPTCHA checkbox itself"><div class="mini-cap"><span class="cb on">✓</span><span>I’m not a robot</span><em>Clicked by Claude 1</em></div></div>
+        <h3>Clicks the CAPTCHA checkbox itself</h3>
+        <p>That often clears a reCAPTCHA. If the page wants more, it asks you.</p>
         <p class="say"><b>Say</b>“Pull the shipping rates from the carrier portal.”</p>
         <a class="more" href="/use-cases/cursor-captcha/">See how</a>
       </article>
@@ -330,9 +357,9 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
         <a class="more" href="/use-cases/test-your-signup-flow/">See how</a>
       </article>
       <article class="case">
-        <div class="cv" role="img" aria-label="Illustration: four tab groups named Claude 1 to Claude 4 in four colours"><div class="groups mini-groups"><span style="--c:var(--blue);--on:var(--on-blue)">Claude 1</span><span style="--c:var(--green);--on:var(--on-green)">Claude 2</span><span style="--c:var(--yellow);--on:var(--on-yellow)">Claude 3</span><span style="--c:var(--red);--on:var(--on-red)">Claude 4</span></div></div>
-        <h3>Runs several agents at once</h3>
-        <p>Up to 20 sessions in one Chrome, each in its own tab group.</p>
+        <div class="cv cv20" role="img" aria-label="Illustration: tab groups Claude 1 to Claude 20; after the eighth, the colours repeat"><div class="groups mini-groups g20"><span class="" style="--c:var(--blue);--on:var(--on-blue);--i:0">Claude 1</span><span class="" style="--c:var(--green);--on:var(--on-green);--i:0">Claude 2</span><span class="" style="--c:var(--yellow);--on:var(--on-yellow);--i:0">Claude 3</span><span class="" style="--c:var(--red);--on:var(--on-red);--i:0">Claude 4</span><span class="ny" style="--c:var(--pink);--on:var(--on-pink);--i:1">Claude 5</span><span class="ny" style="--c:var(--purple);--on:var(--on-purple);--i:2">Claude 6</span><span class="ny" style="--c:var(--cyan);--on:var(--on-cyan);--i:3">Claude 7</span><span class="ny" style="--c:var(--orange);--on:var(--on-orange);--i:4">Claude 8</span><span class="ny" style="--c:var(--blue);--on:var(--on-blue);--i:5">Claude 9</span><span class="ny" style="--c:var(--green);--on:var(--on-green);--i:6">Claude 10</span><span class="ny" style="--c:var(--yellow);--on:var(--on-yellow);--i:7">Claude 11</span><span class="ny" style="--c:var(--red);--on:var(--on-red);--i:8">Claude 12</span><span class="ny" style="--c:var(--pink);--on:var(--on-pink);--i:9">Claude 13</span><span class="ny" style="--c:var(--purple);--on:var(--on-purple);--i:10">Claude 14</span><span class="ny" style="--c:var(--cyan);--on:var(--on-cyan);--i:11">Claude 15</span><span class="ny" style="--c:var(--orange);--on:var(--on-orange);--i:12">Claude 16</span><span class="ny" style="--c:var(--blue);--on:var(--on-blue);--i:13">Claude 17</span><span class="ny" style="--c:var(--green);--on:var(--on-green);--i:14">Claude 18</span><span class="ny" style="--c:var(--yellow);--on:var(--on-yellow);--i:15">Claude 19</span><span class="ny" style="--c:var(--red);--on:var(--on-red);--i:16">Claude 20</span></div></div>
+        <h3>Runs up to 20 agents at once</h3>
+        <p>One Chrome. Each agent in its own named tab group.</p>
         <p class="say"><b>Say</b>“Open my analytics dashboard in your own tab and summarise it.”</p>
         <a class="more" href="/use-cases/concurrent-sessions/">See how</a>
       </article>
