@@ -1200,8 +1200,8 @@ async function clearFieldAttached(tabId) {
  * FUNDET 13/9 af Astra: tekst-grenen fik den her dom om formiddagen, CSS-grenen ikke - og
  * CSS-grenen er den mest brugte. Én funktion, saa de ikke kan drive fra hinanden igen.
  */
-// `faktisk` staar ved siden af `vaerdi` fordi serverens instruktion til agenten siger
-// «browser_fill with differs: true … read `faktisk`» (mcp-server/index.js:694). FUNDET 19/9:
+// `actual` staar ved siden af `value` fordi serverens instruktion til agenten siger
+// «browser_fill with differs: true … read actual» (mcp-server/index.js INSTRUCTIONS; navnene hed `faktisk`/`vaerdi` foer 1.30.0). FUNDET 19/9:
 // kun reservestien satte det felt; den her - den almindelige - svarede `vaerdi` alene, saa
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er

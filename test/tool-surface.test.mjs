@@ -550,3 +550,22 @@ test('de feltnavne instruktionerne beder agenten laese, findes i svarene', () =>
   for (const o of differs) assert.match(o, /\bactual:/, `et differs-svar i fill mangler actual: ${o.slice(0, 80)}`);
   assert.doesNotMatch(fill, /`faktisk`/, 'en note i fill peger paa feltet faktisk, som ikke findes');
 });
+
+// R43 (Opus): bind det mekanisk - de gamle navne staar i CHANGELOG 1.30.0's omdoebningstabel og -afsnit; ingen
+// af dem maa staa i det agenten laeser (serverens instruktioner og vaerktoejsbeskrivelserne).
+test('ingen af de omdoebte felt- og fejlnavne fra 1.30.0 staar i det agenten laeser', () => {
+  const log = laes('CHANGELOG.md');
+  const i = log.indexOf('**Renamed response fields.**');
+  assert.ok(i > -1, 'CHANGELOG har omdoebningstabellen');
+  const afsnit = log.slice(i, log.indexOf('\n\n**', log.indexOf('**Renamed error codes.**', i) + 5) + 1 || undefined);
+  const gamle = new Set([
+    ...[...afsnit.matchAll(/^\|\s*`([^`]+)`\s*\|\s*`[^`]+`\s*\|/gm)].map(m => m[1]),
+    ...[...afsnit.matchAll(/`([^`]+)`\s*→/g)].map(m => m[1]),
+  ]);
+  assert.ok(gamle.size >= 13, `fandt kun ${gamle.size} gamle navne i CHANGELOG - parseren er blind`);
+  assert.ok(gamle.has('faktisk') && gamle.has('uvist') && gamle.has('vedhaeftet'), 'kalibrering: de tre kendte navne findes');
+  const j = indexSrc.indexOf('const INSTRUCTIONS');
+  const agenttekst = indexSrc.slice(j, indexSrc.indexOf('`;', j)) + '\n' + TOOLS.map(t => JSON.stringify(t)).join('\n');
+  const fund = [...gamle].filter(n => new RegExp(`(^|[^A-Za-z0-9_-])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_-])`).test(agenttekst));
+  assert.deepEqual(fund, [], `gamle navne fra foer 1.30.0 i det agenten laeser: ${fund.join(', ')}`);
+});
