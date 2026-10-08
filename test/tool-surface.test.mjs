@@ -470,6 +470,11 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
   assert.equal(fire.gridFrom, 'given');
   const tre = await koer([12], 3);
   assert.equal(tre.clicked, false, 'grid: 3 med indeks 12 er uden for gitteret');
+  const blandet = await koer([2, 12], 3);
+  assert.equal(blandet.clicked, false, 'grid: 3 med en celle uden for gitteret afvises helt - ingen tavs delvis klikning');
+  assert.match(blandet.error, /do not fit a 3x3 grid/);
+  const nul = await koer([8], null);
+  assert.equal(nul.grid, '3x3', 'grid: null behandles som udeladt'); assert.match(nul.gridFrom, /guessed/);
   const forkert = await koer([0], 5);
   assert.equal(forkert.clicked, false); assert.match(forkert.error, /grid must be 3 or 4/);
   const props = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties;

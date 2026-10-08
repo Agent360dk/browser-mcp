@@ -5550,6 +5550,7 @@ async function clickRecaptchaCheckbox(tabId) {
 async function clickCaptchaGridCells(tabId, cells, grid) {
   // 8/10 (1.30.2 skive 1b): gitteret blev gaettet ud fra de valgte celler, saa et 4x4-gitter med fx [8]
   // blev klikket som 3x3. Agenten har lige set udfordringen paa sit skaermbillede og kan sige det selv.
+  if (grid === null) grid = undefined; // null betyder udeladt (R39)
   if (grid !== undefined && grid !== 3 && grid !== 4) {
     return { clicked: false, error: `grid must be 3 or 4 (the size of the image grid you see), not ${JSON.stringify(grid)}` };
   }
@@ -5581,6 +5582,11 @@ async function clickCaptchaGridCells(tabId, cells, grid) {
     const cellSize = gridSize / cols;
 
     const maxCell = cols * rows - 1;
+    // R39: med et opgivet gitter er en celle uden for det en fejl i kaldet, ikke noget der tavst springes over.
+    if (grid && cells.some(c => c < 0 || c > maxCell)) {
+      await debuggerDetach(tabId);
+      return { clicked: false, error: `Cell indices ${JSON.stringify(cells.filter(c => c < 0 || c > maxCell))} do not fit a ${cols}x${rows} grid (valid range: 0-${maxCell})` };
+    }
     const validCells = cells.filter(c => c >= 0 && c <= maxCell);
     if (!validCells.length) {
       await debuggerDetach(tabId);
