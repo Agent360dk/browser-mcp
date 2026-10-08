@@ -475,6 +475,10 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
   assert.match(blandet.error, /do not fit a 3x3 grid/);
   const nul = await koer([8], null);
   assert.equal(nul.grid, '3x3', 'grid: null behandles som udeladt'); assert.match(nul.gridFrom, /guessed/);
+  const decimal = await koer([0, 3.9], 4);
+  assert.equal(decimal.clicked, false, 'et decimalt indeks afvises helt (R40)'); assert.match(decimal.error, /whole numbers/);
+  assert.equal((await koer([2.9])).clicked, false, 'ogsaa uden grid');
+  assert.equal(TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties.cells.items.type, 'integer', 'skemaet kraever heltal');
   const forkert = await koer([0], 5);
   assert.equal(forkert.clicked, false); assert.match(forkert.error, /grid must be 3 or 4/);
   const props = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties;

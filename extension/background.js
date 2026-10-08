@@ -5551,6 +5551,10 @@ async function clickCaptchaGridCells(tabId, cells, grid) {
   // 8/10 (1.30.2 skive 1b): gitteret blev gaettet ud fra de valgte celler, saa et 4x4-gitter med fx [8]
   // blev klikket som 3x3. Agenten har lige set udfordringen paa sit skaermbillede og kan sige det selv.
   if (grid === null) grid = undefined; // null betyder udeladt (R39)
+  // R40 (Astra): et decimalt indeks som 3.9 gav et klik uden for gitteret og clicked: true.
+  if (!Array.isArray(cells) || cells.some(c => !Number.isInteger(c))) {
+    return { clicked: false, error: `cells must be whole numbers (0-indexed grid cells), not ${JSON.stringify(cells)}` };
+  }
   if (grid !== undefined && grid !== 3 && grid !== 4) {
     return { clicked: false, error: `grid must be 3 or 4 (the size of the image grid you see), not ${JSON.stringify(grid)}` };
   }
