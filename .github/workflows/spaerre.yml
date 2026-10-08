@@ -58,7 +58,7 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Aerligheds-trinnet og docs-vagten laeser git-historik og tags.
           fetch-depth: 0
