@@ -5278,19 +5278,26 @@ async function dispatch(port, method, params) {
               }, 150);
             } catch {}
 
-            // Inject animation keyframes
-            if (!document.getElementById('a360-styles')) {
-              const style = document.createElement('style');
-              style.id = 'a360-styles';
-              style.textContent = `
-                @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
-                @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-              `;
-              document.head.appendChild(style);
+            // The prompt lives in a CLOSED shadow root on a host element. The page's own
+            // scripts get no reference into it, so they cannot read what the user types
+            // (codes, passwords) or reach the buttons; the page's CSS cannot restyle it.
+            const host = document.createElement('div');
+            host.id = 'a360-overlay';
+            host.style.cssText = 'all:initial';
+            const root = host.attachShadow({ mode: 'closed' });
+            // Keystrokes in the prompt would still bubble out of the shadow root to the
+            // page's document listeners. Stop them at the host.
+            for (const type of ['keydown', 'keyup', 'keypress', 'input', 'beforeinput']) {
+              host.addEventListener(type, (e) => e.stopPropagation());
             }
+            const style = document.createElement('style');
+            style.textContent = `
+              @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
+              @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+            `;
+            root.appendChild(style);
 
             const overlay = document.createElement('div');
-            overlay.id = 'a360-overlay';
             overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;animation:a360-fade-in 0.3s ease-out';
 
             const card = document.createElement('div');
@@ -5330,25 +5337,29 @@ async function dispatch(port, method, params) {
             const doneBtn = document.createElement('button');
             doneBtn.textContent = hasFields ? 'Submit' : '✓ Done';
             doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
-            doneBtn.addEventListener('click', () => {
+            const submit = () => {
               const values = {};
               Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
-              overlay.remove();
+              host.remove();
               resolve({ acknowledged: true, action: 'done', values });
-            });
+            };
+            // Only a real click or keypress counts. A synthetic event dispatched by the
+            // page (isTrusted false) must never answer on the user's behalf.
+            doneBtn.addEventListener('click', (e) => { if (e.isTrusted) submit(); });
             const skipBtn = document.createElement('button');
             skipBtn.textContent = '✗ Skip';
             skipBtn.style.cssText = 'flex:1;padding:10px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
-            skipBtn.addEventListener('click', () => { overlay.remove(); resolve({ acknowledged: true, action: 'skip', values: {} }); });
+            skipBtn.addEventListener('click', (e) => { if (!e.isTrusted) return; host.remove(); resolve({ acknowledged: true, action: 'skip', values: {} }); });
             btnRow.appendChild(doneBtn);
             btnRow.appendChild(skipBtn);
             card.appendChild(btnRow);
             overlay.appendChild(card);
-            document.body.appendChild(overlay);
+            root.appendChild(overlay);
+            (document.body || document.documentElement).appendChild(host);
             const firstInput = Object.values(inputs)[0];
             if (firstInput) setTimeout(() => firstInput.focus(), 100);
-            card.addEventListener('keydown', (e) => { if (e.key === 'Enter') doneBtn.click(); });
-            setTimeout(() => { if (document.getElementById('a360-overlay')) { overlay.remove(); resolve({ acknowledged: false, action: 'timeout', values: {} }); } }, timeout);
+            card.addEventListener('keydown', (e) => { if (e.isTrusted && e.key === 'Enter') submit(); });
+            setTimeout(() => { if (host.isConnected) { host.remove(); resolve({ acknowledged: false, action: 'timeout', values: {} }); } }, timeout);
           });
         },
         // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
@@ -5369,7 +5380,7 @@ async function dispatch(port, method, params) {
           Number(timeout) || 120000,
           String(session.label ?? 'Claude'),
         ],
-        world: 'MAIN',
+        world: 'ISOLATED',
       });
 
       // Restore badge
