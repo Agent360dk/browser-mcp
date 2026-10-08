@@ -3968,14 +3968,14 @@ async function dispatch(port, method, params) {
             return {
               ok: true, method: 'fallback', value: endelig, differs: true, unchanged: true, expected: v, actual: endelig,
               note: 'The field showed the same before and after the write. Either the value was already there in the page\'s own ' +
-                    'format, or the page did not accept it. Check `faktisk` before moving on.',
+                    'format, or the page did not accept it. Check `actual` before moving on.',
             };
           }
           return {
             ok: true, method: 'fallback', value: endelig, differs: true, expected: v, actual: endelig,
             ...(typeof foer === 'string' ? {} : { foer_ukendt: true }),
             note: 'The field changed, but shows different text than what was written - for example formatting ' +
-                  '("5,00 kr", "+45 12 34 56 78") or a truncation. Check `faktisk` if the exact value matters.',
+                  '("5,00 kr", "+45 12 34 56 78") or a truncation. Check `actual` if the exact value matters.',
           };
         }
         return {
