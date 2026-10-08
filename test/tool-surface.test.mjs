@@ -451,7 +451,7 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
         if (metode === 'Runtime.evaluate') return { result: { value: JSON.stringify({ found: true, ...frame }) } };
         klik.push({ metode, ...args }); return {};
       },
-      dispatchTaalmodigt: async () => {},
+      dispatchTaalmodigt: async (_id, args) => { klik.push({ metode: 'Input.dispatchMouseEvent', ...args }); },
       setTimeout: (cb) => cb(), Math: Object.assign(Object.create(Math), { random: () => 0.5 }), JSON,
     };
     vm.createContext(ctx);
@@ -484,7 +484,9 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
   assert.equal(nul.grid, '3x3', 'grid: null behandles som udeladt'); assert.match(nul.gridFrom, /guessed/);
   const decimal = await koer([0, 3.9], 4);
   assert.equal(decimal.clicked, false, 'et decimalt indeks afvises helt (R40)'); assert.match(decimal.error, /whole numbers/);
-  assert.equal((await koer([2.9])).clicked, false, 'ogsaa uden grid');
+  assert.equal(decimal.musehaendelser, 0, 'intet maa klikkes foer et decimalt indeks afvises (R41)');
+  const decimalUden = await koer([2.9]);
+  assert.equal(decimalUden.clicked, false, 'ogsaa uden grid'); assert.equal(decimalUden.musehaendelser, 0);
   assert.equal(TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties.cells.items.type, 'integer', 'skemaet kraever heltal');
   const forkert = await koer([0], 5);
   assert.equal(forkert.clicked, false); assert.match(forkert.error, /grid must be 3 or 4/);
