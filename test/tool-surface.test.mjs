@@ -653,3 +653,14 @@ test('browser_fetch sender ikke brugerens cookies og gemmer ikke svarets, men ag
   const { TOOLS } = await import('../mcp-server/tools.js');
   assert.match(TOOLS.find((t) => t.name === 'browser_fetch').description, /Your browser cookies are not sent and the answer's cookies are not stored: pass a token in headers/);
 });
+
+// R55 (Opus): kun tools.js var bundet - README-raekken og /docs/tools kunne love almindelig http eller cookies igen.
+test('browser_fetch-raekkerne i README og /docs/tools siger https, ingen cookies og http kun til 127.0.0.1', () => {
+  for (const [f, start] of [['README.md', '| `browser_fetch` |'], ['mcp-server/README.md', '| `browser_fetch` |'], ['content/browsermcp-docs-tools.md', '| `browser_fetch` |']]) {
+    const l = laes(f).split('\n').find((x) => x.startsWith(start));
+    assert.ok(l, `${f}: browser_fetch-raekken findes ikke`);
+    assert.match(l, /HTTPS request/, `${f}: siger ikke at det er https`);
+    assert.match(l, /cookies/, `${f}: siger ikke noget om cookies`);
+    assert.match(l, /plain http (works )?only to 127\.0\.0\.1/i, `${f}: siger ikke at almindelig http kun gaar til 127.0.0.1`);
+  }
+});

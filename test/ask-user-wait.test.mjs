@@ -243,6 +243,8 @@ test('the tool description names every action the code can return, and the keyst
   for (const a of actions) if (a !== 'error') assert.match(d, new RegExp(`\\b${a}\\b`), `the description does not name action ${a}`);
   assert.ok(actions.size >= 7, `only ${actions.size} actions found - the measurement reads nothing`);
   assert.match(d, /can see the keystrokes/, 'the description must not promise keyboard isolation');
+  // R55 (Opus): saetningen om lokale filer var ubundet.
+  assert.match(d, /or, on a local file, to another file/, 'the description does not say a local file is bound to itself');
 });
 
 // One change, every surface: README (both copies), /docs/tools and the install pages say what the prompt is now.

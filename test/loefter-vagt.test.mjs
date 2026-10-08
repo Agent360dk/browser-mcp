@@ -67,7 +67,7 @@ const LOEFTER = [
   [/usually with a (short )?chime/i, 'umaalt lyd ved ask_user'],
   // R53 (Opus, LAEST): llms.txt sagde «You approve the sensitive steps» - koden har ingen godkendelsesport; agenten bliver
   // kun bedt om at spoerge. Z Code-siden sagde «works with any» om extract_token.
-  [/you approve the sensitive steps|9 common ones, works with any/i, 'godkendelse eller udbydere som koden ikke har'],
+  [/you approve the sensitive steps|9 common ones, works with any|straight off a provider's dashboard/i, 'godkendelse eller udbydere som koden ikke har'],
   // MAALT 13/9 af Astra og Fable i den faelles runde: "genstart, saa bliver ikonet groent" var falsk fra 1.29.0,
   // hvor serveren begyndte at tage sin port ved foerste browserkald i stedet for ved opstart. Jeg rettede den i
   // haanden 13 steder - og missede tre, fordi jeg soegte paa "turns green" og ikke paa "goes green". De tre stod
