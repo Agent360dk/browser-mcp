@@ -70,7 +70,7 @@ test('ingen streng der kan naa agenten indeholder translittereret dansk', () => 
 // FUNKTIONSORD er en lukket ordklasse, som naesten hver dansk saetning har mindst ét af, plus æøå. Engelske
 // dobbeltgaengere (at, for, men, over, under, til) er udeladt med vilje.
 // Og teksten laeses med en tokenizer (kommentarer, strenge, skabeloner med ${...}, sidekode indefra).
-const FUNKTIONSORD = /[æøåÆØÅ]|\b(?:ikke|og|det|er|en|et|den|af|med|som|har|kan|fra|der|jeg|vi|du|skal|kun|ingen|eller|efter|hvis|nu|ud|op|ved|blev|bliver)\b/i;
+const FUNKTIONSORD = /[æøåÆØÅ]|\b(?:ikke|og|det|er|en|et|den|af|med|som|har|kan|fra|der|jeg|vi|du|skal|kun|ingen|eller|efter|hvis|nu|ud|op|ved|blev|bliver|gav|intet|allerede|denne|dette|logget|fandt|kunne|ogsaa|naar|hvor)\b/i; // R42 (Astra): «gav intet svar», «allerede logget i denne session» slap igennem
 const LOG = /(?:console\.(?:log|warn|error|info|debug)|process\.stderr\.write)$/;
 // Ord der MATCHES mod danske sider (knapper, datovaelgere, cookie-bannere) er data, ikke tekst til agenten.
 // Nye ord her kraever en begrundelse: det skal vaere noget der staar PAA en side, ikke noget vi siger.

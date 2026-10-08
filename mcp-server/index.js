@@ -1114,7 +1114,7 @@ function skrivTilLogbog(post) {
   const fp = fingeraftryk(post.kind, post.tool, post.what_happened);
   const foerste = !setteFingeraftryk.has(fp);
   setteFingeraftryk.add(fp);
-  if (!foerste) return { logged: false, reason: 'allerede logget i denne session', fingerprint: fp };
+  if (!foerste) return { logged: false, reason: 'already logged in this server run', fingerprint: fp };
   try {
     mkdirSync(dirname(FEEDBACK_LOG), { recursive: true });
     appendFileSync(FEEDBACK_LOG, JSON.stringify({ ...post, fingerprint: fp }) + '\n');

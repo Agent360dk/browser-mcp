@@ -938,7 +938,7 @@ function uvisVurdering(r, egenNote) {
 // naar nogen aabner DevTools. Bevis er nu: fanen er lukket, adressen er skiftet, eller JavaScript-konteksten
 // blev revet ned (det sker kun naar dokumentet blev udskiftet). Alt andet er unknown og siges som unknown.
 async function tolkManglendeSettle(tabId, settle, urlFoer) {
-  const fejl = settle?.__fejl || 'settle-opslaget gav intet svar';
+  const fejl = settle?.__fejl || 'the settle lookup returned nothing';
   const fane = await chrome.tabs.get(tabId).catch(() => null);
   const urlEfter = fane?.url ?? null;
   const kontekstVaek = /Execution context was destroyed|Cannot find context with specified id|Inspected target navigated/i.test(fejl);
@@ -1834,7 +1834,7 @@ async function offscreenSvarer() {
   try {
     const svar = await Promise.race([
       chrome.runtime.sendMessage({ type: 'bmcp_ping' }),
-      new Promise((_, afvis) => setTimeout(() => afvis(new Error('intet svar')), 1500)),
+      new Promise((_, afvis) => setTimeout(() => afvis(new Error('no answer')), 1500)),
     ]);
     if (svar?.ok !== true) return false;
     // "Svarer den?" er ikke nok — den skal ogsaa vaere den udgave vi koerer nu.
@@ -5387,7 +5387,7 @@ async function dispatch(port, method, params) {
         const docResult = await cdpSend(tab.id, 'DOM.getDocument', {});
         if (!docResult?.root?.nodeId) {
           await debuggerDetach(tab.id);
-          return { ok: false, error: 'DOM.getDocument gav intet rod-element' };
+          return { ok: false, error: 'DOM.getDocument returned no root element' };
         }
         const { nodeId } = await cdpSend(tab.id, 'DOM.querySelector', {
           nodeId: docResult.root.nodeId,
