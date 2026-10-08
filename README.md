@@ -486,8 +486,9 @@ account and no server of ours between you and the page.
   tool result. Nowhere else, and never to us.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
   analytics in the extension or the server.
-- **Your agent's own reports stay on your machine.** `browser_provide_feedback`
-  tries to add one line per new report to `~/.browser-mcp/feedback.jsonl`: the
+- **Your agent's own reports.** `browser_provide_feedback` returns its report to
+  your AI client like any other tool result, and it tries to add one line per new
+  report to `~/.browser-mcp/feedback.jsonl` on your machine: the
   time, the kind, the tool, what the agent says happened, what it tried and what
   worked in the end, the page's origin and path, version numbers, a short
   diagnosis, the number of connected extensions and a fingerprint used to skip

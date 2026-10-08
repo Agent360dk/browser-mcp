@@ -37,7 +37,9 @@ const ENDELSER = /\.(md|html|txt|js|mjs|ts|tsx|json)$/;
 
 const LOEFTER = [
   [/nothing[^."]{0,40}leaves (your|the) machine/i, 'intet forlader maskinen'],
-  [/stays on your machine/i, 'bliver paa maskinen'],
+  // 8/10 (skive 5): «Your agent's own reports stay on your machine» slap igennem, fordi reglen kun kendte «stays» - og
+  // rapporten gaar ogsaa til AI-klienten. Ental og flertal, maskine og computer.
+  [/\bstays? on your (machine|computer)\b/i, 'bliver paa maskinen'],
   [/never sends your [^.]{0,30}data anywhere/i, 'sender aldrig data nogen steder'],
   [/100% local/i, '100% local'],
   [/\blocal-only\b/i, 'local-only'],
@@ -49,6 +51,11 @@ const LOEFTER = [
   // koerer lokalt, men det den returnerer gaar videre til AI-klienten og dens modeludbyder - samme loefte, nye ord.
   [/data exposure[^|\n]*\|\s*stays local/i, 'data bliver lokalt'],
   [/\bMIT, local\b/i, 'local uden at sige hvad der er lokalt'],
+  // 8/10 (skive 12): forsidens FAQ og kapabilitets-siden lovede at afkrydsningsfeltet «often enough» virker, naar man er
+  // logget ind hos Google - aldrig maalt. Installationssiderne lod trinene kaede af sig selv («hands the challenge to you
+  // if it cannot»); koden goer intet af sig selv - agenten vaelger hvert trin, ét kald ad gangen.
+  [/often (enough|passes)[^.\n]{0,60}signed in/i, 'umaalt CAPTCHA-loefte'],
+  [/hands? (the challenge|it) to you if (it|they) (cannot|can't)|if the first two miss/i, 'CAPTCHA-trin der kaeder af sig selv'],
   // MAALT 13/9 af Astra og Fable i den faelles runde: "genstart, saa bliver ikonet groent" var falsk fra 1.29.0,
   // hvor serveren begyndte at tage sin port ved foerste browserkald i stedet for ved opstart. Jeg rettede den i
   // haanden 13 steder - og missede tre, fordi jeg soegte paa "turns green" og ikke paa "goes green". De tre stod
@@ -129,6 +136,11 @@ test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   const eksempel = 'MIT, free, and 100% local - nothing leaves your machine.';
   assert.ok(regel('intet forlader maskinen').test(eksempel) && regel('100% local').test(eksempel));
   assert.ok(regel('bliver paa maskinen').test('Extracted - stays on your machine'));
+  assert.ok(regel('bliver paa maskinen').test("Your agent's own reports stay on your machine."), 'ental slap igennem (skive 5)');
+  assert.ok(regel('umaalt CAPTCHA-loefte').test('click a reCAPTCHA v2 checkbox, which is often enough when you are signed into Google.'));
+  assert.ok(regel('umaalt CAPTCHA-loefte').test('`click_checkbox` (auto-click, often passes when signed into Google)'));
+  assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('attempts the checkbox, then hands the challenge to you if it cannot.'));
+  assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('shows you the challenge to solve by hand if the first two miss'));
   assert.ok(regel('intet forlader maskinen').test('the one thing that matters most: nothing it reads ever leaves your machine'), 'ord imellem maa ikke skjule loeftet');
   assert.ok(regel('sender aldrig data nogen steder').test('never sends your browsing data anywhere'));
   assert.ok(FORKERTE_TAL[0][0].test('Restart Claude Code - 29 browser tools are now available'));
