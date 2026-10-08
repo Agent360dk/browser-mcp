@@ -25,7 +25,7 @@ Cursor:  [continues in the same tab]
          Rates are in - zone 3 went up 4% this month.
 ```
 
-`browser_solve_captcha` attempts the checkbox challenge. When the page escalates to images or a slider, it shows you the tab and waits. `browser_ask_user` is the same mechanism for anything else only a human can answer.
+`browser_solve_captcha` can try the reCAPTCHA checkbox. When the page escalates to images or a slider, the agent can click grid cells it chooses after its own screenshot, or call `browser_ask_user`, which brings the tab forward, shows you a dialog and waits for your answer. `browser_ask_user` is the same mechanism for anything else only a human can answer.
 
 ## Setting it up
 
@@ -61,7 +61,7 @@ Full walkthrough: [Install for Cursor](/docs/install-cursor/).
 ## Frequently asked questions
 
 **Does it solve CAPTCHAs for me?**
-It attempts the checkbox. Anything harder, it hands to you. We are not a solving service and do not use one.
+It can try the reCAPTCHA checkbox and click grid cells your agent chooses. Anything it cannot clear, your agent hands to you with `browser_ask_user`. We are not a solving service and do not use one.
 
 **Do you send the challenge anywhere?**
 No. The server is local, there is no account and no telemetry. The challenge stays in your browser.
