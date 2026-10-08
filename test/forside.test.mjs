@@ -261,13 +261,19 @@ test('css og js hentes med en cachenoegle, der passer til filens indhold', async
     if (e.isDirectory()) gaa(join(d, e.name)); else if (e.name.endsWith('.html')) sider.push(join(d, e.name)); } };
   gaa('docs');
   let set = 0;
+  const afkod = (x) => x.replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"');
   for (const s of sider) {
     const t = readFileSync(join(rod, s), 'utf8');
-    // R56 (Astra): enkelte anfoerselstegn og en noegle uden for [0-9a-f] (?v=old) slap igennem. Find hver henvisning
-    // foerst, uanset form, og tjek saa noeglen.
-    for (const m of t.matchAll(/\/assets\/(docs\.(?:css|js))(\?v=([^"'\s>]*))?["'\s>]/g)) {
+    // R56/R56b (Astra): enkelte anfoerselstegn, ?v=old, relative adresser, v som ikke-foerste parameter og attributter
+    // uden anfoerselstegn slap igennem. Hver href/src afkodes og slaas op i forhold til siden; stien afgoer, ikke teksten.
+    const side = '/' + s.split('\\').join('/').replace(/^docs\//, '');
+    for (const m of t.matchAll(/\b(?:href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)/gi)) {
+      const raa = m[1];
+      const u = new URL(afkod(/^["']/.test(raa) ? raa.slice(1, -1) : raa), 'https://browsermcp.dev' + side);
+      if (u.host !== 'browsermcp.dev' || !/^\/assets\/docs\.(css|js)$/.test(u.pathname)) continue;
       set++;
-      assert.equal(m[3], v[m[1]], `${s}: ${m[1]} hentes ${m[2] ? 'med en foraeldet noegle' : 'uden noegle'} - koer scripts/generate-docs.py`);
+      const fil = u.pathname.slice('/assets/'.length);
+      assert.equal(u.searchParams.get('v'), v[fil], `${s}: ${fil} hentes ${u.searchParams.has('v') ? 'med en foraeldet noegle' : 'uden noegle'} (${raa}) - koer scripts/generate-docs.py`);
     }
   }
   assert.ok(set >= 80, `kun ${set} henvisninger til docs.css/docs.js fundet - proeven maaler ikke det den skal`);
