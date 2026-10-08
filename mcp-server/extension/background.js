@@ -5586,8 +5586,9 @@ async function clickCaptchaGridCells(tabId, cells, grid) {
     const cellSize = gridSize / cols;
 
     const maxCell = cols * rows - 1;
-    // R39: med et opgivet gitter er en celle uden for det en fejl i kaldet, ikke noget der tavst springes over.
-    if (grid && cells.some(c => c < 0 || c > maxCell)) {
+    // R39/R40: en celle uden for gitteret er en fejl i kaldet, ikke noget der tavst springes over -
+    // med eller uden opgivet grid (indeks 16 er aldrig gyldigt, et negativt heller ikke).
+    if (cells.some(c => c < 0 || c > maxCell)) {
       await debuggerDetach(tabId);
       return { clicked: false, error: `Cell indices ${JSON.stringify(cells.filter(c => c < 0 || c > maxCell))} do not fit a ${cols}x${rows} grid (valid range: 0-${maxCell})` };
     }

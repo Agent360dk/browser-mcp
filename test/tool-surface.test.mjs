@@ -456,7 +456,9 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
     };
     vm.createContext(ctx);
     vm.runInContext(helFunktion(bgSrc, 'clickCaptchaGridCells') + '\nthis.koer = clickCaptchaGridCells;', ctx);
-    return ctx.koer(11, cells, grid);
+    const svar = await ctx.koer(11, cells, grid);
+    svar.musehaendelser = klik.filter(k => k.metode === 'Input.dispatchMouseEvent').length;
+    return svar;
   };
   const gaet = await koer([8]);
   assert.equal(gaet.grid, '3x3'); assert.deepEqual([gaet.cells[0].row, gaet.cells[0].col], [2, 2]);
@@ -473,6 +475,11 @@ test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangl
   const blandet = await koer([2, 12], 3);
   assert.equal(blandet.clicked, false, 'grid: 3 med en celle uden for gitteret afvises helt - ingen tavs delvis klikning');
   assert.match(blandet.error, /do not fit a 3x3 grid/);
+  assert.equal(blandet.musehaendelser, 0, 'intet maa klikkes foer afvisningen (R40)');
+  const negativ = await koer([-1, 2], 3);
+  assert.equal(negativ.clicked, false); assert.equal(negativ.musehaendelser, 0, 'et negativt indeks afviser hele kaldet');
+  const seksten = await koer([2, 16]);
+  assert.equal(seksten.clicked, false, 'indeks 16 er aldrig gyldigt - ogsaa uden grid'); assert.equal(seksten.musehaendelser, 0);
   const nul = await koer([8], null);
   assert.equal(nul.grid, '3x3', 'grid: null behandles som udeladt'); assert.match(nul.gridFrom, /guessed/);
   const decimal = await koer([0, 3.9], 4);
