@@ -1,6 +1,6 @@
 // KILDE: https://code.visualstudio.com/docs/agent-customization/mcp-servers
 
-# Add Browser MCP to VS Code (Agent Mode)
+# Add Browser MCP to VS Code
 *Suggested meta description: "Copilot gets your real, already-logged-in Chrome rather than a fresh profile, so it can work on pages that need a session."*
 
 

@@ -1,6 +1,6 @@
 // KILDE: MAALT 20/9-2026. browser-use: GitHub-API 115.400 stjerner, sidst pushet 18/9-2026, 450 aabne issues; PyPI 0.13.10, summary «Make websites accessible for AI agents». Os: npm + GitHub-API samme dag. ⚠️ De er IKKE en konkurrent i samme kategori - de er et Python-agentframework der koerer sin egen browser. Siden findes fordi folk soeger paa sammenligningen, ikke fordi vi konkurrerer. ⛔ Skriv ALDRIG siden som et angreb: de er 2.600 gange stoerre end os i stjerner, og det ville baade vaere usandt og latterligt.
 
-# Browser MCP vs browser-use: they are not the same kind of thing
+# Browser MCP vs browser-use
 
 *Suggested URL: `/compare/browser-use` · Suggested title tag: "Browser MCP vs browser-use (2026): Which One Do You Need?" · Suggested meta description: "They solve different problems. One is a Python agent framework with its own browser; the other gives your coding agent the Chrome you are already signed into." · Last verified: September 20, 2026*
 

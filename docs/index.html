@@ -105,96 +105,14 @@ p{margin:0}
 .acts{display:flex;flex-wrap:wrap;gap:.75rem;margin:1.75rem 0 1.1rem}
 .hero .cmdnote{font-size:.93rem;color:var(--muted);margin:.7rem 0 0;max-width:34rem}
 .fine{font-size:.93rem;color:var(--muted);margin-top:1.25rem;max-width:34rem}
-/* ---- hero scene: one orchestrated moment, pure CSS, rests on its last frame ---- */
-.scene{container-type:inline-size;margin:0;position:relative}
-.win{--u:1cqw;border-radius:calc(1.7 * var(--u));overflow:hidden;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px rgba(20,25,35,.06),0 18px 44px -14px rgba(20,25,35,.28);font-size:max(11px,2.3cqw);user-select:none}
-.strip{background:var(--strip);padding:1.5cqw 1.8cqw 0;display:flex;gap:1.2cqw;align-items:flex-end;height:max(7.4cqw,3.1em)}
-.g{display:flex;align-items:flex-end;gap:.5cqw;padding-bottom:.9cqw}
-.chip{font:600 1em/1 var(--sans);padding:.62em .95em;border-radius:.7em;background:var(--c);color:var(--on);white-space:nowrap}
-.g1{--c:var(--blue);--on:var(--on-blue)}.g2{--c:var(--green);--on:var(--on-green)}.g3{--c:var(--yellow);--on:var(--on-yellow)}.g4{--c:var(--red);--on:var(--on-red)}.g5{--c:var(--pink);--on:var(--on-pink)}
-.tab{width:6.4cqw;height:3.9cqw;border-radius:.9cqw .9cqw 0 0;align-self:flex-end;margin-bottom:-.9cqw;background:radial-gradient(circle at 1.25cqw 50%,var(--c) .5cqw,transparent .56cqw),linear-gradient(color-mix(in srgb,var(--muted) 70%,transparent),color-mix(in srgb,var(--muted) 70%,transparent)) 2.5cqw 50%/3.1cqw .55cqw no-repeat,color-mix(in srgb,var(--surface) 55%,transparent)}
-.g3 .tab{background-color:var(--surface)}
-@container (max-width:30rem){.g4{display:none}}
-.bar{display:flex;align-items:center;gap:1.4cqw;padding:1.3cqw 2cqw;background:var(--surface);border-bottom:1px solid var(--line)}
-.bar .lock{width:1.5cqw;height:1.5cqw;border-radius:.4cqw;border:.28cqw solid var(--muted);flex:none}
-.bar .url{position:relative;flex:1;height:1.5em;border-radius:99px;background:var(--tint);color:var(--muted);font:500 .92em/1.5em var(--mono);padding-inline:1.2cqw;overflow:hidden;white-space:nowrap}
-.bar .url span{position:absolute;inset:0 1.2cqw}
-.bar .url .u1{opacity:0}
-.page{position:relative;height:49cqw;background:var(--surface);overflow:hidden}
-.pg{position:absolute;inset:0}
-.you{padding:3.4cqw 4cqw;display:grid;gap:1.6cqw;align-content:start;opacity:0;background:var(--surface)}
-.you i{display:block;height:1.5cqw;border-radius:9px;background:var(--tint)}
-.you .t{height:2.6cqw;width:42%;background:color-mix(in srgb,var(--ink) 18%,var(--tint))}
-.you .yl{font:600 .85em/1 var(--sans);color:var(--muted);margin-bottom:.4cqw}
-.acme{display:grid;grid-template-columns:19% 1fr;background:var(--surface)}
-.acme .nav2{background:#1B1F24;color:#fff;padding:2.6cqw 1.8cqw;display:grid;gap:1.3cqw;align-content:start;font-weight:700}
-.acme .nav2 i{display:block;height:1.4cqw;border-radius:9px;background:rgba(255,255,255,.28)}
-.acme .main{position:relative;padding:3cqw 3.4cqw}
-.acme h4{margin:0 0 1.6cqw;font:700 1.15em/1.2 var(--sans);letter-spacing:-.01em}
-.boxes{display:flex;gap:1.1cqw;margin-top:1.6cqw}
-.boxes i{width:4.6cqw;height:5.4cqw;border:1px solid var(--line);border-radius:.8cqw;background:var(--tint)}
-.login{position:absolute;inset:3cqw 3.4cqw;opacity:0}
-.login p{color:var(--muted)}
-.signed .row{display:flex;justify-content:space-between;gap:2cqw;padding:1.4cqw 1.8cqw;margin-bottom:1.1cqw;border:1px solid var(--line);border-radius:1cqw;background:var(--paper);font-variant-numeric:tabular-nums}
-.signed .row b{font-weight:650}
-.signed .ok{color:var(--ok);font-weight:650}
-.dim{position:absolute;inset:0;background:rgba(0,0,0,.6);opacity:0}
-.ask{position:absolute;left:50%;top:50%;width:62cqw;margin:-15cqw 0 0 -31cqw;opacity:0;background:#1e293b;color:#e2e8f0;border-radius:1.4cqw;padding:2.4cqw;box-shadow:0 20px 60px rgba(0,0,0,.5);font-family:var(--sans);line-height:1.45}
-.ask .ti{font-size:1.08em;font-weight:600;color:#60a5fa}
-.ask .bd{font-size:.77em;color:#94a3b8;margin:.3em 0 1.1em}
-.ask .ms{color:#cbd5e1;margin-bottom:1.2em}
-.ask label{display:block;font-size:.85em;color:#94a3b8;margin-bottom:.3em}
-.ask .in{position:relative;padding:.62em .8em;background:#0f172a;border:1px solid #3b82f6;border-radius:.5em;font:500 1em var(--mono);letter-spacing:.12em;min-height:2.3em;overflow:hidden}
-.ask .in span{display:block;white-space:nowrap}
-.ask .bt{display:flex;gap:.7em;margin-top:1.3em}
-.ask .bt b{flex:1;text-align:center;padding:.75em;border-radius:.5em;font-size:1em;font-weight:500}
-.ask .go{background:#2563eb;color:#fff}.ask .sk{background:#334155;color:#cbd5e1}
-.pop{background:#0f172a;color:#e2e8f0;padding:1.6cqw 2.2cqw;border-top:1px solid #1e293b}
-.pop .ph{font:600 .86em/1 var(--sans);color:#94a3b8;margin-bottom:1.1cqw}
-.pop .log{display:grid;gap:0;font-size:.95em}
-.pop .le{display:flex;gap:1.6cqw;align-items:baseline;padding:.42cqw 0;border-bottom:1px solid #1e293b;font-family:var(--sans);min-height:2.7cqw}
-.pop .le:last-child{border:0}
-.le .tm{color:#94a3b8;min-width:7.2cqw;font-variant-numeric:tabular-nums}
-.le .me{color:#22c55e;font-weight:500}
-.le .se{color:#94a3b8;font-size:.92em}
-.scene figcaption{margin-top:.85rem;font-size:.88rem;color:var(--muted);display:flex;gap:.5rem 1rem;flex-wrap:wrap;align-items:center;justify-content:space-between}
+/* hero film (8/10-2026): afløser den tegnede CSS-scene; videoen startes af scriptet nederst, kun uden reduceret bevægelse */
+.film{margin:0;position:relative}
+.film video{display:block;width:100%;height:auto;aspect-ratio:16/10;border-radius:16px;border:1px solid var(--line);background:var(--surface);box-shadow:0 1px 0 rgba(20,22,26,.04),0 24px 48px -24px rgba(20,22,26,.35)}
+.film figcaption{margin-top:.85rem;font-size:.88rem;color:var(--muted);display:flex;gap:.5rem 1rem;flex-wrap:wrap;justify-content:space-between;align-items:center}
 .sbtn{display:inline-flex;align-items:center;justify-content:center;font:600 .85rem var(--sans);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:.4rem 1rem;min-height:2.75rem;cursor:pointer;touch-action:manipulation}
 .pause-input:focus-visible~figcaption label{outline:2px solid var(--focus);outline-offset:2px}
-.scene .rp{display:none}
 .pause-input:checked~figcaption label{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-.js .scene .rp{display:inline-flex}
-/* the scene's states are written as the FINAL frame; the animation only supplies earlier frames */
-.win.run *{animation-duration:var(--d,.3s);animation-delay:var(--w,0s);animation-fill-mode:backwards;animation-timing-function:var(--ease-out)}
-@keyframes winin{from{opacity:0;transform:translateY(8px)}}
-@keyframes grpin{from{opacity:0;transform:translateY(-5px) scale(.96)}}
-@keyframes rowin{from{opacity:0;transform:translateY(3px)}}
-@keyframes fadein{from{opacity:0}}
-@keyframes youlife{0%,94%{opacity:1}100%{opacity:0}}
-@keyframes loginlife{0%,93%{opacity:1}100%{opacity:0}}
-@keyframes dimlife{0%{opacity:0}7%,91%{opacity:1}100%{opacity:0}}
-@keyframes asklife{0%{opacity:0;transform:translateY(30px) scale(.95)}9%{opacity:1;transform:none}92%{opacity:1;transform:none}100%{opacity:0;transform:none}}
-@keyframes typing{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
-@keyframes press{50%{transform:scale(.96)}}
-@keyframes tabup{from{opacity:.55}}
-.win.run{--w0:0s}
-.win.run{animation:winin .45s var(--ease-out) backwards}
-.win.run .g1{--w:.5s;--d:.28s;animation-name:grpin}.win.run .g2{--w:.85s;--d:.28s;animation-name:grpin}.win.run .g3{--w:1.2s;--d:.28s;animation-name:grpin}.win.run .g4{--w:1.55s;--d:.28s;animation-name:grpin}
-.win.run .le{animation-name:rowin;--d:.22s}
-.win.run .l1{--w:1s}.win.run .l2{--w:1.6s}.win.run .l3{--w:2.2s}.win.run .l4{--w:3.4s}.win.run .l5{--w:8.7s}.win.run .l6{--w:9.3s}
-.win.run .you{animation-name:youlife;--d:3.7s;--w:0s;animation-fill-mode:none;animation-timing-function:linear}
-.win.run .u1{animation-name:youlife;--d:3.7s;--w:0s;animation-fill-mode:none;animation-timing-function:linear}
-.win.run .acme,.win.run .u2{animation-name:fadein;--d:.3s;--w:3.5s}
-.win.run .login{animation-name:loginlife;--d:5.1s;--w:3.5s;animation-fill-mode:none;animation-timing-function:linear}
-.win.run .signed{animation-name:fadein;--d:.3s;--w:8.5s}
-.win.run .signed .row{animation-name:rowin;--d:.3s}
-.win.run .signed .row:nth-child(2){--w:8.7s}.win.run .signed .row:nth-child(3){--w:8.8s}.win.run .signed .row:nth-child(4){--w:8.9s}
-.win.run .dim{animation-name:dimlife;--d:4.3s;--w:4s;animation-fill-mode:none;animation-timing-function:linear}
-.win.run .ask{animation-name:asklife;--d:4.3s;--w:4s;animation-fill-mode:none}
-.win.run .in span{animation-name:typing;--d:1.3s;--w:5.3s;animation-timing-function:steps(6,end)}
-.win.run .go{animation-name:press;--d:.2s;--w:7.9s;animation-fill-mode:none;animation-timing-function:ease-out}
-.win.run .g3 .tab{animation-name:tabup;--d:.2s;--w:3.4s}
 .pause-input:checked~.win.run *,.pause-input:checked~.win.run,.hold .win.run,.hold .win.run *{animation-play-state:paused}
-.still .win.run,.still .win.run *{animation:none!important}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}.pause-input{display:none}.win.run,.win.run *{animation:none!important}.scene figcaption span:last-child{display:none}}
 /* sections */
 .pair{display:grid;gap:clamp(1.75rem,4vw,3.5rem);align-items:center}
@@ -270,8 +188,61 @@ footer a{display:inline-block;padding-block:.35rem;text-decoration:none}footer a
 footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;justify-content:space-between}
 @media (prefers-contrast:more){:root{--line:#8A93A0;--muted:#3A424D}}
 @media (prefers-contrast:more) and (prefers-color-scheme:dark){:root{--line:#7A838F;--muted:#C9CFD8}}
+
+/* konvertering 8/10-2026: hero, bevislinje, sådan virker det, use case-galleri */
+.eyebrow{font-size:.92rem;font-weight:600;color:var(--muted);margin:0 0 .9rem}
+.cmdlbl{font-size:.92rem;color:var(--muted);margin:1.4rem 0 .45rem}
+.proof{list-style:none;padding:0;margin:1.25rem 0 0;display:flex;flex-wrap:wrap;gap:.45rem 1.25rem;font-size:.92rem;color:var(--muted)}
+.proof b{color:var(--ink);font-variant-numeric:tabular-nums}
+.proof a{text-decoration:none}
+.proof a:hover b{text-decoration:underline}
+.flow{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;counter-reset:f}
+.flow li{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.1rem 1.2rem;display:flex;flex-direction:column;gap:.35rem;counter-increment:f}
+.flow li::before{content:counter(f);font:600 .78rem/1 var(--mono);color:var(--muted)}
+.flow li:not(:last-child)::after{content:"→";position:absolute;right:-.85rem;top:50%;translate:0 -50%;color:var(--muted);font-weight:700;z-index:1}
+.flow b{font-size:1.05rem}
+.flow span{color:var(--muted);font-size:.92rem;line-height:1.45}
+.facts3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.5rem;margin-top:2rem}
+.facts3 h3{font-size:1.08rem;margin-bottom:.3rem}
+.facts3 p{color:var(--muted);font-size:.95rem}
+@media (max-width:52rem){.flow{grid-template-columns:1fr 1fr}.flow li:nth-child(2)::after{display:none}.facts3{grid-template-columns:1fr}}
+@media (max-width:30rem){.flow{grid-template-columns:1fr}.flow li::after{display:none}}
+.cases{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.25rem}
+@media (max-width:60rem){.cases{grid-template-columns:1fr 1fr}}
+@media (max-width:38rem){.cases{grid-template-columns:1fr}}
+.case{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:1rem 1rem 1.15rem;display:flex;flex-direction:column;gap:.55rem}
+.case h3{font-size:1.12rem;margin-top:.35rem}
+.case>p{color:var(--muted);font-size:.95rem;line-height:1.5}
+.case .say{background:var(--tint);border-radius:10px;padding:.6rem .75rem;color:var(--ink);font-size:.9rem}
+.case .say b{display:block;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.15rem}
+.case .more{margin-top:auto;font-weight:600;font-size:.95rem}
+.cv{height:9.5rem;border-radius:12px;background:var(--tint);display:grid;place-items:center;overflow:hidden;padding:.75rem}
+.mini-ask{background:#1e293b;color:#e2e8f0;border-radius:10px;padding:.7rem .8rem;width:min(100%,15.5rem);display:grid;gap:.2rem;font-size:.72rem;box-shadow:0 10px 24px -10px rgba(15,23,42,.6)}
+.mini-ask b{color:#60a5fa;font-size:.78rem}
+.mini-ask i{font-style:normal;color:#94a3b8;font-size:.62rem}
+.mini-ask em{font-style:normal;font:500 .85rem var(--mono);letter-spacing:.14em;background:#0f172a;border:1px solid #3b82f6;border-radius:5px;padding:.25rem .45rem;margin-top:.2rem}
+.mini-mail{width:min(100%,16rem);background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:.76rem}
+.mini-mail div{display:flex;gap:.5rem;padding:.45rem .65rem;border-bottom:1px solid var(--line)}
+.mini-mail div:last-child{border-bottom:0}
+.mini-mail b{min-width:4.2rem}
+.mini-mail .hot{background:color-mix(in srgb,var(--blue) 14%,transparent)}
+.mini-mail .hot span{font-weight:600}
+.mini-cap{display:flex;align-items:center;gap:.6rem;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:.8rem .9rem;font-size:.85rem;position:relative}
+.mini-cap .cb{width:1.2rem;height:1.2rem;border:2px solid var(--muted);border-radius:3px}
+.mini-cap em{font-style:normal;position:absolute;right:-.6rem;top:-.75rem;background:var(--orange);color:var(--on-orange);font-size:.68rem;font-weight:700;padding:.18rem .45rem;border-radius:999px}
+.mini-tab{border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:.82rem;min-width:11rem}
+.mini-tab th,.mini-tab td{padding:.35rem .8rem;text-align:left;border-bottom:1px solid var(--line)}
+.mini-tab th{color:var(--muted);font-weight:600;font-size:.72rem}
+.mini-tab td:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.mini-form{display:grid;gap:.35rem;width:min(100%,14rem);font-size:.8rem}
+.mini-form span{background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:.35rem .6rem;display:flex;justify-content:space-between}
+.mini-form .ok::after{content:"✓";color:var(--ok);font-weight:700}
+.mini-form .no{border-color:var(--no);color:var(--no)}
+.mini-form .no::after{content:"✗";font-weight:700}
+.mini-groups{display:flex;flex-wrap:wrap;gap:.35rem;justify-content:center;font-size:.8rem}
+.casenote{margin-top:1.5rem;font-size:.95rem}
 </style>
-<script>try{if('IntersectionObserver' in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches){var r=document.documentElement;r.classList.add('hold');window.bmcpHold=setTimeout(function(){r.classList.remove('hold');r.classList.add('still')},5000)}}catch(e){}</script>
+
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -279,13 +250,14 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
   <div class="wrap">
     <a class="brand" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a>
     <nav class="nav" aria-label="Main">
-      <a class="opt" href="#features">How it works</a>
+      <a class="opt" href="#use-cases">Use cases</a>
+      <a class="opt" href="#how">How it works</a>
       <a href="#install">Install</a>
       <a class="opt" href="#compare">Compare</a>
       <a class="opt" href="#faq">FAQ</a>
       <a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a>
       <a href="/docs/install-claude-code/">Docs</a>
-      <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 49 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 2 Oct 2026">49</span></a>
+      <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 52 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 8 Oct 2026">52</span></a>
     </nav>
   </div>
 </header>
@@ -294,117 +266,112 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 <section class="hero">
   <div class="wrap">
     <div>
-      <h1><span translate="no">Browser MCP</span> lets your agent work in the Chrome you’re already signed into.</h1>
-      <p class="lede">A free, open-source Chrome extension and MCP server. Your agent uses your real browser, with your logins, in its own tab group. It is set up to stop and ask you when it hits a 2FA code, a CAPTCHA or a choice only you can make.</p>
+      <p class="eyebrow"><span translate="no">Browser MCP</span> · free and open source</p>
+      <h1>Your agent, in your Chrome.</h1>
+      <p class="lede">It works in the Chrome you’re already signed into, in its own tab group. When it hits a 2FA code or a CAPTCHA, it is set up to ask you.</p>
       <div class="acts">
-        <a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome</a>
-        <a class="btn sec2" href="#install">How to install</a>
+        <a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome, free</a>
+        <a class="btn sec2" href="#use-cases">See what it does</a>
       </div>
+      <p class="cmdlbl">Then connect your agent with one command:</p>
       <div class="cmd"><code id="c1" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c1" hidden>Copy</button></div>
-      <p class="cmdnote">The extension does nothing on its own. This command adds the server it talks to.</p>
-      <p class="fine">Free, MIT-licensed, no account. Works with Claude Code, Cursor, Codex, VS Code and Windsurf.</p>
+      <ul class="proof">
+        <li><a href="https://github.com/Agent360dk/browser-mcp"><b data-tal="stjerner">52</b> stars on GitHub</a></li>
+        <li><b data-tal="npm-maaned">5,165</b> npm downloads last month</li>
+        <li>Claude Code · Cursor · Codex · VS Code · Windsurf</li>
+      </ul>
     </div>
 
-    <figure class="scene" id="scene">
+    <figure class="film" id="film">
       <input type="checkbox" id="pause" class="vh pause-input">
-      <div class="win run" id="win" role="img" aria-label="Illustration of a Chrome window. Several agent sessions, named Claude 1, Claude 2 and so on, each have their own colour-coded tab group. Claude 3 reaches a two-factor login. Its tab comes to the front and a box asks the person for the code. The person types it, presses Submit, and the agent carries on and reads the signed-in page. An activity log shows each step.">
-        <div class="strip" aria-hidden="true">
-          <div class="g g1"><span class="chip">Claude 1</span><span class="tab"></span></div>
-          <div class="g g2"><span class="chip">Claude 2</span><span class="tab"></span></div>
-          <div class="g g3"><span class="chip">Claude 3</span><span class="tab"></span></div>
-          <div class="g g4"><span class="chip">Claude 4</span><span class="tab"></span></div>
-        </div>
-        <div class="bar" aria-hidden="true"><span class="lock"></span><span class="url"><span class="u1">notes.local/week-42</span><span class="u2">app.acme.com/orders</span></span></div>
-        <div class="page" aria-hidden="true">
-          <div class="pg you"><div class="yl">Your tab</div><i class="t"></i><i></i><i style="width:88%"></i><i style="width:94%"></i><i style="width:60%"></i></div>
-          <div class="pg acme">
-            <div class="nav2"><span>Acme</span><i></i><i></i><i></i></div>
-            <div class="main">
-              <div class="login"><h4>Two-factor authentication</h4><p>Enter the 6-digit code from your authenticator app.</p><div class="boxes"><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
-              <div class="signed"><h4>Orders <span class="ok">· signed in</span></h4>
-                <div class="row"><b>#1042</b><span>Paid</span><span>120.00</span></div>
-                <div class="row"><b>#1041</b><span>Paid</span><span>64.50</span></div>
-                <div class="row"><b>#1040</b><span>Pending</span><span>310.00</span></div>
-              </div>
-            </div>
-          </div>
-          <div class="dim"></div>
-          <div class="ask"><div class="ti">Agent360 - Action Required</div><div class="bd">Claude 3</div><div class="ms">Enter the 6-digit code from your authenticator app</div><label>2FA code</label><div class="in"><span>482916</span></div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>
-        </div>
-        <div class="pop" aria-hidden="true"><div class="ph">Browser MCP · activity</div>
-          <div class="log">
-            <div class="le l1"><span class="tm">10:41:02</span><span class="me">navigate</span><span class="se">Claude 1</span></div>
-            <div class="le l2"><span class="tm">10:41:03</span><span class="me">get_page_content</span><span class="se">Claude 2</span></div>
-            <div class="le l3"><span class="tm">10:41:04</span><span class="me">screenshot</span><span class="se">Claude 1</span></div>
-            <div class="le l4"><span class="tm">10:41:06</span><span class="me">ask_user</span><span class="se">Claude 3</span></div>
-            <div class="le l5"><span class="tm">10:41:14</span><span class="me">fill</span><span class="se">Claude 3</span></div>
-            <div class="le l6"><span class="tm">10:41:15</span><span class="me">get_page_content</span><span class="se">Claude 3</span></div>
-          </div>
-        </div>
-      </div>
-      <figcaption><span>Simplified illustration. The tab groups, the box and the log follow the real extension (the real log lists the newest line first); the page is made up.</span><span><label for="pause" class="sbtn">Pause</label> <button type="button" class="sbtn rp" id="replay">Replay</button></span></figcaption>
+      <video id="filmv" src="/film-v2.mp4" poster="/film-v2.jpg" width="1280" height="800" muted loop playsinline preload="metadata" aria-label="A 20-second illustration of Browser MCP. An agent works in its own colour-coded tab group in Chrome, signed in. At a two-factor login a box titled Agent360 - Action Required asks for the code. It reads a code from Gmail in a new tab in its group, tries a CAPTCHA and hands it to the person, and four agents work in four tab groups at once."></video>
+      <figcaption><span>Illustration, 20 seconds. The tab groups, the box and the log follow the real extension; the pages are made up.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
     </figure>
   </div>
 </section>
 
-<section class="sec" id="features" style="padding-top:0">
+<section class="sec" id="use-cases" style="padding-top:clamp(1rem,3vw,2rem)">
   <div class="wrap">
-    <h2>What changes when your agent has your Chrome</h2>
-
-    <div class="item pair">
-      <div>
-        <h3>It asks you instead of guessing</h3>
-        <p class="measure">The agent is instructed to call <code translate="no">browser_ask_user</code> when it needs a code, a password or a decision from you. A box appears in that tab, usually with a short chime. You answer, and it carries on.</p>
-        <a class="more" href="/use-cases/codex-2fa/">See it ask for a 2FA code</a>
-      </div>
-      <div class="askcard" role="img" aria-label="The box the extension shows, recreated: a dark card titled Agent360 - Action Required, labelled Claude 3, asking for a 6-digit code, with a Submit and a Skip button"><div class="ti">Agent360 - Action Required</div><div class="bd">Claude 3</div><div class="ms">Enter the 6-digit code from your authenticator app</div><div class="lb">2FA code</div><div class="in">482916</div><div class="bt"><b class="go">Submit</b><b class="sk">✗ Skip</b></div></div>
+    <h2>Hand it the jobs with a login</h2>
+    <div class="cases">
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: the box the extension shows, asking for a 6-digit code"><div class="mini-ask"><b>Agent360 - Action Required</b><i>Claude 1</i><span>Enter the 6-digit code from your app</span><em>418293</em></div></div>
+        <h3>Asks you for the 2FA code</h3>
+        <p>Then finishes the sign-in in the same tab.</p>
+        <p class="say"><b>Say</b>“Log into the admin dashboard and export last month’s invoices.”</p>
+        <a class="more" href="/use-cases/codex-2fa/">See how</a>
+      </article>
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: an inbox where the newest mail holds a sign-in code"><div class="mini-mail"><div class="hot"><b>billing@</b><span>Your sign-in code is 418293</span></div><div><b>team@</b><span>Weekly update</span></div><div><b>news@</b><span>October issue</span></div></div></div>
+        <h3>Reads the code from Gmail</h3>
+        <p>Your mail is already signed in, so it can look.</p>
+        <p class="say"><b>Say</b>“Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue.”</p>
+        <a class="more" href="/use-cases/read-2fa-from-gmail/">See how</a>
+      </article>
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: a CAPTCHA checkbox, and a label saying it is your turn"><div class="mini-cap"><span class="cb"></span><span>I’m not a robot</span><em>Your turn</em></div></div>
+        <h3>Tries the CAPTCHA, then asks you</h3>
+        <p>It clicks the checkbox. If that isn’t enough, the tab is yours.</p>
+        <p class="say"><b>Say</b>“Pull the shipping rates from the carrier portal.”</p>
+        <a class="more" href="/use-cases/cursor-captcha/">See how</a>
+      </article>
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: a small table of monthly numbers pulled from a dashboard"><table class="mini-tab"><tr><th>Month</th><th>Churn</th></tr><tr><td>Aug</td><td>5.1%</td></tr><tr><td>Sep</td><td>4.2%</td></tr></table></div>
+        <h3>Pulls numbers from your dashboards</h3>
+        <p>Any tool you’re signed into. No API key, no export.</p>
+        <p class="say"><b>Say</b>“Go to my analytics dashboard, pull this month’s numbers, and put them in a table.”</p>
+        <a class="more" href="/use-cases/pull-numbers-from-dashboards/">See how</a>
+      </article>
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: a signup form with two fields checked and one marked as broken"><div class="mini-form"><span class="ok">Email</span><span class="ok">Password</span><span class="no">Submit stays disabled</span></div></div>
+        <h3>Tests your signup like a user</h3>
+        <p>Real cookies, real extensions, your real flow.</p>
+        <p class="say"><b>Say</b>“Walk through my app’s signup flow as a real user and tell me where it breaks.”</p>
+        <a class="more" href="/use-cases/test-your-signup-flow/">See how</a>
+      </article>
+      <article class="case">
+        <div class="cv" role="img" aria-label="Illustration: four tab groups named Claude 1 to Claude 4 in four colours"><div class="groups mini-groups"><span style="--c:var(--blue);--on:var(--on-blue)">Claude 1</span><span style="--c:var(--green);--on:var(--on-green)">Claude 2</span><span style="--c:var(--yellow);--on:var(--on-yellow)">Claude 3</span><span style="--c:var(--red);--on:var(--on-red)">Claude 4</span></div></div>
+        <h3>Runs several agents at once</h3>
+        <p>Up to 20 sessions in one Chrome, each in its own tab group.</p>
+        <p class="say"><b>Say</b>“Open my analytics dashboard in your own tab and summarise it.”</p>
+        <a class="more" href="/use-cases/concurrent-sessions/">See how</a>
+      </article>
     </div>
+    <p class="muted measure casenote">The scenes are drawn; the prompts are real ones you can paste. It is strongest where you’re signed in and there is no API. CAPTCHAs and bot checks can still stop it: <a href="/docs/capability-matrix/">what it can and can’t get past</a>.</p>
+  </div>
+</section>
 
-    <div class="item">
-      <h3>Each agent session gets its own tab group</h3>
-      <p class="measure" style="margin-bottom:1.25rem">Each session opens its own named, colour-coded tab group and works only in its own tabs. There is room for up to 20 sessions at once, one local port each, against the same signed-in Chrome.</p>
-      <div class="groups" role="img" aria-label="Nine tab group labels, Claude 1 to Claude 9, in eight of Chrome's group colours; Claude 9 repeats the colour of Claude 1">
-        <span style="--c:var(--blue);--on:var(--on-blue)">Claude 1</span><span style="--c:var(--green);--on:var(--on-green)">Claude 2</span><span style="--c:var(--yellow);--on:var(--on-yellow)">Claude 3</span><span style="--c:var(--red);--on:var(--on-red)">Claude 4</span><span style="--c:var(--pink);--on:var(--on-pink)">Claude 5</span><span style="--c:var(--purple);--on:var(--on-purple)">Claude 6</span><span style="--c:var(--cyan);--on:var(--on-cyan)">Claude 7</span><span style="--c:var(--orange);--on:var(--on-orange)">Claude 8</span><span class="rpt" style="--c:var(--blue);--on:var(--on-blue)">Claude 9</span>
-      </div>
-      <p class="groupnote">Browser MCP uses eight of Chrome’s group colours. After the eighth they repeat; the names don’t. <a href="/use-cases/concurrent-sessions/">Running several sessions in one Chrome</a>.</p>
-    </div>
-
-    <div class="item pair rev">
-      <div>
-        <h3>It works where you’re already logged in</h3>
-        <p class="measure">Your cookies, your sessions, your 2FA. When a sign-in emails a one-time code, it can open Gmail in the same signed-in browser, read the code and finish the sign-in. A fresh headless browser starts without any of that.</p>
-        <a class="more" href="/use-cases/read-2fa-from-gmail/">How it reads a code from Gmail</a>
-      </div>
-      <div><p class="say"><b>You say</b>“Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue.”</p></div>
+<section class="sec" id="how" style="background:var(--tint)">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <ol class="flow">
+      <li><b>Your agent</b><span>Claude Code, Cursor, Codex, VS Code</span></li>
+      <li><b>A small local server</b><span>Your agent starts it. It runs on your machine.</span></li>
+      <li><b>The Chrome extension</b><span>Talks to that server on your machine</span></li>
+      <li><b>Your Chrome</b><span>One colour-coded tab group per agent</span></li>
+    </ol>
+    <div class="facts3">
+      <div><h3>It asks you</h3><p>A box in the tab when it needs a code or a decision.</p></div>
+      <div><h3>Only its own tabs</h3><p>It can’t read or close a tab you opened.</p></div>
+      <div><h3>Nothing sent to us</h3><p>There is no Agent360 server. <a href="/privacy.html">Privacy</a></p></div>
     </div>
   </div>
 </section>
 
-<section class="sec" id="install" style="background:var(--tint)">
+
+<section class="sec" id="install">
   <div class="wrap">
     <h2>Install</h2>
-    <p class="measure muted" style="margin:-1rem 0 2rem">Browser MCP is two halves: a Chrome extension and a local MCP server. You need both, and Node.js 20 or newer.</p>
+    <p class="measure muted" style="margin:-1rem 0 2rem">Two halves: the Chrome extension and a local server. You need both, and Node.js 20 or newer.</p>
     <ol class="steps">
       <li><div><h3>Add the Chrome extension</h3><p>One click. Chrome keeps it updated for you.</p><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome</a></div></li>
       <li><div><h3>Add the MCP server, then restart Claude Code</h3><p>Paste this in a terminal. Restarting is what starts the server.</p><div class="cmd"><code id="c2" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c2" hidden>Copy</button></div></div></li>
-      <li><div><h3>Say this to check it worked</h3><p>Paste it to Claude Code. You get a screenshot back instead of “I don’t have browser access”, and you’re running. The extension shows no badge until your agent first uses the browser; then a green badge with the number of connected agents appears.</p><div class="cmd"><code id="c3">Open example.com and take a screenshot.</code><button type="button" class="copy" data-for="c3" hidden>Copy</button></div></div></li>
+      <li><div><h3>Say this to check it worked</h3><p>A screenshot back means you’re running. The extension shows no badge until that first call.</p><div class="cmd"><code id="c3">Open example.com and take a screenshot.</code><button type="button" class="copy" data-for="c3" hidden>Copy</button></div></div></li>
     </ol>
     <p class="guides">Using another client? Same server, that client’s own config: <a href="/docs/install-cursor/">Cursor</a>, <a href="/docs/install-vscode/">VS Code</a>, <a href="/docs/install-codex/">Codex</a>, <a href="/docs/install-windsurf/">Windsurf</a> and more in the guides. No Chrome Web Store? The guides cover the unpacked install too.</p>
   </div>
 </section>
 
-<section class="sec" id="try">
-  <div class="wrap">
-    <h2>Try these first</h2>
-    <ul class="try">
-      <li><blockquote>“Open Gmail and tell me who sent my last 3 emails.”</blockquote><p>This one shows the difference. It uses the Gmail you’re already signed into in this Chrome; a fresh headless browser would hit a login wall.</p></li>
-      <li><blockquote>“Go to my analytics dashboard, pull this month’s numbers, and put them in a table.”</blockquote><p>A dashboard you’re signed into in this Chrome. No API key, no export, no integration to build first.</p></li>
-      <li><blockquote>“Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.”</blockquote><p>The agent works the page while you stay in the loop, and it can pause to ask you before anything it shouldn’t decide alone.</p></li>
-      <li><blockquote>“Walk through my app’s signup flow as a real user and tell me where it breaks.”</blockquote><p>End-to-end QA in the same browser your users have: cookies, extensions, session and all.</p></li>
-    </ul>
-    <p class="muted measure" style="margin-top:1.5rem">It is strongest where you’re signed in and there is no API: internal dashboards, admin panels, portals. CAPTCHAs and bot checks can still stop it: <a href="/docs/capability-matrix/">what it can and cannot get past</a>.</p>
-  </div>
-</section>
 
 <section class="sec" id="compare" style="background:var(--tint)">
   <div class="wrap">
@@ -431,7 +398,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 <section class="sec faq" id="faq">
   <div class="wrap">
     <h2>Questions</h2>
-    <details open>
+    <details>
     <summary>I installed the extension from the Chrome Web Store and it says &ldquo;not connected&rdquo;. What now?</summary>
     <div class="answer">That is expected - the extension is only half of it. Browser MCP is an extension <i>plus</i> a local MCP server, and the store can only give you the extension. Register the server with your agent - for Claude Code that is <code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code> - then restart it. The popup keeps saying "Not connected" until you ask your agent to use the browser for the first time - that is when the server takes a port, and that is when the green badge appears. The server runs on your machine on ports 9876-9895; the extension scans those ports to find it.</div>
   </details>
@@ -472,7 +439,7 @@ footer .fb{margin-top:2.25rem;padding-top:1.25rem;border-top:1px solid var(--lin
 
 <section class="sec final">
   <div class="wrap">
-    <h2>Give your agent the Chrome you’re already signed into.</h2>
+    <h2>Give your agent your Chrome.</h2>
     <div class="acts" style="margin-top:1.75rem">
       <a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Add to Chrome</a>
       <a class="btn sec2" href="https://github.com/Agent360dk/browser-mcp">Star on GitHub</a>
@@ -512,18 +479,16 @@ document.querySelectorAll('.copy').forEach(function (b) {
     } catch (e) { fallback(); }
   });
 });
-var rp = document.getElementById('replay'), win = document.getElementById('win');
-var root = document.documentElement;
-if (root.classList.contains('hold') && win) {
-  // The head script armed a 5 s failsafe that shows the finished scene if THIS script never runs. Once the observer is
-  // set up it is in charge, so the failsafe is cancelled: it must not fire later and freeze a scene that is playing.
-  try {
-    var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting && es[0].intersectionRatio >= 0.4) { io.disconnect(); root.classList.remove('hold'); } }, { threshold: 0.4 });
-    io.observe(win);
-  } catch (e) { root.classList.remove('hold'); root.classList.add('still'); }
-  clearTimeout(window.bmcpHold);
+// Filmen: spiller kun uden «reduceret bevægelse». Pause-knappen styrer den; afspilningsfejl (fx en browser der
+// nægter autoplay) giver blot plakatbilledet og knappen «Play».
+var film = document.getElementById('filmv'), pz = document.getElementById('pause'), pl = document.getElementById('pauselbl');
+if (film && pz) {
+  var mark = function () { if (pl) pl.textContent = pz.checked ? 'Play' : 'Pause'; };
+  var spil = function () { try { var p = film.play(); if (p && p.catch) p.catch(function () { pz.checked = true; mark(); }); } catch (e) { pz.checked = true; } mark(); };
+  var reduceret = false; try { reduceret = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  if (reduceret) { pz.checked = true; mark(); } else { spil(); }
+  pz.addEventListener('change', function () { if (pz.checked) { film.pause(); mark(); } else { spil(); } });
 }
-if (rp && win) rp.addEventListener('click', function () { clearTimeout(window.bmcpHold); root.classList.remove('hold'); root.classList.remove('still'); win.classList.remove('run'); void win.offsetWidth; win.classList.add('run'); document.getElementById('pause').checked = false; });
 </script>
 </body>
 </html>

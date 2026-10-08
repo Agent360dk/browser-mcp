@@ -1,6 +1,6 @@
 // KILDE: browser_solve_captcha laest i extension/background.js + mcp-server/tools.js 19/9-2026. ⚠️ Vi udgiver INGEN loesnings-procent - den er aldrig maalt ordentligt, og et tal uden en maaling bag er praecis det vi brugte 19/9 paa at fjerne fra ni sider. Skriv aldrig et her.
 
-# Cursor and CAPTCHAs: it tries, then hands it to you
+# Cursor meets a CAPTCHA
 
 *Suggested URL: `/use-cases/cursor-captcha` · Suggested title tag: "Cursor + CAPTCHA (2026): The Agent Hands It To You" · Suggested meta description: "Cursor hits a CAPTCHA and the run dies. Browser MCP attempts the checkbox, and when that is not enough it shows you the challenge and carries on after you solve it." · Last verified: September 19, 2026*
 

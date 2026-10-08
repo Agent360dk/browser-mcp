@@ -1,6 +1,6 @@
 // KILDE: alle tal MAALT 19/9-2026 med api.npmjs.org (ugentlige hentninger, hentet samme minut for alle fem) + GitHub-API for commit-datoer. Vibe fundet 19/9 ved at soege paa vores EGET pitch: de staar nr. 1, vi staar ingen steder. ⚠️ Tallene er ugentlige hentninger, IKKE brugere - npm skelner ikke menneske fra CI, og det skal staa paa siden. ⚠️ Opdater tabellen naar `konkurrent-vagt.py` bliver roed; skriv ALDRIG et tal her uden at hente det samme dag.
 
-# How to control your real, logged-in Chrome from an AI coding agent
+# Control your logged-in Chrome with AI
 
 *Suggested URL: `/learn/control-your-real-chrome` · Suggested title tag: "Control Your Real Logged-In Chrome From an AI Agent (2026)" · Suggested meta description: "Five ways to give Claude Code, Cursor or Codex your actual Chrome instead of a headless one - what each costs you, measured, including where ours loses." · Last verified: September 19, 2026*
 

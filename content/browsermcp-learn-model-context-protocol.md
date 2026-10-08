@@ -1,6 +1,6 @@
 // KILDE: MCP-protokol-fakta holdt til det verificerbare (åben standard fra Anthropic, JSON-RPC, stdio/HTTP-transport, tools/resources/prompts, officielt registry). Ingen version-specifikke påstande. Vores information-gain = vi shipper selv en server (40 tools) og skriver fra den vinkel. Pillar targeting "model context protocol"-klyngen (~19.250/md).
 
-# Model Context Protocol (MCP), explained - by someone who ships a server
+# Model Context Protocol, explained
 
 *Suggested URL: `/learn/model-context-protocol` · Suggested title tag: "Model Context Protocol (MCP), Explained Simply (2026)" · Suggested meta description: "What MCP actually is, why it exists, and how the pieces fit - written from the perspective of maintaining a real MCP server rather than restating the spec." · Last verified: July 22, 2026*
 

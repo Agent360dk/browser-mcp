@@ -1,6 +1,6 @@
 // KILDE: vaerktoejsnavne og adfaerd laest i mcp-server/tools.js + extension/background.js 19/9-2026. Soegedata: GSC 90 dage - `codex browser mcp` 9 klik/pos 2,2 · `browser mcp codex` 6 klik/CTR 46 % · `codex captcha` pos 1,0. ⚠️ Baggrundsfane-begraensningen er MAALT 19/9 og skal blive staaende: Chrome leverer ikke taster til en fane der ikke er den viste i sit vindue, og et eget vindue loeser det IKKE (vindues-hypotesen falsificeret samme dag).
 
-# Codex and 2FA: let the agent ask you for the code
+# Codex and 2FA: it asks you
 
 *Suggested URL: `/use-cases/codex-2fa` · Suggested title tag: "Codex + 2FA: Let It Ask You for the Code (2026)" · Suggested meta description: "Codex hits a two-factor prompt and stops. With Browser MCP it asks you on your own screen, you type six digits, and it carries on in the same tab." · Last verified: September 19, 2026*
 

@@ -1,4 +1,4 @@
-# Browser MCP by Agent360 vs. browsermcp.io: which one is actually maintained?
+# Browser MCP vs browsermcp.io
 
 *Suggested URL: `/compare/browsermcp-io` · Suggested title tag: "Browser MCP by Agent360 vs. browsermcp.io - Which Is Maintained? (2026)" · Suggested meta description: "A dated, sourced comparison of two same-named MCP browser servers. One has 100k installs. One shipped code this week. Here's the actual data." · Last verified: September 11, 2026*
 

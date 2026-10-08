@@ -1,6 +1,6 @@
 // KILDE: metoden er den vi FAKTISK kørte 21-22/7 (16-prompt-panel, Perplexity + ChatGPT, citations-log). Fund citeret er vores egne målte (ChatGPT nævnte os #2 og citerede browsermcp.dev; Perplexity nævnte os ikke og påstod fejlagtigt at en død konkurrent var vedligeholdt). INGEN opdigtede tal - kun hvad vi selv målte.
 
-# How to check whether ChatGPT, Perplexity and Claude mention your brand
+# Does AI mention your brand?
 
 *Suggested URL: `/learn/check-if-ai-mentions-your-brand` · Suggested title tag: "How to Check if ChatGPT & Perplexity Mention Your Brand (2026 Method)" · Suggested meta description: "A repeatable method for measuring whether AI assistants name your product - a fixed prompt panel, what to log, and how to automate the run in your own browser." · Last verified: July 22, 2026*
 

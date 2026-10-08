@@ -1,6 +1,6 @@
 // KILDE: sessions-modellen laest i extension/background.js (tabGroups, 20 porte 9876-9895) + mcp-server/index.js:45-46, 19/9-2026. ⚠️ Microsofts udvidelse giver OGSAA hver klient sin egen fanegruppe (deres README l.41-43, maalt 19/9) - siden maa ikke paastaa at det er vores alene.
 
-# Several VS Code agents, one browser, no fighting over tabs
+# Several VS Code agents, one browser
 
 *Suggested URL: `/use-cases/vscode-concurrent-sessions` · Suggested title tag: "Multiple VS Code Agents, One Chrome (2026): Colour-Coded Tab Groups" · Suggested meta description: "Run several agent conversations against the same logged-in Chrome. Each gets its own colour-coded tab group and cannot touch the others' tabs." · Last verified: September 19, 2026*
 

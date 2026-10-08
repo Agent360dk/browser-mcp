@@ -1,6 +1,6 @@
 // KILDE: alle tal MAALT 19-20/9-2026, samme minut for alle projekter: api.npmjs.org (ugentlige hentninger + 90-dages dagsserie), GitHub-API (stjerner, sidste push, aabne issues), npm-registret (udgivelsesdatoer). ⚠️ Siden findes fordi en soegning paa VORES eget pitch 19/9 gav ni resultater uden os. ⚠️ Hentninger er IKKE brugere - npm skelner ikke menneske fra CI, og en udgivelsesdag oppuster ethvert projekts tal, ogsaa vores. Det skal blive staaende paa siden. ⚠️ Opdater naar `konkurrent-vagt.py` bliver roed.
 
-# Browser MCP alternatives: the five that exist, measured
+# Browser MCP alternatives, measured
 
 *Suggested URL: `/compare/browser-mcp-alternatives` · Suggested title tag: "Browser MCP Alternatives (2026): Five Options, Measured" · Suggested meta description: "Looking for an alternative to Browser MCP? Five real options with downloads, maintenance status and what each one costs you - including where ours loses." · Last verified: September 20, 2026*
 

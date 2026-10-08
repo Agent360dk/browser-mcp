@@ -1,6 +1,6 @@
 // KILDE: adfaerd laest i extension/background.js + mcp-server/tools.js 19/9-2026. Soegedata GSC 90 dage: `claude code browser mcp` 65 visn/pos 28,4 · `browser mcp claude code` 89 visn/pos 22,8 · `claude code chrome mcp login workaround` (Bings query-stats, pos 1). ⚠️ Ingen paastand om at vi er de eneste der bruger din indloggede Chrome - det goer Microsoft, Google og Anthropic ogsaa (maalt 19/9).
 
-# Claude Code behind a login wall: use the session you already have
+# Claude Code behind a login wall
 
 *Suggested URL: `/use-cases/claude-code-login-wall` · Suggested title tag: "Claude Code Behind a Login Wall (2026): Use Your Real Session" · Suggested meta description: "Claude Code cannot read the page because it is behind a login. Browser MCP drives the Chrome you are already signed in to, so there is no login to get past." · Last verified: September 19, 2026*
 

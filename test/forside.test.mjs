@@ -168,59 +168,39 @@ test('udgivelsens tool-sweep omskriver vores tal men lader konkurrentens stå (O
   assert.match(side, /<span class="check">41 tools<\/span>/, 'forsiden: vores celle opdateres ikke af sweepet');
 });
 
-// ---- Scenens start- og fallback-logik, kørt med sidens EGNE scripts mod en minimal falsk DOM og et falsk ur.
-// Astra R3 (2/10) fandt at en ubetinget 30 s-timer satte .still midt i en afspilning og gjorde Replay virkningsløs.
-function simulerSide({ reducedMotion = false, utenObserver = false, observerKaster = false, kunHoved = false } = {}) {
-  const sider = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-  const hoved = sider.find((s) => s.includes("'hold'") && s.includes('IntersectionObserver'));
-  const bund = sider[sider.length - 1];
-  assert.ok(hoved && bund && hoved !== bund, 'kunne ikke finde sidens to inline-scripts');
-  const klasseSaet = () => { const k = new Set(); return { k, classList: { add: (...c) => c.forEach((x) => k.add(x)), remove: (...c) => c.forEach((x) => k.delete(x)), contains: (c) => k.has(c) } }; };
-  const rod = klasseSaet(), vindue = klasseSaet(), pause = { checked: true };
-  let replayKlik = null; const replay = { addEventListener: (_, f) => { replayKlik = f; } };
-  vindue.offsetWidth = 0; vindue.classList.add('run');
-  const timere = new Map(); let nu = 0, nr = 0;
-  const setTimeout_ = (f, ms) => { timere.set(++nr, { f, at: nu + ms }); return nr; };
-  const clearTimeout_ = (i) => { timere.delete(i); };
-  const gaaFrem = (ms) => { nu += ms; for (const [i, t] of [...timere]) if (t.at <= nu) { timere.delete(i); t.f(); } };
-  let observer = null;
-  class IO { constructor(cb, opt) { if (observerKaster) throw new Error('IO kan ikke oprettes'); this.cb = cb; this.opt = opt; this.frakoblet = false; observer = this; } observe() {} disconnect() { this.frakoblet = true; } }
-  const win = { bmcpHold: undefined }; if (!utenObserver) win.IntersectionObserver = IO;
-  const doc = { documentElement: rod, querySelectorAll: () => [], getElementById: (id) => ({ win: vindue, replay, pause }[id]) };
-  const kor = (kode) => new Function('document', 'window', 'matchMedia', 'IntersectionObserver', 'setTimeout', 'clearTimeout', 'navigator', kode)(doc, win, () => ({ matches: reducedMotion }), IO, setTimeout_, clearTimeout_, {});
-  kor(hoved);
-  if (!kunHoved) kor(bund);
-  return { rod, vindue, pause, timere, gaaFrem, get observer() { return observer; }, replay: () => replayKlik(), win };
+// ---- Heroens film (8/10-2026): afløste den tegnede CSS-scene og dens start/fallback-logik. Proeverne koerer
+// sidens EGET bundscript mod en falsk video, saa en aendring der faar filmen til at spille under «reduceret
+// bevaegelse», eller en Pause-knap der ikke stopper den, bliver roed.
+function simulerFilm({ reduceret = false, afvis = false } = {}) {
+  const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
+  let spiller = false, kald = 0;
+  const video = { play: () => { kald++; if (afvis) return Promise.reject(new Error('nej')); spiller = true; return Promise.resolve(); }, pause: () => { spiller = false; } };
+  let skift = null; const pause = { checked: false, addEventListener: (_, f) => { skift = f; } }, lbl = { textContent: 'Pause' };
+  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], getElementById: (id) => ({ filmv: video, pause, pauselbl: lbl }[id]) };
+  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, () => ({ matches: reduceret }), {});
+  return { get spiller() { return spiller; }, get kald() { return kald; }, pause, lbl, tryk: (v) => { pause.checked = v; skift(); } };
 }
 
-test('scenen: observeren styrer starten, og fallbacken fryser aldrig en scene der spiller', () => {
-  const s = simulerSide();
-  assert.ok(s.rod.k.has('hold') && s.rod.k.has('js'));
-  assert.equal(s.timere.size, 0, 'fallback-timeren skal annulleres naar observeren er sat op');
-  assert.equal(s.observer.opt.threshold, 0.4);
-  s.observer.cb([{ isIntersecting: true, intersectionRatio: 0.01 }]);
-  assert.ok(s.rod.k.has('hold'), '1 % synlig maa ikke starte scenen');
-  s.observer.cb([{ isIntersecting: true, intersectionRatio: 0.45 }]);
-  assert.ok(!s.rod.k.has('hold') && s.observer.frakoblet, '45 % synlig starter scenen');
-  s.gaaFrem(120000);
-  assert.ok(!s.rod.k.has('still'), 'efter 2 minutter maa scenen ikke staa i .still');
-  s.replay();
-  assert.ok(s.vindue.k.has('run') && !s.rod.k.has('hold') && !s.rod.k.has('still'), 'Replay skal virke');
-  assert.equal(s.pause.checked, false, 'Replay slaar pausen fra');
+test('filmen: spiller uden reduceret bevaegelse, og Pause/Play styrer den', () => {
+  const f = simulerFilm();
+  assert.ok(f.spiller && f.kald === 1, 'filmen skal starte');
+  f.tryk(true); assert.ok(!f.spiller, 'Pause skal stoppe filmen'); assert.equal(f.lbl.textContent, 'Play');
+  f.tryk(false); assert.ok(f.spiller, 'Play skal starte den igen'); assert.equal(f.lbl.textContent, 'Pause');
 });
 
-test('scenen: hvis bundscriptet aldrig koerer, viser fallbacken den faerdige scene efter 5 s', () => {
-  const s = simulerSide({ kunHoved: true });
-  assert.ok(s.rod.k.has('hold'));
-  s.gaaFrem(4900); assert.ok(s.rod.k.has('hold') && !s.rod.k.has('still'));
-  s.gaaFrem(200); assert.ok(!s.rod.k.has('hold') && s.rod.k.has('still'));
+test('filmen: spiller ikke under reduceret bevaegelse, og en afvist afspilning viser Play', async () => {
+  const r = simulerFilm({ reduceret: true });
+  assert.ok(!r.spiller && r.kald === 0 && r.pause.checked, 'reduceret bevaegelse maa ikke starte filmen');
+  assert.equal(r.lbl.textContent, 'Play');
+  const a = simulerFilm({ afvis: true }); await new Promise((ok) => setTimeout(ok, 0));
+  assert.ok(a.pause.checked && a.lbl.textContent === 'Play', 'en afvist play() skal vise Play, ikke en Pause der intet goer');
 });
 
-test('scenen: observer der kaster giver sluttilstanden straks, og reduceret bevaegelse / manglende observer holder ikke scenen tilbage', () => {
-  const k = simulerSide({ observerKaster: true });
-  assert.ok(!k.rod.k.has('hold') && k.rod.k.has('still') && k.timere.size === 0);
-  k.replay();
-  assert.ok(!k.rod.k.has('still') && k.vindue.k.has('run'), 'Replay skal rydde .still, ellers er knappen doed efter en fejl');
-  assert.ok(!simulerSide({ reducedMotion: true }).rod.k.has('hold'));
-  assert.ok(!simulerSide({ utenObserver: true }).rod.k.has('hold'));
+test('filmen: tavs, i loop, inline, uden autoplay-attribut, og filerne findes i fornuftig stoerrelse', () => {
+  const v = html.match(/<video[^>]*>/)[0];
+  for (const a of ['muted', 'loop', 'playsinline', 'poster="/film-v2.jpg"', 'src="/film-v2.mp4"', 'aria-label="']) assert.ok(v.includes(a), `video mangler ${a}`);
+  assert.doesNotMatch(v, /\bautoplay\b/, 'autoplay-attributten ville spille trods reduceret bevaegelse');
+  const mp4 = statSync(join(rod, 'docs/film-v2.mp4')).size, jpg = statSync(join(rod, 'docs/film-v2.jpg')).size;
+  assert.ok(mp4 > 10_000 && mp4 < 3_000_000, `film-v2.mp4 er ${mp4} byte`);
+  assert.ok(jpg > 5_000 && jpg < 300_000, `film-v2.jpg er ${jpg} byte`);
 });
