@@ -493,15 +493,16 @@ account and no server of ours between you and the page.
   analytics in the extension or the server.
 - **Your agent's own reports.** `browser_provide_feedback` returns its report to
   your AI client like any other tool result, and it tries to add one line per new
-  report to `~/.browser-mcp/feedback.jsonl` on your machine: the
-  time, the kind, the tool, what the agent says happened, what it tried and what
-  worked in the end, the page's origin and path, version numbers, a short
-  diagnosis, the number of connected extensions and a fingerprint used to skip
-  repeats.
-  Email addresses and numbers of six or more characters are replaced with
-  `[email]` and `[number]` first, in the file and in the pre-filled issue link it
-  returns. Nothing is sent or posted unless you submit that link; delete the file
-  to clear it.
+  report to `~/.browser-mcp/feedback.jsonl` on your machine: the time, the kind,
+  the tool, what the agent says happened, what it tried and what worked in the
+  end, the page's origin and path, version numbers, a short diagnosis, the number
+  of connected extensions and a fingerprint used to skip repeats. In the three
+  things the agent wrote (what happened, what it tried, what worked), email
+  addresses and numbers of six or more characters are replaced with `[email]` and
+  `[number]` first, in the file and in the pre-filled issue link it returns; the
+  page address is only cut to origin and path. The server does not submit the
+  report. Opening the link sends its contents to GitHub; an issue is created only
+  when you submit it. Delete the file to clear it.
 - The bridge between the extension and the MCP client runs on `localhost`, on
   the same machine; the server reaches the network only for the npm version check
   you can turn on with `BROWSER_MCP_CHECK_NPM=1`. That bridge is **local and unauthenticated**:

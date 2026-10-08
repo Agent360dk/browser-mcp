@@ -5501,7 +5501,7 @@ async function detectCaptcha(tabId) {
         if (recaptchaV3 && !recaptchaAnchor) {
           res.found = true;
           res.types.push('recaptcha_v3_invisible');
-          res.note = 'reCAPTCHA v3 is invisible and score-based. Real Chrome with Google login usually passes automatically. No action needed.';
+          res.note = 'reCAPTCHA v3 is invisible and score-based: there is nothing to click. If the page still blocks you, ask the user with browser_ask_user.';
         }
 
         // hCaptcha
@@ -5526,7 +5526,7 @@ async function detectCaptcha(tabId) {
         if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
           res.found = true;
           res.types.push('cloudflare_challenge_page');
-          res.note = 'Cloudflare challenge page. Wait 5-10 seconds — real Chrome usually passes automatically.';
+          res.note = 'Cloudflare challenge page. It may clear by itself: wait 5-10 seconds with browser_wait and detect again, and if it does not clear, ask the user with browser_ask_user.';
         }
 
         // FunCaptcha / Arkose Labs

@@ -152,14 +152,21 @@ test('drop_file via opfanget filvaelger: «Not allowed» uden filadgang giver fi
 test('hver flade der naevner file-access-off, siger betingelsen', () => {
   const flader = ['README.md', 'mcp-server/README.md', 'mcp-server/tools.js', 'content/browsermcp-docs-tools.md', 'content/browsermcp-docs-capability-matrix.md', 'content/browsermcp-docs-troubleshooting.md'];
   let set = 0;
+  const pr = {};
   for (const f of flader) {
     readFileSync(join(rod, f), 'utf8').split('\n').forEach((linje, i) => {
       if (!linje.includes('file-access-off') || /^\s*\/\//.test(linje)) return;
       set++;
-      assert.match(linje, /unless Chrome confirms that file access is on/, `${f}:${i + 1} lover file-access-off uden betingelsen`);
+      // R47 (Astra): kun «unless»-leddet blev kraevet, saa «Every upload error is reported as file-access-off unless …»
+      // slap igennem. Begge led: kun et «Not allowed» ved overleveringen, og ikke naar Chrome bekraefter adgang.
+      assert.match(linje, /"Not allowed" error from the handoff is reported as `?file-access-off`?[^.]*unless Chrome confirms that file access is on/, `${f}:${i + 1} lover file-access-off uden hele betingelsen`);
+      assert.doesNotMatch(linje, /\b(turn|switch) (it|the switch|the setting) on and\b|\benable (it|the switch|the setting)\b/i, `${f}:${i + 1} raader til at slaa kontakten til`);
+      pr[f] = (pr[f] || 0) + 1;
     });
   }
-  assert.ok(set >= 6, `kun ${set} linjer naevner file-access-off - vagten maaler ikke det den skal`);
+  // R47 (Opus): taelleren `>= 6` stod paa 7, saa en hel flade kunne forsvinde. Hver flade skal have sine linjer.
+  assert.deepEqual(pr, { 'README.md': 2, 'mcp-server/README.md': 2, 'mcp-server/tools.js': 2, 'content/browsermcp-docs-tools.md': 1, 'content/browsermcp-docs-capability-matrix.md': 1, 'content/browsermcp-docs-troubleshooting.md': 1 });
+  assert.equal(set, 9);
 });
 
 // R46 (Opus): syv tekstmutanter overlevede, fordi intet bandt dem - et raad om at slaa kontakten til, raadet om at vedhaefte

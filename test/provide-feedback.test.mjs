@@ -46,7 +46,7 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
   const src = [
     udtraek('cmpVersion'), udtraek('liveConnections'),
     udtraek('activeConnection'), udtraek('distinctExtensions'),
-    udtraek('rensFritekst'), udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
+    udtraek('skaerTegn'), udtraek('rensFritekst'), udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
     udtraek('handleProvideFeedback'),
   ].join('\n\n');
   // laastForbindelse/harSendtKommando er modul-variable i index.js; de erklaeres her
@@ -412,4 +412,67 @@ test('port taget, men udvidelsen svarer ikke → stadig disconnected', async () 
   const r = await kald({ what_happened: 'noget gik galt' });
   assert.equal(r.verdict, 'disconnected', 'den aegte fejltilstand blev tavs af rettelsen');
   assert.ok(r.fix_steps.length > 0, 'en aegte afbrudt forbindelse skal stadig give skridt');
+});
+
+// ── R47: graenserne for rensningen ───────────────────────────────────────────
+
+test('en emoji paa 600-graensen braekker ikke rapporten (R47, Astra)', async () => {
+  for (const felt of ['what_happened', 'attempted', 'worked']) {
+    const h = byg();
+    const r = await h({ what_happened: 'Upload failed', [felt]: 'x'.repeat(599) + '\u{1F600}' + 'y' });
+    assert.equal(r.logged_locally.logged, true, `${felt}: rapporten blev ikke skrevet`);
+    const v = h.skrevet[0][felt];
+    assert.equal(Array.from(v).length, 600, `${felt}: loftet er 600 hele tegn`);
+    assert.ok(v.endsWith('\u{1F600}'), `${felt}: emoji'en skal staa hel`);
+    assert.ok(!/[\uD800-\uDFFF]/.test(v.replace(/\u{1F600}/gu, '')), `${felt}: en enlig halvdel slap igennem`);
+  }
+});
+
+test('en emoji paa titlens 90-graense og en enlig halvdel i tool braekker ikke linket', async () => {
+  const h = byg();
+  const r = await h({ what_happened: 'a'.repeat(89) + '\u{1F600}b', tool: 'browser_click\uD83D' });
+  assert.equal(new URL(r.submit_url).searchParams.get('title'), 'a'.repeat(89) + '\u{1F600}');
+  assert.equal(r.logged_locally.logged, true);
+});
+
+test('praecis seks tegn er et tal der fjernes, fem er ikke', async () => {
+  const h = byg();
+  await h({ what_happened: 'kode 123456 og trin 12345' });
+  assert.equal(h.skrevet[0].what_happened, 'kode [number] og trin 12345');
+});
+
+test('et tal delt af et linjeskift fjernes, og linjeskiftene ellers bevares', async () => {
+  const h = byg();
+  await h({ what_happened: 'ring til 12 34\n56 78\nlinje to\nlinje tre' });
+  assert.equal(h.skrevet[0].what_happened, 'ring til [number]\nlinje to\nlinje tre');
+});
+
+test('worked har ogsaa loftet paa 600', async () => {
+  const h = byg();
+  await h({ what_happened: 'x', worked: 'w'.repeat(1500) });
+  assert.equal(h.skrevet[0].worked.length, 600);
+});
+
+test('meget lang tekst uden @ laaser ikke serveren (R47, Opus: 28 s ved 200.000 tegn)', async () => {
+  const h = byg();
+  const t0 = Date.now();
+  await h({ what_happened: 'a'.repeat(200000), attempted: 'b'.repeat(200000), worked: 'c'.repeat(200000) });
+  assert.ok(Date.now() - t0 < 2000, `rensningen tog ${Date.now() - t0} ms`);
+});
+
+// R47 (Opus og Astra): README-punktet lovede rensning ogsaa for adressen og «Nothing is sent or posted unless you submit
+// that link» - rapporten gaar til AI-klienten, og at aabne linket viser indholdet til GitHub.
+test('README-punktet om rapporterne siger hvor de gaar, og hvad der renses', () => {
+  for (const f of ['README.md', 'mcp-server/README.md']) {
+    const md = readFileSync(join(rod, f), 'utf8').replace(/\s+/g, ' ');
+    assert.match(md, /returns its report to your AI client like any other tool result/, `${f}: rapporten til AI-klienten mangler`);
+    assert.match(md, /In the three things the agent wrote \(what happened, what it tried, what worked\), email addresses and numbers of six or more characters are replaced/, `${f}: rensningen er ikke afgraenset til de tre felter`);
+    assert.match(md, /the page address is only cut to origin and path/, `${f}: adressen renses ikke - det skal staa`);
+    assert.match(md, /Opening the link sends its contents to GitHub; an issue is created only when you submit it/, `${f}: linket sender indholdet til GitHub ved aabning`);
+    assert.doesNotMatch(md, /Nothing is sent or posted unless/i, `${f}: loefter at intet sendes`);
+  }
+});
+
+test('instruksen beder agenten skrive worked, naar en anden vej virkede', () => {
+  assert.match(kilde, /call \*\*browser_provide_feedback\*\* with what_happened, and with worked if another route did work in the end\./);
 });

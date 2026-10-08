@@ -54,8 +54,11 @@ const LOEFTER = [
   // 8/10 (skive 12): forsidens FAQ og kapabilitets-siden lovede at afkrydsningsfeltet «often enough» virker, naar man er
   // logget ind hos Google - aldrig maalt. Installationssiderne lod trinene kaede af sig selv («hands the challenge to you
   // if it cannot»); koden goer intet af sig selv - agenten vaelger hvert trin, ét kald ad gangen.
-  [/often (enough|passes)[^.\n]{0,60}signed in/i, 'umaalt CAPTCHA-loefte'],
-  [/hands? (the challenge|it) to you if (it|they) (cannot|can't)|if the first two miss/i, 'CAPTCHA-trin der kaeder af sig selv'],
+  [/often (enough|passes|clears)[^.\n]{0,60}signed in/i, 'umaalt CAPTCHA-loefte'],
+  // R47 (Opus): «then hands the challenge to you.» uden «if it cannot», og «each one kicking in when the last fails» slap igennem.
+  [/hands? (the challenge|it) to you if (it|they) (cannot|can't)|if the first two miss|\bthen (hands|shows) (the challenge|it) to you\b|kicking in when the last fails/i, 'CAPTCHA-trin der kaeder af sig selv'],
+  // R47 (Astra): Cursor-siden sagde «The challenge stays in your browser» - et skaermbillede til grid-cellerne gaar til AI-klienten.
+  [/challenge stays in your browser/i, 'CAPTCHA-billedet bliver i browseren'],
   // MAALT 13/9 af Astra og Fable i den faelles runde: "genstart, saa bliver ikonet groent" var falsk fra 1.29.0,
   // hvor serveren begyndte at tage sin port ved foerste browserkald i stedet for ved opstart. Jeg rettede den i
   // haanden 13 steder - og missede tre, fordi jeg soegte paa "turns green" og ikke paa "goes green". De tre stod
@@ -141,6 +144,11 @@ test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   assert.ok(regel('umaalt CAPTCHA-loefte').test('`click_checkbox` (auto-click, often passes when signed into Google)'));
   assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('attempts the checkbox, then hands the challenge to you if it cannot.'));
   assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('shows you the challenge to solve by hand if the first two miss'));
+  assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('Cursor and CAPTCHAs: it tries, then hands it to you'));
+  assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('Attempts the checkbox challenge, then shows it to you to finish'));
+  assert.ok(regel('CAPTCHA-trin der kaeder af sig selv').test('three layers, each one kicking in when the last fails'));
+  assert.ok(regel('umaalt CAPTCHA-loefte').test('it often clears it when you are signed in to Google'));
+  assert.ok(regel('CAPTCHA-billedet bliver i browseren').test('The challenge stays in your browser.'));
   assert.ok(regel('intet forlader maskinen').test('the one thing that matters most: nothing it reads ever leaves your machine'), 'ord imellem maa ikke skjule loeftet');
   assert.ok(regel('sender aldrig data nogen steder').test('never sends your browsing data anywhere'));
   assert.ok(FORKERTE_TAL[0][0].test('Restart Claude Code - 29 browser tools are now available'));
@@ -260,4 +268,16 @@ test('citerede vaerktoejssvar paa siderne findes ogsaa i koden', () => {
     }
   }
   assert.deepEqual(fund, [], `citater der ikke findes i koden:\n  ${fund.join('\n  ')}`);
+});
+
+// R47 (Opus): detect-svarene i koden lovede «Real Chrome with Google login usually passes automatically. No action needed» -
+// samme umaalte loefte som siderne mistede i 538daa7, men i det agenten laeser. background.js ligger uden for STIER
+// (dens danske kommentarer ville vaelte tankestregs-reglen), saa dens strenge tjekkes her for sig.
+test('udvidelsens svar til agenten lover ikke at Chrome klarer en CAPTCHA af sig selv', () => {
+  const bg = readFileSync(join(rod, 'extension/background.js'), 'utf8');
+  const strenge = bg.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l));
+  for (const re of [/usually passes/i, /passes automatically/i, /No action needed/i, /often (enough|passes|clears)[^.\n]{0,60}signed in/i]) {
+    const fund = strenge.filter((l) => re.test(l));
+    assert.equal(fund.length, 0, `background.js lover stadig: ${fund.join(' | ')}`);
+  }
 });

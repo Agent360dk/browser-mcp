@@ -1096,11 +1096,25 @@ const setteFingeraftryk = new Set();   // samme graense logges én gang pr. serv
 // 1.30.2 skive 5 (Gustavs ja, T25 punkt 2): tal og e-mailadresser fjernes fra fritekstfelterne, foer de skrives -
 // i logbogen og i issue-linket. Samme regel og samme loft som computer-mcp's rensLaering (mcp-server/index.js der),
 // saa de to vaerktoejers logboeger kan laeses ens. Linjeskift bevares (dér afviger vi): issue-titlen er foerste linje.
+// R47 (Astra, MAALT): .slice() taeller UTF-16-enheder. En emoji paa graensen blev skaaret midt over, og den enlige halvdel
+// fik encodeURIComponent til at kaste «URI malformed», FOER logbogen blev skrevet - rapporten forsvandt. Hele tegn her.
+function skaerTegn(t, n) {
+  return Array.from(String(t)).slice(0, n).join('');
+}
+
 function rensFritekst(t, loft = 600) {
-  return String(t ?? '').replace(/[^\S\n]+/g, ' ').trim()
-    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]')
-    .replace(/\+?\d[\d ,.\-]{4,}\d/g, '[number]')
-    .slice(0, loft);
+  // R47 (Opus, MAALT): 200.000 tegn uden @ tog 28 s i e-mail-udtrykket med serveren laast. Skaer foerst ned til 4 x loftet.
+  const s = String(t ?? '').slice(0, loft * 4).toWellFormed().replace(/[^\S\n]+/g, ' ').trim()
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]');
+  // R47 (begge): et tal delt af et linjeskift («12 34\n56 78») slap igennem. Tallene findes i en kopi med mellemrum i
+  // stedet for linjeskift - samme laengde - og maskeres de samme steder i originalen, saa linjeskiftene ellers bevares.
+  const flad = s.replace(/\n/g, ' ');
+  let ud = '', fra = 0;
+  for (const m of flad.matchAll(/\+?\d[\d ,.\-]{4,}\d/g)) {
+    ud += s.slice(fra, m.index) + '[number]';
+    fra = m.index + m[0].length;
+  }
+  return skaerTegn(ud + s.slice(fra), loft);
 }
 
 function fingeraftryk(kind, tool, what) {
@@ -1270,9 +1284,10 @@ async function handleProvideFeedback(args) {
   const template = kind === 'wish' ? ISSUE_TEMPLATES.wish
                  : kind === 'use_case' ? ISSUE_TEMPLATES.use_case
                  : ISSUE_TEMPLATES.bug;
-  const issueTitle = what.split('\n')[0].slice(0, 90) || 'Browser MCP feedback';
+  const issueTitle = skaerTegn(what.split('\n')[0], 90) || 'Browser MCP feedback';
   const submit_url = `${REPO_URL}/issues/new?template=${template}` +
-    `&title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
+    // toWellFormed: ogsaa en enlig halvdel i tool eller url maa ikke faa linket til at kaste (R47).
+    `&title=${encodeURIComponent(issueTitle.toWellFormed())}&body=${encodeURIComponent(issueBody.toWellFormed())}`;
 
   const instruction =
     verdict === 'idle'
