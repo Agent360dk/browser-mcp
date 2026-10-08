@@ -240,8 +240,12 @@ test('manifestets korte beskrivelse siger «the Chrome you\'re signed into», ik
 // 1.30.2 skive 11 (F9): docs/ serveres som browsermcp.dev. Tre interne noter (butikstekst-revision, opsaetning af
 // butiksudgivelse, en performance-maaling) laa der og blev serveret med status 200. De ligger nu i noter/.
 test('docs/ indeholder ingen interne noter, kun den genererede llms-install.md', () => {
-  const md = readdirSync(join(rod, 'docs')).filter((f) => f.endsWith('.md'));
-  assert.deepEqual(md, ['llms-install.md'], `markdown i docs/ bliver serveret offentligt: ${md.join(', ')}`);
+  // R56 (Astra): kun docs/ selv blev laest - en note i docs/internal/ slap igennem. Hele traeet gennemgaas.
+  const md = [];
+  const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
+    if (e.isDirectory()) gaa(join(d, e.name)); else if (/\.(md|markdown)$/i.test(e.name)) md.push(join(d, e.name).split('\\').join('/')); } };
+  gaa('docs');
+  assert.deepEqual(md, ['docs/llms-install.md'], `markdown i docs/ bliver serveret offentligt: ${md.join(', ')}`);
   for (const f of ['CWS_LISTING_TEXT.md', 'CWS_PUBLISH_SETUP.md', 'PERFORMANCE-2026-09-08.md']) {
     assert.ok(existsSync(join(rod, 'noter', f)), `noter/${f} mangler - en henvisning peger paa en fil der ikke findes`);
   }
@@ -259,7 +263,9 @@ test('css og js hentes med en cachenoegle, der passer til filens indhold', async
   let set = 0;
   for (const s of sider) {
     const t = readFileSync(join(rod, s), 'utf8');
-    for (const m of t.matchAll(/\/assets\/(docs\.(?:css|js))(\?v=([0-9a-f]+))?"/g)) {
+    // R56 (Astra): enkelte anfoerselstegn og en noegle uden for [0-9a-f] (?v=old) slap igennem. Find hver henvisning
+    // foerst, uanset form, og tjek saa noeglen.
+    for (const m of t.matchAll(/\/assets\/(docs\.(?:css|js))(\?v=([^"'\s>]*))?["'\s>]/g)) {
       set++;
       assert.equal(m[3], v[m[1]], `${s}: ${m[1]} hentes ${m[2] ? 'med en foraeldet noegle' : 'uden noegle'} - koer scripts/generate-docs.py`);
     }

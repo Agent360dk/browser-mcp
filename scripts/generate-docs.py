@@ -16,6 +16,20 @@ def _noegle(navn):
     return hashlib.sha256(open(os.path.join(REPO, 'assets', navn), 'rb').read()).hexdigest()[:8]
 CSS_V = _noegle('docs.css')
 JS_V = _noegle('docs.js')
+
+# De haandskrevne sider (privacy, 404) faar samme noegle, saa de ikke halter efter de genererede. R56 (Astra, MAALT):
+# det skal ske FOER sitemappet beregnes - ellers saa sitemappet foerst privacy-sidens nye dato ved naeste koersel, og en
+# CSS-aendring kraevede to genereringer. Enhver noegle og begge slags anfoerselstegn erstattes (R56: '...' og ?v=old slap).
+def _saet_noegle(t):
+    for navn, v in (('css', CSS_V), ('js', JS_V)):
+        t = re.sub(r'/assets/docs\.%s(\?v=[^"\'\s>]*)?(["\'])' % navn, lambda m, v=v, navn=navn: '/assets/docs.%s?v=%s%s' % (navn, v, m.group(2)), t)
+    return t
+for _haand in ('privacy.html', '404.html'):
+    _sti = REPO + _haand
+    _t = open(_sti, encoding='utf-8').read()
+    _ny = _saet_noegle(_t)
+    if _ny != _t:
+        open(_sti, 'w', encoding='utf-8').write(_ny)
 DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources
 OG='https://browsermcp.dev/og-image.jpg'
 PAGES=[
@@ -552,13 +566,5 @@ print('  sitemap.xml: %d adresser, lastmod fra sidste commit (%d noindex holdt u
 
 _llms_kilde = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'llms-install.md')
 open(REPO + 'llms-install.md', 'w').write(open(_llms_kilde).read())
-# De haandskrevne sider (privacy, 404) faar samme noegle, saa de ikke halter efter de genererede.
-for _haand in ('privacy.html', '404.html'):
-    _sti = REPO + _haand
-    _t = open(_sti, encoding='utf-8').read()
-    _ny = re.sub(r'/assets/docs\.css(\?v=[0-9a-f]+)?"', '/assets/docs.css?v=%s"' % CSS_V, _t)
-    _ny = re.sub(r'/assets/docs\.js(\?v=[0-9a-f]+)?"', '/assets/docs.js?v=%s"' % JS_V, _ny)
-    if _ny != _t:
-        open(_sti, 'w', encoding='utf-8').write(_ny)
 print('Regenerated %d pages · FAQPage schema on %d' % (len(LIVE), nfaq))
 
