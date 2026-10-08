@@ -246,3 +246,23 @@ test('docs/ indeholder ingen interne noter, kun den genererede llms-install.md',
     assert.ok(existsSync(join(rod, 'noter', f)), `noter/${f} mangler - en henvisning peger paa en fil der ikke findes`);
   }
 });
+
+// 1.30.2 skive 13 (D3): hver side, der henter docs.css eller docs.js, bruger den noegle, filens indhold giver.
+test('css og js hentes med en cachenoegle, der passer til filens indhold', async () => {
+  const { createHash } = await import('node:crypto');
+  const noegle = (f) => createHash('sha256').update(readFileSync(join(rod, 'docs/assets', f))).digest('hex').slice(0, 8);
+  const v = { 'docs.css': noegle('docs.css'), 'docs.js': noegle('docs.js') };
+  const sider = [];
+  const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
+    if (e.isDirectory()) gaa(join(d, e.name)); else if (e.name.endsWith('.html')) sider.push(join(d, e.name)); } };
+  gaa('docs');
+  let set = 0;
+  for (const s of sider) {
+    const t = readFileSync(join(rod, s), 'utf8');
+    for (const m of t.matchAll(/\/assets\/(docs\.(?:css|js))(\?v=([0-9a-f]+))?"/g)) {
+      set++;
+      assert.equal(m[3], v[m[1]], `${s}: ${m[1]} hentes ${m[2] ? 'med en foraeldet noegle' : 'uden noegle'} - koer scripts/generate-docs.py`);
+    }
+  }
+  assert.ok(set >= 80, `kun ${set} henvisninger til docs.css/docs.js fundet - proeven maaler ikke det den skal`);
+});

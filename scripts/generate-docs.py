@@ -7,6 +7,15 @@
 import re, html, os, json, datetime, pathlib, subprocess
 
 REPO=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','docs')+os.sep  # site root (build output)
+
+# 1.30.2 skive 13 (D3): css/js havde ingen cachenoegle - Cloudflare holder dem i 10 min, og en browser kan holde
+# dem laengere, saa en aendret docs.css kunne mode en side, der forventede den gamle. Noeglen er de foerste 8 tegn af
+# filens sha256, saa den skifter praecis naar filen gor, og en regenerering er deterministisk.
+import hashlib
+def _noegle(navn):
+    return hashlib.sha256(open(os.path.join(REPO, 'assets', navn), 'rb').read()).hexdigest()[:8]
+CSS_V = _noegle('docs.css')
+JS_V = _noegle('docs.js')
 DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources
 OG='https://browsermcp.dev/og-image.jpg'
 PAGES=[
@@ -271,7 +280,7 @@ def head(title, desc, url):
       '<meta name="twitter:description" content="%s">'%d,'<meta name="twitter:image" content="%s">'%OG,
       '<meta name="color-scheme" content="light dark">',
       '<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">',
-      '<link rel="stylesheet" href="/assets/docs.css">']
+      '<link rel="stylesheet" href="/assets/docs.css?v=%s">' % CSS_V]
     return '\n'.join(h)
 
 # Datoer til TechArticle og sitemap udledes af kildefilens historik. Uden dem skrev
@@ -486,7 +495,7 @@ for fn,grp,label,url in LIVE:
     # 2/10-2026: samme header som den nye forside (rigtigt logo, skip-link, <main id>, navigation med aria-label).
     page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star" href="https://github.com/Agent360dk/browser-mcp">GitHub</a></nav></div></header>'
     page+='<div class="shell"><main class="content" id="main">'+body+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
-    page+='<script src="/assets/docs.js"></script></body></html>'
+    page+='<script src="/assets/docs.js?v=%s"></script></body></html>' % JS_V
     disk=REPO+url.strip('/')+'/index.html'
     os.makedirs(os.path.dirname(disk),exist_ok=True)
     open(disk,'w').write(page)
@@ -543,5 +552,13 @@ print('  sitemap.xml: %d adresser, lastmod fra sidste commit (%d noindex holdt u
 
 _llms_kilde = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'llms-install.md')
 open(REPO + 'llms-install.md', 'w').write(open(_llms_kilde).read())
+# De haandskrevne sider (privacy, 404) faar samme noegle, saa de ikke halter efter de genererede.
+for _haand in ('privacy.html', '404.html'):
+    _sti = REPO + _haand
+    _t = open(_sti, encoding='utf-8').read()
+    _ny = re.sub(r'/assets/docs\.css(\?v=[0-9a-f]+)?"', '/assets/docs.css?v=%s"' % CSS_V, _t)
+    _ny = re.sub(r'/assets/docs\.js(\?v=[0-9a-f]+)?"', '/assets/docs.js?v=%s"' % JS_V, _ny)
+    if _ny != _t:
+        open(_sti, 'w', encoding='utf-8').write(_ny)
 print('Regenerated %d pages · FAQPage schema on %d' % (len(LIVE), nfaq))
 
