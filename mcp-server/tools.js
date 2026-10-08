@@ -442,11 +442,11 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_token',
-    description: 'Navigate to a provider\'s API settings page so you can read its API token from the page.',
+    description: 'Open a known provider\'s API page (stripe, hubspot, slack, shopify, mailchimp, pipedrive, calendly, google, linkedin) and get instructions for finding or creating its API credentials there. It reads nothing itself: read the page with browser_get_page_content or browser_screenshot afterwards. For HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token. Any other provider answers Unknown provider; use browser_navigate and read the page yourself.',
     inputSchema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', description: 'Provider slug (stripe, hubspot, slack, etc.)' },
+        provider: { type: 'string', description: 'One of: stripe, hubspot, slack, shopify, mailchimp, pipedrive, calendly, google, linkedin' },
       },
       required: ['provider'],
     },

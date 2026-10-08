@@ -78,7 +78,7 @@ The list below is what the client has to choose from.
 |---|---|
 | `browser_fetch` | Make an HTTP request from the extension background - not subject to page CORS/CSP. |
 | `browser_wait_for_network` | Wait for a network request matching a URL substring to complete, via Chrome DevTools Protocol. |
-| `browser_extract_token` | Extract an API token from any provider's account-settings page; ships zero-config shortcuts (known URL + extraction hint) for 9 common providers (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - any other provider still works via manual navigate + read. It opens the settings page and tells the agent where the token is; the agent then reads it with `browser_get_page_content`. |
+| `browser_extract_token` | Opens a known provider's API page and returns instructions for finding or creating the credentials there, for 9 providers (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn). It reads nothing itself; the agent then reads the page with `browser_get_page_content`. For HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token. Any other provider answers `Unknown provider`; the agent can still navigate and read the page itself. |
 
 ## CAPTCHA - 1 tool
 

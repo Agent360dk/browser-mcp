@@ -578,3 +578,18 @@ test('ingen af de omdoebte felt- og fejlnavne fra 1.30.0 staar i det agenten lae
   const fund = [...gamle].filter(n => new RegExp(`(^|[^A-Za-z0-9_-])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_-])`).test(agenttekst));
   assert.deepEqual(fund, [], `gamle navne fra foer 1.30.0 i det agenten laeser: ${fund.join(', ')}`);
 });
+
+// 8/10 (agent360.dk-panelet, Astra + Opus, efterproevet i koden): beskrivelsen lovede «read its API token from the page».
+// Vaerktoejet navigerer og returnerer en instruktion; hos 4 af 9 er siden en indstillings- eller app-liste, og en ukendt
+// udbyder svarer kun «Unknown provider». Teksten skal sige netop det - og nævne hver udbyder, koden kender.
+test('extract_token beskriver de udbydere og sider, koden faktisk har', async () => {
+  const { TOOLS, PROVIDER_PAGES } = await import('../mcp-server/tools.js');
+  const t = TOOLS.find((x) => x.name === 'browser_extract_token');
+  for (const p of Object.keys(PROVIDER_PAGES)) assert.match(t.description, new RegExp(`\\b${p}\\b`), `udbyderen ${p} mangler i beskrivelsen`);
+  assert.match(t.description, /reads nothing itself/, 'beskrivelsen lover at vaerktoejet laeser tokenet');
+  assert.match(t.description, /Unknown provider/, 'en ukendt udbyder er ikke beskrevet');
+  const etTrinFoer = Object.entries(PROVIDER_PAGES).filter(([, v]) => !/apikeys|account\/api|settings\/api|api_webhooks|apis\/credentials/.test(v.url)).map(([k]) => k);
+  assert.deepEqual(etTrinFoer.sort(), ['hubspot', 'linkedin', 'shopify', 'slack'], 'listen over sider et trin foer tokenet passer ikke laengere med koden');
+  assert.match(t.description, /HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token/);
+  assert.doesNotMatch(t.description, /read its API token from the page/);
+});
