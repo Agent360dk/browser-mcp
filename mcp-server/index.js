@@ -685,11 +685,11 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 browser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:
 1. Call browser_solve_captcha() - detects the CAPTCHA type on the page
 2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action="click_checkbox") - tries the checkbox and detects again
-3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
+3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7], grid=3) with the correct cell indices and the grid size you see
 4. If that does not clear it → call browser_ask_user and let the user solve it (action="ask_human" only returns that message)
 5. After solving, retry the action that was blocked
 
-For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. click_grid reads the grid as 4x4 only when an index is 9 or higher; with lower indices it reads it as 3x3.
+For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher.
 
 ## OAuth popups
 - OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group

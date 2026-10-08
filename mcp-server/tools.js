@@ -457,11 +457,16 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['detect', 'click_checkbox', 'click_grid', 'ask_human'], description: 'Action to take. "detect" scans for CAPTCHAs. "click_checkbox" clicks the reCAPTCHA checkbox. "click_grid" clicks specific reCAPTCHA grid cells (pass cells param). "ask_human" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: "detect"' },
+        action: { type: 'string', enum: ['detect', 'click_checkbox', 'click_grid', 'ask_human'], description: 'Action to take. "detect" scans for CAPTCHAs. "click_checkbox" clicks the reCAPTCHA checkbox. "click_grid" clicks specific reCAPTCHA grid cells (pass cells, and grid 3 or 4). "ask_human" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: "detect"' },
         cells: {
           type: 'array',
           items: { type: 'number' },
-          description: 'Grid cell indices to click (0-indexed, left-to-right, top-to-bottom) for image challenges. E.g. [2, 5, 7] to click cells 3, 6, 8. The grid is read as 4x4 only when an index is 9 or higher; with lower indices it is read as 3x3.',
+          description: 'Grid cell indices to click (0-indexed, left-to-right, top-to-bottom) for image challenges. E.g. [2, 5, 7] to click cells 3, 6, 8. Pass grid to say which grid you see; without it, the grid is read as 4x4 only when an index is 9 or higher.',
+        },
+        grid: {
+          type: 'number',
+          enum: [3, 4],
+          description: 'For click_grid: the size of the reCAPTCHA image grid in your screenshot, 3 (3x3) or 4 (4x4).',
         },
       },
     },

@@ -5333,7 +5333,7 @@ async function dispatch(port, method, params) {
       if (action === 'click_grid') {
         const cells = params.cells || [];
         if (!cells.length) return { error: 'No cells specified' };
-        const result = await clickCaptchaGridCells(tab.id, cells);
+        const result = await clickCaptchaGridCells(tab.id, cells, params.grid);
         return result;
       }
 
@@ -5547,7 +5547,12 @@ async function clickRecaptchaCheckbox(tabId) {
   }
 }
 
-async function clickCaptchaGridCells(tabId, cells) {
+async function clickCaptchaGridCells(tabId, cells, grid) {
+  // 8/10 (1.30.2 skive 1b): gitteret blev gaettet ud fra de valgte celler, saa et 4x4-gitter med fx [8]
+  // blev klikket som 3x3. Agenten har lige set udfordringen paa sit skaermbillede og kan sige det selv.
+  if (grid !== undefined && grid !== 3 && grid !== 4) {
+    return { clicked: false, error: `grid must be 3 or 4 (the size of the image grid you see), not ${JSON.stringify(grid)}` };
+  }
   try {
     await debuggerAttach(tabId);
     // Find the challenge iframe position and dimensions
@@ -5571,7 +5576,7 @@ async function clickCaptchaGridCells(tabId, cells) {
     const gridTop = frame.y + 100;
     const gridLeft = frame.x + 14;
     const gridSize = frame.width - 28; // padding on each side
-    const cols = cells.some(c => c >= 9) ? 4 : 3;
+    const cols = grid ?? (cells.some(c => c >= 9) ? 4 : 3);
     const rows = cols;
     const cellSize = gridSize / cols;
 
@@ -5612,6 +5617,7 @@ async function clickCaptchaGridCells(tabId, cells) {
       clicked: true,
       cells: clicked,
       grid: `${cols}x${rows}`,
+      gridFrom: grid ? 'given' : 'guessed from the cell indices; pass grid: 3 or 4 to say which grid you see',
       note: 'Cells clicked. Take a screenshot to verify, then click the "Verify" / "Skip" button if needed.',
     };
   } catch (e) {

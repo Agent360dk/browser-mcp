@@ -364,9 +364,9 @@ test('provide_feedback beskriver logbogen og npm-opslaget som koden goer dem', (
 const KONTRAKT = {
   "lt": "List the tabs this session owns (tabs it opened or adopted): id, URL, title, and each tab's active flag (whether Chrome shows it in front of its window, not which tab this session is working in). Tabs of other sessions are not included.",
   "sc": "Detect CAPTCHAs on the current page and work through them, one action per call. \"detect\" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. \"click_checkbox\" tries the reCAPTCHA checkbox and detects again. \"click_grid\" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. \"ask_human\" returns the message to show the user with browser_ask_user.",
-  "act": "Action to take. \"detect\" scans for CAPTCHAs. \"click_checkbox\" clicks the reCAPTCHA checkbox. \"click_grid\" clicks specific reCAPTCHA grid cells (pass cells param). \"ask_human\" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: \"detect\"",
+  "act": "Action to take. \"detect\" scans for CAPTCHAs. \"click_checkbox\" clicks the reCAPTCHA checkbox. \"click_grid\" clicks specific reCAPTCHA grid cells (pass cells, and grid 3 or 4). \"ask_human\" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: \"detect\"",
   "fbHel": "Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user \"browser-mcp cannot do X\". It first CHECKS THE INSTALL - the connected Chrome extension's version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really \"your copy is outdated\" or \"you have two extensions loaded\" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (not again for a repeat of the same report while the server runs; logged_locally says whether a line was written; the free text is stored as the agent wrote it). With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.",
-  "capt": "## CAPTCHA handling\nbrowser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:\n1. Call browser_solve_captcha() - detects the CAPTCHA type on the page\n2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action=\"click_checkbox\") - tries the checkbox and detects again\n3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action=\"click_grid\", cells=[2,5,7]) with the correct cell indices\n4. If that does not clear it → call browser_ask_user and let the user solve it (action=\"ask_human\" only returns that message)\n5. After solving, retry the action that was blocked\n\nFor image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. click_grid reads the grid as 4x4 only when an index is 9 or higher; with lower indices it reads it as 3x3."
+  "capt": "## CAPTCHA handling\nbrowser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:\n1. Call browser_solve_captcha() - detects the CAPTCHA type on the page\n2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action=\"click_checkbox\") - tries the checkbox and detects again\n3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action=\"click_grid\", cells=[2,5,7], grid=3) with the correct cell indices and the grid size you see\n4. If that does not clear it → call browser_ask_user and let the user solve it (action=\"ask_human\" only returns that message)\n5. After solving, retry the action that was blocked\n\nFor image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher."
 };
 test('de godkendte beskrivelser og CAPTCHA-instruksen staar ordret som gennemgaaet', () => {
   const sc = TOOLS.find(t => t.name === 'browser_solve_captcha');
@@ -414,15 +414,15 @@ test('list_tabs returnerer sessionens egne faner med Chromes active, og spoerger
 });
 
 test('solve_captcha koerer praecis den valgte handling og viser intet ved ask_human', async () => {
-  const koer = async (action, cells = [0]) => {
+  const koer = async (action, cells = [0], grid) => {
     const kald = [];
     const h = new AsyncFunction('getSessionTab', 'port', 'params', 'detectCaptcha', 'clickRecaptchaCheckbox', 'clickCaptchaGridCells', 'setTimeout', 'dispatch', 'chrome',
       `switch ('solve_captcha') { ${caseBlok(bgSrc, 'solve_captcha')} }`);
-    const params = action === undefined ? {} : { action, cells };
+    const params = action === undefined ? {} : { action, cells, ...(grid === undefined ? {} : { grid }) };
     const svar = await h(async () => ({ id: 11 }), 9876, params,
       async () => { kald.push('detect'); return { found: true }; },
       async () => { kald.push('checkbox'); return { clicked: true }; },
-      async (tabId, valgte) => { kald.push('grid:' + tabId + ':' + JSON.stringify(valgte)); return { clicked: true }; },
+      async (tabId, valgte, g) => { kald.push('grid:' + tabId + ':' + JSON.stringify(valgte) + (g === undefined ? '' : ':' + g)); return { clicked: true }; },
       (cb) => cb(),
       async (_p, metode) => { kald.push('dispatch:' + metode); return {}; },
       new Proxy({}, { get: () => { kald.push('chrome'); return new Proxy(() => {}, { get: () => () => {} }); } }));
@@ -432,18 +432,51 @@ test('solve_captcha koerer praecis den valgte handling og viser intet ved ask_hu
   assert.deepEqual((await koer('detect')).kald, ['detect']);
   assert.deepEqual((await koer('click_checkbox')).kald, ['checkbox', 'detect'], 'click_checkbox tjekker igen bagefter, som teksten siger');
   assert.deepEqual((await koer('click_grid', [3, 7])).kald, ['grid:11:[3,7]'], 'click_grid sender de valgte celler uaendret til hjaelperen, paa sessionens fane');
+  assert.deepEqual((await koer('click_grid', [8], 4)).kald, ['grid:11:[8]:4'], 'click_grid sender agentens gitterstoerrelse videre');
   const menneske = await koer('ask_human');
   assert.deepEqual(menneske.kald, [], 'ask_human kalder intet - den viser ikke selv noget');
   assert.equal(menneske.svar.method, 'human');
   assert.match(menneske.svar.instructions, /browser_ask_user/, 'den returnerer beskeden til browser_ask_user');
 });
 
-test('click_grid laeser gitteret som 4x4 kun ved et indeks paa 9 eller mere, som parameterteksten siger', () => {
-  const krop = helFunktion(bgSrc, 'clickCaptchaGridCells');
-  assert.match(krop, /const cols = cells\.some\(c => c >= 9\) \? 4 : 3;/, 'aendres reglen, skal cells-teksten i tools.js og kontrakten foelge med');
-  const cells = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties.cells.description;
-  assert.match(cells, /4x4 only when an index is 9 or higher/);
+test('click_grid bruger agentens gitterstoerrelse, og gaetter kun naar den mangler', async () => {
+  // 8/10 (1.30.2 skive 1b, fundet af Astra R33): et 4x4-gitter med kun [8] blev klikket som 3x3.
+  const vm = await import('node:vm');
+  const koer = async (cells, grid) => {
+    const klik = [];
+    const frame = { x: 100, y: 200, width: 428, height: 600 };
+    const ctx = {
+      debuggerAttach: async () => {}, debuggerDetach: async () => {},
+      cdpSend: async (_id, metode, args) => {
+        if (metode === 'Runtime.evaluate') return { result: { value: JSON.stringify({ found: true, ...frame }) } };
+        klik.push({ metode, ...args }); return {};
+      },
+      dispatchTaalmodigt: async () => {},
+      setTimeout: (cb) => cb(), Math: Object.assign(Object.create(Math), { random: () => 0.5 }), JSON,
+    };
+    vm.createContext(ctx);
+    vm.runInContext(helFunktion(bgSrc, 'clickCaptchaGridCells') + '\nthis.koer = clickCaptchaGridCells;', ctx);
+    return ctx.koer(11, cells, grid);
+  };
+  const gaet = await koer([8]);
+  assert.equal(gaet.grid, '3x3'); assert.deepEqual([gaet.cells[0].row, gaet.cells[0].col], [2, 2]);
+  assert.match(gaet.gridFrom, /guessed/, 'svaret siger at gitteret er gaettet');
+  const ni = await koer([9]);
+  assert.equal(ni.grid, '4x4', 'uden grid gaettes 4x4 netop naar et indeks er 9 eller mere (som teksten siger)');
+  assert.deepEqual([ni.cells[0].row, ni.cells[0].col], [2, 1]);
+  const fire = await koer([8], 4);
+  assert.equal(fire.grid, '4x4', 'grid: 4 vinder over gaetteriet');
+  assert.deepEqual([fire.cells[0].row, fire.cells[0].col], [2, 0], 'celle 8 i et 4x4-gitter er raekke 2, kolonne 0');
+  assert.equal(fire.gridFrom, 'given');
+  const tre = await koer([12], 3);
+  assert.equal(tre.clicked, false, 'grid: 3 med indeks 12 er uden for gitteret');
+  const forkert = await koer([0], 5);
+  assert.equal(forkert.clicked, false); assert.match(forkert.error, /grid must be 3 or 4/);
+  const props = TOOLS.find(t => t.name === 'browser_solve_captcha').inputSchema.properties;
+  assert.deepEqual(props.grid.enum, [3, 4], 'skemaet tillader kun 3 og 4');
+  assert.match(props.cells.description, /Pass grid to say which grid you see; without it, the grid is read as 4x4 only when an index is 9 or higher/);
 });
+
 
 test('BROWSER_MCP_CHECK_NPM taendes kun af vaerdien 1', () => {
   const linje = indexSrc.match(/^const TJEK_NPM = [^\n]+$/m);
