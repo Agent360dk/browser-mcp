@@ -5273,9 +5273,13 @@ async function dispatch(port, method, params) {
 
     case 'fetch': {
       // HTTP requests from background — NOT subject to CORS
+      // R55 (Opus, MAALT i Chrome): uden credentials:'omit' bar kaldet brugerens cookies til enhver https-adresse og
+      // gemte svarets cookies i profilen - uden fane og uden for sessionens sider. Det er netop hvad get_cookies og
+      // set_cookies afviser. Et API-kald bruger et token i headers; brugerens cookies foelger ikke med og gemmes ikke.
       const options = {
         method: params.method || 'GET',
         headers: params.headers || {},
+        credentials: 'omit',
       };
       if (params.body) options.body = typeof params.body === 'string' ? params.body : JSON.stringify(params.body);
       try {

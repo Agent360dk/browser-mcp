@@ -278,7 +278,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_fetch',
-    description: 'Make an HTTPS request from the extension background. It is not subject to the page\'s CORS or CSP, so it works for API calls (Google, Stripe, Slack) where a fetch from the page would be blocked. Plain http works only to 127.0.0.1.',
+    description: 'Make an HTTPS request from the extension background. It is not subject to the page\'s CORS or CSP, so it works for API calls (Google, Stripe, Slack) where a fetch from the page would be blocked. Your browser cookies are not sent and the answer\'s cookies are not stored: pass a token in headers. Plain http works only to 127.0.0.1.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -76,7 +76,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_fetch` | Make an HTTPS request from the extension background - not subject to the page's CORS or CSP. Plain http works only to 127.0.0.1. |
+| `browser_fetch` | Make an HTTPS request from the extension background - not subject to the page's CORS or CSP. Your browser cookies are not sent and the answer's cookies are not stored, so pass a token in headers. Plain http works only to 127.0.0.1. |
 | `browser_wait_for_network` | Wait for a network request matching a URL substring to complete, via Chrome DevTools Protocol. |
 | `browser_extract_token` | Opens a known provider's API page and returns instructions for finding or creating the credentials there, for 9 providers (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn). It reads nothing itself; the agent then reads the page with `browser_get_page_content`. For HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list on the way to the token, not the token page itself. Any other provider answers `Unknown provider`; the agent can still navigate and read the page itself. |
 

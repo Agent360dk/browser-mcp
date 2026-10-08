@@ -638,3 +638,18 @@ test('vaerktoejsnavne slaas kun op blandt methodMap\'s egne noegler', () => {
   assert.match(indexSrc, /const method = Object\.hasOwn\(methodMap, name\) \? methodMap\[name\] : undefined;/);
   assert.doesNotMatch(indexSrc, /const method = methodMap\[name\];/);
 });
+
+// R55 (Opus, MAALT i Chrome): browser_fetch bar brugerens cookies til enhver https-adresse og gemte svarets cookies.
+// Kaldet koeres gennem den rigtige dispatch med en falsk fetch, og optionerne tjekkes.
+test('browser_fetch sender ikke brugerens cookies og gemmer ikke svarets, men agentens headers kommer med', async () => {
+  const { indlaesUdvidelse } = await import('./hjaelp/udvidelses-sele.mjs');
+  const u = indlaesUdvidelse();
+  await u.hent('dispatch')(9876, 'fetch', { url: 'https://api.example/v1/x', headers: { Authorization: 'Bearer t' } });
+  const kald = u.optager.til('fetch');
+  assert.equal(kald.length, 1, 'browser_fetch kaldte ikke fetch');
+  const opts = kald[0].args[1];
+  assert.equal(opts.credentials, 'omit', 'fetch bruger brugerens cookies (credentials er ikke omit)');
+  assert.equal(opts.headers.Authorization, 'Bearer t', 'agentens egne headers kom ikke med');
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  assert.match(TOOLS.find((t) => t.name === 'browser_fetch').description, /Your browser cookies are not sent and the answer's cookies are not stored: pass a token in headers/);
+});

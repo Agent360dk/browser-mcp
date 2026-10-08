@@ -268,7 +268,7 @@ All three are optional. None is needed for normal use.
 ### Data & Network
 | Tool | Description |
 |------|-------------|
-| `browser_fetch` | HTTPS request from the extension (bypasses the page's CORS and CSP); plain http only to 127.0.0.1 |
+| `browser_fetch` | HTTPS request from the extension (bypasses the page's CORS and CSP), without your browser cookies - pass a token in headers; plain http only to 127.0.0.1 |
 | `browser_wait_for_network` | Wait for specific API call to complete |
 | `browser_extract_token` | Open a known provider's API page and get instructions for finding or creating the token there (9 providers, below); it reads nothing itself |
 
