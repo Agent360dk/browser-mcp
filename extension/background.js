@@ -1420,11 +1420,12 @@ async function laesVedhaeftedeFiler(tabId, selector) {
   } catch { return null; }
 }
 
-/** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
 // 1.30.2 skive 6 (maalt i Chromium-kilden 8/10): DOM.setFileInputFiles svarer «Not allowed», naar udvidelsen
 // ikke har «Allow access to file URLs» (content/browser/devtools/protocol/dom_handler.cc; for chrome.debugger er
 // MayReadLocalFiles() = util::AllowFileAccess). Butiksinstallationer har kontakten slaaet fra som standard. Fejlen
 // skal sige det, i stedet for at gentage Chromes to ord, saa agenten ikke proever igen og igen.
+// R45 (Opus): kortet hedder «Agent360 Browser MCP» - browsermcp.io's udvidelse hedder «Browser MCP» og kan vaere installeret
+// samtidig. Og kontakten lader udvidelsen aabne enhver lokal fil som side, saa noten siger prisen, hvis brugeren skal hoere om den.
 async function filAdgangsSvar(besked) {
   if (!/Not allowed/i.test(String(besked || ''))) return null;
   let tilladt = null;
@@ -1435,11 +1436,14 @@ async function filAdgangsSvar(besked) {
     detail: String(besked),
     file_access: tilladt,
     note: (tilladt === false ? 'Chrome refused to hand the file to the page because ' : 'Chrome refused to hand the file to the page; this usually means ') +
-          '"Allow access to file URLs" is off for the Browser MCP extension (chrome://extensions, Browser MCP, Details). ' +
-          'It is off by default for Chrome Web Store installs. Ask the user to attach the file manually, or tell them about that setting.',
+          `"Allow access to file URLs" is off for the Agent360 Browser MCP extension (chrome://extensions/?id=${chrome.runtime?.id}). ` +
+          'It is off by default for Chrome Web Store installs, and browser_upload_file and browser_drop_file fail the same way until it is on. ' +
+          'Ask the user to attach the file. If you tell them about the setting, also tell them that it lets this extension, and so you, ' +
+          'open and read any local file as a page, and that changing it reloads the extension; whether to turn it on is their call.',
   };
 }
 
+/** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
 function fildSvar(vedhaeftet, oenskede, ekstra) {
   if (!vedhaeftet) {
     return { ok: true, ...ekstra, unknown: true,

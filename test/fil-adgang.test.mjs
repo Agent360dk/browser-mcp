@@ -10,7 +10,15 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+const rod = dirname(dirname(fileURLToPath(import.meta.url)));
+
+// Chrome afviser med hele CDP-fejlen som JSON (debugger_api.cc:1208-1209), ikke de to bare ord. R45 (Opus): med de bare
+// ord i selen overlevede en mutant, der kraevede \`=== 'Not allowed'\` - den ville fejle i en rigtig Chrome med groenne proever.
+const cdpFejl = (besked) => JSON.stringify({ code: -32000, message: besked });
 
 function sele({ setFilesFejl = null, filAdgang }) {
   const fane = { id: 1, url: 'https://x.example', windowId: 1, active: false };
@@ -25,7 +33,7 @@ function sele({ setFilesFejl = null, filAdgang }) {
     'debugger.sendCommand': (_m, metode, p) => {
       if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };
       if (metode === 'DOM.querySelector') return { nodeId: 2 };
-      if (metode === 'DOM.setFileInputFiles') { if (setFilesFejl) throw new Error(setFilesFejl); return {}; }
+      if (metode === 'DOM.setFileInputFiles') { if (setFilesFejl) throw new Error(cdpFejl(setFilesFejl)); return {}; }
       if (metode === 'Runtime.evaluate') {
         const udtryk = String(p?.expression || '');
         if (udtryk.includes('found:')) {
@@ -59,6 +67,21 @@ for (const vaerktoej of ['upload_file', 'drop_file']) {
   });
 }
 
+// R45 (Opus): noten pegede paa kortet «Browser MCP». Vores hedder «Agent360 Browser MCP» (manifest.json), og browsermcp.io's
+// udvidelse hedder «Browser MCP» og kan vaere installeret samtidig - saa kunne brugeren give filadgang til den forkerte.
+// Og kontakten lader udvidelsen aabne enhver lokal fil som side: skal brugeren hoere om den, skal prisen med.
+test('noten peger paa vores eget kort og siger prisen ved kontakten', async () => {
+  const u = sele({ setFilesFejl: 'Not allowed', filAdgang: false });
+  const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png'] });
+  const navn = JSON.parse(readFileSync(join(rod, 'extension/manifest.json'), 'utf8')).name;
+  assert.ok(svar.note.includes(`for the ${navn} extension`), `noten naevner ikke kortets navn «${navn}»: ${svar.note}`);
+  assert.ok(svar.note.includes(`chrome://extensions/?id=${u.ctx.chrome.runtime.id})`), 'noten linker ikke direkte til netop denne udvidelse');
+  assert.match(svar.note, /Ask the user to attach the file\./, 'foerste raad skal vaere at brugeren selv vedhaefter filen');
+  assert.match(svar.note, /open and read any local file/, 'noten naevner kontakten uden prisen');
+  assert.match(svar.note, /their call/, 'noten lader ikke valget vaere brugerens');
+  assert.doesNotMatch(svar.note, /turn it on\.|enable it|switch it on/i, 'noten raader til at slaa kontakten til');
+});
+
 test('upload_file: kan Chrome ikke svare paa adgangen, siges det som sandsynligt, ikke som sikkert', async () => {
   const u = sele({ setFilesFejl: 'Not allowed', filAdgang: 'mangler' });
   const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/tmp/a.png'] });
@@ -88,6 +111,8 @@ test('upload_file og drop_file siger paa forhaand at kontakten skal vaere slaaet
     assert.match(d, /Allow access to file URLs/, `${navn} naevner ikke kontakten`);
     assert.match(d, /file-access-off/, `${navn} naevner ikke fejlkoden agenten vil se`);
     assert.match(d, /Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms/, `${navn} lover file-access-off ubetinget - andre fejl kan komme foerst (R45)`);
+    assert.match(d, /for the Agent360 Browser MCP extension/, `${navn} peger paa en udvidelse med konkurrentens navn (R45)`);
+    assert.match(d, /open any local file as a page, so whether to turn it on is the user's call/, `${navn} siger at kontakten skal til, uden prisen (R45)`);
   }
 });
 
@@ -103,7 +128,7 @@ test('drop_file via opfanget filvaelger: «Not allowed» uden filadgang giver fi
     'tabs.get': fane,
     'debugger.sendCommand': (_m, metode) => {
       if (metode === 'Page.setInterceptFileChooserDialog') { opfangerFiler = true; return {}; }
-      if (metode === 'DOM.setFileInputFiles') throw new Error('Not allowed');
+      if (metode === 'DOM.setFileInputFiles') throw new Error(cdpFejl('Not allowed'));
       if (opfangerFiler && (metode === 'Runtime.evaluate' || metode === 'DOM.getDocument' || metode === 'DOM.querySelector')) return new Promise(() => {});
       return {};
     },
