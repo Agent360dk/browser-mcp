@@ -1238,6 +1238,33 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
           'the value - or something was already there.' };
 }
 
+// Why a field cannot take typed text: 'readonly', 'disabled', or null. Checked BEFORE typing.
+// Measured 2026-10-04 on a readonly multi-select search input (Ant Design TreeSelect without
+// showSearch): fill typed, saw nothing land and blamed a background tab - the tab was in front,
+// and switch_tab changed nothing. With no selector it checks the focused element.
+function fieldBlockedExpression(selector) {
+  const el = selector ? `document.querySelector(${JSON.stringify(selector)})` : 'document.activeElement';
+  return `(function() {
+    const el = ${el};
+    if (!el || !('value' in el)) return null;
+    if (el.disabled) return 'disabled';
+    if (el.readOnly) return 'readonly';
+    return null;
+  })()`;
+}
+
+async function fieldBlocked(tabId, selector) {
+  const r = await debuggerEval(tabId, fieldBlockedExpression(selector)).catch(() => null);
+  return r === 'readonly' || r === 'disabled' ? r : null;
+}
+
+function fieldBlockedAnswer(blocked, method) {
+  return { ok: false, method, error: 'field-is-' + blocked,
+    note: `The field is ${blocked === 'readonly' ? 'read-only' : 'disabled'}, so it does not take typed text ` +
+          'and nothing was typed. If it opens a list (select, combobox, multi-select), click it with ' +
+          'browser_click and pick the option, or use browser_select_option / browser_set_combobox.' };
+}
+
 async function debuggerFill(tabId, selector, value) {
   // Check if element is contenteditable (rich text editors: LinkedIn, Slack)
   const isContentEditable = await debuggerEval(tabId, `
@@ -1271,6 +1298,9 @@ async function debuggerFill(tabId, selector, value) {
     })()`).catch(() => null);
     return { value: ceTekst, rammeHoerte: null };
   }
+
+  const blocked = await fieldBlocked(tabId, selector);
+  if (blocked) return { value: null, blocked };
 
   // Standard input/textarea — focus, clear, fill
   await debuggerFocus(tabId, selector);
@@ -3864,6 +3894,8 @@ async function dispatch(port, method, params) {
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         await debuggerClick(tab.id, el.x, el.y);
         await new Promise(r => setTimeout(r, 100));
+        const blocked = await fieldBlocked(tab.id, null);
+        if (blocked) return fieldBlockedAnswer(blocked, 'debugger');
         await debuggerType(tab.id, params.value);
         // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
         // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
@@ -3881,7 +3913,7 @@ async function dispatch(port, method, params) {
         if (efterTekst === '') {
           return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'er i baggrunden, hvor Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
         }
         return { ok: true, method: 'debugger', differs: true, value: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
@@ -3891,6 +3923,7 @@ async function dispatch(port, method, params) {
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
+        if (efterFyld?.blocked) return fieldBlockedAnswer(efterFyld.blocked, 'debugger');
         return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
                         efterFyld?.rammeHoerte);
       } catch (e) {
