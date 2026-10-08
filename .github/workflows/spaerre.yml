@@ -78,7 +78,7 @@ jobs:
 
       # Chrome for Testing er ~150 MB. Uden cache hentes den ved hver koersel.
       - name: cache Chrome for Testing
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: chrome
           key: cft-${{ runner.os }}-${{ runner.arch }}-stable
