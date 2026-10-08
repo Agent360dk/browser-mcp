@@ -103,7 +103,7 @@ class Node {
   }
 }
 
-export function lavDom({ origin = 'https://bank.example' } = {}) {
+export function lavDom({ origin = 'https://bank.example', href = origin + '/side' } = {}) {
   observatoerer = [];
   leveringer = 0;
   class HTMLButtonElement extends Node {}
@@ -136,7 +136,7 @@ export function lavDom({ origin = 'https://bank.example' } = {}) {
   const chrome = { runtime: { sendMessage: (m) => { beskeder.push(JSON.parse(JSON.stringify(m))); return Promise.resolve(); } } };
   const window = { innerWidth: 1280, innerHeight: 800 };
   Object.assign(dom, { document, window, chrome, MutationObserver, HTMLButtonElement, HTMLInputElement,
-    beskeder, global: {}, leveringer: () => leveringer, LOEBSK, location: { origin } });
+    beskeder, global: {}, leveringer: () => leveringer, LOEBSK, location: { origin, href, protocol: new URL(href).protocol } });
   return dom;
 }
 

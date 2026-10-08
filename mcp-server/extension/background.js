@@ -2261,7 +2261,11 @@ let lastAskPosition = null;    // where the user last dragged the floating card
 function renderAskPrompt(spec, replay) {
   // R51 (Astra): en tegning, der allerede var planlagt, kunne lande paa et dokument fra et andet origin. En prompt med
   // felter tegnes kun paa det origin, den blev stillet paa.
-  if (spec.origin && location.origin !== spec.origin) return;
+  if (spec.origin) {
+    const her = location.protocol === 'file:' ? 'file://'
+      : (/^https?:$/.test(location.protocol) ? new URL(location.href).origin : null);
+    if (her !== spec.origin) return;
+  }
   // R48 (Astra og Opus, MAALT): siden kunne saette data-closed og saa fjerne prompten, saa den aldrig kom igen, og
   // en falsk vaert med samme data-ask-id fik en gentegning til at springe over. Hvilke prompter vi har tegnet, og om
   // de er lukket, staar nu i udvidelsens egen (ISOLATED) verden, som siden ikke kan se - ikke i DOM'en.
@@ -2410,14 +2414,18 @@ function renderAskPrompt(spec, replay) {
   // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> by script after
   // DOMContentLoaded, and the prompt went with it - the form had posted to a JSON endpoint.
   // Pages that re-render their whole body do the same. Put the prompt back until it is
-  // answered or the background erases it - but at most 20 times. R48 (Opus, MAALT): a page
-  // that removes the prompt every time it comes back made the two observers chase each other,
-  // 633,333 removals in 2 s with the tab frozen. After the 20th the prompt stays gone, and the
-  // background is told, so the agent gets an answer instead of a timeout.
-  let reinserts = 0;
+  // answered or the background erases it - but at most 20 times within 2 s. R48 (Opus, MAALT): a
+  // page that removes the prompt every time it comes back made the two observers chase each
+  // other, 633,333 removals in 2 s with the tab frozen. R51 (Opus, MAALT): a cap over the whole
+  // life of the prompt also stopped a page that only rewrites its body every 300 ms. After the
+  // 21st put-back within 2 s the prompt stays gone, and the background is told.
+  let reinserts = [];
   observer = new MutationObserver(() => {
     if (closed || host.isConnected) return;
-    if (++reinserts > 20) {
+    const nu = Date.now();
+    reinserts = reinserts.filter((t) => nu - t < 2000);
+    reinserts.push(nu);
+    if (reinserts.length > 20) {
       close();
       send({ type: 'ask_user_lost' });
       return;
@@ -2512,8 +2520,15 @@ function eraseAskPrompt(tabId, askId) {
 // foelger med, for et SSO-login skifter netop origin.
 // Kun et http(s)-origin kan baere en binding. R51 (Astra, MAALT): en tom tab.url gav origin null, og saa slog
 // begge kontroller fra, fordi de begyndte med `if (ask.origin && ...)` - et svar fra et fremmed origin blev godtaget.
+// R51 (Opus, MAALT i Chrome): bindingen sammenligner ADRESSENS origin, ikke dokumentets. En side med CSP
+// `sandbox` (fx raw.githubusercontent.com) har et opakt origin, og Chrome saetter sender.origin til "null" - svaret
+// blev tabt, og agenten fik timeout, selvom brugeren havde svaret. En lokal fil faar sin egen binding, "file://".
 function askOrigin(url) {
-  try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.origin : null; } catch { return null; }
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'file:') return 'file://';
+    return /^https?:$/.test(u.protocol) ? u.origin : null;
+  } catch { return null; }
 }
 
 function redrawAskPrompts({ tabId, frameId, url }) {
@@ -2542,7 +2557,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   // Only the prompt we drew, in the tab we drew it in - and for a prompt with fields, on the
   // origin it was asked on - can answer it.
   if (!ask || sender.id !== chrome.runtime.id || sender.tab?.id !== ask.tabId) return;
-  if (ask.spec.hasFields && (!ask.origin || sender.origin !== ask.origin)) return;
+  if (ask.spec.hasFields && (!ask.origin || askOrigin(sender.url) !== ask.origin)) return;
   if (msg.type === 'ask_user_lost') {
     ask.finish({ acknowledged: false, action: 'removed_by_page', values: {} });
     return;
@@ -5545,8 +5560,8 @@ async function dispatch(port, method, params) {
       // noget, saa den stilles ikke (R51).
       const origin = hasFields ? askOrigin(tab.url || tab.pendingUrl) : null;
       if (hasFields && !origin) {
-        throw new Error('browser_ask_user with fields needs the tab to be on a web page (http or https), so the answer ' +
-          'can be tied to that site. Navigate to the page first, or ask without fields.');
+        throw new Error('browser_ask_user with fields needs the tab to be on a web page (http or https) or a local file, ' +
+          'so the answer can be tied to that address. Navigate to the page first, or ask without fields.');
       }
 
       // Activate tab + alert badge

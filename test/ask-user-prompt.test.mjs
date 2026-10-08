@@ -156,3 +156,20 @@ test('the prompt is visible: nothing hides the host or the card (R51, Astra: dis
     }
   }
 });
+
+test('a prompt with fields is drawn on a sandboxed page at its own address (R51, Opus)', () => {
+  const sandbox = tegn(feltSpec({ origin: 'https://raw.example' }), true, lavDom({ origin: 'null', href: 'https://raw.example/notes.txt' }));
+  assert.ok(sandbox.vaert, 'a sandboxed page (location.origin "null") got no prompt');
+  const fil = tegn(feltSpec({ origin: 'file://' }), true, lavDom({ origin: 'null', href: 'file:///Users/x/side.html' }));
+  assert.ok(fil.vaert, 'a local file got no prompt');
+});
+
+test('a page that rewrites its body now and then keeps the prompt (R51, Opus: lost after 6.3 s)', async () => {
+  const { dom, vaert } = tegn();
+  for (let i = 0; i < 25; i++) {
+    vaert.remove();
+    await vent(120);
+    assert.equal(vaert.isConnected, true, `the prompt did not come back after removal ${i + 1}`);
+  }
+  assert.deepEqual(dom.beskeder, [], 'a page that rewrites its body every 120 ms was reported as removing the prompt');
+});

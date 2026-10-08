@@ -52,7 +52,9 @@ async function ask(u, params = {}) {
   return { pending, askId: draw.args[0].askId, tabId: draw.target.tabId, settled: () => settled };
 }
 
-const fromPrompt = (u, tabId, origin) => ({ id: u.chrome.runtime.id, tab: { id: tabId }, origin });
+// Chrome sets sender.url to the frame's address and sender.origin to its origin ('null' for a sandboxed page).
+const fromPrompt = (u, tabId, origin, url = origin && origin !== 'null' ? origin + '/side' : undefined) =>
+  ({ id: u.chrome.runtime.id, tab: { id: tabId }, origin, url });
 
 test('the prompt is drawn in the isolated world and the answer comes back as a message', async () => {
   const u = browser();
@@ -283,4 +285,17 @@ test('the prompt is sent its origin, and an unknown address after a navigation e
   const v = browser({ startUrl: 'https://app.example/' });
   await ask(v);
   assert.equal(draws(v)[0].args[0].origin, null, 'a prompt without fields is not bound');
+});
+
+// R51 (Opus, MAALT i Chrome): paa en side med CSP sandbox er sender.origin "null"; svaret blev tabt, og agenten fik
+// timeout, selvom brugeren havde svaret. Bindingen gaelder adressen.
+test('an answer from a sandboxed page on the right address counts', async () => {
+  const u = browser({ startUrl: 'https://raw.example/notes.txt' });
+  const a = await ask(u, { fields: [{ name: 'code', label: 'Code' }] });
+  const svar = { type: 'ask_user_answer', askId: a.askId, action: 'done', values: { code: '482913' } };
+  await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, 'null', 'https://evil.example/x'));
+  await tick();
+  assert.equal(a.settled(), false, 'a sandboxed page on another address answered');
+  await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, 'null', 'https://raw.example/notes.txt'));
+  assert.deepEqual(plain((await a.pending).values), { code: '482913' }, 'the answer from the sandboxed page was lost');
 });
