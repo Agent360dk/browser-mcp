@@ -531,3 +531,22 @@ test('CAPTCHA-raekkerne i README\'erne og paa /docs/tools har ikke de gamle loef
     assert.match(raekke, /one (step|action) per call/i, `${fil}: raekken siger at trinene koeres ét ad gangen`);
   }
 });
+
+// R43 (Astra): serverens instruktioner navngav felter, svarene ikke har: `faktisk` (fill svarer `actual`),
+// `uvist` (scroll svarer `unknown`) og `vedhaeftet` (upload/drop svarer `attached`). Hvert navn bindes til koden.
+test('de feltnavne instruktionerne beder agenten laese, findes i svarene', () => {
+  const i = indexSrc.indexOf('const INSTRUCTIONS');
+  const instruks = indexSrc.slice(i, indexSrc.indexOf('`;', i));
+  assert.doesNotMatch(instruks, /\b(faktisk|uvist|vedhaeftet)\b/, 'et gammelt dansk feltnavn staar stadig i instruktionen');
+  assert.match(instruks, /browser_fill with differs: true[^\n]*read actual/, 'fill-raadet naevner actual');
+  assert.match(instruks, /browser_scroll uses unknown/, 'scroll-raadet naevner unknown');
+  assert.match(instruks, /also report attached/, 'upload-raadet naevner attached');
+  assert.match(caseBlok(bgSrc, 'scroll'), /\bunknown: true\b/, 'scroll svarer med unknown');
+  assert.match(bgSrc, /attached: vedhaeftet\.navne/, 'upload og drop svarer med attached');
+  // Hver differs-svar i fill (alle grene) har actual, saa raadet kan foelges uanset gren.
+  const fill = caseBlok(bgSrc, 'fill');
+  const differs = [...fill.matchAll(/\{[^{}]*differs: true[^{}]*\}/g)].map(m => m[0]);
+  assert.ok(differs.length >= 1, 'fill har mindst ét differs-svar');
+  for (const o of differs) assert.match(o, /\bactual:/, `et differs-svar i fill mangler actual: ${o.slice(0, 80)}`);
+  assert.doesNotMatch(fill, /`faktisk`/, 'en note i fill peger paa feltet faktisk, som ikke findes');
+});

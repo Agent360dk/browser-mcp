@@ -3877,13 +3877,13 @@ async function dispatch(port, method, params) {
             note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
                   'it landed. Read the field with browser_execute_script if it matters.' };
         }
-        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst };
+        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
         if (efterTekst === '') {
-          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst,
+          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst, actual: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
                   'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
         }
-        return { ok: true, method: 'debugger', differs: true, value: efterTekst,
+        return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
                 'the value - or something was already there.' };
       }
