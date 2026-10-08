@@ -251,10 +251,14 @@ test('ask_user sender kun serialiserbare argumenter til Chrome', () => {
   // ⛔ Her stod `slice(i, i + 20000)` paa en blok der er 8.310 tegn. De sidste ~11.700 tegn
   // var NABO-BLOKKENES kode, saa `args: [...]`-matchet kunne lige saa godt have ramt et
   // andet vaerktoejs argumentliste. Maalt 21/9.
+  // 8/10: argumenterne samles nu i `spec`, som drawAskPrompt sender videre ved hver
+  // tegning (ogsaa efter en navigation) - det er dem der skal vaere serialiserbare.
   const blok = caseBlok(bgSrc, 'ask_user');
-  const m = blok.match(/args: \[([\s\S]*?)\],/);
-  assert.ok(m, 'fandt ikke args-listen i ask_user');
+  const m = blok.match(/const spec = \{([\s\S]*?)\n {6}\};/);
+  assert.ok(m, 'fandt ikke spec-objektet i ask_user');
   const args = m[1];
+  assert.match(bgSrc, /args: \[\{ \.\.\.ask\.spec, position: lastAskPosition \}, Boolean\(replay\)\]/,
+    'drawAskPrompt sender ikke spec videre');
   assert.ok(!/params\.title\s*[,\]]/.test(args), 'params.title sendes raat - undefined braekker hele kaldet');
   assert.ok(!/params\.message\s*[,\]]/.test(args), 'params.message sendes raat - samme faelde');
   assert.match(args, /Agent360 - Action Required/, 'standard-titlen fra skemaet anvendes ikke');

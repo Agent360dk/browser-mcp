@@ -13,25 +13,45 @@ import { ROD } from './hjaelp/udvidelses-sele.mjs';
 import { caseBlok } from './hjaelp/kildeblok.mjs';
 
 const kilde = readFileSync(join(ROD, 'extension/background.js'), 'utf8');
-const blok = caseBlok(kilde, 'ask_user');
+
+// The prompt is drawn by renderAskPrompt (also on every redraw after a navigation), and
+// every executeScript for it goes through drawAskPrompt / eraseAskPrompt.
+function fnBlok(navn) {
+  const i = kilde.indexOf(`function ${navn}(`);
+  assert.ok(i > -1, `${navn} was not found`);
+  return kilde.slice(i, kilde.indexOf('\n}\n', i));
+}
+const blok = fnBlok('renderAskPrompt');
+const injektion = fnBlok('drawAskPrompt') + fnBlok('eraseAskPrompt');
 
 test('ask_user is injected into the isolated world, not the page world', () => {
-  assert.doesNotMatch(blok, /world: 'MAIN'/, 'the prompt runs alongside page scripts again');
-  assert.match(blok, /world: 'ISOLATED'/);
+  assert.doesNotMatch(injektion, /world: 'MAIN'/, 'the prompt runs alongside page scripts again');
+  assert.equal(injektion.match(/world: 'ISOLATED'/g)?.length, 2);
+  assert.doesNotMatch(caseBlok(kilde, 'ask_user'), /executeScript\(/, 'ask_user injects past drawAskPrompt');
 });
 
 test('the prompt lives in a closed shadow root', () => {
   assert.match(blok, /attachShadow\(\{ mode: 'closed' \}\)/);
-  assert.doesNotMatch(blok, /document\.body\.appendChild\(overlay\)/, 'the card is attached to the page DOM directly');
+  assert.doesNotMatch(blok, /document\.body\.appendChild\((overlay|card)\)/, 'the card is attached to the page DOM directly');
 });
 
 test('only trusted events answer the prompt', () => {
-  assert.match(blok, /doneBtn\.addEventListener\('click', \(e\) => \{ if \(e\.isTrusted\)/);
-  assert.match(blok, /skipBtn\.addEventListener\('click', \(e\) => \{ if \(!e\.isTrusted\) return;/);
+  assert.match(blok, /doneBtn\.addEventListener\('click', \(e\) => \{ if \(e\.isTrusted\) answer\('done'\)/);
+  assert.match(blok, /skipBtn\.addEventListener\('click', \(e\) => \{ if \(e\.isTrusted\) answer\('skip'\)/);
   assert.match(blok, /e\.isTrusted && e\.key === 'Enter'/);
+  assert.match(blok, /if \(!e\.isTrusted \|\| e\.button !== 0\) return;/, 'a synthetic pointerdown must not drag the card');
 });
 
 test('keystrokes in the prompt do not bubble out to the page', () => {
   assert.match(blok, /\['keydown', 'keyup', 'keypress', 'input', 'beforeinput'\]/);
   assert.match(blok, /host\.addEventListener\(type, \(e\) => e\.stopPropagation\(\)\)/);
+});
+
+test('a page that wipes its body does not take the prompt with it', () => {
+  // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> after DOMContentLoaded.
+  assert.match(blok, /new MutationObserver\(/);
+  assert.match(blok, /if \(!host\.isConnected\) \(document\.body \|\| document\.documentElement\)\.appendChild\(host\)/);
+  // ...but an answered or erased prompt must stay gone.
+  assert.match(blok, /host\.dataset\.closed = '1';\n\s*host\.remove\(\);/);
+  assert.match(fnBlok('eraseAskPrompt'), /host\.dataset\.closed = '1'; host\.remove\(\);/);
 });
