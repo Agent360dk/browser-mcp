@@ -660,7 +660,8 @@ test('browser_fetch-raekkerne i README og /docs/tools siger https, ingen cookies
     const l = laes(f).split('\n').find((x) => x.startsWith(start));
     assert.ok(l, `${f}: browser_fetch-raekken findes ikke`);
     assert.match(l, /HTTPS request/, `${f}: siger ikke at det er https`);
-    assert.match(l, /cookies/, `${f}: siger ikke noget om cookies`);
+    // R58 (Astra): ordet «cookies» alene lod «with your browser cookies» passere.
+    assert.match(l, /(without your browser cookies \(none are sent, none are stored\)|Your browser cookies are not sent and the answer's cookies are not stored)/, `${f}: siger ikke at cookies hverken sendes eller gemmes`);
     assert.match(l, /plain http (works )?only to 127\.0\.0\.1/i, `${f}: siger ikke at almindelig http kun gaar til 127.0.0.1`);
   }
 });

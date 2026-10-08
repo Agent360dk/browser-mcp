@@ -20,28 +20,17 @@ JS_V = _noegle('docs.js')
 # De haandskrevne sider (privacy, 404) faar samme noegle, saa de ikke halter efter de genererede. R56 (Astra, MAALT):
 # det skal ske FOER sitemappet beregnes - ellers saa sitemappet foerst privacy-sidens nye dato ved naeste koersel, og en
 # CSS-aendring kraevede to genereringer. Enhver noegle og begge slags anfoerselstegn erstattes (R56: '...' og ?v=old slap).
-# R56b (Astra, MAALT): relative adresser (assets/docs.css), en noegle der ikke er foerste parameter
-# (?mode=screen&amp;v=old) og attributter uden anfoerselstegn slap igennem. Hver href/src-attribut afkodes nu, slaas op
-# i forhold til siden, og har den stien /assets/docs.css eller /assets/docs.js, saettes v - de oevrige parametre bliver.
-import urllib.parse as _up
-_ATTR = re.compile(r'''(\b(?:href|src)\s*=\s*)("[^"]*"|'[^']*'|[^\s"'>]+)''', re.I)
-_NOEGLER = {'/assets/docs.css': CSS_V, '/assets/docs.js': JS_V}
-def _saet_noegle(t, side='/'):
-    def erstat(m):
-        raa = m.group(2)
-        q = raa[0] if raa[:1] in '"\'' else ''
-        vaerdi = html.unescape(raa[1:-1] if q else raa)
-        u = _up.urlsplit(_up.urljoin('https://browsermcp.dev' + side, vaerdi))
-        if u.netloc != 'browsermcp.dev' or u.path not in _NOEGLER:
-            return m.group(0)
-        par = [(k, v) for k, v in _up.parse_qsl(u.query, keep_blank_values=True) if k != 'v'] + [('v', _NOEGLER[u.path])]
-        ny = html.escape(u.path + '?' + _up.urlencode(par), quote=True)
-        return m.group(1) + (q or '"') + ny + (q or '"')
-    return _ATTR.sub(erstat, t)
+# R56b/R58 (Astra, MAALT): at fortolke alle taenkelige URL-former (relative, entiteter, <base href>, vaert med store
+# bogstaver, :443, fragmenter) blev et voksende maskineri for to haandskrevne sider. I stedet er der EN kanonisk form,
+# href="/assets/docs.css?v=<noegle>" (og src= for js). Generatoren retter kun den; test/forside.test.mjs afviser enhver
+# anden omtale af de to filer i docs/, saa en afvigende form stopper bygget i stedet for at blive gaettet.
+_KANON = re.compile(r'(?<![\w-])((?:href|src)=")/assets/docs\.(css|js)(?:\?v=[0-9A-Za-z]*)?"')
+def _saet_noegle(t):
+    return _KANON.sub(lambda m: '%s/assets/docs.%s?v=%s"' % (m.group(1), m.group(2), CSS_V if m.group(2) == 'css' else JS_V), t)
 for _haand in ('privacy.html', '404.html'):
     _sti = REPO + _haand
     _t = open(_sti, encoding='utf-8').read()
-    _ny = _saet_noegle(_t, '/' + _haand)
+    _ny = _saet_noegle(_t)
     if _ny != _t:
         open(_sti, 'w', encoding='utf-8').write(_ny)
 DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources

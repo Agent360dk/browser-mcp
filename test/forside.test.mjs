@@ -9,6 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -252,29 +253,42 @@ test('docs/ indeholder ingen interne noter, kun den genererede llms-install.md',
 });
 
 // 1.30.2 skive 13 (D3): hver side, der henter docs.css eller docs.js, bruger den noegle, filens indhold giver.
-test('css og js hentes med en cachenoegle, der passer til filens indhold', async () => {
+test('css og js hentes kun i den kanoniske form med en noegle, der passer til filens indhold', async () => {
   const { createHash } = await import('node:crypto');
   const noegle = (f) => createHash('sha256').update(readFileSync(join(rod, 'docs/assets', f))).digest('hex').slice(0, 8);
-  const v = { 'docs.css': noegle('docs.css'), 'docs.js': noegle('docs.js') };
+  const v = { css: noegle('docs.css'), js: noegle('docs.js') };
+  // R58 (Astra): entiteter (&#47;), <base href>, vaert med store bogstaver, :443, fragmenter og data-href slap igennem en
+  // vagt, der fortolkede URL'er. Nu er der EN tilladt form; hver anden omtale af de to filer er en fejl.
+  const afkod = (x) => x.replace(/&#x([0-9a-f]+);?/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);?/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&sol;/gi, '/').replace(/&period;/gi, '.').replace(/&quot;/gi, '"').replace(/&apos;/gi, "'").replace(/&amp;/gi, '&');
+  const kanon = /(?<![\w-])(?:href|src)="\/assets\/docs\.(css|js)\?v=([0-9a-f]{8})"/g;
   const sider = [];
   const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
     if (e.isDirectory()) gaa(join(d, e.name)); else if (e.name.endsWith('.html')) sider.push(join(d, e.name)); } };
   gaa('docs');
   let set = 0;
-  const afkod = (x) => x.replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"');
   for (const s of sider) {
-    const t = readFileSync(join(rod, s), 'utf8');
-    // R56/R56b (Astra): enkelte anfoerselstegn, ?v=old, relative adresser, v som ikke-foerste parameter og attributter
-    // uden anfoerselstegn slap igennem. Hver href/src afkodes og slaas op i forhold til siden; stien afgoer, ikke teksten.
-    const side = '/' + s.split('\\').join('/').replace(/^docs\//, '');
-    for (const m of t.matchAll(/\b(?:href|src)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)/gi)) {
-      const raa = m[1];
-      const u = new URL(afkod(/^["']/.test(raa) ? raa.slice(1, -1) : raa), 'https://browsermcp.dev' + side);
-      if (u.host !== 'browsermcp.dev' || !/^\/assets\/docs\.(css|js)$/.test(u.pathname)) continue;
+    const raa = readFileSync(join(rod, s), 'utf8');
+    const kanoniske = [...raa.matchAll(kanon)];
+    for (const m of kanoniske) {
       set++;
-      const fil = u.pathname.slice('/assets/'.length);
-      assert.equal(u.searchParams.get('v'), v[fil], `${s}: ${fil} hentes ${u.searchParams.has('v') ? 'med en foraeldet noegle' : 'uden noegle'} (${raa}) - koer scripts/generate-docs.py`);
+      assert.equal(m[2], v[m[1]], `${s}: docs.${m[1]} hentes med en foraeldet noegle (${m[2]}) - koer scripts/generate-docs.py`);
+    }
+    for (const tekst of [raa, afkod(raa)]) {
+      const alle = (tekst.match(/docs\.(css|js)/gi) || []).length;
+      assert.equal(alle, kanoniske.length, `${s}: docs.css/docs.js omtales ${alle} gange, men kun ${kanoniske.length} er i den kanoniske form href="/assets/docs.css?v=<noegle>"`);
     }
   }
-  assert.ok(set >= 80, `kun ${set} henvisninger til docs.css/docs.js fundet - proeven maaler ikke det den skal`);
+  assert.equal(set, 82, `${set} kanoniske henvisninger - 42 sider henter css og 40 js; et andet tal betyder at noget er faldet ud`);
+});
+
+test('generatorens noeglefunktion retter den kanoniske form og intet andet', () => {
+  const kilde = readFileSync(join(rod, 'scripts/generate-docs.py'), 'utf8');
+  const blok = kilde.slice(kilde.indexOf('_KANON = re.compile'), kilde.indexOf("CSS_V if m.group(2) == 'css' else JS_V), t)") + "CSS_V if m.group(2) == 'css' else JS_V), t)".length);
+  const py = `import re\nCSS_V = 'aaaa1111'\nJS_V = 'bbbb2222'\n${blok}\nimport json, sys\nprint(json.dumps([_saet_noegle(x) for x in json.loads(sys.argv[1])]))`;
+  const ind = ['<link href="/assets/docs.css?v=old">', '<script src="/assets/docs.js"></script>', '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">'];
+  const ud = JSON.parse(execFileSync('python3', ['-c', py, JSON.stringify(ind)], { encoding: 'utf8' }));
+  assert.deepEqual(ud, ['<link href="/assets/docs.css?v=aaaa1111">', '<script src="/assets/docs.js?v=bbbb2222"></script>',
+    '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">']);
 });
