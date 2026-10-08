@@ -472,6 +472,16 @@ def _figur(url, grp, body):
     if len(afsnit)<3: return None
     return 'On this page', '<ol class="toc">'+''.join('<li><a href="#%s">%s</a></li>'%(i,html.escape(t)) for i,t in afsnit[:7])+'</ol>'
 
+def installer():
+    # 8/10 (ekspertpanel R1, CRO 4): use case-siderne er hvor soegetrafikken lander, og flere havde ingen vej til
+    # installationen. Samme to trin som forsiden; butikken aabner i ny fane, saa trin 2 bliver staaende.
+    return ('<section class="install2" aria-label="Install"><h2>Install it in two steps</h2><ol>'
+            '<li><b>1</b><div><a class="pill" href="%s" target="_blank" rel="noopener">Add to Chrome, free</a></div></li>'
+            '<li><b>2</b><div><p>Paste this in your terminal, then restart your agent:</p>'
+            '<div class="code"><pre tabindex="0" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</pre><button class="copy">Copy</button></div>'
+            '<p class="alt">Cursor, VS Code, Codex: <code>npx @agent360/browser-mcp install --skip-extension</code>. Other clients: <a href="/docs/install-cursor/">the guides</a>.</p></div></li>'
+            '</ol></section>') % CWS_URL
+
 def subhero(url, grp, body):
     m=re.match(r'\s*(<h1[^>]*>.*?</h1>)\s*(?:<hr>\s*)?(<p>.*?</p>)?', body, re.S)
     if not m: return body
@@ -499,8 +509,8 @@ for fn,grp,label,url in LIVE:
     body=subhero(url,grp,body)
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq,git_datoer(fn))+'\n</head><body>'
     # 2/10-2026: samme header som den nye forside (rigtigt logo, skip-link, <main id>, navigation med aria-label).
-    page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star" href="https://github.com/Agent360dk/browser-mcp">GitHub</a></nav></div></header>'
-    page+='<div class="shell"><main class="content" id="main">'+body+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
+    page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star opt" href="https://github.com/Agent360dk/browser-mcp">GitHub</a><a class="navcta" href="'+CWS_URL+'" target="_blank" rel="noopener">Add to Chrome</a></nav></div></header>'
+    page+='<div class="shell"><main class="content" id="main">'+body+(installer() if url.startswith('/use-cases/') else '')+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
     page+='<script src="/assets/docs.js"></script></body></html>'
     disk=REPO+url.strip('/')+'/index.html'
     os.makedirs(os.path.dirname(disk),exist_ok=True)

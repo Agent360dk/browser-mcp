@@ -78,7 +78,8 @@ if __name__ == '__main__':
     if '--tjek' in sys.argv:
         v = vist(s)
         b = re.search(r'<b data-tal="cws-brugere">([\d,]+)</b>', s); r = re.search(r'<b data-tal="cws-rating">([\d.]+)</b>', s)
-        ok = v[0] == stjerner and v[2] == stjerner and v[1] == npm and b and int(b.group(1).replace(',', '')) == brugere and r and r.group(1) == rating
+        # 8/10: bedoemmelsen (5,0 af 3) er taget ud af siden efter ekspertpanelet; staar den der, skal den passe.
+        ok = v[2] == stjerner and v[1] == npm and b and int(b.group(1).replace(',', '')) == brugere and (r is None or r.group(1) == rating) and (v[0] is None or v[0] == stjerner)
         print(f'side: stjerner {v[0]}/{v[2]}, npm {v[1]}, butik {b.group(1) if b else None}/{r.group(1) if r else None} · kilder: stjerner {stjerner}, npm {npm}, butik {brugere}/{rating} ({antal}) · {"OK" if ok else "AFVIGER"}')
         sys.exit(0 if ok else 1)
     dato = datetime.date.today().strftime('%-d %b %Y')
