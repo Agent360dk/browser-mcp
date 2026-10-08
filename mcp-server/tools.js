@@ -359,7 +359,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_ask_user',
-    description: 'Ask the user to do something or give information. Without fields it shows a small card in the bottom-left corner that the user can drag away while they act on the page (log in, solve a CAPTCHA, give consent); with fields it shows a dialog over the page. The prompt is drawn again after a navigation in the tab, but a prompt with fields ends with action navigated if the tab moves to another origin (another domain, subdomain or port). Returns acknowledged, action (done, skip, timeout, tab_closed, replaced when a newer question in the same tab takes over, navigated, or removed_by_page when the page keeps removing the prompt) and, for done, values. The page cannot read the field values, but it can see the keystrokes, so ask only for secrets that belong to the page the tab is on.',
+    description: 'Ask the user to do something or give information. Without fields it shows a small card in the bottom-left corner that the user can drag away while they act on the page (log in, solve a CAPTCHA, give consent); with fields it shows a dialog over the page. The prompt is drawn again after a navigation in the tab, but a prompt with fields ends with action navigated if the tab moves to another origin (another domain, subdomain or port) or, on a local file, to another file. Returns acknowledged, action (done, skip, timeout, tab_closed, replaced when a newer question in the same tab takes over, navigated, or removed_by_page when the page keeps removing the prompt) and, for done, values. The page cannot read the field values, but it can see the keystrokes, so ask only for secrets that belong to the page the tab is on.',
     inputSchema: {
       type: 'object',
       properties: {

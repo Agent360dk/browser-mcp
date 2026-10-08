@@ -90,7 +90,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_ask_user` | Ask the user to act or answer: without fields, a small card they can drag aside while they act on the page (log in, solve a CAPTCHA); with fields, a dialog over the page. It is drawn again after a navigation in the tab, but a prompt with fields ends if the tab moves to another origin (another domain, subdomain or port). The page can see the keystrokes, so ask only for secrets that belong to that page. |
+| `browser_ask_user` | Ask the user to act or answer: without fields, a small card they can drag aside while they act on the page (log in, solve a CAPTCHA); with fields, a dialog over the page. It is drawn again after a navigation in the tab, but a prompt with fields ends if the tab moves to another origin (another domain, subdomain or port) or, on a local file, to another file. The page can see the keystrokes, so ask only for secrets that belong to that page. |
 
 ## Frequently asked questions
 

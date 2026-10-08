@@ -226,7 +226,8 @@ test('scenen: observer der kaster giver sluttilstanden straks, og reduceret beva
 });
 
 // 1.30.2 skive 19 (Opus R38): manifestets beskrivelse sagde «carries on in the tab you were already signed into» - kan
-// laeses som brugerens EGEN fane; agenten arbejder i sine egne faner i brugerens Chrome. Samme ordlyd som butiksteksten v5.
+// laeses som brugerens EGEN fane; agenten arbejder i sine egne faner i brugerens Chrome. Samme budskab som butiksteksten v5
+// («Your agent works in the Chrome you're already signed into»), ikke ordret samme tekst.
 test('manifestets korte beskrivelse siger «the Chrome you\'re signed into», ikke brugerens egen fane, og holder sig under 132 tegn', () => {
   for (const f of ['extension/manifest.json', 'mcp-server/extension/manifest.json']) {
     const d = JSON.parse(readFileSync(join(rod, f), 'utf8')).description;

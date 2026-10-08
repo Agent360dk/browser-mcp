@@ -623,12 +623,18 @@ test('browser_fetch kan naa https-adresser, og beskrivelsen siger at http kun ga
   for (const f of ['extension/manifest.json', 'mcp-server/extension/manifest.json']) {
     const csp = JSON.parse(readFileSync(join(rod, f), 'utf8')).content_security_policy.extension_pages;
     const connect = (csp.match(/connect-src ([^;]*)/) || [])[1] || '';
-    assert.match(connect, /(^|\s)https:(\s|$)/, `${f}: connect-src mangler https: - browser_fetch kan ikke naa en ekstern API`);
-    assert.doesNotMatch(connect, /(^|\s)(http:|\*)(\s|$)/, `${f}: connect-src aabner for almindelig http eller alt`);
-    assert.match(connect, /http:\/\/127\.0\.0\.1:\*/, `${f}: broen til serveren paa 127.0.0.1 er lukket`);
+    // R54 (Astra): en ekstra navngiven http-vaert («http://bank.test:*») overlevede de enkelte tjek. Hele saettet laases.
+    assert.deepEqual(connect.trim().split(/\s+/).sort(), ["'self'", 'http://127.0.0.1:*', 'https:', 'ws://127.0.0.1:*'].sort(),
+      `${f}: connect-src er ikke praecis 'self', broen til 127.0.0.1 (ws og http) og https: - ${connect}`);
   }
   const { TOOLS } = await import('../mcp-server/tools.js');
   const d = TOOLS.find((t) => t.name === 'browser_fetch').description;
   assert.match(d, /HTTPS request/);
   assert.match(d, /Plain http works only to 127\.0\.0\.1/);
+});
+
+// R53 (Opus): samme fejlklasse som extract_token - methodMap[name] fandt «constructor» paa prototypen.
+test('vaerktoejsnavne slaas kun op blandt methodMap\'s egne noegler', () => {
+  assert.match(indexSrc, /const method = Object\.hasOwn\(methodMap, name\) \? methodMap\[name\] : undefined;/);
+  assert.doesNotMatch(indexSrc, /const method = methodMap\[name\];/);
 });

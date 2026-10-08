@@ -168,7 +168,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | 2FA / CAPTCHA-gated sites | Works, and `browser_ask_user` can ask you for the code mid-run | Reachable in extension mode, but nothing can ask you for a code |
 | Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 72 tools, none of which can ask the person anything (checked 2026-09-19) |
 | Several agents at once | 20 concurrent, color-coded tab groups | Also supported via their extension: one tab group per connected client |
-| Provider dashboards | Zero-config shortcuts for 9 common ones, works with any | None |
+| Provider dashboards | 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn); any other through browser_navigate and reading the page | None |
 | Install | Chrome extension + one `mcp.json` entry | `npx @playwright/mcp` |
 
 

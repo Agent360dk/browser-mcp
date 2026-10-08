@@ -811,7 +811,8 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await handleExtractToken(args);
     }
 
-    const method = methodMap[name];
+    // Kun methodMap's egne noegler (samme fejlklasse som extract_token, R53-Opus): «constructor» fandtes paa prototypen.
+    const method = Object.hasOwn(methodMap, name) ? methodMap[name] : undefined;
     if (!method) {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
