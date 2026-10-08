@@ -1340,7 +1340,9 @@ async function handleProvideFeedback(args) {
 
 async function handleExtractToken(args) {
   const { provider } = args;
-  const info = PROVIDER_PAGES[provider];
+  // R52 (Astra, MAALT): «constructor», «toString» og «__proto__» findes paa objektets prototype og gik uden om
+  // «Unknown provider» - handleren navigerede til url undefined. Kun udbyderens egne noegler taeller.
+  const info = Object.hasOwn(PROVIDER_PAGES, String(provider)) ? PROVIDER_PAGES[provider] : undefined;
 
   if (!info) {
     return {

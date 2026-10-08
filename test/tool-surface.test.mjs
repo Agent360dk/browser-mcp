@@ -593,3 +593,23 @@ test('extract_token beskriver de udbydere og sider, koden faktisk har', async ()
   assert.match(t.description, /HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list one step before the token/);
   assert.doesNotMatch(t.description, /read its API token from the page/);
 });
+
+// R52 (Astra, MAALT): «constructor», «toString» og «__proto__» gik uden om «Unknown provider», og handleren navigerede
+// til url undefined. Den rigtige handler koeres med en falsk udvidelse.
+test('extract_token answers Unknown provider for names that only exist on the prototype', async () => {
+  const kilde = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
+  const start = kilde.indexOf('async function handleExtractToken(');
+  let d = 0, i = kilde.indexOf('{', start);
+  for (; i < kilde.length; i++) { if (kilde[i] === '{') d++; else if (kilde[i] === '}' && --d === 0) break; }
+  const { PROVIDER_PAGES } = await import('../mcp-server/tools.js');
+  const navigeret = [];
+  const h = new Function('PROVIDER_PAGES', 'sendToExtension', `${kilde.slice(start, i + 1)}\nreturn handleExtractToken;`)(
+    PROVIDER_PAGES, async (m, p) => { navigeret.push(p.url); return { title: 't' }; });
+  for (const navn of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'nope']) {
+    const r = await h({ provider: navn });
+    assert.match(r.content[0].text, /^Unknown provider/, `${navn} did not answer Unknown provider`);
+  }
+  assert.deepEqual(navigeret, [], 'the handler navigated for an unknown provider');
+  await h({ provider: 'stripe' });
+  assert.deepEqual(navigeret, ['https://dashboard.stripe.com/apikeys'], 'a known provider no longer navigates');
+});

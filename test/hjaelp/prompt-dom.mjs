@@ -136,14 +136,18 @@ export function lavDom({ origin = 'https://bank.example', href = origin + '/side
   const chrome = { runtime: { sendMessage: (m) => { beskeder.push(JSON.parse(JSON.stringify(m))); return Promise.resolve(); } } };
   const window = { innerWidth: 1280, innerHeight: 800 };
   Object.assign(dom, { document, window, chrome, MutationObserver, HTMLButtonElement, HTMLInputElement,
-    beskeder, global: {}, leveringer: () => leveringer, LOEBSK, location: { origin, href, protocol: new URL(href).protocol } });
+    beskeder, global: {}, leveringer: () => leveringer, LOEBSK, Date,
+    location: { origin, href, protocol: new URL(href).protocol, host: new URL(href).host, pathname: new URL(href).pathname } });
   return dom;
 }
 
 /** Goer en udtrukket funktion kaldbar med DOM'ens globale navne (globalThis er udvidelsens ISOLATED-verden). */
 export function iDom(kilde, navn, dom) {
-  return new Function('document', 'window', 'chrome', 'MutationObserver', 'HTMLButtonElement', 'HTMLInputElement', 'globalThis', 'location',
-    `${kilde}\nreturn ${navn};`)(dom.document, dom.window, dom.chrome, dom.MutationObserver, dom.HTMLButtonElement, dom.HTMLInputElement, dom.global, dom.location);
+  // Promptens egne timere (fokus, sidefrist) maa ikke holde proeveprocessen i live: en frist paa minutter ville ellers
+  // faa filen til at haenge, til den udloeb.
+  const setTimeout = (fn, ms) => { const t = globalThis.setTimeout(fn, ms); t.unref?.(); return t; };
+  return new Function('document', 'window', 'chrome', 'MutationObserver', 'HTMLButtonElement', 'HTMLInputElement', 'globalThis', 'location', 'Date', 'setTimeout',
+    `${kilde}\nreturn ${navn};`)(dom.document, dom.window, dom.chrome, dom.MutationObserver, dom.HTMLButtonElement, dom.HTMLInputElement, dom.global, dom.location, dom.Date, setTimeout);
 }
 
 export const vent = (ms = 0) => new Promise((r) => setTimeout(r, ms));

@@ -299,3 +299,16 @@ test('an answer from a sandboxed page on the right address counts', async () => 
   await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, 'null', 'https://raw.example/notes.txt'));
   assert.deepEqual(plain((await a.pending).values), { code: '482913' }, 'the answer from the sandboxed page was lost');
 });
+
+// R52 (Astra, MAALT): alle lokale filer delte bindingen "file://". En lokal fil binder nu til sin egen adresse.
+test('a prompt with fields on a local file is bound to that file', async () => {
+  const u = browser({ startUrl: 'file:///trusted/private-form.html' });
+  const a = await ask(u, { fields: [{ name: 'code', label: 'Code' }] });
+  assert.equal(draws(u)[0].args[0].origin, 'file:///trusted/private-form.html');
+  const svar = { type: 'ask_user_answer', askId: a.askId, action: 'done', values: { code: 'LOCAL-CODE' } };
+  await u.fyr('runtime.onMessage', svar, fromPrompt(u, a.tabId, 'file://', 'file:///Downloads/unrelated.html'));
+  await tick();
+  assert.equal(a.settled(), false, 'another local file answered the prompt');
+  await u.fyr('webNavigation.onDOMContentLoaded', { tabId: a.tabId, frameId: 0, url: 'file:///Downloads/unrelated.html' });
+  assert.equal((await a.pending).action, 'navigated', 'the prompt followed the tab to another local file');
+});

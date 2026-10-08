@@ -160,8 +160,11 @@ test('the prompt is visible: nothing hides the host or the card (R51, Astra: dis
 test('a prompt with fields is drawn on a sandboxed page at its own address (R51, Opus)', () => {
   const sandbox = tegn(feltSpec({ origin: 'https://raw.example' }), true, lavDom({ origin: 'null', href: 'https://raw.example/notes.txt' }));
   assert.ok(sandbox.vaert, 'a sandboxed page (location.origin "null") got no prompt');
-  const fil = tegn(feltSpec({ origin: 'file://' }), true, lavDom({ origin: 'null', href: 'file:///Users/x/side.html' }));
-  assert.ok(fil.vaert, 'a local file got no prompt');
+  const fil = tegn(feltSpec({ origin: 'file:///Users/x/side.html' }), true, lavDom({ origin: 'null', href: 'file:///Users/x/side.html#top' }));
+  assert.ok(fil.vaert, 'a local file got no prompt at its own address');
+  // R52 (Astra, MAALT): med en faelles binding "file://" fik en hvilken som helst anden lokal fil prompten.
+  const anden = tegn(feltSpec({ origin: 'file:///Users/x/side.html' }), true, lavDom({ origin: 'null', href: 'file:///Users/x/Downloads/other.html' }));
+  assert.equal(anden.vaert, undefined, 'another local file got the prompt');
 });
 
 test('a page that rewrites its body now and then keeps the prompt (R51, Opus: lost after 6.3 s)', async () => {
@@ -172,4 +175,22 @@ test('a page that rewrites its body now and then keeps the prompt (R51, Opus: lo
     assert.equal(vaert.isConnected, true, `the prompt did not come back after removal ${i + 1}`);
   }
   assert.deepEqual(dom.beskeder, [], 'a page that rewrites its body every 120 ms was reported as removing the prompt');
+});
+
+// R52 (Astra): en mutant der forkortede vinduet til 200 ms overlevede. Loftet er 20 genindsaettelser inden for 2 s -
+// med et virtuelt ur: 21 fjernelser med 90 ms mellemrum (1,8 s) giver removed_by_page, med 110 ms (2,2 s) goer de ikke.
+test('the cap is 20 put-backs within 2 s, measured on a virtual clock', async () => {
+  for (const [mellemrum, tabt] of [[90, true], [110, false]]) {
+    const dom = lavDom();
+    let nu = 1000;
+    dom.Date = { now: () => nu };
+    const { vaert } = tegn(spec({ deadline: nu + 600000 }), false, dom);
+    for (let i = 0; i < 21; i++) {
+      vaert.remove();
+      await vent();
+      nu += mellemrum;
+    }
+    const lost = dom.beskeder.some((b) => b.type === 'ask_user_lost');
+    assert.equal(lost, tabt, `${mellemrum} ms between removals: ${tabt ? 'should' : 'should not'} end with removed_by_page`);
+  }
 });

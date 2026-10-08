@@ -2262,7 +2262,7 @@ function renderAskPrompt(spec, replay) {
   // R51 (Astra): en tegning, der allerede var planlagt, kunne lande paa et dokument fra et andet origin. En prompt med
   // felter tegnes kun paa det origin, den blev stillet paa.
   if (spec.origin) {
-    const her = location.protocol === 'file:' ? 'file://'
+    const her = location.protocol === 'file:' ? 'file://' + location.host + location.pathname
       : (/^https?:$/.test(location.protocol) ? new URL(location.href).origin : null);
     if (her !== spec.origin) return;
   }
@@ -2523,10 +2523,12 @@ function eraseAskPrompt(tabId, askId) {
 // R51 (Opus, MAALT i Chrome): bindingen sammenligner ADRESSENS origin, ikke dokumentets. En side med CSP
 // `sandbox` (fx raw.githubusercontent.com) har et opakt origin, og Chrome saetter sender.origin til "null" - svaret
 // blev tabt, og agenten fik timeout, selvom brugeren havde svaret. En lokal fil faar sin egen binding, "file://".
+// R52 (Astra, MAALT): en faelles binding "file://" lod en prompt med felter foelge med fra én lokal fil til en hvilken
+// som helst anden. En lokal fil binder nu til sin egen adresse (vaert og sti, uden ? og #).
 function askOrigin(url) {
   try {
     const u = new URL(url);
-    if (u.protocol === 'file:') return 'file://';
+    if (u.protocol === 'file:') return 'file://' + u.host + u.pathname;
     return /^https?:$/.test(u.protocol) ? u.origin : null;
   } catch { return null; }
 }
