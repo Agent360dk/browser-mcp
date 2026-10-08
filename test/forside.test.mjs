@@ -224,3 +224,14 @@ test('scenen: observer der kaster giver sluttilstanden straks, og reduceret beva
   assert.ok(!simulerSide({ reducedMotion: true }).rod.k.has('hold'));
   assert.ok(!simulerSide({ utenObserver: true }).rod.k.has('hold'));
 });
+
+// 1.30.2 skive 19 (Opus R38): manifestets beskrivelse sagde «carries on in the tab you were already signed into» - kan
+// laeses som brugerens EGEN fane; agenten arbejder i sine egne faner i brugerens Chrome. Samme ordlyd som butiksteksten v5.
+test('manifestets korte beskrivelse siger «the Chrome you\'re signed into», ikke brugerens egen fane, og holder sig under 132 tegn', () => {
+  for (const f of ['extension/manifest.json', 'mcp-server/extension/manifest.json']) {
+    const d = JSON.parse(readFileSync(join(rod, f), 'utf8')).description;
+    assert.ok(d.length <= 132, `${f}: ${d.length} tegn - Chrome Web Store tillader 132`);
+    assert.match(d, /the Chrome you're signed into/, `${f}: siger ikke at det er brugerens Chrome`);
+    assert.doesNotMatch(d, /the tab you were already signed into|carries on in the tab/, `${f}: kan laeses som brugerens egen fane`);
+  }
+});

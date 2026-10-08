@@ -62,6 +62,8 @@ const LOEFTER = [
   // R52 (Opus, MAALT): installationssiderne lovede at extract_token «isn't limited to» de ni og virker for «any provider»;
   // en ukendt udbyder svarer «Unknown provider» uden at navigere.
   [/isn't limited to th(ose|em)|not a whitelist|works for any provider/i, 'extract_token lover alle udbydere'],
+  // 1.30.2 skive 20: «usually with a short chime» blev aldrig maalt, og Chrome spiller kun lyd paa en side med brugerinteraktion.
+  [/usually with a (short )?chime/i, 'umaalt lyd ved ask_user'],
   // MAALT 13/9 af Astra og Fable i den faelles runde: "genstart, saa bliver ikonet groent" var falsk fra 1.29.0,
   // hvor serveren begyndte at tage sin port ved foerste browserkald i stedet for ved opstart. Jeg rettede den i
   // haanden 13 steder - og missede tre, fordi jeg soegte paa "turns green" og ikke paa "goes green". De tre stod
@@ -154,6 +156,7 @@ test('vagten kan se: den finder et loefte i et kendt eksempel', () => {
   assert.ok(regel('CAPTCHA-billedet bliver i browseren').test('The challenge stays in your browser.'));
   assert.ok(regel('extract_token lover alle udbydere').test("the 9 are just shortcuts, not a whitelist"));
   assert.ok(regel('extract_token lover alle udbydere').test("- but it isn't limited to those."));
+  assert.ok(regel('umaalt lyd ved ask_user').test('A box appears in that tab, usually with a short chime.'));
   assert.ok(regel('intet forlader maskinen').test('the one thing that matters most: nothing it reads ever leaves your machine'), 'ord imellem maa ikke skjule loeftet');
   assert.ok(regel('sender aldrig data nogen steder').test('never sends your browsing data anywhere'));
   assert.ok(FORKERTE_TAL[0][0].test('Restart Claude Code - 29 browser tools are now available'));
