@@ -518,7 +518,7 @@ test('en label, hvis midtpunkt ligger paa et link inde i den, er daekket af link
   assert.match(svar.note, /a different control inside it, so the mouse would click that, and a click on a control inside a label does not activate the label's own field/);
   // Labelens eget felt i midtpunktet er ikke en daekning.
   const d2 = lavKlikDom();
-  const boks2 = d2.el('input', { id: 'nyt', attrs: { type: 'checkbox' }, rect: [40, 40, 400, 16] });
+  const boks2 = d2.el('input', { id: 'nyt', attrs: { type: 'checkbox' }, rect: [40, 40, 400, 16], lag: 1 });
   const l2 = d2.label(boks2, { id: 'lnyt', tekst: 'Ja tak ', rect: [40, 36, 400, 24] });
   l2.children.push(boks2); boks2.parentNode = l2;
   assert.equal(tekstKlik(d2, 'Ja tak').covered, undefined);
@@ -543,7 +543,7 @@ test('et maal, der blev rullet frem, maales igen efter at siden har sat sig (hea
     'scripting.executeScript': () => [{ result: ++n === 1 ? { x: 60, y: 300, found: true, rullet: true } : { x: 60, y: 160, found: true } }],
   } });
   const r = await u.hent('resolveElement')(1, '#b6');
-  assert.equal(n, 2, 'maalet blev ikke maalt igen');
+  assert.equal(n, 3, 'maalet blev ikke maalt igen, til to maalinger var ens');
   assert.deepEqual([r.x, r.y], [60, 160]);
   n = 10;
   const u2 = indlaesUdvidelse({ svar: { 'scripting.executeScript': () => [{ result: { x: 1, y: 2, found: true } }] } });
@@ -564,7 +564,51 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const { join } = await import('node:path');
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.match(cl, /A click on an iframe goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
-  assert.match(cl, /A target that had to be scrolled into view is measured again 150 ms later/);
-  assert.match(cl, /A label whose center lies on a different control inside it \(a link in a consent label\) counts as covered by that control/);
+  assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
+  assert.match(cl, /A target that had to be scrolled into view is measured again, 100 ms apart, until two measurements agree \(at most three times\)/);
+  assert.match(cl, /only one that reaches the target counts as proof; a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`, not a yes/);
+  assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
+});
+
+// ── R65 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('en liste med EN delegerende onclick godtager ikke naboraekken som maalets ramme', () => {
+  const d = lavKlikDom();
+  const liste = d.el('div', { id: 'liste', attrs: { onclick: 'vaelg(event)' }, rect: [0, 100, 600, 840] });
+  d.el('div', { id: 'r6', tekst: 'Ordre 6', rect: [0, 450, 600, 70] }, liste);
+  d.el('div', { id: 'rNY', tekst: 'Ordre NY', rect: [0, 450, 600, 70], lag: 1 }, liste);
+  assert.equal(d.koer(KILDE, '#r6', null, null, false, false).svar.covered?.id, 'rNY');
+});
+
+test('en label: kun HTML-standardens interaktive indhold er en anden kontrol (et link uden href er ikke)', () => {
+  const lav = (tag, attrs) => {
+    const d = lavKlikDom();
+    const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 16, 16] });
+    const l = d.label(boks, { id: 'l', tekst: 'Accepter ', rect: [20, 10, 500, 40] });
+    d.el(tag, { id: 'i', tekst: 'vilkaar', attrs, rect: [170, 15, 200, 30] }, l);
+    return d.koer(KILDE, '#l', null, null, false, false).svar.covered;
+  };
+  assert.equal(lav('a', {}), undefined, 'et link uden href afkrydser feltet med en rigtig mus');
+  assert.equal(lav('span', { role: 'button' }), undefined);
+  assert.equal(lav('span', { onclick: 'x()' }), undefined);
+  assert.equal(lav('a', { href: '#v' })?.id, 'i');
+  assert.equal(lav('button', {})?.id, 'i');
+  assert.equal(lav('input', { type: 'text' })?.id, 'i');
+  assert.equal(lav('input', { type: 'hidden' }), undefined);
+});
+
+test('en armeret vagt, der ikke saa en eneste haendelse, giver ingen reserve - en ramme i punktet afgoer svaret', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const bg = readFileSync(join(ROD, 'extension/background.js'), 'utf8');
+  const settle = bg.slice(bg.indexOf('const settle = await evaluerTaalmodigt'), bg.indexOf('const foerAftryk = aftryk();'));
+  assert.match(settle, /if \(vagt && vagt\.sendt === 0\) \{/);
+  assert.match(settle, /if \(ramme && !iMaalet\) return \{ landed: null, fallbackFired: false, fremmedRamme:/);
+  assert.match(settle, /return \{ landed: null, fallbackFired: false, \.\.\.\(ramme \? \{ iRamme: true \} : \{ ingenHaendelse: true \}\) \};/);
+  const u = indlaesUdvidelse();
+  assert.match(u.hent('uvisVurdering')({ landed: null, ingenHaendelse: true }).note, /no mouse event reached the page around the target/);
+  const svar = u.hent('vagtSvar')('#gem', { tag: 'BUTTON' }, { blokeret: { tag: 'IFRAME', id: 'annonce', text: '' }, iFremmedRamme: true });
+  assert.equal(svar.error, 'covered');
+  assert.equal(svar.maybe_landed, true);
+  assert.match(svar.note, /^When the mouse pressed, IFRAME#annonce - a frame - lay in front of #gem, and the press went into it/);
 });

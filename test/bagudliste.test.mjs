@@ -38,9 +38,14 @@ const FORBUDT = [
   [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config/, 'Zed, opencode og Codex bruger hver sin noegle'],
 ];
 
+// R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med
+// et haardt mellemrum slap forbi moenstrene. Typografiske anfoerselstegn og alle slags mellemrum laeses som de almindelige.
+const norm = (s) => s.replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'").replace(/[\u201C\u201D\u201F]/g, '"')
+  .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g, ' ').replace(/\s+/g, ' ');
+const rammer = (tekst, moenster) => moenster.test(norm(tekst));
 for (const [nr, moenster, hvorfor] of FORBUDT) {
   test(`bagudliste #${nr} kommer ikke tilbage: ${hvorfor}`, () => {
-    for (const [f, t] of flader) assert.doesNotMatch(t, moenster, `${f}: ${hvorfor}`);
+    for (const [f, t] of flader) assert.ok(!rammer(t, moenster), `${f}: ${hvorfor}`);
   });
 }
 
@@ -86,4 +91,10 @@ test('normaliseringen laeser tegnreferencer uden semikolon og et > inde i en cit
   assert.match(html('<meta content="can&#39t">'), /can't/);
   assert.match(html('<meta content="a > b fundamentally can\'t">'), /a > b fundamentally can't/);
   assert.match(html('<!-- en kommentar -->'), /en kommentar/);
+});
+
+test('typografiske anfoerselstegn og haarde mellemrum snyder ikke moenstrene (R65)', () => {
+  const m = FORBUDT.find(([nr]) => nr === 7)[1];
+  for (const s of ['<p>a headless browser fundamentally can&rsquo;t</p>', '<p>a headless&nbsp;browser fundamentally can&#39t</p>',
+    '<meta content="a headless browser fundamentally can\u2019t">']) assert.ok(rammer(html(s), m), s);
 });

@@ -13,7 +13,7 @@ John H.**
 
 | Answer | Where | Means |
 |---|---|---|
-| `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger or option in `browser_select_option` (for the option with `trigger_clicked: true`: the list may still be open) | The mouse would not reach the target at its center: an element lies in front of it, or the target does not take clicks there; `covered_by.outside` when the center is outside the visible page. The target got nothing. When the cover appears after the target was found, the remaining mouse events are stopped at the window (only a listener on the window itself can see them); if the first ones had already reached the target, the answer is `landed: null` with `maybe_landed: true`, because the page may have reacted to the press. Before, `browser_click` answered `ok: true` when the click hit an overlay |
+| `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger or option in `browser_select_option` (for the option with `trigger_clicked: true`: the list may still be open) | The mouse would not reach the target at its center: an element lies in front of it, or the target does not take clicks there; `covered_by.outside` when the center is outside the visible page. The target got nothing. When the cover appears after the target was found, the remaining mouse events are stopped at the window, before any element of the page gets them (a listener on the window itself still does); if the first ones had already reached the target, the answer is `landed: null` with `maybe_landed: true`, because the page may have reacted to the press. Before, `browser_click` answered `ok: true` when the click hit an overlay |
 | `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
 | `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
 | `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
@@ -28,11 +28,16 @@ John H.**
 several, the one on top where they overlap), so `click text=Add` presses the dialog's button, not the page's behind it. The
 debugger path and the script fallback find their target with the same function. A covered answer found before the
 press moves no mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
-or a menu), to move the mouse away with `browser_hover` and try again. A label whose center lies on a different control
-inside it (a link in a consent label) counts as covered by that control, because a click there does not activate the
-label's field. A target that had to be scrolled into view is measured again 150 ms later, so a header that turns fixed
-on scroll does not move the click to another row. A click on an iframe goes into the frame, where the page around it
-cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame. 1.30.1 answered
+or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
+found: each one at the click point is judged on the element that gets it, and only one that reaches the target counts as
+proof; a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`,
+not a yes. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
+address, a button, a field) counts as covered by that element, because a click there does not activate the label's field.
+A target that had to be scrolled into view is measured again, 100 ms apart, until two measurements agree (at most three
+times), so a header that turns fixed on scroll does not move the click to another row. A press that lands in an iframe -
+the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it
+cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic
+click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`. 1.30.1 answered
 `ok: false` and sent a second, synthetic click, after the button inside the frame had already been pressed.
 
 **`browser_ask_user`** fails at once, and shows nothing, on Chrome's error page or about:blank, instead of

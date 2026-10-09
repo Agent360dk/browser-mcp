@@ -274,5 +274,17 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
-  assert.match(cl, /if the first ones had already reached the target, the answer is `landed: null` with `maybe_landed: true`/);
+  assert.match(cl, /stopped at the window, before any element of the page gets them \(a listener on the window itself still does\); if the first ones had already reached the target, the answer is `landed: null` with `maybe_landed: true`/);
+});
+
+test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
+  const d = knapside();
+  let fase = 0;
+  const b = browser(d, { efterHaendelse: (type, dd) => {
+    if (type === 'pointerdown' && fase === 0) { fase = 1; overlay(dd); }
+    else if (type === 'mousedown' && fase === 1) { fase = 2; const o = dd.document.querySelector('#fremmed'); o.stil.display = 'none'; }
+  } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.ok(!b.side.includes('click:gem'), `maalet fik klikket efter blokeringen: ${b.side}`);
 });
