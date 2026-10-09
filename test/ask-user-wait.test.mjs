@@ -341,7 +341,9 @@ for (const felter of [[], [{ name: 'code', label: 'Code' }]]) {
   test(`Chrome's error page answers with a clear error and shows nothing (${felter.length ? 'with' : 'without'} fields)`, async () => {
     const u = browser({ startUrl: 'http://ukendt-vaert.invalid/side?token=hemmelig',
       ekstra: { 'webNavigation.getAllFrames': [{ frameId: 0, parentFrameId: -1, errorOccurred: true, url: 'http://ukendt-vaert.invalid/side' }] } });
-    await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'code?', fields: felter }), (e) => {
+    // En kort frist: viser en fejl i koden prompten i stedet for at fejle, ender ventetiden straks (et svar, ikke en
+    // afvisning), og proeven bliver roed med det samme i stedet for at loebe ud paa tid.
+    await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'code?', fields: felter, timeout: 200 }), (e) => {
       assert.match(e.message, /^The tab shows Chrome's error page: http:\/\/ukendt-vaert\.invalid\/side did not load/);
       assert.match(e.message, /Nothing was shown to the user\.$/);
       assert.doesNotMatch(e.message, /hemmelig/, 'the query string is not repeated in the error');
@@ -363,7 +365,7 @@ test('a page that loaded is not taken for an error page', async () => {
 for (const adresse of ['about:blank', 'chrome-extension://abc/side.html', '']) {
   test(`a question without fields on ${adresse || 'an empty tab'} is refused before anything is shown`, async () => {
     const u = browser({ startUrl: adresse });
-    await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'Done?' }), /where the extension cannot draw/);
+    await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'Done?', timeout: 200 }), /where the extension cannot draw/);
     assert.deepEqual(vistForBrugeren(u), intet);
   });
 }
