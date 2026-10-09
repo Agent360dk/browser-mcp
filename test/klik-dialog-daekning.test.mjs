@@ -614,7 +614,7 @@ test('en armeret vagt, der ikke saa en eneste haendelse, giver ingen reserve - e
   // R67: en fremmed ramme i punktet afgoer svaret, naar klikket ikke naaede maalet - ogsaa efter noget blev sendt.
   assert.match(settle, /if \(vagt && !iMaal && rammeIPunkt && !rammeIMaalet\) \{/);
   assert.match(settle, /return \{ landed: null, fallbackFired: false, fremmedRamme: \{ tag: p\.tagName, id: p\.id \|\| null, text: '' \}, trykNaaet \};/);
-  assert.match(settle, /if \(vagt && vagt\.sendt === 0\) \{ ryd\(\); return \{ landed: null, fallbackFired: false, \.\.\.\(rammeIPunkt \? \{ iRamme: true \} : \{ ingenHaendelse: true \}\) \}; \}/);
+  assert.match(settle, /if \(vagt && vagt\.sendt === 0\) \{ ryd\(\); return \{ landed: null, fallbackFired: false, trykNaaet, \.\.\.\(rammeIPunkt \? \{ iRamme: true \} : \{ ingenHaendelse: true \}\) \}; \}/);
   const u = indlaesUdvidelse();
   assert.match(u.hent('uvisVurdering')({ landed: null, ingenHaendelse: true }).note, /no mouse event reached the page around the target/);
   const svar = u.hent('vagtSvar')('#gem', { tag: 'BUTTON' }, { blokeret: { tag: 'IFRAME', id: 'annonce', text: '' }, iFremmedRamme: true });
@@ -703,4 +703,27 @@ test('en genmaaling, der finder maalet uden for vinduet, ruller det frem igen (R
   const r = await u.hent('resolveElement')(1, '#maal');
   assert.deepEqual([r.x, r.y, r.covered], [60, 400, undefined]);
   assert.deepEqual(u.optager.til('scripting.executeScript').map((k) => k.args[0].args[5]), [false, true, false, true]);
+});
+
+// ── R68 (Astra, maalt i model) ─────────────────────────────────────────────
+test('et passivt kort: en knap flere linklag oppe er daekningen; et inert <a> er ingen handling (R68)', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+  const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+  const span = d.el('span', { id: 'sl', attrs: { role: 'link' }, rect: [190, 60, 100, 40], lag: 2 }, knap);
+  d.el('a', { id: 'a', attrs: { href: '#slet' }, rect: [190, 60, 100, 40], lag: 3 }, span);
+  assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet');
+  const d2 = lavKlikDom();
+  const kort2 = d2.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+  d2.el('a', { id: 'inert', tekst: 'Ordre 7', rect: [190, 60, 100, 40], lag: 1 }, kort2);
+  assert.equal(d2.koer(KILDE, '#kort', null, null, false, false).svar.covered, undefined, 'et <a> uden adresse, rolle og onclick er ingen handling');
+});
+
+test('et felt uden pointer-events i en div role=button er daekket af knappen - knappens klik er ikke feltets (R68)', () => {
+  for (const tag of ['input', 'select', 'textarea']) {
+    const d = lavKlikDom();
+    const knap = d.el('div', { id: 'knap', attrs: { role: 'button' }, rect: [20, 20, 300, 60] });
+    d.el(tag, { id: 'felt', rect: [40, 30, 200, 40], ingenPeg: true }, knap);
+    assert.equal(d.koer(KILDE, '#felt', null, null, false, false).svar.covered?.id, 'knap', tag);
+  }
 });

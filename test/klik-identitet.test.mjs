@@ -91,7 +91,7 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
     },
   } });
   u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([1]), activeTabId: 1, groupId: 1, windowId: 1 });
-  return { side, fyr, window, koer: (metode, p) => u.hent('dispatch')(9876, metode, p), u };
+  return { side, fyr, fyrEn, window, koer: (metode, p) => u.hent('dispatch')(9876, metode, p), u };
 }
 
 function knapside() {
@@ -295,8 +295,8 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
-  assert.match(cl, /the remaining press, release and click events are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
-  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control; for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with an address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts\. Hover and right-click do not click a control inside the target/);
+  assert.match(cl, /the remaining presses and clicks are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it, and a release the page moves elsewhere is let through\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
+  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control; for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with an address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between; an `a` without an address, role or `onclick` is no action\. A field or other control whose center lies on a button around it is covered by that button: the button's click is not the field's\. Hover and right-click do not click a control inside the target/);
 });
 
 test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
@@ -578,4 +578,54 @@ test('double_click: en fremmed iframe, der kommer foran efter det foerste klik, 
   const svar = await b.koer('double_click', { selector: '#gem' });
   assert.equal(svar.error, 'covered', JSON.stringify(svar));
   assert.equal(svar.covered_by?.id, 'annonce');
+});
+
+// ── R68 (Astra, maalt i model) ─────────────────────────────────────────────
+test('select_option: stoppes alle haendelser til udloeseren (uden overlay), klikkes intet valg', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  d.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 300, 200, 40] });
+  const b = browser(d, { stopVed: (_type, el) => el?.id === 'trig' });
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+  assert.notEqual(svar.ok, true, JSON.stringify(svar));
+  assert.ok(!b.side.includes('click:fi'), `et valg blev klikket: ${b.side}`);
+});
+
+test('select_option: et udloeserklik, der landede, og et valg, der ikke findes, siger trigger_clicked', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  const svar = await browser(d).koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+  assert.match(svar.error || '', /^Option not found: Finland/, JSON.stringify(svar));
+  assert.equal(svar.trigger_clicked, true);
+});
+
+test('et klik ved (0,0) paa et maal uden label er ikke en labelaktivering og ikke bevis', async () => {
+  const d = knapside();
+  const b = browser(d, { stopVed: (type, el) => type === 'click' && el?.id === 'gem' && !b.bruger,
+    efterHaendelse: (type) => { if (type === 'click' && !b.bruger) { b.bruger = true; b.fyrEn('click', 0, 0, d.document.querySelector('#gem')); } } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+test('en fremmed iframe, der kommer frem efter armeringen men foer klikmaalet gemmes, giver covered', async () => {
+  const d = knapside();
+  const b = browser(d, { efterArm: (dd) => dd.el('iframe', { id: 'annonce', rect: [0, 0, 600, 300], lag: 20 }) });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.equal(svar.covered_by?.id, 'annonce');
+});
+
+test('ingen flade lover mere, end koden goer: kategoriske loefter er vaek, og graenserne staar der', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const laes = (f) => readFileSync(join(ROD, f), 'utf8');
+  const cl = laes('CHANGELOG.md'); const afsnit = cl.slice(cl.indexOf('## 1.30.2'), cl.indexOf('## 1.30.1')).replace(/\s+/g, ' ');
+  for (const [f, s] of [['tools.js', laes('mcp-server/tools.js')], ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
+    ['docs', laes('content/browsermcp-docs-tools.md')], ['CHANGELOG 1.30.2', afsnit]]) {
+    assert.doesNotMatch(s, /nothing happens to the target|the target is never|nothing was done to the target|guarantees? that the target|always reaches the target|only the target ever gets|the remaining press, release and click events are stopped/i, f);
+  }
+  assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_click` \|[^\n]*`covered` or `maybe_landed`, never a plain yes/);
+  assert.match(afsnit, /Inside a closed shadow root the guard cannot see which control gets the click\./);
+  assert.match(afsnit, /A real mouse at the same point at the same time cannot be told apart from the tool's\./);
 });
