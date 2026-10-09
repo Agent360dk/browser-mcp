@@ -15,7 +15,7 @@ import vm from 'node:vm';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 import { lavKlikDom } from './hjaelp/klik-dom.mjs';
 
-function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl } = {}) {
+function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl, aktiveringUdenKoordinater } = {}) {
   const lyttere = { window: new Map(), document: new Map() };
   const tilfoej = (m) => (n, f) => { if (!m.has(n)) m.set(n, []); m.get(n).push(f); };
   const fjern = (m) => (n, f) => { const l = m.get(n) || []; const i = l.indexOf(f); if (i >= 0) l.splice(i, 1); };
@@ -51,7 +51,10 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
     if (type === 'click' && !ev.defaultPrevented && el?.closest) {
       const l = el.closest('label');
       const interaktiv = el.closest('a[href],button,input,select,textarea');
-      if (l && l.control && l.control !== el && (!interaktiv || interaktiv === l.control)) fyrEn('click', x, y, l.control);
+      if (l && l.control && l.control !== el && (!interaktiv || interaktiv === l.control)) {
+        // Chrome kan sende labelens aktiveringsklik med eller uden museens koordinater; begge prøves.
+        if (aktiveringUdenKoordinater) fyrEn('click', 0, 0, l.control); else fyrEn('click', x, y, l.control);
+      }
     }
   };
   const klon = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -628,4 +631,14 @@ test('ingen flade lover mere, end koden goer: kategoriske loefter er vaek, og gr
   assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_click` \|[^\n]*`covered` or `maybe_landed`, never a plain yes/);
   assert.match(afsnit, /Inside a closed shadow root the guard cannot see which control gets the click\./);
   assert.match(afsnit, /A real mouse at the same point at the same time cannot be told apart from the tool's\./);
+});
+
+test('labelens aktiveringsklik uden koordinater er bevis for feltet, naar vaerktoejets klik gik til labelen (R68)', async () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  d.label(boks, { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20], lag: 1 });
+  const b = browser(d, { aktiveringUdenKoordinater: true });
+  const svar = await b.koer('click', { selector: '#c' });
+  assert.equal(svar.landed, true, JSON.stringify(svar));
+  assert.ok(b.side.includes('click:c'), String(b.side));
 });
