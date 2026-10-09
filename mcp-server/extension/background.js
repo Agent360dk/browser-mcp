@@ -2271,7 +2271,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         let fundet = null, link = null;
         // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
         // omkring den i shadow root'en (den flade kaede), saa assignedSlot foelges foer parentNode.
-        // R71 (Opus, maalt i Chrome): klikket paa en webkomponents vaert (ion-button, sl-button, md-filled-button) gik via slotten
+        // R71 (Opus, maalt i Chrome): klikket paa en webkomponents vaert (ion-button, sl-button) gik via slotten
         // til vaertens EGEN knap og blev afvist som «en anden kontrol». En handling i maalets egen shadow root (eller dybere),
         // der fylder det meste af maalet, er maalets egen knap; en lille Slet inde i en kort-komponent er det ikke (R72: graensen
         // er overlap, ikke areal - se nedenfor).
@@ -2279,7 +2279,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // R72 (Astra, maalt i model): arealet alene godtog en knap paa 10000 x 2 px over en vaert paa 200 x 100 (2 % overlap),
         // `break` sprang en Slet omkring den store kontrol over, og et stort skygge-link med # eller javascript: slap uden om
         // linkreglen. Nu er kun en kontrol, hvis overlap med maalet daekker mindst 90 % af maalet, maalets
-        // egen (saadan tegner ion-button, sl-button og md-filled-button deres knap); kaeden gaas videre forbi den, saa en handling
+        // egen (saadan tegner ion-button og sl-button deres knap; R73 Opus maalte Material Webs md-filled-button til 18-31 %, saa den
+        // afvises fortsat som en graense); kaeden gaas videre forbi den, saa en handling
         // omkring den stadig er en daekning.
         const daekker = (k) => {
           const a = k.getBoundingClientRect(), b = el.getBoundingClientRect();
@@ -2310,7 +2311,11 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         indre = fundet || (klikbartMaal ? link : null);
       }
       if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
-        return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}) };
+        // R73 (Opus, maalt i Chrome): noten naevnte BUTTON#button i en md-filled-buttons skygge, agenten klikkede `#button`, og det
+        // ramte den foerste Material-knap paa siden (Annuller) med landed:true. En kontrol i en shadow root faar et flag, saa noten
+        // ikke peger paa et id, som andre komponenter deler.
+        const iSkygge = !!indre.getRootNode && indre.getRootNode() !== document;
+        return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}), ...(iSkygge ? { skygge: true } : {}) };
       }
       return null;
     }
@@ -2418,6 +2423,8 @@ function daekketSvar(selector, el, method) {
         'mean with its own selector (for a checkbox in the label, the checkbox itself).'
       : `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that instead ` +
         'and run its action. Nothing was done. Click the one you mean with its own selector.';
+    if (c.skygge) svar.note += ' It sits in a web component\'s own shadow root, so a selector for it (such as its id) can match the same ' +
+      'part of another component on the page first; check what a selector matches before you click it.';
     return svar;
   }
   // R63: ingen musebevaegelse foer en afvisning (den aabnede menuer, der blev staaende). Noten siger, hvad der ligger der nu,

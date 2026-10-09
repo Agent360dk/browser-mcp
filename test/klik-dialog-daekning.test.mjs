@@ -638,6 +638,7 @@ test('et kort med en Slet-knap i midten er daekket af knappen; et felt i en comb
   assert.equal(r.covered?.id, 'slet');
   assert.equal(r.covered?.inside, true);
   assert.match(indlaesUdvidelse().hent('daekketSvar')('#kort', r).note, /a different control inside it, so the mouse would click that instead and run its action/);
+  assert.doesNotMatch(indlaesUdvidelse().hent('daekketSvar')('#kort', r).note, /shadow root/, 'en knap i light DOM faar ikke skygge-noten');
   const d2 = lavKlikDom();
   const cb = d2.el('div', { id: 'rs', tekst: 'Vaelg land', rect: [40, 40, 300, 40] });
   d2.el('input', { id: 'rsIn', attrs: { type: 'text', role: 'combobox' }, rect: [50, 45, 280, 30], lag: 1 }, cb);
@@ -1011,5 +1012,18 @@ test('teksten i en ramme i en shadow root: et ikon slottet ind i et ANDET link e
     if (rammeTag === 'label') { const felt = d.el('input', { id: 'icb', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] }, ramme); felt.labels.push(ramme); ramme.control = felt; }
     assert.equal(d.koer(KILDE, '#acc', null, null, false, false).svar.covered?.id, 'ikon', `${handlingTag} i ${rammeTag}`);
   }
+});
+
+// ── R73 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('en knap i en komponents egen skygge under 90 %: noten advarer om, at dens id kan ramme en anden komponent (R73)', () => {
+  // Material Webs md-filled-button tegner sin indre <button id="button"> paa 18-31 % af vaerten. Agenten klikkede `#button`
+  // efter noten og ramte sidens foerste Material-knap.
+  const d = lavKlikDom();
+  const vaert = d.el('md-filled-button', { id: 'gem', rect: [40, 40, 200, 60] });
+  d.el('button', { id: 'button', tekst: 'Gem', rect: [90, 55, 100, 30], lag: 1 }, d.skygge(vaert));
+  const r = d.koer(KILDE, '#gem', null, null, false, false).svar;
+  assert.equal(r.covered?.id, 'button');
+  assert.equal(r.covered?.skygge, true);
+  assert.match(indlaesUdvidelse().hent('daekketSvar')('#gem', r).note, /own shadow root, so a selector for it \(such as its id\) can match the same part of another component/);
 });
 

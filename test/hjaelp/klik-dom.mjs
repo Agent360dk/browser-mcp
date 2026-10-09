@@ -38,6 +38,8 @@ export function lavKlikDom() {
     matches(sel) { return sel.split(',').some((s) => matchEn(this, s.trim())); }
     closest(sel) { for (let n = this; n && n.tagName; n = n.parentNode) if (n.matches(sel)) return n; return null; }
     contains(o) { for (let n = o; n; n = n.parentNode) if (n === this) return true; return false; }   // som i DOM: ikke gennem shadow roots
+    // Som i DOM: roden er dokumentet, eller den shadow root elementet ligger i.
+    getRootNode() { let n = this; while (n.parentNode) n = n.parentNode; return n.host ? n : document; }
     querySelectorAll(sel) {
       const ud = [];
       const gaa = (n) => { for (const c of n.children) { if (sel === '*' || c.matches(sel)) ud.push(c); gaa(c); } };
