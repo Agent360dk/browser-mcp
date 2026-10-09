@@ -124,8 +124,9 @@ function scriptSide(reagererPaa) {
     querySelectorAll: (s) => (s === '*' ? { length: 5 + t.noder } : s.startsWith('input,textarea') ? [] : { length: 0 }),
     body: { get innerText() { return t.tekst; } },
   };
+  // R57: maalet findes af klikMaal (samme funktion som debugger-vejen) og ligger paa window.__bmcpMaal, naar klikket koerer.
   const koer = (kilde, sel) => new Function('window', 'document', 'location', 'MouseEvent', 'PointerEvent', 'return (' + kilde + ')')(
-    {}, document, { href: 'https://x.example/' }, Ev, Ev)(sel);
+    { __bmcpMaal: el }, document, { href: 'https://x.example/' }, Ev, Ev)(sel);
   return { t, koer };
 }
 async function scriptKlikKilde() {

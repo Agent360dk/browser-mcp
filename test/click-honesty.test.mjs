@@ -104,32 +104,19 @@ test('reserveloesningen fyrer ÉT klik, ikke to', () => {
 
 // ── Fix B: skjulte elementer maa ALDRIG klikkes ─────────────────────────────
 
-test('alle tre resolveElement-stier afviser elementer uden udstraekning', () => {
-  const vagter = kilde.match(/if \(r\.width <= 0 \|\| r\.height <= 0\)/g) || [];
-  assert.equal(
-    vagter.length,
-    3,
-    `alle tre stier (css, csp-fallback, tekst) skal have vagten - fandt ${vagter.length}`,
-  );
-});
-
-test('hver 0x0-vagt staar FOER koordinaterne beregnes', () => {
-  // Ellers naar vi at returnere (0,0) inden vagten rammer.
-  const linjer = kilde.split('\n');
-  const vagt = [];
-  const koord = [];
-  linjer.forEach((l, n) => {
-    if (/if \(r\.width <= 0 \|\| r\.height <= 0\)/.test(l)) vagt.push(n);
-    if (/return \{ x: r\.x \+ r\.width/.test(l)) koord.push(n);
-  });
-  assert.equal(vagt.length, 3);
-  assert.equal(koord.length, 3);
-  for (let i = 0; i < 3; i++) {
-    assert.ok(
-      vagt[i] < koord[i],
-      `vagt nr. ${i + 1} (linje ${vagt[i] + 1}) skal ligge foer koordinat-returneringen (linje ${koord[i] + 1})`,
-    );
-  }
+// R57: de tre stier (css, csp-reserve, tekst) havde hver sin kopi af vagten. Nu gaar alle tre - og script-klikket -
+// gennem klikMaal, saa vagten staar EET sted og kan ikke glemmes i en af kopierne.
+test('alle resolveElement-stier gaar gennem klikMaal, som afviser elementer uden udstraekning', () => {
+  const start = kilde.indexOf('function klikMaal(');
+  const maal = kilde.slice(start, kilde.indexOf('\n}\n', start));
+  const vagt = maal.indexOf('if (r.width <= 0 || r.height <= 0)');
+  const koord = maal.indexOf('const x = r.x + r.width / 2');
+  assert.ok(vagt > -1 && koord > -1 && vagt < koord, 'vagten skal staa foer koordinaterne i klikMaal');
+  const res = kilde.slice(kilde.indexOf('async function resolveElement('), kilde.indexOf('// ── Offscreen Document Setup'));
+  assert.equal((res.match(/klikMaal/g) || []).length, 3, 'css, csp-reserve og tekst skal alle bruge klikMaal');
+  assert.doesNotMatch(res, /getBoundingClientRect/, 'en sti beregner selv koordinater uden om vagten');
+  const skript = kilde.slice(kilde.indexOf('async function scriptingClick('), kilde.indexOf('async function safeExecuteScript('));
+  assert.match(skript, /func: klikMaal/, 'script-klikket finder sit maal uden om klikMaal');
 });
 
 test('click klikker ikke naar elementet er skjult - den svarer ok:false', () => {

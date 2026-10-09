@@ -1724,27 +1724,25 @@ async function laesTastBevis(tabId, bevis) {
 
 async function scriptingClick(tabId, selector) {
   try {
+    // R57 (Opus, maalt i Chrome): reserven havde sin egen soegning (foerste eksakte match i en fast liste) og klikkede
+    // med el.click(), som ikke rammer-tester - saa den klikkede sidens knap gennem en modal dialogs overlay. Maalet findes
+    // nu af klikMaal, samme funktion som debugger-vejen, og et daekket maal klikkes ikke.
+    const p = parseSelector(selector);
+    const [maal] = await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN', func: klikMaal,
+      args: p.type === 'css' ? [p.selector, null, null, true, false] : [null, p.text, p.tag, true, false],
+    });
+    const info = maal?.result;
+    if (!info) return { ok: false, reason: 'not_found' };
+    if (info.hidden) return { ok: false, reason: 'hidden', tag: info.tag };
+    if (info.covered) return { ok: false, reason: 'covered', tag: info.tag, covered: info.covered, ...(info.text ? { text: info.text } : {}) };
     const [result] = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
-      func: (sel) => {
-        let el;
-        if (sel.startsWith('text=')) {
-          const text = sel.slice(5).trim();
-          el = Array.from(document.querySelectorAll('button, a, [role="button"], [role="menuitem"], [role="tab"], [role="option"], input, label, span, div, p, li, td'))
-            .find(e => (e.textContent || '').trim() === text);
-        } else {
-          const m = sel.match(/^([\w-]+):text\(([^)]+)\)$/);
-          if (m) {
-            const needle = m[2].trim();
-            el = Array.from(document.querySelectorAll(m[1]))
-              .find(e => (e.textContent || '').trim().includes(needle));
-          } else {
-            el = document.querySelector(sel);
-          }
-        }
-        if (!el) return { ok: false, reason: 'not_found' };
-        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      func: () => {
+        const el = window.__bmcpMaal;
+        try { delete window.__bmcpMaal; } catch (e) {}
+        if (!el || !el.isConnected) return { ok: false, reason: 'not_found' };
         // Sign-off 11/9 (Astra og Fable, begge reproduceret): paa en baggrundsfane blev et klik der krævede isTrusted,
         // eller kun lyttede paa pointerdown, meldt ok:true uden nogen virkning. Klikket maaler nu sidens reaktion med
         // samme aftryk og samme regel som debuggerens reserve (debuggerClick) - ingen backticks herinde.
@@ -1781,7 +1779,6 @@ async function scriptingClick(tabId, selector) {
         // derfor landed:false og maaske_landet - aerligt, aldrig en falsk succes.
         return { ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false };
       },
-      args: [selector],
     });
     return result?.result || { ok: false, reason: 'no_result' };
   } catch (e) {
@@ -1814,48 +1811,74 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 //   "#my-id" → standard CSS selector
 //   "text=Submit" → any element containing "Submit"
 
-function buildTextFinderJS(textPattern, tagFilter) {
-  const escaped = JSON.stringify(textPattern);
-  const wantTag = tagFilter ? JSON.stringify(tagFilter.toUpperCase()) : 'null';
-  return `(function() {
-    const text = ${escaped};
-    const wantTag = ${wantTag};
-    // Interactive controls we prefer to actually click. Fixes the class of bug where a
-    // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
-    // toolbar, list-item) whose center is NOT over the real <button> — so the trusted
-    // click misses and menus/dropdowns never open.
-    const CLICKABLE = 'a,button,summary,label,[role="button"],[role="menuitem"],' +
-      '[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],' +
-      '[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[onclick],' +
-      '[mat-button],[mat-raised-button],[mat-stroked-button],[mat-flat-button],' +
-      '[mat-icon-button],[mat-fab],[mat-mini-fab],[mat-menu-item],[mat-list-item],' +
-      'mat-checkbox,mat-slide-toggle,mat-radio-button';
-    function collectAll(root, results) {
-      for (const el of root.querySelectorAll('*')) {
-        results.push(el);
-        if (el.shadowRoot) collectAll(el.shadowRoot, results);
-      }
-      return results;
+// ── Klikkets maal ──────────────────────────────────────────────────────────
+// R57 (Opus, maalt i Chrome 9/10): `click text=Add` valgte den foerste «Add» i DOM-raekkefoelgen, ogsaa naar en modal
+// dialog var aaben, og svarede ok:true, selv naar klikket ramte overlayet eller dialogens backdrop. Reserven (script-
+// klikket) havde sin egen, simplere soegning og klikkede sidens knap gennem overlayet. Nu findes maalet EET sted, her:
+//   - en aaben modal dialog (dialog:modal eller en synlig [aria-modal="true"]) soeges foerst, eksakt tekst foer delvis;
+//   - ligger et andet element over maalets midtpunkt, meldes det i `covered`, og musevaerktoejerne klikker ikke.
+// Funktionen er selvstaendig, saa den kan sendes som `func` til chrome.scripting OG som tekst til Runtime.evaluate.
+// `gem` lægger elementet paa window.__bmcpMaal (til script-klikket); `kunElement` returnerer selve elementet.
+function klikMaal(sel, tekst, wantTag, gem, kunElement) {
+  // Interactive controls we prefer to actually click. Fixes the class of bug where a
+  // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
+  // toolbar, list-item) whose center is NOT over the real <button> - so the trusted
+  // click misses and menus/dropdowns never open.
+  const CLICKABLE = 'a,button,summary,label,[role="button"],[role="menuitem"],' +
+    '[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],' +
+    '[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[onclick],' +
+    '[mat-button],[mat-raised-button],[mat-stroked-button],[mat-flat-button],' +
+    '[mat-icon-button],[mat-fab],[mat-mini-fab],[mat-menu-item],[mat-list-item],' +
+    'mat-checkbox,mat-slide-toggle,mat-radio-button';
+  function collectAll(root, results) {
+    for (const el of root.querySelectorAll('*')) {
+      results.push(el);
+      if (el.shadowRoot) collectAll(el.shadowRoot, results);
     }
+    return results;
+  }
+  function queryDeep(root, s) {
+    const el = root.querySelector(s);
+    if (el) return el;
+    for (const node of root.querySelectorAll('*')) {
+      if (node.shadowRoot) { const f = queryDeep(node.shadowRoot, s); if (f) return f; }
+    }
+    return null;
+  }
+  // Ligger n i maal - ogsaa paa tvaers af shadow roots?
+  function inde(n, maal) {
+    for (let i = 0; n && i < 1000; i++) { if (n === maal) return true; n = n.parentNode || n.host; }
+    return false;
+  }
+  function aabenDialog() {
+    try { const m = document.querySelector('dialog:modal'); if (m) return m; } catch (e) {}
+    const synlige = Array.from(document.querySelectorAll('[aria-modal="true"]')).filter((d) => {
+      const r = d.getBoundingClientRect();
+      const cs = getComputedStyle(d);
+      return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
+    });
+    return synlige.length ? synlige[synlige.length - 1] : null;
+  }
+  function findTekst() {
     const all = collectAll(document, []);
-    const tagOk = (el) => !wantTag || el.tagName === wantTag;
+    const tag = wantTag ? String(wantTag).toUpperCase() : null;
+    const tagOk = (el) => !tag || el.tagName === tag;
     // Map a matched element to the ACTIONABLE control: itself if clickable, else the
     // nearest clickable ancestor (only if its own text isn't much larger than the match,
     // so we don't grab a whole toolbar), else a clickable descendant.
     function toClickable(el) {
       if (el.matches && el.matches(CLICKABLE)) return el;
       const anc = el.closest && el.closest(CLICKABLE);
-      if (anc && (anc.textContent || '').trim().length <= text.length + 40) return anc;
+      if (anc && (anc.textContent || '').trim().length <= tekst.length + 40) return anc;
       const desc = el.querySelector && el.querySelector(CLICKABLE);
       if (desc) return desc;
       return el;
     }
-    function pick(test) {
-      const matches = all.filter(el => tagOk(el) && test((el.textContent || '').trim()));
+    function pick(kandidater, test) {
+      const matches = kandidater.filter((el) => tagOk(el) && test((el.textContent || '').trim()));
       if (!matches.length) return null;
-      // Prefer the INNERMOST matches (an element that is not an ancestor of another
-      // match) — this is what "prefer leaf nodes" was supposed to do.
-      const inner = matches.filter(el => !matches.some(o => o !== el && el.contains && el.contains(o)));
+      // Prefer the INNERMOST matches (an element that is not an ancestor of another match).
+      const inner = matches.filter((el) => !matches.some((o) => o !== el && el.contains && el.contains(o)));
       const pool = inner.length ? inner : matches;
       // Prefer a match that resolves to a real interactive control.
       for (const el of pool) {
@@ -1864,9 +1887,70 @@ function buildTextFinderJS(textPattern, tagFilter) {
       }
       return toClickable(pool[0]);
     }
+    const eksakt = (t) => t === tekst;
+    const delvis = (t) => t && t.includes(tekst);
+    const dlg = aabenDialog();
+    if (dlg) {
+      const iDlg = all.filter((el) => inde(el, dlg));
+      return pick(iDlg, eksakt) || pick(all, eksakt) || pick(iDlg, delvis) || pick(all, delvis);
+    }
     // Exact match first, then partial fallback.
-    return pick(t => t === text) || pick(t => t && t.includes(text));
-  })()`;
+    return pick(all, eksakt) || pick(all, delvis);
+  }
+  // Hvad ligger oeverst ved punktet? Elementet selv, noget inde i det, en forfader (klikket bobler gennem den), dets
+  // label eller dets egen knap/link-ramme er ikke en daekning. Alt andet er: et overlay, en backdrop, en anden dialog.
+  function daekketAf(el, x, y) {
+    let hit = document.elementFromPoint(x, y);
+    for (let i = 0; i < 20 && hit && hit.shadowRoot; i++) {
+      const indre = hit.shadowRoot.elementFromPoint(x, y);
+      if (!indre || indre === hit) break;
+      hit = indre;
+    }
+    if (!hit) return null;
+    if (inde(hit, el) || inde(el, hit)) return null;
+    const ramme = el.closest ? el.closest('label,button,a,summary,[role="button"],[role="link"],[role="menuitem"],' +
+      '[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]') : null;
+    if (ramme && inde(hit, ramme)) return null;
+    for (const l of Array.from(el.labels || [])) if (inde(hit, l)) return null;
+    return { tag: hit.tagName, id: hit.id || null, text: (hit.textContent || '').trim().slice(0, 60) };
+  }
+
+  const el = tekst != null ? findTekst() : queryDeep(document, sel);
+  if (kunElement) return el;
+  if (!el) return null;
+  if (gem) window.__bmcpMaal = el;
+  const txt = tekst != null ? { text: (el.textContent || '').trim().slice(0, 80) } : {};
+  el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  const r = el.getBoundingClientRect();
+  // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
+  // og debuggerClick sendte et AEGTE museklik i sidens oeverste venstre hjoerne -
+  // paa hvad der nu laa der (logo, menu, link) - og svarede ok:true. Det er ikke en
+  // rapporteringsfejl men en handlingsfejl: vi klikker et andet sted end der blev bedt om.
+  if (r.width <= 0 || r.height <= 0) {
+    return { found: false, hidden: true, tag: el.tagName, ...txt, rect: { w: r.width, h: r.height } };
+  }
+  const x = r.x + r.width / 2;
+  const y = r.y + r.height / 2;
+  const daekket = daekketAf(el, x, y);
+  return { x, y, tag: el.tagName, ...txt, found: true, ...(daekket ? { covered: daekket } : {}) };
+}
+
+// Udtrykket der finder et element ud fra tekst (bruges af proever og som tekst til Runtime.evaluate).
+function buildTextFinderJS(textPattern, tagFilter) {
+  return `(${klikMaal})(null, ${JSON.stringify(textPattern)}, ${JSON.stringify(tagFilter || null)}, false, true)`;
+}
+
+// Svaret naar et andet element ligger over maalet: intet klikkes (R57).
+function daekketSvar(selector, el, method) {
+  const c = el.covered || {};
+  const hvad = (c.tag || 'an element') + (c.id ? '#' + c.id : '');
+  return {
+    ok: false, error: 'covered', ...(method ? { method } : {}), tag: el.tag, ...(el.text ? { text: el.text } : {}),
+    covered_by: c, landed: false,
+    note: `Another element (${hvad}) lies over ${selector} at its center, so the mouse would reach that instead. ` +
+          'Nothing was done. If a dialog or overlay is in front, act inside it or close it first ' +
+          '(browser_dismiss_overlays, or its own close button).',
+  };
 }
 
 function parseSelector(selector) {
@@ -1885,76 +1969,18 @@ async function resolveElement(tabId, selectorStr) {
   const parsed = parseSelector(selectorStr);
 
   if (parsed.type === 'css') {
-    // Standard CSS with shadow DOM traversal — try executeScript first, debugger fallback
-    const deepQueryFn = (sel) => {
-      function queryDeep(root, s) {
-        const el = root.querySelector(s);
-        if (el) return el;
-        for (const node of root.querySelectorAll('*')) {
-          if (node.shadowRoot) {
-            const found = queryDeep(node.shadowRoot, s);
-            if (found) return found;
-          }
-        }
-        return null;
-      }
-      const el = queryDeep(document, sel);
-      if (!el) return null;
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-      const r = el.getBoundingClientRect();
-      // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
-      // og debuggerClick sendte et AEGTE museklik i sidens oeverste venstre hjoerne —
-      // paa hvad der nu laa der (logo, menu, link) — og svarede ok:true. Det er ikke en
-      // rapporteringsfejl men en handlingsfejl: vi klikker et andet sted end der blev bedt om.
-      if (r.width <= 0 || r.height <= 0) {
-        return { found: false, hidden: true, tag: el.tagName, rect: { w: r.width, h: r.height } };
-      }
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName, found: true };
-    };
-
-    const scriptResult = await safeExecuteScript(tabId, deepQueryFn, [parsed.selector]);
-
+    // Standard CSS with shadow DOM traversal - try executeScript first, debugger fallback on CSP
+    const scriptResult = await safeExecuteScript(tabId, klikMaal, [parsed.selector, null, null, false, false]);
     if (scriptResult.cspBlocked) {
-      const sel = JSON.stringify(parsed.selector);
-      const result = await debuggerEval(tabId, `
-        (function() {
-          function queryDeep(root, s) {
-            const el = root.querySelector(s);
-            if (el) return el;
-            for (const node of root.querySelectorAll('*')) {
-              if (node.shadowRoot) { const f = queryDeep(node.shadowRoot, s); if (f) return f; }
-            }
-            return null;
-          }
-          const el = queryDeep(document, ${sel});
-          if (!el) return null;
-          el.scrollIntoView({ block: 'center', behavior: 'instant' });
-          const r = el.getBoundingClientRect();
-          if (r.width <= 0 || r.height <= 0) {
-            return { found: false, hidden: true, tag: el.tagName, rect: { w: r.width, h: r.height } };
-          }
-          return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, found: true };
-        })()
-      `);
+      const result = await debuggerEval(tabId, `(${klikMaal})(${JSON.stringify(parsed.selector)}, null, null, false, false)`);
       return result ? { ...result, method: 'debugger' } : null;
     }
     return scriptResult.result;
   }
 
-  // Text-based selector — always use debugger (more reliable, no CSP issues)
-  const finderJS = buildTextFinderJS(parsed.text, parsed.tag);
-  const result = await debuggerEval(tabId, `
-    (function() {
-      const el = ${finderJS};
-      if (!el) return null;
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-      const r = el.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) {
-        return { found: false, hidden: true, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), rect: { w: r.width, h: r.height } };
-      }
-      return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), found: true };
-    })()
-  `);
+  // Text-based selector - always use debugger (more reliable, no CSP issues)
+  const result = await debuggerEval(tabId,
+    `(${klikMaal})(null, ${JSON.stringify(parsed.text)}, ${JSON.stringify(parsed.tag)}, false, false)`);
   return result ? { ...result, method: 'debugger' } : null;
 }
 
@@ -4272,6 +4298,8 @@ async function dispatch(port, method, params) {
             tag: el.tag,
           };
         }
+        // R57: et andet element ligger over maalets midtpunkt (overlay, backdrop, en anden dialog) - musen ville ramme det.
+        if (el.covered) return daekketSvar(params.selector, el);
 
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
         const clickResult = await debuggerClick(tab.id, el.x, el.y);
@@ -4329,6 +4357,11 @@ async function dispatch(port, method, params) {
           // fjernede rammen foer scriptet koerte, og reglen svarede ok:true med nul handlinger. En afvisning beviser ikke at
           // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
           const r = await scriptingClick(tab.id, params.selector);
+          if (r.reason === 'covered') return daekketSvar(params.selector, r, 'scripting-fallback');
+          if (r.reason === 'hidden') {
+            return { ok: false, method: 'scripting-fallback', hidden: true, tag: r.tag,
+              error: 'Element found but not visible (0x0) - a click would hit the page corner: ' + params.selector };
+          }
           if (r.ok && !inputFristFoerTryk) {
             if (klikLandede(r)) return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: true };
             // MAALT 17/9 mod Stripe Dashboard: her stod et bart `ok: true` naar klikket ikke var bevist, med
@@ -4900,6 +4933,7 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       const dblBevis = await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       const { x, y } = el;
@@ -4921,6 +4955,7 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       const hoejreBevis = await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       const { x, y } = el;
@@ -4985,6 +5020,7 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       // ANTAGET 13/9 af Fable, MAALT 18/9 i flow-spaerren: Blink fyrer `mouseover` KUN naar
       // elementet under markoeren SKIFTER. Hover to gange paa det samme, eller klik og hover

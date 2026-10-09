@@ -239,19 +239,19 @@ All three are optional. None is needed for normal use.
 ### Interaction
 | Tool | Description |
 |------|-------------|
-| `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`) |
+| `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and nothing is clicked (`covered`) when something lies over the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites) |
 | `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers) |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
-| `browser_hover` | Hover for tooltips/dropdowns |
+| `browser_hover` | Hover for tooltips/dropdowns; nothing is done (`covered`) when something lies over the target |
 | `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select) |
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
 | `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
-| `browser_double_click` | True double-click (two trusted press/release pairs) |
-| `browser_right_click` | Right-click to open page-level context menus |
+| `browser_double_click` | True double-click (two trusted press/release pairs); nothing is done (`covered`) when something lies over the target |
+| `browser_right_click` | Right-click to open page-level context menus; nothing is done (`covered`) when something lies over the target |
 | `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
 | `browser_reattach_debugger` | Recovery: force-detach and re-attach the Chrome debugger on the current tab |
 
