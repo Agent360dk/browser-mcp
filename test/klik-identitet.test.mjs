@@ -857,3 +857,71 @@ test('click paa en knap i en shadow root, hvis punkt er dens eget slottede ikon,
   const svar = await browser(d).koer('click', { selector: '#gem' });
   assert.equal(svar.landed, true, JSON.stringify(svar));
 });
+
+// ── R75 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+// En label med et felt som maal: kun feltets aktiveringsklik er et ja. En lytter, der annullerer labelens klik (Reacts onClick,
+// addEventListener), gav landed:true med boksen tom.
+test('en label med et felt som maal: et annulleret labelklik er uvist, et aktiveret er ja (R75)', async () => {
+  for (const [annuller, udenKoordinater] of [[true, false], [false, false], [false, true]]) {
+    const d = lavKlikDom();
+    const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [400, 20, 20, 20] });
+    const l = d.label(boks, { id: 'l', tekst: 'Accepter vilkaarene', rect: [20, 20, 300, 20] });
+    const b = browser(d, { aktiveringUdenKoordinater: udenKoordinater });
+    if (annuller) l.addEventListener('click', (ev) => ev.preventDefault());   // efter browser(): den saetter lytterne paa knuderne
+    const svar = await b.koer('click', { selector: '#l' });
+    if (annuller) {
+      assert.notEqual(svar.landed, true, JSON.stringify(svar));
+      assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
+      assert.ok(!b.side.includes('click:c'), 'feltet fik intet klik');
+    } else {
+      assert.equal(svar.landed, true, JSON.stringify({ udenKoordinater, svar }));
+      assert.ok(b.side.includes('click:c'), String(b.side));
+    }
+  }
+});
+
+test('CHANGELOG siger, at feltets egen boks ikke er daekning, og at kun feltets aktiveringsklik er et ja for en label (R75)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(cl, /a box with a checkbox, switch or radio role, and anything that holds the label's field or lies inside it, is the field's own\. With a label that has a field as the target, only the field's own activation click counts as proof: a click on the label that a page listener cancels is `maybe_landed`, not a yes;/);
+});
+
+test('feltets egen boks med role=checkbox i labelen (Element UI, Base UI) er ikke daekning, og aktiveringen er ja (R75)', async () => {
+  for (const inputIBoksen of [true, false]) {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    const boks = d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 300, 30], lag: 1 }, l);
+    const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [0, 0, 1, 1] }, inputIBoksen ? boks : l);
+    felt.labels.push(l); l.control = felt;
+    const b = browser(d);
+    const svar = await b.koer('click', { selector: '#l' });
+    assert.equal(svar.covered_by, undefined, JSON.stringify(svar));
+    assert.equal(svar.landed, true, JSON.stringify({ inputIBoksen, svar }));
+  }
+});
+
+test('en label med et felt: double_click med et annulleret labelklik er uvist; right_click paa labelen er ja (R76)', async () => {
+  const lav = (annuller) => {
+    const d = lavKlikDom();
+    const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [400, 20, 20, 20] });
+    const l = d.label(boks, { id: 'l', tekst: 'Accepter vilkaarene', rect: [20, 20, 300, 20] });
+    const b = browser(d);
+    if (annuller) l.addEventListener('click', (ev) => ev.preventDefault());
+    return b;
+  };
+  const dbl = await lav(true).koer('double_click', { selector: '#l' });
+  assert.notEqual(dbl.landed, true, JSON.stringify(dbl));
+  const hoejre = await lav(false).koer('right_click', { selector: '#l' });
+  assert.equal(hoejre.landed, true, JSON.stringify(hoejre));
+});
+
+test('en label med en rolle som forfader til maalet er ikke maalets ramme i beviset (R66, R76)', async () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', attrs: { role: 'button' }, rect: [20, 20, 300, 40] });
+  d.el('span', { id: 't', tekst: 'Tekst', rect: [20, 20, 300, 40], ingenPeg: true }, l);
+  const svar = await browser(d).koer('click', { selector: '#t' });
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+

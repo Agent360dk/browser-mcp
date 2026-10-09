@@ -1099,3 +1099,22 @@ test('komponentens eget input med rolle under 90 % er dens felt, naar komponente
   }
 });
 
+// ── R76 ────────────────────────────────────────────────────────────────────
+test('en handling, der rummer labelens felt (en span med onclick om inputtet), er feltets egen (R76)', () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+  const om = d.el('span', { id: 'om', attrs: { onclick: 'spor()' }, rect: [20, 20, 300, 30], lag: 1 }, l);
+  const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 25, 20, 20] }, om);
+  felt.labels.push(l); l.control = felt;
+  assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered, undefined);
+});
+
+test('et form-associeret felts eget indre input (md-switch i en label) er feltet, ikke en anden kontrol (R75 Opus)', () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', tekst: 'Wi-Fi', rect: [20, 20, 300, 30] });
+  const vaert = d.el('x-switch', { id: 'm', rect: [20, 20, 300, 30] }, l);
+  l.control = vaert;
+  d.el('input', { id: 'switch', attrs: { type: 'checkbox', role: 'switch' }, rect: [20, 20, 300, 30], lag: 1 }, d.skygge(vaert));
+  assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered, undefined);
+});
+

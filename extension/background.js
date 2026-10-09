@@ -1690,7 +1690,12 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
       const nu = tjek(${x}, ${y});
       if (nu && !(inderOk && nu.inside)) return { daekket: nu };
       const inde = (n, m) => { for (let i = 0; n && i < 1000; i++) { if (n === m) return true; n = n.assignedSlot || n.parentNode || n.host; } return false; };
+      // R75 (Opus, maalt i Chrome): en label med et felt som maal gav landed:true, naar labelens klik kom frem - ogsaa naar en
+      // lytter (Reacts onClick, addEventListener) annullerede det, og feltet aldrig blev aktiveret. For et saadant maal er beviset
+      // derfor feltets eget aktiveringsklik (eller et klik direkte paa feltet); uden det er svaret uvist, ikke ja.
+      const felt = maal.tagName === 'LABEL' && maal.control ? maal.control : null;
       const v = { typer, maal, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [], labelKlik: false,
+        felt, kunAktivering: !!felt && typer.includes('click'), feltKlik: null,
         synligVedArm: document.visibilityState === 'visible' };
       v.fn = (ev) => {
         if (!ev.isTrusted) return;
@@ -1698,10 +1703,15 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         const vedPunkt = Math.abs(ev.clientX - ${x}) <= 1 && Math.abs(ev.clientY - ${y}) <= 1;
         const aktivering = ev.type === 'click' && vej.includes(maal) && ev.clientX === 0 && ev.clientY === 0 && !!v.labelKlik && !v.labelKlik.defaultPrevented;
         if (aktivering) v.labelKlik = null;
-        const vores = vedPunkt || aktivering;
+        // Chrome sender aktiveringsklikket med eller uden museens koordinater (maalt R68); begge taeller.
+        // (Et annulleret labelklik giver ingen aktivering - HTML - saa der skal ikke tjekkes for det her.)
+        const feltAktivering = v.kunAktivering && ev.type === 'click' && ev !== v.feltKlik && vej.includes(v.felt) && !!v.feltKlik;
+        if (feltAktivering) v.feltKlik = null;
+        const vores = vedPunkt || aktivering || feltAktivering;
         if (!vores) return;
         if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
         if (!maal.isConnected) { v.vaek = true; return; }
+        if (feltAktivering) { v.naaet.click = (v.naaet.click || 0) + 1; return; }
         const knude = vej[0] || ev.target;
         if ((ev.type === 'pointerenter' || ev.type === 'mouseenter') && knude !== maal && inde(maal, knude)) return;
         let d = tjek(${x}, ${y}, knude);
@@ -1709,6 +1719,11 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         if (d && v.sendt > 0 && (ev.type === 'pointerup' || ev.type === 'mouseup')) { v.urent = true; return; }
         if (d) { v.blokeret = d; v.delvis = v.sendt > 0; ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         v.sendt++;
+        if (v.kunAktivering && ev.type === 'click' && !inde(knude, v.felt)) {
+          v.feltKlik = ev;
+          setTimeout(() => { if (v.feltKlik === ev) v.feltKlik = null; }, 0);
+          return;
+        }
         if (ev.type === 'click' && !inde(knude, maal) && maal.labels && Array.from(maal.labels).some((l) => inde(knude, l))) {
           v.labelKlik = ev;
           setTimeout(() => { if (v.labelKlik === ev) v.labelKlik = null; }, 0);
@@ -1756,6 +1771,7 @@ async function laesMaalVagt(tabId, x, y) {
       }
       const trykNaaet = ((v.naaet.pointerdown || 0) + (v.naaet.mousedown || 0)) > 0;
       return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme, urent: !!v.urent, trykNaaet,
+        kunAktivering: !!v.kunAktivering,
         skjultHele: !v.synligVedArm && document.visibilityState !== 'visible' };
     })()` });
   } catch { return null; }
@@ -1769,7 +1785,12 @@ function vagtBevis(laest, typer) {
   // R66 (Astra, maalt i model): en vagt, der er vaek ved aflaesningen, beviser ikke en navigation (den kan vaere fjernet af
   // siden eller udloebet) - det er uvist, ikke ja.
   if (laest.udskiftet) return { landed: null };
-  if (!laest.urent && typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
+  // R75: for en label med et felt er kun feltets aktiveringsklik (eller et klik paa feltet selv) et ja.
+  // Kun for klik-beviser (click, dblclick): et hoejreklik eller en hover paa en label aktiverer ikke feltet og beviser sig selv.
+  if (laest.kunAktivering && (typer.includes('click') || typer.includes('dblclick'))) {
+    if (!laest.urent && (laest.naaet?.click || 0) > 0) return { landed: true };
+  }
+  else if (!laest.urent && typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
   // R67 (Astra): en fremmed ramme i punktet, og haendelsen naaede ikke maalet: covered + uvist, ogsaa naar noget blev sendt.
   if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true, trykNaaet: !!laest.trykNaaet };
   // R65 (Astra, maalt i model): intet naaede maalet. I en synlig side kan en lytter undervejs have stoppet haendelsen - og
@@ -2180,6 +2201,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // R66 (Astra): en handling er alt det, klikMaal selv regner for klikbart (CLICKABLE), plus input-knapper. (Flyttet herop i R74,
   // saa ogsaa label-rammen nedenfor kan bruge den.)
   const HANDLING = CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]';
+  // R75 (Opus, maalt i Chrome med Element UI og Base UI-DOM): i en label er en boks med rollen checkbox, switch eller radio
+  // feltets egen (el-checkbox__input, Base UI's span role=checkbox) - ikke en anden kontrol. Det samme er alt, der rummer
+  // labelens felt eller ligger i det (et custom-felts egen boks i dets skygge, el-checkbox'ens span om sit input).
+  const FELTROLLE = '[role="checkbox"],[role="switch"],[role="radio"]';
+  const iLabelHandling = (n) => !!n.matches && n.matches(INTERAKTIV + ',' + HANDLING) && !(n.matches(FELTROLLE) && !n.matches(INTERAKTIV));
+  const feltetSelv = (n, felt) => !!felt && (inde(n, felt) || inde(felt, n));
   const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
     if (inde(hit, el)) {
@@ -2273,7 +2300,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // det kan ikke ses foer klikket. I label-tilstand er en handling (alt klikbart: rolle, onclick, link uden adresse) derfor
       // ogsaa en daekning, i light DOM som i en komponent; labelens eget felt er det ikke.
       if (erLabel) {
-        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (n.matches && n.matches(INTERAKTIV + ',' + HANDLING)) { indre = lukket(n); break; }
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (iLabelHandling(n)) { indre = lukket(n); break; }
       } else {
         let fundet = null, link = null;
         // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
@@ -2310,14 +2337,14 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
           // feltet); labelens eget felt er det ikke.
           // R75 (Astra, maalt i model): et custom-felt (form-associated) har sin egen boks i sin skygge; den er feltet selv, ikke en
           // anden kontrol. Alt inde i labelens eget felt er derfor feltet.
-          if (egenStor && n.tagName === 'LABEL' && interaktiv && !(n.control && inde(interaktiv, n.control))) { fundet = interaktiv; break; }
+          if (egenStor && n.tagName === 'LABEL' && interaktiv && !feltetSelv(interaktiv, n.control)) { fundet = interaktiv; break; }
           // R74 (Astra, maalt i model): en label i labelen (ugyldig HTML, men muligt) blev ikke husket, saa en stor indre label
           // med for= et andet felt aktiverede det med landed:true. En label er ogsaa interaktivt indhold; den huskes efter, at den
           // selv er proevet som komponentens label.
           // R75 (Astra, maalt i model): en stor rolle-span, onclick eller et link uden adresse inde i komponentens label blev fritaget
           // som komponentens egen og ikke husket, saa en annullerende handling gav landed:true med boksen tom. Som i label-tilstanden
           // (R74) huskes enhver handling ogsaa.
-          if (!interaktiv && n.matches && n.matches(INTERAKTIV + ',' + HANDLING) && lukket(n)) interaktiv = n;
+          if (!interaktiv && iLabelHandling(n) && lukket(n)) interaktiv = n;
           if (!handling || egenStor) continue;
           // R75 (Astra, maalt i model): komponentens eget felt (et native input med rolle eller onclick) under 90 % blev afvist som
           // «en anden kontrol», selv om komponentens egen label om det daekker komponenten. Er n feltet for en saadan label laengere
@@ -2333,7 +2360,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         indre = fundet || (klikbartMaal ? link : null);
       }
       // R75 (Astra, maalt i model): ogsaa et punkt i labelens eget custom-felts skygge (dets egen boks) er feltet, ikke en anden kontrol.
-      if (indre && indre !== el && inde(indre, el) && !(el.control && inde(indre, el.control))) {
+      if (indre && indre !== el && inde(indre, el) && !feltetSelv(indre, el.control)) {
         // R73 (Opus, maalt i Chrome): noten naevnte BUTTON#button i en md-filled-buttons skygge, agenten klikkede `#button`, og det
         // ramte den foerste Material-knap paa siden (Annuller) med landed:true. En kontrol i en shadow root faar et flag, saa noten
         // ikke peger paa et id, som andre komponenter deler.
@@ -2374,10 +2401,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // handling koerte. Kontrollen under punktet findes nu i samme flade kaede.
     // R74 (Opus, maalt i Chrome): i en label-ramme saa vaelgeren kun INTERAKTIV, saa en Slet med en rolle over teksten fik
     // klikket. En handling er ogsaa her en anden kontrol (se label-tilstanden ovenfor).
-    const kontrolVaelger = iEgenLabel ? INTERAKTIV + ',' + HANDLING : CLICKABLE + ',input,select,textarea';
     let hitKontrol = null;
     for (let n = hit, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
-      if (n.matches && n.matches(kontrolVaelger)) { hitKontrol = lukket(n); break; }
+      if (iEgenLabel ? iLabelHandling(n) : (!!n.matches && n.matches(CLICKABLE + ',input,select,textarea'))) { hitKontrol = lukket(n); break; }
     }
     const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
       (!!ramme && ramme.tagName === 'LABEL' && hitKontrol === ramme.control) ||
