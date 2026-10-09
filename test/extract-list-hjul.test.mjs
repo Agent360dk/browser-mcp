@@ -95,6 +95,8 @@ test('foer rettelsen (#11): uden hjul henter feedet intet - og saa maa reached_e
   assert.equal(svar.scroll_method, 'script');
   assert.match(svar.note, /not the active one in its window, so the list was scrolled without wheel events/);
   assert.match(svar.note, /browser_switch_tab/);
+  // MAALT i Chrome: 10 af 50 med reached_end:true i en baggrundsfane - noten skal sige hvad det betyder dér.
+  assert.match(svar.note, /reached_end then only means the bottom of what loaded without them/);
 });
 
 test('en liste der henter paa scroll, virker stadig i en baggrundsfane', async () => {
@@ -137,6 +139,15 @@ test('staar listen paa en bund der lige er vokset, er det ikke enden', async () 
   const f = feed({ pladsholdere: 2, voksFoerRul: true });
   const svar = await udtraek(sele(f), { stable_rounds: 2 });
   assert.equal(svar.count, 40, `stoppede ved ${svar.count}: en bund der lige var vokset, blev kaldt enden`);
+  assert.equal(svar.reached_end, true);
+});
+
+// MAALT i Chrome 9/10 (r60-chrome/p10-feed.log): i en indre container der beholder alle raekker i DOM, stoppede
+// koerslen ved 30 af 50, fordi rulningen gennem raekker der allerede var hentet, talte som «ingen nye raekker».
+test('en liste der beholder sine raekker, rulles helt til bunden - rulning er fremskridt', async () => {
+  const f = feed({ start: 30, i_alt: 90, parti: 30 });
+  const svar = await udtraek(sele(f));
+  assert.equal(svar.count, 90, `stoppede ved ${svar.count} af 90 midt i allerede hentede raekker`);
   assert.equal(svar.reached_end, true);
 });
 

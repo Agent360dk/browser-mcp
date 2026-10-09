@@ -3991,7 +3991,8 @@ async function dispatch(port, method, params) {
       // falder paa fristen, lander senere som en ekstra rulning (maalt 19/9) - saa dér rulles der med script, og svaret siger det.
       const erAktiv = async () => { try { const f = await chrome.tabs.get(tab.id); return !!f && f.active === true; } catch { return false; } };
       const BAGGRUND = 'The tab is not the active one in its window, so the list was scrolled without wheel events (Chrome does ' +
-        'not deliver them there). A feed that loads more rows on wheel may have stopped early: call browser_switch_tab and run again.';
+        'not deliver them there). A feed that loads more rows on wheel may have stopped early, and reached_end then only means the ' +
+        'bottom of what loaded without them: call browser_switch_tab and run again.';
       let hjul = await erAktiv();
       let note = hjul ? null : BAGGRUND;
       const metoder = new Set();
@@ -4055,10 +4056,13 @@ async function dispatch(port, method, params) {
               'rows on wheel may have stopped early.';
           }
         } else stilleHjul = 0;
+        // MAALT i Chrome 9/10: en liste der beholder alle sine raekker i DOM, stoppede midt i det allerede hentede, fordi
+        // rulningen gennem dem talte som «ingen nye raekker». En liste der flyttede sig, er paa vej mod bunden.
+        const flyttede = lastPos !== null && data.pos !== lastPos;
         lastHeight = data.height;
         lastPos = data.pos;
         // En liste der vokser uden nye raekker endnu (en loader der foerst laegger pladsholdere ind), er stadig i gang.
-        if (nye === 0 && !voksede) stable++; else stable = 0;
+        if (nye === 0 && !voksede && !flyttede) stable++; else stable = 0;
         // reached_end kun naar listen stod paa bunden, intet nyt kom og den ikke voksede - stable_rounds runder i traek.
         if (data.atBottom && nye === 0 && !voksede) bundRunder++; else bundRunder = 0;
         if (bundRunder >= stableNeeded) { atEnd = true; break; }
