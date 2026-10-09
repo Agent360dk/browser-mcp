@@ -46,7 +46,11 @@ seen; no real address means none, `#`, `javascript:` (read as the browser reads 
 hide it) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around
 it; the target is looked up as HTML does (the fragment as written, then percent-decoded, then `top`). The address is
 resolved as the browser resolves it, so a link to the same page that differs only in its fragment (`/orders#!`) counts
-as a fragment, and a hash route (`#/orders/7`, `#!/orders/7`) is a real address. A delete link with a real address
+as a fragment, and a hash route (`#/orders/7`, `#!/orders/7`) is a real address. A link that is only a fragment (`#!`)
+is read against the page itself, also when `<base>` points elsewhere: such links are placeholders in practice, so this is
+a deliberate refusal (a real mouse would load the base page). A web component's own button - the control in its own
+shadow root that fills most of it, as in `ion-button` or `sl-button` - is the component's action, not a control inside
+it; a small button inside a component (a delete on a card component) is. A delete link with a real address
 (rails-ujs `data-method`), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a
 plain link. A field or
 other control whose center lies on a button around it is covered by that button: the click would go to the button, and
@@ -55,7 +59,7 @@ so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did,
 icon button with no text of its own now clicks the row, not the button. A text selector still picks the innermost element
 whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button. Hover and right-click do not click a control inside the target, so for them only something in front
 of it is cover; enter events on the target's ancestors are part of the hover. Inside a closed shadow root the guard
-cannot see which control gets the click. If the guard cannot be set up in the page, nothing is sent and the answer says
+cannot see which control gets the click. If the guard cannot be set up in the page, no press or click is sent and the answer says
 so (1.30.1 clicked without it). `browser_select_option` goes on to the option only when the trigger's press is
 shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is
 clicked, and the answer says so.

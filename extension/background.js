@@ -1685,7 +1685,7 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
       if (!maal.isConnected) return { vaek: true };
       const nu = tjek(${x}, ${y});
       if (nu && !(inderOk && nu.inside)) return { daekket: nu };
-      const inde = (n, m) => { for (let i = 0; n && i < 1000; i++) { if (n === m) return true; n = n.parentNode || n.host; } return false; };
+      const inde = (n, m) => { for (let i = 0; n && i < 1000; i++) { if (n === m) return true; n = n.assignedSlot || n.parentNode || n.host; } return false; };
       const v = { typer, maal, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [], labelKlik: false,
         synligVedArm: document.visibilityState === 'visible' };
       v.fn = (ev) => {
@@ -2042,9 +2042,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     }
     return null;
   }
-  // Ligger n i maal - ogsaa paa tvaers af shadow roots?
+  // Ligger n i maal - ogsaa paa tvaers af shadow roots? R71 (Astra): i den flade kaede, saa en knaps eget slottede ikon er knappens.
   function inde(n, maal) {
-    for (let i = 0; n && i < 1000; i++) { if (n === maal) return true; n = n.parentNode || n.host; }
+    for (let i = 0; n && i < 1000; i++) { if (n === maal) return true; n = n.assignedSlot || n.parentNode || n.host; }
     return false;
   }
   // R61 (Astra og Opus, maalt): en modal i en aaben shadow root blev ikke fundet, selv om tekstsoegningen gaar gennem
@@ -2214,12 +2214,16 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // ikke for et regulaert udtryk paa den raa attribut. Adressen renses som URL-parseren goer det (tabulatorer og
         // linjeskift fjernes overalt, styre- og mellemrumstegn i enderne), foer den proeves.
         const a = href.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+|[\u0000- ]+$/g, '');
-        if (a === '' || a === '#' || /^javascript:/i.test(a)) return false;
+        // R71 (Astra): et bart # afvises ikke foer opløsningen - med <base> andetsteds peger det paa et andet dokument.
+        if (a === '' || /^javascript:/i.test(a)) return false;
         // R70 (Opus, maalt i Chrome): `<sti>#!` og `<hele adressen>#` peger paa samme dokument og slettede med ok:true - reglen
         // saa kun paa href, der begyndte med #. Adressen oploeses nu som browseren goer det (mod baseURI): peger den paa et
         // andet dokument, eller paa samme uden fragment (en genindlaesning), er den rigtig; ellers gaelder fragmentreglen.
         let u = null;
-        try { u = new URL(a, document.baseURI); } catch (e) {}
+        // R71 (Opus, maalt i Chrome): med <base> et andet sted (Angulars <base href="/">) blev `#!` en «rigtig adresse», og Slet
+        // koerte med ok:true. Et link, der kun er et fragment, er i praksis en pladsholder og laeses derfor mod siden selv (en
+        // bevidst afvisning: en rigtig mus ville indlaese base-siden).
+        try { u = new URL(a, a[0] === '#' ? document.URL : document.baseURI); } catch (e) {}
         if (!u || u.protocol === 'javascript:') return false;
         const udenFrag = (s) => String(s).replace(/#.*$/, '');
         if (!u.href.includes('#') || udenFrag(u.href) !== udenFrag(document.URL)) return true;
@@ -2233,7 +2237,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         {
           const frag = u.hash.slice(1);
           if (frag === '') return false;
-          if (/^!?\//.test(frag)) return true;
+          if (/^!?\/./.test(frag)) return true;   // R71 (Opus): `#/` og `#!/` alene er ikke en rute
           const find = (f) => (document.getElementById && document.getElementById(f)) ||
             Array.from(document.querySelectorAll('a[name]')).find((x) => x.getAttribute('name') === f) || null;
           let spring = find(frag), afkodet = frag;
@@ -2243,7 +2247,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
               const hex = i + 2 < b.length ? String.fromCharCode(b[i + 1], b[i + 2]) : '';
               if (b[i] === 37 && /^[0-9a-f]{2}$/i.test(hex)) { ud.push(parseInt(hex, 16)); i += 2; } else ud.push(b[i]);
             }
-            afkodet = new TextDecoder('utf-8').decode(new Uint8Array(ud));
+            // R71 (Astra): «UTF-8 decode without BOM» bevarer en indledende U+FEFF; TextDecoder fjerner den uden ignoreBOM.
+            afkodet = new TextDecoder('utf-8', { ignoreBOM: true }).decode(new Uint8Array(ud));
             spring = find(afkodet);
           }
           if (!spring) return afkodet.toLowerCase() === 'top';
@@ -2262,8 +2267,14 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         let fundet = null, link = null;
         // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
         // omkring den i shadow root'en (den flade kaede), saa assignedSlot foelges foer parentNode.
+        // R71 (Opus, maalt i Chrome): klikket paa en webkomponents vaert (ion-button, sl-button, md-filled-button) gik via slotten
+        // til vaertens EGEN knap og blev afvist som «en anden kontrol». En handling i maalets egen shadow root (eller dybere),
+        // der fylder mindst halvdelen af maalet, er maalets egen knap; en lille Slet inde i en kort-komponent er det ikke.
+        const iEgenSkygge = (k) => { for (let x = k, i = 0; x && i < 1000; x = x.parentNode || x.host, i++) if (x.host === el) return true; return false; };
+        const fylder = (k) => { const a = k.getBoundingClientRect(), b = el.getBoundingClientRect(); return a.width * a.height >= 0.5 * b.width * b.height; };
         for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
           if (!n.matches || !n.matches(HANDLING) || !lukket(n)) continue;
+          if (iEgenSkygge(n) && fylder(n)) break;
           if (etLink(n)) { link = link || n; continue; }
           fundet = n; break;
         }
@@ -5560,7 +5571,6 @@ async function dispatch(port, method, params) {
       if (vagtD && vagtD.daekket) return vagtSvar(params.selector, el, { blokeret: vagtD.daekket, foerSendt: true });
       if (vagtD && vagtD.vaek) return vaekSvar(params.selector, el);
       if (!vagtD || !vagtD.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
-      const dblBevis = vagtD && vagtD.armet ? null : await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       let laestD = null;
       try {
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
@@ -5575,8 +5585,7 @@ async function dispatch(port, method, params) {
       } finally {
         if (vagtD && vagtD.armet && !laestD) await laesMaalVagt(tab.id);   // R65: aldrig en efterladt vagt
       }
-      const db = vagtD && vagtD.armet ? vagtBevis(laestD, ['dblclick'])
-        : dblBevis ? await laesHaendelsesBevis(tab.id, dblBevis) : { landed: null };
+      const db = vagtBevis(laestD, ['dblclick']);
       if (db.blokeret) return vagtSvar(params.selector, el, db);
       return haendelsesSvar(db, 'double-click-not-delivered',
         { double_clicked: db.landed === true, tag: el.tag, text: el.text });
@@ -5595,7 +5604,6 @@ async function dispatch(port, method, params) {
       if (vagtR && vagtR.daekket) return vagtSvar(params.selector, el, { blokeret: vagtR.daekket, foerSendt: true });
       if (vagtR && vagtR.vaek) return vaekSvar(params.selector, el);
       if (!vagtR || !vagtR.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
-      const hoejreBevis = vagtR && vagtR.armet ? null : await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       let laestR = null;
       try {
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
@@ -5606,8 +5614,7 @@ async function dispatch(port, method, params) {
       } finally {
         if (vagtR && vagtR.armet && !laestR) await laesMaalVagt(tab.id);   // R65: aldrig en efterladt vagt
       }
-      const hb2 = vagtR && vagtR.armet ? vagtBevis(laestR, ['contextmenu'])
-        : hoejreBevis ? await laesHaendelsesBevis(tab.id, hoejreBevis) : { landed: null };
+      const hb2 = vagtBevis(laestR, ['contextmenu']);
       if (hb2.blokeret) return vagtSvar(params.selector, el, hb2);
       const svarH = haendelsesSvar(hb2, 'right-click-not-delivered',
         { right_clicked: hb2.landed === true, tag: el.tag, text: el.text });
@@ -5886,7 +5893,9 @@ async function dispatch(port, method, params) {
       }
       const valgKlik = await debuggerClick(tab.id, option.x, option.y, true);
       if (valgKlik && valgKlik.vaek) return { ...vaekSvar(`text=${oensket}`, option), trigger_clicked: true };
-      if (valgKlik && valgKlik.ikkeArmeret) return { ...ikkeArmeretSvar(`text=${oensket}`, option), trigger_clicked: true };
+      // R71 (Astra): udloeseren ER klikket - noten maa ikke sige, at intet blev gjort.
+      if (valgKlik && valgKlik.ikkeArmeret) return { ...ikkeArmeretSvar(`text=${oensket}`, option), trigger_clicked: true,
+        note: 'The dropdown was clicked, but the click on the option could not be checked in the page, so it was not sent; the list may still be open. Check the state before trying again.' };
       if (valgKlik && valgKlik.fremmedRamme) return { ...vagtSvar(`text=${oensket}`, option, { blokeret: valgKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: valgKlik.trykNaaet }), trigger_clicked: true };
       if (valgKlik && valgKlik.blokeret) {
         const svar = vagtSvar(`text=${oensket}`, option, valgKlik);

@@ -24,7 +24,8 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl,
   d.document.removeEventListener = fjern(lyttere.document);
   // Elementerne i klik-dom ved ikke, om de er i dokumentet; her er alle det (vagten kraever et tilsluttet maal).
   const proto = Object.getPrototypeOf(d.body);
-  Object.defineProperty(proto, 'isConnected', { get() { for (let n = this; n; n = n.parentNode) if (n === d.document.documentElement) return true; return false; }, configurable: true });
+  // Som i en browser: en knude i en tilsluttet vaerts shadow root er ogsaa tilsluttet (R71).
+  Object.defineProperty(proto, 'isConnected', { get() { for (let n = this; n; n = n.parentNode || n.host) if (n === d.document.documentElement) return true; return false; }, configurable: true });
   // Lyttere paa knuderne (R65: vagten taeller kun en haendelse, der NAAR knuden).
   proto.addEventListener = function (n, f, o) { ((this._lyt ||= {})[n] ||= []).push({ f, once: !!(o && o.once) }); };
   proto.removeEventListener = function (n, f) { const l = this._lyt?.[n] || []; const i = l.findIndex((x) => x.f === f); if (i >= 0) l.splice(i, 1); };
@@ -38,7 +39,7 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl,
     // Som Chrome: en haendelse i en iframe gaar til rammens eget dokument; siden udenom (og vagten) ser den ikke.
     if (el?.tagName === 'IFRAME') { side.push(type + ':' + el.id + '(inde)'); return; }
     const vej = [];
-    for (let n = el; n; n = n.parentNode || n.host) vej.push(n);
+    for (let n = el; n; n = n.assignedSlot || n.parentNode || n.host) vej.push(n);   // den flade kaede, som i en browser (R71)
     vej.push(d.document, window);
     const ev = { type, target: el, isTrusted: true, clientX: x, clientY: y, composedPath: () => vej, stoppet: false,
       preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stoppet = true; }, stopPropagation() { this.stoppet = true; } };
@@ -302,9 +303,9 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   assert.match(cl, /the remaining presses and clicks are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it, and a release the page moves elsewhere is let through\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
   assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control/);
   assert.match(cl, /for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with a real address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between, also across an open shadow root and through a slot\./);
-  assert.match(cl, /An element with a link role that is not an `a`, an `a` with a role other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be seen; no real address means none, `#`, `javascript:` \(read as the browser reads it, so a tab or line break inside does not hide it\) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around it; the target is looked up as HTML does \(the fragment as written, then percent-decoded, then `top`\)\. The address is resolved as the browser resolves it, so a link to the same page that differs only in its fragment \(`\/orders#!`\) counts as a fragment, and a hash route \(`#\/orders\/7`, `#!\/orders\/7`\) is a real address\. A delete link with a real address \(rails-ujs `data-method`\), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a plain link\./);
+  assert.match(cl, /An element with a link role that is not an `a`, an `a` with a role other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be seen; no real address means none, `#`, `javascript:` \(read as the browser reads it, so a tab or line break inside does not hide it\) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around it; the target is looked up as HTML does \(the fragment as written, then percent-decoded, then `top`\)\. The address is resolved as the browser resolves it, so a link to the same page that differs only in its fragment \(`\/orders#!`\) counts as a fragment, and a hash route \(`#\/orders\/7`, `#!\/orders\/7`\) is a real address\. A link that is only a fragment \(`#!`\) is read against the page itself, also when `<base>` points elsewhere: such links are placeholders in practice, so this is a deliberate refusal \(a real mouse would load the base page\)\. A web component's own button - the control in its own shadow root that fills most of it, as in `ion-button` or `sl-button` - is the component's action, not a control inside it; a small button inside a component \(a delete on a card component\) is\. A delete link with a real address \(rails-ujs `data-method`\), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a plain link\./);
   assert.match(cl, /a text next to an icon button with no text of its own now clicks the row, not the button\./);
-  assert.match(cl, /If the guard cannot be set up in the page, nothing is sent and the answer says so \(1\.30\.1 clicked without it\)\./);
+  assert.match(cl, /If the guard cannot be set up in the page, no press or click is sent and the answer says so \(1\.30\.1 clicked without it\)\./);
   assert.match(cl, /A field or other control whose center lies on a button around it is covered by that button: the click would go to the button, and whether the button changes the field cannot be told\./);
   assert.match(cl, /A text selector still picks the innermost element whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button\./);
   assert.match(cl, /`browser_select_option` goes on to the option only when the trigger's press is shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is clicked, and the answer says so\./);
@@ -806,11 +807,53 @@ test('tools.js: select_option-stoppet og click/double_clicks fragmentregel staar
   const kilde = readFileSync(join(ROD, 'mcp-server/tools.js'), 'utf8');
   const beskrivelse = (navn) => kilde.split(`name: 'browser_${navn}'`)[1].split('inputSchema')[0];
   const sel = beskrivelse('select_option');
-  assert.match(sel, /If neither the press on the trigger is shown to have reached it nor its click landed, no option is clicked and the answer is ok:false with maybe_landed: true; if it opens a dialog, or the option is not found, the answer has trigger_clicked: true\./);
+  assert.match(sel, /If the click on the trigger was sent, but neither its press is shown to have reached it nor its click landed, no option is clicked and the answer is ok:false with maybe_landed: true; a click that cannot be checked in the page is not sent, and the answer says so; if it opens a dialog, or the option is not found, the answer has trigger_clicked: true\./);
   assert.doesNotMatch(sel, /never clicked unless|only (?:when|if) the trigger click (?:itself )?landed/i);
   for (const navn of ['click', 'double_click']) {
     const b = beskrivelse(navn);
-    assert.match(b, /its own plain link with a real address \(not a fragment with no target on the page\) does not count/, navn);
-    assert.doesNotMatch(b, /every fragment|any fragment link|fragment links? (?:is|are) (?:always )?allowed/i, navn);
+    assert.match(b, /its own plain link with a real address \(a hash route counts; a fragment with no target on the page does not\) does not count/, navn);
+    assert.doesNotMatch(b, /every fragment|any fragment link|fragment links? (?:is|are) (?:always )?allowed|hash routes? (?:is|are) not (?:a )?real address/i, navn);
   }
+});
+
+// ── R71 (Astra, maalt i model) ─────────────────────────────────────────────
+test('fill med tekstvaelger: kan vagten ikke armeres, sendes intet (R71)', async () => {
+  const d = lavKlikDom();
+  const felt = d.el('input', { id: 'mail', attrs: { type: 'text' }, rect: [20, 60, 300, 30] });
+  d.label(felt, { id: 'lm', tekst: 'E-mail', rect: [20, 20, 300, 30] });
+  const b = browser(d);
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, q) => (metode === 'Runtime.evaluate' && q.expression.includes('window.__bmcpVagt = v')
+    ? { result: { value: null } } : send(m, metode, q));
+  const svar = await b.koer('fill', { selector: 'text=E-mail', value: 'x' });
+  assert.equal(svar.ok, false, JSON.stringify(svar));
+  assert.match(svar.error || '', /^The click could not be checked in the page, so it was not sent/);
+  assert.ok(!b.side.some((h) => /^(pointerdown|mousedown|click):/.test(h)), String(b.side));
+});
+
+test('select_option: kan valgets vagt ikke armeres efter udloeserklikket, siger noten at udloeseren ER klikket (R71)', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  d.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 300, 200, 40] });
+  const b = browser(d);
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  let armeringer = 0;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, q) => (metode === 'Runtime.evaluate' && q.expression.includes('window.__bmcpVagt = v') && ++armeringer > 1
+    ? { result: { value: null } } : send(m, metode, q));
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+  assert.equal(svar.trigger_clicked, true, JSON.stringify(svar));
+  assert.match(svar.note || '', /^The dropdown was clicked, but the click on the option could not be checked in the page, so it was not sent/);
+  assert.ok(b.side.includes('click:trig'), String(b.side));
+  assert.ok(!b.side.includes('click:fi'), String(b.side));
+});
+
+test('click paa en knap i en shadow root, hvis punkt er dens eget slottede ikon, lander (R71)', async () => {
+  const d = lavKlikDom();
+  const vaert = d.el('my-button', { id: 'vaert', rect: [20, 20, 200, 40] });
+  const knap = d.el('button', { id: 'gem', tekst: 'Save', rect: [20, 20, 200, 40] }, d.skygge(vaert));
+  const slot = d.el('slot', { rect: [20, 20, 200, 40] }, knap);
+  const ikon = d.el('span', { id: 'ikon', rect: [20, 20, 200, 40], lag: 1 }, vaert);
+  ikon.assignedSlot = slot;
+  const svar = await browser(d).koer('click', { selector: '#gem' });
+  assert.equal(svar.landed, true, JSON.stringify(svar));
 });

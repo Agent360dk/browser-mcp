@@ -230,7 +230,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : 'the rest of the presses and clicks are stopped \\(a release the page moves elsewhere is let through\\), and the answer';
     assert.match(d, new RegExp(`If the mouse would not reach the target at its center - another element lies in front of it \\(an overlay, a dialog\\\\'s backdrop\\),[^"]* - the answer is ok:false with error "covered" and covered_by\\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, ${hale} also has maybe_landed: true, because the page may already have reacted\\.(?! In the active tab the mouse)`), `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
-    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(not a fragment with no target on the page\) does not count\)/, navn);
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route counts; a fragment with no target on the page does not\) does not count\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
@@ -842,15 +842,56 @@ test('en label: et link i en shadow root omkring en slot, der viser labelens tek
 });
 
 // ── R70 (Opus, maalt i Chrome) ─────────────────────────────────────────────
-test('et passivt kort: et link til samme dokument med pladsholder er en handling; en rute, en genindlaesning og <base> andetsteds er kortets link (R70)', () => {
+test('et passivt kort: et link til samme dokument med pladsholder er en handling, ogsaa kun-fragment med <base> andetsteds; en rute og en genindlaesning er kortets link (R70, R71)', () => {
   for (const [href, base, daekket] of [
-    ['/side#!', null, true], ['https://x.example/side#', null, true], ['#x', null, true], ['http://[ugyldig', null, true],
+    ['/side#!', null, true], ['https://x.example/side#', null, true], ['#x', null, true], ['http://[ugyldig', null, true], ['#', null, true],
+    ['/SIDE#!', null, false], ['#', 'https://andet.example/', true], ['#!', 'https://andet.example/', true], ['#/', null, true], ['#!/', null, true],
+    ['side#x', 'https://andet.example/', false],
     ['/side', null, false], ['/side?q=1#!', null, false], ['#/ordre/7', null, false], ['#!/ordre/7', null, false],
-    ['#x', 'https://andet.example/', false]]) {
+    ['#x', 'https://andet.example/', true]]) {
     const d = lavKlikDom();
     if (base) d.document.baseURI = base;
     const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el('a', { id: 'i', tekst: 'Slet', attrs: { href }, rect: [190, 60, 100, 40], lag: 1 }, kort);
     assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, `${href} (base ${base})`);
   }
+});
+
+// ── R71 (Astra, maalt i model) ─────────────────────────────────────────────
+test('fragmentopslaget bevarer et indledende U+FEFF i det afkodede id, som HTML (R71)', () => {
+  for (const [linketsId, andetId, href, daekket] of [
+    ['﻿section', 'section', '#%EF%BB%BFsection', true], [null, '﻿section', '#%EF%BB%BFsection', false], [null, null, '#%EF%BB%BFtop', true]]) {
+    const d = lavKlikDom();
+    if (andetId) d.el('section', { id: andetId, rect: [0, 600, 1200, 100] });
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: linketsId || 'i', tekst: 'Slet', attrs: { href }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(!!d.koer(KILDE, '#kort', null, null, false, false).svar.covered, daekket, `${href} (linket: ${JSON.stringify(linketsId)}, andet: ${JSON.stringify(andetId)})`);
+  }
+});
+
+test('en knap i en shadow root er ikke daekket af sit eget slottede ikon (R71)', () => {
+  const d = lavKlikDom();
+  const vaert = d.el('my-button', { id: 'vaert', rect: [40, 40, 200, 40] });
+  const knap = d.el('button', { id: 'gem', tekst: 'Save', rect: [40, 40, 200, 40] }, d.skygge(vaert));
+  const slot = d.el('slot', { rect: [40, 40, 200, 40] }, knap);
+  const ikon = d.el('span', { id: 'ikon', rect: [40, 40, 200, 40], lag: 1 }, vaert);
+  ikon.assignedSlot = slot;
+  assert.equal(d.koer(KILDE, '#gem', null, null, false, false).svar.covered, undefined);
+});
+
+// ── R71 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('en webkomponent-knap klikket paa sin vaert: vaertens egen knap er ikke daekning; en lille Slet i en kort-komponent er (R71)', () => {
+  const d = lavKlikDom();
+  const vaert = d.el('x-slet', { id: 'slet', rect: [40, 40, 120, 40] });
+  const knap = d.el('button', { id: 'sb', rect: [40, 40, 120, 40] }, d.skygge(vaert));
+  const slot = d.el('slot', { rect: [40, 40, 120, 40] }, knap);
+  const span = d.el('span', { tekst: 'Slet', rect: [40, 40, 120, 40], lag: 1 }, vaert);
+  span.assignedSlot = slot;
+  assert.equal(d.koer(KILDE, '#slet', null, null, false, false).svar.covered, undefined, 'vaertens egen knap');
+  const d2 = lavKlikDom();
+  const komp = d2.el('x-kort', { id: 'kort', rect: [40, 40, 400, 80] });
+  const rod = d2.skygge(komp);
+  d2.el('div', { id: 'flade', rect: [40, 40, 400, 80] }, rod);
+  d2.el('button', { id: 'lille', tekst: 'Slet', rect: [200, 60, 80, 40], lag: 1 }, rod);
+  assert.equal(d2.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'lille', 'en lille Slet i komponenten');
 });

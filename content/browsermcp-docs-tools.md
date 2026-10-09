@@ -29,7 +29,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_click` | Click an element via CSS or text selector (`text=Submit`, `button:text(Next)`); auto-scrolls into view, uses real mouse events. A text selector looks inside an open modal dialog first. If the mouse would not reach the target at its center (something in front of it, a target that does not take clicks there, or a different control inside it), the answer is `covered`; if something gets in the way only after the press, the answer is `covered` or `maybe_landed`, never a plain yes. |
+| `browser_click` | Click an element via CSS or text selector (`text=Submit`, `button:text(Next)`); auto-scrolls into view, uses real mouse events. A text selector looks inside an open modal dialog first. If the mouse would not reach the target at its center (something in front of it, a target that does not take clicks there, or a different control inside it), the answer is `covered`; if something gets in the way only after the press, the answer is `covered` or `maybe_landed`, never a plain yes. If the page cannot be checked, nothing is sent and the answer says so. |
 | `browser_double_click` | Double-click an element - for editors and grids that open on double-click rather than single. Answers `covered` when the mouse would not reach it. |
 | `browser_right_click` | Right-click an element to open its context menu. Answers `covered` when the mouse would not reach it. |
 | `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
