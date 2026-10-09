@@ -13,8 +13,8 @@ Your agent opens the dashboard in your Chrome, where you are already signed in, 
 ## What it looks like
 
 ```
-You:    Go to my analytics dashboard, pull this month's numbers,
-        and put them in a table.
+You:    Go to my analytics dashboard and compare this month's
+        numbers with last month's.
 
 Claude: [browser_navigate, browser_get_page_content]
         September against August: MRR $48,210 (up from $46,900),
