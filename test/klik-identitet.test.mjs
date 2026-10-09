@@ -885,7 +885,7 @@ test('CHANGELOG siger, at feltets egen boks ikke er daekning, og at kun feltets 
   const { join } = await import('node:path');
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.match(cl, /a box with a checkbox, switch or radio role, and anything that holds the label's field or lies inside it, is the field's own\. With a label that has a field as the target, only the field's own activation click counts as proof: a click on the label that a page listener cancels is `maybe_landed`, not a yes;/);
+  assert.match(cl, /anything that holds the label's field or lies inside it is the field's own, and so is a box with a checkbox, switch or radio role when the label's field itself is hidden \(a 1x1 stand-in input, as Base UI and sr-only patterns draw it\); next to a visible field, such a box is another control\. With a label that has a field as the target, only the field's own activation click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an activation stopped on the way, is `maybe_landed`, not a yes;/);
 });
 
 test('feltets egen boks med role=checkbox i labelen (Element UI, Base UI) er ikke daekning, og aktiveringen er ja (R75)', async () => {
@@ -923,5 +923,20 @@ test('en label med en rolle som forfader til maalet er ikke maalets ramme i bevi
   d.el('span', { id: 't', tekst: 'Tekst', rect: [20, 20, 300, 40], ingenPeg: true }, l);
   const svar = await browser(d).koer('click', { selector: '#t' });
   assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+// ── R76 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en label med et felt: et aktiveringsklik, som siden stopper foer feltet, er ikke et ja (R76)', async () => {
+  for (const udenKoordinater of [false, true]) {
+    const d = lavKlikDom();
+    const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [400, 20, 20, 20] });
+    d.label(boks, { id: 'l', tekst: 'Accepter vilkaarene', rect: [20, 20, 300, 20] });
+    const b = browser(d, { aktiveringUdenKoordinater: udenKoordinater });
+    // En fangstlytter paa document stopper feltets aktiveringsklik, foer det naar feltet.
+    d.document.addEventListener('click', (ev) => { if (ev.target === boks) { ev.preventDefault(); ev.stopImmediatePropagation(); } });
+    const svar = await b.koer('click', { selector: '#l' });
+    assert.notEqual(svar.landed, true, JSON.stringify({ udenKoordinater, svar }));
+    assert.ok(!b.side.includes('click:c'), String(b.side));
+  }
 });
 

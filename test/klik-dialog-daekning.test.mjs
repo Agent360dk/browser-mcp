@@ -1118,3 +1118,15 @@ test('et form-associeret felts eget indre input (md-switch i en label) er feltet
   assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered, undefined);
 });
 
+// ── R76 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en selvstaendig kontrol med feltrolle i en label med et synligt felt er daekning; med et skjult felt er boksen feltets (R76)', () => {
+  for (const [skjult, daekket] of [[false, true], [true, false]]) {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: skjult ? [20, 20, 1, 1] : [20, 25, 20, 20] }, l);
+    felt.labels.push(l); l.control = felt;
+    d.el('span', { id: 'anden', attrs: { role: 'checkbox', tabindex: '0', onclick: 'andet()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+    assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id === 'anden', daekket, skjult ? 'skjult felt' : 'synligt felt');
+  }
+});
+

@@ -166,7 +166,7 @@ test('a first navigate with its own window opens no about:blank tab', async () =
 
 // R73 (Astra, maalt i model): en adresse, der var faerdigindlaest, mens den nye fane blev lagt i sessionens gruppe, sendte sin
 // eneste 'complete', foer navigate lyttede - og navigate ventede de fulde 15 sekunder.
-function langsomBrowser({ eksisterende = null, hurtigOpdatering = false } = {}) {
+function langsomBrowser({ eksisterende = null, hurtigOpdatering = false, omdiriger = null } = {}) {
   const tabs = new Map(eksisterende ? [[eksisterende.id, { windowId: 1, active: false, status: 'complete', ...eksisterende }]] : []);
   let u, next = 100;
   const tilstand = { brugteTimeout: false };
@@ -185,7 +185,7 @@ function langsomBrowser({ eksisterende = null, hurtigOpdatering = false } = {}) 
       const t = tabs.get(id);
       // hurtigOpdatering: siden er faerdig, foer navigate naar at lytte (en side fra cachen).
       if (hurtigOpdatering) {
-        Object.assign(t, { url: p.url, pendingUrl: undefined, status: 'complete' });
+        Object.assign(t, { url: (omdiriger && omdiriger[p.url]) || p.url, pendingUrl: undefined, status: 'complete' });
         u.fyr('tabs.onUpdated', t.id, { status: 'complete' }, { ...t });   // foer navigate har sat sin lytter
         return { ...t };
       }
@@ -229,13 +229,45 @@ test('a first navigate to about:blank, and a reused placeholder without new_tab,
 
 // R75 (Astra, maalt i model): en eksisterende side, hvis navigation var faerdig, foer navigate lyttede - en ny adresse,
 // about:blank, samme adresse eller et fragment - ventede de fulde 15 sekunder.
-test('navigate in an existing tab whose page finished before navigate listened does not wait for the timeout', async () => {
+test('navigate in an existing tab whose page finished before navigate listened - also via a redirect - does not wait (R76)', async () => {
+  {
+    // En side fra cachen, der omdirigerer: den nye 'complete' har en anden adresse end den bedte, og den gamle side var faerdig.
+    const { u, tilstand } = langsomBrowser({ eksisterende: { id: 5, url: 'https://foer.example/', title: 'foer' }, hurtigOpdatering: true,
+      omdiriger: { 'https://example.com/kort': 'https://example.com/lang' } });
+    const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/kort' });
+    assert.equal(svar.url, 'https://example.com/lang');
+    assert.equal(tilstand.brugteTimeout, false, 'omdirigering: navigate ventede paa timeouten');
+  }
   for (const url of ['https://example.com/ny', 'about:blank', 'https://foer.example/', 'https://foer.example/#afsnit']) {
     const { u, tilstand } = langsomBrowser({ eksisterende: { id: 5, url: 'https://foer.example/', title: 'foer' }, hurtigOpdatering: true });
     const svar = await u.hent('dispatch')(9876, 'navigate', { url });
     assert.equal(svar.url, url, url);
     assert.equal(tilstand.brugteTimeout, false, `${url}: navigate ventede paa timeouten`);
   }
+});
+
+// R76 (Astra, maalt i model): en gammel sides 'complete' (en side, der stadig indlaeste, eller en gammel omdirigering) efter
+// opdateringen blev taget som den nye side; svaret kom med den gamle adresse.
+test('navigate in a tab whose old page was still loading does not take the old page\'s complete as the new one', async () => {
+  const tabs = new Map([[5, { id: 5, url: 'https://foer.example/', title: 'foer', windowId: 1, status: 'loading', active: false }]]);
+  let u;
+  u = indlaesUdvidelse({ svar: {
+    'tabs.update': (id, p) => {
+      const t = tabs.get(id);
+      setTimeout(() => { t.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...t }); }, 5);   // den gamle side bliver faerdig
+      setTimeout(() => { Object.assign(t, { url: p.url, status: 'loading' }); u.fyr('tabs.onUpdated', id, { status: 'loading' }, { ...t }); }, 20);
+      setTimeout(() => { t.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...t }); }, 40);
+      return { ...t };
+    },
+    'tabs.get': (id) => ({ ...tabs.get(id) }),
+    'tabs.query': () => [...tabs.values()],
+    'scripting.executeScript': () => [{ result: { found: false, types: [] } }],
+    'debugger.sendCommand': () => ({ result: { value: null } }),
+    'debugger.getTargets': [],
+  } });
+  u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([5]), activeTabId: 5, groupId: 1, windowId: 1 });
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/ny' });
+  assert.equal(svar.url, 'https://example.com/ny');
 });
 
 test('a navigate in place does not take the old page\'s complete status as the new page having loaded', async () => {

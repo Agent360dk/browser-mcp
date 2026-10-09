@@ -1711,7 +1711,14 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         if (!vores) return;
         if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
         if (!maal.isConnected) { v.vaek = true; return; }
-        if (feltAktivering) { v.naaet.click = (v.naaet.click || 0) + 1; return; }
+        // R76 (Astra, maalt i model): aktiveringen blev talt ved window - en lytter, der stoppede den, foer den naaede feltet,
+        // gav landed:true med boksen tom. Den taelles nu paa knuden selv, naar netop denne haendelse naar den.
+        if (feltAktivering) {
+          const k = vej[0] || ev.target;
+          const naaetFelt = (e2) => { if (e2 === ev) v.naaet.click = (v.naaet.click || 0) + 1; };
+          try { k.addEventListener('click', naaetFelt, { once: true, capture: true }); v.paa.push([k, 'click', naaetFelt]); } catch (e) {}
+          return;
+        }
         const knude = vej[0] || ev.target;
         if ((ev.type === 'pointerenter' || ev.type === 'mouseenter') && knude !== maal && inde(maal, knude)) return;
         let d = tjek(${x}, ${y}, knude);
@@ -2205,8 +2212,15 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // feltets egen (el-checkbox__input, Base UI's span role=checkbox) - ikke en anden kontrol. Det samme er alt, der rummer
   // labelens felt eller ligger i det (et custom-felts egen boks i dets skygge, el-checkbox'ens span om sit input).
   const FELTROLLE = '[role="checkbox"],[role="switch"],[role="radio"]';
-  const iLabelHandling = (n) => !!n.matches && n.matches(INTERAKTIV + ',' + HANDLING) && !(n.matches(FELTROLLE) && !n.matches(INTERAKTIV));
-  const feltetSelv = (n, felt) => !!felt && (inde(n, felt) || inde(felt, n));
+  const iLabelHandling = (n) => !!n.matches && n.matches(INTERAKTIV + ',' + HANDLING);
+  // R76 (Astra, maalt i model): en rolle alene beviser ikke, hvilket felt kontrollen hoerer til - en selvstaendig span med
+  // role=checkbox og onclick ved siden af labelens synlige input slap igennem. En boks med feltrolle er derfor kun feltets
+  // egen, naar labelens felt er skjult (Base UI, sr-only: inputtet er 1x1 px, og boksen er dets synlige stedfortraeder);
+  // ellers skal den rumme feltet eller ligge i det.
+  const feltSkjult = (felt) => { if (!felt || !felt.getBoundingClientRect) return false; const r = felt.getBoundingClientRect(); return r.width * r.height <= 1; };
+  const egenBoks = (n, felt) => !!felt && (inde(n, felt) || inde(felt, n) ||
+    (!!n.matches && n.matches(FELTROLLE) && !n.matches(INTERAKTIV) && feltSkjult(felt)));
+  const feltetSelv = egenBoks;
   const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
     if (inde(hit, el)) {
@@ -2406,7 +2420,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       if (iEgenLabel ? iLabelHandling(n) : (!!n.matches && n.matches(CLICKABLE + ',input,select,textarea'))) { hitKontrol = lukket(n); break; }
     }
     const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
-      (!!ramme && ramme.tagName === 'LABEL' && hitKontrol === ramme.control) ||
+      (!!ramme && ramme.tagName === 'LABEL' && (hitKontrol === ramme.control || egenBoks(hitKontrol, ramme.control))) ||
+      egenBoks(hitKontrol, el.control) ||
       Array.from(el.labels || []).includes(hitKontrol);
     const andenKontrol = !egenKontrol;
     if (ramme && (!elKontrol || ramme.tagName === 'LABEL') && inde(hit, ramme) && !andenKontrol && (semantisk || inde(el, hit))) return null;
@@ -4499,15 +4514,27 @@ async function dispatch(port, method, params) {
           clearTimeout(timer);
           resolve();
         };
+        // R76 (Astra, maalt i model): i en eksisterende fane taeller en senere 'complete' ogsaa kun, naar navigationen er set
+        // begynde, den gamle side allerede var faerdig, eller adressen er den oenskede - ellers kan den vaere den gamle sides.
+        let saaLoading = false;
+        const nyNok = async () => {
+          if (!tidligt || tidligt.loading || saaLoading || tidligt.gammelKlar) return true;
+          const nu = await chrome.tabs.get(tab.id).catch(() => null);
+          return !nu || String(nu.url || '') === String(params.url);
+        };
         const listener = (tabId, info) => {
-          if (tabId !== tab.id || info.status !== 'complete') return;
-          loadedNow().then((ok) => { if (ok) finish(); });
+          if (tabId !== tab.id) return;
+          if (info.status === 'loading') saaLoading = true;
+          if (info.status !== 'complete') return;
+          Promise.all([loadedNow(), nyNok()]).then(([ok, ny]) => { if (ok && ny) finish(); });
         };
         chrome.tabs.onUpdated.addListener(listener);
         const timer = setTimeout(finish, 15000);
         // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
         // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
-        const alleredeFaerdig = !!tidligt && tidligt.complete && (tidligt.loading || tidligt.url !== tidligt.gammelUrl || tidligt.gammelKlar);
+        // R76 (Astra, maalt i model): en gammel sides 'complete' (fx en gammel omdirigering) med en anden adresse end den oprindelige
+        // blev taget som den nye side. En 'complete' taeller kun, naar navigationen er set begynde, eller adressen er den oenskede.
+        const alleredeFaerdig = !!tidligt && tidligt.complete && (tidligt.loading || tidligt.url === String(params.url) || tidligt.gammelKlar);
         if (nyFane || alleredeFaerdig) loadedNow().then((ok) => { if (ok) finish(); });
       });
 
