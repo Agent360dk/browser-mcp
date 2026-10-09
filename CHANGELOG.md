@@ -30,23 +30,30 @@ debugger path and the script fallback find their target with the same function. 
 press moves no mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
 or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
 found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
-counts as proof (for a field clicked through its label, the field's own click; around the target, only its own button or
+counts as proof (for a field clicked through its label, the field's own click, and only when the label's click was not
+cancelled; around the target, only its own button or
 link frame, not a container that listens for its children); a click stopped on the way, a target the page replaces during
 the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
 address, a button, a field) counts as covered by that element, because a click there does not activate the label's field;
 for any other target that takes clicks itself, anything clickable inside it at its center (a link, a button, an element
 with a button role or an `onclick`, such as a delete button on a card) counts as covered by that control; for a passive
-container (a list item, a card that is not a button) its own link (an `a` with an address, without a button role or
+container (a list item, a card that is not a button) its own link (an `a` with a real address, without a button role or
 `onclick`) is its action, and only a button or other action inside it counts, also one around a link however many link
-layers lie between; an `a` without a real address (none, `#` or `javascript:`) or with a role other than link is an
-action, not a plain link, since a script handler on it cannot be seen. A delete link with a real address (rails-ujs
-`data-method`) cannot be told from a plain link. A field or other control whose center
-lies on a button around it is covered by that button: the button's click is not the field's. A text selector picks a
-clickable child only when the text is in it, so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1
-did, and a delete ran). Hover and right-click do not click a control inside the target, so for them only something in front
+layers lie between, also across an open shadow root. An element with a link role that is not an `a`, an `a` with a role
+other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be
+seen; no real address means none, `#`, `javascript:` (read as the browser reads it, so a tab or line break inside does not
+hide it) or a fragment whose target is not on the page, such as `#!` or `#0`. A delete link with a real address
+(rails-ujs `data-method`), or with a fragment whose target is on the page, cannot be told from a plain link. A field or
+other control whose center lies on a button around it is covered by that button: the click would go to the button, and
+whether the button changes the field cannot be told. A text selector picks a clickable child only when the text is in it,
+so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did, and a delete ran); a text next to an
+icon button with no text of its own now clicks the row, not the button. A text selector still picks the innermost element
+whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button. Hover and right-click do not click a control inside the target, so for them only something in front
 of it is cover; enter events on the target's ancestors are part of the hover. Inside a closed shadow root the guard
-cannot see which control gets the click.
+cannot see which control gets the click. `browser_select_option` goes on to the option only when the trigger's press is
+shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is
+clicked, and the answer says so.
 A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements
 agree (at most three times; pushed out of view meanwhile, it is scrolled into view again), so a header that turns fixed on scroll does not move the click to another row. A press that lands in an iframe -
 the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it

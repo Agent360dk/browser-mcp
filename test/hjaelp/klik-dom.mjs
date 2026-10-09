@@ -81,6 +81,8 @@ export function lavKlikDom() {
     documentElement: html, body,
     querySelectorAll: (s) => (s === '*' ? [body, ...body.querySelectorAll('*')] : html.querySelectorAll(s)),
     querySelector: (s) => html.querySelector(s),
+    // Som i en browser: kun dokumentets eget traer, ikke shadow roots.
+    getElementById: (id) => html.querySelectorAll('*').find((e) => e.id === id) || null,
     // Det oeverste element ved punktet: hoejeste lag, saa senest i DOM. En modal dialog daekker alt uden for sig selv
     // med sin backdrop - et punkt der ikke rammer noget i dialogen, rammer dialogen.
     elementFromPoint(x, y) {

@@ -472,6 +472,10 @@ test('to aria-modal-indpakninger med hoejde 0 og adskilte paneler: overlapningen
 test('select_option: et daekket valg klikkes ikke; udloeseren er klikket, og svaret siger at listen kan staa aaben', async () => {
   const u = sele();
   u.ctx.resolveElement = async (_fane, s) => (s === 'text=Add' ? DAEKKET : { ...DAEKKET, covered: undefined });
+  // R69: select_option gaar kun videre efter et bevist udloeserklik; efterkontrollen svarer her, at det landede.
+  const send = u.ctx.chrome.debugger.sendCommand;
+  u.ctx.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Runtime.evaluate' && String(p?.expression).includes('const foerAftryk')
+    ? Promise.resolve({ result: { value: { landed: true, fallbackFired: false } } }) : send(m, metode, p));
   const svar = await u.hent('dispatch')(9876, 'select_option', { selector: 'text=Vaelg', value: 'Add' });
   assert.equal(svar.error, 'covered', JSON.stringify(svar));
   assert.equal(svar.trigger_clicked, true);
@@ -578,7 +582,7 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
   assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times; pushed out of view meanwhile, it is scrolled into view again\)/);
-  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click; around the target, only its own button or link frame, not a container that listens for its children\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
+  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click, and only when the label's click was not cancelled; around the target, only its own button or link frame, not a container that listens for its children\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
   assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
 });
 
@@ -673,13 +677,13 @@ test('et klikbart kort (role=button) med et link i midten er daekket af linket; 
   for (const [attrs, daekket] of [[{ role: 'button' }, true], [{}, false]]) {
     const d = lavKlikDom();
     const kort = d.el('div', { id: 'kort', attrs, tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
-    d.el('a', { id: 'lnk', tekst: 'Se ordren', attrs: { href: '#o7' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    d.el('a', { id: 'lnk', tekst: 'Se ordren', attrs: { href: '/ordre/7' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
     assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'lnk', daekket, JSON.stringify(attrs));
   }
 });
 
 test('et passivt kort med <a role=button onclick> eller <a href role=button> i midten er daekket; et rigtigt link er kortets eget (R67)', () => {
-  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '#o7' }, false]]) {
+  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '/ordre/7' }, false]]) {
     const d = lavKlikDom();
     const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
@@ -713,9 +717,12 @@ test('et passivt kort: en knap flere linklag oppe er daekningen; et <a> uden adr
   const d = lavKlikDom();
   const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
   const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
-  const span = d.el('span', { id: 'sl', attrs: { role: 'link' }, rect: [190, 60, 100, 40], lag: 2 }, knap);
-  d.el('a', { id: 'a', attrs: { href: '#slet' }, rect: [190, 60, 100, 40], lag: 3 }, span);
+  const span = d.el('span', { id: 'sl', rect: [190, 60, 100, 40], lag: 2 }, knap);
+  d.el('a', { id: 'a', attrs: { href: '/ordre/7' }, rect: [190, 60, 100, 40], lag: 3 }, span);
   assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet');
+  // R69 (Opus): et element med link-rolle, der ikke er et <a>, har ingen adresse - det er selv en handling.
+  span.attrs.role = 'link';
+  assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'sl');
   const d2 = lavKlikDom();
   const kort2 = d2.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
   d2.el('a', { id: 'inert', tekst: 'Ordre 7', rect: [190, 60, 100, 40], lag: 1 }, kort2);
@@ -735,7 +742,7 @@ test('et felt uden pointer-events i en div role=button er daekket af knappen - k
 // ── R68 (Opus, maalt i Chrome) ─────────────────────────────────────────────
 test('et passivt kort: <a href="#">, javascript: og <a role="menuitem"> er handlinger, ikke kortets eget link (R68)', () => {
   for (const [attrs, daekket] of [[{ href: '#' }, true], [{ href: 'javascript:void(0)' }, true], [{ href: '#', role: 'menuitem' }, true],
-    [{ href: '/ordre/7', role: 'menuitem' }, true], [{ href: '/ordre/7' }, false], [{ href: '#ordre-7' }, false]]) {
+    [{ href: '/ordre/7', role: 'menuitem' }, true], [{ href: '/ordre/7' }, false], [{ href: '#ordre-7' }, true]]) {
     const d = lavKlikDom();
     const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
@@ -750,4 +757,49 @@ test('en tekst i et kort vaelger ikke kortets foerste klikbare barn (Slet), naar
   const r = d.koer(KILDE, null, 'Ordre 7', null, false, false).svar;
   assert.notEqual(r.tag, 'BUTTON', JSON.stringify(r));
   assert.equal(elementFor(d, 'Ordre 7').id, 'kort');
+});
+
+// ── R69 (Astra, maalt i model) ─────────────────────────────────────────────
+test('et passivt kort: javascript: med linjeskift, tabulator eller styretegn er en handling, ikke kortets link (R69)', () => {
+  for (const href of ['java\nscript:void(0)', 'java\tscript:void(0)', '\u0001 javascript:void(0)', 'JAVA\r\nSCRIPT:x', ' #\n']) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: 'i', tekst: 'Slet', attrs: { href }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'i', JSON.stringify(href));
+  }
+});
+
+test('et passivt kort: en role=button-vaert uden om en span i sin aabne shadow root er daekningen (R69)', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+  const vaert = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+  d.el('span', { id: 'sp', tekst: 'Slet', rect: [190, 60, 100, 40], lag: 2 }, d.skygge(vaert));
+  assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet');
+});
+
+test('et passivt kort: en knap over en label eller et felt i kaeden er stadig daekningen (R69)', () => {
+  for (const mellem of ['label', 'input']) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    const m = d.el(mellem, { id: 'm', attrs: mellem === 'input' ? { type: 'text' } : {}, rect: [190, 60, 100, 40], lag: 2 }, knap);
+    if (mellem === 'label') d.el('a', { id: 'a', attrs: { href: '/ordre/7' }, rect: [190, 60, 100, 40], lag: 3 }, m);
+    assert.ok(d.koer(KILDE, '#kort', null, null, false, false).svar.covered, mellem);
+  }
+});
+
+// ── R69 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('et passivt kort: <span role="link"> og et fragment uden maal paa siden, eller til linket selv eller kortet, er handlinger; et spring til et andet afsnit er kortets link (R69)', () => {
+  for (const [tag, attrs, maal, daekket] of [
+    ['span', { role: 'link' }, null, true], ['a', { href: '#!' }, null, true], ['a', { href: '#0' }, null, true],
+    ['a', { href: '#slet' }, null, true], ['a', { href: '#i' }, null, true], ['a', { href: '#kort' }, null, true],
+    ['a', { href: '#afsnit' }, 'id', false], ['a', { href: '#anker' }, 'name', false],
+    ['a', { href: '#top' }, null, false], ['a', { href: '/ordre/7' }, null, false]]) {
+    const d = lavKlikDom();
+    if (maal === 'id') d.el('section', { id: 'afsnit', rect: [0, 600, 1200, 100] });
+    if (maal === 'name') d.el('a', { attrs: { name: 'anker' }, rect: [0, 700, 10, 10] });
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el(tag, { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, `${tag} ${JSON.stringify(attrs)}`);
+  }
 });

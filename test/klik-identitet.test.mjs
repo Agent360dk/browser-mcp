@@ -300,9 +300,11 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
   assert.match(cl, /the remaining presses and clicks are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it, and a release the page moves elsewhere is let through\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
   assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control/);
-  assert.match(cl, /for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with an address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between/);
-  assert.match(cl, /an `a` without a real address \(none, `#` or `javascript:`\) or with a role other than link is an action, not a plain link, since a script handler on it cannot be seen\. A delete link with a real address \(rails-ujs `data-method`\) cannot be told from a plain link\./);
-  assert.match(cl, /A field or other control whose center lies on a button around it is covered by that button: the button's click is not the field's\./);
+  assert.match(cl, /for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with a real address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between, also across an open shadow root\./);
+  assert.match(cl, /An element with a link role that is not an `a`, an `a` with a role other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be seen; no real address means none, `#`, `javascript:` \(read as the browser reads it, so a tab or line break inside does not hide it\) or a fragment whose target is not on the page, such as `#!` or `#0`\. A delete link with a real address \(rails-ujs `data-method`\), or with a fragment whose target is on the page, cannot be told from a plain link\./);
+  assert.match(cl, /A field or other control whose center lies on a button around it is covered by that button: the click would go to the button, and whether the button changes the field cannot be told\./);
+  assert.match(cl, /A text selector still picks the innermost element whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button\./);
+  assert.match(cl, /`browser_select_option` goes on to the option only when the trigger's press is shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is clicked, and the answer says so\./);
   assert.match(cl, /Hover and right-click do not click a control inside the target/);
 });
 
@@ -383,7 +385,7 @@ test('hover og right_click paa en menu-li med sit eget link er ikke daekket af l
   for (const vaerktoej of ['hover', 'right_click']) {
     const d = lavKlikDom();
     const li = d.el('li', { id: 'menu-item-42', rect: [20, 20, 200, 40] });
-    d.el('a', { id: 'lnk', tekst: 'Services', attrs: { href: '#services' }, rect: [20, 20, 200, 40] }, li);
+    d.el('a', { id: 'lnk', tekst: 'Services', attrs: { href: '/services/' }, rect: [20, 20, 200, 40] }, li);
     const svar = await browser(d).koer(vaerktoej, { selector: '#menu-item-42', duration: 1 });
     assert.notEqual(svar.error, 'covered', `${vaerktoej}: ${JSON.stringify(svar)}`);
   }
@@ -392,7 +394,7 @@ test('hover og right_click paa en menu-li med sit eget link er ikke daekket af l
 test('click paa en passiv menu-li rammer dens eget link; et passivt kort med en Slet-knap er stadig daekket', async () => {
   const d = lavKlikDom();
   const li = d.el('li', { id: 'menu-item-42', rect: [20, 20, 200, 40] });
-  d.el('a', { id: 'lnk', tekst: 'Services', attrs: { href: '#services' }, rect: [20, 20, 200, 40] }, li);
+  d.el('a', { id: 'lnk', tekst: 'Services', attrs: { href: '/services/' }, rect: [20, 20, 200, 40] }, li);
   const b = browser(d);
   const svar = await b.koer('click', { selector: '#menu-item-42' });
   assert.equal(svar.ok, true, JSON.stringify(svar));
@@ -630,7 +632,7 @@ test('ingen flade lover mere, end koden goer: kategoriske loefter er vaek, og gr
   const cl = laes('CHANGELOG.md'); const afsnit = cl.slice(cl.indexOf('## 1.30.2'), cl.indexOf('## 1.30.1')).replace(/\s+/g, ' ');
   for (const [f, s] of [['tools.js', laes('mcp-server/tools.js')], ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
     ['docs', laes('content/browsermcp-docs-tools.md')], ['CHANGELOG 1.30.2', afsnit]]) {
-    assert.doesNotMatch(s, /nothing happens to the target|the target is never|nothing was done to the target|guarantees? that the target|always reaches the target|only the target ever gets|the remaining press, release and click events are stopped/i, f);
+    assert.doesNotMatch(s, /nothing happens to the target|the target is never|nothing was done to the target|guarantees? that the target|always reaches the target|only the target ever gets|the remaining press, release and click events are stopped|the target (?:always )?(?:gets|got|receives) nothing/i, f);
   }
   assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_click` \|[^\n]*`covered` or `maybe_landed`, never a plain yes/);
   assert.match(afsnit, /Inside a closed shadow root the guard cannot see which control gets the click\./);
@@ -678,4 +680,86 @@ test('et ikon uden pointer-events i en div med onclick: klikket naaede rammen, i
   const svar = await browser(d).koer('click', { selector: '#ikon' });
   assert.equal(svar.landed, null, JSON.stringify(svar));
   assert.match(svar.note, /The click reached an element around the target that listens for clicks itself, not the target/);
+});
+
+// ── R69 (Astra, maalt i model) ─────────────────────────────────────────────
+test('select_option: forsvinder vagten, eller giver efterkontrollen intet, klikkes intet valg (R69)', async () => {
+  for (const variant of ['vagt', 'tom']) {
+    const d = lavKlikDom();
+    d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+    d.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 300, 200, 40] });
+    const b = browser(d, { stopVed: (_type, el) => el?.id === 'trig',
+      efterArm: variant === 'vagt' ? () => { setTimeout(() => { b.window.__bmcpVagt = null; }, 0); } : undefined });
+    if (variant === 'tom') {
+      const send = b.u.ctx.chrome.debugger.sendCommand;
+      b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Runtime.evaluate' && p.expression.includes('const foerAftryk')
+        ? { result: { value: undefined } } : send(m, metode, p));
+    }
+    const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+    assert.notEqual(svar.ok, true, `${variant}: ${JSON.stringify(svar)}`);
+    assert.ok(!b.side.includes('click:fi'), `${variant}: et valg blev klikket: ${b.side}`);
+    assert.match(svar.error || '', /^Whether the click on the dropdown reached it cannot be told, so no option was clicked\.$/, variant);
+    assert.equal(svar.landed, null, `${variant}: uvist er null, ikke false`);
+    assert.equal(svar.maybe_landed, true, variant);
+  }
+});
+
+test('et labelklik, siden annullerede, og et klik ved (0,0) bagefter er ikke bevis for feltet (R69)', async () => {
+  for (const hvor of ['label', 'window']) {
+    const d = lavKlikDom();
+    const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+    const l = d.label(boks, { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20], lag: 1 });
+    const annuller = (e) => e.preventDefault();
+    const b = browser(d, { efterHaendelse: (type) => { if (type === 'click' && !b.bruger) { b.bruger = true; b.fyrEn('click', 0, 0, boks); } } });
+    if (hvor === 'label') l.addEventListener('click', annuller); else b.window.addEventListener('click', annuller, true);
+    const svar = await b.koer('click', { selector: '#c' });
+    assert.notEqual(svar.landed, true, `${hvor}: ${JSON.stringify(svar)}`);
+  }
+});
+
+test('et klik ved (0,0) i en senere opgave end labelklikket er ikke labelens aktivering (R69)', async () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  d.label(boks, { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20], lag: 1 });
+  // Siden stopper labelklikket (ingen aktivering); brugerens eget klik paa feltet kommer i en senere opgave.
+  const b = browser(d, { stopVed: (type, el) => type === 'click' && el?.id === 'l',
+    efterHaendelse: (type) => { if (type === 'click' && !b.bruger) { b.bruger = true; setTimeout(() => b.fyrEn('click', 0, 0, boks), 0); } } });
+  const svar = await b.koer('click', { selector: '#c' });
+  assert.ok(b.side.includes('click:c'), `brugerens klik naaede ikke feltet foer svaret: ${b.side}`);
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+test('et ikon uden pointer-events i en menuitemcheckbox eller menuitemradio: rammen er ikonets egen (R69)', async () => {
+  for (const role of ['menuitemcheckbox', 'menuitemradio']) {
+    const d = lavKlikDom();
+    const ramme = d.el('div', { id: 'ramme', attrs: { role }, rect: [20, 20, 200, 40] });
+    d.el('span', { id: 'ikon', rect: [100, 30, 20, 20], ingenPeg: true }, ramme);
+    const svar = await browser(d).koer('click', { selector: '#ikon' });
+    assert.equal(svar.landed, true, `${role}: ${JSON.stringify(svar)}`);
+  }
+});
+
+test('en labelaktivering ved (0,0) taeller kun een gang: et andet klik ved (0,0) efter den er ikke bevis (R69)', async () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  d.label(boks, { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20], lag: 1 });
+  // Siden stopper aktiveringsklikket til feltet; et klik mere ved (0,0) i samme opgave kommer igennem.
+  const b = browser(d, { aktiveringUdenKoordinater: true, stopVed: (type, el) => type === 'click' && el?.id === 'c' && !b.bruger,
+    efterHaendelse: (type) => { if (type === 'click' && !b.bruger) { b.bruger = true; b.fyrEn('click', 0, 0, boks); } } });
+  const svar = await b.koer('click', { selector: '#c' });
+  assert.ok(b.side.includes('click:c'), `det andet klik naaede ikke feltet: ${b.side}`);
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+// ── R69 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('hover: en ramme eller et lag, der kommer foran efter den foerste bevaegelse, faar en note om musens bevaegelse, ikke om tryk (R69)', async () => {
+  for (const [hvad, lag] of [['iframe', 'annonce'], ['div', 'linse']]) {
+    const d = knapside();
+    const b = browser(d, { efterHaendelse: (type, dd) => { if (type === 'pointerover' && !dd.document.querySelector('#' + lag)) dd.el(hvad, { id: lag, rect: [0, 0, 600, 300], lag: 20 }); } });
+    const svar = await b.koer('hover', { selector: '#gem', duration: 1 });
+    assert.equal(svar.error, 'covered', `${hvad}: ${JSON.stringify(svar)}`);
+    assert.equal(svar.maybe_landed, true, hvad);
+    assert.match(svar.note, hvad === 'iframe' ? /^When the mouse moved onto #gem, IFRAME#annonce - a frame - lay in front of it/ : /^The first mouse movement reached #gem, then DIV#linse came in front of it/, hvad);
+    assert.doesNotMatch(svar.note, /press|click/i, hvad);
+  }
 });
