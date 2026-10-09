@@ -4006,7 +4006,8 @@ async function dispatch(port, method, params) {
         } else stilleHjul = 0;
         lastHeight = data.height;
         lastPos = data.pos;
-        if (nye === 0) stable++; else stable = 0;
+        // En liste der vokser uden nye raekker endnu (en loader der foerst laegger pladsholdere ind), er stadig i gang.
+        if (nye === 0 && !voksede) stable++; else stable = 0;
         // reached_end kun naar listen stod paa bunden, intet nyt kom og den ikke voksede - stable_rounds runder i traek.
         if (data.atBottom && nye === 0 && !voksede) bundRunder++; else bundRunder = 0;
         if (bundRunder >= stableNeeded) { atEnd = true; break; }

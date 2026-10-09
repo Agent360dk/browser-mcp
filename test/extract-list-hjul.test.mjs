@@ -12,11 +12,16 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // Et feed i en indre rulle-container. Det henter `parti` nye raekker, naar et hjul rammer containeren taet paa bunden.
 // En scrollTop-rulning flytter listen, men henter intet - som paa Threads.
-function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300 } = {}) {
-  const s = { tegnet: start, scrollTop: 0, hjul: 0, hjulUdenfor: 0 };
-  const hent = () => { s.tegnet = Math.min(i_alt, s.tegnet + parti); };
+function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, voksFoerRul = false } = {}) {
+  const s = { tegnet: start, scrollTop: 0, hjul: 0, hjulUdenfor: 0, ekstra: 0, venter: 0 };
+  // En langsom loader: de foerste `pladsholdere` gange laegger den kun hoejde ind (skeletter), saa kommer raekkerne.
+  const hent = () => {
+    if (s.tegnet >= i_alt) return;
+    if (s.venter < pladsholdere) { s.venter++; s.ekstra += 100; return; }
+    s.venter = 0; s.ekstra = 0; s.tegnet = Math.min(i_alt, s.tegnet + parti);
+  };
   const container = {
-    get scrollHeight() { return s.tegnet * raekkeHoejde; },
+    get scrollHeight() { return s.tegnet * raekkeHoejde + s.ekstra; },
     clientHeight: hoejde,
     get scrollTop() { return s.scrollTop; },
     set scrollTop(v) {
@@ -40,8 +45,11 @@ function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoe
     const b = container.getBoundingClientRect();
     if (x < b.left || x >= b.right || y < b.top || y >= b.bottom) { s.hjulUdenfor++; return; }
     s.hjul++;
+    // voksFoerRul: loaderen lytter paa `wheel` og laegger pladsholdere ind, foer rulningen flytter listen ned i dem - saa
+    // naeste laesning staar paa en NY bund, der lige er vokset.
+    if (voksFoerRul && hentPaa === 'wheel' && s.scrollTop + hoejde >= container.scrollHeight - 60) hent();
     container.scrollTop = s.scrollTop + deltaY;
-    if (hentPaa === 'wheel' && s.scrollTop + hoejde >= container.scrollHeight - 60) hent();
+    if (!voksFoerRul && hentPaa === 'wheel' && s.scrollTop + hoejde >= container.scrollHeight - 60) hent();
   };
   return { s, container, koer, hjul };
 }
@@ -109,6 +117,29 @@ test('reached_end er falsk, naar listen stoppede uden at staa paa bunden', async
   assert.equal(svar.reached_end, false);
 });
 
+test('naar listen bunden og henter, men stopper bagefter uden at staa paa bunden, er reached_end falsk', async () => {
+  // 6 raekker = containerens hoejde: bunden fra start. Hjulet dér henter 10 til, og med 1 px pr. runde naar listen aldrig
+  // den nye bund. Den gamle regel kaldte det enden allerede ved den foerste bund.
+  const f = feed({ start: 6, i_alt: 16, parti: 10 });
+  const svar = await udtraek(sele(f), { container: '#feed', scroll_step: 1, stable_rounds: 2 });
+  assert.equal(svar.count, 16);
+  assert.equal(svar.reached_end, false);
+});
+
+test('en loader der foerst laegger pladsholdere ind, faar lov at blive faerdig', async () => {
+  const f = feed({ pladsholdere: 2 });
+  const svar = await udtraek(sele(f), { stable_rounds: 2 });
+  assert.equal(svar.count, 40, `stoppede ved ${svar.count}: listen voksede, men det blev ikke regnet som fremskridt`);
+  assert.equal(svar.reached_end, true);
+});
+
+test('staar listen paa en bund der lige er vokset, er det ikke enden', async () => {
+  const f = feed({ pladsholdere: 2, voksFoerRul: true });
+  const svar = await udtraek(sele(f), { stable_rounds: 2 });
+  assert.equal(svar.count, 40, `stoppede ved ${svar.count}: en bund der lige var vokset, blev kaldt enden`);
+  assert.equal(svar.reached_end, true);
+});
+
 test('ruller hjulet ikke listen, rulles der med script, og svaret siger det', async () => {
   const f = feed({ hentPaa: 'scroll' });
   f.container.getBoundingClientRect = () => ({ left: 2000, top: 2000, right: 2100, bottom: 2100, width: 100, height: 100 });   // uden for vinduet
@@ -146,7 +177,7 @@ test('teksterne siger det samme som koden', async () => {
   const { join } = await import('node:path');
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const laes = (f) => readFileSync(join(ROD, f), 'utf8');
-  assert.match(laes('mcp-server/tools.js'), /When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom[^']*reached_end, which is true only when the list stood at its bottom with no new rows and no growth for stable_rounds rounds in a row/);
+  assert.match(laes('mcp-server/tools.js'), /When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel \(Threads, X\) loads them; in a background tab it scrolls with a script, and `note` says that such a feed may have stopped early\.[^']*reached_end, which is true only when the list stood at its bottom with no new rows and no growth for stable_rounds rounds in a row/);
   for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_extract_list` \|[^\n]*scrolls with real wheel events in the active tab/, f);
   assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_extract_list` \|[^\n]*In the active tab it scrolls with real wheel events, also at the bottom[^\n]*in a background tab it scrolls with a script and says so/);
 });
