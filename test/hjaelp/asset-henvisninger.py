@@ -7,11 +7,17 @@ ligne en kommentar. En HTML-tokenizer adskiller attributter, tekst og rigtige ko
 ikke her. CSS-escapes afkodes efter CSS Syntax 3 FOER URL-parserens fjernelse af tabulatorer og linjeskift (`d\\9 cs`
 bliver en tabulator, som URL-parseren fjerner; `d\\6f<TAB>cs` bruger tabulatoren som escapens afslutning).
 
+R61 (Astra, MAALT): `<!-->` lukker en kommentar i en browser, men ikke i html.parser, saa et link efter den var skjult for
+vagten; et `srcdoc` er et helt dokument i en attribut (dobbelt kodet); og et stylesheet kan selv hente et andet med
+@import. Afbrudte kommentarer afvises, srcdoc og base64-data:-dokumenter laeses som HTML, og .css-filer laeses ogsaa.
+Et script der saetter en adresse sammen mens siden koerer, kan ingen statisk vagt se - det dækkes ikke.
+
 Udskriver JSON: {side: {"kanon": [[endelse, noegle], ...], "raa": antal, "omtaler": [tekst, ...]}}.
   kanon   - <link href> eller <script src> med praecis /assets/docs.(css|js)?v=<8 hex>
   raa     - antal kanoniske henvisninger i kildeteksten i den citerede form, som generatoren opdaterer
   omtaler - alt andet, der efter afkodning naevner en af de to filer
 """
+import base64
 import json
 import os
 import re
@@ -23,6 +29,8 @@ NAVN = re.compile(r'docs\.(css|js)', re.I)
 KANON = re.compile(r'/assets/docs\.(css|js)\?v=([0-9a-f]{8})')
 RAA = re.compile(r'(?<![\w-])(?:href|src)="/assets/docs\.(?:css|js)\?v=[0-9a-f]{8}"')
 HVOR = {'css': ('link', 'href'), 'js': ('script', 'src')}
+AFBRUDT = re.compile(r'<!---?>')   # HTML: «<!-->» og «<!--->» er tomme kommentarer, der lukker straks
+DATA64 = re.compile(r'^\s*data:[^,]*;base64,(.*)$', re.I | re.S)
 
 
 def css_afkod(s):
@@ -86,6 +94,31 @@ class Side(HTMLParser):
                 continue
             self._stykke(navn)
             self._stykke(vaerdi)
+            self._indlejret(navn, vaerdi or '')
+
+    def _indlejret(self, navn, vaerdi):
+        """Et dokument inde i en attribut: srcdoc, eller en data:-adresse i base64. Alt i det, der naevner de to filer,
+        er en omtale - ogsaa en kanonisk henvisning, for generatoren opdaterer den ikke."""
+        indre = None
+        if navn == 'srcdoc':
+            indre = vaerdi
+        else:
+            m = DATA64.match(vaerdi)
+            if m:
+                try:
+                    indre = base64.b64decode(re.sub(r'\s', '', m.group(1)) + '===').decode('utf-8', 'replace')
+                except Exception:
+                    indre = None
+                if indre is not None and naevner(indre):
+                    self.omtaler.append(('data:base64 ' + indre)[:200])
+                    return
+        if indre is None:
+            return
+        under = Side()
+        under.feed(indre)
+        under.close()
+        self.omtaler += [f'{navn}: {o}' for o in under.omtaler]
+        self.omtaler += [f'{navn}: docs.{e}?v={n}' for e, n in under.kanon]
 
     handle_startendtag = handle_starttag
 
@@ -96,7 +129,7 @@ class Side(HTMLParser):
         self._stykke(data)
 
     def handle_comment(self, data):
-        pass  # en rigtig kommentar indlaeses ikke
+        pass  # en rigtig kommentar indlaeses ikke (de afbrudte afvises i main, foer parseren ser dem)
 
     def unknown_decl(self, data):
         self._stykke(data)
@@ -109,14 +142,20 @@ def main(mappe):
     ud = {}
     for rod, _, filer in os.walk(mappe):
         for f in filer:
+            sti = os.path.join(rod, f)
+            if f.endswith('.css'):
+                # Et stylesheet henter andre med @import og url(). En kommentar indlaeses ikke.
+                kilde = re.sub(r'/\*.*?\*/', '', open(sti, encoding='utf-8').read(), flags=re.S)
+                ud[os.path.relpath(sti, mappe)] = {'kanon': [], 'raa': 0, 'omtaler': [kilde[:200]] if naevner(kilde) else []}
+                continue
             if not f.endswith('.html'):
                 continue
-            sti = os.path.join(rod, f)
             kilde = open(sti, encoding='utf-8').read()
             p = Side()
             p.feed(kilde)
             p.close()
-            ud[os.path.relpath(sti, mappe)] = {'kanon': p.kanon, 'raa': len(RAA.findall(kilde)), 'omtaler': p.omtaler}
+            omtaler = p.omtaler + [f'afbrudt kommentar {m.group(0)} - en browser lukker kommentaren dér' for m in AFBRUDT.finditer(kilde)]
+            ud[os.path.relpath(sti, mappe)] = {'kanon': p.kanon, 'raa': len(RAA.findall(kilde)), 'omtaler': omtaler}
     print(json.dumps(ud, sort_keys=True))
 
 

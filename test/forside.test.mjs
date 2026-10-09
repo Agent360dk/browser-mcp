@@ -291,6 +291,13 @@ test('vagten finder de former, der slap igennem tidligere runder', async () => {
     'data-href.html': `<a data-href="/assets/docs.css?v=05f4bb13">x</a>`,
     'forkert-element.html': `<script src="/assets/docs.css?v=05f4bb13"></script>`,
     'ucciteret.html': `<link rel="stylesheet" href=/assets/docs.css?v=05f4bb13>`,
+    // R61 (Astra): en afbrudt kommentar lukker i browseren, men ikke i parseren; srcdoc og data: er dokumenter i en attribut.
+    'afbrudt-kommentar.html': `<!--><link rel='stylesheet' href='/assets/docs.css?v=old'><!-- -->`,
+    'afbrudt-kommentar2.html': `<!---><link rel='stylesheet' href='/assets/docs.css?v=old'><!-- -->`,
+    'srcdoc.html': `<iframe srcdoc="<link rel=stylesheet href=/assets/do&amp;#99;s.css?v=old>"></iframe>`,
+    'srcdoc-kanonisk.html': `<iframe srcdoc='<link rel="stylesheet" href="/assets/docs.css?v=05f4bb13">'></iframe>`,
+    'data-base64.html': `<iframe src="data:text/html;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg=="></iframe>`,
+    'import.css': `@import url("/assets/docs.css?v=old");`,
   };
   const tmp = mkdtempSync(join(tmpdir(), 'vagt-'));
   try {
@@ -298,6 +305,7 @@ test('vagten finder de former, der slap igennem tidligere runder', async () => {
     writeFileSync(join(tmp, 'kommentar.html'), `<!-- ${k} -->`);
     writeFileSync(join(tmp, 'rigtig.html'), k);
     writeFileSync(join(tmp, 'gammel-i-kommentar.html'), `<!-- foer: /assets/docs.css?v=old -->\n${k}`);
+    writeFileSync(join(tmp, 'kommentar.css'), '/* tidligere: docs.css?v=old */ body { color: red }');
     const h = henvisninger(tmp);
     for (const f of Object.keys(former)) {
       const fanget = h[f].omtaler.length > 0 || h[f].raa !== h[f].kanon.length;
@@ -306,6 +314,7 @@ test('vagten finder de former, der slap igennem tidligere runder', async () => {
     assert.deepEqual(h['kommentar.html'], { kanon: [], raa: 1, omtaler: [] }, 'en henvisning i en rigtig kommentar taeller ikke som indlaesning');
     // En rigtig kommentar indlaeses ikke, saa en gammel adresse dér er hverken en indlaesning eller en fejl.
     assert.deepEqual(h['gammel-i-kommentar.html'], { kanon: [['css', '05f4bb13']], raa: 1, omtaler: [] });
+    assert.deepEqual(h['kommentar.css'], { kanon: [], raa: 0, omtaler: [] }, 'en CSS-kommentar indlaeses ikke');
     assert.deepEqual(h['rigtig.html'], { kanon: [['css', '05f4bb13']], raa: 1, omtaler: [] });
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
