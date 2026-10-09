@@ -12,14 +12,14 @@ One difference is left, and it is the only one we will defend: **their 72 tools 
 
 ## The architectural difference (everything else follows from it)
 
-**Playwright MCP** has two modes, and the difference between this page's two products lives in the first one. By default it launches and manages its own browser: an isolated in-memory profile (`--isolated`) or a persistent-but-dedicated one. That design is what makes it reproducible in CI and safe to parallelize, and it is why a session started that way begins logged out of everything. Since mid-2025 it has also shipped a **Chrome extension** that connects to tabs in the Chrome you already use, with your logins, and supports several clients at once, each in its own coloured tab group. In that mode the logged-in browser is no longer a difference between us at all.
+**Playwright MCP** has two modes, and the difference between this page's two products lives in the first one. By default it launches and manages its own browser: an isolated in-memory profile (`--isolated`) or a persistent-but-dedicated one. That design is what makes it reproducible in CI and safe to parallelize, and it is why such a profile starts out logged in to nothing of yours. Since mid-2025 it has also shipped a **Chrome extension** that connects to tabs in the Chrome you already use, with your logins, and supports several clients at once, each in its own coloured tab group. In that mode the logged-in browser is no longer a difference between us at all.
 
 **Browser MCP** is a Chrome extension plus a local stdio server. There is no second browser: tools act on the Chrome window you already use, through the Chrome Debugger API. Nothing to re-authenticate, because it *is* your authenticated browser. The trade-off is symmetrical: you get exactly one browser - yours.
 
 | | Playwright MCP | Browser MCP by Agent360 |
 |---|---|---|
 | Browser driven | Own managed profile by default; your real Chrome via their extension | Your real Chrome - only mode |
-| Logged-in state | Fresh by default; your own session in extension mode | Inherited (cookies, 2FA, extensions) |
+| Logged-in state | A dedicated profile by default (persistent, or in-memory with `--isolated`), so not your logins; your own session in extension mode | Inherited (cookies, 2FA, extensions) |
 | CI / headless | Yes - core use case | No |
 | Parallel instances | Yes, and several clients share one browser in extension mode (one tab group each) | One browser, 20 concurrent sessions, one tab group each |
 | Tools | 72 documented, none of which can stop and ask you for anything | 40, including `browser_ask_user` for a 2FA code or a CAPTCHA mid-run |
@@ -42,8 +42,8 @@ Browser MCP:     [browser_navigate]
                  You're already signed in. Exporting now.
 ```
 
-That is the whole difference, and everything below follows from it. The second exchange
-has no login step because the tab is in the Chrome you use.
+Against Playwright MCP's default mode, that is the difference: the second exchange has no
+login step because the tab is in the Chrome you use. In its extension mode, both start signed in.
 
 We measured the reverse case too, on 19 September 2026, and reported a miss on a
 framework-controlled `<select>`. The fault was our own test page, not React: 1.30.0

@@ -28,6 +28,7 @@
     }
   }
 }</pre></div></div><div class="step"><b>3</b><div><strong>Then say</strong><span class="prompt">Open example.com and take a screenshot.</span></div></div></div></div></figure></header>
+<p><b>You need:</b> Chrome, and Node.js 20 or newer for <code translate="no">npx</code> (<code translate="no">node -v</code> shows your version).</p>
 <h2 id="the-whole-thing-in-four-steps">The whole thing, in four steps</h2>
 <p><b>1 - Install the Chrome extension.</b> One click from the <a href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl">Chrome Web Store</a>; Chrome keeps it updated. No store? The unpacked install is further down.</p>
 <p><b>2 - Add the MCP server in ZCode.</b> <b>Settings → MCP Servers → New MCP Server</b> - scope <code translate="no">User</code>, name <code translate="no">browser-mcp</code>, type <code translate="no">stdio</code>, command <code translate="no">npx</code>, argument <code translate="no">@agent360/browser-mcp@latest</code>. Required - the extension does nothing on its own.</p>

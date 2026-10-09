@@ -6,6 +6,8 @@
 
 **Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome in four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## One click
 
 Paste this into VS Code's Quick Open (`Cmd/Ctrl+P`) or your browser's address bar:

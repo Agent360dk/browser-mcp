@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** because Browser MCP drives your real, already-logged-in Chrome, your agent can do something a headless browser fundamentally can't - when a site emails a 2FA code, the agent opens the Gmail *you're already signed into*, reads the code, and types it back into the login form. No API keys, no forwarding, no re-authentication. It works because it's your browser, on your machine, acting on accounts you're already logged into.
+**Short answer:** because Browser MCP drives your real, already-logged-in Chrome, your agent can do something a fresh headless browser without your login cannot do - when a site emails a 2FA code, the agent opens the Gmail *you're already signed into*, reads the code, and types it back into the login form. No API keys, no forwarding, no re-authentication. It works because it's your browser, on your machine, acting on accounts you're already logged into.
 
 ## The problem this solves
 

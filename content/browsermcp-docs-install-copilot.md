@@ -8,6 +8,8 @@
 
 **Give Copilot agent mode control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl).
@@ -38,7 +40,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 **The key is `servers`. Not `mcpServers`.**
 
-Every other client on this site uses `mcpServers`. VS Code does not. If you paste a working block from Cline, Cursor or Claude Desktop straight into `.vscode/mcp.json`, nothing happens and nothing tells you why. It is the single most common reason this looks broken.
+Most clients on this site use `mcpServers`. VS Code does not (Zed uses `context_servers`, opencode `mcp`, and Codex a TOML table). If you paste a working block from Cline, Cursor or Claude Desktop straight into `.vscode/mcp.json`, nothing happens and nothing tells you why. It is the single most common reason this looks broken.
 
 ## Things worth knowing before you hit them
 

@@ -34,7 +34,7 @@ Browser MCP requests broad permissions for one reason: its whole job is to opera
 |---|---|
 | `tabs`, `tabGroups`, `activeTab` | See and switch between your tabs; group concurrent sessions |
 | `scripting`, `debugger` | Click, type, read pages, run scripts and read network responses via trusted events (works on React/Angular and CSP-strict sites) |
-| `cookies` | Act inside sites you're already logged into - the entire point. Only for the http(s) sites the session has open |
+| `cookies` | Read and set cookies when you ask the agent to (`browser_get_cookies`, `browser_set_cookies`). Staying logged in does not need it: Chrome sends your cookies with every page the agent opens |
 | `webNavigation` | List a page's frames, so a tool can reach into an iframe |
 | `storage`, `alarms`, `offscreen`, `notifications` | Local extension state, two timers (keep the bridge alive; release a port when a session's last tab closes), the WebSocket bridge, and status prompts |
 | `<all_urls>` (host access) | So the agent can work on whatever site *you* point it at - not a fixed list |
@@ -50,10 +50,10 @@ What does leave your machine is what you would expect from any AI agent: the pag
 ## FAQ
 
 **Does uninstalling delete my data from your servers?**
-There's nothing to delete - Browser MCP has no account and no server that stores your data. Removing the extension, the config entry and the `~/.browser-mcp/` folder is complete removal. If you ran `npx @agent360/browser-mcp install`, remove `browser-mcp` from every client it registered with (Claude Code, Codex, VS Code, Cursor).
+There's nothing to delete - Browser MCP has no account and no server that stores your data. Removing the extension, the config entry and the `~/.browser-mcp/` folder removes Browser MCP; `npx` also keeps a cached copy of the package under `~/.npm/_npx/`, which you can delete too. If you ran `npx @agent360/browser-mcp install`, remove `browser-mcp` from every client it registered with (Claude Code, Codex, VS Code, Cursor).
 
 **Why does it need access to all sites and my cookies?**
-Because it drives *your* logged-in browser on whatever site you choose. Cookies are how you stay logged in; `<all_urls>` is so you're not limited to a pre-approved list. Neither is sent to us.
+Because it drives *your* logged-in browser on whatever site you choose; `<all_urls>` is so you're not limited to a pre-approved list. The `cookies` permission is for the two cookie tools - staying logged in works without it, because Chrome sends your cookies itself. Nothing is sent to us.
 
 **Is the debugger permission dangerous?**
 It's what lets the agent send trusted clicks and reads that work on strict sites. Chrome shows its standard "Agent360 Browser MCP" started debugging this browser banner while a session is active; it clears when the session ends.

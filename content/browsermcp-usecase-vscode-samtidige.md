@@ -2,7 +2,7 @@
 
 # Several VS Code agents, one browser, no fighting over tabs
 
-*Suggested URL: `/use-cases/vscode-concurrent-sessions` · Suggested title tag: "Multiple VS Code Agents, One Chrome (2026): Colour-Coded Tab Groups" · Suggested meta description: "Run several agent conversations against the same logged-in Chrome. Each gets its own colour-coded tab group and cannot touch the others' tabs." · Last verified: September 19, 2026*
+*Suggested URL: `/use-cases/vscode-concurrent-sessions` · Suggested title tag: "Multiple VS Code Agents, One Chrome (2026): Colour-Coded Tab Groups" · Suggested meta description: "Run several agents, each with its own MCP server, against the same logged-in Chrome. Each gets its own colour-coded tab group and cannot touch the others' tabs." · Last verified: September 19, 2026*
 
 ---
 
@@ -12,7 +12,7 @@ Browser MCP gives each session its own colour-coded Chrome tab group. A session 
 
 ## What it looks like
 
-Three conversations running against one Chrome:
+Three agents, each with its own MCP server, running against one Chrome:
 
 ```
   ● blue    Claude 1  - Claude Code, reading the analytics dashboard
@@ -60,17 +60,17 @@ would make three parallel agents unusable the first time two of them disagreed.
 }
 ```
 
-⚠️ VS Code's key is `servers`, not `mcpServers`. Every other client uses the other one. Full walkthrough: [Install for VS Code](/docs/install-vscode/).
+⚠️ VS Code's key is `servers`, not `mcpServers`, which most other clients use. Full walkthrough: [Install for VS Code](/docs/install-vscode/).
 
 ## How the isolation actually works
 
-Each server takes one port from a range of twenty (9876-9895), and the port is what identifies the session. The extension keeps a tab group per port. A tool call arrives on a port, and it can only reach the tabs in that port's group.
+Each server takes one port from a range of twenty (9876-9895), and the port is what identifies the session. The extension keeps a tab group per port. The separation follows the MCP server, not the conversation: conversations that share one server share its tab group. A tool call arrives on a port, and it can only reach the tabs in that port's group.
 
 Two consequences worth knowing:
 
-**Twenty is the real ceiling.** Twenty-one conversations, and the twenty-first gets no port and says so rather than sharing someone else's.
+**Twenty is the real ceiling.** Twenty-one servers, and the twenty-first gets no port and says so rather than sharing someone else's.
 
-**The port is taken on first use, not at startup.** A server that never touches the browser never takes a port, so idle conversations do not consume the range.
+**The port is taken on first use, not at startup.** A server that never touches the browser never takes a port, so idle servers do not consume the range.
 
 ## The honest comparison
 

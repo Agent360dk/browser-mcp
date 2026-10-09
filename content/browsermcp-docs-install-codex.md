@@ -6,6 +6,8 @@
 
 **Give Codex control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank headless browser that gets blocked on every login wall.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
@@ -26,7 +28,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 Everything below is the long version.
 
-## Install - 3 steps (~90 seconds)
+## Install
 
 ### Step 1: Add the MCP server to Codex
 
