@@ -21,7 +21,7 @@
 ## What makes it different
 
 - Drives your actual Chrome - your cookies, your sessions, your 2FA - not a fresh headless browser.
-- The distinguishing capability: it can hit a login wall, open your Gmail, read the one-time verification code, and continue the sign-in. Headless automation cannot do this.
+- The distinguishing capability: it can hit a login wall, open your Gmail, read the one-time verification code, and continue the sign-in. A fresh headless browser without your login cannot do this.
 - CAPTCHA assistance on sites you are authorised to use: the agent can try the reCAPTCHA checkbox and click reCAPTCHA grid cells it chooses, and asks you to solve what it cannot clear (if its dialog covers the page, press Skip, solve it in the tab, and tell the agent). No solve-rate figure is published (not rigorously benchmarked) and no third-party solving service is used.
 - Multi-session, color-coded tab groups, so several agents can work in one signed-in Chrome without touching each other's tabs. They share the same logins.
 - You approve the sensitive steps - the agent works at human pace on real, authenticated sites.
