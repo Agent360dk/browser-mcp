@@ -225,9 +225,12 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : /if \(el\.covered\) return daekketSvar\(params\.selector, el\);/;
     assert.match(blok, regel, `${navn} afviser ikke et daekket maal`);
     const d = tools.slice(tools.indexOf(`name: 'browser_${navn}'`)).split('inputSchema')[0];
-    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\),[^"]* - the answer is ok:false with error "covered" and covered_by\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the presses and clicks are stopped \(a release the page moves elsewhere is let through\), and the answer also has maybe_landed: true, because the page may already have reacted\.(?! In the active tab the mouse)/, `browser_${navn}s beskrivelse`);
+    // R68: hover sender ingen tryk og intet slip - dens tekst siger musens bevaegelse.
+    const hale = navn === 'hover' ? 'the rest of the mouse movement is stopped and the answer'
+      : 'the rest of the presses and clicks are stopped \\(a release the page moves elsewhere is let through\\), and the answer';
+    assert.match(d, new RegExp(`If the mouse would not reach the target at its center - another element lies in front of it \\(an overlay, a dialog\\\\'s backdrop\\),[^"]* - the answer is ok:false with error "covered" and covered_by\\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, ${hale} also has maybe_landed: true, because the page may already have reacted\\.(?! In the active tab the mouse)`), `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
-    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card\)/, navn);
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address does not count\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
@@ -689,7 +692,7 @@ test('et passivt kort med en role=button uden om et ikon-link er daekket af knap
   const d = lavKlikDom();
   const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
   const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
-  d.el('a', { id: 'ikon', attrs: { href: '#' }, rect: [190, 60, 100, 40], lag: 2 }, knap);
+  d.el('a', { id: 'ikon', attrs: { href: '/ordre/7/slet' }, rect: [190, 60, 100, 40], lag: 2 }, knap);
   assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet');
 });
 
@@ -726,4 +729,24 @@ test('et felt uden pointer-events i en div role=button er daekket af knappen - k
     d.el(tag, { id: 'felt', rect: [40, 30, 200, 40], ingenPeg: true }, knap);
     assert.equal(d.koer(KILDE, '#felt', null, null, false, false).svar.covered?.id, 'knap', tag);
   }
+});
+
+// ── R68 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('et passivt kort: <a href="#">, javascript: og <a role="menuitem"> er handlinger, ikke kortets eget link (R68)', () => {
+  for (const [attrs, daekket] of [[{ href: '#' }, true], [{ href: 'javascript:void(0)' }, true], [{ href: '#', role: 'menuitem' }, true],
+    [{ href: '/ordre/7', role: 'menuitem' }, true], [{ href: '/ordre/7' }, false], [{ href: '#ordre-7' }, false]]) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, JSON.stringify(attrs));
+  }
+});
+
+test('en tekst i et kort vaelger ikke kortets foerste klikbare barn (Slet), naar teksten ikke staar i det (R68)', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+  d.el('button', { id: 'slet', tekst: 'Slet', rect: [300, 60, 100, 40] }, kort);
+  const r = d.koer(KILDE, null, 'Ordre 7', null, false, false).svar;
+  assert.notEqual(r.tag, 'BUTTON', JSON.stringify(r));
+  assert.equal(elementFor(d, 'Ordre 7').id, 'kort');
 });

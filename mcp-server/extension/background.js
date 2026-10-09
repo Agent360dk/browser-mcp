@@ -945,6 +945,7 @@ function uvisVurdering(r, egenNote) {
   if (r.udskiftetMaal) return { maybe_landed: true, note: 'The page replaced the target while the mouse was on it (for instance on the press), so whether the new element got the click cannot be told. Check the state before clicking again.' };
   if (r.ingenHaendelse) return { maybe_landed: true, note: 'The click was sent, but no mouse event reached the page around the target - it may have gone into a frame, or a listener on the window stopped it. Check the state before clicking again.' };
   if (r.slipAndetSted) return { maybe_landed: true, note: 'The press reached the target, but the page moved the release elsewhere (a menu or backdrop that opened on the press, or a drag), so whether the click completed cannot be told. Check the state before clicking again.' };
+  if (r.forfaderUdenBevis) return { maybe_landed: true, note: 'The click reached an element around the target that listens for clicks itself, not the target; whether that was the target\'s action cannot be told. Check the state before clicking again.' };
   if (r.stoppetUndervejs) return { maybe_landed: true, note: 'The click reached the page, but something on the way stopped it before the target - the page may have acted on it itself. Check the state before clicking again.' };
   return { maybe_landed: true, note: 'The action was sent, but its effect could not be confirmed. Check the state before repeating it.' };
 }
@@ -1115,6 +1116,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
         if (iMaal) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
         if (vagt && vagt.vaek) { ryd(); return { landed: null, fallbackFired: false, udskiftetMaal: true, trykNaaet }; }
         if (vagt && vagt.urent) { ryd(); return { landed: null, fallbackFired: false, slipAndetSted: true, trykNaaet }; }
+        if (vagt && vagt.forfader) { ryd(); return { landed: null, fallbackFired: false, forfaderUdenBevis: true, trykNaaet }; }
         if (vagt && vagt.sendt > 0) { ryd(); return { landed: null, fallbackFired: false, stoppetUndervejs: true, trykNaaet }; }
         if (el === null) { ryd(); return { landed: false, fallbackFired: false, intetMaal: true }; }   // intet element under punktet (fx uden for vinduet) - ingen virkning
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
@@ -1696,7 +1698,10 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         v.sendt++;
         if (ev.type === 'click' && maal.labels && Array.from(maal.labels).some((l) => inde(knude, l))) v.labelKlik = true;
         if (!(inde(knude, maal) || (inde(maal, knude) && knude.tagName !== 'LABEL' && !!knude.matches &&
-          knude.matches('button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]')))) return;
+          knude.matches('button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]')))) {
+          if (knude !== maal && inde(maal, knude)) v.forfader = true;
+          return;
+        }
         const type = ev.type;
         const naaet = (e2) => { if (e2 === ev) v.naaet[type] = (v.naaet[type] || 0) + 1; };
         try { knude.addEventListener(type, naaet, { once: true, capture: true }); v.paa.push([knude, type, naaet]); } catch (e) {}
@@ -1733,7 +1738,8 @@ async function laesMaalVagt(tabId, x, y) {
         for (let n = p; n; n = n.parentNode || n.host) if (n === maal) { iMaalet = true; break; }
         if (p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '') && !iMaalet) fremmedRamme = { tag: p.tagName, id: p.id || null, text: '' };
       }
-      return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme, urent: !!v.urent,
+      const trykNaaet = ((v.naaet.pointerdown || 0) + (v.naaet.mousedown || 0)) > 0;
+      return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme, urent: !!v.urent, trykNaaet,
         skjultHele: !v.synligVedArm && document.visibilityState !== 'visible' };
     })()` });
   } catch { return null; }
@@ -1749,7 +1755,7 @@ function vagtBevis(laest, typer) {
   if (laest.udskiftet) return { landed: null };
   if (!laest.urent && typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
   // R67 (Astra): en fremmed ramme i punktet, og haendelsen naaede ikke maalet: covered + uvist, ogsaa naar noget blev sendt.
-  if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true };
+  if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true, trykNaaet: !!laest.trykNaaet };
   // R65 (Astra, maalt i model): intet naaede maalet. I en synlig side kan en lytter undervejs have stoppet haendelsen - og
   // selv have handlet - saa det er uvist, ikke et nej med raad om at proeve igen.
   // R66 (Astra, maalt i model): synligheden blev maalt ved AFLAESNINGEN, saa en fane, der blev skjult efter handlingen, gav
@@ -2100,8 +2106,11 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       if (el.matches && el.matches(CLICKABLE)) return el;
       const anc = el.closest && el.closest(CLICKABLE);
       if (anc && (anc.textContent || '').trim().length <= tekst.length + 40) return anc;
+      // R68 (Opus, maalt i Chrome, ogsaa i 1.30.1): `text=Ordre 7` paa et kort valgte det FOERSTE klikbare barn - kortets
+      // Slet-knap - og slettede med ok:true. Et barn vaelges nu kun, naar teksten staar i det; ellers er maalet elementet
+      // med teksten, og en handling inde i det er en daekning.
       const desc = el.querySelector && el.querySelector(CLICKABLE);
-      if (desc) return desc;
+      if (desc && (desc.textContent || '').includes(tekst)) return desc;
       return el;
     }
     function pick(kandidater, test) {
@@ -2177,10 +2186,14 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // rigtigt link er beholderens egen handling: et a med adresse (eller role=link), uden knaprolle og uden onclick.
       // R67 (Opus, maalt i Chrome): og en role=button uden om et ikon-link blev aldrig set, fordi closest standsede ved linket.
       // Er det fundne et rent link, ses der videre ud; en knap uden om det er handlingen.
+      // R68 (Opus, maalt i Chrome): `href="#"`, `javascript:` og en rolle som menuitem blev godtaget som «adresse» - Reacts
+      // <a href="#" onClick> slettede med ok:true. Et rent link har en rigtig adresse og ingen anden rolle end link.
       const etLink = (n) => {
         const rolle = String((n.getAttribute && n.getAttribute('role')) || '');
-        return rolle !== 'button' && n.getAttribute('onclick') === null &&
-          ((n.tagName === 'A' && n.getAttribute('href') !== null) || rolle === 'link');
+        if (n.getAttribute('onclick') !== null || (rolle && rolle !== 'link')) return false;
+        if (n.tagName !== 'A') return rolle === 'link';
+        const href = n.getAttribute('href');
+        return href !== null && href.trim() !== '' && href.trim() !== '#' && !/^\s*javascript:/i.test(href);
       };
       // R68 (Astra, maalt i model): kun det naeste lag blev undersoegt, saa <div role=button><span role=link><a href> skjulte
       // knappen. Nu gaas hele kaeden fra punktet op til maalet: den foerste handling, der hverken er et rent link eller et
@@ -2204,8 +2217,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // R63 (Astra og Opus, maalt): undtagelserne fra R62 for en label uden for=, en pladsholder og tekst i et kort lod click og
     // fill ramme et FREMMED felt (en nyhedsbrevs-popup) og indpakningen om et deaktiveret link med ok:true. De er fjernet: de
     // tilfaelde afvises igen, sikkert og forklaret, og noten peger paa at klikke feltet eller kortet direkte.
-    const SEMANTISK = 'label,button,a,summary,[role="button"],[role="link"],[role="menuitem"],' +
-      '[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]';
+    const SEMANTISK = 'label,button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],' +
+      '[role="menuitemradio"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]';
     const ramme = el.closest ? el.closest(SEMANTISK + ',[onclick]') : null;
     // R65 (Opus, maalt i Chrome): en delegerende beholder (en liste med EN onclick) blev hver raekkes «egen ramme», saa
     // naboraekken blev godtaget, og den forkerte raekke valgt med ok:true. En ramme, der kun er en onclick-beholder, godtager
@@ -2312,11 +2325,16 @@ function vagtSvar(selector, el, r) {
   const svar = daekketSvar(selector, { ...el, covered: r.blokeret });
   if (r.iFremmedRamme) {
     // R65 (Opus, maalt i Chrome): en fremmed iframe kom frem over maalet; trykket gik ind i den, og vagten i toppen saa intet.
+    // R68 (Opus, maalt i Chrome): naaede trykket maalet, foer rammen kom, siger noten det - ikke «the press went into it».
     const c = r.blokeret || {};
+    const hvad = (c.tag || 'a frame') + (c.id ? '#' + c.id : '');
     svar.landed = null;
     svar.maybe_landed = true;
-    svar.note = `When the mouse pressed, ${(c.tag || 'a frame') + (c.id ? '#' + c.id : '')} - a frame - lay in front of ${selector}, ` +
-      'and the press went into it; the page around it cannot see what happened there. Check the state before trying again.';
+    svar.note = r.trykNaaet
+      ? `The press reached ${selector}, then ${hvad} - a frame - came in front of it, and the rest of the click went into the frame; ` +
+        'the page around it cannot see what happened there. Check the state before trying again.'
+      : `When the mouse pressed, ${hvad} - a frame - lay in front of ${selector}, ` +
+        'and the press went into it; the page around it cannot see what happened there. Check the state before trying again.';
     return svar;
   }
   if (r.delvis) {
@@ -4821,7 +4839,7 @@ async function dispatch(port, method, params) {
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
         const clickResult = await debuggerClick(tab.id, el.x, el.y, true);
         if (clickResult && clickResult.blokeret) return vagtSvar(params.selector, el, clickResult);
-        if (clickResult && clickResult.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: clickResult.fremmedRamme, iFremmedRamme: true });
+        if (clickResult && clickResult.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: clickResult.fremmedRamme, iFremmedRamme: true, trykNaaet: clickResult.trykNaaet });
         if (clickResult && clickResult.vaek) return vaekSvar(params.selector, el);
         return {
           method: el.method || 'debugger',
@@ -4936,7 +4954,7 @@ async function dispatch(port, method, params) {
         if (el.covered) return daekketSvar(params.selector, el);
         const fillKlik = await debuggerClick(tab.id, el.x, el.y, true);
         if (fillKlik && fillKlik.blokeret) return vagtSvar(params.selector, el, fillKlik);
-        if (fillKlik && fillKlik.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: fillKlik.fremmedRamme, iFremmedRamme: true });
+        if (fillKlik && fillKlik.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: fillKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: fillKlik.trykNaaet });
         if (fillKlik && fillKlik.vaek) return vaekSvar(params.selector, el);
         await new Promise(r => setTimeout(r, 100));
         // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
@@ -5747,8 +5765,14 @@ async function dispatch(port, method, params) {
       // udloeseren. Videre gaar det nu kun, naar trykket NAAEDE udloeseren.
       const udloeserDelvis = !!(udloeserKlik && udloeserKlik.blokeret && udloeserKlik.delvis && udloeserKlik.trykNaaet);
       if (udloeserKlik && udloeserKlik.blokeret && !udloeserDelvis) return vagtSvar(params.selector, trigger, udloeserKlik);
-      if (udloeserKlik && udloeserKlik.fremmedRamme) return vagtSvar(params.selector, trigger, { blokeret: udloeserKlik.fremmedRamme, iFremmedRamme: true });
+      if (udloeserKlik && udloeserKlik.fremmedRamme) return vagtSvar(params.selector, trigger, { blokeret: udloeserKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: udloeserKlik.trykNaaet });
       if (udloeserKlik && udloeserKlik.vaek) return vaekSvar(params.selector, trigger);
+      // R68 (Opus, maalt i Chrome): et udloeserklik, der aabnede en dialog, gik videre til at lede efter valget paa den
+      // frosne side og endte efter 19 s i en bar CDP-fejl - efter at handlingen var sket. Nu stoppes der straks.
+      if (udloeserKlik && udloeserKlik.dialog) {
+        return { ok: false, error: 'A dialog opened when the dropdown was clicked, so no option was looked for.', trigger_clicked: true,
+          landed: null, maybe_landed: true, note: (uvisVurdering(udloeserKlik) || {}).note };
+      }
       // R68 (Astra, maalt i model): udloeserens tryk blev stoppet (af en lytter foer eller efter vagten), svaret var uvist og
       // ikke blokeret - og vaerktoejet klikkede alligevel et valg. Naaede trykket ikke udloeseren, aabnes intet valg.
       if (udloeserKlik && udloeserKlik.trykNaaet === false && !klikLandede(udloeserKlik)) {
@@ -5780,7 +5804,7 @@ async function dispatch(port, method, params) {
       }
       const valgKlik = await debuggerClick(tab.id, option.x, option.y, true);
       if (valgKlik && valgKlik.vaek) return { ...vaekSvar(`text=${oensket}`, option), trigger_clicked: true };
-      if (valgKlik && valgKlik.fremmedRamme) return { ...vagtSvar(`text=${oensket}`, option, { blokeret: valgKlik.fremmedRamme, iFremmedRamme: true }), trigger_clicked: true };
+      if (valgKlik && valgKlik.fremmedRamme) return { ...vagtSvar(`text=${oensket}`, option, { blokeret: valgKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: valgKlik.trykNaaet }), trigger_clicked: true };
       if (valgKlik && valgKlik.blokeret) {
         const svar = vagtSvar(`text=${oensket}`, option, valgKlik);
         svar.note = 'The dropdown was opened, but its option is covered: ' + svar.note + ' The list may still be open.';

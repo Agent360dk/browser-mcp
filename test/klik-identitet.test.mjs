@@ -299,7 +299,11 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
   assert.match(cl, /the remaining presses and clicks are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it, and a release the page moves elsewhere is let through\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
-  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control; for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with an address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between; an `a` without an address, role or `onclick` is no action\. A field or other control whose center lies on a button around it is covered by that button: the button's click is not the field's\. Hover and right-click do not click a control inside the target/);
+  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control/);
+  assert.match(cl, /for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with an address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between/);
+  assert.match(cl, /`href="#"`, `javascript:` and a role other than link make an `a` an action, not a plain link\. A delete link with a real address \(rails-ujs `data-method`\) cannot be told from a plain link\./);
+  assert.match(cl, /A field or other control whose center lies on a button around it is covered by that button: the button's click is not the field's\./);
+  assert.match(cl, /Hover and right-click do not click a control inside the target/);
 });
 
 test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
@@ -641,4 +645,37 @@ test('labelens aktiveringsklik uden koordinater er bevis for feltet, naar vaerkt
   const svar = await b.koer('click', { selector: '#c' });
   assert.equal(svar.landed, true, JSON.stringify(svar));
   assert.ok(b.side.includes('click:c'), String(b.side));
+});
+
+// ── R68 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('select_option: et udloeserklik, der aabner en dialog, svarer straks uvist med trigger_clicked - ingen bar fejl', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  const b = browser(d);
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Runtime.evaluate' && p.expression.includes('const foerAftryk')
+    ? new Promise(() => {}) : send(m, metode, p));
+  const start = Date.now();
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+  assert.match(svar.error || '', /A dialog opened when the dropdown was clicked/, JSON.stringify(svar));
+  assert.equal(svar.trigger_clicked, true);
+  assert.equal(svar.maybe_landed, true);
+  assert.ok(Date.now() - start < 8000, 'svaret kom ikke straks');
+});
+
+test('en fremmed ramme efter et tryk, der naaede maalet, siger at trykket naaede det', async () => {
+  const d = knapside();
+  const b = browser(d, { efterHaendelse: (type, dd) => { if (type === 'mousedown' && !dd.document.querySelector('#annonce')) dd.el('iframe', { id: 'annonce', rect: [0, 0, 600, 300], lag: 20 }); } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.match(svar.note, /^The press reached #gem, then IFRAME#annonce - a frame - came in front of it/);
+});
+
+test('et ikon uden pointer-events i en div med onclick: klikket naaede rammen, ikke ikonet - noten siger det', async () => {
+  const d = lavKlikDom();
+  const ramme = d.el('div', { id: 'ramme', attrs: { onclick: 'aabn()' }, rect: [20, 20, 200, 40] });
+  d.el('span', { id: 'ikon', rect: [100, 30, 20, 20], ingenPeg: true }, ramme);
+  const svar = await browser(d).koer('click', { selector: '#ikon' });
+  assert.equal(svar.landed, null, JSON.stringify(svar));
+  assert.match(svar.note, /The click reached an element around the target that listens for clicks itself, not the target/);
 });

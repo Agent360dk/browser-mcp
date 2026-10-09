@@ -42,7 +42,9 @@ const FORBUDT = [
 // et haardt mellemrum slap forbi moenstrene. Typografiske anfoerselstegn og alle slags mellemrum laeses som de almindelige.
 // R66 (Opus, maalt): en blod bindestreg (&shy;) eller et nulbredde-tegn (&zwj;) inde i et ord brod moenstret.
 // R67 (Astra, maalt): U+200B og U+FEFF blev til mellemrum og broed ordet; de fjernes nu som de andre nulbredde-tegn.
-const norm = (s) => s.replace(/[\u00AD\u200B\u200C\u200D\u2060\uFEFF]/g, '').replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'").replace(/[\u201C\u201D\u201F]/g, '"')
+// R68 (Opus, maalt): 13 andre usynlige formattegn (&lrm;, &InvisibleTimes;, U+180E, U+FE0F ...) slap igennem. Alle tegn i
+// Unicode-kategorien Cf fjernes nu, og de faa usynlige tegn uden for den (variationsvaelgere, U+034F, Hangul-fyldtegn).
+const norm = (s) => s.replace(/[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F]/gu, '').replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'").replace(/[\u201C\u201D\u201F]/g, '"')
   .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ').replace(/\s+/g, ' ');
 // R66: en udgivet side er delt i synlig tekst, attributter og kommentarer (side-tekst.py); hver del proeves for sig.
 const rammer = (tekst, moenster) => tekst.split('\u241e').some((del) => moenster.test(norm(del)));
@@ -120,4 +122,10 @@ test('U+200B og U+FEFF inde i et ord snyder ikke moenstrene (R67)', () => {
   const m = FORBUDT.find(([nr]) => nr === 7)[1];
   for (const s of ['<p>A headless browser funda&#8203;mentally can\'t read Gmail.</p>', '<p>A headless browser funda&#65279;mentally can\'t read Gmail.</p>'])
     assert.ok(rammer(html(s), m), s);
+});
+
+test('alle usynlige formattegn inde i et ord fjernes (R68)', () => {
+  const m = FORBUDT.find(([nr]) => nr === 7)[1];
+  for (const ref of ['&lrm;', '&rlm;', '&InvisibleTimes;', '&af;', '&ic;', '&#x2064;', '&#x180E;', '&#x34F;', '&#xFE0F;', '&#xE0020;', '&#x2066;', '&#x202A;', '&#x115F;'])
+    assert.ok(rammer(html(`<p>A headless browser funda${ref}mentally can't</p>`), m), ref);
 });
