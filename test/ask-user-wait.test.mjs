@@ -10,7 +10,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
-function browser({ drawFails = null, startUrl = null, startPending } = {}) {
+// R57: ask_user tegner ikke paa about:blank (Chrome naegter, maalt), saa standardfanen er en webside.
+function browser({ drawFails = null, startUrl = 'https://app.example/side', startPending, ekstra = {} } = {}) {
   const tabs = new Map();
   let next = 100;
   let u;
@@ -30,6 +31,7 @@ function browser({ drawFails = null, startUrl = null, startPending } = {}) {
       return [{ result: undefined }];
     },
     'debugger.getTargets': [],
+    ...ekstra,
   } });
   return u;
 }
@@ -323,4 +325,77 @@ test('a tab that is still loading is bound to its pendingUrl', async () => {
   assert.equal(draws(u)[0].args[0].origin, 'https://bank.example');
   await u.fyr('runtime.onMessage', { type: 'ask_user_answer', askId: a.askId, action: 'skip', values: {} }, fromPrompt(u, a.tabId, 'https://bank.example'));
   assert.equal((await a.pending).action, 'skip');
+});
+
+// R57 (Opus, maalt i Chrome 9/10): paa en fejlside kastede kaldet Chromes raa tekst «Frame with ID 0 is showing error page»,
+// efter at fanen var aktiveret og en notifikation oprettet, som aldrig blev ryddet. Det samme paa about:blank.
+const vistForBrugeren = (u) => ({
+  aktiveret: u.optager.til('tabs.update').filter((k) => k.args[1]?.active).length,
+  notifikationer: u.optager.antal('notifications.create'),
+  udraabstegn: u.optager.til('action.setBadgeText').filter((k) => k.args[0]?.text === '!').length,
+  tegninger: draws(u).length,
+});
+const intet = { aktiveret: 0, notifikationer: 0, udraabstegn: 0, tegninger: 0 };
+
+for (const felter of [[], [{ name: 'code', label: 'Code' }]]) {
+  test(`Chrome's error page answers with a clear error and shows nothing (${felter.length ? 'with' : 'without'} fields)`, async () => {
+    const u = browser({ startUrl: 'http://ukendt-vaert.invalid/side?token=hemmelig',
+      ekstra: { 'webNavigation.getAllFrames': [{ frameId: 0, parentFrameId: -1, errorOccurred: true, url: 'http://ukendt-vaert.invalid/side' }] } });
+    await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'code?', fields: felter }), (e) => {
+      assert.match(e.message, /^The tab shows Chrome's error page: http:\/\/ukendt-vaert\.invalid\/side did not load/);
+      assert.doesNotMatch(e.message, /hemmelig/, 'the query string is not repeated in the error');
+      return true;
+    });
+    assert.deepEqual(vistForBrugeren(u), intet);
+    assert.equal(u.hent('pendingAsks').size, 0);
+  });
+}
+
+test('a page that loaded is not taken for an error page', async () => {
+  const u = browser({ ekstra: { 'webNavigation.getAllFrames': [{ frameId: 0, errorOccurred: false }, { frameId: 3, errorOccurred: true }] } });
+  const a = await ask(u);
+  assert.equal(vistForBrugeren(u).notifikationer, 1);
+  await u.fyr('runtime.onMessage', { type: 'ask_user_answer', askId: a.askId, action: 'done', values: {} }, fromPrompt(u, a.tabId, 'https://app.example'));
+  assert.equal(plain(await a.pending).action, 'done');
+});
+
+for (const adresse of ['about:blank', 'chrome-extension://abc/side.html', '']) {
+  test(`a question without fields on ${adresse || 'an empty tab'} is refused before anything is shown`, async () => {
+    const u = browser({ startUrl: adresse });
+    await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'Done?' }), /where the extension cannot draw/);
+    assert.deepEqual(vistForBrugeren(u), intet);
+  });
+}
+
+test('the error page appearing while the prompt is drawn gives the same clear error, and the notification is cleared after it exists', async () => {
+  let oprettet = false;
+  let ryddetEfterOprettelse = null;
+  const u = browser({ drawFails: 'Frame with ID 0 is showing error page', ekstra: {
+    'notifications.create': () => new Promise((r) => setTimeout(() => { oprettet = true; r('id'); }, 40)),
+    'notifications.clear': () => { ryddetEfterOprettelse = oprettet; return true; },
+  } });
+  await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'Done?' }), /^Error: The tab shows Chrome's error page|^The tab shows Chrome's error page/);
+  for (let i = 0; i < 20 && ryddetEfterOprettelse === null; i++) await tick(10);
+  assert.equal(ryddetEfterOprettelse, true, 'the notification was cleared before it existed, so it stayed up');
+});
+
+// R57: teksterne lover det, koden ovenfor goer - og intet om at hente Chrome frem, for det goer koden ikke.
+test('the texts say what ask_user does on an error page and with windows, on every surface', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const { join } = await import('node:path');
+  const flader = {
+    'mcp-server/tools.js': /on Chrome\\'s error page or about:blank the call fails at once and shows nothing\. It makes the tab the active one in its window and restores a minimized window, but it does not bring Chrome in front of other apps\./,
+    'README.md': /on Chrome's error page or about:blank it fails at once and shows nothing\. It makes the tab active and restores a minimized window, but does not bring Chrome in front of other apps\./,
+    'mcp-server/README.md': /on Chrome's error page or about:blank it fails at once and shows nothing\. It makes the tab active and restores a minimized window, but does not bring Chrome in front of other apps\./,
+    'content/browsermcp-docs-tools.md': /on Chrome's error page or about:blank it fails at once and shows nothing\./,
+  };
+  for (const [f, r] of Object.entries(flader)) assert.match(readFileSync(join(ROD, f), 'utf8'), r, f);
+  const bg = readFileSync(join(ROD, 'extension/background.js'), 'utf8');
+  const kode = (s) => s.replace(/\/\/.*$/gm, '');   // kommentarer naevner det, koden ikke maa goere
+  const ask = kode(bg.slice(bg.indexOf("case 'ask_user': {"), bg.indexOf("case 'select_frame': {")));
+  assert.doesNotMatch(ask, /focused:\s*true/, 'ask_user brings Chrome forward, so the texts are wrong');
+  const aktiv = kode(bg.slice(bg.indexOf('async function getSessionTab'), bg.indexOf('// ── Chrome Debugger API Helpers')));
+  assert.match(aktiv, /state === 'minimized'/);
+  assert.doesNotMatch(aktiv, /focused:\s*true/);
 });

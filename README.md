@@ -280,7 +280,7 @@ All three are optional. None is needed for normal use.
 ### Human-in-the-Loop
 | Tool | Description |
 |------|-------------|
-| `browser_ask_user` | Ask you to act or answer: a small card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code. The page can see what you type into it, so it is for secrets that belong to that page |
+| `browser_ask_user` | Ask you to act or answer: a small card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code. The page can see what you type into it, so it is for secrets that belong to that page. It needs a page that loaded: on Chrome's error page or about:blank it fails at once and shows nothing. It makes the tab active and restores a minimized window, but does not bring Chrome in front of other apps. |
 
 ### Data
 | Tool | Description |

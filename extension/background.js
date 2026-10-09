@@ -5557,25 +5557,42 @@ async function dispatch(port, method, params) {
     }
 
     case 'ask_user': {
-      const tab = await getSessionTab(port, true);
+      // R57 (Opus, maalt i Chrome): paa Chromes fejlside og paa sider udvidelsen ikke maa tegne paa (about:blank,
+      // chrome-extension://) kastede kaldet Chromes raa fejltekst - EFTER at fanen var aktiveret og en notifikation
+      // oprettet, som aldrig blev ryddet. Derfor tjekkes fanen nu foer den aktiveres, og intet vises, naar spoergsmaalet
+      // ikke kan tegnes.
+      const tab0 = await getSessionTab(port);
+      const adresse = tab0.url || tab0.pendingUrl || '';
+      const vist = adresse.split(/[?#]/)[0] || 'an empty tab';
       const timeout = Number(params.timeout) || 120000;
       const fields = Array.isArray(params.fields) ? params.fields : [];
       const hasFields = fields.length > 0;
       const session = getSession(port);
       // En prompt med felter hoerer til det site, fanen staar paa. Uden et http(s)-origin kan svaret ikke bindes til
       // noget, saa den stilles ikke (R51).
-      const origin = hasFields ? askOrigin(tab.url || tab.pendingUrl) : null;
+      const origin = hasFields ? askOrigin(adresse) : null;
       if (hasFields && !origin) {
         throw new Error('browser_ask_user with fields needs the tab to be on a web page (http or https) or a local file, ' +
           'so the answer can be tied to that address. Navigate to the page first, or ask without fields.');
       }
+      if (!/^(https?|file):/i.test(adresse)) {
+        throw new Error(`browser_ask_user draws the question in the tab, and the tab shows ${vist}, where the extension ` +
+          'cannot draw. Navigate to a web page or a local file first. Nothing was shown to the user.');
+      }
+      const fejlside = () => new Error(`The tab shows Chrome's error page: ${vist} did not load, so the question cannot be ` +
+        'drawn there. Navigate to a page that loads, then ask again. Nothing was shown to the user.');
+      const rammer = await chrome.webNavigation.getAllFrames({ tabId: tab0.id }).catch(() => null);
+      if (Array.isArray(rammer) && rammer.some((f) => f.frameId === 0 && f.errorOccurred)) throw fejlside();
+      const tab = await getSessionTab(port, true);
 
       // Activate tab + alert badge
       await chrome.tabs.update(tab.id, { active: true });
       chrome.action.setBadgeText({ text: '!' });
       chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
       const notifId = 'mcp-ask-' + Date.now();
-      chrome.notifications.create(notifId, {
+      // R57 (Opus): clear() kunne koere, foer create() var faerdig, og saa blev notifikationen staaende for et spoergsmaal,
+      // agenten allerede havde opgivet. Rydningen venter nu paa oprettelsen.
+      const notifKlar = Promise.resolve(chrome.notifications.create(notifId, {
         type: 'basic',
         iconUrl: 'icons/icon-128.png',
         title: `${session.label} - Action Required`,
@@ -5583,7 +5600,7 @@ async function dispatch(port, method, params) {
         requireInteraction: true,
         silent: false,
         priority: 2,
-      });
+      })).catch(() => {});
 
       // A newer question in the same tab replaces the old one. Before, the old prompt was
       // removed from the page but its caller was left waiting until the server gave up.
@@ -5629,7 +5646,7 @@ async function dispatch(port, method, params) {
           const count = sessions.size;
           chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
           chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
-          chrome.notifications.clear(notifId);
+          notifKlar.then(() => chrome.notifications.clear(notifId)).catch(() => {});
           resolve(result);
         };
         timer = setTimeout(() => finish({ acknowledged: false, action: 'timeout', values: {} }), timeout);
@@ -5641,6 +5658,8 @@ async function dispatch(port, method, params) {
         await drawAskPrompt(ask, false);
       } catch (e) {
         finish({ acknowledged: false, action: 'error', values: {} });
+        // Fejlsiden kan ogsaa opstaa mellem tjekket og tegningen.
+        if (/showing error page/i.test(e?.message || '')) throw fejlside();
         throw e;
       }
       return answered;
