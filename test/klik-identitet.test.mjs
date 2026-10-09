@@ -442,8 +442,9 @@ test('select_option gaar ikke videre, naar en lytter stoppede trykket foer udloe
   const d = lavKlikDom();
   d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
   d.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 300, 200, 40] });
+  // Overlayet daekker kun udloeseren, saa valget kunne klikkes, hvis vaerktoejet gik videre.
   const b = browser(d, { stopVed: (type, el) => ['pointerdown', 'mousedown'].includes(type) && el?.id === 'trig',
-    efterHaendelse: (type, dd) => { if (type === 'pointerdown' && !dd.document.querySelector('#fremmed')) overlay(dd); } });
+    efterHaendelse: (type, dd) => { if (type === 'pointerdown' && !dd.document.querySelector('#fremmed')) dd.el('button', { id: 'fremmed', tekst: 'Slet', rect: [20, 20, 200, 40], lag: 20 }); } });
   const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
   assert.equal(svar.error, 'covered', JSON.stringify(svar));
   assert.ok(!b.side.includes('click:fi'), `et valg blev klikket: ${b.side}`);
@@ -557,4 +558,24 @@ test('en dialog, der holder siden under efterkontrollen, giver uvist med vagten 
   assert.equal(svar.landed, null, JSON.stringify(svar));
   assert.equal(svar.maybe_landed, true);
   assert.match(svar.note, /A dialog opened during the click/);
+});
+
+// ── R67, mutanter der overlevede ───────────────────────────────────────────
+test('hover og right_click paa et klikbart kort med en knap i midten er ikke daekket af knappen (de klikker den ikke)', async () => {
+  for (const vaerktoej of ['hover', 'right_click']) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', attrs: { role: 'button' }, tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('button', { id: 'slet', tekst: 'Slet', rect: [190, 60, 100, 40], lag: 1 }, kort);
+    const svar = await browser(d).koer(vaerktoej, { selector: '#kort', duration: 1 });
+    assert.notEqual(svar.error, 'covered', `${vaerktoej}: ${JSON.stringify(svar)}`);
+  }
+});
+
+test('double_click: en fremmed iframe, der kommer foran efter det foerste klik, giver covered', async () => {
+  const d = knapside();
+  let n = 0;
+  const b = browser(d, { efterHaendelse: (type, dd) => { if (type === 'click' && ++n === 1) dd.el('iframe', { id: 'annonce', rect: [0, 0, 600, 300], lag: 20 }); } });
+  const svar = await b.koer('double_click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.equal(svar.covered_by?.id, 'annonce');
 });
