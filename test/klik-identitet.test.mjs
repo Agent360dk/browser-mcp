@@ -34,6 +34,8 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
   const fyr = (type, x, y) => { fyrEn(type, x, y); efterHaendelse?.(type, d, fyr); };
   const fyrEn = (type, x, y, paa = null) => {
     const el = paa || d.document.elementFromPoint(x, y);
+    // Som Chrome: en haendelse i en iframe gaar til rammens eget dokument; siden udenom (og vagten) ser den ikke.
+    if (el?.tagName === 'IFRAME') { side.push(type + ':' + el.id + '(inde)'); return; }
     const vej = [];
     for (let n = el; n; n = n.parentNode || n.host) vej.push(n);
     vej.push(d.document, window);
@@ -68,6 +70,8 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
       }
       if (metode === 'Input.dispatchMouseEvent') {
         const { type, x, y, button, clickCount } = p;
+        // Som Chrome: en skjult fane faar ingen musehaendelser.
+        if (d.document.visibilityState === 'hidden') return {};
         if (transportFejl && transportFejl(type)) throw new Error('CDP: transport failed');
         if (type === 'mouseMoved') {
           for (const t of ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove']) fyr(t, x, y);
@@ -292,7 +296,7 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
   assert.match(cl, /the remaining press, release and click events are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
-  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control; for a passive container \(a list item, a card that is not a button\) its own link is its action, and only a button or other action inside it counts\. Hover and right-click do not click a control inside the target/);
+  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control; for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with an address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts\. Hover and right-click do not click a control inside the target/);
 });
 
 test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
@@ -430,4 +434,93 @@ test('select_option: en dropdown, der aabner paa mousedown med en backdrop, faar
   const svar = await b.koer('select_option', { selector: '#sel', option: 'Finland', wait: 1 });
   assert.notEqual(svar.error, 'covered', JSON.stringify(svar));
   assert.ok(b.side.includes('click:fi'), `valget fik intet klik: ${b.side}`);
+});
+
+// ── R67 (Astra, maalt i model) ─────────────────────────────────────────────
+
+test('select_option gaar ikke videre, naar en lytter stoppede trykket foer udloeseren', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  d.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 300, 200, 40] });
+  const b = browser(d, { stopVed: (type, el) => ['pointerdown', 'mousedown'].includes(type) && el?.id === 'trig',
+    efterHaendelse: (type, dd) => { if (type === 'pointerdown' && !dd.document.querySelector('#fremmed')) overlay(dd); } });
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.ok(!b.side.includes('click:fi'), `et valg blev klikket: ${b.side}`);
+});
+
+test('select_option: naaede trykket udloeseren, men valget findes ikke, siger svaret at listen kan staa aaben', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  const b = browser(d, { efterHaendelse: (type, dd) => { if (type === 'mousedown' && !dd.document.querySelector('#bd')) dd.el('div', { id: 'bd', rect: [0, 0, 1200, 800], lag: 10 }); } });
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Finland', wait: 1 });
+  assert.match(svar.error, /^Option not found: Finland/, JSON.stringify(svar));
+  assert.equal(svar.trigger_clicked, true);
+  assert.equal(svar.maybe_landed, true);
+});
+
+test('et brugerklik et andet sted paa maalet er ikke bevis for vaerktoejets klik', async () => {
+  const d = knapside();
+  const b = browser(d, { stopVed: (type, el) => type === 'click' && el?.id === 'gem' && !b.bruger,
+    efterHaendelse: (type, _d, fyr) => { if (type === 'click' && !b.bruger) { b.bruger = true; fyr('click', 30, 25); } } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+for (const [vaerktoej, type] of [['click', 'click'], ['double_click', 'dblclick']]) {
+  test(`${vaerktoej}: et slip, siden flyttede, goer beviset urent, ogsaa naar ${type} bagefter naar maalet`, async () => {
+    const d = knapside();
+    const b = browser(d, { efterHaendelse: (t, dd) => {
+      if (t === 'mousedown' && !dd.document.querySelector('#bd')) dd.el('div', { id: 'bd', rect: [0, 0, 1200, 800], lag: 10 });
+      if (t === 'mouseup') { const bd = dd.document.querySelector('#bd'); if (bd) bd.stil.display = 'none'; }
+    } });
+    const svar = await b.koer(vaerktoej, { selector: '#gem' });
+    assert.ok(b.side.includes(type + ':gem'), String(b.side));
+    assert.notEqual(svar.landed, true, JSON.stringify(svar));
+  });
+}
+
+test('en fremmed iframe, der kommer foran efter trykket, giver covered (ikke kun «stoppet undervejs»)', async () => {
+  const d = knapside();
+  const b = browser(d, { efterHaendelse: (type, dd) => { if (type === 'pointerdown' && !dd.document.querySelector('#annonce')) dd.el('iframe', { id: 'annonce', rect: [0, 0, 600, 300], lag: 20 }); } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.equal(svar.covered_by?.id, 'annonce');
+  assert.equal(svar.maybe_landed, true);
+});
+
+test('synligheden ved armeringen taeller: skjult hele vejen er nej, skjult foerst ved aflaesningen er uvist', async () => {
+  const d = knapside();
+  d.document.visibilityState = 'hidden';
+  const svar = await browser(d).koer('double_click', { selector: '#gem' });
+  assert.equal(svar.landed, false, JSON.stringify(svar));
+  const d2 = knapside();
+  d2.document.visibilityState = 'visible';
+  const b2 = browser(d2, { efterArm: (dd) => { dd.document.visibilityState = 'hidden'; } });
+  const svar2 = await b2.koer('double_click', { selector: '#gem' });
+  assert.equal(svar2.landed, null, JSON.stringify(svar2));
+});
+
+test('genmaalingen beder ogsaa tekst- og CSP-vejen om ikke at rulle', async () => {
+  let n = 0;
+  const udtryk = [];
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'debugger.sendCommand': (_m, metode, p) => { if (metode !== 'Runtime.evaluate') return {}; udtryk.push(p.expression);
+      return { result: { value: ++n === 1 ? { x: 60, y: 300, found: true, rullet: true } : { x: 60, y: 160, found: true } } }; },
+  } });
+  await u.hent('resolveElement')(1, 'text=Vaelg');
+  assert.match(udtryk[0], /, true, false, false\)$/);
+  assert.match(udtryk[1], /, true, false, true\)$/);
+});
+
+test('ingen flade lover kategorisk, at maalet intet fik', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  for (const f of ['mcp-server/tools.js', 'README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md', 'CHANGELOG.md']) {
+    const s = readFileSync(join(ROD, f), 'utf8');
+    const t2 = f === 'CHANGELOG.md' ? s.slice(s.indexOf('## 1.30.2'), s.indexOf('## 1.30.1')) : s;
+    assert.doesNotMatch(t2, /the target gets nothing|the target got nothing|nothing is clicked \(`covered`\)|stopped at the window before they reach any element|the rest of the events are stopped/i, f);
+  }
 });

@@ -974,6 +974,8 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // R64 (Opus' ramme.html, maalt i Chrome 9/10): et klik paa en iframe gaar ind i rammens eget dokument, som lytteren her
     // ikke ser. Betalingsknappen i rammen fik klikket, svaret var ok:false, og reserven sendte et klik til. Nu: ingen reserve,
     // og svaret er uvist (iRamme), saa agenten tjekker rammen i stedet for at klikke igen.
+    // R67 (Astra, maalt i model): en fremmed ramme, der kom foran EFTER trykket (sendt > 0), gav «stoppet undervejs» og
+    // ikke covered. Ligger der en fremmed ramme i punktet, og naaede klikket ikke maalet, er svaret nu altid covered + uvist.
     // R65 (Opus, maalt i Chrome): testen saa paa det fundne maal, ikke paa det trykket ramte - en div om en betalingsramme
     // (som Stripe) og en fremmed iframe, der kom frem over maalet, gav stadig et syntetisk klik nr. 2. Nu: saa vagten ingen
     // haendelse overhovedet, er der ingen reserve; ligger der en ramme i punktet, er den maalets (uvist) eller fremmed (covered).
@@ -1093,17 +1095,18 @@ async function debuggerClick(tabId, x, y, bundet = false) {
                    hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join('\0'));
           } catch (e) { return 'aftryk-fejlede'; }
         };
-        if (vagt && vagt.blokeret) { ryd(); return { landed: false, fallbackFired: false, blokeret: vagt.blokeret, delvis: !!vagt.delvis }; }
-        if (vagt && vagt.sendt === 0) {
-          let p = document.elementFromPoint(${x}, ${y});
-          for (let i = 0; i < 20 && p && p.shadowRoot; i++) { const n = p.shadowRoot.elementFromPoint(${x}, ${y}); if (!n || n === p) break; p = n; }
-          const ramme = !!p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '');
-          let iMaalet = false;
-          for (let n = p; n; n = n.parentNode || n.host) if (n === el) { iMaalet = true; break; }
+        const trykNaaet = !!vagt && (((vagt.naaet && vagt.naaet.pointerdown) || 0) + ((vagt.naaet && vagt.naaet.mousedown) || 0)) > 0;
+        if (vagt && vagt.blokeret) { ryd(); return { landed: false, fallbackFired: false, blokeret: vagt.blokeret, delvis: !!vagt.delvis, trykNaaet }; }
+        let p = vagt ? document.elementFromPoint(${x}, ${y}) : null;
+        for (let i = 0; i < 20 && p && p.shadowRoot; i++) { const n = p.shadowRoot.elementFromPoint(${x}, ${y}); if (!n || n === p) break; p = n; }
+        const rammeIPunkt = !!p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '');
+        let rammeIMaalet = false;
+        for (let n = p; n; n = n.parentNode || n.host) if (n === el) { rammeIMaalet = true; break; }
+        if (vagt && !iMaal && rammeIPunkt && !rammeIMaalet) {
           ryd();
-          if (ramme && !iMaalet) return { landed: null, fallbackFired: false, fremmedRamme: { tag: p.tagName, id: p.id || null, text: '' } };
-          return { landed: null, fallbackFired: false, ...(ramme ? { iRamme: true } : { ingenHaendelse: true }) };
+          return { landed: null, fallbackFired: false, fremmedRamme: { tag: p.tagName, id: p.id || null, text: '' }, trykNaaet };
         }
+        if (vagt && vagt.sendt === 0) { ryd(); return { landed: null, fallbackFired: false, ...(rammeIPunkt ? { iRamme: true } : { ingenHaendelse: true }) }; }
         if (el && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(el.tagName || '')) { ryd(); return { landed: null, fallbackFired: false, iRamme: true }; }
         if (iMaal) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
         if (vagt && vagt.vaek) { ryd(); return { landed: null, fallbackFired: false, udskiftetMaal: true }; }
@@ -1642,6 +1645,8 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
 // eller paa en forfader, der ikke er en label (feltets eget aktiveringsklik er beviset); (3) «vores» er kun haendelser i
 // punktet (et klik ogsaa med maalet i stien - labelens aktiveringsklik), og efter en blokering stoppes kun haendelser i
 // punktet, ikke en rigtig mus andre steder paa maalet. En rigtig mus i samme punkt samtidig kan ikke skelnes fra vores.
+// R67 (Astra, maalt i model): «et klik med maalet i stien» tog ogsaa et brugerklik et andet sted paa maalet som bevis. Et
+// klik uden for punktet taeller nu kun, naar det er labelens simulerede aktiveringsklik (uden koordinater).
 const VAGT_KLIK = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
 const VAGT_HOVER = ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove'];
 
@@ -1665,7 +1670,8 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         if (!ev.isTrusted) return;
         const vej = ev.composedPath ? ev.composedPath() : [];
         const vedPunkt = Math.abs(ev.clientX - ${x}) <= 1 && Math.abs(ev.clientY - ${y}) <= 1;
-        const vores = vedPunkt || (ev.type === 'click' && vej.includes(maal));
+        const aktivering = ev.type === 'click' && vej.includes(maal) && ev.clientX === 0 && ev.clientY === 0;
+        const vores = vedPunkt || aktivering;
         if (!vores) return;
         if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
         if (!maal.isConnected) { v.vaek = true; return; }
@@ -1706,7 +1712,7 @@ async function laesMaalVagt(tabId, x, y) {
       if (!v || !v.ryd) return { udskiftet: true };
       v.ryd();
       let fremmedRamme = null;
-      if (v.sendt === 0 && ${typeof x === 'number' && typeof y === 'number'}) {
+      if (${typeof x === 'number' && typeof y === 'number'}) {
         let p = document.elementFromPoint(${Number(x) || 0}, ${Number(y) || 0});
         for (let i = 0; i < 20 && p && p.shadowRoot; i++) { const n = p.shadowRoot.elementFromPoint(${Number(x) || 0}, ${Number(y) || 0}); if (!n || n === p) break; p = n; }
         let iMaalet = false;
@@ -1724,11 +1730,12 @@ async function laesMaalVagt(tabId, x, y) {
 function vagtBevis(laest, typer) {
   if (!laest) return { landed: null };
   if (laest.blokeret) return { landed: false, blokeret: laest.blokeret, delvis: !!laest.delvis };
-  if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true };
   // R66 (Astra, maalt i model): en vagt, der er vaek ved aflaesningen, beviser ikke en navigation (den kan vaere fjernet af
   // siden eller udloebet) - det er uvist, ikke ja.
   if (laest.udskiftet) return { landed: null };
   if (!laest.urent && typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
+  // R67 (Astra): en fremmed ramme i punktet, og haendelsen naaede ikke maalet: covered + uvist, ogsaa naar noget blev sendt.
+  if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true };
   // R65 (Astra, maalt i model): intet naaede maalet. I en synlig side kan en lytter undervejs have stoppet haendelsen - og
   // selv have handlet - saa det er uvist, ikke et nej med raad om at proeve igen.
   // R66 (Astra, maalt i model): synligheden blev maalt ved AFLAESNINGEN, saa en fane, der blev skjult efter handlingen, gav
@@ -2152,7 +2159,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // et «stretched link» blev afvist - linket ER den passive beholders egen handling. Er maalet ikke selv klikbart, er et
       // link inde i det derfor ikke en daekning; en knap eller en anden handling (Slet paa et kort) er det stadig.
       const klikbartMaal = !!el.matches && (el.matches(CLICKABLE) || (!!el.getAttribute && el.getAttribute('tabindex') !== null));
-      if (indre && !erLabel && !klikbartMaal && indre.matches('a,[role="link"]')) indre = null;
+      // R67 (Astra, maalt i model): `<a role="button" onclick="slet()">` i et passivt kort blev fritaget som «link». Kun et
+      // rigtigt link er beholderens egen handling: et a med adresse (eller role=link), uden knaprolle og uden onclick.
+      const rolle = indre && indre.getAttribute ? String(indre.getAttribute('role') || '') : '';
+      const etLink = !!indre && rolle !== 'button' && indre.getAttribute('onclick') === null &&
+        ((indre.tagName === 'A' && indre.getAttribute('href') !== null) || rolle === 'link');
+      if (indre && !erLabel && !klikbartMaal && etLink) indre = null;
       if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
         return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}) };
       }
@@ -5693,7 +5705,10 @@ async function dispatch(port, method, params) {
       const udloeserKlik = await debuggerClick(tab.id, trigger.x, trigger.y, true);
       // R66 (Opus, maalt i Chrome): en dropdown, der aabner paa mousedown med en usynlig backdrop (MUI), fik slippet paa
       // backdroppen, og svaret var covered, mens listen stod aaben. Naaede trykket udloeseren, fortsaettes til valget.
-      if (udloeserKlik && udloeserKlik.blokeret && !udloeserKlik.delvis) return vagtSvar(params.selector, trigger, udloeserKlik);
+      // R67 (Astra, maalt i model): `delvis` betoed kun, at trykket passerede window - en lytter kunne have stoppet det foer
+      // udloeseren. Videre gaar det nu kun, naar trykket NAAEDE udloeseren.
+      const udloeserDelvis = !!(udloeserKlik && udloeserKlik.blokeret && udloeserKlik.delvis && udloeserKlik.trykNaaet);
+      if (udloeserKlik && udloeserKlik.blokeret && !udloeserDelvis) return vagtSvar(params.selector, trigger, udloeserKlik);
       if (udloeserKlik && udloeserKlik.fremmedRamme) return vagtSvar(params.selector, trigger, { blokeret: udloeserKlik.fremmedRamme, iFremmedRamme: true });
       if (udloeserKlik && udloeserKlik.vaek) return vaekSvar(params.selector, trigger);
 
@@ -5702,7 +5717,11 @@ async function dispatch(port, method, params) {
 
       // Step 3: Find and click the option by text
       const option = await resolveElement(tab.id, `text=${oensket}`);
-      if (!option) return { ok: false, error: 'Option not found: ' + oensket };
+      if (!option) {
+        return { ok: false, error: 'Option not found: ' + oensket,
+          ...(udloeserDelvis ? { trigger_clicked: true, maybe_landed: true,
+            note: 'The trigger was pressed, but the page moved the rest of the click elsewhere, and the option was not found; the list may still be open.' } : {}) };
+      }
       // R64 (Astra, maalt i model): kun udloeseren blev tjekket for daekning - et valg under en fremmed knap blev klikket, og
       // svaret sagde selected. Valget tjekkes nu ogsaa; udloeseren ER klikket, saa svaret siger at listen kan staa aaben.
       if (option.covered) {

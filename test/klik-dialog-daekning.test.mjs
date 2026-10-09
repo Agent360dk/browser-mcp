@@ -225,7 +225,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : /if \(el\.covered\) return daekketSvar\(params\.selector, el\);/;
     assert.match(blok, regel, `${navn} afviser ikke et daekket maal`);
     const d = tools.slice(tools.indexOf(`name: 'browser_${navn}'`)).split('inputSchema')[0];
-    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\),[^"]* - the answer is ok:false with error "covered" and covered_by\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the events are stopped and the answer also has maybe_landed: true, because the page may already have reacted\.(?! In the active tab the mouse)/, `browser_${navn}s beskrivelse`);
+    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\),[^"]* - the answer is ok:false with error "covered" and covered_by\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the presses and clicks are stopped \(a release the page moves elsewhere is let through\), and the answer also has maybe_landed: true, because the page may already have reacted\.(?! In the active tab the mouse)/, `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
     if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
@@ -611,9 +611,10 @@ test('en armeret vagt, der ikke saa en eneste haendelse, giver ingen reserve - e
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const bg = readFileSync(join(ROD, 'extension/background.js'), 'utf8');
   const settle = bg.slice(bg.indexOf('const settle = await evaluerTaalmodigt'), bg.indexOf('const foerAftryk = aftryk();'));
-  assert.match(settle, /if \(vagt && vagt\.sendt === 0\) \{/);
-  assert.match(settle, /if \(ramme && !iMaalet\) return \{ landed: null, fallbackFired: false, fremmedRamme:/);
-  assert.match(settle, /return \{ landed: null, fallbackFired: false, \.\.\.\(ramme \? \{ iRamme: true \} : \{ ingenHaendelse: true \}\) \};/);
+  // R67: en fremmed ramme i punktet afgoer svaret, naar klikket ikke naaede maalet - ogsaa efter noget blev sendt.
+  assert.match(settle, /if \(vagt && !iMaal && rammeIPunkt && !rammeIMaalet\) \{/);
+  assert.match(settle, /return \{ landed: null, fallbackFired: false, fremmedRamme: \{ tag: p\.tagName, id: p\.id \|\| null, text: '' \}, trykNaaet \};/);
+  assert.match(settle, /if \(vagt && vagt\.sendt === 0\) \{ ryd\(\); return \{ landed: null, fallbackFired: false, \.\.\.\(rammeIPunkt \? \{ iRamme: true \} : \{ ingenHaendelse: true \}\) \}; \}/);
   const u = indlaesUdvidelse();
   assert.match(u.hent('uvisVurdering')({ landed: null, ingenHaendelse: true }).note, /no mouse event reached the page around the target/);
   const svar = u.hent('vagtSvar')('#gem', { tag: 'BUTTON' }, { blokeret: { tag: 'IFRAME', id: 'annonce', text: '' }, iFremmedRamme: true });
@@ -671,5 +672,14 @@ test('et klikbart kort (role=button) med et link i midten er daekket af linket; 
     const kort = d.el('div', { id: 'kort', attrs, tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el('a', { id: 'lnk', tekst: 'Se ordren', attrs: { href: '#o7' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
     assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'lnk', daekket, JSON.stringify(attrs));
+  }
+});
+
+test('et passivt kort med <a role=button onclick> eller <a href role=button> i midten er daekket; et rigtigt link er kortets eget (R67)', () => {
+  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '#o7' }, false]]) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, JSON.stringify(attrs));
   }
 });
