@@ -2175,7 +2175,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // R65 (Astra, maalt i model): samme regel for den knude, der faktisk fik en haendelse - maalvagten doemmer hver haendelse
   // paa sin knude, ikke kun den foerste i punktet.
   // HTML-standardens «interactive content»: et klik dér aktiverer ikke en omsluttende labels felt.
-  const INTERAKTIV = 'a[href],button,input,select,textarea,details,embed,iframe,object,audio[controls],video[controls],img[usemap],label';
+  // R74 (Astra, laest): `object` staar ikke paa standardens nuvaerende liste; dens reservetekst er almindelig tekst.
+  const INTERAKTIV = 'a[href],button,input,select,textarea,details,embed,iframe,audio[controls],video[controls],img[usemap],label';
   const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
     if (inde(hit, el)) {
@@ -2293,18 +2294,20 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // indhold (HTML-standardens liste) under punktet huskes derfor for sig, uanset om det selv er en handling.
         let interaktiv = null;
         for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
-          if (!interaktiv && n.matches && n.tagName !== 'LABEL' && n.matches(INTERAKTIV) && lukket(n)) interaktiv = n;
-          if (!n.matches || !n.matches(HANDLING) || !lukket(n)) continue;
+          const handling = !!n.matches && n.matches(HANDLING) && !!lukket(n);
           // R72 (Opus, maalt i Chrome): en komponent, hvis hele flade er ET link i dens egen shadow root (sl-button med href),
           // er det link; en rigtig mus og 1.30.1 kører det. Knap eller link: det, der daekker komponenten, er komponenten.
-          if (iEgenSkygge(n) && daekker(n)) {
-            // R72 (Opus, maalt i Chrome): en checkbox-komponents egen <label> (ion-checkbox, sl-checkbox) fritog et vilkaarslink
-            // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Interaktivt indhold mellem
-            // punktet og komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke
-            // feltet); labelens eget felt er det ikke.
-            if (n.tagName === 'LABEL' && interaktiv && interaktiv !== n.control) { fundet = interaktiv; break; }
-            continue;
-          }
+          const egenStor = handling && iEgenSkygge(n) && daekker(n);
+          // R72 (Opus, maalt i Chrome): en checkbox-komponents egen <label> (ion-checkbox, sl-checkbox) fritog et vilkaarslink
+          // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Interaktivt indhold mellem
+          // punktet og komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke
+          // feltet); labelens eget felt er det ikke.
+          if (egenStor && n.tagName === 'LABEL' && interaktiv && interaktiv !== n.control) { fundet = interaktiv; break; }
+          // R74 (Astra, maalt i model): en label i labelen (ugyldig HTML, men muligt) blev ikke husket, saa en stor indre label
+          // med for= et andet felt aktiverede det med landed:true. En label er ogsaa interaktivt indhold; den huskes efter, at den
+          // selv er proevet som komponentens label.
+          if (!interaktiv && n.matches && n.matches(INTERAKTIV) && lukket(n)) interaktiv = n;
+          if (!handling || egenStor) continue;
           if (etLink(n)) { link = link || n; continue; }
           fundet = n; break;
         }
@@ -4283,6 +4286,8 @@ async function dispatch(port, method, params) {
       // sin eneste 'complete' foer lytteren herunder fandtes, og navigate ventede de fulde 15 sekunder. For en fane uden en
       // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
       let nyFane = !!(tab && tab.oprettetMedUrl);
+      // R74 (Astra, maalt i model): ogsaa en pladsholder, der genbruges uden new_tab, har ingen tidligere side at forveksle med.
+      const erPladsholder = (t) => !!t && (t.url === 'about:blank' || (t.url === '' && t.pendingUrl === 'about:blank'));
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
@@ -4411,6 +4416,7 @@ async function dispatch(port, method, params) {
           await addTabToSession(port, tab.id);
         }
       } else {
+        if (erPladsholder(tab)) nyFane = true;
         await chrome.tabs.update(tab.id, { url: params.url });
       }
 
@@ -4441,7 +4447,9 @@ async function dispatch(port, method, params) {
         };
         chrome.tabs.onUpdated.addListener(listener);
         const timer = setTimeout(finish, 15000);
-        if (nyFane && awaitingRealUrl) loadedNow().then((ok) => { if (ok) finish(); });
+        // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
+        // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
+        if (nyFane) loadedNow().then((ok) => { if (ok) finish(); });
       });
 
       // Set as active tab for this session

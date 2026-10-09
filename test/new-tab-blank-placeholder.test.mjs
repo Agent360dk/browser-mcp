@@ -166,7 +166,7 @@ test('a first navigate with its own window opens no about:blank tab', async () =
 
 // R73 (Astra, maalt i model): en adresse, der var faerdigindlaest, mens den nye fane blev lagt i sessionens gruppe, sendte sin
 // eneste 'complete', foer navigate lyttede - og navigate ventede de fulde 15 sekunder.
-function langsomBrowser({ eksisterende = null } = {}) {
+function langsomBrowser({ eksisterende = null, hurtigOpdatering = false } = {}) {
   const tabs = new Map(eksisterende ? [[eksisterende.id, { windowId: 1, active: false, status: 'complete', ...eksisterende }]] : []);
   let u, next = 100;
   const tilstand = { brugteTimeout: false };
@@ -183,6 +183,12 @@ function langsomBrowser({ eksisterende = null } = {}) {
     // Som Chrome: den gamle side staar som 'complete' et oejeblik, foer navigationen begynder.
     'tabs.update': (id, p) => {
       const t = tabs.get(id);
+      // hurtigOpdatering: siden er faerdig, foer navigate naar at lytte (en side fra cachen).
+      if (hurtigOpdatering) {
+        Object.assign(t, { url: p.url, pendingUrl: undefined, status: 'complete' });
+        u.fyr('tabs.onUpdated', t.id, { status: 'complete' }, { ...t });   // foer navigate har sat sin lytter
+        return { ...t };
+      }
       setTimeout(() => { t.status = 'loading'; }, 10); lad(t, p.url, 20);
       return { ...t };
     },
@@ -205,6 +211,18 @@ test('a first navigate whose page finished loading while the tab was being group
     const { u, tilstand } = langsomBrowser({ eksisterende });
     const svar = await u.hent('dispatch')(9876, 'navigate', params);
     assert.equal(svar.url, 'https://example.com/cache', JSON.stringify(params));
+    assert.equal(tilstand.brugteTimeout, false, `${JSON.stringify(params)}: navigate ventede paa timeouten`);
+  }
+});
+
+// R74 (Astra, maalt i model): about:blank i en ny session og en pladsholder, der genbruges uden new_tab, kunne stadig miste
+// deres eneste 'complete' og vente til timeouten.
+test('a first navigate to about:blank, and a reused placeholder without new_tab, do not wait for the timeout', async () => {
+  for (const [params, eksisterende] of [[{ url: 'about:blank' }, null], [{ url: 'about:blank', new_tab: true }, null],
+    [{ url: 'https://example.com/cache' }, { id: 5, url: 'about:blank', title: '' }]]) {
+    const { u, tilstand } = langsomBrowser({ eksisterende, hurtigOpdatering: true });
+    const svar = await u.hent('dispatch')(9876, 'navigate', params);
+    assert.equal(svar.url, params.url, JSON.stringify(params));
     assert.equal(tilstand.brugteTimeout, false, `${JSON.stringify(params)}: navigate ventede paa timeouten`);
   }
 });

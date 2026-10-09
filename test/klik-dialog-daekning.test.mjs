@@ -1027,3 +1027,23 @@ test('en knap i en komponents egen skygge under 90 %: noten advarer om, at dens 
   assert.match(indlaesUdvidelse().hent('daekketSvar')('#gem', r).note, /own shadow root, so a selector for it \(such as its id\) can match the same part of another component/);
 });
 
+// ── R74 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en label i en checkbox-komponents egen label (ugyldig HTML) er daekning, ogsaa naar den fylder komponenten (R74)', () => {
+  for (const rect of [[40, 40, 270, 30], [40, 40, 300, 30]]) {
+    const d = lavKlikDom();
+    const { rod, label } = checkboxKomp(d);
+    const andet = d.el('input', { id: 'andet', attrs: { type: 'checkbox' }, rect: [400, 45, 20, 20] }, rod);
+    const indre = d.el('label', { id: 'indre', tekst: 'Nyhedsbrev', attrs: { for: 'andet' }, rect, lag: 1 }, label);
+    andet.labels.push(indre); indre.control = andet;
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id, 'indre', JSON.stringify(rect));
+  }
+});
+
+test('reserveteksten i et <object> i en label er almindelig tekst, ikke interaktivt indhold (R74)', () => {
+  const d = lavKlikDom();
+  const felt = d.el('input', { id: 'f', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] });
+  const label = d.label(felt, { id: 'l', tekst: 'Accepter', rect: [40, 40, 300, 30] });
+  d.el('object', { id: 'o', tekst: 'vilkaarene', rect: [70, 40, 270, 30], lag: 1 }, label);
+  assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered, undefined);
+});
+
