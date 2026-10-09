@@ -30,8 +30,9 @@ debugger path and the script fallback find their target with the same function. 
 press moves no mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
 or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
 found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
-counts as proof (for a field clicked through its label, the field's own click); a click stopped on the way, a target the
-page replaces during the click, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
+counts as proof (for a field clicked through its label, the field's own click; around the target, only its own button or
+link frame, not a container that listens for its children); a click stopped on the way, a target the page replaces during
+the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
 address, a button, a field) counts as covered by that element, because a click there does not activate the label's field;
 for any other target that takes clicks itself, anything clickable inside it at its center (a link, a button, an element
@@ -41,7 +42,7 @@ container (a list item, a card that is not a button) its own link (an `a` with a
 of it is cover; enter events on the target's ancestors are part of the hover. Inside a closed shadow root the guard
 cannot see which control gets the click.
 A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements
-agree (at most three times), so a header that turns fixed on scroll does not move the click to another row. A press that lands in an iframe -
+agree (at most three times; pushed out of view meanwhile, it is scrolled into view again), so a header that turns fixed on scroll does not move the click to another row. A press that lands in an iframe -
 the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it
 cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic
 click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`. 1.30.1 answered

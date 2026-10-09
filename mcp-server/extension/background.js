@@ -939,6 +939,7 @@ function uvisVurdering(r, egenNote) {
   if (!r || r.landed !== null) return null;
   if (egenNote) return { maybe_landed: true, note: egenNote };
   if (r.unknown) return { maybe_landed: true, note: UVIST_NOTE };
+  if (r.unverified && r.dialog) return { maybe_landed: true, note: 'A dialog opened during the click, and the page could not be read while it was open, so whether the target got the click cannot be told. Answer the dialog with browser_handle_dialog, then check the state before clicking again.' };
   if (r.unverified) return { maybe_landed: true, note: UVERIFICERET_NOTE };
   if (r.iRamme) return { maybe_landed: true, note: IRAMME_NOTE };
   if (r.udskiftetMaal) return { maybe_landed: true, note: 'The page replaced the target while the mouse was on it (for instance on the press), so whether the new element got the click cannot be told. Check the state before clicking again.' };
@@ -1197,6 +1198,10 @@ async function debuggerClick(tabId, x, y, bundet = false) {
         dialogLoefter.delete(tabId);
       }
     }
+    // R67 (Opus, maalt i Chrome): et slip, siden flyttede, aabnede en alert; efterkontrollen kunne ikke laese vagten, mens
+    // dialogen holdt siden, og faldt tilbage til landed:true - selv om klikket aldrig naaede maalet. Med vagten armet er det
+    // nu uvist.
+    if (vagtArmet && vaerdi && vaerdi.rendererSvarede === false) return { landed: null, fallbackFired: false, unverified: true, dialog: true };
     return vaerdi ?? await tolkManglendeSettle(tabId, settle, urlFoer);
   } catch (e) {
     if (trykSendt && e && typeof e === 'object') e.trykSendt = true;
@@ -1647,6 +1652,8 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
 // punktet, ikke en rigtig mus andre steder paa maalet. En rigtig mus i samme punkt samtidig kan ikke skelnes fra vores.
 // R67 (Astra, maalt i model): «et klik med maalet i stien» tog ogsaa et brugerklik et andet sted paa maalet som bevis. Et
 // klik uden for punktet taeller nu kun, naar det er labelens simulerede aktiveringsklik (uden koordinater).
+// R67 (Opus, maalt i Chrome): en deaktiveret raekke i en liste med EN onclick fik sit «bevis» paa listen - klikket naaede aldrig
+// raekken. En forfader er nu kun bevis, naar den er maalets semantiske ramme (knap, link, rolle), ikke en lyttende beholder.
 const VAGT_KLIK = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
 const VAGT_HOVER = ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove'];
 
@@ -1682,7 +1689,8 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         if (d && v.sendt > 0 && (ev.type === 'pointerup' || ev.type === 'mouseup')) { v.urent = true; return; }
         if (d) { v.blokeret = d; v.delvis = v.sendt > 0; ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         v.sendt++;
-        if (!(inde(knude, maal) || (inde(maal, knude) && knude.tagName !== 'LABEL'))) return;
+        if (!(inde(knude, maal) || (inde(maal, knude) && knude.tagName !== 'LABEL' && !!knude.matches &&
+          knude.matches('button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]')))) return;
         const type = ev.type;
         const naaet = (e2) => { if (e2 === ev) v.naaet[type] = (v.naaet[type] || 0) + 1; };
         try { knude.addEventListener(type, naaet, { once: true, capture: true }); v.paa.push([knude, type, naaet]); } catch (e) {}
@@ -2161,10 +2169,18 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       const klikbartMaal = !!el.matches && (el.matches(CLICKABLE) || (!!el.getAttribute && el.getAttribute('tabindex') !== null));
       // R67 (Astra, maalt i model): `<a role="button" onclick="slet()">` i et passivt kort blev fritaget som «link». Kun et
       // rigtigt link er beholderens egen handling: et a med adresse (eller role=link), uden knaprolle og uden onclick.
-      const rolle = indre && indre.getAttribute ? String(indre.getAttribute('role') || '') : '';
-      const etLink = !!indre && rolle !== 'button' && indre.getAttribute('onclick') === null &&
-        ((indre.tagName === 'A' && indre.getAttribute('href') !== null) || rolle === 'link');
-      if (indre && !erLabel && !klikbartMaal && etLink) indre = null;
+      // R67 (Opus, maalt i Chrome): og en role=button uden om et ikon-link blev aldrig set, fordi closest standsede ved linket.
+      // Er det fundne et rent link, ses der videre ud; en knap uden om det er handlingen.
+      const etLink = (n) => {
+        const rolle = String((n.getAttribute && n.getAttribute('role')) || '');
+        return rolle !== 'button' && n.getAttribute('onclick') === null &&
+          ((n.tagName === 'A' && n.getAttribute('href') !== null) || rolle === 'link');
+      };
+      if (indre && !erLabel && !klikbartMaal && etLink(indre)) {
+        const over = indre.parentNode && indre.parentNode.closest
+          ? indre.parentNode.closest(CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]') : null;
+        indre = over && over !== el && inde(over, el) && !etLink(over) ? over : null;
+      }
       if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
         return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}) };
       }
@@ -2340,7 +2356,10 @@ async function resolveElement(tabId, selectorStr) {
     await new Promise((ok) => setTimeout(ok, 100));
     // R65 (Astra, maalt i model): her stod `|| foerst`. Var maalet forsvundet ved anden maaling, blev det gamle punkt
     // klikket - paa den knap, der nu laa der, med ok:true. Findes maalet ikke igen, findes det ikke.
-    const igen = await findElement(tabId, selectorStr, true);
+    let igen = await findElement(tabId, selectorStr, true);
+    // R67 (Opus, maalt i Chrome): et billede over maalet, der blev indlaest efter rulningen, skubbede det ud af vinduet, og
+    // klikket blev afvist som «outside» - en rigtig bruger ruller bare til det. Er maalet uden for vinduet, rulles det frem igen.
+    if (igen && igen.covered && igen.covered.outside) igen = await findElement(tabId, selectorStr);
     if (!igen) return null;
     const stille = igen.found && r.found && Math.abs(igen.x - r.x) <= 1 && Math.abs(igen.y - r.y) <= 1;
     r = igen;
@@ -5720,7 +5739,10 @@ async function dispatch(port, method, params) {
       if (!option) {
         return { ok: false, error: 'Option not found: ' + oensket,
           ...(udloeserDelvis ? { trigger_clicked: true, maybe_landed: true,
-            note: 'The trigger was pressed, but the page moved the rest of the click elsewhere, and the option was not found; the list may still be open.' } : {}) };
+            note: 'The trigger was pressed, but the page moved the rest of the click elsewhere, and the option was not found; the list may still be open.' }
+            // R67 (Opus, maalt i Chrome): et uvist udloeserklik (fx et slip, der udfoerte noget andet) forsvandt i et bart nej.
+            : udloeserKlik && udloeserKlik.landed === null ? { trigger_clicked: true, landed: null, maybe_landed: true,
+              note: 'The click on the dropdown may have done something else: ' + ((uvisVurdering(udloeserKlik) || {}).note || 'it was not confirmed.') } : {}) };
       }
       // R64 (Astra, maalt i model): kun udloeseren blev tjekket for daekning - et valg under en fremmed knap blev klikket, og
       // svaret sagde selected. Valget tjekkes nu ogsaa; udloeseren ER klikket, saa svaret siger at listen kan staa aaben.

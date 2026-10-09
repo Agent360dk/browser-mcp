@@ -524,3 +524,37 @@ test('ingen flade lover kategorisk, at maalet intet fik', async () => {
     assert.doesNotMatch(t2, /the target gets nothing|the target got nothing|nothing is clicked \(`covered`\)|stopped at the window before they reach any element|the rest of the events are stopped/i, f);
   }
 });
+
+// ── R67 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('en deaktiveret raekke i en liste med EN onclick: klikket paa listen er ikke bevis for raekken', async () => {
+  const d = lavKlikDom();
+  const liste = d.el('div', { id: 'liste', attrs: { onclick: 'vaelg(event)' }, rect: [0, 0, 600, 400] });
+  d.el('div', { id: 'r3', tekst: 'Ordre 3', rect: [0, 140, 600, 70], ingenPeg: true }, liste);
+  const svar = await browser(d).koer('click', { selector: '#r3' });
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+test('select_option: et uvist udloeserklik foelger med, naar valget ikke findes', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Menu', rect: [20, 20, 200, 40] });
+  const b = browser(d, { efterHaendelse: (t, dd) => {
+    if (t === 'mousedown' && !dd.document.querySelector('#m')) dd.el('div', { id: 'm', rect: [20, 20, 200, 40], lag: 10 });
+    if (t === 'mouseup') { const m = dd.document.querySelector('#m'); if (m) m.stil.display = 'none'; }
+  } });
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Omdoeb', wait: 1 });
+  assert.match(svar.error || '', /^Option not found: Omdoeb/, JSON.stringify(svar));
+  assert.equal(svar.trigger_clicked, true);
+  assert.equal(svar.maybe_landed, true);
+});
+
+test('en dialog, der holder siden under efterkontrollen, giver uvist med vagten - ikke ja', async () => {
+  const d = knapside();
+  const b = browser(d);
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Runtime.evaluate' && p.expression.includes('const foerAftryk')
+    ? new Promise(() => {}) : send(m, metode, p));
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.landed, null, JSON.stringify(svar));
+  assert.equal(svar.maybe_landed, true);
+  assert.match(svar.note, /A dialog opened during the click/);
+});

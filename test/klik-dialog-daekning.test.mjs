@@ -574,8 +574,8 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
-  assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times\)/);
-  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click\); a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
+  assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times; pushed out of view meanwhile, it is scrolled into view again\)/);
+  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click; around the target, only its own button or link frame, not a container that listens for its children\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
   assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
 });
 
@@ -682,4 +682,25 @@ test('et passivt kort med <a role=button onclick> eller <a href role=button> i m
     d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
     assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, JSON.stringify(attrs));
   }
+});
+
+// ── R67 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('et passivt kort med en role=button uden om et ikon-link er daekket af knappen (R67)', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+  const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+  d.el('a', { id: 'ikon', attrs: { href: '#' }, rect: [190, 60, 100, 40], lag: 2 }, knap);
+  assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet');
+});
+
+test('en genmaaling, der finder maalet uden for vinduet, ruller det frem igen (R67)', async () => {
+  let n = 0;
+  const u = indlaesUdvidelse({ svar: { 'scripting.executeScript': () => [{ result: [
+    { x: 60, y: 300, found: true, rullet: true },
+    { x: 60, y: 900, found: true, covered: { outside: true } },
+    { x: 60, y: 400, found: true },
+    { x: 60, y: 400, found: true }][Math.min(n++, 3)] }] } });
+  const r = await u.hent('resolveElement')(1, '#maal');
+  assert.deepEqual([r.x, r.y, r.covered], [60, 400, undefined]);
+  assert.deepEqual(u.optager.til('scripting.executeScript').map((k) => k.args[0].args[5]), [false, true, false, true]);
 });
