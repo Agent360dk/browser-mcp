@@ -216,7 +216,7 @@ async function evictOldestTabs(session, justAddedTabId) {
   }
 }
 
-async function addTabToSession(port, tabId) {
+async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   const session = getSession(port);
   session.tabIds.add(tabId);
   // Sessionen lever igen — aflys en eventuel port-frigivelse (se tabs.onRemoved).
@@ -227,6 +227,10 @@ async function addTabToSession(port, tabId) {
     await evictOldestTabs(session, tabId);
   }
 
+  // R57 (Opus, maalt i Chrome): chrome.tabs.group flytter fanen ind i gruppens vindue. For en fane i sit eget vindue
+  // (navigate eget_vindue) betoed det, at fanen blev flyttet tilbage til sessionens foerste vindue, og det nye vindue
+  // forsvandt. En saadan fane grupperes ikke, og en ny gruppe samler kun faner fra samme vindue.
+  if (!gruppe) { persistSessions(); return; }
   try {
     if (session.groupId !== null) {
       try {
@@ -238,7 +242,13 @@ async function addTabToSession(port, tabId) {
     }
 
     if (session.groupId === null) {
-      const groupId = await chrome.tabs.group({ tabIds: [...session.tabIds] });
+      const vindue = (await chrome.tabs.get(tabId).catch(() => null))?.windowId;
+      const samme = [];
+      for (const id of session.tabIds) {
+        const t = id === tabId ? { windowId: vindue } : await chrome.tabs.get(id).catch(() => null);
+        if (t && t.windowId === vindue) samme.push(id);
+      }
+      const groupId = await chrome.tabs.group({ tabIds: samme.length ? samme : [tabId] });
       session.groupId = groupId;
       await chrome.tabGroups.update(groupId, {
         title: session.label,
@@ -3682,6 +3692,10 @@ async function dispatch(port, method, params) {
         // ⚠️ Tilvalg, ikke standard: om Chrome leverer input dér er PRAECIS det ubesvarede
         // spoergsmaal. Ingen adfaerd aendrer sig for nogen der ikke beder om det.
         if (params.eget_vindue) {
+          // ⚠️ RETTET 9/10 (R57, Opus maalte i Chrome): fanen blev flyttet tilbage i sessionens gruppe i det FOERSTE
+          // vindue (addTabToSession -> chrome.tabs.group), og navigate-svaret meldte alligevel det nye vindues id. 19/9-
+          // og 21/9-maalingerne laeste netop det svar, saa tilstand B var sandsynligvis en baggrundsfane. Om et ufokuseret
+          // vindue faar input i desktop-Chrome er derfor UMAALT. Den oprindelige konklusion herunder staar som historik.
           // ⛔ MAALT 19/9 og FALSIFICERET: et eget vindue UDEN fokus leverer nul taster,
           // praecis som en baggrundsfane. Det er ikke fanens synlighed i sit vindue der
           // afgoer det - det er om VINDUET har operativsystemets fokus.
@@ -3711,7 +3725,7 @@ async function dispatch(port, method, params) {
           const vindue = await chrome.windows.create(spec);
           tab = vindue.tabs && vindue.tabs[0];
           if (!tab) return { ok: false, error: 'eget_vindue: Chrome created a window with no tab' };
-          await addTabToSession(port, tab.id);
+          await addTabToSession(port, tab.id, { gruppe: false });
           getSession(port).activeTabId = tab.id;
           persistSessions();
 
@@ -3726,6 +3740,10 @@ async function dispatch(port, method, params) {
           // Vinduet laeses nu tilbage fra Chrome, og svaret siger om det landede som bedt.
           let faktisk = vindue;
           try { faktisk = await chrome.windows.get(vindue.id); } catch (e) { /* beholder create-svaret */ }
+          // R57 (Opus): svaret meldte vinduets id fra create(), ogsaa da fanen var flyttet til et andet vindue, og 19/9- og
+          // 21/9-maalingerne laeste netop det felt. Fanens faktiske vindue laeses nu tilbage.
+          const fane = await chrome.tabs.get(tab.id).catch(() => null);
+          const iEgetVindue = fane?.windowId === vindue.id;
           const bedtOm = { left: spec.left ?? null, top: spec.top ?? null };
           const landede = {
             left: Number.isFinite(faktisk?.left) ? faktisk.left : null,
@@ -3733,8 +3751,8 @@ async function dispatch(port, method, params) {
           };
           const somBedt = (bedtOm.left == null || bedtOm.left === landede.left)
             && (bedtOm.top == null || bedtOm.top === landede.top);
-          return { ok: true, url: params.url, tabId: tab.id, windowId: vindue.id,
-            eget_vindue: true,
+          return { ok: true, url: params.url, tabId: tab.id, windowId: fane?.windowId ?? null,
+            eget_vindue: iEgetVindue,
             // Chromes eget svar, ikke parameteret vi sendte.
             fokuseret: !!faktisk?.focused,
             placeret: bedtOm.left != null || bedtOm.top != null ? landede : null,
@@ -3742,9 +3760,12 @@ async function dispatch(port, method, params) {
             bedt_om: bedtOm.left != null || bedtOm.top != null ? bedtOm : null,
             // ⛔ Advar ogsaa naar KUN fokus blev naegtet. Foer stod der intet i det tilfaelde -
             // kun den ene boolean, modsagt af prosaen ved siden af. Fundet af et modstander-review.
-            advarsel: (params.fokuser && !faktisk?.focused)
-              ? 'Focus was refused by Chrome. Input tools will not reach this window - call '
-                + 'browser_switch_tab, or do not assume this run is off the user\'s screen.'
+            advarsel: !iEgetVindue
+              ? `The tab is not in its own window: Chrome put it in window ${fane?.windowId ?? 'unknown'}. `
+                + 'Treat it as an ordinary session tab.'
+              : (params.fokuser && !faktisk?.focused)
+              ? 'Focus was refused by Chrome. Input tools may not reach this window - read landed in their '
+                + 'answers, and do not assume this run is off the user\'s screen.'
               : ((bedtOm.left != null || bedtOm.top != null) && !somBedt
                 ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
                   + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
@@ -3760,11 +3781,10 @@ async function dispatch(port, method, params) {
                 'has it, whatever the person types goes here - even on another display. Use it only on a ' +
                 'machine nobody is typing on.'
               : (params.fokuser
-                ? 'You asked for focus and Chrome did not give it. This window now behaves exactly like a '
-                  + 'background tab: no mouse or keyboard input is delivered to it. Measured 21 Sept - read '
-                  + '`fokuseret` rather than assuming.'
-                : 'Without focus this window behaves exactly like a background tab: Chrome delivers no mouse '
-                  + 'or keyboard input to it. Measured 19 Sept. Pass fokuser:true, and place it with vindue_x.'),
+                ? 'You asked for focus and Chrome did not give it. Whether Chrome delivers mouse and keyboard input '
+                  + 'to a window without focus is unmeasured in desktop Chrome; read landed in each input tool\'s answer.'
+                : 'The window has no focus. Whether Chrome delivers mouse and keyboard input to it is unmeasured in '
+                  + 'desktop Chrome; read landed in each input tool\'s answer. Pass fokuser:true, and place it with vindue_x.'),
           };
         }
         // getSessionTab() above hands a fresh session its empty about:blank placeholder.
