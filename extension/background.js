@@ -3933,19 +3933,32 @@ async function dispatch(port, method, params) {
       const stableNeeded = params.stable_rounds || 3;
       const waitMs = params.wait_ms || 350;
 
+      // #11 (1.30.2 skive 9): listen blev rullet med scrollTop/scrollBy. Det udloeser `scroll`, aldrig `wheel`, saa et feed
+      // der henter flere raekker paa hjulet (Threads, X) hentede intet, og reached_end blev sand ved bunden af det der
+      // allerede var tegnet. Nu rulles der med rigtige hjul gennem debuggeren, naar fanen er den aktive i sit vindue - ogsaa
+      // ved bunden, for det er dér et feed henter. I en baggrundsfane leverer Chrome ikke hjul (maalt 11/9), og et hjul der
+      // falder paa fristen, lander senere som en ekstra rulning (maalt 19/9) - saa dér rulles der med script, og svaret siger det.
+      const erAktiv = async () => { try { const f = await chrome.tabs.get(tab.id); return !!f && f.active === true; } catch { return false; } };
+      const BAGGRUND = 'The tab is not the active one in its window, so the list was scrolled without wheel events (Chrome does ' +
+        'not deliver them there). A feed that loads more rows on wheel may have stopped early: call browser_switch_tab and run again.';
+      let hjul = await erAktiv();
+      let note = hjul ? null : BAGGRUND;
+      const metoder = new Set();
+
       const seen = new Set();
-      let stable = 0, rounds = 0, atEnd = false;
+      let stable = 0, rounds = 0, atEnd = false, bundRunder = 0, stilleHjul = 0;
+      let lastHeight = null, lastPos = null;
       const MAX_ROUNDS = 300; // backstop: a list that never stabilises must not spin forever
 
-      while (seen.size < maxRows && stable < stableNeeded && rounds < MAX_ROUNDS) {
+      while (seen.size < maxRows && rounds < MAX_ROUNDS) {
         rounds++;
-        const r = await safeExecuteScript(tab.id, (rs, cs, keep) => {
+        const r = await safeExecuteScript(tab.id, (rs, cs, keep, medScript) => {
           const rows = Array.from(document.querySelectorAll(rs));
           const texts = rows
             .map(el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())
             .filter(t => t.length > 0);
 
-          // Scroll the row's own scrollable ancestor — scrolling window does nothing when the
+          // Scroll the row's own scrollable ancestor - scrolling window does nothing when the
           // list lives in an inner overflow container (the normal case in webmail).
           let c = cs ? document.querySelector(cs) : null;
           if (!c && rows.length) {
@@ -3957,23 +3970,69 @@ async function dispatch(port, method, params) {
             }
           }
           const step = keep || (c ? c.clientHeight : window.innerHeight) * 0.85;
-          const before = c ? c.scrollTop : window.scrollY;
-          if (c) c.scrollTop = before + step; else window.scrollBy(0, step);
-          const after = c ? c.scrollTop : window.scrollY;
-          const done = c
+          const pos = c ? c.scrollTop : window.scrollY;
+          const height = c ? c.scrollHeight : document.documentElement.scrollHeight;
+          const atBottom = c
             ? c.scrollTop + c.clientHeight >= c.scrollHeight - 4
             : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
-          return { texts, moved: after - before, done, container: !!c };
-        }, [rowSel, containerSel, params.scroll_step || 0]);
+          // Hjulet rammer det element der ligger under punktet, saa det sendes midt i det synlige stykke af listen.
+          let point = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+          if (c) {
+            const b = c.getBoundingClientRect();
+            const x0 = Math.max(0, b.left), x1 = Math.min(window.innerWidth, b.right);
+            const y0 = Math.max(0, b.top), y1 = Math.min(window.innerHeight, b.bottom);
+            if (x1 > x0 && y1 > y0) point = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+          }
+          if (medScript) { if (c) c.scrollTop = pos + step; else window.scrollBy(0, step); }
+          return { texts, pos, height, atBottom, step, point, container: !!c };
+        }, [rowSel, containerSel, params.scroll_step || 0, !hjul]);
 
         if (r.cspBlocked) throw new Error('extract_list: this page blocks script injection — use screenshots instead');
         const data = r.result || { texts: [] };
+        metoder.add(hjul ? 'wheel' : 'script');
         const before = seen.size;
         for (const t of data.texts) seen.add(t);
-        // Two independent stop signals: nothing new appeared, or the container hit its end.
-        if (seen.size === before) stable++; else stable = 0;
-        if (data.done) { atEnd = true; stable++; }
+        const nye = seen.size - before;
+        const voksede = lastHeight !== null && data.height > lastHeight;
+        // Flyttede sidste rundes hjul overhovedet listen? To stille runder uden for bunden: hjulet rammer ikke listen
+        // (et overlay, et punkt uden for den), saa resten rulles med script.
+        if (hjul && lastPos !== null && data.pos === lastPos && !data.atBottom) {
+          if (++stilleHjul >= 2) {
+            hjul = false;
+            stable = 0;   // en ny rullemaade faar sine egne runder
+            note = 'Wheel events did not move the list, so it was scrolled with a script instead. A feed that loads more ' +
+              'rows on wheel may have stopped early.';
+          }
+        } else stilleHjul = 0;
+        lastHeight = data.height;
+        lastPos = data.pos;
+        if (nye === 0) stable++; else stable = 0;
+        // reached_end kun naar listen stod paa bunden, intet nyt kom og den ikke voksede - stable_rounds runder i traek.
+        if (data.atBottom && nye === 0 && !voksede) bundRunder++; else bundRunder = 0;
+        if (bundRunder >= stableNeeded) { atEnd = true; break; }
+        // Ingen nye raekker i stable_rounds runder uden for bunden: stop, men uden at kalde det enden. Staar listen paa
+        // bunden, afgoer reglen ovenfor det, saa et feed der henter ved bunden faar sine runder.
+        if (stable >= stableNeeded && bundRunder === 0) break;
         if (!data.texts.length && rounds > 2) break; // selector matches nothing — fail fast
+
+        if (hjul && !(await erAktiv())) { hjul = false; stable = 0; note = BAGGRUND; }
+        if (hjul) {
+          try {
+            await debuggerAttach(tab.id);
+            const trin = Math.max(1, Math.ceil(Math.abs(data.step) / 300));
+            for (let i = 0; i < trin; i++) {
+              await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
+                type: 'mouseWheel', x: Math.round(data.point.x), y: Math.round(data.point.y), deltaX: 0, deltaY: data.step / trin,
+              });
+              if (i < trin - 1) await new Promise(res => setTimeout(res, 80));
+            }
+          } catch (e) {
+            hjul = false;
+            stable = 0;
+            note = `A wheel event failed (${e?.message || e}), so the rest of the list was scrolled with a script. A feed that ` +
+              'loads more rows on wheel may have stopped early.';
+          }
+        }
         await new Promise(res => setTimeout(res, waitMs));
       }
 
@@ -3983,6 +4042,8 @@ async function dispatch(port, method, params) {
         rounds,
         reached_end: atEnd,
         truncated: seen.size >= maxRows,
+        scroll_method: metoder.size > 1 ? 'wheel, then script' : [...metoder][0] || (hjul ? 'wheel' : 'script'),
+        ...(note ? { note } : {}),
       };
     }
 
