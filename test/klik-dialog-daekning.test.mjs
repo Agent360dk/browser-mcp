@@ -550,3 +550,21 @@ test('et maal, der blev rullet frem, maales igen efter at siden har sat sig (hea
   await u2.hent('resolveElement')(1, '#b6');
   assert.equal(u2.optager.antal('scripting.executeScript'), 1, 'et maal, der ikke blev rullet, maales kun én gang');
 });
+
+test('klikMaal melder rullet, naar maalet flyttede sig ved rulningen, og ellers ikke', () => {
+  const d = lavKlikDom();
+  const knap = d.el('button', { id: 'b6', tekst: 'Vaelg', rect: [20, 1200, 80, 30] });
+  knap.scrollIntoView = () => { knap.rect = [20, 385, 80, 30]; };
+  assert.equal(d.koer(KILDE, '#b6', null, null, false, false).svar.rullet, true);
+  assert.equal(d.koer(KILDE, '#b6', null, null, false, false).svar.rullet, undefined, 'et maal der stod stille, meldes som rullet');
+});
+
+test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 gjorde', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(cl, /A click on an iframe goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
+  assert.match(cl, /A target that had to be scrolled into view is measured again 150 ms later/);
+  assert.match(cl, /A label whose center lies on a different control inside it \(a link in a consent label\) counts as covered by that control/);
+});
