@@ -60,7 +60,7 @@ Approved servers connect in your next interactive session.</pre><button class="c
 <p><b>Qwen Code needs Node.js 22 or newer.</b> That is Qwen Code's own requirement, not Browser MCP's.</p>
 <h2 id="what-qwen-code-can-do-with-your-real-browser">What Qwen Code can do with your real browser</h2>
 <p>The point is not "Qwen Code can browse". It is that it browses <b>as you</b>. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you point it to.</p>
-<p>And when it hits something only you can decide - a 2FA code, a CAPTCHA, a choice between three accounts - <code translate="no">browser_ask_user</code> stops, asks you on your own screen, and carries on in the same tab.</p>
+<p>And when it hits something only you can decide - a 2FA code or a choice between three accounts - <code translate="no">browser_ask_user</code> stops, asks you on your own screen, and carries on in the same tab. A CAPTCHA it cannot clear, the agent asks you in the chat to solve in its tab.</p>
 <h2 id="frequently-asked-questions">Frequently asked questions</h2>
 <p><b>How do I remove it again?</b> <code translate="no">qwen mcp remove browser-mcp</code> for the user-scope install, <code translate="no">qwen mcp remove -s project browser-mcp</code> for a project one. It answers <code translate="no">Server "browser-mcp" removed from user settings.</code></p>
 <p><b>Why does <code translate="no">qwen mcp list</code> say "Pending approval"?</b> You added it with <code translate="no">-s project</code>. Run <code translate="no">qwen mcp approve browser-mcp</code> in that directory.</p>

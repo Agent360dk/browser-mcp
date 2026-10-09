@@ -8,7 +8,7 @@
 
 **Short answer:** for almost everything, use **Playwright MCP**. It is the category default for good reasons: 72 documented tools, 5.97M npm downloads/week, backed by Microsoft, and a release every few weeks (v0.0.78 through v0.0.81, July-September 2026; all checked 2026-09-19). It also ships a Chrome extension that drives the browser you are already signed into - so **"it uses your real logged-in Chrome" is no longer a reason to pick us**, and this page used to say otherwise.
 
-One difference is left, and it is the only one we will defend: **their 72 tools contain nothing that can stop mid-run and ask you for something.** No 2FA code, no CAPTCHA hand-off, no "which of these three accounts did you mean". That is not an oversight - Playwright MCP grew out of a testing tool, and a test that asks for help is a failed test. **Browser MCP** is built the other way round: `browser_ask_user` pauses, asks you on your own screen, and continues in the Chrome you're signed into.
+One difference is left, and it is the only one we will defend: **their 72 tools contain nothing that can stop mid-run and ask you for something.** No 2FA code, no "which of these three accounts did you mean". That is not an oversight - Playwright MCP grew out of a testing tool, and a test that asks for help is a failed test. **Browser MCP** is built the other way round: `browser_ask_user` pauses, asks you on your own screen, and continues in the Chrome you're signed into.
 
 ## The architectural difference (everything else follows from it)
 
@@ -22,7 +22,7 @@ One difference is left, and it is the only one we will defend: **their 72 tools 
 | Logged-in state | A dedicated profile by default (persistent, or in-memory with `--isolated`), so not your logins; your own session in extension mode | Inherited (cookies, 2FA, extensions) |
 | CI / headless | Yes - core use case | No |
 | Parallel instances | Yes, and several clients share one browser in extension mode (one tab group each) | One browser, 20 concurrent sessions, one tab group each |
-| Tools | 72 documented, none of which can stop and ask you for anything | 40, including `browser_ask_user` for a 2FA code or a CAPTCHA mid-run |
+| Tools | 72 documented, none of which can stop and ask you for anything | 40, including `browser_ask_user` for a 2FA code or a choice mid-run |
 | Install | `npx @playwright/mcp` | Chrome extension + `claude mcp add` (two parts) |
 | Scale signal | 5,968,258 npm dl/week (2026-09-19) | 1,456 npm dl/week (2026-09-19) |
 | Maintenance | Last push 2026-09-17 · v0.0.81 (2026-09-14) | Last push 2026-09-18 · v1.29.1 (2026-09-13) |

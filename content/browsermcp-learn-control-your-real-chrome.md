@@ -52,7 +52,7 @@ Weekly npm downloads, all fetched the same minute on 19 September 2026. These co
 
 ## What we do differently, and where we lose
 
-Ours keeps the connection in an **offscreen document** instead of the service worker, which is why the eviction failure above does not happen. And when a step genuinely needs a person - a 2FA code, a CAPTCHA, a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab.
+Ours keeps the connection in an **offscreen document** instead of the service worker, which is why the eviction failure above does not happen. And when a step genuinely needs a person - a 2FA code or a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab. A CAPTCHA it cannot clear, the agent asks you in the chat to solve in its tab.
 
 **Where we thought we lost, measured on 19 September 2026:** a framework-controlled `<select>`. The fault was our own test page, not React; 1.30.0 lands the choice on real React. The method, the raw result and the retraction are on [/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), including the two other cases we measured where nobody lied.
 

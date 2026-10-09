@@ -177,8 +177,8 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
-| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox, click reCAPTCHA grid cells it chooses, or ask you to solve it with `browser_ask_user`, one step per call. No third-party solving service |
-| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
+| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox and click reCAPTCHA grid cells it chooses, one step per call, and asks you in the chat to solve what it cannot clear. No third-party solving service |
+| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for a 2FA code, a credential or a choice, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
@@ -221,7 +221,7 @@ An MCP (Model Context Protocol) server that gives Claude Code - or any MCP clien
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with Claude Code, or also Cursor / VS Code?**
-Any MCP client that can run local stdio servers. `npx @agent360/browser-mcp install` registers the server with Claude Code, Codex, VS Code and Cursor if it finds them. For any other client, add this block to its MCP config (VS Code uses the root key `servers` instead of `mcpServers`; see the [VS Code guide](/docs/install-vscode/)):
+Any MCP client that can run local stdio servers. `npx @agent360/browser-mcp install` registers the server with Claude Code, Codex, VS Code and Cursor if it finds them. For another client, add the server in its own MCP settings. Clients that read the common `mcpServers` format take this block; others use their own format (VS Code, for one, uses the root key `servers`; see the [VS Code guide](/docs/install-vscode/)), so follow the client's own MCP guide:
 ```json
 {"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}
 ```

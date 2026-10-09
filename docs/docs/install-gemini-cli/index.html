@@ -48,7 +48,7 @@
 <p><b>Restart, do not refresh.</b> Covered above, but it is the single most common reason this looks broken when it is not.</p>
 <h2 id="what-gemini-cli-can-do-with-your-real-browser">What Gemini CLI can do with your real browser</h2>
 <p>The point is not "Gemini can browse". It is that it browses <b>as you</b>. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you point it to.</p>
-<p>And when it hits something only you can decide - a 2FA code, a CAPTCHA, a choice between three accounts - <code translate="no">browser_ask_user</code> stops, asks you on your own screen, and carries on in the same tab.</p>
+<p>And when it hits something only you can decide - a 2FA code or a choice between three accounts - <code translate="no">browser_ask_user</code> stops, asks you on your own screen, and carries on in the same tab. A CAPTCHA it cannot clear, the agent asks you in the chat to solve in its tab.</p>
 <h2 id="frequently-asked-questions">Frequently asked questions</h2>
 <p><b>Do I need a Gemini API key for this?</b> Not for Browser MCP. The server is local, there is no account and no telemetry. Whatever Gemini CLI needs for itself is unchanged.</p>
 <p><b>Project scope or user scope?</b> User scope (<code translate="no">-s user</code>) if you want your browser available everywhere; project scope if you only want it in one repository. The default is project.</p>
