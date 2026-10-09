@@ -67,3 +67,8 @@ test('bagudlisten laeser attributvaerdier i de udgivne sider, fx meta descriptio
   const gmail = sider.find(([f]) => f.endsWith('docs/use-cases/read-2fa-from-gmail/index.html'))[1];
   assert.match(gmail, /A step-by-step walkthrough of the move a fresh headless browser without your login can't make/);
 });
+
+test('normaliseringen beholder attributvaerdier som tekst (R63)', () => {
+  assert.match(html('<meta name="description" content="zzz-kun-i-attributten">'), /zzz-kun-i-attributten/);
+  assert.match(html('<img alt="et alt-tekst-eksempel" src="x.png">'), /et alt-tekst-eksempel/);
+});
