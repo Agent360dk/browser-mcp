@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BrowserMCP (Browser MCP) - your AI agent in your real Chrome</title>
 <link rel="canonical" href="https://browsermcp.dev/">
-<meta name="description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick the CAPTCHA box, and ask you when it can’t. Free, MIT, any MCP client.">
+<meta name="description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, any MCP client.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Give Claude Code Your Real, Logged-In Chrome">
-<meta property="og:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick the CAPTCHA box, and ask you when it can’t. Free, MIT, any MCP client.">
+<meta property="og:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, any MCP client.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Browser MCP">
 <meta property="og:locale" content="en_US">
@@ -21,7 +21,7 @@
 <meta property="og:image:alt" content="Browser MCP: an AI agent asks you for a 2FA code in your own Chrome, then carries on">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Give Claude Code Your Real, Logged-In Chrome">
-<meta name="twitter:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick the CAPTCHA box, and ask you when it can’t. Free, MIT, any MCP client.">
+<meta name="twitter:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, any MCP client.">
 <meta name="twitter:image" content="https://browsermcp.dev/og-image.jpg">
 <meta name="twitter:image:alt" content="Browser MCP: an AI agent asks you for a 2FA code in your own Chrome, then carries on">
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
@@ -433,7 +433,7 @@ html:not(.js) #pauselbl{display:none}
     <figure class="film" id="film">
       <input type="checkbox" id="pause" class="vh pause-input">
       <video id="filmv" src="/film-v2.mp4" poster="/film-v2.jpg" width="1280" height="800" muted loop playsinline preload="metadata" aria-label="A 20-second illustration of Browser MCP. An agent works in its own colour-coded tab group in Chrome, signed in. A login asks for a code sent by email; the agent opens Gmail in a new tab in its group, reads the code and types it in. It ticks a CAPTCHA checkbox itself. Then the tab groups grow from four to twenty agents, Claude 1 to Claude 20, in one Chrome."></video>
-      <figcaption><span>Illustration, 20 seconds. The tab groups and the log follow the real extension; the pages are made up.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
+      <figcaption><span>Illustration, 20 seconds. The tab-group names and colours follow the real extension; the pages and the activity log are drawn.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
     </figure>
 
     <div class="hero-t">
@@ -460,15 +460,15 @@ html:not(.js) #pauselbl{display:none}
         <a class="more" href="/use-cases/read-2fa-from-gmail/">See the Gmail walkthrough</a>
       </article>
       <article class="case">
-        <div class="cv" role="img" aria-label="Illustration: the box the extension shows, asking for the code from an authenticator app"><div class="mini-ask"><b>Agent360 - Action Required</b><i>Claude 1</i><span>Enter the code from your authenticator app</span><em>&nbsp;</em><span class="bt"><b>Submit</b><b>✗ Skip</b></span></div></div>
+        <div class="cv" role="img" aria-label="Illustration: the dialog the extension shows in the tab, asking for the code from an authenticator app"><div class="mini-ask"><b>Agent360 - Action Required</b><i>Claude 1</i><span>Enter the code from your authenticator app</span><em>&nbsp;</em><span class="bt"><b>Submit</b><b>✗ Skip</b></span></div></div>
         <h3>Asks you for a code only you have</h3>
         <p>A dialog opens in its tab. You type the code, and it goes on.</p>
         <p class="say"><b>Say</b>“Log into the admin dashboard and export last month’s invoices. If it needs a code from my phone, ask me.”</p>
-        <a class="more" href="/use-cases/codex-2fa/">See the 2FA box</a>
+        <a class="more" href="/use-cases/codex-2fa/">See it ask for a 2FA code</a>
       </article>
       <article class="case">
-        <div class="cv" role="img" aria-label="Illustration: the agent has ticked the CAPTCHA checkbox itself"><span class="agent">Claude 1</span><div class="mini-cap"><span class="cb on">✓</span><span>I’m not a robot</span><em>Verified</em></div></div>
-        <h3>Clicks the CAPTCHA checkbox itself</h3>
+        <div class="cv" role="img" aria-label="Illustration: the agent has ticked the reCAPTCHA checkbox itself"><span class="agent">Claude 1</span><div class="mini-cap"><span class="cb on">✓</span><span>I’m not a robot</span><em>Verified</em></div></div>
+        <h3>Clicks the reCAPTCHA checkbox itself</h3>
         <p>It ticks the box and checks again. If the page wants more, it asks you.</p>
         <p class="say"><b>Say</b>“Pull the shipping rates from the carrier portal. If a CAPTCHA appears, tick the box, and ask me if it wants more.”</p>
         <a class="more" href="/use-cases/cursor-captcha/">See the CAPTCHA steps</a>

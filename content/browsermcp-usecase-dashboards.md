@@ -17,11 +17,8 @@ You:    Go to my analytics dashboard, pull this month's numbers,
         and put them in a table.
 
 Claude: [browser_navigate, browser_get_page_content]
-        | Metric   | September | August |
-        | MRR      | $48,210   | $46,900 |
-        | Churn    | 4.2%      | 5.1%   |
-        | New      | 312       | 287    |
-        The drop in churn is almost entirely in the annual plans.
+        September against August: MRR $48,210 (up from $46,900),
+        churn 4.2% (down from 5.1%), new customers 312 (up from 287).
 ```
 
 ## Setting it up

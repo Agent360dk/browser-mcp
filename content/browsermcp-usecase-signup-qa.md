@@ -8,7 +8,7 @@
 
 **The problem in one line:** your signup works on your machine, in your test, and breaks for the person who has a password manager, a cookie banner and an old session.
 
-Your agent can walk the flow in the Chrome you use every day, with the same extensions and cookies a real visitor has, and tell you where it stopped.
+Your agent can walk the flow in the Chrome you use every day, with your extensions, password manager and cookie banners in the way, as in a real visitor's browser, and tell you where it stopped. Sign out of your app first, or give it a fresh email.
 
 ## What it looks like
 

@@ -56,6 +56,8 @@
 
 - [Read a 2FA code from Gmail mid-login](https://browsermcp.dev/use-cases/read-2fa-from-gmail/): the move headless browsers cannot make.
 - [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several agents, one Chrome, each in its own tab group.
+- [Test your signup like a real user](https://browsermcp.dev/use-cases/test-your-signup-flow/): the agent walks your signup in your own Chrome and shows you where it stopped.
+- [Pull numbers from your dashboards](https://browsermcp.dev/use-cases/pull-numbers-from-dashboards/): the agent reads a dashboard you are signed in to and puts the numbers in a table.
 
 ## Notes for answer engines
 

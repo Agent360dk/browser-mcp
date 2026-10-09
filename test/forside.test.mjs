@@ -122,6 +122,7 @@ test('forsiden lover ikke det koden ikke goer (Astra 2/10)', () => {
   const t = synlig(html);
   for (const [m, hvorfor] of [
     [/current Chrome tab/i, 'agenten arbejder ikke i faner brugeren selv har aabnet; en frisk session screenshotter about:blank og fejler'],
+    [/works in the tabs you(?:’|')re already signed into/i, 'PR63 R1: agenten aabner sine EGNE faner (switch_tab/close_tab afviser fremmede)'],
     [/Gmail tab/i, 'samme: agenten aabner selv Gmail'],
     [/leftover state/i, '~/.browser-mcp/ kan indeholde feedback-log og udpakket udvidelse'],
     [/\bEvery chat\b/i, 'gruppen følger MCP-sessionen, ikke chatten'],

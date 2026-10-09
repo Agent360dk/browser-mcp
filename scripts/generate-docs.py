@@ -114,6 +114,8 @@ TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io - which is ma
  '/learn/tools-that-lie':'Nine Browser Tools That Reported Success Without Doing Anything',
  '/use-cases/claude-code-login-wall':'Claude Code behind a login wall: use the session you already have · Browser MCP',
  '/learn/control-your-real-chrome':'How to control your real, logged-in Chrome from an AI coding agent · Browser MCP',
+ '/use-cases/test-your-signup-flow':'Test Your Signup Flow With an AI Agent in Your Real Chrome (Browser MCP)',
+ '/use-cases/pull-numbers-from-dashboards':'Pull Numbers From Any Dashboard With an AI Agent, No API Key (Browser MCP)',
  '/compare/browser-use':'Browser MCP vs browser-use: they are not the same kind of thing · Browser MCP',
  '/use-cases/codex-2fa':'Codex and 2FA: let the agent ask you for the code · Browser MCP',
  '/use-cases/vscode-concurrent-sessions':'Several VS Code agents, one browser, no fighting over tabs · Browser MCP',
