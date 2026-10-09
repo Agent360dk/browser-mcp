@@ -45,7 +45,7 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
   // dedup-logikken, som er hele pointen.
   const src = [
     udtraek('cmpVersion'), udtraek('liveConnections'),
-    udtraek('activeConnection'), udtraek('distinctExtensions'),
+    udtraek('activeConnection'), udtraek('distinctExtensions'), udtraek('forbindelsesAdvarsel'),
     udtraek('skaerTegn'), udtraek('rensFritekst'), udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
     udtraek('handleProvideFeedback'),
   ].join('\n\n');
@@ -157,6 +157,23 @@ test('to udvidelser → conflict, og det slaar alt andet', async () => {
   assert.ok(r.fix_steps.some(s => s.includes('chrome://extensions')));
   // Den gamle server naevnes stadig - konflikten skjuler ikke det andet fund.
   assert.ok(r.findings.some(f => f.includes('1.25.0')));
+});
+
+// #58: samme Web Store-udvidelse i tre Chrome-profiler = tre forbindelser med SAMME id. Foer talte de som én udvidelse,
+// og diagnosen sagde «current», mens kommandoerne gik til en tilfaeldig profil.
+test('samme udvidelse i flere profiler → conflict, med antallet af forbindelser og vejen ud', async () => {
+  const r = await byg({ udvidelser: [ext('1.28.0', 'kmbhc'), ext('1.28.0', 'kmbhc'), ext('1.28.0', 'kmbhc')] })({ what_happened: 'skifter profil' });
+  assert.equal(r.verdict, 'conflict');
+  assert.equal(r.environment.extension_connections, 3);
+  assert.ok(r.findings.some((f) => f.startsWith('3 Browser MCP extension connections are open to this server, 3 of them from the same extension (kmbhc)')), JSON.stringify(r.findings));
+  assert.ok(r.findings.some((f) => /cannot tell which profile that is/.test(f)), 'fundet maa ikke paastaa at vide hvilken profil');
+  assert.ok(r.fix_steps.some((s) => /Keep the extension enabled in one Chrome profile only/.test(s)));
+});
+
+test('én forbindelse pr. udvidelse giver ingen profil-advarsel', async () => {
+  const r = await byg({ udvidelser: [ext('1.28.0', 'kmbhc')] })({ what_happened: 'x' });
+  assert.equal(r.environment.extension_connections, 1);
+  assert.ok(!r.findings.some((f) => /extension connections are open/.test(f)));
 });
 
 test('ingen udvidelse → disconnected', async () => {

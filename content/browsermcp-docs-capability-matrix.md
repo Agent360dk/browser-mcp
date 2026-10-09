@@ -89,7 +89,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | Bot-detection systems (Cloudflare, DataDome, fingerprinting) | Browser MCP works because it **is** your browser, not because anything is being circumvented. That sentence is the whole product. Selling evasion would delete it, and it would be an arms race we would lose while promising otherwise. |
 | Accounts that are not yours | The one-time code still lands in an inbox only you control. That boundary is not a technical one. |
 | `chrome://` pages, the extension gallery, `data:` URLs | Chrome forbids scripting them. Not a gap we can close; the tools say so explicitly rather than failing vaguely. |
-| A second Chrome profile | Not supported today. It is a real request, tracked as issue #10. |
+| A second Chrome profile | Not supported today: with the extension enabled in more than one profile, every command goes to one of them, and the server cannot tell which. Since 1.30.2 it says so in the next tool answer and in `browser_provide_feedback`. Keep the extension enabled in one profile. Routing to a chosen profile is tracked as issue #58. |
 
 ## Frequently asked questions
 

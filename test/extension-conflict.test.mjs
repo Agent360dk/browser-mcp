@@ -37,7 +37,7 @@ function udtraek(navn) {
 
 function byg() {
   const connections = new Set();
-  const src = ['cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions']
+  const src = ['cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions', 'forbindelsesAdvarsel', 'medForbindelsesNote']
     .map(udtraek).join('\n\n');
   // laastForbindelse og harSendtKommando er modul-variable i index.js. De erklaeres
   // her i den omsluttende scope, saa den udtrukne kildekode muterer PRAECIS de samme
@@ -48,9 +48,10 @@ function byg() {
     // Den skal erklaeres her, ellers koerer den udtrukne kilde i en scope der ikke findes
     // i produktionen. null = ingen noegle, som er standarden.
     const PARRINGSNOEGLE = null;
+    let sidsteVisteForbindelsesAdvarsel = '';
     ${src}
     return {
-      cmpVersion, liveConnections, activeConnection, distinctExtensions,
+      cmpVersion, liveConnections, activeConnection, distinctExtensions, forbindelsesAdvarsel, medForbindelsesNote,
       sendKommando: () => { harSendtKommando = true; },
       nyForbindelse: () => { if (!harSendtKommando) laastForbindelse = null; },
     };`);
@@ -424,4 +425,62 @@ test('én udvidelse: samme fejl faar IKKE en konflikt-forklaring paaduttet', () 
   const svar = f('Debugger attach failed after 3 attempts (tab 42). Last: attach resolved but Chrome shows tab not attached.');
   assert.doesNotMatch(svar, /BROWSER_MCP_EXTENSION_ID/,
     'med kun én udvidelse er konflikten ikke forklaringen, og en falsk forklaring er vaerre end ingen');
+});
+
+// ── #58: samme udvidelse i flere profiler ──────────────────────────────────
+
+test('tre profiler med samme udvidelses-id giver en advarsel med antallet - ikke hvilken profil', () => {
+  const { connections, forbindelsesAdvarsel } = byg();
+  for (let i = 0; i < 3; i++) forbind(connections, { version: '1.30.2', id: 'kmbhcaepmhecgjelbdlminacenpgfhdn' });
+  const a = forbindelsesAdvarsel();
+  assert.match(a, /^3 Browser MCP extension connections are open to this server, 3 of them from the same extension \(kmbhcaepmhecgjelbdlminacenpgfhdn\)\./);
+  assert.match(a, /this server cannot tell which profile that is/);
+  assert.match(a, /keep the extension enabled in that profile only/);
+});
+
+test('ingen advarsel ved én forbindelse, ved forskellige udvidelser, eller naar dubletten er lukket', () => {
+  const b = byg();
+  forbind(b.connections, { id: 'a' });
+  assert.equal(b.forbindelsesAdvarsel(), null);
+  forbind(b.connections, { id: 'b' });
+  assert.equal(b.forbindelsesAdvarsel(), null, 'to forskellige udvidelser daekkes af den gamle konfliktadvarsel');
+  forbind(b.connections, { id: 'a', state: LUKKET });
+  assert.equal(b.forbindelsesAdvarsel(), null, 'en lukket forbindelse taeller ikke');
+  forbind(b.connections, { id: 'a' });
+  assert.match(b.forbindelsesAdvarsel(), /^3 .*2 of them from the same extension \(a\)/);
+});
+
+test('agenten faar advarslen i vaerktoejssvaret én gang pr. aendring', () => {
+  const { connections, medForbindelsesNote } = byg();
+  const svar = () => medForbindelsesNote({ content: [{ type: 'text', text: '{}' }] }).content.length;
+  forbind(connections, { id: 'a' });
+  assert.equal(svar(), 1);
+  const to = forbind(connections, { id: 'a' });
+  assert.equal(svar(), 2, 'advarslen kom ikke med i svaret');
+  assert.equal(svar(), 1, 'samme advarsel gentages i hvert svar');
+  forbind(connections, { id: 'a' });
+  assert.equal(svar(), 2, 'et nyt antal er en ny advarsel');
+  to.ws.readyState = LUKKET;
+  forbind(connections, { id: 'b', state: LUKKET });
+  assert.equal(svar(), 2, 'antallet aendrede sig fra 3 til 2, og det skal siges');
+});
+
+test('alle tre svarveje i vaerktoejskaldet gaar gennem medForbindelsesNote, og stderr faar den ogsaa', () => {
+  const svarVeje = kilde.match(/return medForbindelsesNote\(/g) || [];
+  assert.equal(svarVeje.length, 3, 'skaermbillede gemt, skaermbillede og almindeligt svar');
+  assert.match(udtraek('advarOmKonflikt'), /const profiler = forbindelsesAdvarsel\(\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
+});
+
+test('teksterne siger det samme som koden: antallet, ikke profilen, og id-pinningen skelner ikke profiler', async () => {
+  const laes = (f) => readFileSync(join(rod, f), 'utf8');
+  assert.match(laes('mcp-server/tools.js'), /whether more than one Browser MCP extension is connected at once, also the same extension from several Chrome profiles or browsers/);
+  for (const f of ['README.md', 'mcp-server/README.md']) {
+    const t = laes(f);
+    assert.match(t, /detects \*\*more than one Browser MCP extension connected at once\*\*, also the same extension connected from several Chrome profiles or browsers/, f);
+    assert.match(t, /It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile/, f);
+  }
+  assert.match(laes('content/browsermcp-docs-tools.md'), /also the same extension connected from several Chrome profiles or browsers/);
+  const m = laes('content/browsermcp-docs-capability-matrix.md');
+  assert.match(m, /\| A second Chrome profile \| Not supported today: with the extension enabled in more than one profile, every command goes to one of them, and the server cannot tell which\. Since 1\.30\.2 it says so in the next tool answer and in `browser_provide_feedback`\./);
+  assert.doesNotMatch(m, /tracked as issue #10/, '#10 er lukket; #58 er det aabne');
 });

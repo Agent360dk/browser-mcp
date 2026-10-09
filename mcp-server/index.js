@@ -74,8 +74,40 @@ function cmpVersion(a, b) {
   return 0;
 }
 
+// #58 (1.30.2): Web Store-udvidelsen har SAMME id i alle Chrome-profiler og browsere. distinctExtensions() grupperer paa id,
+// saa tre profiler talte som én, og ingen advarsel kom - mens kommandoerne gik til én af dem, og hvilken profil det var,
+// skiftede naar de andre genindlaeste. Serveren kan ikke se hvilken profil en forbindelse kommer fra, kun hvor mange der er
+// aabne, saa det er det advarslen siger.
+function forbindelsesAdvarsel() {
+  const live = liveConnections();
+  if (live.length < 2) return null;
+  const prId = new Map();
+  for (const c of live) if (c.extensionId) prId.set(c.extensionId, (prId.get(c.extensionId) || 0) + 1);
+  const dubletter = [...prId].filter(([, n]) => n > 1);
+  if (!dubletter.length) return null;   // forskellige udvidelser: dem daekker advarOmKonflikt og provide_feedback
+  return `${live.length} Browser MCP extension connections are open to this server, ` +
+    dubletter.map(([id, n]) => `${n} of them from the same extension (${id})`).join(' and ') +
+    '. That is the extension enabled in more than one Chrome profile or browser. Every command goes to one of them, and ' +
+    'this server cannot tell which profile that is. To drive a chosen profile, keep the extension enabled in that profile only.';
+}
+
+// Det agenten ser: stderr naar ingen agent. Advarslen lægges i det naeste vaerktoejssvar, én gang pr. aendring.
+let sidsteVisteForbindelsesAdvarsel = '';
+function medForbindelsesNote(svar) {
+  const a = forbindelsesAdvarsel();
+  if (!a) { sidsteVisteForbindelsesAdvarsel = ''; return svar; }
+  if (a === sidsteVisteForbindelsesAdvarsel) return svar;
+  sidsteVisteForbindelsesAdvarsel = a;
+  svar.content.push({ type: 'text', text: '\n⚠️ ' + a });
+  return svar;
+}
+
 let sidsteKonfliktNoegle = '';
+let sidsteProfilAdvarsel = '';
 function advarOmKonflikt(conn) {
+  const profiler = forbindelsesAdvarsel();
+  if (profiler && profiler !== sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
+  sidsteProfilAdvarsel = profiler || '';
   const alle = distinctExtensions();
   if (alle.length < 2) return;
   // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
@@ -930,16 +962,16 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         mkdirSync(dirname(targetPath), { recursive: true });
         writeFileSync(targetPath, Buffer.from(base64, 'base64'));
-        return {
+        return medForbindelsesNote({
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
             { type: 'image', data: base64, mimeType },
             ...viewportNote,
           ]
-        };
+        });
       }
 
-      return { content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] };
+      return medForbindelsesNote({ content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] });
     }
 
     const response = {
@@ -955,7 +987,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       });
     }
 
-    return response;
+    return medForbindelsesNote(response);
   } catch (err) {
     return {
       content: [{ type: 'text', text: forklarSkaevhed(err.message) }],
@@ -1202,6 +1234,14 @@ async function handleProvideFeedback(args) {
       'The user has to do it - chrome:// cannot be driven from here. Keep the newest.',
     );
   }
+  const profilAdvarsel = forbindelsesAdvarsel();
+  if (profilAdvarsel) {
+    findings.push(profilAdvarsel);
+    fix_steps.push(
+      'Keep the extension enabled in one Chrome profile only (chrome://extensions in each of the other profiles). ' +
+      'The user has to do it - chrome:// cannot be driven from here.',
+    );
+  }
   if (!active && activePort === null) {
     // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
     // i stykker, og et fix-skridt her ville vaere en falsk alarm - se verdict 'idle'.
@@ -1256,7 +1296,7 @@ async function handleProvideFeedback(args) {
   // tilstand for at kunne maale den) - det er at sige praecis hvad der er tilfaeldet.
   const ingenPortEndnu = activePort === null;
   const verdict =
-    exts.length > 1 ? 'conflict'
+    (exts.length > 1 || profilAdvarsel) ? 'conflict'
     : (serverOutdated || extOutdated) ? 'outdated'
     : (!active && ingenPortEndnu) ? 'idle'
     : !active ? 'disconnected'
@@ -1275,6 +1315,8 @@ async function handleProvideFeedback(args) {
       active: c === active,
     })),
     extension_up_to_date: extOutdated === null ? null : !extOutdated,
+    // #58: aabne forbindelser, ikke udvidelser - samme udvidelse i flere profiler giver flere forbindelser.
+    extension_connections: liveConnections().length,
     ws_port: activePort,
     node: process.version,
     platform: `${process.platform} ${process.arch}`,

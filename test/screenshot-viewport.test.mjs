@@ -69,13 +69,19 @@ after(() => {
   for (const b of boern) try { b.kill('SIGKILL'); } catch {}
 });
 
+// Som den rigtige udvidelse: én forbindelse pr. port. Foer aabnede den en ny hvert 400. ms uden at lukke den gamle, og
+// siden #58 (1.30.2) siger serveren hoejt, naar flere forbindelser fra samme udvidelse er aabne.
 function falskUdvidelse(result) {
   let stop = false;
+  const forbundet = new Set();
   const proev = () => {
     if (stop) return;
     for (let p = BASE; p <= MAX; p++) {
+      if (forbundet.has(p)) continue;
+      forbundet.add(p);
       const ws = new WebSocket(`ws://127.0.0.1:${p}`, { origin: 'chrome-extension://' + 'a'.repeat(32) });
       ws.on('error', () => {});
+      ws.on('close', () => forbundet.delete(p));
       ws.on('open', () => {
         sokler.push(ws);
         ws.send(JSON.stringify({ type: 'hello', extensionId: 'a'.repeat(32), version: '1.30.1', name: 'fake' }));
