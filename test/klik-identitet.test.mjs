@@ -270,6 +270,8 @@ test('vagtens bevis: intet set er uvist; kun en side skjult hele vejen er et nej
   assert.deepEqual(vb({ naaet: { dblclick: 1 }, sendt: 3, skjultHele: false }, ['dblclick']), { landed: true });
   // R66 (Astra): en vagt, der er vaek ved aflaesningen, er ikke en navigation - uvist, ikke ja.
   assert.deepEqual(vb({ udskiftet: true }, ['dblclick']), { landed: null });
+  // R66 (Opus): et slip, siden flyttede, goer beviset urent - hoejst uvist.
+  assert.deepEqual(vb({ naaet: { dblclick: 1 }, sendt: 3, urent: true, skjultHele: false }, ['dblclick']), { landed: null });
 });
 
 test('vagten udloeber selv i siden, ogsaa hvis ingen laeser den', async () => {

@@ -551,6 +551,9 @@ test('et maal, der blev rullet frem, maales igen efter at siden har sat sig (hea
   const r = await u.hent('resolveElement')(1, '#b6');
   assert.equal(n, 3, 'maalet blev ikke maalt igen, til to maalinger var ens');
   assert.deepEqual([r.x, r.y], [60, 160]);
+  // R66: genmaalingerne ruller ikke igen (6. argument til klikMaal).
+  const kald = u.optager.til('scripting.executeScript').map((k) => k.args[0].args[5]);
+  assert.deepEqual(kald, [false, true, true], 'genmaalingen bad klikMaal rulle igen');
   n = 10;
   const u2 = indlaesUdvidelse({ svar: { 'scripting.executeScript': () => [{ result: { x: 1, y: 2, found: true } }] } });
   await u2.hent('resolveElement')(1, '#b6');
@@ -660,4 +663,13 @@ test('en genmaaling ruller ikke maalet igen (ellers er to maalinger ens per kons
   assert.equal(rullet, 0, 'genmaalingen rullede');
   d.koer(KILDE, '#b6', null, null, false, false);
   assert.equal(rullet, 1);
+});
+
+test('et klikbart kort (role=button) med et link i midten er daekket af linket; et passivt kort er ikke (R66)', () => {
+  for (const [attrs, daekket] of [[{ role: 'button' }, true], [{}, false]]) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', attrs, tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: 'lnk', tekst: 'Se ordren', attrs: { href: '#o7' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'lnk', daekket, JSON.stringify(attrs));
+  }
 });
