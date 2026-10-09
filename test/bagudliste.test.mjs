@@ -35,6 +35,7 @@ const FORBUDT = [
   [14, /Twenty-one conversations|idle conversations do not consume|Yes - up to 20, each in its own colou?r-coded tab group/i, 'adskillelsen foelger MCP-serveren, ikke samtalen'],
   [15, /\(~?\d+ seconds\)/i, 'tidsloefter uden maaling'],
   [38, /Fresh by default|That is the whole difference/, 'Playwright MCP har en dedikeret profil som standard og en extension-mode'],
+  [63, /Read every row of a long/i, 'extract_list: raekker med samme tekst kommer en gang, og en baggrundsfane stopper tidligt (PR63 R3 Astra)'],
   [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config|For any other client, add this block/, 'Zed, opencode og Codex bruger hver sin noegle (PR63 R2 Astra: ogsaa Claude Code-guidens FAQ)'],
 ];
 
