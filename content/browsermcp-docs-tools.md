@@ -29,16 +29,16 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_click` | Click an element via CSS or text selector (`text=Submit`, `button:text(Next)`); auto-scrolls into view, uses real mouse events. A text selector looks inside an open modal dialog first. If something lies over the target (an overlay, a dialog's backdrop), nothing is clicked and the answer is `covered`. |
-| `browser_double_click` | Double-click an element - for editors and grids that open on double-click rather than single. Nothing is done (`covered`) when something lies over the target. |
-| `browser_right_click` | Right-click an element to open its context menu. Nothing is done (`covered`) when something lies over the target. |
+| `browser_click` | Click an element via CSS or text selector (`text=Submit`, `button:text(Next)`); auto-scrolls into view, uses real mouse events. A text selector looks inside an open modal dialog first. If the mouse would not reach the target at its center (something in front of it, or a target that does not take clicks there), nothing is clicked and the answer is `covered`. |
+| `browser_double_click` | Double-click an element - for editors and grids that open on double-click rather than single. Nothing is done (`covered`) when the mouse would not reach the target. |
+| `browser_right_click` | Right-click an element to open its context menu. Nothing is done (`covered`) when the mouse would not reach the target. |
 | `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
-| `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. |
+| `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. With a text selector, nothing is typed (`covered`) when the mouse would not reach the field. |
 | `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. |
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
 | `browser_wait` | Wait for an element matching a CSS or text selector to appear. |
-| `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. Nothing is done (`covered`) when something lies over the target. |
-| `browser_select_option` | Select an option from a native `<select>` or a custom dropdown (Angular Material, React Select, etc.). |
+| `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. Nothing is done (`covered`) when the mouse would not reach the target. |
+| `browser_select_option` | Select an option from a native `<select>` or a custom dropdown (Angular Material, React Select, etc.). A custom trigger the mouse would not reach is not opened (`covered`). |
 | `browser_set_combobox` | Drive an autocomplete/combobox: click, type filter query, wait for the listbox, click the option(s); supports multi-select chips. |
 | `browser_set_date` | Set a date input robustly - native value-set, masked-text typing, or calendar-picker navigation (MUI/AntD/react-datepicker/Lexical), with read-back verification. |
 | `browser_dismiss_overlays` | Bulk-dismiss popups, modals, tooltips, and banners via heuristics on close affordances (aria-label, "Skip"/"Ikke nu"/"Got it", × button). |

@@ -36,7 +36,7 @@ export function lavKlikDom() {
     getAttribute(n) { return n in this.attrs ? this.attrs[n] : null; }
     matches(sel) { return sel.split(',').some((s) => matchEn(this, s.trim())); }
     closest(sel) { for (let n = this; n && n.tagName; n = n.parentNode) if (n.matches(sel)) return n; return null; }
-    contains(o) { for (let n = o; n; n = n.parentNode) if (n === this) return true; return false; }
+    contains(o) { for (let n = o; n; n = n.parentNode) if (n === this) return true; return false; }   // som i DOM: ikke gennem shadow roots
     querySelectorAll(sel) {
       const ud = [];
       const gaa = (n) => { for (const c of n.children) { if (sel === '*' || c.matches(sel)) ud.push(c); gaa(c); } };
@@ -69,7 +69,7 @@ export function lavKlikDom() {
   const body = new El('body', { rect: [0, 0, 1200, 800] });
   html.children.push(body); body.parentNode = html;
 
-  const synligKaede = (e) => { for (let n = e; n; n = n.parentNode) if (n.stil.display === 'none' || n.stil.visibility === 'hidden') return false; return true; };
+  const synligKaede = (e) => { for (let n = e; n; n = n.parentNode || n.host) if (n.stil.display === 'none' || n.stil.visibility === 'hidden') return false; return true; };
   const inden = (e, x, y) => { const r = e.getBoundingClientRect(); return r.width > 0 && x >= r.left && x < r.right && y >= r.top && y < r.bottom; };
 
   const document = {
@@ -79,6 +79,7 @@ export function lavKlikDom() {
     // Det oeverste element ved punktet: hoejeste lag, saa senest i DOM. En modal dialog daekker alt uden for sig selv
     // med sin backdrop - et punkt der ikke rammer noget i dialogen, rammer dialogen.
     elementFromPoint(x, y) {
+      if (x < 0 || y < 0 || x >= 1200 || y >= 800) return null;   // som i en browser: uden for vinduet er der intet
       const modal = alle.find((e) => e.modal && synligKaede(e));
       const kandidater = alle.filter((e) => !e.ingenPeg && synligKaede(e) && inden(e, x, y) && (!modal || modal.contains(e)))
         .sort((a, b) => (a.lag - b.lag) || (a.raekke - b.raekke));
@@ -94,9 +95,17 @@ export function lavKlikDom() {
       if (o?.lag === undefined && foraelder.lag) e.lag = foraelder.lag;
       return e;
     },
-    label(input, o, foraelder) { const l = this.el('label', o, foraelder); input.labels.push(l); return l; },
+    label(input, o, foraelder) { const l = this.el('label', o, foraelder); input.labels.push(l); l.control = input; return l; },
+    // En aaben shadow root paa `vaert`. Elementer inde i den naas fra vaerten via shadowRoot, og deres kaede op gaar
+    // via roden til vaerten (`host`), som i en browser.
+    skygge(vaert) {
+      const r = new El('#shadow-root');
+      r.host = vaert;
+      vaert.shadowRoot = r;
+      return r;
+    },
     koer(kilde, ...args) {
-      const window = {};
+      const window = { innerWidth: 1200, innerHeight: 800 };
       const getComputedStyle = (e) => e.stil;
       const fn = new Function('document', 'window', 'getComputedStyle', 'return (' + kilde + ')')(document, window, getComputedStyle);
       return { svar: fn(...args), window };

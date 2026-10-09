@@ -42,7 +42,8 @@ function sele(landet = null) {
       faner.set(42, ny);
       return { id: 99, ...(landet ?? spec), tabs: [ny] };
     },
-    'windows.get': () => ({ id: 99, ...(landet ?? set[set.length - 1] ?? {}) }),
+    // Vindue 3 (sessionens foerste) er ufokuseret ved (0,0); vindue 99 er det nye.
+    'windows.get': (id) => (id === 3 ? { id: 3, left: 0, top: 0, focused: false } : { id: 99, ...(landet ?? set[set.length - 1] ?? {}) }),
     'tabGroups.update': undefined,
     // Som Chrome: en fane der grupperes, flyttes ind i gruppens vindue; en ny gruppe oprettes i det aktuelle vindue (3).
     'tabs.group': ({ tabIds, groupId }) => { for (const id of tabIds) if (faner.has(id)) faner.get(id).windowId = 3; return groupId ?? 5; },
@@ -99,10 +100,14 @@ test('ender fanen alligevel i et andet vindue, siger svaret det i stedet for at 
   const { u, faner } = sele();
   const orig = u.chrome.windows.create;
   u.chrome.windows.create = async (spec) => { const v = await orig(spec); faner.get(42).windowId = 3; return v; };
-  const svar = await naviger(u, { eget_vindue: true });
+  const svar = await naviger(u, { eget_vindue: true, fokuser: true, vindue_x: -3840, vindue_y: 27 });
   assert.equal(svar.eget_vindue, false);
   assert.equal(svar.windowId, 3);
   assert.match(String(svar.advarsel), /not in its own window: Chrome put it in window 3/);
+  // R61 (Astra): fokus og position kom fra det nye vindue (99), mens fanen laa i vindue 3.
+  assert.equal(svar.fokuseret, false, 'fokus blev laest fra et vindue fanen ikke er i');
+  assert.deepEqual({ ...svar.placeret }, { left: 0, top: 0 }, 'positionen blev laest fra et vindue fanen ikke er i');
+  assert.doesNotMatch(String(svar.note), /The window has focus/);
 });
 
 test('en position der ikke kan laeses som tal, afviser vinduet - intet aabnes paa brugerens skaerm', async () => {

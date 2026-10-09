@@ -11,7 +11,7 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        eget_vindue: { type: 'boolean', description: 'Requires new_tab. Opens the page in its own Chrome window, without focus unless you pass fokuser:true. Whether Chrome delivers mouse and keyboard input to a window without focus is unmeasured in desktop Chrome (a measurement on 19 Sept turned out to have tested a background tab, because the tab was moved back into the session\'s first window; fixed in 1.30.2), so read landed in each input tool\'s answer. On a machine with more than one display, you can put the window on a screen nobody is looking at and pass fokuser:true - but focus is exclusive: while this window has it, whatever the person types lands in it. Use that only on a machine nobody is typing on.' },
+        eget_vindue: { type: 'boolean', description: 'Requires new_tab. Opens the page in its own Chrome window, without focus unless you pass fokuser:true. Whether Chrome delivers mouse and keyboard input to a window without focus is unmeasured in desktop Chrome (a measurement on 19 Sept probably tested a background tab, because the tab was moved back into the session\'s first window; fixed in 1.30.2), so read landed in each input tool\'s answer. On a machine with more than one display, you can put the window on a screen nobody is looking at and pass fokuser:true - but focus is exclusive: while this window has it, whatever the person types lands in it. Use that only on a machine nobody is typing on.' },
         fokuser: { type: 'boolean', description: 'With eget_vindue: ASK for the new window to get the operating system\'s focus. Chrome can refuse it. The reply carries what actually happened - read `fokuseret` and `placeret_som_bedt` rather than assuming this worked. Do not rely on vindue_x to keep a run off the user\'s screen.' },
         vindue_x: { type: 'number', description: 'With eget_vindue: the window\'s left edge in global screen points. A NEGATIVE value is a display to the left of the main one - that is how you put it on another screen. No tool lists the displays: use a coordinate you know is on an unused screen, and read `placeret_som_bedt` in the reply.' },
         vindue_y: { type: 'number', description: 'With eget_vindue: the window\'s top edge in global screen points.' },
@@ -74,7 +74,7 @@ export const TOOLS = [
   },
 {
     name: 'browser_double_click',
-    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If another element lies over the target\'s center (an overlay, a dialog\'s backdrop), nothing is done: the answer is ok:false with error "covered" and covered_by.',
+    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -85,7 +85,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_right_click',
-    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If another element lies over the target\'s center (an overlay, a dialog\'s backdrop), nothing is done: the answer is ok:false with error "covered" and covered_by.',
+    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -113,7 +113,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click',
-    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If another element lies over the target\'s center (an overlay, a dialog\'s backdrop), nothing is done: the answer is ok:false with error "covered" and covered_by. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
+    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
     inputSchema: {
       type: 'object',
       properties: {
@@ -124,7 +124,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_fill',
-    description: 'Fill a form input field with a value. Supports CSS selectors AND text-based selectors. Auto-scrolls and focuses the element. Works on CSP-strict sites via Chrome Debugger API. For date inputs use browser_set_date, for autocomplete/combobox use browser_set_combobox.',
+    description: 'Fill a form input field with a value. Supports CSS selectors AND text-based selectors. Auto-scrolls and focuses the element. Works on CSP-strict sites via Chrome Debugger API. For date inputs use browser_set_date, for autocomplete/combobox use browser_set_combobox. With a text selector the field is clicked first, so the same check as browser_click applies: if the mouse would not reach it at its center, nothing is typed and the answer is ok:false with error "covered".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +176,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_hover',
-    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If another element lies over the target\'s center (an overlay, a dialog\'s backdrop), nothing is done: the answer is ok:false with error "covered" and covered_by.',
+    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,7 +188,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_option',
-    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead.',
+    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead. A custom dropdown\'s trigger gets the same check as browser_click: if the mouse would not reach it at its center, nothing is opened and the answer is ok:false with error "covered".',
     inputSchema: {
       type: 'object',
       properties: {

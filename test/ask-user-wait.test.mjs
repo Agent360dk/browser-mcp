@@ -343,6 +343,7 @@ for (const felter of [[], [{ name: 'code', label: 'Code' }]]) {
       ekstra: { 'webNavigation.getAllFrames': [{ frameId: 0, parentFrameId: -1, errorOccurred: true, url: 'http://ukendt-vaert.invalid/side' }] } });
     await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'code?', fields: felter }), (e) => {
       assert.match(e.message, /^The tab shows Chrome's error page: http:\/\/ukendt-vaert\.invalid\/side did not load/);
+      assert.match(e.message, /Nothing was shown to the user\.$/);
       assert.doesNotMatch(e.message, /hemmelig/, 'the query string is not repeated in the error');
       return true;
     });
@@ -374,7 +375,13 @@ test('the error page appearing while the prompt is drawn gives the same clear er
     'notifications.create': () => new Promise((r) => setTimeout(() => { oprettet = true; r('id'); }, 40)),
     'notifications.clear': () => { ryddetEfterOprettelse = oprettet; return true; },
   } });
-  await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'Done?' }), /^Error: The tab shows Chrome's error page|^The tab shows Chrome's error page/);
+  await assert.rejects(u.hent('dispatch')(9876, 'ask_user', { message: 'Done?' }), (e) => {
+    assert.match(e.message, /^The tab shows Chrome's error page/);
+    // R61 (Astra): her var fanen allerede aktiveret og notifikationen oprettet, saa «Nothing was shown» ville vaere usandt.
+    assert.doesNotMatch(e.message, /Nothing was shown/);
+    assert.match(e.message, /had already been made active and a notification posted/);
+    return true;
+  });
   for (let i = 0; i < 20 && ryddetEfterOprettelse === null; i++) await tick(10);
   assert.equal(ryddetEfterOprettelse, true, 'the notification was cleared before it existed, so it stayed up');
 });
