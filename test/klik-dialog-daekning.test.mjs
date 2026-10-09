@@ -583,7 +583,7 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
   assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times; pushed out of view meanwhile, it is scrolled into view again\)/);
   assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click, only when the label's click was not cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
-  assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
+  assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\), or on anything else clickable in it \(a link without an address, an element with a button role or an `onclick`, whose own handler can cancel the click unseen\), counts as covered by that element/);
 });
 
 // ── R65 (Opus, maalt i Chrome) ─────────────────────────────────────────────
@@ -595,7 +595,10 @@ test('en liste med EN delegerende onclick godtager ikke naboraekken som maalets 
   assert.equal(d.koer(KILDE, '#r6', null, null, false, false).svar.covered?.id, 'rNY');
 });
 
-test('en label: kun HTML-standardens interaktive indhold er en anden kontrol (et link uden href er ikke)', () => {
+// R74 (Opus, maalt i Chrome): et link uden href, en span med role=button eller med onclick afkrydser kun feltet, naar deres
+// egen klikhaandtering ikke annullerer klikket - og det kan ikke ses foer klikket. Med annullering gav de ok:true med boksen
+// tom. De er derfor ogsaa daekning (bevidst forsigtigt: uden annullering ville en mus have afkrydset).
+test('en label: interaktivt indhold og enhver handling er en anden kontrol; et skjult felt er ikke (R65, R74)', () => {
   const lav = (tag, attrs) => {
     const d = lavKlikDom();
     const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 16, 16] });
@@ -603,9 +606,10 @@ test('en label: kun HTML-standardens interaktive indhold er en anden kontrol (et
     d.el(tag, { id: 'i', tekst: 'vilkaar', attrs, rect: [170, 15, 200, 30] }, l);
     return d.koer(KILDE, '#l', null, null, false, false).svar.covered;
   };
-  assert.equal(lav('a', {}), undefined, 'et link uden href afkrydser feltet med en rigtig mus');
-  assert.equal(lav('span', { role: 'button' }), undefined);
-  assert.equal(lav('span', { onclick: 'x()' }), undefined);
+  assert.equal(lav('a', {})?.id, 'i', 'et link uden href kan annullere klikket');
+  assert.equal(lav('span', { role: 'button' })?.id, 'i');
+  assert.equal(lav('span', { onclick: 'x()' })?.id, 'i');
+  assert.equal(lav('span', {}), undefined, 'almindelig tekst i labelen er labelens egen');
   assert.equal(lav('a', { href: '#v' })?.id, 'i');
   assert.equal(lav('button', {})?.id, 'i');
   assert.equal(lav('input', { type: 'text' })?.id, 'i');
@@ -655,12 +659,12 @@ test('et kort med en Slet som span role=button eller span med onclick er daekket
   }
 });
 
-test('et felt, hvis egen label har en span role=button i punktet, er ikke daekket (HTML-standarden)', () => {
+test('et felt, hvis egen label har en span role=button i punktet, er daekket af den (R66, vendt i R74)', () => {
   const d = lavKlikDom();
   const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
   const l = d.label(boks, { id: 'l', tekst: 'Accepter ', rect: [0, 0, 400, 60] });
   d.el('span', { id: 'i', tekst: 'vilkaar', attrs: { role: 'button' }, rect: [20, 20, 20, 20], lag: 1 }, l);
-  assert.equal(d.koer(KILDE, '#c', null, null, false, false).svar.covered, undefined);
+  assert.equal(d.koer(KILDE, '#c', null, null, false, false).svar.covered?.id, 'i');
 });
 
 test('en genmaaling ruller ikke maalet igen (ellers er to maalinger ens per konstruktion) (R66)', () => {
@@ -1045,5 +1049,23 @@ test('reserveteksten i et <object> i en label er almindelig tekst, ikke interakt
   const label = d.label(felt, { id: 'l', tekst: 'Accepter', rect: [40, 40, 300, 30] });
   d.el('object', { id: 'o', tekst: 'vilkaarene', rect: [70, 40, 270, 30], lag: 1 }, label);
   assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered, undefined);
+});
+
+test('tekst i en label-ramme med en Slet med rolle over sig er daekket, i light DOM og i en komponents skygge (R74)', () => {
+  for (const skygge of [false, true]) {
+    const d = lavKlikDom();
+    const vaert = d.el('x-cb', { id: 'cb', rect: [40, 40, 300, 30] });
+    const rod = skygge ? d.skygge(vaert) : vaert;
+    const ramme = d.el('label', { rect: [40, 40, 300, 30] }, rod);
+    const felt = d.el('input', { id: 'icb', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] }, ramme);
+    felt.labels.push(ramme); ramme.control = felt;
+    let tekst;
+    if (skygge) {
+      const s = d.el('slot', { rect: [70, 40, 270, 30] }, ramme);
+      tekst = d.el('span', { id: 't', tekst: 'Accepter', rect: [70, 40, 270, 30], lag: 1 }, vaert); tekst.assignedSlot = s;
+    } else tekst = d.el('span', { id: 't', tekst: 'Accepter', rect: [70, 40, 270, 30], lag: 1 }, ramme);
+    d.el('span', { id: 'slet', attrs: { role: 'button' }, rect: [70, 40, 270, 30], lag: 2 }, skygge ? rod : ramme);
+    assert.equal(d.koer(KILDE, '#t', null, null, false, false).svar.covered?.id, 'slet', skygge ? 'skygge' : 'light DOM');
+  }
 });
 

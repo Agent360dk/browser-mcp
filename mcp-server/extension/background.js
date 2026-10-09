@@ -2177,6 +2177,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // HTML-standardens «interactive content»: et klik dér aktiverer ikke en omsluttende labels felt.
   // R74 (Astra, laest): `object` staar ikke paa standardens nuvaerende liste; dens reservetekst er almindelig tekst.
   const INTERAKTIV = 'a[href],button,input,select,textarea,details,embed,iframe,audio[controls],video[controls],img[usemap],label';
+  // R66 (Astra): en handling er alt det, klikMaal selv regner for klikbart (CLICKABLE), plus input-knapper. (Flyttet herop i R74,
+  // saa ogsaa label-rammen nedenfor kan bruge den.)
+  const HANDLING = CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]';
   const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
     if (inde(hit, el)) {
@@ -2193,7 +2196,6 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // onclick kom igennem med ok:true. Nu er en handling alt det, klikMaal selv regner for klikbart (CLICKABLE), plus
       // input-knapper.
       const erLabel = el.tagName === 'LABEL';
-      const HANDLING = CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]';
       // R69 (Astra, maalt i model): closest() krydser ikke en aaben shadow root, saa en role=button-vaert uden om en span i
       // dens shadow root blev aldrig set, og Slet koerte med ok:true. Kaeden gaas derfor knude for knude (parentNode || host).
       let indre = null;
@@ -2266,8 +2268,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // Et rent link er en passiv beholders egen handling; for et klikbart maal er ogsaa det en anden kontrol.
       // R68 (Opus' r66-rollekort, maalt i Chrome): et <a> uden adresse blev en tid regnet for «inert» og sprunget over - men
       // en lytter sat med addEventListener kan ikke ses, og Slet koerte med ok:true. Et <a> uden adresse er derfor en handling.
+      // R74 (Opus, maalt i Chrome): en span med role=button i en label, hvis egen klikhaandtering annullerer klikket, gav
+      // ok:true og landed:true med boksen tom - R65/R66's «en rigtig mus afkrydser dér» holder kun, naar intet annullerer, og
+      // det kan ikke ses foer klikket. I label-tilstand er en handling (alt klikbart: rolle, onclick, link uden adresse) derfor
+      // ogsaa en daekning, i light DOM som i en komponent; labelens eget felt er det ikke.
       if (erLabel) {
-        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (n.matches && n.matches(INTERAKTIV)) { indre = lukket(n); break; }
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (n.matches && n.matches(INTERAKTIV + ',' + HANDLING)) { indre = lukket(n); break; }
       } else {
         let fundet = null, link = null;
         // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
@@ -2280,7 +2286,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // R72 (Astra, maalt i model): arealet alene godtog en knap paa 10000 x 2 px over en vaert paa 200 x 100 (2 % overlap),
         // `break` sprang en Slet omkring den store kontrol over, og et stort skygge-link med # eller javascript: slap uden om
         // linkreglen. Nu er kun en kontrol, hvis overlap med maalet daekker mindst 90 % af maalet, maalets
-        // egen (saadan tegner ion-button og sl-button deres knap; R73 Opus maalte Material Webs md-filled-button til 18-31 %, saa den
+        // egen (saadan tegner ion-button og sl-button deres knap; R73 Opus maalte Material Webs md-filled-button til 15-31 % (afhaengigt af teksten), saa den
         // afvises fortsat som en graense); kaeden gaas videre forbi den, saa en handling
         // omkring den stadig er en daekning.
         const daekker = (k) => {
@@ -2352,7 +2358,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // R73 (Astra, maalt i model): rammen blev fundet i den flade kaede, men kontrollen under punktet stadig med closest(), som
     // ikke foelger en slot. Et ikon slottet ind i et andet link eller en anden knap i rammen blev derfor ikke set, og den
     // handling koerte. Kontrollen under punktet findes nu i samme flade kaede.
-    const kontrolVaelger = iEgenLabel ? INTERAKTIV : CLICKABLE + ',input,select,textarea';
+    // R74 (Opus, maalt i Chrome): i en label-ramme saa vaelgeren kun INTERAKTIV, saa en Slet med en rolle over teksten fik
+    // klikket. En handling er ogsaa her en anden kontrol (se label-tilstanden ovenfor).
+    const kontrolVaelger = iEgenLabel ? INTERAKTIV + ',' + HANDLING : CLICKABLE + ',input,select,textarea';
     let hitKontrol = null;
     for (let n = hit, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
       if (n.matches && n.matches(kontrolVaelger)) { hitKontrol = lukket(n); break; }

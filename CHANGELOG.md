@@ -35,7 +35,9 @@ cancelled, and once; around the target, only its own button or
 link frame, not a container that listens for its children); a click stopped on the way, a target the page replaces during
 the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
-address, a button, a field) counts as covered by that element, because a click there does not activate the label's field;
+address, a button, a field), or on anything else clickable in it (a link without an address, an element with a button role or an
+`onclick`, whose own handler can cancel the click unseen), counts as covered by that element, because a click there does not
+activate the label's field, or may not;
 for any other target that takes clicks itself, anything clickable inside it at its center (a link, a button, an element
 with a button role or an `onclick`, such as a delete button on a card) counts as covered by that control; for a passive
 container (a list item, a card that is not a button) its own link (an `a` with a real address, without a button role or
