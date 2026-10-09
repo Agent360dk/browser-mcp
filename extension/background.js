@@ -943,6 +943,7 @@ function uvisVurdering(r, egenNote) {
   if (r.iRamme) return { maybe_landed: true, note: IRAMME_NOTE };
   if (r.udskiftetMaal) return { maybe_landed: true, note: 'The page replaced the target while the mouse was on it (for instance on the press), so whether the new element got the click cannot be told. Check the state before clicking again.' };
   if (r.ingenHaendelse) return { maybe_landed: true, note: 'The click was sent, but no mouse event reached the page around the target - it may have gone into a frame, or a listener on the window stopped it. Check the state before clicking again.' };
+  if (r.slipAndetSted) return { maybe_landed: true, note: 'The press reached the target, but the page moved the release elsewhere (a menu or backdrop that opened on the press, or a drag), so whether the click completed cannot be told. Check the state before clicking again.' };
   if (r.stoppetUndervejs) return { maybe_landed: true, note: 'The click reached the page, but something on the way stopped it before the target - the page may have acted on it itself. Check the state before clicking again.' };
   return { maybe_landed: true, note: 'The action was sent, but its effect could not be confirmed. Check the state before repeating it.' };
 }
@@ -1064,7 +1065,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
         const el = window.__bmcpClickTarget;
         const vagt = ${vagtArmet} ? window.__bmcpVagt : null;
         const landed = window.__bmcpClicked === true;
-        const iMaal = vagt ? ((vagt.naaet && vagt.naaet.click) || 0) > 0 : landed;
+        const iMaal = vagt ? (!vagt.urent && ((vagt.naaet && vagt.naaet.click) || 0) > 0) : landed;
         const ryd = () => {
           try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
           try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
@@ -1106,6 +1107,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
         if (el && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(el.tagName || '')) { ryd(); return { landed: null, fallbackFired: false, iRamme: true }; }
         if (iMaal) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
         if (vagt && vagt.vaek) { ryd(); return { landed: null, fallbackFired: false, udskiftetMaal: true }; }
+        if (vagt && vagt.urent) { ryd(); return { landed: null, fallbackFired: false, slipAndetSted: true }; }
         if (vagt && vagt.sendt > 0) { ryd(); return { landed: null, fallbackFired: false, stoppetUndervejs: true }; }
         if (el === null) { ryd(); return { landed: false, fallbackFired: false, intetMaal: true }; }   // intet element under punktet (fx uden for vinduet) - ingen virkning
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
@@ -1643,11 +1645,11 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
 const VAGT_KLIK = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
 const VAGT_HOVER = ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove'];
 
-async function armerMaalVagt(tabId, x, y, typer, levetid = 10000) {
+async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = false) {
   let r;
   try {
     r = await cdpSend(tabId, 'Runtime.evaluate', { returnByValue: true, expression: `(() => {
-      const tjek = window.__bmcpMaalTjek, maal = window.__bmcpMaal, typer = ${JSON.stringify(typer)};
+      const tjek = window.__bmcpMaalTjek, maal = window.__bmcpMaal, typer = ${JSON.stringify(typer)}, inderOk = ${!!inderOk};
       try { delete window.__bmcpMaalTjek; } catch (e) {}
       const gl = window.__bmcpVagt;
       if (gl && gl.ryd) gl.ryd();
@@ -1655,7 +1657,7 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000) {
       if (typeof tjek !== 'function' || !maal) return { ingen: true };
       if (!maal.isConnected) return { vaek: true };
       const nu = tjek(${x}, ${y});
-      if (nu) return { daekket: nu };
+      if (nu && !(inderOk && nu.inside)) return { daekket: nu };
       const inde = (n, m) => { for (let i = 0; n && i < 1000; i++) { if (n === m) return true; n = n.parentNode || n.host; } return false; };
       const v = { typer, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [],
         synligVedArm: document.visibilityState === 'visible' };
@@ -1668,7 +1670,10 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000) {
         if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
         if (!maal.isConnected) { v.vaek = true; return; }
         const knude = vej[0] || ev.target;
-        const d = tjek(${x}, ${y}, knude);
+        if ((ev.type === 'pointerenter' || ev.type === 'mouseenter') && knude !== maal && inde(maal, knude)) return;
+        let d = tjek(${x}, ${y}, knude);
+        if (d && inderOk && d.inside) d = null;
+        if (d && v.sendt > 0 && (ev.type === 'pointerup' || ev.type === 'mouseup')) { v.urent = true; return; }
         if (d) { v.blokeret = d; v.delvis = v.sendt > 0; ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         v.sendt++;
         if (!(inde(knude, maal) || (inde(maal, knude) && knude.tagName !== 'LABEL'))) return;
@@ -1708,7 +1713,7 @@ async function laesMaalVagt(tabId, x, y) {
         for (let n = p; n; n = n.parentNode || n.host) if (n === maal) { iMaalet = true; break; }
         if (p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '') && !iMaalet) fremmedRamme = { tag: p.tagName, id: p.id || null, text: '' };
       }
-      return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme,
+      return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme, urent: !!v.urent,
         skjultHele: !v.synligVedArm && document.visibilityState !== 'visible' };
     })()` });
   } catch { return null; }
@@ -1723,7 +1728,7 @@ function vagtBevis(laest, typer) {
   // R66 (Astra, maalt i model): en vagt, der er vaek ved aflaesningen, beviser ikke en navigation (den kan vaere fjernet af
   // siden eller udloebet) - det er uvist, ikke ja.
   if (laest.udskiftet) return { landed: null };
-  if (typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
+  if (!laest.urent && typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
   // R65 (Astra, maalt i model): intet naaede maalet. I en synlig side kan en lytter undervejs have stoppet haendelsen - og
   // selv have handlet - saa det er uvist, ikke et nej med raad om at proeve igen.
   // R66 (Astra, maalt i model): synligheden blev maalt ved AFLAESNINGEN, saa en fane, der blev skjult efter handlingen, gav
@@ -1972,7 +1977,7 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 // Funktionen er selvstaendig, saa den kan sendes som `func` til chrome.scripting OG som tekst til Runtime.evaluate.
 // `gem` lægger elementet paa window.__bmcpMaal og dets daekningsregel paa window.__bmcpMaalTjek (til script-klikket og
 // vagten i armerMaalVagt); `kunElement` returnerer selve elementet.
-function klikMaal(sel, tekst, wantTag, gem, kunElement) {
+function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // Interactive controls we prefer to actually click. Fixes the class of bug where a
   // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
   // toolbar, list-item) whose center is NOT over the real <button> - so the trusted
@@ -2141,8 +2146,13 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
       // onclick kom igennem med ok:true. Nu er en handling alt det, klikMaal selv regner for klikbart (CLICKABLE), plus
       // input-knapper.
       const erLabel = el.tagName === 'LABEL';
-      const indre = !hit.closest ? null : lukket(erLabel ? hit.closest(INTERAKTIV)
+      let indre = !hit.closest ? null : lukket(erLabel ? hit.closest(INTERAKTIV)
         : hit.closest(CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]'));
+      // R66 (Opus, maalt i Chrome): et WordPress-menupunkt (li med sit link), et produktkort med et billedlink og et kort med
+      // et «stretched link» blev afvist - linket ER den passive beholders egen handling. Er maalet ikke selv klikbart, er et
+      // link inde i det derfor ikke en daekning; en knap eller en anden handling (Slet paa et kort) er det stadig.
+      const klikbartMaal = !!el.matches && (el.matches(CLICKABLE) || (!!el.getAttribute && el.getAttribute('tabindex') !== null));
+      if (indre && !erLabel && !klikbartMaal && indre.matches('a,[role="link"]')) indre = null;
       if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
         return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}) };
       }
@@ -2186,7 +2196,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   if (gem) { window.__bmcpMaal = el; window.__bmcpMaalTjek = (px, py, knude) => (knude ? daekketVed(el, knude) : daekketAf(el, px, py)); }
   const txt = tekst != null ? { text: (el.textContent || '').trim().slice(0, 80) } : {};
   const rFoer = el.getBoundingClientRect();
-  el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  // R66 (Opus, maalt i Chrome): genmaalingen rullede maalet til midten igen, saa to maalinger var ens per konstruktion. En
+  // genmaaling (ingenRul) maaler nu, hvor maalet staar, uden at flytte det.
+  if (!ingenRul) el.scrollIntoView({ block: 'center', behavior: 'instant' });
   const r = el.getBoundingClientRect();
   const rullet = r.top !== rFoer.top || r.left !== rFoer.left;
   // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
@@ -2316,7 +2328,7 @@ async function resolveElement(tabId, selectorStr) {
     await new Promise((ok) => setTimeout(ok, 100));
     // R65 (Astra, maalt i model): her stod `|| foerst`. Var maalet forsvundet ved anden maaling, blev det gamle punkt
     // klikket - paa den knap, der nu laa der, med ok:true. Findes maalet ikke igen, findes det ikke.
-    const igen = await findElement(tabId, selectorStr);
+    const igen = await findElement(tabId, selectorStr, true);
     if (!igen) return null;
     const stille = igen.found && r.found && Math.abs(igen.x - r.x) <= 1 && Math.abs(igen.y - r.y) <= 1;
     r = igen;
@@ -2325,14 +2337,14 @@ async function resolveElement(tabId, selectorStr) {
   return r;
 }
 
-async function findElement(tabId, selectorStr) {
+async function findElement(tabId, selectorStr, ingenRul = false) {
   const parsed = parseSelector(selectorStr);
 
   if (parsed.type === 'css') {
     // Standard CSS with shadow DOM traversal - try executeScript first, debugger fallback on CSP
-    const scriptResult = await safeExecuteScript(tabId, klikMaal, [parsed.selector, null, null, true, false]);
+    const scriptResult = await safeExecuteScript(tabId, klikMaal, [parsed.selector, null, null, true, false, ingenRul]);
     if (scriptResult.cspBlocked) {
-      const result = await debuggerEval(tabId, `(${klikMaal})(${JSON.stringify(parsed.selector)}, null, null, true, false)`);
+      const result = await debuggerEval(tabId, `(${klikMaal})(${JSON.stringify(parsed.selector)}, null, null, true, false, ${!!ingenRul})`);
       return result ? { ...result, method: 'debugger' } : null;
     }
     return scriptResult.result;
@@ -2340,7 +2352,7 @@ async function findElement(tabId, selectorStr) {
 
   // Text-based selector - always use debugger (more reliable, no CSP issues)
   const result = await debuggerEval(tabId,
-    `(${klikMaal})(null, ${JSON.stringify(parsed.text)}, ${JSON.stringify(parsed.tag)}, true, false)`);
+    `(${klikMaal})(null, ${JSON.stringify(parsed.text)}, ${JSON.stringify(parsed.tag)}, true, false, ${!!ingenRul})`);
   return result ? { ...result, method: 'debugger' } : null;
 }
 
@@ -5430,10 +5442,11 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-      if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
+      // R66 (Opus, maalt i Chrome): et hoejreklik klikker ikke en kontrol inde i maalet - contextmenu bobler gennem maalet.
+      if (el.covered && !el.covered.inside) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       const { x, y } = el;
-      const vagtR = await armerMaalVagt(tab.id, x, y, VAGT_KLIK);   // R64, som double_click
+      const vagtR = await armerMaalVagt(tab.id, x, y, VAGT_KLIK, 10000, true);   // R64, som double_click
       if (vagtR && vagtR.daekket) return vagtSvar(params.selector, el, { blokeret: vagtR.daekket, foerSendt: true });
       if (vagtR && vagtR.vaek) return vaekSvar(params.selector, el);
       const hoejreBevis = vagtR && vagtR.armet ? null : await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
@@ -5506,7 +5519,9 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-      if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
+      // R66 (Opus, maalt i Chrome): hover klikker ikke en kontrol inde i maalet (en menu-li med sit link, et kort med et
+      // billedlink) - mouseover og :hover gaelder ogsaa maalet. Kun noget foran maalet er en daekning.
+      if (el.covered && !el.covered.inside) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       // ANTAGET 13/9 af Fable, MAALT 18/9 i flow-spaerren: Blink fyrer `mouseover` KUN naar
       // elementet under markoeren SKIFTER. Hover to gange paa det samme, eller klik og hover
@@ -5514,7 +5529,7 @@ async function dispatch(port, method, params) {
       // saa en helt almindelig raekkefoelge svarede "ikke leveret" - et falsk NEJ, som faar
       // agenten til at skifte fane og proeve igen paa noget der virkede.
       // R64: vagten binder haendelserne til maalet; kan den ikke armeres, bruges fanebeviset som foer.
-      const vagtH = await armerMaalVagt(tab.id, el.x, el.y, VAGT_HOVER, (params.duration || 500) + 10000);
+      const vagtH = await armerMaalVagt(tab.id, el.x, el.y, VAGT_HOVER, (params.duration || 500) + 10000, true);
       if (vagtH && vagtH.daekket) { await debuggerDetach(tab.id); return vagtSvar(params.selector, el, { blokeret: vagtH.daekket, foerSendt: true }); }
       if (vagtH && vagtH.vaek) { await debuggerDetach(tab.id); return vaekSvar(params.selector, el); }
       const hoverBevis = vagtH && vagtH.armet ? null : await armerHaendelsesBevis(tab.id, ['mouseover', 'mousemove']).catch(() => null);
@@ -5676,7 +5691,9 @@ async function dispatch(port, method, params) {
       // R61 (Opus, maalt i Chrome): select_option klikkede paa overlayet og svarede selected.
       if (trigger.covered) return daekketSvar(params.selector, trigger);
       const udloeserKlik = await debuggerClick(tab.id, trigger.x, trigger.y, true);
-      if (udloeserKlik && udloeserKlik.blokeret) return vagtSvar(params.selector, trigger, udloeserKlik);
+      // R66 (Opus, maalt i Chrome): en dropdown, der aabner paa mousedown med en usynlig backdrop (MUI), fik slippet paa
+      // backdroppen, og svaret var covered, mens listen stod aaben. Naaede trykket udloeseren, fortsaettes til valget.
+      if (udloeserKlik && udloeserKlik.blokeret && !udloeserKlik.delvis) return vagtSvar(params.selector, trigger, udloeserKlik);
       if (udloeserKlik && udloeserKlik.fremmedRamme) return vagtSvar(params.selector, trigger, { blokeret: udloeserKlik.fremmedRamme, iFremmedRamme: true });
       if (udloeserKlik && udloeserKlik.vaek) return vaekSvar(params.selector, trigger);
 

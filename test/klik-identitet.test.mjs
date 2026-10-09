@@ -69,7 +69,13 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
       if (metode === 'Input.dispatchMouseEvent') {
         const { type, x, y, button, clickCount } = p;
         if (transportFejl && transportFejl(type)) throw new Error('CDP: transport failed');
-        if (type === 'mouseMoved') for (const t of ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove']) fyr(t, x, y);
+        if (type === 'mouseMoved') {
+          for (const t of ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove']) fyr(t, x, y);
+          // Som Chrome: pointerenter og mouseenter gaar ogsaa til hver forfader, i samme punkt (R66, Opus).
+          for (let a = d.document.elementFromPoint(x, y)?.parentNode; a && a.tagName && a.tagName !== 'HTML'; a = a.parentNode) {
+            for (const t of ['pointerenter', 'mouseenter']) fyrEn(t, x, y, a);
+          }
+        }
         if (type === 'mousePressed') for (const t of ['pointerdown', 'mousedown']) fyr(t, x, y);
         if (type === 'mouseReleased') {
           for (const t of ['pointerup', 'mouseup']) fyr(t, x, y);
@@ -283,8 +289,8 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
-  assert.match(cl, /stopped at the window, before any element of the page gets them; because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`/);
-  assert.match(cl, /for any other target, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control/);
+  assert.match(cl, /the remaining press, release and click events are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
+  assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control; for a passive container \(a list item, a card that is not a button\) its own link is its action, and only a button or other action inside it counts\. Hover and right-click do not click a control inside the target/);
 });
 
 test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
@@ -357,4 +363,69 @@ test('efter en blokering stoppes en rigtig mus andre steder paa maalet ikke', as
   } });
   await b.koer('click', { selector: '#gem' });
   assert.ok(b.side.includes('pointerup:gem'), `brugerens pointerup paa maalet blev stoppet: ${b.side}`);
+});
+
+// ── R66 (Opus, maalt i Chrome): menuer, kort, enter paa forfaedre, slip et andet sted ─────────────────────
+test('hover og right_click paa en menu-li med sit eget link er ikke daekket af linket', async () => {
+  for (const vaerktoej of ['hover', 'right_click']) {
+    const d = lavKlikDom();
+    const li = d.el('li', { id: 'menu-item-42', rect: [20, 20, 200, 40] });
+    d.el('a', { id: 'lnk', tekst: 'Services', attrs: { href: '#services' }, rect: [20, 20, 200, 40] }, li);
+    const svar = await browser(d).koer(vaerktoej, { selector: '#menu-item-42', duration: 1 });
+    assert.notEqual(svar.error, 'covered', `${vaerktoej}: ${JSON.stringify(svar)}`);
+  }
+});
+
+test('click paa en passiv menu-li rammer dens eget link; et passivt kort med en Slet-knap er stadig daekket', async () => {
+  const d = lavKlikDom();
+  const li = d.el('li', { id: 'menu-item-42', rect: [20, 20, 200, 40] });
+  d.el('a', { id: 'lnk', tekst: 'Services', attrs: { href: '#services' }, rect: [20, 20, 200, 40] }, li);
+  const b = browser(d);
+  const svar = await b.koer('click', { selector: '#menu-item-42' });
+  assert.equal(svar.ok, true, JSON.stringify(svar));
+  assert.ok(b.side.includes('click:lnk'));
+  const d2 = lavKlikDom();
+  const kort = d2.el('div', { id: 'kort', rect: [20, 20, 300, 80] });
+  d2.el('button', { id: 'slet', tekst: 'Slet', rect: [120, 40, 100, 40] }, kort);
+  const b2 = browser(d2);
+  const svar2 = await b2.koer('click', { selector: '#kort' });
+  assert.equal(svar2.error, 'covered', JSON.stringify(svar2));
+  assert.ok(!b2.side.includes('click:slet'));
+});
+
+test('hover: enter-haendelser paa maalets forfaedre er ikke daekning (jQuery .hover, mouseenter paa beholderen)', async () => {
+  const d = lavKlikDom();
+  const boks = d.el('div', { id: 'boks', rect: [0, 0, 600, 300] });
+  d.el('button', { id: 'gem', tekst: 'Gem', rect: [20, 20, 200, 40] }, boks);
+  const b = browser(d);
+  const svar = await b.koer('hover', { selector: '#gem', duration: 1 });
+  assert.equal(svar.ok, true, JSON.stringify(svar));
+  assert.ok(b.side.includes('mouseenter:boks'), `beholderens mouseenter blev stoppet: ${b.side}`);
+});
+
+test('slippet efter trykket stoppes ikke, naar siden flytter det (en skyder med pointer capture haenger ikke)', async () => {
+  const d = lavKlikDom();
+  const spor = d.el('div', { id: 'spor', rect: [20, 20, 400, 20] });
+  const greb = d.el('div', { id: 'greb', attrs: { role: 'slider' }, rect: [200, 20, 20, 20] }, spor);
+  // Pointer capture: efter trykket (pointerdown + dets mousedown) gaar de naeste haendelser til sporet.
+  const b = browser(d, { efterHaendelse: (type) => { if (type === 'mousedown') greb.ingenPeg = true; } });
+  const svar = await b.koer('click', { selector: '#greb' });
+  assert.ok(b.side.includes('pointerup:spor'), `slippet blev stoppet, og traekket haenger: ${b.side}`);
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+test('select_option: en dropdown, der aabner paa mousedown med en backdrop, faar sit valg (MUI-moenstret)', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'sel', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  let aaben = false;
+  const b = browser(d, { efterHaendelse: (type, dd) => {
+    if (type === 'mousedown' && !aaben) {
+      aaben = true;
+      dd.el('div', { id: 'bd', rect: [0, 0, 1200, 800], lag: 10 });
+      dd.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 70, 200, 40], lag: 20 });
+    }
+  } });
+  const svar = await b.koer('select_option', { selector: '#sel', option: 'Finland', wait: 1 });
+  assert.notEqual(svar.error, 'covered', JSON.stringify(svar));
+  assert.ok(b.side.includes('click:fi'), `valget fik intet klik: ${b.side}`);
 });

@@ -239,19 +239,19 @@ All three are optional. None is needed for normal use.
 ### Interaction
 | Tool | Description |
 |------|-------------|
-| `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and nothing is clicked (`covered`) when the mouse would not reach the target |
+| `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
 | `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers) |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
-| `browser_hover` | Hover for tooltips/dropdowns; the target gets nothing (`covered`) when the mouse would not reach it |
+| `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
 | `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select); a custom trigger or option the mouse would not reach is not clicked (`covered`) |
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
 | `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
-| `browser_double_click` | True double-click (two trusted press/release pairs); the target gets nothing (`covered`) when the mouse would not reach it |
-| `browser_right_click` | Right-click to open page-level context menus; the target gets nothing (`covered`) when the mouse would not reach it |
+| `browser_double_click` | True double-click (two trusted press/release pairs); answers `covered` when the mouse would not reach it |
+| `browser_right_click` | Right-click to open page-level context menus; answers `covered` when the mouse would not reach it |
 | `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
 | `browser_reattach_debugger` | Recovery: force-detach and re-attach the Chrome debugger on the current tab |
 

@@ -220,19 +220,25 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
   for (const navn of ['click', 'double_click', 'right_click', 'hover']) {
     const start = bg.indexOf(`    case '${navn}': {`);
     const blok = bg.slice(start, bg.indexOf('\n    case ', start + 10));
-    assert.match(blok, /if \(el\.covered\) return daekketSvar\(params\.selector, el\);/, `${navn} afviser ikke et daekket maal`);
+    // R66: hover og right_click afviser ikke en kontrol INDE i maalet (de klikker den ikke), kun noget foran det.
+    const regel = ['hover', 'right_click'].includes(navn) ? /if \(el\.covered && !el\.covered\.inside\) return daekketSvar\(params\.selector, el\);/
+      : /if \(el\.covered\) return daekketSvar\(params\.selector, el\);/;
+    assert.match(blok, regel, `${navn} afviser ikke et daekket maal`);
     const d = tools.slice(tools.indexOf(`name: 'browser_${navn}'`)).split('inputSchema')[0];
-    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\), or the target does not take clicks there \(pointer-events, visibility, clipping\) - the target gets nothing: the answer is ok:false with error "covered" and covered_by\.(?! In the active tab the mouse)/, `browser_${navn}s beskrivelse`);
+    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\),[^"]* - the answer is ok:false with error "covered" and covered_by\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the events are stopped and the answer also has maybe_landed: true, because the page may already have reacted\.(?! In the active tab the mouse)/, `browser_${navn}s beskrivelse`);
+    // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card\)/, navn);
+    else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
   for (const f of ['README.md', 'mcp-server/README.md']) {
     const t = laes(f);
-    assert.match(t, /\| `browser_click` \|[^\n]*looks in an open modal dialog first, and nothing is clicked \(`covered`\)/, f);
-    for (const n of ['hover', 'double_click', 'right_click']) assert.match(t, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*the target gets nothing \\(\`covered\`\\)`), `${f}: ${n}`);
+    assert.match(t, /\| `browser_click` \|[^\n]*looks in an open modal dialog first, and it answers `covered` instead of clicking/, f);
+    for (const n of ['hover', 'double_click', 'right_click']) assert.match(t, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*answers \`covered\` when the mouse would not reach it`), `${f}: ${n}`);
   }
   const docs = laes('content/browsermcp-docs-tools.md');
   assert.match(docs, /\| `browser_click` \|[^\n]*looks inside an open modal dialog first\. If the mouse would not reach the target at its center/);
-  for (const n of ['double_click', 'right_click', 'hover']) assert.match(docs, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*The target gets nothing \\(\`covered\`\\)`), n);
+  for (const n of ['double_click', 'right_click', 'hover']) assert.match(docs, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*Answers \`covered\` when the mouse would not reach it`), n);
 });
 
 // ── R61 (Opus, maalt i Chrome): forfaedre, skuffer, stablede dialoger og maal uden for vinduet ─────────────
@@ -565,7 +571,7 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
-  assert.match(cl, /A target that had to be scrolled into view is measured again, 100 ms apart, until two measurements agree \(at most three times\)/);
+  assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times\)/);
   assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click\); a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
   assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
 });
@@ -643,4 +649,15 @@ test('et felt, hvis egen label har en span role=button i punktet, er ikke daekke
   const l = d.label(boks, { id: 'l', tekst: 'Accepter ', rect: [0, 0, 400, 60] });
   d.el('span', { id: 'i', tekst: 'vilkaar', attrs: { role: 'button' }, rect: [20, 20, 20, 20], lag: 1 }, l);
   assert.equal(d.koer(KILDE, '#c', null, null, false, false).svar.covered, undefined);
+});
+
+test('en genmaaling ruller ikke maalet igen (ellers er to maalinger ens per konstruktion) (R66)', () => {
+  const d = lavKlikDom();
+  const knap = d.el('button', { id: 'b6', tekst: 'Vaelg', rect: [20, 300, 80, 30] });
+  let rullet = 0;
+  knap.scrollIntoView = () => { rullet++; };
+  d.koer(KILDE, '#b6', null, null, false, false, true);
+  assert.equal(rullet, 0, 'genmaalingen rullede');
+  d.koer(KILDE, '#b6', null, null, false, false);
+  assert.equal(rullet, 1);
 });
