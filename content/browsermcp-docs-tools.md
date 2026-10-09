@@ -23,7 +23,7 @@ The list below is what the client has to choose from.
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
-| `browser_extract_list` | Read every row of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. In the active tab it scrolls with real wheel events, also at the bottom, so feeds that load on wheel (Threads, X) load; a background tab gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false. `reached_end` is true only when the list stood at its bottom with nothing new for several rounds. |
+| `browser_extract_list` | Read every row of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. In the active tab it scrolls with real wheel events, also at the bottom, so feeds that load on wheel (Threads, X) load; a hidden page (a background tab) gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false. `reached_end` is true only when the list stood at its bottom with nothing new for several rounds. |
 
 ## Interaction - 14 tools
 

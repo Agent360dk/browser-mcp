@@ -112,7 +112,7 @@ test('i en skjult baggrundsfane er reached_end falsk, og noten siger hvorfor', a
     const svar = await udtraek(sele(f, { aktiv: false }));
     assert.equal(svar.count, 10, hentPaa);
     assert.equal(svar.reached_end, false, `${hentPaa}: 10 af 40 blev kaldt enden`);
-    assert.match(svar.note, /The page was hidden \(a background tab\), and a hidden page gets no scroll events, IntersectionObserver callbacks or animation frames/);
+    assert.match(svar.note, /The page was hidden \(a background tab or a minimized window\), and a hidden page gets no scroll events, IntersectionObserver callbacks or animation frames/);
     assert.match(svar.note, /reached_end is false\. Call browser_switch_tab/);
   }
 });
@@ -238,8 +238,8 @@ test('teksterne siger det samme som koden', async () => {
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const laes = (f) => readFileSync(join(ROD, f), 'utf8');
   assert.match(laes('mcp-server/tools.js'), /When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel \(Threads, X\) loads them\. A hidden page \(a background tab\) gets no wheel or scroll events, IntersectionObserver callbacks or animation frames, so a list that loads or renders rows while you scroll stops at what is already there; then reached_end is false and `note` says why\.[^']*reached_end, which is true only when the list stood at its bottom in a visible page with no new rows, growth or movement for stable_rounds rounds in a row/);
-  for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_extract_list` \|[^\n]*scrolls with real wheel events in the active tab[^\n]*in a background tab a list that loads while scrolling stops early, and `reached_end` is false/, f);
-  assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_extract_list` \|[^\n]*In the active tab it scrolls with real wheel events, also at the bottom[^\n]*a background tab gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false/);
+  for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_extract_list` \|[^\n]*scrolls with real wheel events in the active tab[^\n]*in a hidden page \(a background tab\) a list that loads while scrolling stops early, and `reached_end` is false/, f);
+  assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_extract_list` \|[^\n]*In the active tab it scrolls with real wheel events, also at the bottom[^\n]*a hidden page \(a background tab\) gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false/);
 });
 
 // MAALT i Chrome 9/10: en selektor der intet fandt, gav count 0 med reached_end:true.

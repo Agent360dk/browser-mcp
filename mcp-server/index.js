@@ -797,7 +797,11 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+// R63 (Astra, maalt): #58-advarslen manglede paa de tidlige svar (en afvist upload, et ukendt vaerktoej, browser_about), fordi
+// hver svarvej selv skulle huske den. Nu gaar ALLE svar gennem én indpakning.
+mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => medForbindelsesNote(await kaldVaerktoej(request)));
+
+async function kaldVaerktoej(request) {
   const { name, arguments: args } = request.params;
   lastActivity = Date.now();
 
@@ -973,16 +977,16 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         mkdirSync(dirname(targetPath), { recursive: true });
         writeFileSync(targetPath, Buffer.from(base64, 'base64'));
-        return medForbindelsesNote({
+        return {
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
             { type: 'image', data: base64, mimeType },
             ...viewportNote,
           ]
-        });
+        };
       }
 
-      return medForbindelsesNote({ content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] });
+      return { content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] };
     }
 
     const response = {
@@ -998,15 +1002,15 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       });
     }
 
-    return medForbindelsesNote(response);
+    return response;
   } catch (err) {
-    // R62 (Astra): advarslen kom ikke med, naar det naeste kald fejlede - og et fejlsvar er netop hvor den forklarer mest.
-    return medForbindelsesNote({
+    // R62 (Astra): advarslen kom ikke med, naar det naeste kald fejlede - nu faar ogsaa fejlsvaret den via indpakningen.
+    return {
       content: [{ type: 'text', text: forklarSkaevhed(err.message) }],
       isError: true,
-    });
+    };
   }
-});
+}
 
 // Naar udvidelsen er aeldre end serveren, svarer den `Unknown method: X` - og det er
 // alt brugeren ser. Det sker GARANTERET: serveren kommer fra npm og opdateres straks,

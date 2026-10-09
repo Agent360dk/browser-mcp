@@ -654,13 +654,7 @@ function cdpMedFrist(tabId, method, params) {
   ]).finally(() => clearTimeout(ur));
 }
 
-// Hvor vaerktoejet sidst lagde musen i hver fane (R62, Opus). daekketEfterFlyt flytter kun musen for at fortryde vaerktoejets
-// EGEN tidligere musehandling, og laegger den tilbage, hvis daekningen bestaar.
-const sidsteMus = new Map();
 async function cdpSend(tabId, method, params = {}) {
-  if (method === 'Input.dispatchMouseEvent' && typeof params.x === 'number' && typeof params.y === 'number') {
-    sidsteMus.set(tabId, { x: params.x, y: params.y });
-  }
   await debuggerAttach(tabId);
   let lastMsg = '';
   // 4 total attempts (initial + 3 retries) for read-only methods; backoff 100/300/500ms.
@@ -1862,16 +1856,26 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   // vinduet, og af flere er det den, der ligger oeverst ved sit eget midtpunkt.
   function aabenDialog(all) {
     const iRuden = (r) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
+    // Dialogens synlige rektangel. R62 (Opus): Tailwind/Headless UI saetter aria-modal paa en indpakning med hoejde 0, hvor
+    // alle boern er fixed - saa er rektanglet foreningen af de synlige boern. R63 (Astra): det samme rektangel bruges ogsaa,
+    // naar to dialoger sammenlignes; foer blev to tomme indpakninger uafgjort, og den sidste i DOM vandt.
+    const visRekt = (d) => {
+      const egen = d.getBoundingClientRect();
+      if (egen.width > 0 && egen.height > 0) return egen;
+      let l = Infinity, o = Infinity, h = -Infinity, u = -Infinity;
+      for (const b of Array.from(d.querySelectorAll ? d.querySelectorAll('*') : []).slice(0, 200)) {
+        const bs = getComputedStyle(b);
+        if (bs.visibility === 'hidden' || bs.display === 'none') continue;
+        const r = b.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0)) continue;
+        l = Math.min(l, r.left); o = Math.min(o, r.top); h = Math.max(h, r.right); u = Math.max(u, r.bottom);
+      }
+      return h > l ? { left: l, top: o, right: h, bottom: u, width: h - l, height: u - o } : egen;
+    };
     const iVinduet = (d) => {
       const cs = getComputedStyle(d);
       if (cs.visibility === 'hidden' || cs.display === 'none') return false;
-      if (iRuden(d.getBoundingClientRect())) return true;
-      // R62 (Opus): Tailwind/Headless UI saetter aria-modal paa en indpakning med hoejde 0, hvor alle boern er fixed.
-      // Saa er dialogen synlig, hvis et af dens boern er.
-      return Array.from(d.querySelectorAll ? d.querySelectorAll('*') : []).slice(0, 200).some((b) => {
-        const bs = getComputedStyle(b);
-        return bs.visibility !== 'hidden' && bs.display !== 'none' && iRuden(b.getBoundingClientRect());
-      });
+      return iRuden(visRekt(d));
     };
     const kandidater = all.filter((d) => {
       let modal = false;
@@ -1882,7 +1886,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
     // R62 (Astra, maalt i model): to forskudte dialoger kan begge ligge oeverst ved deres EGET midtpunkt. Hvem der ligger
     // oeverst, afgoeres derfor dér hvor de overlapper: den valgte maa ikke ligge under nogen anden kandidat.
     const over = (a, b) => {
-      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const ra = visRekt(a), rb = visRekt(b);
       const l = Math.max(ra.left, rb.left, 0), r = Math.min(ra.right, rb.right, window.innerWidth);
       const t = Math.max(ra.top, rb.top, 0), u = Math.min(ra.bottom, rb.bottom, window.innerHeight);
       if (r <= l || u <= t) return null;
@@ -1949,16 +1953,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
     const hit = dybtPunkt(x, y);
     if (!hit) return { tag: null, id: null, text: '', outside: true };
     if (inde(hit, el)) return null;
-    // R62 (Opus, maalt i Chrome): to falske afvisninger fra R61-reglen. (1) En label uden for= med pointer-events:none over
-    // sit felt: musen rammer feltet, og fill/click paa labelens tekst mener netop feltet. (2) Et ikke-interaktivt element
-    // med pointer-events:none (tekst eller ikon i et kort med en lytter): musen rammer forfaderen, og det er det klik siden
-    // er bygget til. Et deaktiveret link, en usynlig knap og en skjult afkrydsning er interaktive og afvises stadig.
-    if (el.tagName === 'LABEL' && !el.control && hit.matches && hit.matches('input,textarea,select')) return null;
-    // Samme for en pladsholder-tekst uden pointer-events over et felt (React Select: «Vaelg en person» over et input).
-    if (!(el.matches && el.matches(CLICKABLE + ',input,select,textarea')) && hit.matches && hit.matches('input,textarea,select') &&
-        getComputedStyle(el).pointerEvents === 'none') return null;
-    if (inde(el, hit) && !(el.matches && el.matches(CLICKABLE + ',input,select,textarea')) &&
-        getComputedStyle(el).pointerEvents === 'none') return null;
+    // R63 (Astra og Opus, maalt): undtagelserne fra R62 for en label uden for=, en pladsholder og tekst i et kort lod click og
+    // fill ramme et FREMMED felt (en nyhedsbrevs-popup) og indpakningen om et deaktiveret link med ok:true. De er fjernet: de
+    // tilfaelde afvises igen, sikkert og forklaret, og noten peger paa at klikke feltet eller kortet direkte.
     const ramme = el.closest ? el.closest('label,button,a,summary,[onclick],[role="button"],[role="link"],[role="menuitem"],' +
       '[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]') : null;
     if (ramme && inde(hit, ramme)) return null;
@@ -2009,16 +2006,15 @@ function daekketSvar(selector, el, method) {
     svar.note = `The center of ${selector} is outside the visible part of the page, so the mouse cannot reach it there. Nothing was done.`;
     return svar;
   }
-  const flyttet = el.musFlyttetOgTilbage
-    ? 'Nothing was clicked: the mouse was moved to the target and back once, to see whether an earlier mouse action had left ' +
-      'that element open. '
-    : 'Nothing was done. ';
-  svar.note = `At the center of ${selector} the mouse reaches ${hvad} instead - an element in front of it, or one around it ` +
-    'when the target itself does not take clicks there (pointer-events, visibility, clipping, or a gap such as between the ' +
-    'lines of a wrapped link). ' + flyttet +
+  // R63: ingen musebevaegelse foer en afvisning (den aabnede menuer, der blev staaende). Noten siger, hvad der ligger der nu,
+  // og hvad agenten selv kan goere.
+  svar.note = `At the center of ${selector} lies ${hvad} right now - an element in front of it, or one around it when the ` +
+    'target itself does not take clicks there (pointer-events, visibility, clipping, or a gap such as between the lines of a ' +
+    'wrapped link) - so the mouse would reach that instead. Nothing was done. If an earlier mouse action opened it (a ' +
+    'tooltip or a menu), move the mouse away with browser_hover on another element and try again. ' +
     'If a dialog or overlay is in front, act inside it or close it first with its own close or accept button ' +
-    '(browser_dismiss_overlays knows some common banners). If that element is part of the same control, such as a ' +
-    'placeholder or a styled box over a hidden input, click it instead.';
+    '(browser_dismiss_overlays knows some common banners). If that element is the one you mean - the field under a label or a ' +
+    'placeholder, the card around a text, or a styled box over a hidden input - click it directly with its own selector.';
   return svar;
 }
 
@@ -2026,30 +2022,6 @@ function daekketSvar(selector, el, method) {
 // afvist med «the mouse reaches that instead». En rigtig mus skjuler tooltippet, naar den flyttes. Er maalet daekket,
 // flyttes musen derfor hen til det, og daekningen maales igen - kun i den aktive fane: i en baggrundsfane leverer Chrome
 // ikke musen, og en bevaegelse der falder paa fristen, lander senere (maalt 19/9).
-// R62 (Opus, maalt i Chrome): flytningen aabnede en hover-menu, der blev staaende og daekkede de naeste tre kald, mens svaret
-// sagde «Nothing was done»; og et tooltip med 200 ms skjule-forsinkelse naaede ikke at forsvinde paa 120 ms. Nu: musen flyttes
-// kun, hvis vaerktoejet selv har lagt den et andet sted i fanen (ellers kan daekningen ikke vaere vores egen), daekningen maales
-// igen i op til 600 ms, og bestaar den, laegges musen tilbage, hvor den var.
-async function daekketEfterFlyt(tabId, selector, el) {
-  if (!el?.covered || el.covered.outside || typeof el.x !== 'number') return el;
-  const foer = sidsteMus.get(tabId);
-  if (!foer || (Math.abs(foer.x - el.x) < 1 && Math.abs(foer.y - el.y) < 1)) return el;
-  const f = await chrome.tabs.get(tabId).catch(() => null);
-  if (!f?.active) return el;
-  try {
-    await debuggerAttach(tabId);
-    await cdpSend(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: el.x, y: el.y });
-  } catch { return el; }
-  let nu = el;
-  for (const ms of [120, 200, 280]) {
-    await new Promise((r) => setTimeout(r, ms));
-    nu = (await resolveElement(tabId, selector)) || nu;
-    if (!nu.covered) return nu;
-  }
-  try { await cdpSend(tabId, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: foer.x, y: foer.y }); } catch {}
-  return { ...nu, musFlyttetOgTilbage: true };
-}
-
 function parseSelector(selector) {
   // "button:text(Get started)" → { tag: 'button', text: 'Get started' }
   const tagTextMatch = selector.match(/^(\w+):text\((.+)\)$/);
@@ -4047,7 +4019,7 @@ async function dispatch(port, method, params) {
       // R62 (Opus, maalt i Chrome): en skjult side (en baggrundsfane) faar hverken scroll-events, IntersectionObserver-kald
       // eller animation frames. Script-rulningen flytter siden, men intet hentes eller tegnes - en virtualiseret liste gav 20
       // af 300 raekker med reached_end:true. Var siden skjult i en runde, kan enden ikke vaere naaet.
-      const SKJULT = 'The page was hidden (a background tab), and a hidden page gets no scroll events, IntersectionObserver ' +
+      const SKJULT = 'The page was hidden (a background tab or a minimized window), and a hidden page gets no scroll events, IntersectionObserver ' +
         'callbacks or animation frames. Lists that load or render rows while you scroll stop at what is already there, so ' +
         'reached_end is false. Call browser_switch_tab and run again.';
       let varSkjult = false;
@@ -4491,7 +4463,6 @@ async function dispatch(port, method, params) {
           };
         }
         // R57: et andet element ligger over maalets midtpunkt (overlay, backdrop, en anden dialog) - musen ville ramme det.
-        if (el.covered) el = await daekketEfterFlyt(tab.id, params.selector, el);
         if (el.covered) return daekketSvar(params.selector, el);
 
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
@@ -4606,7 +4577,6 @@ async function dispatch(port, method, params) {
         let el = await resolveElement(tab.id, params.selector);
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         // R61 (Opus, maalt i Chrome): fill text= klikkede paa overlayet og svarede ok:true.
-        if (el.covered) el = await daekketEfterFlyt(tab.id, params.selector, el);
         if (el.covered) return daekketSvar(params.selector, el);
         await debuggerClick(tab.id, el.x, el.y);
         await new Promise(r => setTimeout(r, 100));
@@ -5129,7 +5099,6 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-      if (el.covered) el = await daekketEfterFlyt(tab.id, params.selector, el);
       if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       const dblBevis = await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
@@ -5152,7 +5121,6 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-      if (el.covered) el = await daekketEfterFlyt(tab.id, params.selector, el);
       if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       const hoejreBevis = await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
@@ -5218,7 +5186,6 @@ async function dispatch(port, method, params) {
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-      if (el.covered) el = await daekketEfterFlyt(tab.id, params.selector, el);
       if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       // ANTAGET 13/9 af Fable, MAALT 18/9 i flow-spaerren: Blink fyrer `mouseover` KUN naar
@@ -5378,7 +5345,6 @@ async function dispatch(port, method, params) {
       let trigger = await resolveElement(tab.id, params.selector);
       if (!trigger) return { ok: false, error: 'Dropdown trigger not found: ' + params.selector };
       // R61 (Opus, maalt i Chrome): select_option klikkede paa overlayet og svarede selected.
-      if (trigger.covered) trigger = await daekketEfterFlyt(tab.id, params.selector, trigger);
       if (trigger.covered) return daekketSvar(params.selector, trigger);
       await debuggerClick(tab.id, trigger.x, trigger.y);
 

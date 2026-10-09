@@ -74,7 +74,7 @@ export const TOOLS = [
   },
 {
     name: 'browser_double_click',
-    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open.',
+    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -85,7 +85,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_right_click',
-    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open.',
+    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -113,7 +113,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click',
-    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
+    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +176,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_hover',
-    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open.',
+    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by.',
     inputSchema: {
       type: 'object',
       properties: {

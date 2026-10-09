@@ -234,7 +234,7 @@ All three are optional. None is needed for normal use.
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |
-| `browser_extract_list` | Read every row of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a background tab a list that loads while scrolling stops early, and `reached_end` is false |
+| `browser_extract_list` | Read every row of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a hidden page (a background tab) a list that loads while scrolling stops early, and `reached_end` is false |
 
 ### Interaction
 | Tool | Description |

@@ -36,7 +36,6 @@ NAVN = re.compile(r'docs\.(css|js)', re.I)
 KANON = re.compile(r'/assets/docs\.(css|js)\?v=([0-9a-f]{8})')
 RAA = re.compile(r'(?<![\w-])(?:href|src)="/assets/docs\.(?:css|js)\?v=[0-9a-f]{8}"')
 HVOR = {'css': ('link', 'href'), 'js': ('script', 'src')}
-DATA64 = re.compile(r'^\s*data:[^,]*;base64,(.*)$', re.I | re.S)
 
 
 def css_afkod(s):
@@ -74,10 +73,24 @@ def css_afkod(s):
     return ''.join(ud)
 
 
+# R63 (Astra, maalt): base64 laestes kun i attributter og kun ét lag, `; base64` med mellemrum blev ikke set, og 12 runder var
+# ikke et fikspunkt (16 lag srcdoc). Nu afkodes base64-data overalt i hver runde, og der stoppes foerst, naar intet aendrer
+# sig. Hvert afkodningstrin goer teksten kortere, saa det ender altid.
+DATA64_ALLE = re.compile(r'data:[^,"\'()]*?;\s*base64\s*,\s*([A-Za-z0-9+/]+=*)', re.I)
+
+
+def _b64(m):
+    try:
+        return 'data:,' + base64.b64decode(m.group(1) + '===').decode('utf-8', 'replace')
+    except Exception:
+        return 'data:,'
+
+
 def fikspunkt(tekst):
-    """Afkod til intet aendrer sig mere: HTML-entiteter, CSS-escapes, procent-kodning, tabulatorer og linjeskift."""
-    for _ in range(12):
-        ny = re.sub(r'[\t\n\r]', '', unquote(css_afkod(html.unescape(tekst)), errors='replace'))
+    """Afkod til intet aendrer sig mere: base64-data, HTML-entiteter, CSS-escapes, procent-kodning, tabulatorer og linjeskift."""
+    for _ in range(100000):
+        ny = DATA64_ALLE.sub(_b64, tekst)
+        ny = re.sub(r'[\t\n\r]', '', unquote(css_afkod(html.unescape(ny)), errors='replace'))
         if ny == tekst:
             break
         tekst = ny
@@ -112,23 +125,6 @@ class Side(HTMLParser):
                 continue
             self._stykke(navn)
             self._stykke(vaerdi)
-            self._indlejret(navn, vaerdi or '')
-
-    def _indlejret(self, navn, vaerdi):
-        """En data:-adresse i base64 i en attribut. Naevner den de to filer, er det en omtale - ogsaa en kanonisk henvisning,
-        for generatoren opdaterer den ikke."""
-        # srcdoc laeses af lukkereglen i main (dens tekst staar i filen, blot kodet); base64 kan den ikke se.
-        m = DATA64.match(vaerdi)
-        if not m:
-            return
-        try:
-            indre = base64.b64decode(re.sub(r'\s', '', m.group(1)) + '===').decode('utf-8', 'replace')
-        except Exception:
-            return
-        if naevner(indre):
-            self.omtaler.append(('data:base64 ' + indre)[:200])
-
-    handle_startendtag = handle_starttag
 
     def handle_endtag(self, tag):
         self._stykke(tag)

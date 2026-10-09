@@ -15,7 +15,9 @@ const laes = (f) => readFileSync(join(rod, f), 'utf8');
 const indhold = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md')).map((f) => ['content/' + f, laes('content/' + f)]);
 // R62 (Astra, MAALT): vagten laeste kun kilderne, saa en paastand genindsat i den PUBLICEREDE html gik igennem. De udgivne
 // sider laeses nu ogsaa - som tekst, med entiteter afkodet og tags fjernet.
-const html = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+// R63 (Astra, maalt): tags blev fjernet MED deres attributter, saa <meta content> og alt-tekster blev ikke laest. Nu bliver
+// attributvaerdierne staaende som tekst.
+const html = (s) => s.replace(/<[^>]+>/g, (tag) => ' ' + [...tag.matchAll(/\s[\w:-]+="([^"]*)"/g)].map((m) => m[1]).join(' ') + ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/\s+/g, ' ');
 const sider = [];
 const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
@@ -59,4 +61,9 @@ test('bagudliste #29: konkurrent-vagten tager vores vaerktoejstal fra tools.js, 
 test('bagudlisten laeser ogsaa de udgivne sider (R62)', () => {
   assert.ok(sider.length >= 40, `kun ${sider.length} html-sider laest`);
   assert.ok(sider.some(([f, t]) => f.endsWith('docs/use-cases/read-2fa-from-gmail/index.html') && /fresh headless browser without your login/.test(t)));
+});
+
+test('bagudlisten laeser attributvaerdier i de udgivne sider, fx meta description (R63)', () => {
+  const gmail = sider.find(([f]) => f.endsWith('docs/use-cases/read-2fa-from-gmail/index.html'))[1];
+  assert.match(gmail, /A step-by-step walkthrough of the move a fresh headless browser without your login can't make/);
 });

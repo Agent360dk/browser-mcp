@@ -471,10 +471,10 @@ test('agenten faar advarslen i vaerktoejssvaret én gang pr. aendring', () => {
 });
 
 test('alle tre svarveje i vaerktoejskaldet gaar gennem medForbindelsesNote, og stderr faar den ogsaa', () => {
-  const svarVeje = kilde.match(/return medForbindelsesNote\(/g) || [];
-  assert.equal(svarVeje.length, 4, 'skaermbillede gemt, skaermbillede, almindeligt svar og fejlsvar (R62)');
-  const fejl = kilde.slice(kilde.lastIndexOf('} catch (err) {'));
-  assert.match(fejl.slice(0, 300), /return medForbindelsesNote\(\{\s*content: \[\{ type: 'text', text: forklarSkaevhed\(err\.message\) \}\],\s*isError: true,/, 'fejlsvaret faar ikke advarslen');
+  // R63 (Astra): alle svar - ogsaa de tidlige (afvist upload, ukendt vaerktoej, browser_about) - gaar gennem én indpakning.
+  assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => medForbindelsesNote\(await kaldVaerktoej\(request\)\)\);/);
+  assert.equal((kilde.match(/setRequestHandler\(CallToolRequestSchema/g) || []).length, 1);
+  assert.equal((kilde.match(/medForbindelsesNote\(/g) || []).length, 2, 'kun definitionen og indpakningen - ingen svarvej skal huske den selv');
   assert.match(udtraek('advarOmKonflikt'), /const profiler = forbindelsesAdvarsel\(\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
 });
 

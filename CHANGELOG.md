@@ -26,9 +26,9 @@ John H.**
 
 **Clicks.** A text selector looks inside an open modal dialog first (also inside open shadow roots; of
 several, the one on top where they overlap), so `click text=Add` presses the dialog's button, not the page's behind it. The
-debugger path and the script fallback find their target with the same function. In the active tab, when the
-tool's own earlier mouse action may have left the covering element open (a tooltip), the mouse is moved to
-the target and cover is measured again for up to 600 ms; if it stays, the mouse is put back where it was.
+debugger path and the script fallback find their target with the same function. A covered answer moves no
+mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
+or a menu), to move the mouse away with `browser_hover` and try again.
 
 **`browser_ask_user`** fails at once, and shows nothing, on Chrome's error page or about:blank, instead of
 activating the tab, posting a notification and failing with Chrome's own text. The notification of a

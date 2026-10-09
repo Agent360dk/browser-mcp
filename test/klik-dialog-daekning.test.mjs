@@ -180,11 +180,12 @@ for (const vaerktoej of ['click', 'double_click', 'right_click', 'hover']) {
     assert.equal(svar.ok, false);
     assert.equal(svar.error, 'covered');
     assert.equal(svar.covered_by.id, 'overlay');
-    assert.match(svar.note, /At the center of text=Add the mouse reaches DIV#overlay instead/);
+    assert.match(svar.note, /At the center of text=Add lies DIV#overlay right now/);
+    assert.match(svar.note, /move the mouse away with browser_hover on another element and try again/);
+    assert.match(svar.note, /click it directly with its own selector/);
     assert.match(svar.note, /Nothing was done/);
-    // R61: musen flyttes én gang hen til maalet, foer daekningen maales igen (et tooltip kan skjules af det). Intet tryk.
-    const typer = mus(u).map((k) => k.args[2].type);
-    assert.ok(typer.length <= 1 && typer.every((x) => x === 'mouseMoved'), `${vaerktoej} sendte ${typer.join(',')} til et daekket maal`);
+    // R63: en afvisning flytter slet ikke musen (flytningen aabnede menuer, der blev staaende).
+    assert.equal(mus(u).length, 0, `${vaerktoej} sendte musehaendelser til et daekket maal`);
   });
 }
 
@@ -221,7 +222,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
     const blok = bg.slice(start, bg.indexOf('\n    case ', start + 10));
     assert.match(blok, /if \(el\.covered\) return daekketSvar\(params\.selector, el\);/, `${navn} afviser ikke et daekket maal`);
     const d = tools.slice(tools.indexOf(`name: 'browser_${navn}'`)).split('inputSchema')[0];
-    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\), or the target does not take clicks there \(pointer-events, visibility, clipping\) - the target gets nothing: the answer is ok:false with error "covered" and covered_by\. In the active tab the mouse may first be moved to the target and back/, `browser_${navn}s beskrivelse`);
+    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\), or the target does not take clicks there \(pointer-events, visibility, clipping\) - the target gets nothing: the answer is ok:false with error "covered" and covered_by\.(?! In the active tab the mouse)/, `browser_${navn}s beskrivelse`);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
   for (const f of ['README.md', 'mcp-server/README.md']) {
@@ -294,21 +295,6 @@ test('et maal uden for vinduet meldes som uden for, med en forklaring', async ()
   assert.match(svar.note, /The center of #langtVaek is outside the visible part of the page/);
 });
 
-// Vaerktoejets eget hover kan have aabnet et tooltip over naboknappen. En rigtig mus skjuler det, naar den flyttes.
-test('click flytter musen hen til et daekket maal og maaler igen, foer den afviser', async () => {
-  let kald = 0;
-  const u = sele();
-  await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });   // et tidligere hover
-  u.optager.ryd();
-  u.ctx.resolveElement = async () => (++kald === 1 ? DAEKKET : { ...DAEKKET, covered: undefined });
-  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
-  assert.equal(kald, 2, 'daekningen blev ikke maalt igen efter flytningen');
-  const m = mus(u).map((k) => k.args[2].type);
-  assert.equal(m[0], 'mouseMoved', 'musen blev ikke flyttet foer der blev maalt igen');
-  assert.ok(m.includes('mousePressed'), 'klikket blev ikke sendt, da maalet ikke laengere var daekket');
-  assert.notEqual(svar.error, 'covered');
-});
-
 test('i en baggrundsfane flyttes musen ikke - Chrome leverer den ikke dér', async () => {
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
@@ -332,7 +318,7 @@ test('fill med tekst-selektor og select_option klikker ikke et daekket maal', as
 
 // ── R62 (Opus, maalt i Chrome) ─────────────────────────────────────────────
 
-test('uden en tidligere musehandling i fanen flyttes musen ikke - daekningen kan ikke vaere vores egen', async () => {
+test('en afvisning flytter ikke musen, og noten siger «Nothing was done»', async () => {
   const u = sele();
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
   assert.equal(svar.error, 'covered');
@@ -340,39 +326,28 @@ test('uden en tidligere musehandling i fanen flyttes musen ikke - daekningen kan
   assert.match(svar.note, /Nothing was done\./);
 });
 
-test('bestaar daekningen efter flytningen, laegges musen tilbage, og svaret siger det', async () => {
-  const u = sele();
-  await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-  u.optager.ryd();
-  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
-  assert.equal(svar.error, 'covered');
-  const flyt = mus(u).map((k) => [k.args[2].type, k.args[2].x, k.args[2].y]);
-  assert.deepEqual(flyt, [['mouseMoved', 60, 35], ['mouseMoved', 5, 5]], `musen blev ikke lagt tilbage: ${JSON.stringify(flyt)}`);
-  assert.match(svar.note, /Nothing was clicked: the mouse was moved to the target and back once/);
-});
-
-test('daekningen maales igen i op til 600 ms - et tooltip med skjule-forsinkelse naar at forsvinde', async () => {
-  let kald = 0;
-  const u = sele();
-  await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
-  u.ctx.resolveElement = async () => (++kald <= 3 ? DAEKKET : { ...DAEKKET, covered: undefined });
-  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
-  assert.equal(kald, 4, `maalt ${kald} gange`);
-  assert.notEqual(svar.error, 'covered');
-});
-
-test('en label uden for= og uden pointer-events over sit felt: feltet er ikke en daekning (fill text=City)', () => {
+// R63 (Astra og Opus): undtagelsen fra R62 lod fill ramme et FREMMED felt. En label uden for= over et felt er igen en
+// daekning; noten peger paa at klikke feltet direkte.
+test('en label uden for= over et felt: feltet er en daekning, og det navngives', () => {
   const d = lavKlikDom();
   d.el('input', { id: 'by', rect: [20, 20, 200, 40] });
   d.el('label', { tekst: 'City', rect: [20, 20, 200, 40], lag: 1, ingenPeg: true });
-  assert.equal(tekstKlik(d, 'City').covered, undefined);
+  assert.equal(tekstKlik(d, 'City').covered?.id, 'by');
 });
 
-test('tekst uden pointer-events i et kort uden role eller onclick: kortet faar klikket, som siden er bygget til', () => {
+test('nyhedsbrevs-popup over formularen: fill text=E-mail rammer ikke popupens felt (Opus R63)', () => {
+  const d = lavKlikDom();
+  d.el('input', { id: 'formEmail', rect: [20, 300, 300, 40] });
+  d.el('label', { tekst: 'E-mail', rect: [20, 300, 300, 40], lag: 1, ingenPeg: true });
+  d.el('input', { id: 'nyhed', rect: [0, 250, 1200, 200], lag: 20 });
+  assert.equal(tekstKlik(d, 'E-mail').covered?.id, 'nyhed');
+});
+
+test('tekst uden pointer-events i et kort: kortet er en daekning og navngives (R63 - undtagelsen ramte et deaktiveret link)', () => {
   const d = lavKlikDom();
   const kort = d.el('div', { id: 'kort1', rect: [20, 20, 300, 100] });
   d.el('span', { id: 'abon', tekst: 'Abonner nu', rect: [30, 30, 120, 20], ingenPeg: true }, kort);
-  assert.equal(tekstKlik(d, 'Abonner nu').covered, undefined);
+  assert.equal(tekstKlik(d, 'Abonner nu').covered?.id, 'kort1');
   // Et deaktiveret link er interaktivt og afvises stadig.
   const d2 = lavKlikDom();
   const raekke = d2.el('div', { id: 'w1', rect: [0, 0, 1200, 200] });
@@ -390,11 +365,11 @@ test('en aria-modal-indpakning med hoejde 0 og et synligt fast barn er en aaben 
 });
 
 // MAALT i Chrome 9/10 (opus-r62/r63-p14-ny-aktiv.log): to falske afvisninger, hvor en rigtig mus lykkes.
-test('en pladsholder-tekst uden pointer-events over et felt: feltet er ikke en daekning (React Select)', () => {
+test('en pladsholder-tekst over et felt: feltet er en daekning og navngives (R63)', () => {
   const d = lavKlikDom();
   d.el('input', { id: 'selIn', rect: [20, 20, 250, 40] });
   d.el('span', { id: 'ph1', tekst: 'Vaelg en person', rect: [30, 28, 150, 24], lag: 1, ingenPeg: true });
-  assert.equal(tekstKlik(d, 'Vaelg en person').covered, undefined);
+  assert.equal(tekstKlik(d, 'Vaelg en person').covered?.id, 'selIn');
 });
 
 test('et link brudt over to linjer klikkes midt i den foerste linjeboks, ikke i hullet imellem', () => {
@@ -406,3 +381,45 @@ test('et link brudt over to linjer klikkes midt i den foerste linjeboks, ikke i 
   assert.deepEqual([r.x, r.y], [208.5, 179]);
   assert.equal(r.covered, undefined, `hullet mellem linjerne blev kaldt en daekning: ${JSON.stringify(r.covered)}`);
 });
+
+// ── R63 (Astra, maalt i model): undtagelserne maa ikke give et forkert klik med ok:true ────────────────────
+test('en label uden for= over en fremmed knap (input type=button) er daekket af knappen', () => {
+  const d = lavKlikDom();
+  d.el('input', { id: 'deleteButton', attrs: { type: 'button' }, rect: [20, 20, 200, 40] });
+  d.el('label', { tekst: 'City', rect: [20, 20, 200, 40], lag: 1, ingenPeg: true });
+  assert.equal(tekstKlik(d, 'City').covered?.id, 'deleteButton');
+});
+
+test('en pladsholder over en fremmed knap er daekket af knappen', () => {
+  const d = lavKlikDom();
+  d.el('input', { id: 'deleteButton', attrs: { type: 'button' }, rect: [20, 20, 250, 40] });
+  d.el('span', { tekst: 'Vaelg en person', rect: [30, 28, 150, 24], lag: 1, ingenPeg: true });
+  assert.equal(tekstKlik(d, 'Vaelg en person').covered?.id, 'deleteButton');
+});
+
+test('en label uden for= der stikker ud over feltet, er ikke feltets', () => {
+  const d = lavKlikDom();
+  d.el('input', { id: 'by', rect: [20, 20, 100, 40] });
+  d.el('label', { tekst: 'City', rect: [20, 20, 150, 40], lag: 1, ingenPeg: true });   // midtpunkt (95,40) over feltet, men bredere
+  assert.equal(tekstKlik(d, 'City').covered?.id, 'by');
+});
+
+test('et skjult span (visibility:hidden) i et kort giver ikke kortet et klik', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort1', rect: [20, 20, 300, 100] });
+  d.el('span', { id: 'skjult', tekst: 'Slet alt', rect: [30, 30, 120, 20], ingenPeg: true, skjult: true }, kort);
+  assert.equal(d.koer(KILDE, '#skjult', null, null, false, false).svar.covered?.id, 'kort1');
+});
+
+test('to aria-modal-indpakninger med hoejde 0: den hvis panel ligger oeverst, vaelges', () => {
+  const d = lavKlikDom();
+  const oeverst = d.el('div', { id: 'oe', attrs: { 'aria-modal': 'true' }, rect: [0, 0, 0, 0], lag: 10 });
+  const p1 = d.el('div', { rect: [100, 100, 400, 300], lag: 10 }, oeverst);
+  d.el('button', { id: 'upperAdd', tekst: 'Add', rect: [120, 120, 80, 30], lag: 10 }, p1);
+  const nederst = d.el('div', { id: 'ne', attrs: { 'aria-modal': 'true' }, rect: [0, 0, 0, 0], lag: 1 });
+  const p2 = d.el('div', { rect: [350, 250, 400, 300], lag: 1 }, nederst);
+  d.el('button', { id: 'lowerAdd', tekst: 'Add', rect: [650, 500, 80, 30], lag: 1 }, p2);
+  assert.equal(elementFor(d, 'Add').id, 'upperAdd');
+});
+
+
