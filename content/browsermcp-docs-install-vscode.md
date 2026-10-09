@@ -6,6 +6,8 @@
 
 **Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome in four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## One click
 
 Paste this into VS Code's Quick Open (`Cmd/Ctrl+P`) or your browser's address bar:
@@ -183,7 +185,7 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
-`browser_extract_token` ships with zero-config shortcuts for 9 common services (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) - but it isn't limited to those. For anything else, your agent falls back to `browser_navigate` + `browser_get_page_content` on the provider's own dashboard, so it works for any service, not just the pre-wired nine.
+`browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. Any other provider answers `Unknown provider`, and the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
 
@@ -196,7 +198,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | 2FA / CAPTCHA-gated sites | Works, and `browser_ask_user` can ask you for the code mid-run | Reachable in extension mode, but nothing can ask you for a code |
 | Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 72 tools, none of which can ask the person anything (checked 2026-09-19) |
 | Several agents at once | 20 concurrent, color-coded tab groups | Also supported via their extension: one tab group per connected client |
-| Provider shortcuts | 9 zero-config (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) - works for any provider via fallback | None |
+| Provider shortcuts | 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn); any other through browser_navigate and reading the page | None |
 | Install | Chrome extension + `code --add-mcp` | `npx @playwright/mcp` |
 
 

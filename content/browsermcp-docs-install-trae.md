@@ -8,6 +8,8 @@
 
 **Give Trae's agent control of your real, already-logged-in Chrome.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## One click
 
 Paste this into your browser's address bar and press Enter. Trae opens, shows you the configuration, and you confirm:

@@ -102,7 +102,8 @@ test('de billeder siderne peger paa findes og har det maal der staar', () => {
 test('bevaegelse er til at slaa fra, ogsaa det usynlige fokusstop, og animerer ikke alt', () => {
   const reduce = html.match(/@media \(prefers-reduced-motion:reduce\)\{([^\n]*)\}/);
   assert.ok(reduce, 'reduced-motion-reglen mangler');
-  assert.match(reduce[1], /\.pause-input\{display:none\}/, 'pause-afkrydsningsfeltet skjules ikke: usynligt fokusstop');
+  // 9/10 (PR63 R1): med filmen er knappen synlig («Play»), saa feltet maa IKKE skjules - ellers kan tastaturet ikke starte filmen
+  assert.doesNotMatch(reduce[1], /\.pause-input\{display:none\}/, 'Play skal kunne naas med tastaturet under reduceret bevaegelse');
   assert.match(reduce[1], /animation:none!important/);
   assert.match(reduce[1], /transition:none!important/);
   assert.doesNotMatch(html, /transition\s*:\s*all\b/);

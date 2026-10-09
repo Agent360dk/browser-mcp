@@ -6,6 +6,8 @@
 
 **Give Cursor's agent control of your real, already-logged-in Chrome in four steps.**
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
@@ -170,7 +172,7 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
-`browser_extract_token` ships with zero-config shortcuts for 9 common services (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - but it isn't limited to them. For any other provider, the agent falls back to `browser_navigate` + `browser_get_page_content` to find and extract the token itself.
+`browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. Any other provider answers `Unknown provider`, and the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
 

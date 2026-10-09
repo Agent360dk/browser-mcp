@@ -29,7 +29,7 @@ Codex:  [continues in the same tab, exports the file]
         Done - invoices-2026-08.csv is in your Downloads.
 ```
 
-The tool behind that pause is `browser_ask_user`. It stops the run, shows you a prompt on your own screen, waits, and carries on in the tab that was already signed in. Your password never comes into it. The code goes back to your agent like any tool result, and is never sent to us.
+The tool behind that pause is `browser_ask_user`. It stops the run, shows you a prompt on your own screen, waits, and carries on in the session's tab, in the Chrome you're signed into. Your password never comes into it. The code goes back to your agent like any tool result, and is never sent to us.
 
 ## Setting it up
 
@@ -47,17 +47,17 @@ Restart your Codex session. Full walkthrough: [Install for Codex](/docs/install-
 
 ## Two things to know before you rely on it
 
-**The tab has to be the one in front.** Chrome does not deliver keystrokes to a tab you are not looking at - it accepts the command and drops it. Since 1.29.2 the tools tell you that instead of pretending it worked, and the fix is `browser_switch_tab`. We measured whether giving the session its own window would remove the problem: it does not. What matters is whether the *window* has focus, not whether the tab is visible in it.
+**The tab has to be the one in front.** Chrome does not deliver keystrokes to a tab you are not looking at - it accepts the command and drops it. Since 1.29.2 the tools tell you that instead of pretending it worked, and the fix is `browser_switch_tab`. We tried to measure whether giving the session its own window removes the problem, but that measurement probably tested a background tab: the tool moved the tab back into the session's first window (found on 9 October 2026, fixed in 1.30.2). Until it is measured again, treat a window without focus like a background tab.
 
 **The code is still yours to read.** We do not read your phone, your authenticator or your SMS. The agent asks; you answer. That is the whole mechanism, and it is why it works on sites that would block anything more automated.
 
 ## Where this beats the alternatives
 
-| | Browser MCP | Headless automation | Storing a TOTP secret |
+| | Browser MCP | A fresh headless browser | Storing a TOTP secret |
 |---|---|---|---|
 | Needs your credentials | No | Yes | Yes |
 | Works on a site that blocks automation | Yes - it is your session | Often not | Yes |
-| Survives the site changing its login | Yes | No | Usually |
+| Survives the site changing its login | Yes | Often not | Usually |
 | You stay in control of the code | Yes | - | No |
 
 ## Frequently asked questions

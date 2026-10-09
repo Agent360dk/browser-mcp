@@ -40,7 +40,7 @@ Restart your agent. Other clients: [the install guides](/docs/install-cursor/).
 
 ## Long tables
 
-Many apps show only the rows that fit on the screen and load the rest as you scroll. `browser_extract_list` scrolls the list and reads every row until no new ones appear, so a table of 400 invoices is read as 400 rows, not the first 20.
+Many apps show only the rows that fit on the screen and load the rest as you scroll. `browser_extract_list` scrolls the list and reads rows until no new ones appear. Some apps load more rows only while their tab is on screen, and the agent's tab is usually in the background, so compare the count with what the page says (for example "400 invoices"). If it is short, bring the agent's tab to the front and ask again.
 
 ## Two things to know before you rely on it
 

@@ -479,7 +479,7 @@ def installer():
             '<li><b>1</b><div><a class="pill" href="%s" target="_blank" rel="noopener">Add to Chrome, free</a></div></li>'
             '<li><b>2</b><div><p>Paste this in your terminal, then restart your agent:</p>'
             '<div class="code"><pre tabindex="0" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</pre><button class="copy">Copy</button></div>'
-            '<p class="alt">Cursor, VS Code, Codex: <code>npx @agent360/browser-mcp install --skip-extension</code>. Other clients: <a href="/docs/install-cursor/">the guides</a>.</p></div></li>'
+            '<p class="alt">Cursor, VS Code, Codex: <code>npx @agent360/browser-mcp@latest install --skip-extension</code>. Other clients: <a href="/docs/install-cursor/">the guides</a>.</p></div></li>'
             '</ol></section>') % CWS_URL
 
 def subhero(url, grp, body):

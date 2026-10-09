@@ -2,7 +2,7 @@
 
 # Test your signup like a real user
 
-*Suggested URL: `/use-cases/test-your-signup-flow` · Suggested title tag: "Test Your Signup Flow With an AI Agent in Your Real Chrome (Browser MCP)" · Suggested meta description: "Ask your agent to walk through your own signup as a user would, in your real Chrome, and tell you where it breaks: the field, the console error and a screenshot." · Last verified: October 8, 2026*
+*Suggested URL: `/use-cases/test-your-signup-flow` · Suggested title tag: "Test Your Signup Flow With an AI Agent in Your Real Chrome (Browser MCP)" · Suggested meta description: "Ask your agent to walk through your own signup as a user would, in your real Chrome, and tell you where it breaks: the step, what the page logged and a screenshot." · Last verified: October 8, 2026*
 
 ---
 
@@ -16,11 +16,13 @@ Your agent can walk the flow in the Chrome you use every day, with the same exte
 You:    Walk through the signup at localhost:3000 as a new user and
         tell me where it breaks.
 
-Claude: [browser_navigate, browser_fill, browser_fill, browser_click]
+Claude: [browser_navigate, browser_console_logs]
+        Listening to the console. Now the form.
+        [browser_fill, browser_fill, browser_click]
         The form fills, but Submit stays disabled after the password.
         [browser_console_logs]
-        The console says: "Cannot read properties of undefined
-        (reading 'strength')" right after the password field changed.
+        The page logged an error right after the password changed:
+        "strength meter failed to load".
         [browser_screenshot]
         Here is the screen at that point. The strength meter never
         renders, and the button waits for it.
@@ -43,8 +45,8 @@ Restart your agent. Other clients: [the install guides](/docs/install-cursor/).
 ## What it checks well
 
 - **Real filling.** `browser_fill` fills each field and checks that a framework form (React, Angular) actually took the value.
-- **What the page said.** `browser_console_logs` returns the console messages from its first call onwards, so ask for it before the step you are testing.
-- **Waiting for the network.** `browser_wait_for_network` waits until the page has gone quiet, so a slow API is not mistaken for a broken button.
+- **What the page logged.** `browser_console_logs` returns what the page writes to the console (`console.log`, `warn`, `error`) from its first call onwards, so ask for it before the step you are testing. An error the page never logs does not show up.
+- **Waiting for the network.** `browser_wait_for_network` waits for a request you name (for example `/api/signup`) to come back, so a slow API is not mistaken for a broken button.
 - **Proof.** `browser_screenshot` shows you the screen at the moment it stopped.
 
 ## Two things to know before you rely on it

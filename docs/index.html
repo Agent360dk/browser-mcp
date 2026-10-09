@@ -113,7 +113,7 @@ p{margin:0}
 .pause-input:focus-visible~figcaption label{outline:2px solid var(--focus);outline-offset:2px}
 .pause-input:checked~figcaption label{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .pause-input:checked~.win.run *,.pause-input:checked~.win.run,.hold .win.run,.hold .win.run *{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}.pause-input{display:none}.win.run,.win.run *{animation:none!important}.scene figcaption span:last-child{display:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important}.win.run,.win.run *{animation:none!important}.scene figcaption span:last-child{display:none}}
 /* sections */
 .pair{display:grid;gap:clamp(1.75rem,4vw,3.5rem);align-items:center}
 @media (min-width:56rem){.pair{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.pair.rev>:first-child{order:2}}
@@ -372,9 +372,13 @@ td code{word-break:normal;overflow-wrap:anywhere}
 .kun-tlf{display:none}
 .paa-tlf{text-align:center;max-width:30rem;margin-inline:auto}.paa-tlf .acts{justify-content:center;margin:1rem 0 0}
 .hero .paa-tlf{color:#A9B1BD}.hero .paa-tlf b{color:#fff}
-#install .paa-tlf{color:var(--muted);margin:0}#install .paa-tlf b{color:var(--ink)}#install .paa-tlf,#install .paa-tlf .acts{text-align:left;justify-content:flex-start}
+#install .paa-tlf .btn.sec2{border-color:var(--muted)}#install .paa-tlf{color:var(--muted);margin:0}#install .paa-tlf b{color:var(--ink)}#install .paa-tlf,#install .paa-tlf .acts{text-align:left;justify-content:flex-start}
 .final .paa-tlf{color:color-mix(in srgb,var(--paper) 75%,transparent);text-align:left;margin:1.5rem 0 0}.final .paa-tlf b{color:var(--paper)}.final .paa-tlf .acts{justify-content:flex-start}
 .final .btn.sec2{background:transparent;color:var(--paper);border-color:color-mix(in srgb,var(--paper) 35%,transparent)}
+/* PR63 R1 (Opus B2): mørk tilstand gør bundbåndet mørkt, så kortet skal bruge --ink; skal stå EFTER reglerne ovenfor */
+@media (prefers-color-scheme:dark){.final .paa-tlf{color:var(--muted)}.final .paa-tlf b{color:var(--ink)}.final .btn.sec2{color:var(--ink);border-color:#3A404B}.mini-cap em{color:#0B0D10}}
+[hidden]{display:none!important}
+html:not(.js) #pauselbl{display:none}
 .hero .btn.sec2{background:transparent;color:#ECEFF3;border-color:rgba(255,255,255,.3)}
 .hero > .wrap > .watch{margin-top:-.5rem}
 @media (max-width:48rem){.inst{grid-template-columns:1fr}}
@@ -408,7 +412,7 @@ td code{word-break:normal;overflow-wrap:anywhere}
     <div class="hero-t">
       <a class="oss" href="https://github.com/Agent360dk/browser-mcp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span><b>Free and open source</b> · MIT</span></a>
       <h1>Let your AI agent use your real Chrome.</h1>
-      <p class="lede">A free, open-source Chrome extension and MCP server for Claude Code, Cursor, Codex and VS Code. Your agent works in the tabs you’re already signed into, reads emailed 2FA codes, and asks you when it’s stuck.</p>
+      <p class="lede">A free, open-source Chrome extension and MCP server for Claude Code, Cursor, Codex and VS Code. Your agent opens its own tabs in the Chrome you’re already signed into, reads emailed 2FA codes, and asks you when it’s stuck.</p>
     </div>
 
     <div class="inst kun-pc" id="install-hero">
@@ -418,7 +422,7 @@ td code{word-break:normal;overflow-wrap:anywhere}
             <input type="radio" name="klient" id="kl1" checked><label for="kl1">Claude Code</label>
             <input type="radio" name="klient" id="kl2"><label for="kl2">Cursor · VS Code · Codex</label>
             <div class="cmd k1"><code id="c1" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c1" hidden>Copy</button></div>
-            <div class="cmd k2"><code id="c1b" translate="no">npx @agent360/browser-mcp install --skip-extension</code><button type="button" class="copy" data-for="c1b" hidden>Copy</button></div>
+            <div class="cmd k2"><code id="c1b" translate="no">npx @agent360/browser-mcp@latest install --skip-extension</code><button type="button" class="copy" data-for="c1b" hidden>Copy</button></div>
           </div>
           <p class="cmdnote">Windsurf and the rest: <a href="/docs/install-windsurf/">see the guides</a>.</p>
       </div></div>
@@ -457,7 +461,7 @@ td code{word-break:normal;overflow-wrap:anywhere}
       </article>
       <article class="case">
         <div class="cv" role="img" aria-label="Illustration: the box the extension shows, asking for the code from an authenticator app"><div class="mini-ask"><b>Agent360 - Action Required</b><i>Claude 1</i><span>Enter the code from your authenticator app</span><em>&nbsp;</em><span class="bt"><b>Submit</b><b>✗ Skip</b></span></div></div>
-        <h3>Asks you for the code on your phone</h3>
+        <h3>Asks you for a code only you have</h3>
         <p>A dialog opens in its tab. You type the code, and it goes on.</p>
         <p class="say"><b>Say</b>“Log into the admin dashboard and export last month’s invoices. If it needs a code from my phone, ask me.”</p>
         <a class="more" href="/use-cases/codex-2fa/">See the 2FA box</a>
@@ -479,7 +483,7 @@ td code{word-break:normal;overflow-wrap:anywhere}
       <article class="case">
         <div class="cv" role="img" aria-label="Illustration: a signup form with two fields checked and one marked as broken"><span class="agent">Claude 1</span><div class="mini-form"><span class="ok">Email</span><span class="ok">Password</span><span class="no">Submit stays disabled</span></div></div>
         <h3>Tests your signup like a user</h3>
-        <p>It walks the flow and shows you the console error where it stopped.</p>
+        <p>It walks the flow like a new user and shows you where it stopped.</p>
         <p class="say"><b>Say</b>“Walk through the signup at localhost:3000 as a new user and tell me where it breaks.”</p>
         <a class="more" href="/use-cases/test-your-signup-flow/">See the signup test</a>
       </article>
