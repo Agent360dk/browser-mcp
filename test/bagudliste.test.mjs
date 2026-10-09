@@ -42,7 +42,8 @@ const FORBUDT = [
 // et haardt mellemrum slap forbi moenstrene. Typografiske anfoerselstegn og alle slags mellemrum laeses som de almindelige.
 const norm = (s) => s.replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'").replace(/[\u201C\u201D\u201F]/g, '"')
   .replace(/[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000\uFEFF]/g, ' ').replace(/\s+/g, ' ');
-const rammer = (tekst, moenster) => moenster.test(norm(tekst));
+// R66: en udgivet side er delt i synlig tekst, attributter og kommentarer (side-tekst.py); hver del proeves for sig.
+const rammer = (tekst, moenster) => tekst.split('\u241e').some((del) => moenster.test(norm(del)));
 for (const [nr, moenster, hvorfor] of FORBUDT) {
   test(`bagudliste #${nr} kommer ikke tilbage: ${hvorfor}`, () => {
     for (const [f, t] of flader) assert.ok(!rammer(t, moenster), `${f}: ${hvorfor}`);
@@ -97,4 +98,12 @@ test('typografiske anfoerselstegn og haarde mellemrum snyder ikke moenstrene (R6
   const m = FORBUDT.find(([nr]) => nr === 7)[1];
   for (const s of ['<p>a headless browser fundamentally can&rsquo;t</p>', '<p>a headless&nbsp;browser fundamentally can&#39t</p>',
     '<meta content="a headless browser fundamentally can\u2019t">']) assert.ok(rammer(html(s), m), s);
+});
+
+test('synlig tekst er én stroem: attributter, inline-tags og kommentarer bryder ikke en saetning (R66)', () => {
+  const m = FORBUDT.find(([nr]) => nr === 7)[1];
+  for (const s of ['<p>A headless <em class="emphasis">browser</em> fundamentally can\'t read Gmail.</p>',
+    '<p>A headless brow<b>ser</b> fundamentally can\'t</p>', '<p>A headless browser fundamentally can<span>\'</span>t</p>',
+    '<p>A headless brow<!-- x -->ser fundamentally can\'t</p>']) assert.ok(rammer(html(s), m), s);
+  assert.ok(!rammer(html('<p>a headless</p><p>browser fundamentally can\'t</p>'.replace('can\'t', 'cannot')), m));
 });

@@ -566,7 +566,7 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
   assert.match(cl, /A target that had to be scrolled into view is measured again, 100 ms apart, until two measurements agree \(at most three times\)/);
-  assert.match(cl, /only one that reaches the target counts as proof; a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`, not a yes/);
+  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click\); a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
   assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
 });
 
@@ -625,4 +625,22 @@ test('et kort med en Slet-knap i midten er daekket af knappen; et felt i en comb
   const cb = d2.el('div', { id: 'rs', tekst: 'Vaelg land', rect: [40, 40, 300, 40] });
   d2.el('input', { id: 'rsIn', attrs: { type: 'text', role: 'combobox' }, rect: [50, 45, 280, 30], lag: 1 }, cb);
   assert.equal(d2.koer(KILDE, '#rs', null, null, false, false).svar.covered, undefined);
+});
+
+// ── R66 (Astra, maalt i model) ─────────────────────────────────────────────
+test('et kort med en Slet som span role=button eller span med onclick er daekket', () => {
+  for (const attrs of [{ role: 'button' }, { onclick: 'slet()' }]) {
+    const d = lavKlikDom();
+    const kort = d.el('div', { id: 'kort', attrs: { role: 'button' }, tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('span', { id: 'slet', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet', JSON.stringify(attrs));
+  }
+});
+
+test('et felt, hvis egen label har en span role=button i punktet, er ikke daekket (HTML-standarden)', () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  const l = d.label(boks, { id: 'l', tekst: 'Accepter ', rect: [0, 0, 400, 60] });
+  d.el('span', { id: 'i', tekst: 'vilkaar', attrs: { role: 'button' }, rect: [20, 20, 20, 20], lag: 1 }, l);
+  assert.equal(d.koer(KILDE, '#c', null, null, false, false).svar.covered, undefined);
 });

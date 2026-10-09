@@ -1069,6 +1069,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
           try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
           try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
         };
+        if (${vagtArmet} && !vagt) { ryd(); return { landed: null, fallbackFired: false, unverified: true, fejl: 'the guard was gone' }; }
         // Et billigt fingeraftryk af det et klik plejer at aendre: antal noder, synlig tekst,
         // adressen, og om noget er aabnet/valgt. Bevidst groft — det skal kunne tages to gange
         // paa faa millisekunder, ikke beskrive siden.
@@ -1633,6 +1634,12 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
 // en haendelse, der NAAR knuden (en lytter paa selve knuden, sat paa under afsendelsen), taeller som bevis. Vagten fjernes
 // paa hver udgang og udloeber selv i siden, saa en fejl undervejs aldrig efterlader den over brugerens egne klik.
 // Haendelser andre steder (en rigtig mus) hverken doemmes eller taeller.
+// R66 (Astra, maalt i model): (1) lytteren paa knuden talte en SENERE, syntetisk haendelse af samme type, som siden sendte,
+// efter at vores var stoppet undervejs - beviset binder nu til selve haendelsesobjektet; (2) et klik paa en felts label
+// talte som feltets, ogsaa naar labelen annullerede aktiveringen - bevis er nu kun en haendelse paa maalet, inde i det,
+// eller paa en forfader, der ikke er en label (feltets eget aktiveringsklik er beviset); (3) «vores» er kun haendelser i
+// punktet (et klik ogsaa med maalet i stien - labelens aktiveringsklik), og efter en blokering stoppes kun haendelser i
+// punktet, ikke en rigtig mus andre steder paa maalet. En rigtig mus i samme punkt samtidig kan ikke skelnes fra vores.
 const VAGT_KLIK = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
 const VAGT_HOVER = ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove'];
 
@@ -1649,20 +1656,24 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000) {
       if (!maal.isConnected) return { vaek: true };
       const nu = tjek(${x}, ${y});
       if (nu) return { daekket: nu };
-      const v = { typer, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [] };
+      const inde = (n, m) => { for (let i = 0; n && i < 1000; i++) { if (n === m) return true; n = n.parentNode || n.host; } return false; };
+      const v = { typer, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [],
+        synligVedArm: document.visibilityState === 'visible' };
       v.fn = (ev) => {
         if (!ev.isTrusted) return;
         const vej = ev.composedPath ? ev.composedPath() : [];
-        const vores = vej.includes(maal) || (Math.abs(ev.clientX - ${x}) <= 1 && Math.abs(ev.clientY - ${y}) <= 1);
+        const vedPunkt = Math.abs(ev.clientX - ${x}) <= 1 && Math.abs(ev.clientY - ${y}) <= 1;
+        const vores = vedPunkt || (ev.type === 'click' && vej.includes(maal));
         if (!vores) return;
-        if (v.blokeret) { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+        if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
         if (!maal.isConnected) { v.vaek = true; return; }
         const knude = vej[0] || ev.target;
         const d = tjek(${x}, ${y}, knude);
         if (d) { v.blokeret = d; v.delvis = v.sendt > 0; ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         v.sendt++;
+        if (!(inde(knude, maal) || (inde(maal, knude) && knude.tagName !== 'LABEL'))) return;
         const type = ev.type;
-        const naaet = () => { v.naaet[type] = (v.naaet[type] || 0) + 1; };
+        const naaet = (e2) => { if (e2 === ev) v.naaet[type] = (v.naaet[type] || 0) + 1; };
         try { knude.addEventListener(type, naaet, { once: true, capture: true }); v.paa.push([knude, type, naaet]); } catch (e) {}
       };
       v.ryd = () => {
@@ -1698,7 +1709,7 @@ async function laesMaalVagt(tabId, x, y) {
         if (p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '') && !iMaalet) fremmedRamme = { tag: p.tagName, id: p.id || null, text: '' };
       }
       return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme,
-        synlig: document.visibilityState === 'visible' };
+        skjultHele: !v.synligVedArm && document.visibilityState !== 'visible' };
     })()` });
   } catch { return null; }
   return r?.result?.value ?? null;
@@ -1709,12 +1720,16 @@ function vagtBevis(laest, typer) {
   if (!laest) return { landed: null };
   if (laest.blokeret) return { landed: false, blokeret: laest.blokeret, delvis: !!laest.delvis };
   if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true };
-  if (laest.udskiftet) return { landed: true, navigeret: true };
+  // R66 (Astra, maalt i model): en vagt, der er vaek ved aflaesningen, beviser ikke en navigation (den kan vaere fjernet af
+  // siden eller udloebet) - det er uvist, ikke ja.
+  if (laest.udskiftet) return { landed: null };
   if (typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
   // R65 (Astra, maalt i model): intet naaede maalet. I en synlig side kan en lytter undervejs have stoppet haendelsen - og
-  // selv have handlet - saa det er uvist, ikke et nej med raad om at proeve igen. Kun i en skjult side er nej maalt.
-  if (laest.synlig || laest.vaek || laest.sendt > 0) return { landed: null };
-  return { landed: false };
+  // selv have handlet - saa det er uvist, ikke et nej med raad om at proeve igen.
+  // R66 (Astra, maalt i model): synligheden blev maalt ved AFLAESNINGEN, saa en fane, der blev skjult efter handlingen, gav
+  // et nej. Nej kraever nu, at siden var skjult baade ved armeringen og ved aflaesningen, og at intet blev set.
+  if (laest.skjultHele && !laest.sendt && !laest.vaek) return { landed: false };
+  return { landed: null };
 }
 
 async function armerHaendelsesBevis(tabId, type) {
@@ -2108,6 +2123,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   }
   // R65 (Astra, maalt i model): samme regel for den knude, der faktisk fik en haendelse - maalvagten doemmer hver haendelse
   // paa sin knude, ikke kun den foerste i punktet.
+  // HTML-standardens «interactive content»: et klik dér aktiverer ikke en omsluttende labels felt.
+  const INTERAKTIV = 'a[href],button,input,select,textarea,details,embed,iframe,object,audio[controls],video[controls],img[usemap],label';
+  const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
     if (inde(hit, el)) {
       // R64 (Opus' etiket.html, maalt i Chrome 9/10): `click text=Jeg accepterer` fandt labelen, men dens midtpunkt laa paa
@@ -2117,13 +2135,14 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
       // R65 (Opus, maalt i Chrome): reglen brugte CLICKABLE - men et link uden href, en span med role=button eller onclick
       // afkrydser feltet med en rigtig mus. Chrome foelger HTML-standardens «interactive content», og det goer reglen nu.
       // R65 (Opus' r65-kortbarn.html, maalt i Chrome): et kort med en Slet-knap i midten svarede ok:true, og Slet blev udfoert -
-      // kortets eget klik kom aldrig. En HANDLING inde i maalet (et link med adresse eller en knap) er derfor en daekning
-      // for ethvert maal; et felt inde i maalet er det ikke (det er sadan en combobox-beholder virker).
+      // kortets eget klik kom aldrig. En HANDLING inde i maalet er derfor en daekning for ethvert maal; et felt inde i maalet
+      // er det ikke (det er saadan en combobox-beholder virker).
+      // R66 (Astra, maalt i model): handlingen var kun native knapper og links - en Slet som span role=button eller span med
+      // onclick kom igennem med ok:true. Nu er en handling alt det, klikMaal selv regner for klikbart (CLICKABLE), plus
+      // input-knapper.
       const erLabel = el.tagName === 'LABEL';
-      let indre = !hit.closest ? null : erLabel
-        ? hit.closest('a[href],button,input,select,textarea,details,embed,iframe,object,audio[controls],video[controls],img[usemap],label')
-        : hit.closest('a[href],button,input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]');
-      if (indre && indre.tagName === 'INPUT' && String(indre.getAttribute('type') || '').toLowerCase() === 'hidden') indre = null;
+      const indre = !hit.closest ? null : lukket(erLabel ? hit.closest(INTERAKTIV)
+        : hit.closest(CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]'));
       if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
         return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}) };
       }
@@ -2143,7 +2162,11 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
     // R64 (Astra, maalt i model): et input oven paa teksten i et role=button-kort, og et link inde i en afkrydsnings label,
     // blev godtaget som maalets egen ramme. Rammen og labelen taeller kun, naar det der ligger oeverst, ikke selv er en
     // anden kontrol: klik paa et link i en label aktiverer ikke labelens kontrol (HTML-standarden).
-    const hitKontrol = hit.closest ? hit.closest(CLICKABLE + ',input,select,textarea') : null;
+    // R66 (Astra, maalt i model): et felt, hvis label rummer en span med role=button, blev afvist, naar punktet ramte spanen -
+    // men en rigtig mus afkrydser feltet dér. Ligger punktet i feltets egen label, gaelder HTML-standardens regel, som for
+    // en label, der selv er maalet.
+    const iEgenLabel = Array.from(el.labels || []).some((l) => inde(hit, l)) || (!!ramme && ramme.tagName === 'LABEL');
+    const hitKontrol = !hit.closest ? null : lukket(hit.closest(iEgenLabel ? INTERAKTIV : CLICKABLE + ',input,select,textarea'));
     const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
       Array.from(el.labels || []).includes(hitKontrol);
     const andenKontrol = !egenKontrol;

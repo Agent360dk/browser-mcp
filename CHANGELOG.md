@@ -29,12 +29,13 @@ several, the one on top where they overlap), so `click text=Add` presses the dia
 debugger path and the script fallback find their target with the same function. A covered answer found before the
 press moves no mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
 or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
-found: each one at the click point is judged on the element that gets it, and only one that reaches the target counts as
-proof; a click stopped on the way, a target the page replaces during the click, or no event at all gives `maybe_landed`,
-not a yes. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
+found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
+counts as proof (for a field clicked through its label, the field's own click); a click stopped on the way, a target the
+page replaces during the click, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
+same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
 address, a button, a field) counts as covered by that element, because a click there does not activate the label's field;
-for any other target, a link with an address or a button inside it at its center (a delete button on a card) counts as
-covered by that control.
+for any other target, anything clickable inside it at its center (a link, a button, an element with a button role or an
+`onclick`, such as a delete button on a card) counts as covered by that control.
 A target that had to be scrolled into view is measured again, 100 ms apart, until two measurements agree (at most three
 times), so a header that turns fixed on scroll does not move the click to another row. A press that lands in an iframe -
 the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it

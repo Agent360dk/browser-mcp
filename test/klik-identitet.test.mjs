@@ -32,8 +32,8 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
   const ctx = vm.createContext({ document: d.document, window, getComputedStyle: (e) => e.stil, location: { href: 'https://x.example/' },
     setTimeout, clearTimeout });
   const fyr = (type, x, y) => { fyrEn(type, x, y); efterHaendelse?.(type, d, fyr); };
-  const fyrEn = (type, x, y) => {
-    const el = d.document.elementFromPoint(x, y);
+  const fyrEn = (type, x, y, paa = null) => {
+    const el = paa || d.document.elementFromPoint(x, y);
     const vej = [];
     for (let n = el; n; n = n.parentNode || n.host) vej.push(n);
     vej.push(d.document, window);
@@ -44,6 +44,13 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl 
     if (stopVed && stopVed(type, el)) return;
     for (const x of [...(el?._lyt?.[type] || [])]) { x.f(ev); if (x.once) el.removeEventListener(type, x.f); }
     side.push(type + ':' + (el?.id || el?.tagName));
+    // Labelens aktivering (HTML): et klik i en label, der ikke rammer interaktivt indhold, sender et klik til dens felt -
+    // medmindre klikket blev annulleret.
+    if (type === 'click' && !ev.defaultPrevented && el?.closest) {
+      const l = el.closest('label');
+      const interaktiv = el.closest('a[href],button,input,select,textarea');
+      if (l && l.control && l.control !== el && (!interaktiv || interaktiv === l.control)) fyrEn('click', x, y, l.control);
+    }
   };
   const klon = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
   const fane = { id: 1, url: 'https://x.example/', windowId: 1, active: true };
@@ -249,12 +256,14 @@ test('et maal, der er vaek ved genmaalingen, er ikke fundet - det gamle punkt kl
   assert.equal(await u.hent('resolveElement')(1, '#b6'), null);
 });
 
-test('vagtens bevis: intet set i en synlig side er uvist; i en skjult side er det nej', () => {
+test('vagtens bevis: intet set er uvist; kun en side skjult hele vejen er et nej (R65, R66)', () => {
   const f = indlaesUdvidelse().hent('vagtBevis');
   const vb = (...a) => JSON.parse(JSON.stringify(f(...a)));
-  assert.deepEqual(vb({ naaet: {}, sendt: 0, synlig: true }, ['dblclick']), { landed: null });
-  assert.deepEqual(vb({ naaet: {}, sendt: 0, synlig: false }, ['dblclick']), { landed: false });
-  assert.deepEqual(vb({ naaet: { dblclick: 1 }, sendt: 3, synlig: true }, ['dblclick']), { landed: true });
+  assert.deepEqual(vb({ naaet: {}, sendt: 0, skjultHele: false }, ['dblclick']), { landed: null });
+  assert.deepEqual(vb({ naaet: {}, sendt: 0, skjultHele: true }, ['dblclick']), { landed: false });
+  assert.deepEqual(vb({ naaet: { dblclick: 1 }, sendt: 3, skjultHele: false }, ['dblclick']), { landed: true });
+  // R66 (Astra): en vagt, der er vaek ved aflaesningen, er ikke en navigation - uvist, ikke ja.
+  assert.deepEqual(vb({ udskiftet: true }, ['dblclick']), { landed: null });
 });
 
 test('vagten udloeber selv i siden, ogsaa hvis ingen laeser den', async () => {
@@ -275,7 +284,7 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
   assert.match(cl, /stopped at the window, before any element of the page gets them; because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`/);
-  assert.match(cl, /for any other target, a link with an address or a button inside it at its center \(a delete button on a card\) counts as covered by that control/);
+  assert.match(cl, /for any other target, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control/);
 });
 
 test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
@@ -298,4 +307,54 @@ test('en blokering efter afsendelsen er uvist: en lytter paa window kan have han
   assert.equal(svar.landed, null);
   assert.equal(svar.maybe_landed, true);
   assert.match(svar.note, /a listener on the window itself may still have acted on them: check the state before trying again/);
+});
+
+// ── R66 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en syntetisk haendelse, siden sender efter at vores blev stoppet, er ikke bevis', async () => {
+  for (const [vaerktoej, type] of [['click', 'click'], ['double_click', 'dblclick'], ['right_click', 'contextmenu']]) {
+    const d = knapside();
+    const b = browser(d, { stopVed: (t, el) => t === type && el?.id === 'gem',
+      efterHaendelse: (t, dd) => { if (t !== type) return; const g = dd.document.querySelector('#gem');
+        for (const x of [...(g._lyt?.[type] || [])]) x.f({ type, target: g, isTrusted: false }); } });
+    const svar = await b.koer(vaerktoej, { selector: '#gem' });
+    assert.equal(svar.landed, null, `${vaerktoej}: ${JSON.stringify(svar)}`);
+  }
+});
+
+test('en vagt, siden fjerner undervejs, giver uvist og ingen reserve - ikke ja', async () => {
+  for (const vaerktoej of ['click', 'double_click', 'hover']) {
+    const d = knapside();
+    const b = browser(d, { efterArm: () => { setTimeout(() => { b.window.__bmcpVagt = null; }, 0); } });
+    b.window.__bmcpVagt = undefined;
+    const svar = await b.koer(vaerktoej, { selector: '#gem', duration: 5 });
+    assert.notEqual(svar.landed, true, `${vaerktoej}: ${JSON.stringify(svar)}`);
+  }
+});
+
+test('et klik paa et felts label, der annullerer aktiveringen, er ikke bevis for feltet', async () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  const l = d.label(boks, { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20], lag: 1 });
+  const b = browser(d);
+  l.addEventListener('click', (ev) => ev.preventDefault());
+  const svar = await b.koer('click', { selector: '#c' });
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+  assert.ok(!b.side.includes('click:c'), 'feltet fik et klik');
+  // Uden annullering aktiverer labelen feltet, og klikket er bevist.
+  const d2 = lavKlikDom();
+  const boks2 = d2.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  d2.label(boks2, { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20], lag: 1 });
+  const svar2 = await browser(d2).koer('click', { selector: '#c' });
+  assert.equal(svar2.landed, true, JSON.stringify(svar2));
+});
+
+test('efter en blokering stoppes en rigtig mus andre steder paa maalet ikke', async () => {
+  const d = knapside();
+  let n = 0;
+  const b = browser(d, { efterHaendelse: (type, dd, fyr) => {
+    if (type === 'pointerdown' && n === 0) { n = 1; overlay(dd); }
+    else if (type === 'pointerup' && n === 1) { n = 2; dd.document.querySelector('#fremmed').stil.display = 'none'; fyr('pointerup', 30, 30); }
+  } });
+  await b.koer('click', { selector: '#gem' });
+  assert.ok(b.side.includes('pointerup:gem'), `brugerens pointerup paa maalet blev stoppet: ${b.side}`);
 });
