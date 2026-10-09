@@ -12,7 +12,7 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // Et feed i en indre rulle-container. Det henter `parti` nye raekker, naar et hjul rammer containeren taet paa bunden.
 // En scrollTop-rulning flytter listen, men henter intet - som paa Threads.
-function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, voksFoerRul = false } = {}) {
+function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, voksFoerRul = false, kunVedBund = false } = {}) {
   const s = { tegnet: start, scrollTop: 0, hjul: 0, hjulUdenfor: 0, ekstra: 0, venter: 0 };
   // En langsom loader: de foerste `pladsholdere` gange laegger den kun hoejde ind (skeletter), saa kommer raekkerne.
   const hent = () => {
@@ -48,7 +48,10 @@ function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoe
     // voksFoerRul: loaderen lytter paa `wheel` og laegger pladsholdere ind, foer rulningen flytter listen ned i dem - saa
     // naeste laesning staar paa en NY bund, der lige er vokset.
     if (voksFoerRul && hentPaa === 'wheel' && s.scrollTop + hoejde >= container.scrollHeight - 60) hent();
+    // kunVedBund (R62, Astra): feedet henter kun paa et hjul, der kommer mens listen ALLEREDE staar paa bunden.
+    const vedBund = s.scrollTop + hoejde >= container.scrollHeight - 4;
     container.scrollTop = s.scrollTop + deltaY;
+    if (kunVedBund) { if (hentPaa === 'wheel' && vedBund) hent(); return; }
     if (!voksFoerRul && hentPaa === 'wheel' && s.scrollTop + hoejde >= container.scrollHeight - 60) hent();
   };
   return { s, container, koer, hjul };
@@ -161,7 +164,7 @@ test('en kort liste i en fast boks der endnu ikke flyder over, findes som listen
 });
 
 test('runden hvor listen naar bunden, er ikke en runde hvor den stod paa bunden', async () => {
-  const f = feed();
+  const f = feed({ kunVedBund: true });
   const svar = await udtraek(sele(f), { stable_rounds: 1 });
   assert.equal(svar.count, 40, `${svar.count} af 40 med stable_rounds 1`);
   assert.equal(svar.reached_end, true);

@@ -9,7 +9,8 @@ bliver en tabulator, som URL-parseren fjerner; `d\\6f<TAB>cs` bruger tabulatoren
 
 R61 (Astra, MAALT): `<!-->` lukker en kommentar i en browser, men ikke i html.parser, saa et link efter den var skjult for
 vagten; et `srcdoc` er et helt dokument i en attribut (dobbelt kodet); og et stylesheet kan selv hente et andet med
-@import. Afbrudte kommentarer afvises, srcdoc og base64-data:-dokumenter laeses som HTML, og .css-filer laeses ogsaa.
+@import. (R61 lukkede dem enkeltvis; R62 erstattede det med lukkereglen nedenfor. base64-data:-dokumenter og .css-filer
+laeses stadig for sig, for dem kan lukkereglen ikke se.)
 Et script der saetter en adresse sammen mens siden koerer, kan ingen statisk vagt se - det dækkes ikke.
 
 R62 (Astra, MAALT): en afbrudt kommentar INDE i et srcdoc og en CSS-kommentarstart inde i en URL-streng skjulte en henvisning
@@ -35,7 +36,6 @@ NAVN = re.compile(r'docs\.(css|js)', re.I)
 KANON = re.compile(r'/assets/docs\.(css|js)\?v=([0-9a-f]{8})')
 RAA = re.compile(r'(?<![\w-])(?:href|src)="/assets/docs\.(?:css|js)\?v=[0-9a-f]{8}"')
 HVOR = {'css': ('link', 'href'), 'js': ('script', 'src')}
-AFBRUDT = re.compile(r'<!---?>')   # HTML: «<!-->» og «<!--->» er tomme kommentarer, der lukker straks
 DATA64 = re.compile(r'^\s*data:[^,]*;base64,(.*)$', re.I | re.S)
 
 
@@ -115,31 +115,18 @@ class Side(HTMLParser):
             self._indlejret(navn, vaerdi or '')
 
     def _indlejret(self, navn, vaerdi):
-        """Et dokument inde i en attribut: srcdoc, eller en data:-adresse i base64. Alt i det, der naevner de to filer,
-        er en omtale - ogsaa en kanonisk henvisning, for generatoren opdaterer den ikke."""
-        indre = None
-        if navn == 'srcdoc':
-            indre = vaerdi
-        else:
-            m = DATA64.match(vaerdi)
-            if m:
-                try:
-                    indre = base64.b64decode(re.sub(r'\s', '', m.group(1)) + '===').decode('utf-8', 'replace')
-                except Exception:
-                    indre = None
-                if indre is not None and naevner(indre):
-                    self.omtaler.append(('data:base64 ' + indre)[:200])
-                    return
-        if indre is None:
+        """En data:-adresse i base64 i en attribut. Naevner den de to filer, er det en omtale - ogsaa en kanonisk henvisning,
+        for generatoren opdaterer den ikke."""
+        # srcdoc laeses af lukkereglen i main (dens tekst staar i filen, blot kodet); base64 kan den ikke se.
+        m = DATA64.match(vaerdi)
+        if not m:
             return
-        under = Side()
-        under.feed(indre)
-        under.close()
-        self.omtaler += [f'{navn}: {o}' for o in under.omtaler]
-        self.omtaler += [f'{navn}: afbrudt kommentar {m.group(0)}' for m in AFBRUDT.finditer(indre)]
-        if len(NAVN.findall(fikspunkt(indre))) > 0:
-            self.omtaler.append(f'{navn}: dokumentet naevner docs.css/docs.js')
-        self.omtaler += [f'{navn}: docs.{e}?v={n}' for e, n in under.kanon]
+        try:
+            indre = base64.b64decode(re.sub(r'\s', '', m.group(1)) + '===').decode('utf-8', 'replace')
+        except Exception:
+            return
+        if naevner(indre):
+            self.omtaler.append(('data:base64 ' + indre)[:200])
 
     handle_startendtag = handle_starttag
 
@@ -176,7 +163,7 @@ def main(mappe):
             p = Side()
             p.feed(kilde)
             p.close()
-            omtaler = p.omtaler + [f'afbrudt kommentar {m.group(0)} - en browser lukker kommentaren dér' for m in AFBRUDT.finditer(kilde)]
+            omtaler = list(p.omtaler)
             # Lukkereglen: efter afkodning til fikspunkt maa navnene kun staa i de kanoniske henvisninger.
             i_alt = len(NAVN.findall(fikspunkt(kilde)))
             if i_alt != len(p.kanon):
