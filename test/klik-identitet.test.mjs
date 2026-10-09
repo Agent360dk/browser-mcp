@@ -274,7 +274,8 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
-  assert.match(cl, /stopped at the window, before any element of the page gets them \(a listener on the window itself still does\); if the first ones had already reached the target, the answer is `landed: null` with `maybe_landed: true`/);
+  assert.match(cl, /stopped at the window, before any element of the page gets them; because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`/);
+  assert.match(cl, /for any other target, a link with an address or a button inside it at its center \(a delete button on a card\) counts as covered by that control/);
 });
 
 test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder igen', async () => {
@@ -287,4 +288,14 @@ test('click: efter en blokering stoppes resten, ogsaa hvis daekningen forsvinder
   const svar = await b.koer('click', { selector: '#gem' });
   assert.equal(svar.error, 'covered', JSON.stringify(svar));
   assert.ok(!b.side.includes('click:gem'), `maalet fik klikket efter blokeringen: ${b.side}`);
+});
+
+test('en blokering efter afsendelsen er uvist: en lytter paa window kan have handlet (R65)', async () => {
+  const d = knapside();
+  const b = browser(d, { efterArm: overlay });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered');
+  assert.equal(svar.landed, null);
+  assert.equal(svar.maybe_landed, true);
+  assert.match(svar.note, /a listener on the window itself may still have acted on them: check the state before trying again/);
 });

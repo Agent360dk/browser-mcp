@@ -612,3 +612,17 @@ test('en armeret vagt, der ikke saa en eneste haendelse, giver ingen reserve - e
   assert.equal(svar.maybe_landed, true);
   assert.match(svar.note, /^When the mouse pressed, IFRAME#annonce - a frame - lay in front of #gem, and the press went into it/);
 });
+
+test('et kort med en Slet-knap i midten er daekket af knappen; et felt i en combobox-beholder er ikke (R65)', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort', attrs: { role: 'button' }, tekst: 'Ordre 7 - aabn', rect: [40, 40, 400, 80] });
+  d.el('button', { id: 'slet', tekst: 'Slet', rect: [190, 60, 100, 40], lag: 1 }, kort);
+  const r = d.koer(KILDE, '#kort', null, null, false, false).svar;
+  assert.equal(r.covered?.id, 'slet');
+  assert.equal(r.covered?.inside, true);
+  assert.match(indlaesUdvidelse().hent('daekketSvar')('#kort', r).note, /a different control inside it, so the mouse would click that instead and run its action/);
+  const d2 = lavKlikDom();
+  const cb = d2.el('div', { id: 'rs', tekst: 'Vaelg land', rect: [40, 40, 300, 40] });
+  d2.el('input', { id: 'rsIn', attrs: { type: 'text', role: 'combobox' }, rect: [50, 45, 280, 30], lag: 1 }, cb);
+  assert.equal(d2.koer(KILDE, '#rs', null, null, false, false).svar.covered, undefined);
+});

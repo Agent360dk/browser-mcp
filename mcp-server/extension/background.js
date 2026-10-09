@@ -2116,11 +2116,16 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
       // labelens eget felt er ikke.
       // R65 (Opus, maalt i Chrome): reglen brugte CLICKABLE - men et link uden href, en span med role=button eller onclick
       // afkrydser feltet med en rigtig mus. Chrome foelger HTML-standardens «interactive content», og det goer reglen nu.
-      let indre = el.tagName === 'LABEL' && hit.closest
-        ? hit.closest('a[href],button,input,select,textarea,details,embed,iframe,object,audio[controls],video[controls],img[usemap],label') : null;
+      // R65 (Opus' r65-kortbarn.html, maalt i Chrome): et kort med en Slet-knap i midten svarede ok:true, og Slet blev udfoert -
+      // kortets eget klik kom aldrig. En HANDLING inde i maalet (et link med adresse eller en knap) er derfor en daekning
+      // for ethvert maal; et felt inde i maalet er det ikke (det er sadan en combobox-beholder virker).
+      const erLabel = el.tagName === 'LABEL';
+      let indre = !hit.closest ? null : erLabel
+        ? hit.closest('a[href],button,input,select,textarea,details,embed,iframe,object,audio[controls],video[controls],img[usemap],label')
+        : hit.closest('a[href],button,input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]');
       if (indre && indre.tagName === 'INPUT' && String(indre.getAttribute('type') || '').toLowerCase() === 'hidden') indre = null;
       if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
-        return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true };
+        return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}) };
       }
       return null;
     }
@@ -2199,9 +2204,12 @@ function daekketSvar(selector, el, method) {
     return svar;
   }
   if (c.inside) {
-    svar.note = `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that, ` +
-      'and a click on a control inside a label does not activate the label\'s own field. Nothing was done. Click the one you ' +
-      'mean with its own selector (for a checkbox in the label, the checkbox itself).';
+    svar.note = c.label
+      ? `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that, ` +
+        'and a click on a control inside a label does not activate the label\'s own field. Nothing was done. Click the one you ' +
+        'mean with its own selector (for a checkbox in the label, the checkbox itself).'
+      : `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that instead ` +
+        'and run its action. Nothing was done. Click the one you mean with its own selector.';
     return svar;
   }
   // R63: ingen musebevaegelse foer en afvisning (den aabnede menuer, der blev staaende). Noten siger, hvad der ligger der nu,
@@ -2240,9 +2248,13 @@ function vagtSvar(selector, el, r) {
     return svar;
   }
   if (!r.foerSendt) {
+    // R65 (Opus' r65-vindue.html, maalt i Chrome): en side, der selv lytter paa window, handlede, selv om vagten stoppede
+    // haendelsen - saa svaret er uvist, ikke et nej.
+    svar.landed = null;
+    svar.maybe_landed = true;
     svar.note = svar.note.replace('Nothing was done.', 'The mouse events were sent, but stopped at the window before they ' +
       'reached any element of the page, so neither element got them - but a listener on the window itself may still have ' +
-      'acted on them.');
+      'acted on them: check the state before trying again.');
   }
   return svar;
 }
