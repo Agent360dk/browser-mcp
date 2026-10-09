@@ -17,8 +17,12 @@ const indhold = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'
 // sider laeses nu ogsaa - som tekst, med entiteter afkodet og tags fjernet.
 // R63 (Astra, maalt): tags blev fjernet MED deres attributter, saa <meta content> og alt-tekster blev ikke laest. Nu bliver
 // attributvaerdierne staaende som tekst.
-const html = (s) => s.replace(/<[^>]+>/g, (tag) => ' ' + [...tag.matchAll(/\s[\w:-]+="([^"]*)"/g)].map((m) => m[1]).join(' ') + ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/\s+/g, ' ');
+// R64 (Astra, maalt): kun name="value" blev laest. Nu ogsaa enkelte anfoerselstegn, mellemrum om lighedstegnet og
+// vaerdier uden anfoerselstegn, og hexadecimale tegnreferencer (&#x27;) afkodes.
+const attrVaerdier = (tag) => [...tag.matchAll(/\s[\w:-]+\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+const html = (s) => s.replace(/<[^>]+>/g, (tag) => ' ' + attrVaerdier(tag).join(' ') + ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/\s+/g, ' ');
 const sider = [];
 const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
   if (e.isDirectory()) gaa(join(d, e.name)); else if (e.name.endsWith('.html')) sider.push([join(d, e.name), html(laes(join(d, e.name)))]); } };
@@ -71,4 +75,10 @@ test('bagudlisten laeser attributvaerdier i de udgivne sider, fx meta descriptio
 test('normaliseringen beholder attributvaerdier som tekst (R63)', () => {
   assert.match(html('<meta name="description" content="zzz-kun-i-attributten">'), /zzz-kun-i-attributten/);
   assert.match(html('<img alt="et alt-tekst-eksempel" src="x.png">'), /et alt-tekst-eksempel/);
+});
+
+test('normaliseringen laeser enkelte anfoerselstegn, mellemrum om = og hexadecimale tegnreferencer (R64)', () => {
+  assert.match(html("<meta content='kun-enkelte'>"), /kun-enkelte/);
+  assert.match(html('<meta content = "med-mellemrum">'), /med-mellemrum/);
+  assert.match(html('<meta content="can&#x27;t">'), /can't/);
 });

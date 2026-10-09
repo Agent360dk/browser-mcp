@@ -188,7 +188,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_option',
-    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead. A custom dropdown\'s trigger gets the same check as browser_click: if the mouse would not reach it at its center, nothing is opened and the answer is ok:false with error "covered".',
+    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead. A custom dropdown\'s trigger gets the same check as browser_click: if the mouse would not reach it at its center, nothing is opened and the answer is ok:false with error "covered". So does the option once the list is open: if it is covered, it is not clicked, and the answer is ok:false with error "covered" and trigger_clicked: true - the list may still be open.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -423,3 +423,50 @@ test('to aria-modal-indpakninger med hoejde 0: den hvis panel ligger oeverst, va
 });
 
 
+
+// ── R64 (Astra, maalt i model): rammen og labelen maa ikke godtage en ANDEN kontrol, og adskilte paneler ──────────
+test('et input oven paa teksten i et role=button-kort er en daekning, ikke kortets egen ramme', () => {
+  const d = lavKlikDom();
+  // Kortets laengere beskrivelse (over 40 tegn mere end teksten) goer, at tekstselektoren beholder spanen som maal (Astras opstilling).
+  const kort = d.el('div', { id: 'kort1', attrs: { role: 'button' }, tekst: 'Faa nyhedsbrevet hver uge med de bedste tilbud fra hele landet ', rect: [20, 20, 300, 100] });
+  d.el('span', { id: 'mail', tekst: 'E-mail', rect: [30, 60, 120, 20] }, kort);
+  d.el('input', { id: 'fremmed', rect: [30, 60, 120, 20], lag: 1 }, kort);
+  assert.equal(tekstKlik(d, 'E-mail').covered?.id, 'fremmed');
+});
+
+test('et link inde i en afkrydsnings label, oven paa afkrydsningen, er en daekning (et klik paa linket afkrydser ikke)', () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'samtykke', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  const l = d.label(boks, { rect: [20, 20, 300, 20], lag: 1 });
+  d.el('a', { id: 'vilkaar', tekst: 'vilkaarene', attrs: { href: '#v' }, rect: [20, 20, 100, 20], lag: 1 }, l);
+  assert.equal(d.koer(KILDE, '#samtykke', null, null, false, false).svar.covered?.id, 'vilkaar');
+  // Labelens egen tekst over afkrydsningen er stadig ikke en daekning.
+  const d2 = lavKlikDom();
+  const boks2 = d2.el('input', { id: 'samtykke', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  const l2 = d2.label(boks2, { rect: [20, 20, 300, 20], lag: 1 });
+  d2.el('span', { tekst: 'Jeg accepterer', rect: [20, 20, 100, 20], lag: 1 }, l2);
+  assert.equal(d2.koer(KILDE, '#samtykke', null, null, false, false).svar.covered, undefined);
+});
+
+test('to aria-modal-indpakninger med hoejde 0 og adskilte paneler: overlapningen maales i panelerne, ikke i hullet', () => {
+  const d = lavKlikDom();
+  const oe = d.el('div', { id: 'oe', attrs: { 'aria-modal': 'true' }, rect: [0, 0, 0, 0], lag: 10 });
+  const venstre = d.el('div', { rect: [0, 100, 300, 200], lag: 10 }, oe);
+  d.el('div', { rect: [700, 100, 300, 200], lag: 10 }, oe);
+  d.el('button', { id: 'upperAdd', tekst: 'Add', rect: [20, 120, 80, 30], lag: 10 }, venstre);
+  const ne = d.el('div', { id: 'ne', attrs: { 'aria-modal': 'true' }, rect: [0, 0, 0, 0], lag: 1 });
+  const midt = d.el('div', { rect: [200, 150, 600, 100], lag: 1 }, ne);
+  d.el('button', { id: 'lowerAdd', tekst: 'Add', rect: [450, 180, 80, 30], lag: 1 }, midt);
+  assert.equal(elementFor(d, 'Add').id, 'upperAdd');
+});
+
+test('select_option: et daekket valg klikkes ikke; udloeseren er klikket, og svaret siger at listen kan staa aaben', async () => {
+  const u = sele();
+  u.ctx.resolveElement = async (_fane, s) => (s === 'text=Add' ? DAEKKET : { ...DAEKKET, covered: undefined });
+  const svar = await u.hent('dispatch')(9876, 'select_option', { selector: 'text=Vaelg', value: 'Add' });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.equal(svar.trigger_clicked, true);
+  assert.match(svar.note, /^The dropdown was opened, but its option is covered: At the center of text=Add lies DIV#overlay/);
+  assert.match(svar.note, /The list may still be open\.$/);
+  assert.equal(mus(u).filter((k) => k.args[2].type === 'mousePressed').length, 1, 'kun udloeseren maa vaere trykket');
+});

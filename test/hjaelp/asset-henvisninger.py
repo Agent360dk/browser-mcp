@@ -9,8 +9,7 @@ bliver en tabulator, som URL-parseren fjerner; `d\\6f<TAB>cs` bruger tabulatoren
 
 R61 (Astra, MAALT): `<!-->` lukker en kommentar i en browser, men ikke i html.parser, saa et link efter den var skjult for
 vagten; et `srcdoc` er et helt dokument i en attribut (dobbelt kodet); og et stylesheet kan selv hente et andet med
-@import. (R61 lukkede dem enkeltvis; R62 erstattede det med lukkereglen nedenfor. base64-data:-dokumenter og .css-filer
-laeses stadig for sig, for dem kan lukkereglen ikke se.)
+@import. (R61 lukkede dem enkeltvis; R62 erstattede det med lukkereglen nedenfor, og R64 forbyder base64-data helt.)
 Et script der saetter en adresse sammen mens siden koerer, kan ingen statisk vagt se - det dækkes ikke.
 
 R62 (Astra, MAALT): en afbrudt kommentar INDE i et srcdoc og en CSS-kommentarstart inde i en URL-streng skjulte en henvisning
@@ -23,7 +22,6 @@ Udskriver JSON: {side: {"kanon": [[endelse, noegle], ...], "raa": antal, "omtale
   raa     - antal kanoniske henvisninger i kildeteksten i den citerede form, som generatoren opdaterer
   omtaler - alt andet, der efter afkodning naevner en af de to filer
 """
-import base64
 import html
 import json
 import os
@@ -74,31 +72,33 @@ def css_afkod(s):
 
 
 # R63 (Astra, maalt): base64 laestes kun i attributter og kun ét lag, `; base64` med mellemrum blev ikke set, og 12 runder var
-# ikke et fikspunkt (16 lag srcdoc). Nu afkodes base64-data overalt i hver runde, og der stoppes foerst, naar intet aendrer
-# sig. Hvert afkodningstrin goer teksten kortere, saa det ender altid.
-DATA64_ALLE = re.compile(r'data:[^,"\'()]*?;\s*base64\s*,\s*([A-Za-z0-9+/]+=*)', re.I)
-
-
-def _b64(m):
-    try:
-        return 'data:,' + base64.b64decode(m.group(1) + '===').decode('utf-8', 'replace')
-    except Exception:
-        return 'data:,'
+# ikke et fikspunkt (16 lag srcdoc). Nu afkodes der til intet aendrer sig mere.
+# R64 (Astra, maalt): mellemrum, tabulatorer, linjeskift og procent-kodning INDE i base64-dataene slap igennem - hver ny
+# afkoder aabner en ny form. Generatoren skriver ingen base64-data (maalt 9/10: 0 af 43 sider har `;base64,`), saa formen
+# forbydes i stedet for at blive afkodet: en side eller et stylesheet med base64-data er en omtale, uanset hvad dataene
+# indeholder. Moensteret proeves paa hvert trin af afkodningen, saa en kodet `;base64,` ogsaa ses. Browseren kraever
+# ordet `base64` i et stykke lige efter semikolon og mellemrum (Fetch: data: URL processor); entiteter, CSS-escapes,
+# procent-kodning og tabulatorer afkodes her foer, saa vagten ser mindst det, browseren ser.
+BASE64 = re.compile(r';\s*base64\s*,', re.I)
 
 
 def fikspunkt(tekst):
-    """Afkod til intet aendrer sig mere: base64-data, HTML-entiteter, CSS-escapes, procent-kodning, tabulatorer og linjeskift."""
+    """Afkod til intet aendrer sig mere: HTML-entiteter, CSS-escapes, procent-kodning, tabulatorer og linjeskift.
+    Svarer (tekst, om base64-data blev set paa et af trinene). Et trin, der aendrer noget, goer teksten kortere (kun en enlig
+    backslash til sidst bliver til ét erstatningstegn, og det sker én gang), saa det ender altid."""
+    base64_set = False
     for _ in range(100000):
-        ny = DATA64_ALLE.sub(_b64, tekst)
-        ny = re.sub(r'[\t\n\r]', '', unquote(css_afkod(html.unescape(ny)), errors='replace'))
+        base64_set = base64_set or bool(BASE64.search(tekst))
+        ny = re.sub(r'[\t\n\r]', '', unquote(css_afkod(html.unescape(tekst)), errors='replace'))
         if ny == tekst:
             break
         tekst = ny
-    return tekst
+    return tekst, base64_set
 
 
 def naevner(tekst):
-    if NAVN.search(fikspunkt(tekst)):
+    afkodet, base64_set = fikspunkt(tekst)
+    if base64_set or NAVN.search(afkodet):
         return True
     for v in (tekst, css_afkod(tekst)):
         v = re.sub(r'[\t\n\r]', '', v)
@@ -161,7 +161,10 @@ def main(mappe):
             p.close()
             omtaler = list(p.omtaler)
             # Lukkereglen: efter afkodning til fikspunkt maa navnene kun staa i de kanoniske henvisninger.
-            i_alt = len(NAVN.findall(fikspunkt(kilde)))
+            afkodet, base64_set = fikspunkt(kilde)
+            if base64_set:
+                omtaler.append('filen har base64-data (;base64,), som vagten ikke ser ind i - generatoren skriver ingen')
+            i_alt = len(NAVN.findall(afkodet))
             if i_alt != len(p.kanon):
                 omtaler.append(f'filen naevner docs.css/docs.js {i_alt} gange efter afkodning, men har {len(p.kanon)} kanoniske henvisninger')
             ud[os.path.relpath(sti, mappe)] = {'kanon': p.kanon, 'raa': len(RAA.findall(kilde)), 'omtaler': omtaler}

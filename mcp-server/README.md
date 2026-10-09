@@ -245,7 +245,7 @@ All three are optional. None is needed for normal use.
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns; the target gets nothing (`covered`) when the mouse would not reach it |
-| `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select); a custom trigger the mouse would not reach is not opened (`covered`) |
+| `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select); a custom trigger or option the mouse would not reach is not clicked (`covered`) |
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |

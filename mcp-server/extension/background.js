@@ -958,11 +958,22 @@ async function tolkManglendeSettle(tabId, settle, urlFoer) {
   return { landed: null, fallbackFired: false, unverified: true, fejl };
 }
 
-async function debuggerClick(tabId, x, y) {
+async function debuggerClick(tabId, x, y, bundet = false) {
   await debuggerAttach(tabId);
   // Er museknappen sendt ned, kan klikket vaere landet - saa maa en fejl bagefter ikke fore til et klik til.
   let trykSendt = false;
+  let vagtArmet = false;
   try {
+    // R64: `bundet` = klikket hoerer til et element, resolveElement lige har fundet. Vagten i siden binder haendelserne til
+    // det (armerMaalVagt). Ligger noget andet i punktet nu, sendes intet. Kan vagten ikke armeres, klikkes der som foer.
+    // Med vagten: (0) maalet er det fundne element, ikke det der ligger i punktet nu, saa reserven aldrig rammer et overlay,
+    // der kom frem efter opslaget; (1) har vagten godkendt foerste haendelse (maalet eller dets egen ramme/label), er klikket
+    // maalets; (2) stoppede vagten sekvensen, fordi noget andet laa i punktet, da musen kom, er der ingen reserve og intet klik.
+    if (bundet) {
+      const vagt = await armerMaalVagt(tabId, x, y, VAGT_KLIK);
+      if (vagt && vagt.daekket) return { landed: false, fallbackFired: false, blokeret: vagt.daekket, foerSendt: true };
+      vagtArmet = !!(vagt && vagt.armet);
+    }
     // Adressen foer klikket - et skift bagefter er bevis for en virkning (se tolkManglendeSettle).
     const urlFoer = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
     // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
@@ -981,6 +992,7 @@ async function debuggerClick(tabId, x, y) {
           if (!inner || inner === host) break;
           el = inner; host = inner;
         }
+        if (${vagtArmet} && window.__bmcpMaal) el = window.__bmcpMaal;
         window.__bmcpClickTarget = el || null;
         // FIX-13: watch whether the trusted click (step 2) actually lands on the target,
         // so step 3's framework-fallback does NOT double-fire on elements that stay
@@ -993,6 +1005,7 @@ async function debuggerClick(tabId, x, y) {
             if (el && (t === el || el.contains(t) || (ev.composedPath && ev.composedPath().includes(el)))) {
               window.__bmcpClicked = true;
             }
+            if (window.__bmcpVagt && window.__bmcpVagt.dom === 'ok') window.__bmcpClicked = true;
           } catch (e) {}
         };
         document.addEventListener('click', window.__bmcpClickListener, true);
@@ -1066,6 +1079,8 @@ async function debuggerClick(tabId, x, y) {
                    hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join('\0'));
           } catch (e) { return 'aftryk-fejlede'; }
         };
+        const vagt = window.__bmcpVagt;
+        if (vagt && vagt.blokeret) { ryd(); return { landed: false, fallbackFired: false, blokeret: vagt.blokeret }; }
         if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
         if (el === null) { ryd(); return { landed: false, fallbackFired: false, intetMaal: true }; }   // intet element under punktet (fx uden for vinduet) - ingen virkning
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
@@ -1157,6 +1172,7 @@ async function debuggerClick(tabId, x, y) {
     if (trykSendt && e && typeof e === 'object') e.trykSendt = true;
     throw e;
   } finally {
+    if (vagtArmet) await laesMaalVagt(tabId);
     await debuggerDetach(tabId);
   }
 }
@@ -1580,6 +1596,74 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
   return svar;
 }
 
+// ── Maalets identitet helt ind i haendelsen (R64) ──────────────────────────
+// R64 (Astra, maalt i model): et overlay der kom frem MELLEM opslaget og afsendelsen, fik haendelserne, og svaret var
+// ok:true - click genfandt sit maal ud fra koordinaten, og double_click, right_click og hover talte haendelser i hele fanen.
+// Nu foelger maalet med ind i siden, som Playwrights hit-target-vagt: en lytter i fangstfasen paa window afgoer ved den
+// FOERSTE haendelse i vores punkt, om den rammer maalet (eller dets egen ramme eller label, efter samme regel som foer
+// afsendelsen). Goer den ikke det, stoppes hele sekvensen (preventDefault + stopImmediatePropagation), og svaret bliver
+// covered. Kun haendelser, der naaede maalet, taeller som bevis. Haendelser andre steder (en rigtig mus i samme fane)
+// hverken afgoer eller taeller.
+const VAGT_KLIK = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
+const VAGT_HOVER = ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove'];
+
+async function armerMaalVagt(tabId, x, y, typer) {
+  let r;
+  try {
+    r = await cdpSend(tabId, 'Runtime.evaluate', { returnByValue: true, expression: `(() => {
+      const tjek = window.__bmcpMaalTjek, maal = window.__bmcpMaal, typer = ${JSON.stringify(typer)};
+      try { delete window.__bmcpMaalTjek; } catch (e) {}
+      const gl = window.__bmcpVagt;
+      if (gl && gl.fn) for (const t of gl.typer) window.removeEventListener(t, gl.fn, true);
+      window.__bmcpVagt = null;
+      if (typeof tjek !== 'function' || !maal || !maal.isConnected) return { ingen: true };
+      const nu = tjek(${x}, ${y});
+      if (nu) return { daekket: nu };
+      const v = { typer, dom: null, blokeret: null, leveret: {} };
+      v.fn = (ev) => {
+        if (!ev.isTrusted) return;
+        const vej = ev.composedPath ? ev.composedPath() : [];
+        const vores = vej.includes(maal) || (Math.abs(ev.clientX - ${x}) <= 1 && Math.abs(ev.clientY - ${y}) <= 1);
+        if (!vores) return;
+        if (v.dom === null) {
+          const d = vej.includes(maal) ? null : tjek(ev.clientX, ev.clientY);
+          v.dom = d ? 'blokeret' : 'ok';
+          v.blokeret = d || null;
+        }
+        if (v.dom === 'blokeret') { ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+        v.leveret[ev.type] = (v.leveret[ev.type] || 0) + 1;
+      };
+      for (const t of typer) window.addEventListener(t, v.fn, true);
+      window.__bmcpVagt = v;
+      return { armet: true };
+    })()` });
+  } catch { return null; }
+  return r?.result?.value ?? null;
+}
+
+async function laesMaalVagt(tabId) {
+  let r;
+  try {
+    r = await cdpSend(tabId, 'Runtime.evaluate', { returnByValue: true, expression: `(() => {
+      const v = window.__bmcpVagt;
+      window.__bmcpVagt = null;
+      try { delete window.__bmcpMaal; } catch (e) {}
+      if (!v || !v.fn) return { udskiftet: true };
+      for (const t of v.typer) window.removeEventListener(t, v.fn, true);
+      return { leveret: v.leveret, blokeret: v.blokeret };
+    })()` });
+  } catch { return null; }
+  return r?.result?.value ?? null;
+}
+
+/** Vagtens dom som et haendelsesbevis (samme form som laesHaendelsesBevis). */
+function vagtBevis(laest, typer) {
+  if (!laest) return { landed: null };
+  if (laest.blokeret) return { landed: false, blokeret: laest.blokeret };
+  if (laest.udskiftet) return { landed: true, navigeret: true };
+  return { landed: typer.some((t) => (laest.leveret?.[t] || 0) > 0) };
+}
+
 async function armerHaendelsesBevis(tabId, type) {
   // Samme rolle for musen som armerTastBevis har for tasterne, og af samme grund: Chrome
   // KVITTERER for en CDP-kommando uden at love at siden fik den. For tasterne loej det
@@ -1818,7 +1902,8 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 //   - en aaben modal dialog (dialog:modal eller en synlig [aria-modal="true"]) soeges foerst, eksakt tekst foer delvis;
 //   - ligger et andet element over maalets midtpunkt, meldes det i `covered`, og musevaerktoejerne klikker ikke.
 // Funktionen er selvstaendig, saa den kan sendes som `func` til chrome.scripting OG som tekst til Runtime.evaluate.
-// `gem` lægger elementet paa window.__bmcpMaal (til script-klikket); `kunElement` returnerer selve elementet.
+// `gem` lægger elementet paa window.__bmcpMaal og dets daekningsregel paa window.__bmcpMaalTjek (til script-klikket og
+// vagten i armerMaalVagt); `kunElement` returnerer selve elementet.
 function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   // Interactive controls we prefer to actually click. Fixes the class of bug where a
   // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
@@ -1885,13 +1970,27 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
     if (kandidater.length < 2) return kandidater[0] || null;
     // R62 (Astra, maalt i model): to forskudte dialoger kan begge ligge oeverst ved deres EGET midtpunkt. Hvem der ligger
     // oeverst, afgoeres derfor dér hvor de overlapper: den valgte maa ikke ligge under nogen anden kandidat.
+    // R64 (Astra, maalt i model): foreningsrektanglet om to adskilte paneler omsluttede ogsaa hullet imellem, og punktet
+    // landede dér. Nu sammenlignes de synlige bokse parvis, og punktet tages i en ægte overlapning.
+    const bokse = (d) => {
+      const egen = d.getBoundingClientRect();
+      if (egen.width > 0 && egen.height > 0) return [egen];
+      return Array.from(d.querySelectorAll ? d.querySelectorAll('*') : []).slice(0, 200).filter((b) => {
+        const bs = getComputedStyle(b);
+        const r = b.getBoundingClientRect();
+        return bs.visibility !== 'hidden' && bs.display !== 'none' && r.width > 0 && r.height > 0;
+      }).map((b) => b.getBoundingClientRect()).slice(0, 50);
+    };
     const over = (a, b) => {
-      const ra = visRekt(a), rb = visRekt(b);
-      const l = Math.max(ra.left, rb.left, 0), r = Math.min(ra.right, rb.right, window.innerWidth);
-      const t = Math.max(ra.top, rb.top, 0), u = Math.min(ra.bottom, rb.bottom, window.innerHeight);
-      if (r <= l || u <= t) return null;
-      const h = dybtPunkt((l + r) / 2, (t + u) / 2);
-      return inde(h, a) && !inde(h, b) ? true : inde(h, b) && !inde(h, a) ? false : null;
+      for (const ra of bokse(a)) for (const rb of bokse(b)) {
+        const l = Math.max(ra.left, rb.left, 0), r = Math.min(ra.right, rb.right, window.innerWidth);
+        const t = Math.max(ra.top, rb.top, 0), u = Math.min(ra.bottom, rb.bottom, window.innerHeight);
+        if (r <= l || u <= t) continue;
+        const h = dybtPunkt((l + r) / 2, (t + u) / 2);
+        if (inde(h, a) && !inde(h, b)) return true;
+        if (inde(h, b) && !inde(h, a)) return false;
+      }
+      return null;
     };
     const oeverst = kandidater.filter((d) => kandidater.every((o) => o === d || over(d, o) !== false));
     return (oeverst.length ? oeverst : kandidater)[(oeverst.length ? oeverst : kandidater).length - 1];
@@ -1958,8 +2057,15 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
     // tilfaelde afvises igen, sikkert og forklaret, og noten peger paa at klikke feltet eller kortet direkte.
     const ramme = el.closest ? el.closest('label,button,a,summary,[onclick],[role="button"],[role="link"],[role="menuitem"],' +
       '[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]') : null;
-    if (ramme && inde(hit, ramme)) return null;
-    for (const l of Array.from(el.labels || [])) if (inde(hit, l)) return null;
+    // R64 (Astra, maalt i model): et input oven paa teksten i et role=button-kort, og et link inde i en afkrydsnings label,
+    // blev godtaget som maalets egen ramme. Rammen og labelen taeller kun, naar det der ligger oeverst, ikke selv er en
+    // anden kontrol: klik paa et link i en label aktiverer ikke labelens kontrol (HTML-standarden).
+    const hitKontrol = hit.closest ? hit.closest(CLICKABLE + ',input,select,textarea') : null;
+    const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
+      Array.from(el.labels || []).includes(hitKontrol);
+    const andenKontrol = !egenKontrol;
+    if (ramme && inde(hit, ramme) && !andenKontrol) return null;
+    for (const l of Array.from(el.labels || [])) if (inde(hit, l) && !andenKontrol) return null;
     // R61 (Astra): en svaevende label med pointer-events:none over sit eget felt - musen rammer feltet, og det er netop
     // hvad et klik paa labelen goer. Labelens eget felt er ikke en daekning.
     if (el.control && inde(hit, el.control)) return null;
@@ -1969,7 +2075,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   const el = tekst != null ? findTekst() : queryDeep(document, sel);
   if (kunElement) return el;
   if (!el) return null;
-  if (gem) window.__bmcpMaal = el;
+  // R64: med `gem` foelger ogsaa daekningsreglen for netop dette element med, saa vagten i siden (armerMaalVagt) kan afgoere
+  // i selve haendelsen, om den ramte maalet - ikke kun hvad der laa i punktet, da maalet blev fundet.
+  if (gem) { window.__bmcpMaal = el; window.__bmcpMaalTjek = (px, py) => daekketAf(el, px, py); }
   const txt = tekst != null ? { text: (el.textContent || '').trim().slice(0, 80) } : {};
   el.scrollIntoView({ block: 'center', behavior: 'instant' });
   const r = el.getBoundingClientRect();
@@ -2018,6 +2126,17 @@ function daekketSvar(selector, el, method) {
   return svar;
 }
 
+// R64: daekningen kom frem efter opslaget. Opdagede vagten det foer afsendelsen, blev intet sendt; ellers stoppede den
+// haendelserne i siden, foer sidens egne lyttere saa dem.
+function vagtSvar(selector, el, r) {
+  const svar = daekketSvar(selector, { ...el, covered: r.blokeret });
+  if (!r.foerSendt) {
+    svar.note = svar.note.replace('Nothing was done.', 'The mouse events were sent, but stopped at the window before they ' +
+      'reached any element of the page, so neither element got the action.');
+  }
+  return svar;
+}
+
 // R61 (Opus, maalt i Chrome): et tooltip, som vaerktoejets EGET hover havde aabnet, laa over naboknappen, og klikket blev
 // afvist med «the mouse reaches that instead». En rigtig mus skjuler tooltippet, naar den flyttes. Er maalet daekket,
 // flyttes musen derfor hen til det, og daekningen maales igen - kun i den aktive fane: i en baggrundsfane leverer Chrome
@@ -2039,9 +2158,9 @@ async function resolveElement(tabId, selectorStr) {
 
   if (parsed.type === 'css') {
     // Standard CSS with shadow DOM traversal - try executeScript first, debugger fallback on CSP
-    const scriptResult = await safeExecuteScript(tabId, klikMaal, [parsed.selector, null, null, false, false]);
+    const scriptResult = await safeExecuteScript(tabId, klikMaal, [parsed.selector, null, null, true, false]);
     if (scriptResult.cspBlocked) {
-      const result = await debuggerEval(tabId, `(${klikMaal})(${JSON.stringify(parsed.selector)}, null, null, false, false)`);
+      const result = await debuggerEval(tabId, `(${klikMaal})(${JSON.stringify(parsed.selector)}, null, null, true, false)`);
       return result ? { ...result, method: 'debugger' } : null;
     }
     return scriptResult.result;
@@ -2049,7 +2168,7 @@ async function resolveElement(tabId, selectorStr) {
 
   // Text-based selector - always use debugger (more reliable, no CSP issues)
   const result = await debuggerEval(tabId,
-    `(${klikMaal})(null, ${JSON.stringify(parsed.text)}, ${JSON.stringify(parsed.tag)}, false, false)`);
+    `(${klikMaal})(null, ${JSON.stringify(parsed.text)}, ${JSON.stringify(parsed.tag)}, true, false)`);
   return result ? { ...result, method: 'debugger' } : null;
 }
 
@@ -4466,7 +4585,8 @@ async function dispatch(port, method, params) {
         if (el.covered) return daekketSvar(params.selector, el);
 
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
-        const clickResult = await debuggerClick(tab.id, el.x, el.y);
+        const clickResult = await debuggerClick(tab.id, el.x, el.y, true);
+        if (clickResult && clickResult.blokeret) return vagtSvar(params.selector, el, clickResult);
         return {
           method: el.method || 'debugger',
           tag: el.tag,
@@ -4578,7 +4698,8 @@ async function dispatch(port, method, params) {
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         // R61 (Opus, maalt i Chrome): fill text= klikkede paa overlayet og svarede ok:true.
         if (el.covered) return daekketSvar(params.selector, el);
-        await debuggerClick(tab.id, el.x, el.y);
+        const fillKlik = await debuggerClick(tab.id, el.x, el.y, true);
+        if (fillKlik && fillKlik.blokeret) return vagtSvar(params.selector, el, fillKlik);
         await new Promise(r => setTimeout(r, 100));
         // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
         if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
@@ -5101,8 +5222,11 @@ async function dispatch(port, method, params) {
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
-      const dblBevis = await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       const { x, y } = el;
+      // R64: vagten binder haendelserne til maalet; kan den ikke armeres, bruges fanebeviset som foer.
+      const vagtD = await armerMaalVagt(tab.id, x, y, VAGT_KLIK);
+      if (vagtD && vagtD.daekket) return vagtSvar(params.selector, el, { blokeret: vagtD.daekket, foerSendt: true });
+      const dblBevis = vagtD && vagtD.armet ? null : await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await new Promise(r => setTimeout(r, 30));
       // Proper dblclick: two press/release pairs with escalating clickCount.
@@ -5111,7 +5235,9 @@ async function dispatch(port, method, params) {
       await new Promise(r => setTimeout(r, 40));
       await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
       await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
-      const db = dblBevis ? await laesHaendelsesBevis(tab.id, dblBevis) : { landed: null };
+      const db = vagtD && vagtD.armet ? vagtBevis(await laesMaalVagt(tab.id), ['dblclick'])
+        : dblBevis ? await laesHaendelsesBevis(tab.id, dblBevis) : { landed: null };
+      if (db.blokeret) return vagtSvar(params.selector, el, db);
       return haendelsesSvar(db, 'double-click-not-delivered',
         { double_clicked: db.landed === true, tag: el.tag, text: el.text });
     }
@@ -5123,13 +5249,17 @@ async function dispatch(port, method, params) {
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
       if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
-      const hoejreBevis = await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       const { x, y } = el;
+      const vagtR = await armerMaalVagt(tab.id, x, y, VAGT_KLIK);   // R64, som double_click
+      if (vagtR && vagtR.daekket) return vagtSvar(params.selector, el, { blokeret: vagtR.daekket, foerSendt: true });
+      const hoejreBevis = vagtR && vagtR.armet ? null : await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       await new Promise(r => setTimeout(r, 30));
       await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
       await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
-      const hb2 = hoejreBevis ? await laesHaendelsesBevis(tab.id, hoejreBevis) : { landed: null };
+      const hb2 = vagtR && vagtR.armet ? vagtBevis(await laesMaalVagt(tab.id), ['contextmenu'])
+        : hoejreBevis ? await laesHaendelsesBevis(tab.id, hoejreBevis) : { landed: null };
+      if (hb2.blokeret) return vagtSvar(params.selector, el, hb2);
       const svarH = haendelsesSvar(hb2, 'right-click-not-delivered',
         { right_clicked: hb2.landed === true, tag: el.tag, text: el.text });
       // Den gamle note gaelder stadig naar haendelsen LANDEDE: Chromes egen menu aabner ikke via CDP.
@@ -5193,17 +5323,24 @@ async function dispatch(port, method, params) {
       // saa det samme, og anden gang giver kun `mousemove`. Beviset lyttede kun paa mouseover,
       // saa en helt almindelig raekkefoelge svarede "ikke leveret" - et falsk NEJ, som faar
       // agenten til at skifte fane og proeve igen paa noget der virkede.
-      const hoverBevis = await armerHaendelsesBevis(tab.id, ['mouseover', 'mousemove']).catch(() => null);
+      // R64: vagten binder haendelserne til maalet; kan den ikke armeres, bruges fanebeviset som foer.
+      const vagtH = await armerMaalVagt(tab.id, el.x, el.y, VAGT_HOVER);
+      if (vagtH && vagtH.daekket) { await debuggerDetach(tab.id); return vagtSvar(params.selector, el, { blokeret: vagtH.daekket, foerSendt: true }); }
+      const hoverBevis = vagtH && vagtH.armet ? null : await armerHaendelsesBevis(tab.id, ['mouseover', 'mousemove']).catch(() => null);
+      let vagtLaest = null;
       try {
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseMoved', x: el.x, y: el.y,
         });
         // Hold hover for duration (default 500ms) so menus/tooltips appear
         await new Promise(r => setTimeout(r, params.duration || 500));
+        if (vagtH && vagtH.armet) vagtLaest = await laesMaalVagt(tab.id);
       } finally {
         await debuggerDetach(tab.id);
       }
-      const hb = hoverBevis ? await laesHaendelsesBevis(tab.id, hoverBevis) : { landed: null };
+      const hb = vagtH && vagtH.armet ? vagtBevis(vagtLaest, ['mouseover', 'mousemove'])
+        : hoverBevis ? await laesHaendelsesBevis(tab.id, hoverBevis) : { landed: null };
+      if (hb.blokeret) return vagtSvar(params.selector, el, hb);
       return haendelsesSvar(hb, 'hover-not-delivered', { tag: el.tag, text: el.text });
     }
 
@@ -5346,7 +5483,8 @@ async function dispatch(port, method, params) {
       if (!trigger) return { ok: false, error: 'Dropdown trigger not found: ' + params.selector };
       // R61 (Opus, maalt i Chrome): select_option klikkede paa overlayet og svarede selected.
       if (trigger.covered) return daekketSvar(params.selector, trigger);
-      await debuggerClick(tab.id, trigger.x, trigger.y);
+      const udloeserKlik = await debuggerClick(tab.id, trigger.x, trigger.y, true);
+      if (udloeserKlik && udloeserKlik.blokeret) return vagtSvar(params.selector, trigger, udloeserKlik);
 
       // Step 2: Wait for options to appear
       await new Promise(r => setTimeout(r, params.wait || 300));
@@ -5354,7 +5492,19 @@ async function dispatch(port, method, params) {
       // Step 3: Find and click the option by text
       const option = await resolveElement(tab.id, `text=${oensket}`);
       if (!option) return { ok: false, error: 'Option not found: ' + oensket };
-      const valgKlik = await debuggerClick(tab.id, option.x, option.y);
+      // R64 (Astra, maalt i model): kun udloeseren blev tjekket for daekning - et valg under en fremmed knap blev klikket, og
+      // svaret sagde selected. Valget tjekkes nu ogsaa; udloeseren ER klikket, saa svaret siger at listen kan staa aaben.
+      if (option.covered) {
+        const svar = daekketSvar(`text=${oensket}`, option);
+        svar.note = 'The dropdown was opened, but its option is covered: ' + svar.note + ' The list may still be open.';
+        return { ...svar, trigger_clicked: true };
+      }
+      const valgKlik = await debuggerClick(tab.id, option.x, option.y, true);
+      if (valgKlik && valgKlik.blokeret) {
+        const svar = vagtSvar(`text=${oensket}`, option, valgKlik);
+        svar.note = 'The dropdown was opened, but its option is covered: ' + svar.note + ' The list may still be open.';
+        return { ...svar, trigger_clicked: true };
+      }
 
       // MAALT 22/8 ved review: aerlighedsfixet blev kun anvendt paa native-grenen
       // ovenfor. Her stod stadig `return { ok: true }` ubetinget, selv om resultatet

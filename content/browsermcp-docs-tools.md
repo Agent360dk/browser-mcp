@@ -38,7 +38,7 @@ The list below is what the client has to choose from.
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
 | `browser_wait` | Wait for an element matching a CSS or text selector to appear. |
 | `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. The target gets nothing (`covered`) when the mouse would not reach it. |
-| `browser_select_option` | Select an option from a native `<select>` or a custom dropdown (Angular Material, React Select, etc.). A custom trigger the mouse would not reach is not opened (`covered`). |
+| `browser_select_option` | Select an option from a native `<select>` or a custom dropdown (Angular Material, React Select, etc.). A custom trigger or option the mouse would not reach is not clicked (`covered`). |
 | `browser_set_combobox` | Drive an autocomplete/combobox: click, type filter query, wait for the listbox, click the option(s); supports multi-select chips. |
 | `browser_set_date` | Set a date input robustly - native value-set, masked-text typing, or calendar-picker navigation (MUI/AntD/react-datepicker/Lexical), with read-back verification. |
 | `browser_dismiss_overlays` | Bulk-dismiss popups, modals, tooltips, and banners via heuristics on close affordances (aria-label, "Skip"/"Ikke nu"/"Got it", × button). |
