@@ -216,3 +216,33 @@ test('filmen: tavs, i loop, inline, uden autoplay-attribut, og filerne findes i 
   assert.ok(mp4 > 10_000 && mp4 < 3_000_000, `film-v2.mp4 er ${mp4} byte`);
   assert.ok(jpg > 5_000 && jpg < 300_000, `film-v2.jpg er ${jpg} byte`);
 });
+
+// ---- Toppen 9/10-2026 (Gustav: «forstå direkte hvad det er», flest installationer). Begge trin staar i heroen;
+// en telefon kan ikke installere en Chrome-udvidelse, saa den faar «send linket til din computer» og GitHub-stjernen.
+function simulerSend({ share = true } = {}) {
+  const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
+  let klik = null; const knap = { hidden: true, textContent: 'Send the link to my computer', addEventListener: (_, f) => { klik = f; } };
+  const delt = [], kopieret = [];
+  const nav = share ? { share: (d) => { delt.push(d); return Promise.resolve(); } } : { clipboard: { writeText: (t) => { kopieret.push(t); return Promise.resolve(); } } };
+  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], querySelector: () => null, getElementById: (id) => (id === 'sendlink' ? knap : null) };
+  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, () => ({ matches: false }), nav);
+  return { knap, klik: () => klik && klik(), delt, kopieret };
+}
+
+test('toppen: «send linket» deler browsermcp.dev, og uden deling kopieres adressen', async () => {
+  const a = simulerSend();
+  assert.equal(a.knap.hidden, false, 'knappen skal vises, naar scriptet koerer');
+  a.klik(); assert.deepEqual(a.delt.map((d) => d.url), ['https://browsermcp.dev/']);
+  const b = simulerSend({ share: false });
+  b.klik(); await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(b.kopieret, ['https://browsermcp.dev/']);
+  assert.match(b.knap.textContent, /Link copied/);
+});
+
+test('toppen: begge trin i heroen paa en computer; paa en beroeringsskaerm i stedet telefonkortet uden butiksknap', () => {
+  const hero = html.slice(html.indexOf('<section class="hero">'), html.indexOf('<figure class="film"'));
+  assert.match(hero, /<div class="inst" id="install-hero">[\s\S]*chromewebstore\.google\.com[\s\S]*id="c1"/, 'trin 1 og trin 2 skal staa foer filmen');
+  assert.match(hero, /class="paa-tlf"[\s\S]*id="sendlink"[\s\S]*github\.com\/Agent360dk\/browser-mcp/, 'telefonkortet skal have send-knap og GitHub');
+  assert.ok(html.includes('@media (hover:none) and (pointer:coarse){.inst{display:none}.paa-tlf{display:block}.top .nav a.navcta{display:none}}'), 'beroeringsskaerm: skjul trinene og topbjaelkens butiksknap, vis telefonkortet');
+  assert.match(html, /<h1>Let your AI agent use your real Chrome\.<\/h1>/);
+});

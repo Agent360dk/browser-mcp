@@ -363,6 +363,17 @@ td code{word-break:normal;overflow-wrap:anywhere}
 .hero :focus-visible{outline-color:#8AB4F8}
 /* runde 5: paa telefonen spiller et 4:5-klip med stoerre tekst (byttes i bundscriptet, samme brudpunkt) */
 @media (max-width:37.5rem){.hero .film video{aspect-ratio:4/5}}
+/* 9/10 (Gustav: «forstå direkte hvad det er», flest installationer): begge trin paa foerste skaerm; paa en telefon,
+   der ikke kan installere udvidelser, i stedet «send linket til din computer» og GitHub-stjernen */
+.inst{width:100%;max-width:60rem;display:grid;grid-template-columns:minmax(0,.75fr) minmax(0,1.5fr);gap:1rem 2rem;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:1.4rem 1.5rem}
+.inst-s{display:grid;grid-template-columns:2rem minmax(0,1fr);gap:.8rem;align-items:start}
+.inst-h{font-weight:650;color:#ECEFF3;margin:.4rem 0 .75rem}
+.inst .cmdnote{color:#8F98A5;margin-top:.55rem;font-size:.85rem}.inst .cmdnote a{color:#C9D1DD}
+.paa-tlf{display:none;text-align:center;color:#A9B1BD;max-width:30rem}.paa-tlf b{color:#fff}.paa-tlf .acts{justify-content:center;margin:1rem 0 0}
+.hero .btn.sec2{background:transparent;color:#ECEFF3;border-color:rgba(255,255,255,.3)}
+.hero > .wrap > .watch{margin-top:-.5rem}
+@media (max-width:48rem){.inst{grid-template-columns:1fr}}
+@media (hover:none) and (pointer:coarse){.inst{display:none}.paa-tlf{display:block}.top .nav a.navcta{display:none}}
 @media (max-width:30rem){.herocta{flex-wrap:wrap}.herocta .btn{flex:1}.watch{width:100%;text-align:center}}
 </style>
 
@@ -391,19 +402,13 @@ td code{word-break:normal;overflow-wrap:anywhere}
   <div class="wrap">
     <div class="hero-t">
       <a class="oss" href="https://github.com/Agent360dk/browser-mcp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span><b>Free and open source</b> · MIT</span></a>
-      <h1>Your agent,<br>past the login.</h1>
-      <p class="lede">A Chrome extension and a small local server that let your agent work in the Chrome you’re already signed into. It can read an emailed 2FA code, tick the CAPTCHA box, and ask you when it can’t.</p>
-      <div class="acts herocta"><span class="hn" aria-hidden="true">1</span><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome, free</a><a class="watch" href="#film">Watch it work ↓</a></div>
+      <h1>Let your AI agent use your real Chrome.</h1>
+      <p class="lede">A free, open-source Chrome extension and MCP server for Claude Code, Cursor, Codex and VS Code. Your agent works in the tabs you’re already signed into, reads emailed 2FA codes, and asks you when it’s stuck.</p>
     </div>
 
-    <figure class="film" id="film">
-      <input type="checkbox" id="pause" class="vh pause-input">
-      <video id="filmv" src="/film-v2.mp4" poster="/film-v2.jpg" width="1280" height="800" muted loop playsinline preload="metadata" aria-label="A 20-second illustration of Browser MCP. An agent works in its own colour-coded tab group in Chrome, signed in. A login asks for a code sent by email; the agent opens Gmail in a new tab in its group, reads the code and types it in. It ticks a CAPTCHA checkbox itself. Then the tab groups grow from four to twenty agents, Claude 1 to Claude 20, in one Chrome."></video>
-      <figcaption><span>Illustration, 20 seconds. The tab groups and the log follow the real extension; the pages are made up.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
-    </figure>
-
-    <div class="trin2"><span class="hn" aria-hidden="true">2</span><div>
-          <p class="cmdlbl">Paste this in your terminal, then restart your agent:</p>
+    <div class="inst" id="install-hero">
+      <div class="inst-s"><span class="hn" aria-hidden="true">1</span><div><p class="inst-h">Add the extension</p><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome, free</a></div></div>
+      <div class="inst-s"><span class="hn" aria-hidden="true">2</span><div><p class="inst-h">Paste this in your terminal, then restart your agent</p>
           <div class="ctabs">
             <input type="radio" name="klient" id="kl1" checked><label for="kl1">Claude Code</label>
             <input type="radio" name="klient" id="kl2"><label for="kl2">Cursor · VS Code · Codex</label>
@@ -411,7 +416,20 @@ td code{word-break:normal;overflow-wrap:anywhere}
             <div class="cmd k2"><code id="c1b" translate="no">npx @agent360/browser-mcp install --skip-extension</code><button type="button" class="copy" data-for="c1b" hidden>Copy</button></div>
           </div>
           <p class="cmdnote">Windsurf and the rest: <a href="/docs/install-windsurf/">see the guides</a>.</p>
-    </div></div>
+      </div></div>
+    </div>
+    <div class="paa-tlf">
+      <p><b>Install it on your computer.</b> Chrome extensions don’t run on phones.</p>
+      <div class="acts"><button type="button" class="btn pri" id="sendlink" hidden>Send the link to my computer</button><a class="btn sec2" href="https://github.com/Agent360dk/browser-mcp">Star on GitHub</a></div>
+    </div>
+    <a class="watch" href="#film">Watch it work ↓</a>
+
+    <figure class="film" id="film">
+      <input type="checkbox" id="pause" class="vh pause-input">
+      <video id="filmv" src="/film-v2.mp4" poster="/film-v2.jpg" width="1280" height="800" muted loop playsinline preload="metadata" aria-label="A 20-second illustration of Browser MCP. An agent works in its own colour-coded tab group in Chrome, signed in. A login asks for a code sent by email; the agent opens Gmail in a new tab in its group, reads the code and types it in. It ticks a CAPTCHA checkbox itself. Then the tab groups grow from four to twenty agents, Claude 1 to Claude 20, in one Chrome."></video>
+      <figcaption><span>Illustration, 20 seconds. The tab groups and the log follow the real extension; the pages are made up.</span><span><label for="pause" class="sbtn" id="pauselbl">Pause</label></span></figcaption>
+    </figure>
+
     <div class="hero-t">
       <ul class="proof">
         <li><b data-tal="cws-brugere">1,000</b><span>Chrome users</span></li>
@@ -615,6 +633,11 @@ document.querySelectorAll('.copy').forEach(function (b) {
     } catch (e) { fallback(); }
   });
 });
+// Telefonen kan ikke installere udvidelser: send linket til din computer (systemets deling, ellers kopi). Intet sendes til os.
+var send = document.getElementById('sendlink');
+if (send) { send.hidden = false; send.addEventListener('click', function () { var u = 'https://browsermcp.dev/';
+  if (navigator.share) { navigator.share({ title: 'Browser MCP', url: u }).catch(function () {}); }
+  else if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(u).then(function () { send.textContent = 'Link copied. Open it on your computer'; }); } }); }
 // Kortet med 20 grupper: tones ind én gang, naar det kommer frem, og bliver staaende.
 var g20 = document.querySelector ? document.querySelector('.g20') : null;
 if (g20) { try { var o20 = new IntersectionObserver(function (e) { if (e[0].isIntersecting) { g20.classList.add('in'); o20.disconnect(); } }, { threshold: 0.5 }); o20.observe(g20); } catch (e) { g20.classList.add('in'); } }
