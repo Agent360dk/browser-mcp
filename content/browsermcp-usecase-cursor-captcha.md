@@ -8,7 +8,7 @@
 
 **The problem in one line:** the agent hits a CAPTCHA, and everything after it never happens.
 
-There is no honest way to automate past a challenge designed to stop automation. So we do not try to. The agent can try the simple case, and ask you in the chat to solve the rest in its tab.
+There is no honest way to automate past a challenge designed to stop automation. So we do not try to. The agent can try the simple case, and ask you to solve the rest: if its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 ## What it looks like
 
@@ -25,7 +25,7 @@ Cursor:  [continues in the same tab]
          Rates are in - zone 3 went up 4% this month.
 ```
 
-`browser_solve_captcha` can try the reCAPTCHA checkbox. When a reCAPTCHA escalates to an image grid, the agent can click the cells it chooses after its own screenshot. For a slider or anything else it asks you in the chat to solve it in its tab, and carries on when you say it is done. `browser_ask_user` is for what you can type into its dialog, such as a 2FA code; the dialog covers the page while it waits, so a CAPTCHA goes through the chat instead.
+`browser_solve_captcha` can try the reCAPTCHA checkbox. When a reCAPTCHA escalates to an image grid, the agent can click the cells it chooses after its own screenshot. For a slider or anything else it asks you to solve it, usually with `browser_ask_user`. Its dialog covers the page while it waits, so press Skip, solve the CAPTCHA in the tab, and tell the agent; it carries on from there.
 
 ## Setting it up
 
@@ -54,20 +54,20 @@ Full walkthrough: [Install for Cursor](/docs/install-cursor/).
 
 ## Two things to know before you rely on it
 
-**The tab has to be in front for the challenge to reach you.** Chrome does not deliver mouse and keyboard to a tab that is not the visible one in its window, and the tool brings the tab forward before it asks. That is deliberate: the alternative is a prompt for a challenge you cannot see.
+**The tab has to be in front for the challenge to reach you.** Chrome does not deliver mouse and keyboard to a tab that is not the visible one in its window, and `browser_ask_user` brings the tab forward before it asks. That is deliberate: the alternative is a prompt for a challenge you cannot see.
 
 **Your session is what makes most of this unnecessary.** Many CAPTCHAs fire because a fresh headless browser looks like a bot. It is your real Chrome with your real profile, so on a lot of sites the challenge never appears. That is not a guarantee, and it is not unique to us - Playwright MCP's extension and Chrome DevTools MCP can also drive a signed-in browser.
 
 ## Frequently asked questions
 
 **Does it solve CAPTCHAs for me?**
-It can try the reCAPTCHA checkbox and click the reCAPTCHA grid cells your agent chooses. Anything it cannot clear, your agent asks you in the chat to solve in its tab. We are not a solving service and do not use one.
+It can try the reCAPTCHA checkbox and click the reCAPTCHA grid cells your agent chooses. Anything it cannot clear, your agent asks you to solve: if its dialog covers the page, press Skip, solve it in the tab, and tell the agent. We are not a solving service and do not use one.
 
 **Do you send the challenge anywhere?**
 Not to us, and not to a solving service. The server is local, there is no account and no telemetry. If your agent takes a screenshot to choose grid cells, that image goes to your AI client like any other tool result.
 
 **Can I skip the attempt and just be asked straight away?**
-Yes - tell the agent to leave CAPTCHAs to you, and it asks you in the chat to solve them in its tab instead of trying.
+Yes - tell the agent to leave CAPTCHAs to you. It asks you instead of trying; if its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 **Which other clients does this work with?**
 All of them. [Claude Code](/docs/install-claude-code/), [Codex](/docs/install-codex/), [VS Code](/docs/install-vscode/), [Cline](/docs/install-cline/), [Gemini CLI](/docs/install-gemini-cli/), [Zed](/docs/install-zed/), [Kiro](/docs/install-kiro/), [Continue.dev](/docs/install-continue/).

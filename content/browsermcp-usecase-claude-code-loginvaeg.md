@@ -38,7 +38,7 @@ Restart Claude Code. Full walkthrough: [Install for Claude Code](/docs/install-c
 
 ## When it still asks you for something
 
-Some pages re-challenge even an authenticated session: a step-up 2FA prompt or a "choose an account" screen. The agent stops and asks you on your own screen, then carries on in the same tab. That is `browser_ask_user`, and it is covered in [Codex + 2FA](/use-cases/codex-2fa/) - the mechanism is identical whichever client you use. A CAPTCHA it cannot clear, the agent asks you in the chat to solve in its tab.
+Some pages re-challenge even an authenticated session: a step-up 2FA prompt or a "choose an account" screen. The agent stops and asks you on your own screen, then carries on in the same tab. That is `browser_ask_user`, and it is covered in [Codex + 2FA](/use-cases/codex-2fa/) - the mechanism is identical whichever client you use. A CAPTCHA it cannot clear, the agent asks you to solve. If its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 ## Two things to know before you rely on it
 

@@ -90,7 +90,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_ask_user` | Show a dialog over the page asking the user for input or a decision (credentials, a 2FA code, OAuth consent); returns their answer. The dialog covers the page until they answer. |
+| `browser_ask_user` | Show a dialog over the page asking the user for input or a decision (credentials, a 2FA code, a choice); returns their answer, or `skip`. The dialog covers the page until they answer. |
 
 ## Frequently asked questions
 
@@ -104,7 +104,7 @@ That the action was sent and the effect could not be read back. It is not a fail
 Chrome accepts mouse and keyboard commands for a background tab and silently drops them. Since 1.29.2 the tools measure whether the page actually received the event, so you get an honest failure with the remedy - call `browser_switch_tab` - instead of a silent one.
 
 **Can a tool ask me something in the middle of a run?**
-Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a choice only you can make - and carries on in the same tab. A CAPTCHA the agent cannot clear, it asks you in the chat to solve in its tab.
+Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a choice only you can make - and carries on in the same tab. A CAPTCHA the agent cannot clear, it asks you to solve. If its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 ## Meta & Recovery - 3 tools
 

@@ -45,7 +45,7 @@ Restart your agent. Other clients: [the install guides](/docs/install-cursor/).
 ## What it checks well
 
 - **Real filling.** `browser_fill` fills each field and checks that a framework form (React, Angular) actually took the value.
-- **What the page logged.** `browser_console_logs` returns what the page writes to the console (`console.log`, `warn`, `error`) from its first call onwards, on the same page, so ask for it after the page has loaded and before the step you are testing. An error the page never logs does not show up.
+- **What the page logged.** `browser_console_logs` returns what the page writes to the console (`console.log`, `warn`, `error`) from its first call onwards, on the same page and unless the page keeps its own reference to `console`, so ask for it after the page has loaded and before the step you are testing. An error the page never logs does not show up.
 - **Waiting for the network.** `browser_wait_for_network` waits for a request you name (for example `/api/signup`) to come back, so a slow API is not mistaken for a broken button.
 - **Proof.** `browser_screenshot` shows you the screen at the moment it stopped.
 
