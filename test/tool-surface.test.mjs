@@ -679,7 +679,7 @@ test('CHANGELOG 1.30.2 naevner hvert nyt svar, og hvert findes i koden', () => {
     removed_by_page: /removed_by_page/, 'file-access-off': /file-access-off/, scroll_method: /scroll_method:/,
     extension_connections: /extension_connections:/, worked: /\bworked\b/, covered_by: /covered_by:/,
     // R62 (Astra, MAALT): raekkerne om vinduessvaret og viewport-noten kunne fjernes, uden at proeven blev roed.
-    eget_vindue: /eget_vindue: iEgetVindue/, advarsel: /advarsel: !iEgetVindue/, file_access: /file_access: tilladt/,
+    'no-rows': /error: 'no-rows'/, eget_vindue: /eget_vindue: iEgetVindue/, advarsel: /advarsel: !iEgetVindue/, file_access: /file_access: tilladt/,
   };
   for (const [navn, iKode] of Object.entries(svar)) {
     assert.ok(afsnit.includes('`' + navn) || afsnit.includes('"' + navn), `CHANGELOG 1.30.2 naevner ikke ${navn}`);

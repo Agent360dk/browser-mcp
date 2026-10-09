@@ -388,3 +388,21 @@ test('en aria-modal-indpakning med hoejde 0 og et synligt fast barn er en aaben 
   d.el('button', { id: 'panelAdd', tekst: 'Add', rect: [600, 400, 80, 30], lag: 10 }, panel);
   assert.equal(elementFor(d, 'Add').id, 'panelAdd');
 });
+
+// MAALT i Chrome 9/10 (opus-r62/r63-p14-ny-aktiv.log): to falske afvisninger, hvor en rigtig mus lykkes.
+test('en pladsholder-tekst uden pointer-events over et felt: feltet er ikke en daekning (React Select)', () => {
+  const d = lavKlikDom();
+  d.el('input', { id: 'selIn', rect: [20, 20, 250, 40] });
+  d.el('span', { id: 'ph1', tekst: 'Vaelg en person', rect: [30, 28, 150, 24], lag: 1, ingenPeg: true });
+  assert.equal(tekstKlik(d, 'Vaelg en person').covered, undefined);
+});
+
+test('et link brudt over to linjer klikkes midt i den foerste linjeboks, ikke i hullet imellem', () => {
+  const d = lavKlikDom();
+  const p = d.el('p', { id: 'afsnit', rect: [20, 160, 300, 60] });
+  d.el('a', { id: 'lang', tekst: 'betingelser for brug', attrs: { href: '#x' }, rect: [20, 170, 247, 40],
+    linjer: [[150, 170, 117, 18], [20, 192, 103, 18]] }, p);
+  const r = tekstKlik(d, 'betingelser for brug');
+  assert.deepEqual([r.x, r.y], [208.5, 179]);
+  assert.equal(r.covered, undefined, `hullet mellem linjerne blev kaldt en daekning: ${JSON.stringify(r.covered)}`);
+});

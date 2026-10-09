@@ -241,3 +241,13 @@ test('teksterne siger det samme som koden', async () => {
   for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_extract_list` \|[^\n]*scrolls with real wheel events in the active tab[^\n]*in a background tab a list that loads while scrolling stops early, and `reached_end` is false/, f);
   assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_extract_list` \|[^\n]*In the active tab it scrolls with real wheel events, also at the bottom[^\n]*a background tab gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false/);
 });
+
+// MAALT i Chrome 9/10: en selektor der intet fandt, gav count 0 med reached_end:true.
+test('en selektor der ingen raekker finder, giver no-rows og ikke reached_end', async () => {
+  const f = feed({ start: 0, i_alt: 0 });
+  const svar = await udtraek(sele(f));
+  assert.equal(svar.count, 0);
+  assert.equal(svar.reached_end, false);
+  assert.equal(svar.error, 'no-rows');
+  assert.match(svar.note, /matched no rows with text on the page/);
+});

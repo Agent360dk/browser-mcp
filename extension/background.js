@@ -1954,6 +1954,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
     // med pointer-events:none (tekst eller ikon i et kort med en lytter): musen rammer forfaderen, og det er det klik siden
     // er bygget til. Et deaktiveret link, en usynlig knap og en skjult afkrydsning er interaktive og afvises stadig.
     if (el.tagName === 'LABEL' && !el.control && hit.matches && hit.matches('input,textarea,select')) return null;
+    // Samme for en pladsholder-tekst uden pointer-events over et felt (React Select: «Vaelg en person» over et input).
+    if (!(el.matches && el.matches(CLICKABLE + ',input,select,textarea')) && hit.matches && hit.matches('input,textarea,select') &&
+        getComputedStyle(el).pointerEvents === 'none') return null;
     if (inde(el, hit) && !(el.matches && el.matches(CLICKABLE + ',input,select,textarea')) &&
         getComputedStyle(el).pointerEvents === 'none') return null;
     const ramme = el.closest ? el.closest('label,button,a,summary,[onclick],[role="button"],[role="link"],[role="menuitem"],' +
@@ -1980,8 +1983,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   if (r.width <= 0 || r.height <= 0) {
     return { found: false, hidden: true, tag: el.tagName, ...txt, rect: { w: r.width, h: r.height } };
   }
-  const x = r.x + r.width / 2;
-  const y = r.y + r.height / 2;
+  // MAALT i Chrome 9/10: et link brudt over to linjer har sit midtpunkt i hullet mellem linjerne, og klikket ramte afsnittet.
+  // Et menneske klikker paa teksten, saa et element med flere linjebokse klikkes midt i den foerste.
+  const bokse = el.getClientRects ? Array.from(el.getClientRects()).filter((b) => b.width > 0 && b.height > 0) : [];
+  const boks = bokse.length > 1 ? bokse[0] : r;
+  const x = boks.x + boks.width / 2;
+  const y = boks.y + boks.height / 2;
   const daekket = daekketAf(el, x, y);
   return { x, y, tag: el.tagName, ...txt, found: true, ...(daekket ? { covered: daekket } : {}) };
 }
@@ -4155,6 +4162,11 @@ async function dispatch(port, method, params) {
 
       // R62 (Opus): max_rows skar ikke raekkerne til - den sidste runde kunne laegge flere til.
       const raekker = [...seen].slice(0, maxRows);
+      // MAALT i Chrome 9/10: en selektor der intet fandt, gav count 0 med reached_end:true - den tomme side «stod paa bunden».
+      if (!seen.size) {
+        return { rows: [], count: 0, rounds, reached_end: false, truncated: false,
+          error: 'no-rows', note: `The selector ${rowSel} matched no rows with text on the page. Check the selector.` };
+      }
       return {
         rows: raekker,
         count: raekker.length,

@@ -30,6 +30,7 @@ export function lavKlikDom() {
       this.modal = !!o.modal;              // <dialog> aabnet med showModal()
       this.raekke = raekke++;
       this.labels = [];
+      this.linjer = o.linjer || null;
       this.shadowRoot = null;
     }
     get textContent() { return this.egenTekst + this.children.map((c) => c.textContent).join(''); }
@@ -45,6 +46,10 @@ export function lavKlikDom() {
     }
     querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
     scrollIntoView() {}
+    // Flere linjebokse (et link brudt over to linjer): o.linjer = [[x,y,b,h], ...]; ellers én boks.
+    getClientRects() {
+      return (this.linjer || [this.rect || [0, 0, 0, 0]]).map(([x, y, width, height]) => ({ x, y, width, height, left: x, top: y, right: x + width, bottom: y + height }));
+    }
     getBoundingClientRect() {
       const [x, y, width, height] = this.stil.display === 'none' ? [0, 0, 0, 0] : (this.rect || [0, 0, 0, 0]);
       return { x, y, width, height, left: x, top: y, right: x + width, bottom: y + height };
