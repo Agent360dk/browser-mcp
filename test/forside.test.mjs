@@ -259,9 +259,19 @@ test('css og js hentes kun i den kanoniske form med en noegle, der passer til fi
   const v = { css: noegle('docs.css'), js: noegle('docs.js') };
   // R58 (Astra): entiteter (&#47;), <base href>, vaert med store bogstaver, :443, fragmenter og data-href slap igennem en
   // vagt, der fortolkede URL'er. Nu er der EN tilladt form; hver anden omtale af de to filer er en fejl.
+  // R59 (Astra, MAALT): en tabulator inde i adressen (do&#9;cs.css - URL-parseren fjerner den), CSS-escapes (d\\6f cs.css)
+  // og procent-kodning (do%63s.css) slap igennem optaellingen. Teksten normaliseres derfor, foer den taelles: entiteter
+  // afkodes, tabulatorer og linjeskift fjernes, CSS-escapes og procent-kodning afkodes. Formaalet er at fange en omtale,
+  // der ikke er kanonisk - ikke at fortolke den.
   const afkod = (x) => x.replace(/&#x([0-9a-f]+);?/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&#(\d+);?/g, (_, d) => String.fromCodePoint(Number(d)))
-    .replace(/&sol;/gi, '/').replace(/&period;/gi, '.').replace(/&quot;/gi, '"').replace(/&apos;/gi, "'").replace(/&amp;/gi, '&');
+    .replace(/&sol;/gi, '/').replace(/&period;/gi, '.').replace(/&quot;/gi, '"').replace(/&apos;/gi, "'")
+    .replace(/&tab;/gi, '\t').replace(/&newline;/gi, '\n').replace(/&amp;/gi, '&');
+  const normaliser = (x) => afkod(x).replace(/[\t\n\r]/g, '')
+    .replace(/\\([0-9a-f]{1,6})\s?/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/\\(.)/g, '$1')
+    .replace(/%([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  // R59: en kanonisk henvisning i en HTML-kommentar indlaeses ikke og skal ikke taelle.
+  const udenKommentarer = (x) => x.replace(/<!--[\s\S]*?-->/g, '');
   const kanon = /(?<![\w-])(?:href|src)="\/assets\/docs\.(css|js)\?v=([0-9a-f]{8})"/g;
   const sider = [];
   const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
@@ -269,13 +279,13 @@ test('css og js hentes kun i den kanoniske form med en noegle, der passer til fi
   gaa('docs');
   let set = 0;
   for (const s of sider) {
-    const raa = readFileSync(join(rod, s), 'utf8');
+    const raa = udenKommentarer(readFileSync(join(rod, s), 'utf8'));
     const kanoniske = [...raa.matchAll(kanon)];
     for (const m of kanoniske) {
       set++;
       assert.equal(m[2], v[m[1]], `${s}: docs.${m[1]} hentes med en foraeldet noegle (${m[2]}) - koer scripts/generate-docs.py`);
     }
-    for (const tekst of [raa, afkod(raa)]) {
+    for (const tekst of [raa, afkod(raa), normaliser(raa)]) {
       const alle = (tekst.match(/docs\.(css|js)/gi) || []).length;
       assert.equal(alle, kanoniske.length, `${s}: docs.css/docs.js omtales ${alle} gange, men kun ${kanoniske.length} er i den kanoniske form href="/assets/docs.css?v=<noegle>"`);
     }
@@ -291,4 +301,46 @@ test('generatorens noeglefunktion retter den kanoniske form og intet andet', () 
   const ud = JSON.parse(execFileSync('python3', ['-c', py, JSON.stringify(ind)], { encoding: 'utf8' }));
   assert.deepEqual(ud, ['<link href="/assets/docs.css?v=aaaa1111">', '<script src="/assets/docs.js?v=bbbb2222"></script>',
     '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">']);
+});
+
+// R59 (Astra): funktionsproeven fangede ikke, at generatoren holdt op med at bruge funktionen paa de haandskrevne sider
+// (`for _haand in ():` overlevede). Her koeres hele generatoren paa en midlertidig kopi med egen git-historik (dateret
+// 2020-01-01), efter at begge assets er aendret: privacy.html og 404.html skal faa den nye noegle, ingen side maa bære
+// den gamle, privacy-sidens sitemap-dato skal vaere i dag allerede efter foerste koersel (R56: omskrivningen skal ske
+// foer sitemappet), og en anden koersel maa ikke aendre noget.
+test('hele generatoren: nyt asset giver ny noegle overalt, og sitemappet ser det i samme koersel', async () => {
+  const { mkdtempSync, cpSync, writeFileSync, appendFileSync, rmSync, readdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { createHash } = await import('node:crypto');
+  const tmp = mkdtempSync(join(tmpdir(), 'gen-'));
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.hooksPath=/dev/null',
+    '-c', 'commit.gpgsign=false', ...a], { cwd: tmp, stdio: 'pipe',
+    env: { ...process.env, GIT_AUTHOR_DATE: '2020-01-01T12:00:00', GIT_COMMITTER_DATE: '2020-01-01T12:00:00' } });
+  const alle = (d) => readdirSync(d, { recursive: true }).filter((f) => /\.(html|xml)$/.test(f)).sort()
+    .map((f) => [f, readFileSync(join(d, f), 'utf8')]);
+  const h8 = (f) => createHash('sha256').update(readFileSync(f)).digest('hex').slice(0, 8);
+  try {
+    for (const d of ['docs', 'content', 'scripts']) cpSync(join(rod, d), join(tmp, d), { recursive: true });
+    cpSync(join(rod, 'llms-install.md'), join(tmp, 'llms-install.md'));
+    cpSync(join(rod, 'mcp-server/tools.js'), join(tmp, 'mcp-server/tools.js'));
+    git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base');
+    const gammelCss = h8(join(tmp, 'docs/assets/docs.css')), gammelJs = h8(join(tmp, 'docs/assets/docs.js'));
+    appendFileSync(join(tmp, 'docs/assets/docs.css'), '\n/* proeve */\n');
+    appendFileSync(join(tmp, 'docs/assets/docs.js'), '\n// proeve\n');
+    const css = h8(join(tmp, 'docs/assets/docs.css')), js = h8(join(tmp, 'docs/assets/docs.js'));
+    const gen = () => execFileSync('python3', [join(tmp, 'scripts/generate-docs.py')], { cwd: tmp, stdio: 'ignore' });
+    gen();
+    for (const f of ['privacy.html', '404.html']) {
+      assert.ok(readFileSync(join(tmp, 'docs', f), 'utf8').includes(`href="/assets/docs.css?v=${css}"`), `${f}: fik ikke den nye noegle`);
+    }
+    const efter1 = alle(join(tmp, 'docs'));
+    for (const [f, t] of efter1) {
+      assert.ok(!t.includes(`docs.css?v=${gammelCss}`) && !t.includes(`docs.js?v=${gammelJs}`), `${f}: baerer stadig den gamle noegle`);
+    }
+    const idag = execFileSync('python3', ['-c', 'import datetime; print(datetime.date.today().isoformat())'], { encoding: 'utf8' }).trim();
+    assert.match(readFileSync(join(tmp, 'docs/sitemap.xml'), 'utf8'),
+      new RegExp(`privacy\\.html</loc><lastmod>${idag}</lastmod>`), 'sitemappet saa ikke privacy-sidens nye dato i samme koersel');
+    gen();
+    assert.deepEqual(alle(join(tmp, 'docs')), efter1, 'en anden koersel aendrede noget');
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
