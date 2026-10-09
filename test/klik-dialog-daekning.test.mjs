@@ -909,6 +909,9 @@ test('webkomponentens egen knap eller link kraever 90 % overlap, og en handling 
     ['Slet omkring en stor indre knap', (d) => { const v = vaert(d); const r = d.skygge(v); const s = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [90, 65, 100, 50] }, r); d.el('button', { id: 'k', rect: [40, 40, 200, 100] }, s); }, true],
     ['knap to skyggelag nede', (d) => { const v = vaert(d); const indre = d.el('x-indre', { rect: [40, 40, 200, 100] }, d.skygge(v)); d.el('button', { id: 'k', tekst: 'Gem', rect: [40, 40, 200, 100] }, d.skygge(indre)); }, false],
     ['vaert med role=button og egen knap', (d) => { const v = d.el('x-komp', { id: 'vaert', attrs: { role: 'button' }, rect: [40, 40, 200, 100] }); d.el('button', { id: 'k', tekst: 'Gem', rect: [40, 40, 200, 100] }, d.skygge(v)); }, false],
+    // R73 (Astra 3): en handling omkring komponentens egen kontrol, der SELV daekker mindst 90 % af komponenten, er ogsaa
+    // komponentens egen (bevidst valg - begge er det, en rigtig mus rammer paa komponentens flade). Kun en mindre er daekning.
+    ['stor Slet (90 %) omkring en stor indre knap', (d) => { const v = vaert(d); const r = d.skygge(v); const s = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [40, 45, 200, 90] }, r); d.el('button', { id: 'k', rect: [40, 40, 200, 100] }, s); }, false],
   ];
   for (const [navn, byg, daekket] of tilfaelde) {
     const d = lavKlikDom(); byg(d);
@@ -946,3 +949,67 @@ test('teksten i en checkbox-komponents label: labelens eget felt er ikke daeknin
   assert.equal(svar.covered, undefined);
   assert.equal(window.__bmcpMaalTjek(205, 55, felt), null, 'aktiveringsklikket paa labelens felt er ikke en daekning');
 });
+
+// ── R73 (Astra, maalt i model) ─────────────────────────────────────────────
+// En checkbox-komponent med sin label i shadow root'en: alt interaktivt indhold mellem punktet og labelen er en daekning
+// (HTML: et klik paa interaktivt indhold i en label aktiverer ikke feltet) - ogsaa et link i komponentens egen skygge, der
+// selv daekker komponenten, og et felt, en select, en video eller et billedkort, som ikke er en «handling». Labelens eget
+// felt er det ikke.
+function checkboxKomp(d) {
+  const vaert = d.el('x-cb', { id: 'cb', rect: [40, 40, 300, 30] });
+  const rod = d.skygge(vaert);
+  const label = d.el('label', { rect: [40, 40, 300, 30] }, rod);
+  const felt = d.el('input', { id: 'icb', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] }, label);
+  felt.labels.push(label); label.control = felt;
+  const slot = d.el('slot', { rect: [70, 40, 270, 30] }, d.el('span', { rect: [70, 40, 270, 30] }, label));
+  return { vaert, rod, label, felt, slot };
+}
+
+test('en checkbox-komponents label: et skygge-link, der daekker komponenten, er daekning (R73)', () => {
+  for (const rect of [[40, 40, 300, 30], [40, 40, 270, 30]]) {
+    const d = lavKlikDom();
+    const { label } = checkboxKomp(d);
+    d.el('a', { id: 'vilk', tekst: 'vilkaarene', attrs: { href: '/vilkaar' }, rect, lag: 1 }, label);
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id, 'vilk', JSON.stringify(rect));
+  }
+});
+
+test('en checkbox-komponents label: et felt, en select, en video, lyd eller et billedkort i labelteksten er daekning (R73)', () => {
+  for (const [tag, attrs] of [['input', { type: 'text' }], ['select', {}], ['textarea', {}], ['video', { controls: '' }],
+    ['audio', { controls: '' }], ['img', { usemap: '#kort' }]]) {
+    const d = lavKlikDom();
+    const { vaert, slot } = checkboxKomp(d);
+    const ting = d.el(tag, { id: 'ting', attrs, rect: [70, 40, 270, 30], lag: 1 }, vaert);
+    ting.assignedSlot = slot;
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id, 'ting', tag);
+  }
+  // Kontrol: et skjult felt er ikke interaktivt indhold, og labelens eget felt under punktet er ikke en daekning.
+  const d = lavKlikDom();
+  const { vaert, slot } = checkboxKomp(d);
+  const skjult = d.el('input', { id: 'skjult', attrs: { type: 'hidden' }, rect: [70, 40, 270, 30], lag: 1 }, vaert);
+  skjult.assignedSlot = slot;
+  assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered, undefined, 'skjult felt');
+  const d2 = lavKlikDom();
+  const k2 = checkboxKomp(d2);
+  k2.felt.rect = [40, 40, 300, 30]; k2.felt.lag = 1;   // et usynligt felt udspaendt over komponenten (et almindeligt moenster)
+  assert.equal(d2.koer(KILDE, '#cb', null, null, false, false).svar.covered, undefined, 'labelens eget felt');
+});
+
+test('teksten i en ramme i en shadow root: et ikon slottet ind i et ANDET link eller en anden knap i rammen er daekning (R73)', () => {
+  for (const rammeTag of ['label', 'button']) for (const handlingTag of ['a', 'button']) {
+    const d = lavKlikDom();
+    const vaert = d.el('x-cb', { id: 'cb', rect: [40, 40, 300, 30] });
+    const rod = d.skygge(vaert);
+    const ramme = d.el(rammeTag, { rect: [40, 40, 300, 30] }, rod);
+    const tekstSlot = d.el('slot', { rect: [40, 40, 300, 30] }, ramme);
+    const tekst = d.el('span', { id: 'acc', tekst: 'Accepter', rect: [40, 40, 300, 30], lag: 1 }, vaert);
+    tekst.assignedSlot = tekstSlot;
+    const anden = d.el(handlingTag, { id: 'anden', attrs: handlingTag === 'a' ? { href: '/vilkaar' } : {}, rect: [40, 40, 300, 30] }, ramme);
+    const ikonSlot = d.el('slot', { rect: [40, 40, 300, 30] }, anden);
+    const ikon = d.el('span', { id: 'ikon', rect: [40, 40, 300, 30], lag: 2 }, vaert);
+    ikon.assignedSlot = ikonSlot;
+    if (rammeTag === 'label') { const felt = d.el('input', { id: 'icb', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] }, ramme); felt.labels.push(ramme); ramme.control = felt; }
+    assert.equal(d.koer(KILDE, '#acc', null, null, false, false).svar.covered?.id, 'ikon', `${handlingTag} i ${rammeTag}`);
+  }
+});
+

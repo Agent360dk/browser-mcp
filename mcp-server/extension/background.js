@@ -2286,15 +2286,22 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
           const bred = Math.min(a.right, b.right) - Math.max(a.left, b.left), hoej = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
           return b.width * b.height > 0 && bred > 0 && hoej > 0 && bred * hoej >= 0.9 * b.width * b.height;
         };
+        // R73 (Astra, maalt i model): labelreglen herunder saa kun et link, der var gemt - men et link i komponentens egen skygge,
+        // der selv daekker komponenten, blev sprunget over foer det blev gemt, og et felt, en select, en video eller et
+        // billedkort i labelen er slet ikke en HANDLING. Alle gav landed:true, mens boksen forblev tom. Det foerste interaktive
+        // indhold (HTML-standardens liste) under punktet huskes derfor for sig, uanset om det selv er en handling.
+        let interaktiv = null;
         for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
+          if (!interaktiv && n.matches && n.tagName !== 'LABEL' && n.matches(INTERAKTIV) && lukket(n)) interaktiv = n;
           if (!n.matches || !n.matches(HANDLING) || !lukket(n)) continue;
           // R72 (Opus, maalt i Chrome): en komponent, hvis hele flade er ET link i dens egen shadow root (sl-button med href),
           // er det link; en rigtig mus og 1.30.1 kører det. Knap eller link: det, der daekker komponenten, er komponenten.
           if (iEgenSkygge(n) && daekker(n)) {
             // R72 (Opus, maalt i Chrome): en checkbox-komponents egen <label> (ion-checkbox, sl-checkbox) fritog et vilkaarslink
-            // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Et link mellem punktet og
-            // komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke feltet).
-            if (n.tagName === 'LABEL' && link) { fundet = link; break; }
+            // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Interaktivt indhold mellem
+            // punktet og komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke
+            // feltet); labelens eget felt er det ikke.
+            if (n.tagName === 'LABEL' && interaktiv && interaktiv !== n.control) { fundet = interaktiv; break; }
             continue;
           }
           if (etLink(n)) { link = link || n; continue; }
@@ -2334,7 +2341,14 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // men en rigtig mus afkrydser feltet dér. Ligger punktet i feltets egen label, gaelder HTML-standardens regel, som for
     // en label, der selv er maalet.
     const iEgenLabel = Array.from(el.labels || []).some((l) => inde(hit, l)) || (!!ramme && ramme.tagName === 'LABEL');
-    const hitKontrol = !hit.closest ? null : lukket(hit.closest(iEgenLabel ? INTERAKTIV : CLICKABLE + ',input,select,textarea'));
+    // R73 (Astra, maalt i model): rammen blev fundet i den flade kaede, men kontrollen under punktet stadig med closest(), som
+    // ikke foelger en slot. Et ikon slottet ind i et andet link eller en anden knap i rammen blev derfor ikke set, og den
+    // handling koerte. Kontrollen under punktet findes nu i samme flade kaede.
+    const kontrolVaelger = iEgenLabel ? INTERAKTIV : CLICKABLE + ',input,select,textarea';
+    let hitKontrol = null;
+    for (let n = hit, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
+      if (n.matches && n.matches(kontrolVaelger)) { hitKontrol = lukket(n); break; }
+    }
     const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
       (!!ramme && ramme.tagName === 'LABEL' && hitKontrol === ramme.control) ||
       Array.from(el.labels || []).includes(hitKontrol);
@@ -4254,7 +4268,14 @@ async function dispatch(port, method, params) {
   switch (method) {
     case 'navigate': {
       const session = getSession(port);
-      let tab = await getSessionTab(port, false, params.eget_vindue ? null : params.url);
+      // R73 (Astra, maalt i model): med new_tab og eget_vindue oprettede getSessionTab() stadig en tom about:blank, foer vinduet
+      // blev aabnet med adressen - to faner i sessionen. Et eget vindue bruger ikke sessionens fane, saa der hentes ingen.
+      const egetVindue = !!(params.new_tab && params.eget_vindue);
+      let tab = egetVindue ? null : await getSessionTab(port, false, params.url);
+      // R73 (Astra, maalt i model): en ny fane, hvis adresse var faerdigindlaest, mens fanen blev lagt i sessionens gruppe, naaede
+      // sin eneste 'complete' foer lytteren herunder fandtes, og navigate ventede de fulde 15 sekunder. For en fane uden en
+      // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
+      let nyFane = !!(tab && tab.oprettetMedUrl);
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
@@ -4375,6 +4396,7 @@ async function dispatch(port, method, params) {
         // about:blank in the group for the session's whole life. Use it instead.
         const isPlaceholder = tab && (tab.url === 'about:blank' ||
           (tab.url === '' && tab.pendingUrl === 'about:blank'));
+        nyFane = true;
         if (isPlaceholder) {
           await chrome.tabs.update(tab.id, { url: params.url });
         } else {
@@ -4412,6 +4434,7 @@ async function dispatch(port, method, params) {
         };
         chrome.tabs.onUpdated.addListener(listener);
         const timer = setTimeout(finish, 15000);
+        if (nyFane && awaitingRealUrl) loadedNow().then((ok) => { if (ok) finish(); });
       });
 
       // Set as active tab for this session

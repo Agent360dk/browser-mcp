@@ -50,10 +50,11 @@ as a fragment, and a hash route with a path (`#/orders/7`, `#!/orders/7`; not `#
 is read against the page itself, also when `<base>` points elsewhere: such links are placeholders in practice, so this is
 a deliberate refusal (a real mouse would load the base page). A web component's own button - a control in its own
 shadow root that covers at least 90% of the component, button or link, as `ion-button` and `sl-button` draw it - is the
-component's action, not a control inside it; a smaller button inside a component (a delete on a card component), an
-action around that control, or a link in a checkbox component's own label text, is. A delete link with a real address
-(rails-ujs `data-method`), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a
-plain link. A field or
+component's action, not a control inside it, and so is an action around it that also covers 90% of the component; a
+smaller button inside a component (a delete on a card component), a smaller action around that control, or interactive
+content in a checkbox component's own label (a link, a field, a video, but not the box itself), is. A delete
+link with a real address (rails-ujs `data-method`), with a fragment whose target is elsewhere on the page, or with
+`#top`, cannot be told from a plain link. A field or
 other control whose center lies on a button around it is covered by that button: the click would go to the button, and
 whether the button changes the field cannot be told. A text selector picks a clickable child only when the text is in it,
 so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did, and a delete ran); a text next to an

@@ -24,6 +24,8 @@ function browser(startTabs = []) {
     'tabs.remove': (id) => { tabs.delete(id); },
     'tabs.query': () => [...tabs.values()],
     'tabs.group': () => 7,
+    'windows.create': ({ url }) => { const t = { id: next++, url, title: url, windowId: 2, active: true, status: 'complete' }; tabs.set(t.id, t); complete(t.id); return { id: 2, focused: false, left: 10, top: 20, tabs: [t] }; },
+    'windows.get': (id) => ({ id, focused: false, left: 10, top: 20, state: 'normal' }),
     'scripting.executeScript': () => [{ result: { found: false, types: [] } }],
     'debugger.sendCommand': () => ({ result: { value: null } }),
     'debugger.getTargets': [],
@@ -147,6 +149,71 @@ test('a fresh session\'s first navigate creates its tab with the URL, never an a
     assert.equal(u.optager.til('tabs.update').filter((k) => k.args[1] && k.args[1].url).length, 0, 'fanen blev skiftet bagefter');
     assert.deepEqual([...tabs.values()].map((t) => t.url), ['https://example.com/']);
   }
+});
+
+// R73 (Astra, maalt i model): med new_tab og eget_vindue oprettede en ny session (og en med en lukket fane) stadig en tom
+// about:blank, foer vinduet blev aabnet med adressen - to faner i sessionen.
+test('a first navigate with its own window opens no about:blank tab', async () => {
+  for (const doed of [false, true]) {
+    const { u, tabs } = browser();
+    if (doed) u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([77]), activeTabId: 77, groupId: 1, windowId: 1 });
+    const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/', new_tab: true, eget_vindue: true });
+    assert.equal(svar.ok, true, JSON.stringify(svar));
+    assert.equal(u.optager.til('tabs.create').length, 0, `lukket fane: ${doed}`);
+    assert.deepEqual([...tabs.values()].map((t) => t.url), ['https://example.com/'], `lukket fane: ${doed}`);
+  }
+});
+
+// R73 (Astra, maalt i model): en adresse, der var faerdigindlaest, mens den nye fane blev lagt i sessionens gruppe, sendte sin
+// eneste 'complete', foer navigate lyttede - og navigate ventede de fulde 15 sekunder.
+function langsomBrowser({ eksisterende = null } = {}) {
+  const tabs = new Map(eksisterende ? [[eksisterende.id, { windowId: 1, active: false, status: 'complete', ...eksisterende }]] : []);
+  let u, next = 100;
+  const tilstand = { brugteTimeout: false };
+  const lad = (t, url, efter) => setTimeout(() => {
+    Object.assign(t, { url, pendingUrl: undefined, status: 'complete' });
+    u.fyr('tabs.onUpdated', t.id, { status: 'complete' }, { ...t });
+  }, efter);
+  u = indlaesUdvidelse({ svar: {
+    'tabs.create': ({ url }) => {
+      const t = { id: next++, url: '', pendingUrl: url, title: url, windowId: 1, status: 'loading', active: false };
+      tabs.set(t.id, t); lad(t, url, 5);
+      return { ...t };
+    },
+    // Som Chrome: den gamle side staar som 'complete' et oejeblik, foer navigationen begynder.
+    'tabs.update': (id, p) => {
+      const t = tabs.get(id);
+      setTimeout(() => { t.status = 'loading'; }, 10); lad(t, p.url, 20);
+      return { ...t };
+    },
+    'tabs.get': (id) => ({ ...tabs.get(id) }),
+    'tabs.query': () => [...tabs.values()],
+    'tabs.group': () => new Promise((resolve) => setTimeout(() => resolve(7), 30)),
+    'scripting.executeScript': () => [{ result: { found: false, types: [] } }],
+    'debugger.sendCommand': () => ({ result: { value: null } }),
+    'debugger.getTargets': [],
+  } });
+  if (eksisterende) u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([eksisterende.id]), activeTabId: eksisterende.id, groupId: 1, windowId: 1 });
+  // Kun ventetiden paa 15 s forkortes (til 80 ms), saa en ventet timeout ses uden at proeven tager 15 s.
+  u.ctx.setTimeout = (fn, ms, ...a) => setTimeout(() => { if (ms === 15000) tilstand.brugteTimeout = true; fn(...a); }, ms === 15000 ? 80 : ms);
+  return { u, tabs, tilstand };
+}
+
+test('a first navigate whose page finished loading while the tab was being grouped does not wait for the timeout', async () => {
+  for (const [params, eksisterende] of [[{ url: 'https://example.com/cache' }, null],
+    [{ url: 'https://example.com/cache', new_tab: true }, { id: 5, url: 'https://foer.example/', title: 'foer' }]]) {
+    const { u, tilstand } = langsomBrowser({ eksisterende });
+    const svar = await u.hent('dispatch')(9876, 'navigate', params);
+    assert.equal(svar.url, 'https://example.com/cache', JSON.stringify(params));
+    assert.equal(tilstand.brugteTimeout, false, `${JSON.stringify(params)}: navigate ventede paa timeouten`);
+  }
+});
+
+test('a navigate in place does not take the old page\'s complete status as the new page having loaded', async () => {
+  const { u, tilstand } = langsomBrowser({ eksisterende: { id: 5, url: 'https://foer.example/', title: 'foer' } });
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/ny' });
+  assert.equal(svar.url, 'https://example.com/ny');
+  assert.equal(tilstand.brugteTimeout, false);
 });
 
 test('a session that already has a tab still navigates in place', async () => {
