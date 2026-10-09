@@ -236,6 +236,11 @@ test('manifestets korte beskrivelse siger «the Chrome you\'re signed into», ik
     assert.match(d, /the Chrome you're signed into/, `${f}: siger ikke at det er brugerens Chrome`);
     assert.doesNotMatch(d, /the tab you were already signed into|carries on in the tab/, `${f}: kan laeses som brugerens egen fane`);
   }
+  // R62 (Opus): npm-beskrivelsen og to sider havde stadig samme formulering.
+  const npm = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).description;
+  for (const [f, t] of [['mcp-server/package.json', npm], ...['content/browsermcp-compare-playwright-mcp.md', 'content/browsermcp-usecase-codex-2fa.md'].map((x) => [x, readFileSync(join(rod, x), 'utf8')])]) {
+    assert.doesNotMatch(t, /the tab you were already signed into|carries on in the tab that was already signed in/, `${f}: kan laeses som brugerens egen fane`);
+  }
 });
 
 // 1.30.2 skive 11 (F9): docs/ serveres som browsermcp.dev. Tre interne noter (butikstekst-revision, opsaetning af

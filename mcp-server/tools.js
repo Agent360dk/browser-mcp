@@ -37,14 +37,14 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_list',
-    description: 'Read EVERY row of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport - mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel (Threads, X) loads them; in a background tab it scrolls with a script, and `note` says that such a feed may have stopped early. Returns deduplicated row text, scroll_method (wheel or script) and reached_end, which is true only when the list stood at its bottom with no new rows and no growth for stable_rounds rounds in a row.',
+    description: 'Read EVERY row of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport - mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel (Threads, X) loads them. A hidden page (a background tab) gets no wheel or scroll events, IntersectionObserver callbacks or animation frames, so a list that loads or renders rows while you scroll stops at what is already there; then reached_end is false and `note` says why. Returns deduplicated row text, scroll_method (wheel or script) and reached_end, which is true only when the list stood at its bottom in a visible page with no new rows, growth or movement for stable_rounds rounds in a row.',
     inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector matching ONE repeating row (e.g. \'[role="option"]\' in Outlook, \'tr\' in a table)' },
         container: { type: 'string', description: 'Optional CSS selector for the scrollable container. Omit to auto-detect the row\'s nearest scrollable ancestor.' },
         max_rows: { type: 'number', description: 'Stop after this many unique rows (default 500, max 5000)' },
-        stable_rounds: { type: 'number', description: 'Consecutive scrolls with no new rows before stopping (default 3)' },
+        stable_rounds: { type: 'number', description: 'Rounds in a row with no new rows, growth or movement before stopping, and at the bottom before reached_end (default 3)' },
         scroll_step: { type: 'number', description: 'Pixels per scroll. Omit for 85% of the container height.' },
         wait_ms: { type: 'number', description: 'Wait after each scroll so new rows can render (default 350)' },
       },
@@ -74,7 +74,7 @@ export const TOOLS = [
   },
 {
     name: 'browser_double_click',
-    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by.',
+    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -85,7 +85,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_right_click',
-    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by.',
+    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -113,7 +113,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click',
-    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
+    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +176,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_hover',
-    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - nothing is done: the answer is ok:false with error "covered" and covered_by.',
+    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the target gets nothing: the answer is ok:false with error "covered" and covered_by. In the active tab the mouse may first be moved to the target and back, when an earlier mouse action of the tool may have left that element open.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -49,8 +49,10 @@ function byg() {
     // i produktionen. null = ingen noegle, som er standarden.
     const PARRINGSNOEGLE = null;
     let sidsteVisteForbindelsesAdvarsel = '';
+    let forbindelseSkiftet = false;
     ${src}
     return {
+      skiftet: () => { forbindelseSkiftet = true; },
       cmpVersion, liveConnections, activeConnection, distinctExtensions, forbindelsesAdvarsel, medForbindelsesNote,
       sendKommando: () => { harSendtKommando = true; },
       nyForbindelse: () => { if (!harSendtKommando) laastForbindelse = null; },
@@ -488,4 +490,21 @@ test('teksterne siger det samme som koden: antallet, ikke profilen, og id-pinnin
   const m = laes('content/browsermcp-docs-capability-matrix.md');
   assert.match(m, /\| A second Chrome profile \| Not supported today: with the extension enabled in more than one profile, every command goes to one of them, and the server cannot tell which\. Since 1\.30\.2 it says so in the next tool answer and in `browser_provide_feedback`\./);
   assert.doesNotMatch(m, /tracked as issue #10/, '#10 er lukket; #58 er det aabne');
+});
+
+// R62 (Opus, maalt mod den aegte server): lukkede den forbindelse serveren styrede, gik kommandoerne stille videre til en
+// anden profil, og fanelisten var tom. Og stderr tav ved en ny forbindelse efter en lukning.
+test('skifter serveren forbindelse, siger naeste svar det - én gang', () => {
+  const { connections, medForbindelsesNote, skiftet } = byg();
+  forbind(connections, { id: 'a' });
+  skiftet();
+  const tekst = () => medForbindelsesNote({ content: [{ type: 'text', text: '{}' }] }).content.map((c) => c.text).join('\n');
+  assert.match(tekst(), /The extension connection this server was driving has closed, and commands now go to another one - possibly another Chrome profile or browser\. Tabs opened before are not in it\./);
+  assert.doesNotMatch(tekst(), /was driving has closed/, 'beskeden gentages');
+});
+
+test('lukningen markerer skiftet, og stderr-advarslen nulstilles, naar der ikke laengere er dubletter', () => {
+  const luk = kilde.slice(kilde.indexOf("afvisVentende('the extension disconnected');"), kilde.indexOf("afvisVentende('the extension disconnected');") + 700);
+  assert.match(luk, /if \(!forbindelsesAdvarsel\(\)\) sidsteProfilAdvarsel = '';/);
+  assert.match(luk, /if \(conn === laastForbindelse && harSendtKommando\) forbindelseSkiftet = true;/);
 });

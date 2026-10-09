@@ -26,7 +26,7 @@ export function lavKlikDom() {
       this.rect = o.rect || null;          // [x, y, b, h]
       this.lag = o.lag || 0;               // z-index
       this.ingenPeg = !!o.ingenPeg;        // pointer-events: none
-      this.stil = { visibility: o.skjult ? 'hidden' : 'visible', display: o.ingen ? 'none' : 'block' };
+      this.stil = { visibility: o.skjult ? 'hidden' : 'visible', display: o.ingen ? 'none' : 'block', pointerEvents: o.ingenPeg ? 'none' : 'auto' };
       this.modal = !!o.modal;              // <dialog> aabnet med showModal()
       this.raekke = raekke++;
       this.labels = [];

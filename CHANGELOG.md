@@ -13,11 +13,11 @@ John H.**
 
 | Answer | Where | Means |
 |---|---|---|
-| `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger in `browser_select_option` | The mouse would not reach the target at its center: an element lies in front of it, or the target does not take clicks there. Nothing was done. Before, `browser_click` answered `ok: true` when the click hit an overlay |
+| `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger in `browser_select_option` | The mouse would not reach the target at its center: an element lies in front of it, or the target does not take clicks there; `covered_by.outside` when the center is outside the visible page. The target got nothing. Before, `browser_click` answered `ok: true` when the click hit an overlay |
 | `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
 | `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
 | `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
-| `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why (#11) |
+| `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why; in a hidden page, why `reached_end` is false (#11) |
 | `eget_vindue: false`, `advarsel` | `browser_navigate` with `eget_vindue` | The tab did not end up in its own window; `windowId` is the tab's real window |
 | a viewport note next to the image | `browser_screenshot` | The CSS viewport and devicePixelRatio for `browser_click_xy`, when Chrome reports them in time (#55) |
 | `worked` | `browser_provide_feedback` | The route that did work in the end |
@@ -25,9 +25,9 @@ John H.**
 
 **Clicks.** A text selector looks inside an open modal dialog first (also inside open shadow roots; of
 several, the one on top where they overlap), so `click text=Add` presses the dialog's button, not the page's behind it. The
-debugger path and the script fallback find their target with the same function. In the active tab, a
-covered target gets one mouse move and a second measurement first, so a tooltip that hides when the
-mouse moves does not block.
+debugger path and the script fallback find their target with the same function. In the active tab, when the
+tool's own earlier mouse action may have left the covering element open (a tooltip), the mouse is moved to
+the target and cover is measured again for up to 600 ms; if it stays, the mouse is put back where it was.
 
 **`browser_ask_user`** fails at once, and shows nothing, on Chrome's error page or about:blank, instead of
 activating the tab, posting a notification and failing with Chrome's own text. The notification of a
@@ -36,16 +36,20 @@ closed shadow root, a prompt without fields is a card the user can drag aside, a
 is bound to the page's origin (or a local file's path) (#61, #62).
 
 **`browser_extract_list`** scrolls with real wheel events in the active tab, also at the bottom, so a
-feed that loads on wheel loads (#11). `reached_end` is true only when the list stood at its bottom with
-no new rows and no growth for `stable_rounds` rounds in a row.
+feed that loads on wheel loads (#11). A hidden page (a background tab) gets no scroll events,
+IntersectionObserver callbacks or animation frames, so a list that loads or renders while you scroll stops at
+what is already there; then `reached_end` is false and `note` says why. `reached_end` is true only when the
+list stood at its bottom in a visible page with no new rows, growth or movement for `stable_rounds` rounds in
+a row.
 
 **`browser_fetch`** can reach HTTPS addresses (the extension's own content security policy blocked every
 outside address, also in 1.30.1). It sends no browser cookies and stores none from the answer, also not
 to 127.0.0.1, where 1.30.1 did: pass a token in headers.
 
 **Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer
-and stderr say how many connections are open and that the server cannot tell which profile it drives
-(#58). Routing to a chosen profile is not in this release.
+(also an error answer) and stderr say how many connections are open and that the server cannot tell which
+profile it drives (#58). When the connection the server was driving closes and another takes over, the next
+answer says so. Routing to a chosen profile is not in this release.
 
 **`eget_vindue` keeps its tab in its own window.** Before, the tab was moved back into the session's
 first window, and the answer still reported the new one. **Corrected:** the 1.30.1 notes say Chrome

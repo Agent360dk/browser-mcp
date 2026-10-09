@@ -29,7 +29,7 @@ Codex:  [continues in the same tab, exports the file]
         Done - invoices-2026-08.csv is in your Downloads.
 ```
 
-The tool behind that pause is `browser_ask_user`. It stops the run, shows you a prompt on your own screen, waits, and carries on in the tab that was already signed in. Your password never comes into it. The code goes back to your agent like any tool result, and is never sent to us.
+The tool behind that pause is `browser_ask_user`. It stops the run, shows you a prompt on your own screen, waits, and carries on in the session's tab, in the Chrome you're signed into. Your password never comes into it. The code goes back to your agent like any tool result, and is never sent to us.
 
 ## Setting it up
 

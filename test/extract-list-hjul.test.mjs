@@ -12,7 +12,7 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // Et feed i en indre rulle-container. Det henter `parti` nye raekker, naar et hjul rammer containeren taet paa bunden.
 // En scrollTop-rulning flytter listen, men henter intet - som paa Threads.
-function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, voksFoerRul = false, kunVedBund = false } = {}) {
+function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, voksFoerRul = false, kunVedBund = false, skjult = false } = {}) {
   const s = { tegnet: start, scrollTop: 0, hjul: 0, hjulUdenfor: 0, ekstra: 0, venter: 0 };
   // En langsom loader: de foerste `pladsholdere` gange laegger den kun hoejde ind (skeletter), saa kommer raekkerne.
   const hent = () => {
@@ -26,7 +26,8 @@ function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoe
     get scrollTop() { return s.scrollTop; },
     set scrollTop(v) {
       s.scrollTop = Math.max(0, Math.min(v, this.scrollHeight - hoejde));
-      if (hentPaa === 'scroll' && s.scrollTop + hoejde >= this.scrollHeight - 60) hent();
+      // En skjult side faar ingen scroll-events (maalt i Chrome, R62), saa en scroll-loader henter intet dér.
+      if (hentPaa === 'scroll' && !skjult && s.scrollTop + hoejde >= this.scrollHeight - 60) hent();
     },
     parentElement: null,
     getBoundingClientRect: () => ({ left: 100, top: 100, right: 500, bottom: 100 + hoejde, width: 400, height: hoejde }),
@@ -36,6 +37,7 @@ function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoe
     querySelectorAll: () => raekker(),
     querySelector: () => container,
     documentElement: { scrollHeight: 800 },
+    visibilityState: skjult ? 'hidden' : 'visible',
   };
   const window = { innerWidth: 1200, innerHeight: 800, scrollY: 0, scrollBy() {} };
   const getComputedStyle = (el) => (el === container ? { overflowY: 'auto' } : { overflowY: 'visible' });
@@ -102,11 +104,32 @@ test('foer rettelsen (#11): uden hjul henter feedet intet - og saa maa reached_e
   assert.match(svar.note, /reached_end then only means the bottom of what loaded without them/);
 });
 
-test('en liste der henter paa scroll, virker stadig i en baggrundsfane', async () => {
+// R62 (Opus, maalt i Chrome): en skjult side faar hverken scroll-events, IntersectionObserver eller animation frames. En
+// liste der henter eller tegner mens man ruller, stopper derfor ved det der er tegnet - og saa er enden IKKE naaet.
+test('i en skjult baggrundsfane er reached_end falsk, og noten siger hvorfor', async () => {
+  for (const hentPaa of ['scroll', 'wheel']) {
+    const f = feed({ hentPaa, skjult: true });
+    const svar = await udtraek(sele(f, { aktiv: false }));
+    assert.equal(svar.count, 10, hentPaa);
+    assert.equal(svar.reached_end, false, `${hentPaa}: 10 af 40 blev kaldt enden`);
+    assert.match(svar.note, /The page was hidden \(a background tab\), and a hidden page gets no scroll events, IntersectionObserver callbacks or animation frames/);
+    assert.match(svar.note, /reached_end is false\. Call browser_switch_tab/);
+  }
+});
+
+test('en liste der henter paa scroll, virker i en synlig side', async () => {
   const f = feed({ hentPaa: 'scroll' });
   const svar = await udtraek(sele(f, { aktiv: false }));
   assert.equal(svar.count, 40);
   assert.equal(svar.reached_end, true);
+});
+
+test('max_rows skaerer raekkerne til', async () => {
+  const f = feed({ start: 10, i_alt: 40, parti: 10 });
+  const svar = await udtraek(sele(f), { max_rows: 15 });
+  assert.equal(svar.rows.length, 15);
+  assert.equal(svar.count, 15);
+  assert.equal(svar.truncated, true);
 });
 
 test('hjulet sendes ogsaa ved bunden - det er dér et feed henter', async () => {
@@ -214,7 +237,7 @@ test('teksterne siger det samme som koden', async () => {
   const { join } = await import('node:path');
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const laes = (f) => readFileSync(join(ROD, f), 'utf8');
-  assert.match(laes('mcp-server/tools.js'), /When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel \(Threads, X\) loads them; in a background tab it scrolls with a script, and `note` says that such a feed may have stopped early\.[^']*reached_end, which is true only when the list stood at its bottom with no new rows and no growth for stable_rounds rounds in a row/);
-  for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_extract_list` \|[^\n]*scrolls with real wheel events in the active tab/, f);
-  assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_extract_list` \|[^\n]*In the active tab it scrolls with real wheel events, also at the bottom[^\n]*in a background tab it scrolls with a script and says so/);
+  assert.match(laes('mcp-server/tools.js'), /When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel \(Threads, X\) loads them\. A hidden page \(a background tab\) gets no wheel or scroll events, IntersectionObserver callbacks or animation frames, so a list that loads or renders rows while you scroll stops at what is already there; then reached_end is false and `note` says why\.[^']*reached_end, which is true only when the list stood at its bottom in a visible page with no new rows, growth or movement for stable_rounds rounds in a row/);
+  for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_extract_list` \|[^\n]*scrolls with real wheel events in the active tab[^\n]*in a background tab a list that loads while scrolling stops early, and `reached_end` is false/, f);
+  assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_extract_list` \|[^\n]*In the active tab it scrolls with real wheel events, also at the bottom[^\n]*a background tab gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false/);
 });

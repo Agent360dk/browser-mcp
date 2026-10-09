@@ -94,7 +94,13 @@ function forbindelsesAdvarsel() {
 
 // Det agenten ser: stderr naar ingen agent. Advarslen lægges i det naeste vaerktoejssvar, én gang pr. aendring.
 let sidsteVisteForbindelsesAdvarsel = '';
+let forbindelseSkiftet = false;
 function medForbindelsesNote(svar) {
+  if (forbindelseSkiftet && liveConnections().length) {
+    forbindelseSkiftet = false;
+    svar.content.push({ type: 'text', text: '\n⚠️ The extension connection this server was driving has closed, and commands now ' +
+      'go to another one - possibly another Chrome profile or browser. Tabs opened before are not in it.' });
+  }
   const a = forbindelsesAdvarsel();
   if (!a) { sidsteVisteForbindelsesAdvarsel = ''; return svar; }
   if (a === sidsteVisteForbindelsesAdvarsel) return svar;
@@ -474,6 +480,10 @@ function createWSS(port = BASE_PORT) {
       connections.delete(conn);
       afvisVentende('the extension disconnected');
       process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
+      // R62 (Opus, maalt mod den aegte server): efter en lukning og en ny forbindelse tav stderr, fordi den samme tekst var
+      // skrevet foer. Og lukkede den forbindelse serveren STYREDE, gik kommandoerne stille videre til en anden profil.
+      if (!forbindelsesAdvarsel()) sidsteProfilAdvarsel = '';
+      if (conn === laastForbindelse && harSendtKommando) forbindelseSkiftet = true;
     });
   });
 

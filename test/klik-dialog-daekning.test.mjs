@@ -221,17 +221,17 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
     const blok = bg.slice(start, bg.indexOf('\n    case ', start + 10));
     assert.match(blok, /if \(el\.covered\) return daekketSvar\(params\.selector, el\);/, `${navn} afviser ikke et daekket maal`);
     const d = tools.slice(tools.indexOf(`name: 'browser_${navn}'`)).split('inputSchema')[0];
-    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\), or the target does not take clicks there \(pointer-events, visibility, clipping\) - nothing is done: the answer is ok:false with error "covered" and covered_by/, `browser_${navn}s beskrivelse`);
+    assert.match(d, /If the mouse would not reach the target at its center - another element lies in front of it \(an overlay, a dialog\\'s backdrop\), or the target does not take clicks there \(pointer-events, visibility, clipping\) - the target gets nothing: the answer is ok:false with error "covered" and covered_by\. In the active tab the mouse may first be moved to the target and back/, `browser_${navn}s beskrivelse`);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
   for (const f of ['README.md', 'mcp-server/README.md']) {
     const t = laes(f);
     assert.match(t, /\| `browser_click` \|[^\n]*looks in an open modal dialog first, and nothing is clicked \(`covered`\)/, f);
-    for (const n of ['hover', 'double_click', 'right_click']) assert.match(t, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*nothing is done \\(\`covered\`\\)`), `${f}: ${n}`);
+    for (const n of ['hover', 'double_click', 'right_click']) assert.match(t, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*the target gets nothing \\(\`covered\`\\)`), `${f}: ${n}`);
   }
   const docs = laes('content/browsermcp-docs-tools.md');
   assert.match(docs, /\| `browser_click` \|[^\n]*looks inside an open modal dialog first\. If the mouse would not reach the target at its center/);
-  for (const n of ['double_click', 'right_click', 'hover']) assert.match(docs, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*Nothing is done \\(\`covered\`\\)`), n);
+  for (const n of ['double_click', 'right_click', 'hover']) assert.match(docs, new RegExp(`\\| \`browser_${n}\` \\|[^\\n]*The target gets nothing \\(\`covered\`\\)`), n);
 });
 
 // ── R61 (Opus, maalt i Chrome): forfaedre, skuffer, stablede dialoger og maal uden for vinduet ─────────────
@@ -298,6 +298,8 @@ test('et maal uden for vinduet meldes som uden for, med en forklaring', async ()
 test('click flytter musen hen til et daekket maal og maaler igen, foer den afviser', async () => {
   let kald = 0;
   const u = sele();
+  await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });   // et tidligere hover
+  u.optager.ryd();
   u.ctx.resolveElement = async () => (++kald === 1 ? DAEKKET : { ...DAEKKET, covered: undefined });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
   assert.equal(kald, 2, 'daekningen blev ikke maalt igen efter flytningen');
@@ -326,4 +328,63 @@ test('fill med tekst-selektor og select_option klikker ikke et daekket maal', as
     assert.equal(svar.error, 'covered', `${vaerktoej}: ${JSON.stringify(svar)}`);
     assert.equal(mus(u).filter((k) => k.args[2].type === 'mousePressed').length, 0, `${vaerktoej} trykkede paa overlayet`);
   }
+});
+
+// ── R62 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+
+test('uden en tidligere musehandling i fanen flyttes musen ikke - daekningen kan ikke vaere vores egen', async () => {
+  const u = sele();
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered');
+  assert.equal(mus(u).length, 0, 'musen blev flyttet, og det kan aabne en hover-menu');
+  assert.match(svar.note, /Nothing was done\./);
+});
+
+test('bestaar daekningen efter flytningen, laegges musen tilbage, og svaret siger det', async () => {
+  const u = sele();
+  await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+  u.optager.ryd();
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
+  assert.equal(svar.error, 'covered');
+  const flyt = mus(u).map((k) => [k.args[2].type, k.args[2].x, k.args[2].y]);
+  assert.deepEqual(flyt, [['mouseMoved', 60, 35], ['mouseMoved', 5, 5]], `musen blev ikke lagt tilbage: ${JSON.stringify(flyt)}`);
+  assert.match(svar.note, /Nothing was clicked: the mouse was moved to the target and back once/);
+});
+
+test('daekningen maales igen i op til 600 ms - et tooltip med skjule-forsinkelse naar at forsvinde', async () => {
+  let kald = 0;
+  const u = sele();
+  await u.hent('cdpSend')(1, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+  u.ctx.resolveElement = async () => (++kald <= 3 ? DAEKKET : { ...DAEKKET, covered: undefined });
+  const svar = await u.hent('dispatch')(9876, 'click', { selector: '#gem' });
+  assert.equal(kald, 4, `maalt ${kald} gange`);
+  assert.notEqual(svar.error, 'covered');
+});
+
+test('en label uden for= og uden pointer-events over sit felt: feltet er ikke en daekning (fill text=City)', () => {
+  const d = lavKlikDom();
+  d.el('input', { id: 'by', rect: [20, 20, 200, 40] });
+  d.el('label', { tekst: 'City', rect: [20, 20, 200, 40], lag: 1, ingenPeg: true });
+  assert.equal(tekstKlik(d, 'City').covered, undefined);
+});
+
+test('tekst uden pointer-events i et kort uden role eller onclick: kortet faar klikket, som siden er bygget til', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort1', rect: [20, 20, 300, 100] });
+  d.el('span', { id: 'abon', tekst: 'Abonner nu', rect: [30, 30, 120, 20], ingenPeg: true }, kort);
+  assert.equal(tekstKlik(d, 'Abonner nu').covered, undefined);
+  // Et deaktiveret link er interaktivt og afvises stadig.
+  const d2 = lavKlikDom();
+  const raekke = d2.el('div', { id: 'w1', rect: [0, 0, 1200, 200] });
+  d2.el('a', { id: 'betal', tekst: 'Betal', rect: [20, 20, 80, 30], ingenPeg: true }, raekke);
+  assert.equal(d2.koer(KILDE, '#betal', null, null, false, false).svar.covered?.id, 'w1');
+});
+
+test('en aria-modal-indpakning med hoejde 0 og et synligt fast barn er en aaben dialog (Tailwind/Headless UI)', () => {
+  const d = lavKlikDom();
+  d.el('button', { id: 'sideAdd', tekst: 'Add', rect: [20, 20, 80, 30] });
+  const ind = d.el('div', { attrs: { 'aria-modal': 'true' }, rect: [0, 0, 0, 0], lag: 10 });
+  const panel = d.el('div', { rect: [400, 300, 400, 200], lag: 10 }, ind);
+  d.el('button', { id: 'panelAdd', tekst: 'Add', rect: [600, 400, 80, 30], lag: 10 }, panel);
+  assert.equal(elementFor(d, 'Add').id, 'panelAdd');
 });
