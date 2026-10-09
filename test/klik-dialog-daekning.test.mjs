@@ -528,7 +528,7 @@ test('en label, hvis midtpunkt ligger paa et link inde i den, er daekket af link
   assert.equal(r.covered?.id, 'vilk', JSON.stringify(r));
   assert.equal(r.covered?.inside, true);
   const svar = indlaesUdvidelse().hent('daekketSvar')('text=Jeg accepterer', r);
-  assert.match(svar.note, /a different control inside it, so the mouse would click that, and a click on a control inside a label does not activate the label's own field/);
+  assert.match(svar.note, /a different control inside it, so the mouse would click that, and a click on a control inside a label does not, or may not, activate the label's own field \(its own click handler can cancel it\)/);
   // Labelens eget felt i midtpunktet er ikke en daekning.
   const d2 = lavKlikDom();
   const boks2 = d2.el('input', { id: 'nyt', attrs: { type: 'checkbox' }, rect: [40, 40, 400, 16], lag: 1 });
@@ -1066,6 +1066,36 @@ test('tekst i en label-ramme med en Slet med rolle over sig er daekket, i light 
     } else tekst = d.el('span', { id: 't', tekst: 'Accepter', rect: [70, 40, 270, 30], lag: 1 }, ramme);
     d.el('span', { id: 'slet', attrs: { role: 'button' }, rect: [70, 40, 270, 30], lag: 2 }, skygge ? rod : ramme);
     assert.equal(d.koer(KILDE, '#t', null, null, false, false).svar.covered?.id, 'slet', skygge ? 'skygge' : 'light DOM');
+  }
+});
+
+// ── R75 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en stor rolle-span, onclick eller et link uden adresse i en checkbox-komponents egen label er daekning (R75)', () => {
+  for (const [tag, attrs] of [['span', { role: 'button' }], ['span', { onclick: 'x()' }], ['a', {}]]) for (const rect of [[40, 40, 270, 30], [40, 40, 300, 30]]) {
+    const d = lavKlikDom();
+    const { label } = checkboxKomp(d);
+    d.el(tag, { id: 'h', tekst: 'vilkaar', attrs, rect, lag: 1 }, label);
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id, 'h', `${tag} ${JSON.stringify(attrs)} ${JSON.stringify(rect)}`);
+  }
+});
+
+test('labelens eget custom-felt: dets egen role=checkbox-boks i skyggen er feltet, ikke en anden kontrol (R75)', () => {
+  const d = lavKlikDom();
+  const felt = d.el('x-felt', { id: 'xf', rect: [40, 40, 300, 30] });
+  const label = d.label(felt, { id: 'l', tekst: 'Accepter', rect: [40, 40, 300, 30] });
+  label.children.push(felt); felt.parentNode.children.splice(felt.parentNode.children.indexOf(felt), 1); felt.parentNode = label;
+  d.el('div', { id: 'boks', attrs: { role: 'checkbox' }, rect: [40, 40, 300, 30], lag: 1 }, d.skygge(felt));
+  assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered, undefined);
+});
+
+test('komponentens eget input med rolle under 90 % er dens felt, naar komponentens label daekker den (R75)', () => {
+  for (const attrs of [{ type: 'checkbox', role: 'checkbox' }, { type: 'checkbox', onclick: 'x()' }]) {
+    const d = lavKlikDom();
+    const { label, felt } = checkboxKomp(d);
+    for (const [k, v] of Object.entries(attrs)) felt.attrs[k] = v;
+    felt.rect = [115, 40, 150, 30]; felt.lag = 1;   // 50 % af komponenten, over dens midtpunkt
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered, undefined, JSON.stringify(attrs));
+    assert.ok(label);
   }
 });
 

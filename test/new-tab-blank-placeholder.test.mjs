@@ -227,6 +227,17 @@ test('a first navigate to about:blank, and a reused placeholder without new_tab,
   }
 });
 
+// R75 (Astra, maalt i model): en eksisterende side, hvis navigation var faerdig, foer navigate lyttede - en ny adresse,
+// about:blank, samme adresse eller et fragment - ventede de fulde 15 sekunder.
+test('navigate in an existing tab whose page finished before navigate listened does not wait for the timeout', async () => {
+  for (const url of ['https://example.com/ny', 'about:blank', 'https://foer.example/', 'https://foer.example/#afsnit']) {
+    const { u, tilstand } = langsomBrowser({ eksisterende: { id: 5, url: 'https://foer.example/', title: 'foer' }, hurtigOpdatering: true });
+    const svar = await u.hent('dispatch')(9876, 'navigate', { url });
+    assert.equal(svar.url, url, url);
+    assert.equal(tilstand.brugteTimeout, false, `${url}: navigate ventede paa timeouten`);
+  }
+});
+
 test('a navigate in place does not take the old page\'s complete status as the new page having loaded', async () => {
   const { u, tilstand } = langsomBrowser({ eksisterende: { id: 5, url: 'https://foer.example/', title: 'foer' } });
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/ny' });

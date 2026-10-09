@@ -2308,18 +2308,32 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
           // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Interaktivt indhold mellem
           // punktet og komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke
           // feltet); labelens eget felt er det ikke.
-          if (egenStor && n.tagName === 'LABEL' && interaktiv && interaktiv !== n.control) { fundet = interaktiv; break; }
+          // R75 (Astra, maalt i model): et custom-felt (form-associated) har sin egen boks i sin skygge; den er feltet selv, ikke en
+          // anden kontrol. Alt inde i labelens eget felt er derfor feltet.
+          if (egenStor && n.tagName === 'LABEL' && interaktiv && !(n.control && inde(interaktiv, n.control))) { fundet = interaktiv; break; }
           // R74 (Astra, maalt i model): en label i labelen (ugyldig HTML, men muligt) blev ikke husket, saa en stor indre label
           // med for= et andet felt aktiverede det med landed:true. En label er ogsaa interaktivt indhold; den huskes efter, at den
           // selv er proevet som komponentens label.
-          if (!interaktiv && n.matches && n.matches(INTERAKTIV) && lukket(n)) interaktiv = n;
+          // R75 (Astra, maalt i model): en stor rolle-span, onclick eller et link uden adresse inde i komponentens label blev fritaget
+          // som komponentens egen og ikke husket, saa en annullerende handling gav landed:true med boksen tom. Som i label-tilstanden
+          // (R74) huskes enhver handling ogsaa.
+          if (!interaktiv && n.matches && n.matches(INTERAKTIV + ',' + HANDLING) && lukket(n)) interaktiv = n;
           if (!handling || egenStor) continue;
+          // R75 (Astra, maalt i model): komponentens eget felt (et native input med rolle eller onclick) under 90 % blev afvist som
+          // «en anden kontrol», selv om komponentens egen label om det daekker komponenten. Er n feltet for en saadan label laengere
+          // oppe i kaeden, er det komponentens eget felt.
+          let egetFelt = false;
+          for (let o = n.assignedSlot || n.parentNode || n.host, i = 0; o && o !== el && i < 1000; o = o.assignedSlot || o.parentNode || o.host, i++) {
+            if (o.tagName === 'LABEL' && o.control && inde(n, o.control) && o.matches && o.matches(HANDLING) && iEgenSkygge(o) && daekker(o)) { egetFelt = true; break; }
+          }
+          if (egetFelt) continue;
           if (etLink(n)) { link = link || n; continue; }
           fundet = n; break;
         }
         indre = fundet || (klikbartMaal ? link : null);
       }
-      if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
+      // R75 (Astra, maalt i model): ogsaa et punkt i labelens eget custom-felts skygge (dets egen boks) er feltet, ikke en anden kontrol.
+      if (indre && indre !== el && inde(indre, el) && !(el.control && inde(indre, el.control))) {
         // R73 (Opus, maalt i Chrome): noten naevnte BUTTON#button i en md-filled-buttons skygge, agenten klikkede `#button`, og det
         // ramte den foerste Material-knap paa siden (Annuller) med landed:true. En kontrol i en shadow root faar et flag, saa noten
         // ikke peger paa et id, som andre komponenter deler.
@@ -2430,7 +2444,7 @@ function daekketSvar(selector, el, method) {
   if (c.inside) {
     svar.note = c.label
       ? `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that, ` +
-        'and a click on a control inside a label does not activate the label\'s own field. Nothing was done. Click the one you ' +
+        'and a click on a control inside a label does not, or may not, activate the label\'s own field (its own click handler can cancel it). Nothing was done. Click the one you ' +
         'mean with its own selector (for a checkbox in the label, the checkbox itself).'
       : `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that instead ` +
         'and run its action. Nothing was done. Click the one you mean with its own selector.';
@@ -4294,8 +4308,7 @@ async function dispatch(port, method, params) {
       // sin eneste 'complete' foer lytteren herunder fandtes, og navigate ventede de fulde 15 sekunder. For en fane uden en
       // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
       let nyFane = !!(tab && tab.oprettetMedUrl);
-      // R74 (Astra, maalt i model): ogsaa en pladsholder, der genbruges uden new_tab, har ingen tidligere side at forveksle med.
-      const erPladsholder = (t) => !!t && (t.url === 'about:blank' || (t.url === '' && t.pendingUrl === 'about:blank'));
+      let tidligt = null;
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
@@ -4424,8 +4437,19 @@ async function dispatch(port, method, params) {
           await addTabToSession(port, tab.id);
         }
       } else {
-        if (erPladsholder(tab)) nyFane = true;
-        await chrome.tabs.update(tab.id, { url: params.url });
+        // R75 (Astra, maalt i model): en eksisterende side, hvis navigation var faerdig, foer lytteren nedenfor fandtes (en side fra
+        // cachen, samme adresse, et fragment), ventede de fulde 15 sekunder. Haendelserne under opdateringen opfanges derfor. En
+        // 'complete' taeller kun, hvis navigationen er set begynde ('loading') eller adressen er skiftet - ellers kan den vaere den
+        // gamle sides.
+        // En side, der allerede var faerdig, da opdateringen blev sendt, kan ikke give en ny 'complete' af sig selv.
+        tidligt = { tabId: tab.id, loading: false, complete: false, url: '', gammelUrl: String(tab.url || ''), gammelKlar: tab.status === 'complete' };
+        const opfang = (tabId, info, t) => {
+          if (tabId !== tidligt.tabId) return;
+          if (info.status === 'loading') tidligt.loading = true;
+          if (info.status === 'complete') { tidligt.complete = true; tidligt.url = String((t && t.url) || info.url || ''); }
+        };
+        chrome.tabs.onUpdated.addListener(opfang);
+        try { await chrome.tabs.update(tab.id, { url: params.url }); } finally { chrome.tabs.onUpdated.removeListener(opfang); }
       }
 
       // Wait for load. A 'complete' can be the about:blank placeholder's OWN load
@@ -4457,7 +4481,8 @@ async function dispatch(port, method, params) {
         const timer = setTimeout(finish, 15000);
         // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
         // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
-        if (nyFane) loadedNow().then((ok) => { if (ok) finish(); });
+        const alleredeFaerdig = !!tidligt && tidligt.complete && (tidligt.loading || tidligt.url !== tidligt.gammelUrl || tidligt.gammelKlar);
+        if (nyFane || alleredeFaerdig) loadedNow().then((ok) => { if (ok) finish(); });
       });
 
       // Set as active tab for this session
