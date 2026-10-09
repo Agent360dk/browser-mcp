@@ -39,8 +39,8 @@ for any other target that takes clicks itself, anything clickable inside it at i
 with a button role or an `onclick`, such as a delete button on a card) counts as covered by that control; for a passive
 container (a list item, a card that is not a button) its own link (an `a` with an address, without a button role or
 `onclick`) is its action, and only a button or other action inside it counts, also one around a link however many link
-layers lie between; an `a` without an address, role or `onclick` is no action, and `href="#"`, `javascript:` and a
-role other than link make an `a` an action, not a plain link. A delete link with a real address (rails-ujs
+layers lie between; an `a` without a real address (none, `#` or `javascript:`) or with a role other than link is an
+action, not a plain link, since a script handler on it cannot be seen. A delete link with a real address (rails-ujs
 `data-method`) cannot be told from a plain link. A field or other control whose center
 lies on a button around it is covered by that button: the button's click is not the field's. A text selector picks a
 clickable child only when the text is in it, so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1

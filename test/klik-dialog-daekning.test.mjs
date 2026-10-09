@@ -709,7 +709,7 @@ test('en genmaaling, der finder maalet uden for vinduet, ruller det frem igen (R
 });
 
 // ── R68 (Astra, maalt i model) ─────────────────────────────────────────────
-test('et passivt kort: en knap flere linklag oppe er daekningen; et inert <a> er ingen handling (R68)', () => {
+test('et passivt kort: en knap flere linklag oppe er daekningen; et <a> uden adresse er en handling (R68)', () => {
   const d = lavKlikDom();
   const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
   const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, kort);
@@ -719,7 +719,8 @@ test('et passivt kort: en knap flere linklag oppe er daekningen; et inert <a> er
   const d2 = lavKlikDom();
   const kort2 = d2.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
   d2.el('a', { id: 'inert', tekst: 'Ordre 7', rect: [190, 60, 100, 40], lag: 1 }, kort2);
-  assert.equal(d2.koer(KILDE, '#kort', null, null, false, false).svar.covered, undefined, 'et <a> uden adresse, rolle og onclick er ingen handling');
+  // Opus (Chrome, r66-rollekort): et <a> uden adresse kan baere en lytter, der ikke kan ses - det er en handling.
+  assert.equal(d2.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'inert', 'et <a> uden adresse er en handling');
 });
 
 test('et felt uden pointer-events i en div role=button er daekket af knappen - knappens klik er ikke feltets (R68)', () => {

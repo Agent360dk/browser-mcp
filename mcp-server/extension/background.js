@@ -2196,14 +2196,14 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         return href !== null && href.trim() !== '' && href.trim() !== '#' && !/^\s*javascript:/i.test(href);
       };
       // R68 (Astra, maalt i model): kun det naeste lag blev undersoegt, saa <div role=button><span role=link><a href> skjulte
-      // knappen. Nu gaas hele kaeden fra punktet op til maalet: den foerste handling, der hverken er et rent link eller et
-      // inert <a> (uden adresse, rolle og onclick - det er ingen handling, HTML-standarden), er daekningen. Et rent link er en
-      // passiv beholders egen handling; for et klikbart maal er ogsaa det en anden kontrol.
-      const inertA = (n) => n.tagName === 'A' && n.getAttribute('href') === null && !n.getAttribute('role') && n.getAttribute('onclick') === null;
+      // knappen. Nu gaas hele kaeden fra punktet op til maalet: den foerste handling, der ikke er et rent link, er daekningen.
+      // Et rent link er en passiv beholders egen handling; for et klikbart maal er ogsaa det en anden kontrol.
+      // R68 (Opus' r66-rollekort, maalt i Chrome): et <a> uden adresse blev en tid regnet for «inert» og sprunget over - men
+      // en lytter sat med addEventListener kan ikke ses, og Slet koerte med ok:true. Et <a> uden adresse er derfor en handling.
       if (indre && !erLabel) {
         let fundet = null, link = null;
         for (let n = hit; n && n !== el; n = n.parentNode || n.host) {
-          if (!n.matches || !n.matches(HANDLING) || !lukket(n) || inertA(n)) continue;
+          if (!n.matches || !n.matches(HANDLING) || !lukket(n)) continue;
           if (etLink(n)) { link = link || n; continue; }
           fundet = n; break;
         }
