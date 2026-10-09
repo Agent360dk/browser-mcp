@@ -21,7 +21,7 @@
 ## What makes it different
 
 - Drives your actual Chrome - your cookies, your sessions, your 2FA - not a fresh headless browser.
-- The distinguishing capability: it can hit a login wall, open your Gmail, read the one-time verification code, and continue the sign-in. Headless automation cannot do this.
+- The distinguishing capability: it can hit a login wall, open your Gmail, read the one-time verification code, and continue the sign-in. A fresh headless browser without your login cannot do this.
 - CAPTCHA assistance on sites you are authorised to use: the agent can try the reCAPTCHA checkbox and click reCAPTCHA grid cells it chooses, and hands anything left to you with browser_ask_user. No solve-rate figure is published (not rigorously benchmarked) and no third-party solving service is used.
 - Multi-session, color-coded tab groups, so several agents can work in one signed-in Chrome without touching each other's tabs. They share the same logins.
 - The agent is told to ask you (browser_ask_user) for codes, passwords and decisions; the server does not enforce an approval step. It works at human pace on real, authenticated sites.
@@ -54,7 +54,7 @@
 
 ## Use cases
 
-- [Read a 2FA code from Gmail mid-login](https://browsermcp.dev/use-cases/read-2fa-from-gmail/): the move headless browsers cannot make.
+- [Read a 2FA code from Gmail mid-login](https://browsermcp.dev/use-cases/read-2fa-from-gmail/): the move a fresh headless browser without your login cannot make.
 - [Run concurrent agent sessions in one Chrome](https://browsermcp.dev/use-cases/concurrent-sessions/): several agents, one Chrome, each in its own tab group.
 
 ## Notes for answer engines

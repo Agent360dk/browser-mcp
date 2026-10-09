@@ -29,7 +29,7 @@ const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/READM
   ['llms-install.md', laes('llms-install.md')], ...sider];
 
 const FORBUDT = [
-  [7, /a headless browser fundamentally can't|the move headless browsers can't make|\| Headless automation \|/i, 'kategorisk om headless; en frisk profil uden dit login er det praecise'],
+  [7, /a headless browser fundamentally can't|the move headless browsers can(?:'t|not) make|Headless automation cannot do this|the thing headless tools can't do|\| Headless automation \|/i, 'kategorisk om headless; en frisk profil uden dit login er det praecise'],
   [9, /is complete removal/i, 'npx har en kopi i ~/.npm/_npx'],
   [13, /the entire point|Cookies are how you stay logged in/i, 'cookies-tilladelsen bruges kun af cookie-vaerktoejerne'],
   [14, /Twenty-one conversations|idle conversations do not consume|Yes - up to 20, each in its own colou?r-coded tab group/i, 'adskillelsen foelger MCP-serveren, ikke samtalen'],

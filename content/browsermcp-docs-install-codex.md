@@ -101,7 +101,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 ### The 2FA-killer move
 
-This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
+This is what a fresh headless browser without your login can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
 ### 40 tools, no server-side moving parts
 
