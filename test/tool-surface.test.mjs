@@ -665,3 +665,23 @@ test('browser_fetch-raekkerne i README og /docs/tools siger https, ingen cookies
     assert.match(l, /plain http (works )?only to 127\.0\.0\.1/i, `${f}: siger ikke at almindelig http kun gaar til 127.0.0.1`);
   }
 });
+
+// 1.30.2 (planens punkt om CHANGELOG): afsnittet skal naevne hvert nyt svar en agent kan se, og hvert svar skal findes i koden.
+test('CHANGELOG 1.30.2 naevner hvert nyt svar, og hvert findes i koden', () => {
+  const log = laes('CHANGELOG.md');
+  const afsnit = log.slice(log.indexOf('## 1.30.2'), log.indexOf('## 1.30.1'));
+  assert.ok(afsnit.length > 1000, 'afsnittet for 1.30.2 findes ikke');
+  const kode = laes('extension/background.js') + laes('mcp-server/index.js');
+  const svar = {
+    covered: /error: 'covered'/, 'field-is-readonly': /'field-is-' \+ blocked[\s\S]*'readonly'|'readonly'[\s\S]*'field-is-' \+ blocked/,
+    'field-is-disabled': /'field-is-' \+ blocked[\s\S]*'disabled'|'disabled'[\s\S]*'field-is-' \+ blocked/,
+    tab_closed: /action: 'tab_closed'/, replaced: /action: 'replaced'/, navigated: /action: 'navigated'/,
+    removed_by_page: /removed_by_page/, 'file-access-off': /file-access-off/, scroll_method: /scroll_method:/,
+    extension_connections: /extension_connections:/, worked: /\bworked\b/, covered_by: /covered_by:/,
+  };
+  for (const [navn, iKode] of Object.entries(svar)) {
+    assert.ok(afsnit.includes('`' + navn) || afsnit.includes('"' + navn), `CHANGELOG 1.30.2 naevner ikke ${navn}`);
+    assert.match(kode, iKode, `${navn} staar i CHANGELOG, men ikke i koden`);
+  }
+  assert.match(afsnit, /also not\s+to 127\.0\.0\.1, where 1\.30\.1 did/, 'cookie-aendringen for 127.0.0.1 skal staa der (planens punkt)');
+});

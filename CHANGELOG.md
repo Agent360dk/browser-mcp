@@ -4,6 +4,61 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.30.2 (not released yet)
+
+**Tool texts that match the code, clicks that say when they could not land, and the pull requests from
+John H.**
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger in `browser_select_option` | The mouse would not reach the target at its center: an element lies in front of it, or the target does not take clicks there. Nothing was done. Before, `browser_click` answered `ok: true` when the click hit an overlay |
+| `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
+| `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
+| `error: "file-access-off"` | `browser_upload_file`, `browser_drop_file` | Chrome refused the file because "Allow access to file URLs" is off for the extension |
+| `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why (#11) |
+| `eget_vindue: false`, `advarsel` | `browser_navigate` with `eget_vindue` | The tab did not end up in its own window; `windowId` is the tab's real window |
+| a viewport note next to the image | `browser_screenshot` | The CSS viewport and devicePixelRatio for `browser_click_xy`, when Chrome reports them in time (#55) |
+| `worked` | `browser_provide_feedback` | The route that did work in the end |
+| `extension_connections`, verdict `conflict` | `browser_provide_feedback` | Several open connections from the same extension, for instance one per Chrome profile (#58) |
+
+**Clicks.** A text selector looks inside an open modal dialog first (also inside open shadow roots; of
+several, the one on top), so `click text=Add` presses the dialog's button, not the page's behind it. The
+debugger path and the script fallback find their target with the same function. In the active tab, a
+covered target gets one mouse move and a second measurement first, so a tooltip that hides when the
+mouse moves does not block.
+
+**`browser_ask_user`** fails at once, and shows nothing, on Chrome's error page or about:blank, instead of
+activating the tab, posting a notification and failing with Chrome's own text. The notification of a
+question that ends is cleared once it exists. The prompt is drawn in the extension's isolated world in a
+closed shadow root, a prompt without fields is a card the user can drag aside, and a prompt with fields
+is bound to the page's origin (or a local file's path) (#61, #62).
+
+**`browser_extract_list`** scrolls with real wheel events in the active tab, also at the bottom, so a
+feed that loads on wheel loads (#11). `reached_end` is true only when the list stood at its bottom with
+no new rows and no growth for `stable_rounds` rounds in a row.
+
+**`browser_fetch`** can reach HTTPS addresses (the extension's own content security policy blocked every
+outside address, also in 1.30.1). It sends no browser cookies and stores none from the answer, also not
+to 127.0.0.1, where 1.30.1 did: pass a token in headers.
+
+**Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer
+and stderr say how many connections are open and that the server cannot tell which profile it drives
+(#58). Routing to a chosen profile is not in this release.
+
+**`eget_vindue` keeps its tab in its own window.** Before, the tab was moved back into the session's
+first window, and the answer still reported the new one. **Corrected:** the 1.30.1 notes say Chrome
+"often refuses" focus, and the 19 September measurement said a window without focus gets no input.
+Both read that answer, so they probably measured a background tab. Whether a window without focus gets
+input in desktop Chrome is unmeasured.
+
+**Also:** `browser_fill` skips Backspace in a field known to be empty (#54); `browser_navigate` with
+`new_tab` uses the session's empty placeholder tab (#57); `click_grid` takes `grid` (3 or 4); agent-facing
+answers that were still in Danish are English (#43); a call over a connection that dies is rejected at
+once (#45); `browser_extract_token` answers `Unknown provider` also for a name like `constructor`, and a
+tool name like that is an unknown tool; the response-time check ignores bot pull requests.
+
 ## 1.30.1 (2026-10-07)
 
 **Pairing is withdrawn, and a new install could get a bridge that never connected. This release
