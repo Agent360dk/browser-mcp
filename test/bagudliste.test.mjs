@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,16 +18,13 @@ const indhold = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'
 // sider laeses nu ogsaa - som tekst, med entiteter afkodet og tags fjernet.
 // R63 (Astra, maalt): tags blev fjernet MED deres attributter, saa <meta content> og alt-tekster blev ikke laest. Nu bliver
 // attributvaerdierne staaende som tekst.
-// R64 (Astra, maalt): kun name="value" blev laest. Nu ogsaa enkelte anfoerselstegn, mellemrum om lighedstegnet og
-// vaerdier uden anfoerselstegn, og hexadecimale tegnreferencer (&#x27;) afkodes.
-const attrVaerdier = (tag) => [...tag.matchAll(/\s[\w:-]+\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g)].map((m) => m[1] ?? m[2] ?? m[3]);
-const html = (s) => s.replace(/<[^>]+>/g, (tag) => ' ' + attrVaerdier(tag).join(' ') + ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/\s+/g, ' ');
-const sider = [];
-const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
-  if (e.isDirectory()) gaa(join(d, e.name)); else if (e.name.endsWith('.html')) sider.push([join(d, e.name), html(laes(join(d, e.name)))]); } };
-gaa('docs');
+// R64 (Astra, maalt): kun name="value" blev laest. R65 (Astra, maalt): ogsaa `&#x27`/`&#39` uden semikolon og et `>` inde i
+// en citeret vaerdi slap igennem. Siderne laeses nu af en HTML-parser (test/hjaelp/side-tekst.py): tekst, attributvaerdier
+// og kommentarer, med tegnreferencer afkodet efter HTML5-reglerne.
+const SIDE_TEKST = join(rod, 'test/hjaelp/side-tekst.py');
+const html = (s) => JSON.parse(execFileSync('python3', ['-I', SIDE_TEKST, '-'], { input: JSON.stringify([s]), encoding: 'utf8' }))[0];
+const sider = Object.entries(JSON.parse(execFileSync('python3', ['-I', SIDE_TEKST, join(rod, 'docs')], { encoding: 'utf8' })))
+  .map(([f, tekst]) => [join('docs', f), tekst]);
 const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
   ['llms-install.md', laes('llms-install.md')], ...sider];
 
@@ -81,4 +79,11 @@ test('normaliseringen laeser enkelte anfoerselstegn, mellemrum om = og hexadecim
   assert.match(html("<meta content='kun-enkelte'>"), /kun-enkelte/);
   assert.match(html('<meta content = "med-mellemrum">'), /med-mellemrum/);
   assert.match(html('<meta content="can&#x27;t">'), /can't/);
+});
+
+test('normaliseringen laeser tegnreferencer uden semikolon og et > inde i en citeret vaerdi (R65)', () => {
+  assert.match(html('<meta content="can&#x27t">'), /can't/);
+  assert.match(html('<meta content="can&#39t">'), /can't/);
+  assert.match(html('<meta content="a > b fundamentally can\'t">'), /a > b fundamentally can't/);
+  assert.match(html('<!-- en kommentar -->'), /en kommentar/);
 });

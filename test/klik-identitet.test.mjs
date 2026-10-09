@@ -15,7 +15,7 @@ import vm from 'node:vm';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 import { lavKlikDom } from './hjaelp/klik-dom.mjs';
 
-function browser(d, { foerArm, efterArm } = {}) {
+function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl } = {}) {
   const lyttere = { window: new Map(), document: new Map() };
   const tilfoej = (m) => (n, f) => { if (!m.has(n)) m.set(n, []); m.get(n).push(f); };
   const fjern = (m) => (n, f) => { const l = m.get(n) || []; const i = l.indexOf(f); if (i >= 0) l.splice(i, 1); };
@@ -23,11 +23,16 @@ function browser(d, { foerArm, efterArm } = {}) {
   d.document.addEventListener = tilfoej(lyttere.document);
   d.document.removeEventListener = fjern(lyttere.document);
   // Elementerne i klik-dom ved ikke, om de er i dokumentet; her er alle det (vagten kraever et tilsluttet maal).
-  Object.defineProperty(Object.getPrototypeOf(d.body), 'isConnected', { get() { return true; }, configurable: true });
+  const proto = Object.getPrototypeOf(d.body);
+  Object.defineProperty(proto, 'isConnected', { get() { for (let n = this; n; n = n.parentNode) if (n === d.document.documentElement) return true; return false; }, configurable: true });
+  // Lyttere paa knuderne (R65: vagten taeller kun en haendelse, der NAAR knuden).
+  proto.addEventListener = function (n, f, o) { ((this._lyt ||= {})[n] ||= []).push({ f, once: !!(o && o.once) }); };
+  proto.removeEventListener = function (n, f) { const l = this._lyt?.[n] || []; const i = l.findIndex((x) => x.f === f); if (i >= 0) l.splice(i, 1); };
   const side = [];   // de haendelser, sidens egne lyttere fik: "type:id"
   const ctx = vm.createContext({ document: d.document, window, getComputedStyle: (e) => e.stil, location: { href: 'https://x.example/' },
     setTimeout, clearTimeout });
-  const fyr = (type, x, y) => {
+  const fyr = (type, x, y) => { fyrEn(type, x, y); efterHaendelse?.(type, d, fyr); };
+  const fyrEn = (type, x, y) => {
     const el = d.document.elementFromPoint(x, y);
     const vej = [];
     for (let n = el; n; n = n.parentNode || n.host) vej.push(n);
@@ -35,6 +40,9 @@ function browser(d, { foerArm, efterArm } = {}) {
     const ev = { type, target: el, isTrusted: true, clientX: x, clientY: y, composedPath: () => vej, stoppet: false,
       preventDefault() { this.defaultPrevented = true; }, stopImmediatePropagation() { this.stoppet = true; }, stopPropagation() { this.stoppet = true; } };
     for (const f of [...(lyttere.window.get(type) || []), ...(lyttere.document.get(type) || [])]) { f(ev); if (ev.stoppet) return; }
+    // En side-lytter mellem document og maalet kan stoppe haendelsen (stopVed), som en side der selv lytter i fangstfasen.
+    if (stopVed && stopVed(type, el)) return;
+    for (const x of [...(el?._lyt?.[type] || [])]) { x.f(ev); if (x.once) el.removeEventListener(type, x.f); }
     side.push(type + ':' + (el?.id || el?.tagName));
   };
   const klon = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -53,6 +61,7 @@ function browser(d, { foerArm, efterArm } = {}) {
       }
       if (metode === 'Input.dispatchMouseEvent') {
         const { type, x, y, button, clickCount } = p;
+        if (transportFejl && transportFejl(type)) throw new Error('CDP: transport failed');
         if (type === 'mouseMoved') for (const t of ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove']) fyr(t, x, y);
         if (type === 'mousePressed') for (const t of ['pointerdown', 'mousedown']) fyr(t, x, y);
         if (type === 'mouseReleased') {
@@ -65,7 +74,7 @@ function browser(d, { foerArm, efterArm } = {}) {
     },
   } });
   u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([1]), activeTabId: 1, groupId: 1, windowId: 1 });
-  return { side, koer: (metode, p) => u.hent('dispatch')(9876, metode, p), u };
+  return { side, fyr, window, koer: (metode, p) => u.hent('dispatch')(9876, metode, p), u };
 }
 
 function knapside() {
@@ -148,4 +157,102 @@ test('fill med tekst-selektor skriver intet, naar vagten stoppede klikket', asyn
   assert.equal(svar.error, 'covered', JSON.stringify(svar));
   assert.equal(svar.covered_by.id, 'nyhed');
   assert.equal(u.optager.til('debugger.sendCommand').filter((k) => k.args[1] === 'Input.dispatchKeyEvent').length, 0, 'der blev skrevet');
+});
+
+// ── R65 (Astra, maalt i model): hver haendelse doemmes, og kun det der NAAR maalet, taeller ────────────────────
+const efterTryk = (laeg) => (type, d) => { if (type === 'pointerdown' && !d.document.querySelector('#fremmed')) laeg(d); };
+
+for (const [vaerktoej, haendelse] of [['click', 'click'], ['double_click', 'dblclick'], ['right_click', 'contextmenu']]) {
+  test(`${vaerktoej}: et overlay, der kommer frem EFTER trykket paa maalet, faar ikke ${haendelse}, og svaret er delvist`, async () => {
+    const d = knapside();
+    const b = browser(d, { efterHaendelse: efterTryk(overlay) });
+    const svar = await b.koer(vaerktoej, { selector: '#gem' });
+    assert.equal(svar.ok, false, JSON.stringify(svar));
+    assert.equal(svar.error, 'covered');
+    assert.equal(svar.landed, null);
+    assert.equal(svar.maybe_landed, true);
+    assert.match(svar.note, /^The first mouse events reached #gem, then BUTTON#fremmed came in front of it/);
+    assert.ok(!b.side.some((h) => /^(click|dblclick|contextmenu|mouseup|pointerup):fremmed$/.test(h)), String(b.side));
+  });
+}
+
+test('select_option: et overlay, der kommer frem efter trykket paa valget, faar ikke klikket', async () => {
+  const d = lavKlikDom();
+  d.el('div', { id: 'trig', attrs: { role: 'combobox' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+  d.el('div', { id: 'dk', attrs: { role: 'option' }, tekst: 'Danmark', rect: [20, 80, 200, 40] });
+  let tryk = 0;
+  const b = browser(d, { efterHaendelse: (type, dd) => {
+    if (type === 'pointerdown' && ++tryk === 2) dd.el('button', { id: 'fremmed', tekst: 'Slet konto', rect: [20, 80, 200, 40], lag: 20 });
+  } });
+  const svar = await b.koer('select_option', { selector: '#trig', option: 'Danmark', wait: 1 });
+  assert.equal(svar.error, 'covered', JSON.stringify(svar));
+  assert.equal(svar.trigger_clicked, true);
+  assert.ok(!b.side.includes('click:fremmed'), String(b.side));
+});
+
+test('et link, der dukker op i en label efter armeringen, faar ikke klikket som labelens', async () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'samtykke', attrs: { type: 'checkbox' }, rect: [40, 40, 16, 16] });
+  d.label(boks, { id: 'lsam', tekst: 'Jeg accepterer alle betingelserne', rect: [40, 36, 400, 24] });
+  const b = browser(d, { efterArm: (dd) => dd.el('a', { id: 'vilk', tekst: 'vilkaar', attrs: { href: '#v' }, rect: [40, 36, 400, 24], lag: 1 }, dd.document.querySelector('#lsam')) });
+  const svar = await b.koer('click', { selector: '#lsam' });
+  assert.equal(svar.ok, false, JSON.stringify(svar));
+  assert.equal(svar.error, 'covered');
+  assert.ok(!b.side.includes('click:vilk'), String(b.side));
+});
+
+test('click: en side-lytter, der stopper klikket foer maalet, giver uvist - og et brugerklik andetsteds goer det ikke til ja', async () => {
+  const d = knapside();
+  d.el('div', { id: 'andet', rect: [800, 600, 200, 100] });
+  const b = browser(d, { stopVed: (type, el) => type === 'click' && el?.id === 'gem',
+    efterHaendelse: (type, _d, fyr) => { if (type === 'click' && !b.brugerKlik) { b.brugerKlik = true; fyr('click', 900, 650); } } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.ok, false, JSON.stringify(svar));
+  assert.equal(svar.landed, null);
+  assert.equal(svar.maybe_landed, true);
+  assert.match(svar.note, /something on the way stopped it before the target/);
+});
+
+test('double_click: en side-lytter, der stopper dblclick foer maalet, giver uvist, ikke ja', async () => {
+  const b = browser(knapside(), { stopVed: (type, el) => type === 'dblclick' && el?.id === 'gem' });
+  const svar = await b.koer('double_click', { selector: '#gem' });
+  assert.equal(svar.landed, null, JSON.stringify(svar));
+  assert.equal(svar.maybe_landed, true);
+});
+
+test('en transportfejl efter armeringen efterlader ingen vagt over brugerens egne klik', async () => {
+  const d = knapside();
+  const b = browser(d, { transportFejl: (type) => type === 'mousePressed' });
+  await assert.rejects(b.koer('double_click', { selector: '#gem' }));
+  assert.equal(b.window.__bmcpVagt, null, 'vagten blev staaende');
+  b.fyr('pointerdown', 120, 40); b.fyr('click', 120, 40);
+  assert.ok(b.side.includes('click:gem'), 'brugerens eget klik blev stoppet');
+});
+
+test('en knap, der genopbygges paa mousedown, giver uvist - ikke ok:true', async () => {
+  const d = knapside();
+  const b = browser(d, { efterHaendelse: (type, dd) => {
+    if (type !== 'mousedown' || dd.document.querySelector('#ny')) return;
+    const gammel = dd.document.querySelector('#gem');
+    dd.body.children.splice(dd.body.children.indexOf(gammel), 1); gammel.parentNode = null;
+    dd.el('button', { id: 'ny', tekst: 'Gem', rect: [20, 20, 200, 40] });
+  } });
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.landed, null, JSON.stringify(svar));
+  assert.equal(svar.maybe_landed, true);
+  assert.match(svar.note, /The page replaced the target while the mouse was on it/);
+});
+
+test('et maal, der er vaek ved genmaalingen, er ikke fundet - det gamle punkt klikkes ikke', async () => {
+  let n = 0;
+  const u = indlaesUdvidelse({ svar: { 'scripting.executeScript': () => [{ result: ++n === 1 ? { x: 60, y: 300, found: true, rullet: true } : null }] } });
+  assert.equal(await u.hent('resolveElement')(1, '#b6'), null);
+});
+
+test('vagtens bevis: intet set i en synlig side er uvist; i en skjult side er det nej', () => {
+  const f = indlaesUdvidelse().hent('vagtBevis');
+  const vb = (...a) => JSON.parse(JSON.stringify(f(...a)));
+  assert.deepEqual(vb({ naaet: {}, sendt: 0, synlig: true }, ['dblclick']), { landed: null });
+  assert.deepEqual(vb({ naaet: {}, sendt: 0, synlig: false }, ['dblclick']), { landed: false });
+  assert.deepEqual(vb({ naaet: { dblclick: 1 }, sendt: 3, synlig: true }, ['dblclick']), { landed: true });
 });
