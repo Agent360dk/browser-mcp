@@ -19,7 +19,8 @@ Cursor:  [navigates, hits a CAPTCHA]
          There's a challenge on this page. I've brought the tab
          forward - can you solve it?
 
-You:     [clicks the images, done]
+You:     [presses Skip, solves the challenge in the tab]
+         Done.
 
 Cursor:  [continues in the same tab]
          Rates are in - zone 3 went up 4% this month.

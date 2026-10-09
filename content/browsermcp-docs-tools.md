@@ -90,7 +90,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_ask_user` | Show a dialog over the page asking the user for input or a decision (credentials, a 2FA code, a choice); returns their answer, or `skip`. The dialog covers the page until they answer. |
+| `browser_ask_user` | Show a dialog over the page asking the user for input or a decision (credentials, a 2FA code, a choice); returns their answer, `skip`, or `timeout`. The dialog covers the page until they answer. |
 
 ## Frequently asked questions
 
