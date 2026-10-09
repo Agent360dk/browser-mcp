@@ -46,11 +46,12 @@ seen; no real address means none, `#`, `javascript:` (read as the browser reads 
 hide it) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around
 it; the target is looked up as HTML does (the fragment as written, then percent-decoded, then `top`). The address is
 resolved as the browser resolves it, so a link to the same page that differs only in its fragment (`/orders#!`) counts
-as a fragment, and a hash route (`#/orders/7`, `#!/orders/7`) is a real address. A link that is only a fragment (`#!`)
+as a fragment, and a hash route with a path (`#/orders/7`, `#!/orders/7`; not `#/` alone) is a real address. A link that is only a fragment (`#!`)
 is read against the page itself, also when `<base>` points elsewhere: such links are placeholders in practice, so this is
-a deliberate refusal (a real mouse would load the base page). A web component's own button - the control in its own
-shadow root that fills most of it, as in `ion-button` or `sl-button` - is the component's action, not a control inside
-it; a small button inside a component (a delete on a card component) is. A delete link with a real address
+a deliberate refusal (a real mouse would load the base page). A web component's own button - a control in its own
+shadow root that covers at least 90% of the component, button or link, as `ion-button` and `sl-button` draw it - is the
+component's action, not a control inside it; a smaller button inside a component (a delete on a card component), an
+action around that control, or a link in a checkbox component's own label text, is. A delete link with a real address
 (rails-ujs `data-method`), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a
 plain link. A field or
 other control whose center lies on a button around it is covered by that button: the click would go to the button, and
@@ -99,7 +100,8 @@ Both read that answer, so they probably measured a background tab. Whether a win
 input in desktop Chrome is unmeasured.
 
 **Also:** `browser_fill` skips Backspace in a field known to be empty (#54); `browser_navigate` with
-`new_tab` uses the session's empty placeholder tab (#57); `click_grid` takes `grid` (3 or 4); agent-facing
+`new_tab` uses the session's empty placeholder tab (#57), and a new session's first `browser_navigate` opens its tab
+with the address directly, so an empty about:blank no longer opens first; `click_grid` takes `grid` (3 or 4); agent-facing
 answers that were still in Danish are English (#43); a call over a connection that dies is rejected at
 once (#45); `browser_extract_token` answers `Unknown provider` also for a name like `constructor`, and a
 tool name like that is an unknown tool; the response-time check ignores bot pull requests.

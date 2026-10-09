@@ -133,3 +133,27 @@ test('the new_tab text names the placeholder exception', async () => {
   const d = TOOLS.find((t) => t.name === 'browser_navigate').inputSchema.properties.new_tab.description;
   assert.match(d, /empty about:blank placeholder, that tab is used instead of opening another/, 'new_tab promises a new tab also when the placeholder is reused');
 });
+
+// Gustav 9/10-2026, set i sin egen Chrome: «den aabner about:blank som det foerste hver gang». En ny sessions foerste
+// navigate (uden new_tab) oprettede about:blank-pladsholderen og skiftede den saa til adressen. Fanen oprettes nu direkte
+// med adressen; about:blank naevnes aldrig, og der skiftes ikke bagefter.
+test('a fresh session\'s first navigate creates its tab with the URL, never an about:blank first', async () => {
+  for (const params of [{ url: 'https://example.com/' }, { url: 'https://example.com/', new_tab: true }]) {
+    const { u, tabs } = browser();
+    const svar = await u.hent('dispatch')(9876, 'navigate', params);
+    assert.equal(svar.url, 'https://example.com/', JSON.stringify(params));
+    const oprettet = u.optager.til('tabs.create').map((k) => k.args[0].url);
+    assert.deepEqual(oprettet, ['https://example.com/'], `${JSON.stringify(params)}: tabs.create med ${JSON.stringify(oprettet)}`);
+    assert.equal(u.optager.til('tabs.update').filter((k) => k.args[1] && k.args[1].url).length, 0, 'fanen blev skiftet bagefter');
+    assert.deepEqual([...tabs.values()].map((t) => t.url), ['https://example.com/']);
+  }
+});
+
+test('a session that already has a tab still navigates in place', async () => {
+  const { u, tabs } = browser([{ id: 5, url: 'https://foer.example/', title: 'foer' }]);
+  u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([5]), activeTabId: 5, groupId: 1, windowId: 1 });
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://example.com/' });
+  assert.equal(svar.url, 'https://example.com/');
+  assert.equal(u.optager.til('tabs.create').length, 0);
+  assert.deepEqual([...tabs.values()].map((t) => t.url), ['https://example.com/']);
+});

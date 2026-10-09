@@ -230,7 +230,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : 'the rest of the presses and clicks are stopped \\(a release the page moves elsewhere is let through\\), and the answer';
     assert.match(d, new RegExp(`If the mouse would not reach the target at its center - another element lies in front of it \\(an overlay, a dialog\\\\'s backdrop\\),[^"]* - the answer is ok:false with error "covered" and covered_by\\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, ${hale} also has maybe_landed: true, because the page may already have reacted\\.(?! In the active tab the mouse)`), `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
-    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route counts; a fragment with no target on the page does not\) does not count\)/, navn);
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
@@ -894,4 +894,55 @@ test('en webkomponent-knap klikket paa sin vaert: vaertens egen knap er ikke dae
   d2.el('div', { id: 'flade', rect: [40, 40, 400, 80] }, rod);
   d2.el('button', { id: 'lille', tekst: 'Slet', rect: [200, 60, 80, 40], lag: 1 }, rod);
   assert.equal(d2.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'lille', 'en lille Slet i komponenten');
+});
+
+// ── R72 (Astra, maalt i model) ─────────────────────────────────────────────
+test('webkomponentens egen knap eller link kraever 90 % overlap, og en handling omkring den er stadig daekning (R72)', () => {
+  const vaert = (d, id = 'vaert', rect = [40, 40, 200, 100]) => d.el('x-komp', { id, rect });
+  // [beskrivelse, byg(d) -> skal svaret vaere covered?]
+  const tilfaelde = [
+    ['knap der fylder vaerten', (d) => { const v = vaert(d); d.el('button', { id: 'k', tekst: 'Gem', rect: [40, 40, 200, 100] }, d.skygge(v)); }, false],
+    ['knap paa halvdelen', (d) => { const v = vaert(d); const r = d.skygge(v); d.el('div', { rect: [40, 40, 200, 100] }, r); d.el('button', { id: 'k', tekst: 'Slet', rect: [40, 65, 200, 50], lag: 1 }, r); }, true],
+    ['lang smal knap (stort areal, lille overlap)', (d) => { const v = vaert(d); d.el('button', { id: 'k', tekst: 'Slet', rect: [0, 89, 10000, 2], lag: 1 }, d.skygge(v)); }, true],
+    // R72 (Opus, maalt i Chrome): et link, der daekker komponenten (sl-button med href), er komponentens egen handling.
+    ['stort skygge-link med #', (d) => { const v = vaert(d); d.el('a', { id: 'k', tekst: 'Slet', attrs: { href: '#' }, rect: [40, 40, 200, 100] }, d.skygge(v)); }, false],
+    ['Slet omkring en stor indre knap', (d) => { const v = vaert(d); const r = d.skygge(v); const s = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [90, 65, 100, 50] }, r); d.el('button', { id: 'k', rect: [40, 40, 200, 100] }, s); }, true],
+    ['knap to skyggelag nede', (d) => { const v = vaert(d); const indre = d.el('x-indre', { rect: [40, 40, 200, 100] }, d.skygge(v)); d.el('button', { id: 'k', tekst: 'Gem', rect: [40, 40, 200, 100] }, d.skygge(indre)); }, false],
+    ['vaert med role=button og egen knap', (d) => { const v = d.el('x-komp', { id: 'vaert', attrs: { role: 'button' }, rect: [40, 40, 200, 100] }); d.el('button', { id: 'k', tekst: 'Gem', rect: [40, 40, 200, 100] }, d.skygge(v)); }, false],
+  ];
+  for (const [navn, byg, daekket] of tilfaelde) {
+    const d = lavKlikDom(); byg(d);
+    assert.equal(!!d.koer(KILDE, '#vaert', null, null, false, false).svar.covered, daekket, navn);
+  }
+});
+
+// ── R72 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('en checkbox-komponent: et vilkaarslink midt i dens egen labeltekst er daekningen (R72)', () => {
+  for (const href of ['/vilkaar', '#vilkaar']) {
+    const d = lavKlikDom();
+    const vaert = d.el('x-cb', { id: 'cb', rect: [40, 40, 300, 30] });
+    const rod = d.skygge(vaert);
+    const label = d.el('label', { rect: [40, 40, 300, 30] }, rod);
+    const felt = d.el('input', { id: 'icb', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] }, label);
+    felt.labels.push(label); label.control = felt;
+    const slot = d.el('slot', { rect: [70, 40, 270, 30] }, d.el('span', { rect: [70, 40, 270, 30] }, label));
+    const link = d.el('a', { id: 'vilk', tekst: 'vilkaarene', attrs: { href }, rect: [70, 40, 270, 30], lag: 1 }, vaert);
+    link.assignedSlot = slot;
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id, 'vilk', href);
+  }
+});
+
+test('teksten i en checkbox-komponents label: labelens eget felt er ikke daekning, naar aktiveringsklikket kommer (R72)', () => {
+  const d = lavKlikDom();
+  const vaert = d.el('x-cb', { id: 'cb', rect: [40, 40, 300, 30] });
+  const rod = d.skygge(vaert);
+  const label = d.el('label', { rect: [40, 40, 300, 30] }, rod);
+  const felt = d.el('input', { id: 'icb', attrs: { type: 'checkbox' }, rect: [40, 45, 20, 20] }, label);
+  felt.labels.push(label); label.control = felt;
+  const slot = d.el('slot', { rect: [70, 40, 270, 30] }, d.el('span', { rect: [70, 40, 270, 30] }, label));
+  const tekst = d.el('span', { id: 'acc', tekst: 'Accepter', rect: [70, 40, 270, 30], lag: 1 }, vaert);
+  tekst.assignedSlot = slot;
+  const { svar, window } = d.koer(KILDE, '#acc', null, null, true, false);
+  assert.equal(svar.covered, undefined);
+  assert.equal(window.__bmcpMaalTjek(205, 55, felt), null, 'aktiveringsklikket paa labelens felt er ikke en daekning');
 });

@@ -348,7 +348,7 @@ function persistSessions() {
 // Get the active tab for this session (last navigated), or create one.
 // activate=false (default): runs in background — no focus stealing.
 // activate=true: only for commands that NEED visible tab (screenshot, ask_user, navigate, execute_script).
-async function getSessionTab(port, activate = false) {
+async function getSessionTab(port, activate = false, opretMed = null) {
   const session = getSession(port);
   let target = null;
   // Remember our OWN about:blank placeholder so we reuse it instead of spawning another
@@ -394,8 +394,12 @@ async function getSessionTab(port, activate = false) {
 
   // No usable tab at all — create ONE placeholder and pin it as the active tab so the
   // NEXT call reuses it (FIX-4) instead of creating a fresh about:blank every time.
+  // Gustav 9/10 (set i sin egen Chrome): en ny sessions foerste navigate aabnede foerst en tom about:blank-fane og skiftede
+  // den saa til adressen - about:blank stod hver gang som det foerste. Kender kalderen adressen (navigate), oprettes fanen
+  // direkte med den.
   if (!target) {
-    target = await chrome.tabs.create({ url: 'about:blank', active: false });
+    target = await chrome.tabs.create({ url: opretMed || 'about:blank', active: false });
+    if (opretMed) target.oprettetMedUrl = true;
     await addTabToSession(port, target.id);
     session.activeTabId = target.id;
     persistSessions();
@@ -2269,12 +2273,30 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // omkring den i shadow root'en (den flade kaede), saa assignedSlot foelges foer parentNode.
         // R71 (Opus, maalt i Chrome): klikket paa en webkomponents vaert (ion-button, sl-button, md-filled-button) gik via slotten
         // til vaertens EGEN knap og blev afvist som «en anden kontrol». En handling i maalets egen shadow root (eller dybere),
-        // der fylder mindst halvdelen af maalet, er maalets egen knap; en lille Slet inde i en kort-komponent er det ikke.
+        // der fylder det meste af maalet, er maalets egen knap; en lille Slet inde i en kort-komponent er det ikke (R72: graensen
+        // er overlap, ikke areal - se nedenfor).
         const iEgenSkygge = (k) => { for (let x = k, i = 0; x && i < 1000; x = x.parentNode || x.host, i++) if (x.host === el) return true; return false; };
-        const fylder = (k) => { const a = k.getBoundingClientRect(), b = el.getBoundingClientRect(); return a.width * a.height >= 0.5 * b.width * b.height; };
+        // R72 (Astra, maalt i model): arealet alene godtog en knap paa 10000 x 2 px over en vaert paa 200 x 100 (2 % overlap),
+        // `break` sprang en Slet omkring den store kontrol over, og et stort skygge-link med # eller javascript: slap uden om
+        // linkreglen. Nu er kun en kontrol, hvis overlap med maalet daekker mindst 90 % af maalet, maalets
+        // egen (saadan tegner ion-button, sl-button og md-filled-button deres knap); kaeden gaas videre forbi den, saa en handling
+        // omkring den stadig er en daekning.
+        const daekker = (k) => {
+          const a = k.getBoundingClientRect(), b = el.getBoundingClientRect();
+          const bred = Math.min(a.right, b.right) - Math.max(a.left, b.left), hoej = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          return b.width * b.height > 0 && bred > 0 && hoej > 0 && bred * hoej >= 0.9 * b.width * b.height;
+        };
         for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
           if (!n.matches || !n.matches(HANDLING) || !lukket(n)) continue;
-          if (iEgenSkygge(n) && fylder(n)) break;
+          // R72 (Opus, maalt i Chrome): en komponent, hvis hele flade er ET link i dens egen shadow root (sl-button med href),
+          // er det link; en rigtig mus og 1.30.1 kører det. Knap eller link: det, der daekker komponenten, er komponenten.
+          if (iEgenSkygge(n) && daekker(n)) {
+            // R72 (Opus, maalt i Chrome): en checkbox-komponents egen <label> (ion-checkbox, sl-checkbox) fritog et vilkaarslink
+            // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Et link mellem punktet og
+            // komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke feltet).
+            if (n.tagName === 'LABEL' && link) { fundet = link; break; }
+            continue;
+          }
           if (etLink(n)) { link = link || n; continue; }
           fundet = n; break;
         }
@@ -2290,7 +2312,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // tilfaelde afvises igen, sikkert og forklaret, og noten peger paa at klikke feltet eller kortet direkte.
     const SEMANTISK = 'label,button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],' +
       '[role="menuitemradio"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]';
-    const ramme = el.closest ? el.closest(SEMANTISK + ',[onclick]') : null;
+    // R72 (Opus, maalt i Chrome): closest() saa ikke en checkbox-komponents label i shadow root'en, naar maalet var den slottede
+    // labeltekst - aktiveringsklikket paa feltet blev stoppet som «daekning». Rammen findes i den flade kaede, som resten.
+    let ramme = null;
+    for (let n = el, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
+      if (n.matches && n.matches(SEMANTISK + ',[onclick]')) { ramme = n; break; }
+    }
     // R65 (Opus, maalt i Chrome): en delegerende beholder (en liste med EN onclick) blev hver raekkes «egen ramme», saa
     // naboraekken blev godtaget, og den forkerte raekke valgt med ok:true. En ramme, der kun er en onclick-beholder, godtager
     // derfor kun det, der ligger MELLEM maalet og den (en forfader til maalet), ikke en anden raekke; en aegte knap, et link,
@@ -2309,6 +2336,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     const iEgenLabel = Array.from(el.labels || []).some((l) => inde(hit, l)) || (!!ramme && ramme.tagName === 'LABEL');
     const hitKontrol = !hit.closest ? null : lukket(hit.closest(iEgenLabel ? INTERAKTIV : CLICKABLE + ',input,select,textarea'));
     const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
+      (!!ramme && ramme.tagName === 'LABEL' && hitKontrol === ramme.control) ||
       Array.from(el.labels || []).includes(hitKontrol);
     const andenKontrol = !egenKontrol;
     if (ramme && (!elKontrol || ramme.tagName === 'LABEL') && inde(hit, ramme) && !andenKontrol && (semantisk || inde(el, hit))) return null;
@@ -4226,11 +4254,13 @@ async function dispatch(port, method, params) {
   switch (method) {
     case 'navigate': {
       const session = getSession(port);
-      let tab = await getSessionTab(port);
+      let tab = await getSessionTab(port, false, params.eget_vindue ? null : params.url);
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
-      if (params.new_tab) {
+      if (tab && tab.oprettetMedUrl) {
+        // Sessionen havde ingen fane: getSessionTab() oprettede den med adressen, saa der er intet at skifte.
+      } else if (params.new_tab) {
         // EKSPERIMENT 19/9 (vindues-hypotesen, 1.30). Hele vores fejlklasse kommer af at
         // Chrome ikke leverer Input.* til en fane der ikke er den viste i sit vindue - og
         // maalingen 19/9 viste at det er en klasse konkurrenterne IKKE har, fordi de koerer
