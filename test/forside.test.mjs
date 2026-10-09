@@ -224,7 +224,7 @@ function simulerSend({ share = true } = {}) {
   let klik = null; const knap = { hidden: true, textContent: 'Send the link to my computer', addEventListener: (_, f) => { klik = f; } };
   const delt = [], kopieret = [];
   const nav = share ? { share: (d) => { delt.push(d); return Promise.resolve(); } } : { clipboard: { writeText: (t) => { kopieret.push(t); return Promise.resolve(); } } };
-  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], querySelector: () => null, getElementById: (id) => (id === 'sendlink' ? knap : null) };
+  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: (sel) => (sel === '.sendlink' ? [knap] : []), querySelector: () => null, getElementById: () => null };
   new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, () => ({ matches: false }), nav);
   return { knap, klik: () => klik && klik(), delt, kopieret };
 }
@@ -241,8 +241,15 @@ test('toppen: «send linket» deler browsermcp.dev, og uden deling kopieres adre
 
 test('toppen: begge trin i heroen paa en computer; paa en beroeringsskaerm i stedet telefonkortet uden butiksknap', () => {
   const hero = html.slice(html.indexOf('<section class="hero">'), html.indexOf('<figure class="film"'));
-  assert.match(hero, /<div class="inst" id="install-hero">[\s\S]*chromewebstore\.google\.com[\s\S]*id="c1"/, 'trin 1 og trin 2 skal staa foer filmen');
-  assert.match(hero, /class="paa-tlf"[\s\S]*id="sendlink"[\s\S]*github\.com\/Agent360dk\/browser-mcp/, 'telefonkortet skal have send-knap og GitHub');
-  assert.ok(html.includes('@media (hover:none) and (pointer:coarse){.inst{display:none}.paa-tlf{display:block}.top .nav a.navcta{display:none}}'), 'beroeringsskaerm: skjul trinene og topbjaelkens butiksknap, vis telefonkortet');
+  assert.match(hero, /<div class="inst kun-pc" id="install-hero">[\s\S]*chromewebstore\.google\.com[\s\S]*id="c1"/, 'trin 1 og trin 2 skal staa foer filmen');
+  assert.ok(html.includes('@media (hover:none) and (pointer:coarse){.kun-pc{display:none!important}.kun-tlf{display:block}.top .nav a.navcta{display:none}}'), 'beroeringsskaerm: skjul alt kun-pc og topbjaelkens butiksknap, vis telefonkortene');
+  // hvert afsnit med en butiksknap har den inde i kun-pc og har et telefonkort med send-knap og GitHub
+  const afsnit = html.split(/<section /).slice(1).filter((a) => /class="btn pri" href="https:\/\/chromewebstore/.test(a));
+  assert.equal(afsnit.length, 3, 'hero, Install og bundbaandet');
+  for (const a of afsnit) {
+    const knap = a.search(/class="btn pri" href="https:\/\/chromewebstore/), pc = a.lastIndexOf('kun-pc', knap);
+    assert.ok(pc > -1, 'butiksknappen skal ligge inde i et kun-pc-element: ' + a.slice(0, 40));
+    assert.match(a, /class="paa-tlf kun-tlf"[\s\S]*class="btn pri sendlink"[\s\S]*github\.com\/Agent360dk\/browser-mcp/, 'telefonkort mangler: ' + a.slice(0, 40));
+  }
   assert.match(html, /<h1>Let your AI agent use your real Chrome\.<\/h1>/);
 });

@@ -369,11 +369,16 @@ td code{word-break:normal;overflow-wrap:anywhere}
 .inst-s{display:grid;grid-template-columns:2rem minmax(0,1fr);gap:.8rem;align-items:start}
 .inst-h{font-weight:650;color:#ECEFF3;margin:.4rem 0 .75rem}
 .inst .cmdnote{color:#8F98A5;margin-top:.55rem;font-size:.85rem}.inst .cmdnote a{color:#C9D1DD}
-.paa-tlf{display:none;text-align:center;color:#A9B1BD;max-width:30rem}.paa-tlf b{color:#fff}.paa-tlf .acts{justify-content:center;margin:1rem 0 0}
+.kun-tlf{display:none}
+.paa-tlf{text-align:center;max-width:30rem;margin-inline:auto}.paa-tlf .acts{justify-content:center;margin:1rem 0 0}
+.hero .paa-tlf{color:#A9B1BD}.hero .paa-tlf b{color:#fff}
+#install .paa-tlf{color:var(--muted);margin:0}#install .paa-tlf b{color:var(--ink)}#install .paa-tlf,#install .paa-tlf .acts{text-align:left;justify-content:flex-start}
+.final .paa-tlf{color:color-mix(in srgb,var(--paper) 75%,transparent);text-align:left;margin:1.5rem 0 0}.final .paa-tlf b{color:var(--paper)}.final .paa-tlf .acts{justify-content:flex-start}
+.final .btn.sec2{background:transparent;color:var(--paper);border-color:color-mix(in srgb,var(--paper) 35%,transparent)}
 .hero .btn.sec2{background:transparent;color:#ECEFF3;border-color:rgba(255,255,255,.3)}
 .hero > .wrap > .watch{margin-top:-.5rem}
 @media (max-width:48rem){.inst{grid-template-columns:1fr}}
-@media (hover:none) and (pointer:coarse){.inst{display:none}.paa-tlf{display:block}.top .nav a.navcta{display:none}}
+@media (hover:none) and (pointer:coarse){.kun-pc{display:none!important}.kun-tlf{display:block}.top .nav a.navcta{display:none}}
 @media (max-width:30rem){.herocta{flex-wrap:wrap}.herocta .btn{flex:1}.watch{width:100%;text-align:center}}
 </style>
 
@@ -406,7 +411,7 @@ td code{word-break:normal;overflow-wrap:anywhere}
       <p class="lede">A free, open-source Chrome extension and MCP server for Claude Code, Cursor, Codex and VS Code. Your agent works in the tabs you’re already signed into, reads emailed 2FA codes, and asks you when it’s stuck.</p>
     </div>
 
-    <div class="inst" id="install-hero">
+    <div class="inst kun-pc" id="install-hero">
       <div class="inst-s"><span class="hn" aria-hidden="true">1</span><div><p class="inst-h">Add the extension</p><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome, free</a></div></div>
       <div class="inst-s"><span class="hn" aria-hidden="true">2</span><div><p class="inst-h">Paste this in your terminal, then restart your agent</p>
           <div class="ctabs">
@@ -418,10 +423,7 @@ td code{word-break:normal;overflow-wrap:anywhere}
           <p class="cmdnote">Windsurf and the rest: <a href="/docs/install-windsurf/">see the guides</a>.</p>
       </div></div>
     </div>
-    <div class="paa-tlf">
-      <p><b>Install it on your computer.</b> Chrome extensions don’t run on phones.</p>
-      <div class="acts"><button type="button" class="btn pri" id="sendlink" hidden>Send the link to my computer</button><a class="btn sec2" href="https://github.com/Agent360dk/browser-mcp">Star on GitHub</a></div>
-    </div>
+    <div class="paa-tlf kun-tlf"><p><b>Install it on your computer.</b> Chrome extensions don’t run on phones.</p><div class="acts"><button type="button" class="btn pri sendlink" hidden>Send the link to my computer</button><a class="btn sec2" href="https://github.com/Agent360dk/browser-mcp">Star on GitHub</a></div></div>
     <a class="watch" href="#film">Watch it work ↓</a>
 
     <figure class="film" id="film">
@@ -517,7 +519,8 @@ td code{word-break:normal;overflow-wrap:anywhere}
   <div class="wrap">
     <h2>Install</h2>
     <p class="measure muted" style="margin:-1rem 0 2rem">Two halves: the Chrome extension and a local server. You need both, and Node.js 20 or newer.</p>
-    <ol class="steps">
+    <div class="paa-tlf kun-tlf"><p><b>Install it on your computer.</b> Chrome extensions don’t run on phones.</p><div class="acts"><button type="button" class="btn pri sendlink" hidden>Send the link to my computer</button><a class="btn sec2" href="https://github.com/Agent360dk/browser-mcp">Star on GitHub</a></div></div>
+    <ol class="steps kun-pc">
       <li><div><h3>Add the Chrome extension</h3><p>One click. The store opens in a new tab; Chrome keeps it updated.</p><a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome</a></div></li>
       <li><div><h3>Add the MCP server, then restart Claude Code</h3><p>Paste this in a terminal. Restarting is what starts the server.</p><div class="cmd"><code id="c2" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c2" hidden>Copy</button></div></div></li>
       <li><div><h3>Say this to check it worked</h3><p>A screenshot back means you’re running. The extension shows no badge until that first call.</p><div class="cmd"><code id="c3">Open example.com and take a screenshot.</code><button type="button" class="copy" data-for="c3" hidden>Copy</button></div></div></li>
@@ -594,11 +597,14 @@ td code{word-break:normal;overflow-wrap:anywhere}
 <section class="sec final">
   <div class="wrap">
     <h2>Install it in two steps.</h2>
+    <div class="kun-pc">
     <div class="acts" style="margin-top:1.75rem">
       <a class="btn pri" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">1 · Add to Chrome, free</a>
     </div>
     <p class="cmdlbl">2 · Then paste this and restart your agent:</p>
     <div class="cmd"><code id="c4" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code><button type="button" class="copy" data-for="c4" hidden>Copy</button></div>
+    </div>
+    <div class="paa-tlf kun-tlf"><p><b>Install it on your computer.</b> Chrome extensions don’t run on phones.</p><div class="acts"><button type="button" class="btn pri sendlink" hidden>Send the link to my computer</button><a class="btn sec2" href="https://github.com/Agent360dk/browser-mcp">Star on GitHub</a></div></div>
     <p class="fine">Free, MIT-licensed, no account. Nothing is sent to Agent360: <a href="/privacy.html">privacy</a>. <a href="https://github.com/Agent360dk/browser-mcp">Star it on GitHub</a>.</p>
   </div>
 </section>
@@ -634,10 +640,9 @@ document.querySelectorAll('.copy').forEach(function (b) {
   });
 });
 // Telefonen kan ikke installere udvidelser: send linket til din computer (systemets deling, ellers kopi). Intet sendes til os.
-var send = document.getElementById('sendlink');
-if (send) { send.hidden = false; send.addEventListener('click', function () { var u = 'https://browsermcp.dev/';
+document.querySelectorAll('.sendlink').forEach(function (send) { send.hidden = false; send.addEventListener('click', function () { var u = 'https://browsermcp.dev/';
   if (navigator.share) { navigator.share({ title: 'Browser MCP', url: u }).catch(function () {}); }
-  else if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(u).then(function () { send.textContent = 'Link copied. Open it on your computer'; }); } }); }
+  else if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(u).then(function () { send.textContent = 'Link copied. Open it on your computer'; }); } }); });
 // Kortet med 20 grupper: tones ind én gang, naar det kommer frem, og bliver staaende.
 var g20 = document.querySelector ? document.querySelector('.g20') : null;
 if (g20) { try { var o20 = new IntersectionObserver(function (e) { if (e[0].isIntersecting) { g20.classList.add('in'); o20.disconnect(); } }, { threshold: 0.5 }); o20.observe(g20); } catch (e) { g20.classList.add('in'); } }
