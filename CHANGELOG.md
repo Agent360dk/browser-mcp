@@ -37,9 +37,9 @@ the click, a dialog that holds the page while the click is read, or no event at 
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
 address, a button, a field), or on anything else clickable in it (a link without an address, an element with a button role or an
 `onclick`, whose own handler can cancel the click unseen), counts as covered by that element, because a click there does not
-activate the label's field, or may not; anything that holds the
-label's field or lies inside it is the field's own, and so is a box with a checkbox, switch or radio role when the label's
-field itself is hidden (a 1x1 stand-in input, as Base UI and sr-only patterns draw it); next to a visible field, such a box
+activate the label's field, or may not; anything inside the label's
+field is the field's own, and so is an element around it that is not itself an action (or is a box with a checkbox,
+switch or radio role), and a box with such a role when the label's field itself is hidden (a 1x1 stand-in input, as Base UI and sr-only patterns draw it); next to a visible field, such a box
 is another control. With a label that has a field as the target, only the field's own activation
 click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an
 activation stopped on the way, is `maybe_landed`, not a yes;

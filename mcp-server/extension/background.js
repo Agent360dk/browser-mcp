@@ -2218,8 +2218,13 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // egen, naar labelens felt er skjult (Base UI, sr-only: inputtet er 1x1 px, og boksen er dets synlige stedfortraeder);
   // ellers skal den rumme feltet eller ligge i det.
   const feltSkjult = (felt) => { if (!felt || !felt.getBoundingClientRect) return false; const r = felt.getBoundingClientRect(); return r.width * r.height <= 1; };
-  const egenBoks = (n, felt) => !!felt && (inde(n, felt) || inde(felt, n) ||
-    (!!n.matches && n.matches(FELTROLLE) && !n.matches(INTERAKTIV) && feltSkjult(felt)));
+  // R76 (Opus, maalt i Chrome): en div med onclick («aabn detaljer») om feltet blev regnet for feltets egen, og dens handling koerte
+  // to gange med landed:true. En beholder om feltet er kun feltets egen, naar den ikke selv er en handling - eller er en boks med
+  // feltrolle (el-checkbox__input om sit input).
+  const boksRolle = (n) => !!n.matches && n.matches(FELTROLLE) && !n.matches(INTERAKTIV);
+  const egenBoks = (n, felt) => !!felt && (inde(n, felt) ||
+    (inde(felt, n) && (!n.matches || !n.matches(HANDLING) || boksRolle(n))) ||
+    (boksRolle(n) && feltSkjult(felt)));
   const feltetSelv = egenBoks;
   const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
