@@ -470,3 +470,83 @@ test('select_option: et daekket valg klikkes ikke; udloeseren er klikket, og sva
   assert.match(svar.note, /The list may still be open\.$/);
   assert.equal(mus(u).filter((k) => k.args[2].type === 'mousePressed').length, 1, 'kun udloeseren maa vaere trykket');
 });
+
+// R64 (Astra, maalt i model): en mellemvej uden falske ja - er foerste linje daekket, klikkes den naeste linje, hvis
+// midtpunkt rammer linket selv. Er begge daekket, afvises der som foer.
+test('et ombrudt link, hvis foerste linje er daekket, klikkes paa anden linje; er begge daekket, afvises det', () => {
+  const lav = (daek) => {
+    const d = lavKlikDom();
+    const p = d.el('p', { id: 'afsnit', rect: [20, 160, 300, 60] });
+    d.el('a', { id: 'lang', tekst: 'betingelser for brug', attrs: { href: '#x' }, rect: [20, 170, 247, 40],
+      linjer: [[150, 170, 117, 18], [20, 192, 103, 18]] }, p);
+    if (daek >= 1) d.el('div', { id: 'over1', rect: [150, 170, 117, 18], lag: 20 });
+    if (daek >= 2) d.el('input', { id: 'over2', rect: [20, 192, 103, 18], lag: 20 });
+    // klik-dom kender ikke linjebokse i elementFromPoint: linket rammes kun i sine linjer, ellers afsnittet.
+    const hit = d.document.elementFromPoint.bind(d.document);
+    const a = d.document.querySelector('#lang');
+    d.document.elementFromPoint = (x, y) => { const e = hit(x, y); if (e !== a) return e;
+      return a.getClientRects().some((b) => x >= b.left && x < b.right && y >= b.top && y < b.bottom) ? a : p; };
+    return tekstKlik(d, 'betingelser for brug');
+  };
+  assert.deepEqual([lav(0).x, lav(0).y, lav(0).covered], [208.5, 179, undefined]);
+  const r1 = lav(1);
+  assert.deepEqual([r1.x, r1.y, r1.covered], [71.5, 201, undefined], 'anden linje blev ikke valgt');
+  assert.equal(lav(2).covered?.id, 'over1', 'to daekkede linjer skal afvises med den foerste linjes daekning');
+});
+
+test('select_option-teksterne siger, at ogsaa valget tjekkes (R64)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const laes = (f) => readFileSync(join(ROD, f), 'utf8');
+  assert.match(laes('mcp-server/tools.js'), /So does the option once the list is open: if it is covered, it is not clicked, and the answer is ok:false with error "covered" and trigger_clicked: true - the list may still be open\./);
+  for (const f of ['README.md', 'mcp-server/README.md']) assert.match(laes(f), /\| `browser_select_option` \|[^\n]*a custom trigger or option the mouse would not reach is not clicked \(`covered`\)/, f);
+  assert.match(laes('content/browsermcp-docs-tools.md'), /\| `browser_select_option` \|[^\n]*A custom trigger or option the mouse would not reach is not clicked \(`covered`\)/);
+  assert.match(laes('CHANGELOG.md'), /a custom dropdown's trigger or option in `browser_select_option` \(for the option with `trigger_clicked: true`/);
+});
+
+// ── R64 (Opus' egne sider, maalt i Chrome 9/10) ────────────────────────────
+test('en label, hvis midtpunkt ligger paa et link inde i den, er daekket af linket; dens eget felt er ikke', () => {
+  const d = lavKlikDom();
+  const boks = d.el('input', { id: 'samtykke', attrs: { type: 'checkbox' }, rect: [40, 40, 16, 16] });
+  const l = d.label(boks, { id: 'lsam', tekst: 'Jeg accepterer ', rect: [40, 36, 400, 24] });
+  d.el('a', { id: 'vilk', tekst: 'vilkaarene og privatlivspolitikken', attrs: { href: '#v' }, rect: [160, 36, 280, 24] }, l);
+  const r = tekstKlik(d, 'Jeg accepterer');
+  assert.equal(r.covered?.id, 'vilk', JSON.stringify(r));
+  assert.equal(r.covered?.inside, true);
+  const svar = indlaesUdvidelse().hent('daekketSvar')('text=Jeg accepterer', r);
+  assert.match(svar.note, /a different control inside it, so the mouse would click that, and a click on a control inside a label does not activate the label's own field/);
+  // Labelens eget felt i midtpunktet er ikke en daekning.
+  const d2 = lavKlikDom();
+  const boks2 = d2.el('input', { id: 'nyt', attrs: { type: 'checkbox' }, rect: [40, 40, 400, 16] });
+  const l2 = d2.label(boks2, { id: 'lnyt', tekst: 'Ja tak ', rect: [40, 36, 400, 24] });
+  l2.children.push(boks2); boks2.parentNode = l2;
+  assert.equal(tekstKlik(d2, 'Ja tak').covered, undefined);
+});
+
+test('et klik paa en iframe er uvist (det gik ind i rammen), og reserven klikker ikke igen', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const bg = readFileSync(join(ROD, 'extension/background.js'), 'utf8');
+  const settle = bg.slice(bg.indexOf('const settle = await evaluerTaalmodigt'), bg.indexOf('const foerAftryk = aftryk();'));
+  assert.match(settle, /if \(el && \/\^\(IFRAME\|FRAME\|OBJECT\|EMBED\)\$\/\.test\(el\.tagName \|\| ''\)\) \{ ryd\(\); return \{ landed: null, fallbackFired: false, iRamme: true \}; \}/);
+  const u = indlaesUdvidelse();
+  const v = u.hent('uvisVurdering')({ landed: null, iRamme: true });
+  assert.equal(v.maybe_landed, true);
+  assert.match(v.note, /The click went into a frame \(an iframe\), and the page around it cannot see what happened inside\. It may have landed: check the frame before clicking again/);
+});
+
+test('et maal, der blev rullet frem, maales igen efter at siden har sat sig (header der bliver fast)', async () => {
+  let n = 0;
+  const u = indlaesUdvidelse({ svar: {
+    'scripting.executeScript': () => [{ result: ++n === 1 ? { x: 60, y: 300, found: true, rullet: true } : { x: 60, y: 160, found: true } }],
+  } });
+  const r = await u.hent('resolveElement')(1, '#b6');
+  assert.equal(n, 2, 'maalet blev ikke maalt igen');
+  assert.deepEqual([r.x, r.y], [60, 160]);
+  n = 10;
+  const u2 = indlaesUdvidelse({ svar: { 'scripting.executeScript': () => [{ result: { x: 1, y: 2, found: true } }] } });
+  await u2.hent('resolveElement')(1, '#b6');
+  assert.equal(u2.optager.antal('scripting.executeScript'), 1, 'et maal, der ikke blev rullet, maales kun én gang');
+});

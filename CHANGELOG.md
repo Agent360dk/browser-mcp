@@ -28,7 +28,12 @@ John H.**
 several, the one on top where they overlap), so `click text=Add` presses the dialog's button, not the page's behind it. The
 debugger path and the script fallback find their target with the same function. A covered answer moves no
 mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
-or a menu), to move the mouse away with `browser_hover` and try again.
+or a menu), to move the mouse away with `browser_hover` and try again. A label whose center lies on a different control
+inside it (a link in a consent label) counts as covered by that control, because a click there does not activate the
+label's field. A target that had to be scrolled into view is measured again 150 ms later, so a header that turns fixed
+on scroll does not move the click to another row. A click on an iframe goes into the frame, where the page around it
+cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame. 1.30.1 answered
+`ok: false` and sent a second, synthetic click, after the button inside the frame had already been pressed.
 
 **`browser_ask_user`** fails at once, and shows nothing, on Chrome's error page or about:blank, instead of
 activating the tab, posting a notification and failing with Chrome's own text. The notification of a

@@ -921,6 +921,8 @@ function klikLandede(r) {
 // Teksten der foelger med et unknown klik. Staar ét sted, fordi den skal vaere ens for click, click_xy og select_option -
 // tre kaldesteder med den samme regel har foer drevet fra hinanden (select_option havde den gamle i to udgaver).
 const UVIST_NOTE = 'The click was sent, and the page changed on mousedown - but not from the click itself. That may be a ripple, and it may be a menu that opens on mousedown. Check the state before clicking again: a second click closes a menu that is already open.';
+const IRAMME_NOTE = 'The click went into a frame (an iframe), and the page around it cannot see what happened inside. ' +
+  'It may have landed: check the frame before clicking again (browser_select_frame reads inside it).';
 const UVERIFICERET_NOTE = 'The mouse button was sent, but the page could not be read afterwards (the lookup failed and the page did not navigate). ' +
   'The click may have landed. Check the state before clicking again.';
 
@@ -938,6 +940,7 @@ function uvisVurdering(r, egenNote) {
   if (egenNote) return { maybe_landed: true, note: egenNote };
   if (r.unknown) return { maybe_landed: true, note: UVIST_NOTE };
   if (r.unverified) return { maybe_landed: true, note: UVERIFICERET_NOTE };
+  if (r.iRamme) return { maybe_landed: true, note: IRAMME_NOTE };
   return { maybe_landed: true, note: 'The action was sent, but its effect could not be confirmed. Check the state before repeating it.' };
 }
 
@@ -964,6 +967,9 @@ async function debuggerClick(tabId, x, y, bundet = false) {
   let trykSendt = false;
   let vagtArmet = false;
   try {
+    // R64 (Opus' ramme.html, maalt i Chrome 9/10): et klik paa en iframe gaar ind i rammens eget dokument, som lytteren her
+    // ikke ser. Betalingsknappen i rammen fik klikket, svaret var ok:false, og reserven sendte et klik til. Nu: ingen reserve,
+    // og svaret er uvist (iRamme), saa agenten tjekker rammen i stedet for at klikke igen.
     // R64: `bundet` = klikket hoerer til et element, resolveElement lige har fundet. Vagten i siden binder haendelserne til
     // det (armerMaalVagt). Ligger noget andet i punktet nu, sendes intet. Kan vagten ikke armeres, klikkes der som foer.
     // Med vagten: (0) maalet er det fundne element, ikke det der ligger i punktet nu, saa reserven aldrig rammer et overlay,
@@ -1081,6 +1087,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
         };
         const vagt = window.__bmcpVagt;
         if (vagt && vagt.blokeret) { ryd(); return { landed: false, fallbackFired: false, blokeret: vagt.blokeret }; }
+        if (el && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(el.tagName || '')) { ryd(); return { landed: null, fallbackFired: false, iRamme: true }; }
         if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
         if (el === null) { ryd(); return { landed: false, fallbackFired: false, intetMaal: true }; }   // intet element under punktet (fx uden for vinduet) - ingen virkning
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
@@ -2051,7 +2058,17 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   function daekketAf(el, x, y) {
     const hit = dybtPunkt(x, y);
     if (!hit) return { tag: null, id: null, text: '', outside: true };
-    if (inde(hit, el)) return null;
+    if (inde(hit, el)) {
+      // R64 (Opus' etiket.html, maalt i Chrome 9/10): `click text=Jeg accepterer` fandt labelen, men dens midtpunkt laa paa
+      // et link inde i den. Linket fik klikket, afkrydsningen intet, og svaret var ok:true: et klik paa interaktivt indhold
+      // i en label aktiverer ikke labelens felt (HTML-standarden). En anden kontrol i en labels punkt er derfor en daekning;
+      // labelens eget felt er ikke.
+      const indre = el.tagName === 'LABEL' && hit.closest ? hit.closest(CLICKABLE + ',input,select,textarea') : null;
+      if (indre && indre !== el && inde(indre, el) && indre !== el.control) {
+        return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true };
+      }
+      return null;
+    }
     // R63 (Astra og Opus, maalt): undtagelserne fra R62 for en label uden for=, en pladsholder og tekst i et kort lod click og
     // fill ramme et FREMMED felt (en nyhedsbrevs-popup) og indpakningen om et deaktiveret link med ok:true. De er fjernet: de
     // tilfaelde afvises igen, sikkert og forklaret, og noten peger paa at klikke feltet eller kortet direkte.
@@ -2079,8 +2096,10 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   // i selve haendelsen, om den ramte maalet - ikke kun hvad der laa i punktet, da maalet blev fundet.
   if (gem) { window.__bmcpMaal = el; window.__bmcpMaalTjek = (px, py) => daekketAf(el, px, py); }
   const txt = tekst != null ? { text: (el.textContent || '').trim().slice(0, 80) } : {};
+  const rFoer = el.getBoundingClientRect();
   el.scrollIntoView({ block: 'center', behavior: 'instant' });
   const r = el.getBoundingClientRect();
+  const rullet = r.top !== rFoer.top || r.left !== rFoer.left;
   // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
   // og debuggerClick sendte et AEGTE museklik i sidens oeverste venstre hjoerne -
   // paa hvad der nu laa der (logo, menu, link) - og svarede ok:true. Det er ikke en
@@ -2091,11 +2110,15 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
   // MAALT i Chrome 9/10: et link brudt over to linjer har sit midtpunkt i hullet mellem linjerne, og klikket ramte afsnittet.
   // Et menneske klikker paa teksten, saa et element med flere linjebokse klikkes midt i den foerste.
   const bokse = el.getClientRects ? Array.from(el.getClientRects()).filter((b) => b.width > 0 && b.height > 0) : [];
-  const boks = bokse.length > 1 ? bokse[0] : r;
+  // R64 (Astra, maalt i model): ligger den foerste linjeboks under noget andet, klikkes den foerste linjeboks, hvis midtpunkt
+  // rammer maalet selv. Ingen undtagelse: kun et punkt, der rammer linket eller noget inde i det, vaelges; ellers den foerste,
+  // og daekningen meldes som foer.
+  const boks = bokse.length > 1
+    ? (bokse.find((b) => inde(dybtPunkt(b.x + b.width / 2, b.y + b.height / 2), el)) || bokse[0]) : r;
   const x = boks.x + boks.width / 2;
   const y = boks.y + boks.height / 2;
   const daekket = daekketAf(el, x, y);
-  return { x, y, tag: el.tagName, ...txt, found: true, ...(daekket ? { covered: daekket } : {}) };
+  return { x, y, tag: el.tagName, ...txt, found: true, ...(rullet ? { rullet: true } : {}), ...(daekket ? { covered: daekket } : {}) };
 }
 
 // Udtrykket der finder et element ud fra tekst (bruges af proever og som tekst til Runtime.evaluate).
@@ -2112,6 +2135,12 @@ function daekketSvar(selector, el, method) {
   // R61 (Opus): uden forklaring fik et maal uden for vinduet bare ok:false.
   if (c.outside) {
     svar.note = `The center of ${selector} is outside the visible part of the page, so the mouse cannot reach it there. Nothing was done.`;
+    return svar;
+  }
+  if (c.inside) {
+    svar.note = `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that, ` +
+      'and a click on a control inside a label does not activate the label\'s own field. Nothing was done. Click the one you ' +
+      'mean with its own selector (for a checkbox in the label, the checkbox itself).';
     return svar;
   }
   // R63: ingen musebevaegelse foer en afvisning (den aabnede menuer, der blev staaende). Noten siger, hvad der ligger der nu,
@@ -2153,7 +2182,17 @@ function parseSelector(selector) {
   return { type: 'css', selector };
 }
 
+// R64 (Opus' hop.html, maalt i Chrome 9/10): en header, der bliver position:fixed, naar siden rulles, flyttede alt 140 px op
+// EFTER at maalet var maalt. 1.30.1 klikkede saa raekken nedenunder med ok:true; maalvagten afviser det sikkert. En mus,
+// der venter, til siden staar stille, rammer rigtigt - saa er maalet blevet rullet frem, maales det igen efter 150 ms.
 async function resolveElement(tabId, selectorStr) {
+  const foerst = await findElement(tabId, selectorStr);
+  if (!foerst || !foerst.rullet) return foerst;
+  await new Promise((r) => setTimeout(r, 150));
+  return (await findElement(tabId, selectorStr)) || foerst;
+}
+
+async function findElement(tabId, selectorStr) {
   const parsed = parseSelector(selectorStr);
 
   if (parsed.type === 'css') {
