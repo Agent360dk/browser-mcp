@@ -110,7 +110,7 @@ test('alle resolveElement-stier gaar gennem klikMaal, som afviser elementer uden
   const start = kilde.indexOf('function klikMaal(');
   const maal = kilde.slice(start, kilde.indexOf('\n}\n', start));
   const vagt = maal.indexOf('if (r.width <= 0 || r.height <= 0)');
-  const koord = maal.indexOf('const x = r.x + r.width / 2');
+  const koord = maal.indexOf('const x = boks.x + boks.width / 2');   // foerste linjeboks (9/10), ellers hele rektanglet
   assert.ok(vagt > -1 && koord > -1 && vagt < koord, 'vagten skal staa foer koordinaterne i klikMaal');
   const res = kilde.slice(kilde.indexOf('async function resolveElement('), kilde.indexOf('// ── Offscreen Document Setup'));
   assert.equal((res.match(/klikMaal/g) || []).length, 3, 'css, csp-reserve og tekst skal alle bruge klikMaal');
