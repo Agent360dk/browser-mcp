@@ -982,7 +982,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // (som Stripe) og en fremmed iframe, der kom frem over maalet, gav stadig et syntetisk klik nr. 2. Nu: saa vagten ingen
     // haendelse overhovedet, er der ingen reserve; ligger der en ramme i punktet, er den maalets (uvist) eller fremmed (covered).
     // R64: `bundet` = klikket hoerer til et element, resolveElement lige har fundet. Vagten i siden binder haendelserne til
-    // det (armerMaalVagt). Ligger noget andet i punktet nu, sendes intet. Kan vagten ikke armeres, klikkes der som foer.
+    // det (armerMaalVagt). Ligger noget andet i punktet nu, sendes intet. Kan vagten ikke armeres, sendes intet (R70).
     // Med vagten svarer efterkontrollen ud fra vagten alene (blokeret, ingen haendelse, naaet maalet, udskiftet, stoppet
     // undervejs), og reserven naas aldrig - saa den kan ikke ramme et overlay, der kom frem efter opslaget.
     if (bundet) {
@@ -990,6 +990,10 @@ async function debuggerClick(tabId, x, y, bundet = false) {
       if (vagt && vagt.daekket) return { landed: false, fallbackFired: false, blokeret: vagt.daekket, foerSendt: true };
       if (vagt && vagt.vaek) return { landed: false, fallbackFired: false, vaek: true };
       vagtArmet = !!(vagt && vagt.armet);
+      // R70 (Astra, maalt i model): uden armeret vagt faldt klikket tilbage paa 1.30.1's bevis (en lytter paa dokumentet), der
+      // saa et klik, siden stoppede foer maalet, og gav ok:true, eller et nej efter en handling og et syntetisk klik til. Et
+      // bundet klik sendes derfor kun med vagten; kan den ikke armeres, sendes intet.
+      if (!vagtArmet) return { landed: false, fallbackFired: false, ikkeArmeret: true };
     }
     // Adressen foer klikket - et skift bagefter er bevis for en virkning (se tolkManglendeSettle).
     const urlFoer = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
@@ -1701,7 +1705,7 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         if (d && v.sendt > 0 && (ev.type === 'pointerup' || ev.type === 'mouseup')) { v.urent = true; return; }
         if (d) { v.blokeret = d; v.delvis = v.sendt > 0; ev.preventDefault(); ev.stopImmediatePropagation(); return; }
         v.sendt++;
-        if (ev.type === 'click' && maal.labels && Array.from(maal.labels).some((l) => inde(knude, l))) {
+        if (ev.type === 'click' && !inde(knude, maal) && maal.labels && Array.from(maal.labels).some((l) => inde(knude, l))) {
           v.labelKlik = ev;
           setTimeout(() => { if (v.labelKlik === ev) v.labelKlik = null; }, 0);
         }
@@ -2211,17 +2215,39 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // linjeskift fjernes overalt, styre- og mellemrumstegn i enderne), foer den proeves.
         const a = href.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+|[\u0000- ]+$/g, '');
         if (a === '' || a === '#' || /^javascript:/i.test(a)) return false;
+        // R70 (Opus, maalt i Chrome): `<sti>#!` og `<hele adressen>#` peger paa samme dokument og slettede med ok:true - reglen
+        // saa kun paa href, der begyndte med #. Adressen oploeses nu som browseren goer det (mod baseURI): peger den paa et
+        // andet dokument, eller paa samme uden fragment (en genindlaesning), er den rigtig; ellers gaelder fragmentreglen.
+        let u = null;
+        try { u = new URL(a, document.baseURI); } catch (e) {}
+        if (!u || u.protocol === 'javascript:') return false;
+        const udenFrag = (s) => String(s).replace(/#.*$/, '');
+        if (!u.href.includes('#') || udenFrag(u.href) !== udenFrag(document.URL)) return true;
         // R69 (Opus, maalt i Chrome): `#!`, `#0` og `#slet` med en lytter slettede med ok:true. Et fragment, hvis maal ikke
         // findes paa siden, flytter intet af sig selv (kun et script giver det en virkning); det goer et spring til linket
         // selv eller til noget, der rummer det, heller ikke (Opus' Slet havde id="slet"). Et spring til et andet afsnit, der
         // findes (eller til toppen), er et rent link.
-        if (a[0] === '#') {
-          let id = a.slice(1);
-          try { id = decodeURIComponent(id); } catch (e) {}
-          if (id.toLowerCase() === 'top') return true;
-          const spring = (document.getElementById && document.getElementById(id)) ||
-            Array.from(document.querySelectorAll('a[name]')).find((x) => x.getAttribute('name') === id);
-          return !!spring && !inde(n, spring);
+        // R70 (Astra, maalt i model): som HTML-standardens «indicated part of the document»: foerst fragmentet som skrevet, saa
+        // procent-afkodet (UTF-8, ugyldige bytes som U+FFFD), og foerst derefter «top».
+        // R70 (Opus, maalt i Chrome): en hash-rute (`#/ordre/7`, `#!/ordre/7`) er en navigation i appen, ikke en pladsholder.
+        {
+          const frag = u.hash.slice(1);
+          if (frag === '') return false;
+          if (/^!?\//.test(frag)) return true;
+          const find = (f) => (document.getElementById && document.getElementById(f)) ||
+            Array.from(document.querySelectorAll('a[name]')).find((x) => x.getAttribute('name') === f) || null;
+          let spring = find(frag), afkodet = frag;
+          if (!spring) {
+            const b = new TextEncoder().encode(frag), ud = [];
+            for (let i = 0; i < b.length; i++) {
+              const hex = i + 2 < b.length ? String.fromCharCode(b[i + 1], b[i + 2]) : '';
+              if (b[i] === 37 && /^[0-9a-f]{2}$/i.test(hex)) { ud.push(parseInt(hex, 16)); i += 2; } else ud.push(b[i]);
+            }
+            afkodet = new TextDecoder('utf-8').decode(new Uint8Array(ud));
+            spring = find(afkodet);
+          }
+          if (!spring) return afkodet.toLowerCase() === 'top';
+          return !inde(n, spring);
         }
         return true;
       };
@@ -2231,10 +2257,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // R68 (Opus' r66-rollekort, maalt i Chrome): et <a> uden adresse blev en tid regnet for «inert» og sprunget over - men
       // en lytter sat med addEventListener kan ikke ses, og Slet koerte med ok:true. Et <a> uden adresse er derfor en handling.
       if (erLabel) {
-        for (let n = hit; n && n !== el; n = n.parentNode || n.host) if (n.matches && n.matches(INTERAKTIV)) { indre = lukket(n); break; }
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (n.matches && n.matches(INTERAKTIV)) { indre = lukket(n); break; }
       } else {
         let fundet = null, link = null;
-        for (let n = hit; n && n !== el; n = n.parentNode || n.host) {
+        // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
+        // omkring den i shadow root'en (den flade kaede), saa assignedSlot foelges foer parentNode.
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
           if (!n.matches || !n.matches(HANDLING) || !lukket(n)) continue;
           if (etLink(n)) { link = link || n; continue; }
           fundet = n; break;
@@ -2397,6 +2425,12 @@ function vagtSvar(selector, el, r) {
       'acted on them: check the state before trying again.');
   }
   return svar;
+}
+
+// R70 (Astra): vagten kunne ikke armeres i siden (fx midt i en indlaesning) - intet er sendt.
+function ikkeArmeretSvar(selector, el) {
+  return { ok: false, error: 'The click could not be checked in the page, so it was not sent: ' + selector, tag: el.tag, landed: false,
+    note: 'The page could not be prepared to check that the mouse reaches the element (it may be loading or busy). Nothing was done; try again.' };
 }
 
 // R65 (Astra): maalet blev fundet, men siden fjernede det, foer musen kom - intet er sendt.
@@ -4881,6 +4915,7 @@ async function dispatch(port, method, params) {
         if (clickResult && clickResult.blokeret) return vagtSvar(params.selector, el, clickResult);
         if (clickResult && clickResult.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: clickResult.fremmedRamme, iFremmedRamme: true, trykNaaet: clickResult.trykNaaet });
         if (clickResult && clickResult.vaek) return vaekSvar(params.selector, el);
+        if (clickResult && clickResult.ikkeArmeret) return ikkeArmeretSvar(params.selector, el);
         return {
           method: el.method || 'debugger',
           tag: el.tag,
@@ -4996,6 +5031,7 @@ async function dispatch(port, method, params) {
         if (fillKlik && fillKlik.blokeret) return vagtSvar(params.selector, el, fillKlik);
         if (fillKlik && fillKlik.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: fillKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: fillKlik.trykNaaet });
         if (fillKlik && fillKlik.vaek) return vaekSvar(params.selector, el);
+        if (fillKlik && fillKlik.ikkeArmeret) return ikkeArmeretSvar(params.selector, el);
         await new Promise(r => setTimeout(r, 100));
         // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
         if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
@@ -5523,6 +5559,7 @@ async function dispatch(port, method, params) {
       const vagtD = await armerMaalVagt(tab.id, x, y, VAGT_KLIK);
       if (vagtD && vagtD.daekket) return vagtSvar(params.selector, el, { blokeret: vagtD.daekket, foerSendt: true });
       if (vagtD && vagtD.vaek) return vaekSvar(params.selector, el);
+      if (!vagtD || !vagtD.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
       const dblBevis = vagtD && vagtD.armet ? null : await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       let laestD = null;
       try {
@@ -5557,6 +5594,7 @@ async function dispatch(port, method, params) {
       const vagtR = await armerMaalVagt(tab.id, x, y, VAGT_KLIK, 10000, true);   // R64, som double_click
       if (vagtR && vagtR.daekket) return vagtSvar(params.selector, el, { blokeret: vagtR.daekket, foerSendt: true });
       if (vagtR && vagtR.vaek) return vaekSvar(params.selector, el);
+      if (!vagtR || !vagtR.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
       const hoejreBevis = vagtR && vagtR.armet ? null : await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       let laestR = null;
       try {
@@ -5807,6 +5845,7 @@ async function dispatch(port, method, params) {
       if (udloeserKlik && udloeserKlik.blokeret && !udloeserDelvis) return vagtSvar(params.selector, trigger, udloeserKlik);
       if (udloeserKlik && udloeserKlik.fremmedRamme) return vagtSvar(params.selector, trigger, { blokeret: udloeserKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: udloeserKlik.trykNaaet });
       if (udloeserKlik && udloeserKlik.vaek) return vaekSvar(params.selector, trigger);
+      if (udloeserKlik && udloeserKlik.ikkeArmeret) return ikkeArmeretSvar(params.selector, trigger);
       // R68 (Opus, maalt i Chrome): et udloeserklik, der aabnede en dialog, gik videre til at lede efter valget paa den
       // frosne side og endte efter 19 s i en bar CDP-fejl - efter at handlingen var sket. Nu stoppes der straks.
       if (udloeserKlik && udloeserKlik.dialog) {
@@ -5847,6 +5886,7 @@ async function dispatch(port, method, params) {
       }
       const valgKlik = await debuggerClick(tab.id, option.x, option.y, true);
       if (valgKlik && valgKlik.vaek) return { ...vaekSvar(`text=${oensket}`, option), trigger_clicked: true };
+      if (valgKlik && valgKlik.ikkeArmeret) return { ...ikkeArmeretSvar(`text=${oensket}`, option), trigger_clicked: true };
       if (valgKlik && valgKlik.fremmedRamme) return { ...vagtSvar(`text=${oensket}`, option, { blokeret: valgKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: valgKlik.trykNaaet }), trigger_clicked: true };
       if (valgKlik && valgKlik.blokeret) {
         const svar = vagtSvar(`text=${oensket}`, option, valgKlik);

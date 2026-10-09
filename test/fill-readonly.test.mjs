@@ -27,6 +27,7 @@ function side({ readOnly = false, disabled = false, value = '', landerTrodsReado
       if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };
       if (metode === 'DOM.querySelector') return { nodeId: 2 };
       if (metode === 'Runtime.evaluate') {
+        if (String(p?.expression || '').includes('window.__bmcpVagt = v')) return { result: { value: { armet: true } } };
         const x = p.expression || '';
         if (x.includes('getBoundingClientRect')) return svar({ x: 10, y: 10, tag: 'INPUT', found: true });
         if (x.includes('isContentEditable')) return svar(false);
@@ -106,6 +107,7 @@ test('the text-selector empty-field note is English', async () => {
   // Keys are acknowledged but nothing lands (background tab): the generic empty-field note.
   u.chrome.debugger.sendCommand = async (_m, metode, p = {}) => {
     if (metode === 'Runtime.evaluate') {
+      if (String(p?.expression || '').includes('window.__bmcpVagt = v')) return { result: { value: { armet: true } } };
       const x = p.expression || '';
       if (x.includes('getBoundingClientRect')) return { result: { value: { x: 10, y: 10, tag: 'INPUT', found: true } } };
       if (x.includes('readOnly')) return { result: { value: null } };

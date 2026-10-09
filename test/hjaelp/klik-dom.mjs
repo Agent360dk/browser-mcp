@@ -78,7 +78,7 @@ export function lavKlikDom() {
   const inden = (e, x, y) => { const r = e.getBoundingClientRect(); return r.width > 0 && x >= r.left && x < r.right && y >= r.top && y < r.bottom; };
 
   const document = {
-    documentElement: html, body,
+    documentElement: html, body, URL: 'https://x.example/side', baseURI: 'https://x.example/side',
     querySelectorAll: (s) => (s === '*' ? [body, ...body.querySelectorAll('*')] : html.querySelectorAll(s)),
     querySelector: (s) => html.querySelector(s),
     // Som i en browser: kun dokumentets eget traer, ikke shadow roots.

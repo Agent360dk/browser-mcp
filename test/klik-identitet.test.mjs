@@ -29,8 +29,9 @@ function browser(d, { foerArm, efterArm, stopVed, efterHaendelse, transportFejl,
   proto.addEventListener = function (n, f, o) { ((this._lyt ||= {})[n] ||= []).push({ f, once: !!(o && o.once) }); };
   proto.removeEventListener = function (n, f) { const l = this._lyt?.[n] || []; const i = l.findIndex((x) => x.f === f); if (i >= 0) l.splice(i, 1); };
   const side = [];   // de haendelser, sidens egne lyttere fik: "type:id"
+  // Som i en browser: URL, TextEncoder og TextDecoder findes i siden (linkreglen oploeser adresser med dem, R70).
   const ctx = vm.createContext({ document: d.document, window, getComputedStyle: (e) => e.stil, location: { href: 'https://x.example/' },
-    setTimeout, clearTimeout });
+    setTimeout, clearTimeout, URL, TextEncoder, TextDecoder });
   const fyr = (type, x, y) => { fyrEn(type, x, y); efterHaendelse?.(type, d, fyr); };
   const fyrEn = (type, x, y, paa = null) => {
     const el = paa || d.document.elementFromPoint(x, y);
@@ -300,8 +301,10 @@ test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter
   assert.match(cl, /A covered answer found before the press moves no mouse;/);
   assert.match(cl, /the remaining presses and clicks are stopped at the window, before any element of the page gets them \(the element in front may still see the mouse move over it, and a release the page moves elsewhere is let through\); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`\. A release that the page moves elsewhere after the press reached the target \(a menu that opens on the press, a slider that captures the pointer\) is let through, and the answer is at most `maybe_landed`/);
   assert.match(cl, /for any other target that takes clicks itself, anything clickable inside it at its center \(a link, a button, an element with a button role or an `onclick`, such as a delete button on a card\) counts as covered by that control/);
-  assert.match(cl, /for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with a real address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between, also across an open shadow root\./);
-  assert.match(cl, /An element with a link role that is not an `a`, an `a` with a role other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be seen; no real address means none, `#`, `javascript:` \(read as the browser reads it, so a tab or line break inside does not hide it\) or a fragment whose target is not on the page, such as `#!` or `#0`\. A delete link with a real address \(rails-ujs `data-method`\), or with a fragment whose target is on the page, cannot be told from a plain link\./);
+  assert.match(cl, /for a passive container \(a list item, a card that is not a button\) its own link \(an `a` with a real address, without a button role or `onclick`\) is its action, and only a button or other action inside it counts, also one around a link however many link layers lie between, also across an open shadow root and through a slot\./);
+  assert.match(cl, /An element with a link role that is not an `a`, an `a` with a role other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be seen; no real address means none, `#`, `javascript:` \(read as the browser reads it, so a tab or line break inside does not hide it\) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around it; the target is looked up as HTML does \(the fragment as written, then percent-decoded, then `top`\)\. The address is resolved as the browser resolves it, so a link to the same page that differs only in its fragment \(`\/orders#!`\) counts as a fragment, and a hash route \(`#\/orders\/7`, `#!\/orders\/7`\) is a real address\. A delete link with a real address \(rails-ujs `data-method`\), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a plain link\./);
+  assert.match(cl, /a text next to an icon button with no text of its own now clicks the row, not the button\./);
+  assert.match(cl, /If the guard cannot be set up in the page, nothing is sent and the answer says so \(1\.30\.1 clicked without it\)\./);
   assert.match(cl, /A field or other control whose center lies on a button around it is covered by that button: the click would go to the button, and whether the button changes the field cannot be told\./);
   assert.match(cl, /A text selector still picks the innermost element whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button\./);
   assert.match(cl, /`browser_select_option` goes on to the option only when the trigger's press is shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is clicked, and the answer says so\./);
@@ -761,5 +764,53 @@ test('hover: en ramme eller et lag, der kommer foran efter den foerste bevaegels
     assert.equal(svar.maybe_landed, true, hvad);
     assert.match(svar.note, hvad === 'iframe' ? /^When the mouse moved onto #gem, IFRAME#annonce - a frame - lay in front of it/ : /^The first mouse movement reached #gem, then DIV#linse came in front of it/, hvad);
     assert.doesNotMatch(svar.note, /press|click/i, hvad);
+  }
+});
+
+// ── R70 (Astra, maalt i model) ─────────────────────────────────────────────
+test('kan vagten ikke armeres, sendes intet: click, double_click, right_click og select_option svarer det (R70)', async () => {
+  for (const [vaerktoej, p] of [['click', { selector: '#trig' }], ['double_click', { selector: '#trig' }], ['right_click', { selector: '#trig' }],
+    ['select_option', { selector: '#trig', option: 'Finland', wait: 1 }]]) {
+    const d = lavKlikDom();
+    d.el('div', { id: 'trig', attrs: { role: 'button' }, tekst: 'Land', rect: [20, 20, 200, 40] });
+    d.el('li', { id: 'fi', attrs: { role: 'option' }, tekst: 'Finland', rect: [20, 300, 200, 40] });
+    // En lytter paa en forfader stopper trykket og klikket foer udloeseren - den gamle reservevej saa det som et klik.
+    const b = browser(d, { stopVed: (_type, el) => el?.id === 'trig' });
+    const send = b.u.ctx.chrome.debugger.sendCommand;
+    b.u.ctx.chrome.debugger.sendCommand = (m, metode, q) => (metode === 'Runtime.evaluate' && q.expression.includes('window.__bmcpVagt = v')
+      ? { result: { value: null } } : send(m, metode, q));
+    const svar = await b.koer(vaerktoej, p);
+    assert.equal(svar.ok, false, `${vaerktoej}: ${JSON.stringify(svar)}`);
+    assert.match(svar.error || '', /^The click could not be checked in the page, so it was not sent/, vaerktoej);
+    assert.ok(!b.side.some((h) => /^(pointerdown|mousedown|click|dblclick|contextmenu):/.test(h)), `${vaerktoej} sendte musen: ${b.side}`);
+  }
+});
+
+test('en omsluttende label: feltets aktiveringsklik genarmerer ikke labelbeviset (R70)', async () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', tekst: 'Accepter', rect: [20, 20, 300, 20] });
+  const boks = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20], ingenPeg: true, lag: 1 }, l);
+  boks.labels.push(l); l.control = boks;
+  // Siden stopper feltets foerste klik (aktiveringen); et klik mere ved (0,0) i samme opgave kommer igennem.
+  const b = browser(d, { aktiveringUdenKoordinater: true, stopVed: (type, el) => type === 'click' && el?.id === 'c' && !b.bruger,
+    efterHaendelse: (type) => { if (type === 'click' && !b.bruger) { b.bruger = true; b.fyrEn('click', 0, 0, boks); } } });
+  const svar = await b.koer('click', { selector: '#c' });
+  assert.ok(b.side.includes('click:c'), `det andet klik naaede ikke feltet: ${b.side}`);
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+});
+
+test('tools.js: select_option-stoppet og click/double_clicks fragmentregel staar der, og intet lover det modsatte (R70)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const kilde = readFileSync(join(ROD, 'mcp-server/tools.js'), 'utf8');
+  const beskrivelse = (navn) => kilde.split(`name: 'browser_${navn}'`)[1].split('inputSchema')[0];
+  const sel = beskrivelse('select_option');
+  assert.match(sel, /If neither the press on the trigger is shown to have reached it nor its click landed, no option is clicked and the answer is ok:false with maybe_landed: true; if it opens a dialog, or the option is not found, the answer has trigger_clicked: true\./);
+  assert.doesNotMatch(sel, /never clicked unless|only (?:when|if) the trigger click (?:itself )?landed/i);
+  for (const navn of ['click', 'double_click']) {
+    const b = beskrivelse(navn);
+    assert.match(b, /its own plain link with a real address \(not a fragment with no target on the page\) does not count/, navn);
+    assert.doesNotMatch(b, /every fragment|any fragment link|fragment links? (?:is|are) (?:always )?allowed/i, navn);
   }
 });

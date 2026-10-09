@@ -46,7 +46,8 @@ const FORBUDT = [
 // Unicode-kategorien Cf fjernes nu, og de faa usynlige tegn uden for den (variationsvaelgere, U+034F, Hangul-fyldtegn).
 // R69 (Astra, maalt): de supplerende variationsvaelgere U+E0100-U+E01EF (kategori Mn) slap igennem; alle variationsvaelgere
 // fjernes nu, ogsaa de mongolske (U+180B-U+180D, U+180F).
-const norm = (s) => s.replace(/[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F\u180B-\u180D\u180F\u{E0100}-\u{E01EF}]/gu, '').replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'").replace(/[\u201C\u201D\u201F]/g, '"')
+// R70 (Opus, vurderet): de usynlige khmer-vokaler U+17B4 og U+17B5 (Mn, Default_Ignorable) fjernes ogsaa.
+const norm = (s) => s.replace(/[\p{Cf}\u034F\u115F\u1160\u3164\uFFA0\uFE00-\uFE0F\u180B-\u180D\u180F\u17B4\u17B5\u{E0100}-\u{E01EF}]/gu, '').replace(/[\u2018\u2019\u201B\u02BC\u2032]/g, "'").replace(/[\u201C\u201D\u201F]/g, '"')
   .replace(/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g, ' ').replace(/\s+/g, ' ');
 // R66: en udgivet side er delt i synlig tekst, attributter og kommentarer (side-tekst.py); hver del proeves for sig.
 const rammer = (tekst, moenster) => tekst.split('\u241e').some((del) => moenster.test(norm(del)));
@@ -136,4 +137,9 @@ test('alle variationsvaelgere inde i et ord fjernes, ogsaa de supplerende og de 
   const m = FORBUDT.find(([nr]) => nr === 7)[1];
   for (const ref of ['&#xE0100;', '&#xE01EF;', '&#x180B;', '&#x180D;', '&#x180F;'])
     assert.ok(rammer(html(`<p>A headless browser funda${ref}mentally can't</p>`), m), ref);
+});
+
+test('de usynlige khmer-vokaler inde i et ord fjernes (R70)', () => {
+  const m = FORBUDT.find(([nr]) => nr === 7)[1];
+  for (const ref of ['&#x17B4;', '&#x17B5;']) assert.ok(rammer(html(`<p>A headless browser funda${ref}mentally can't</p>`), m), ref);
 });

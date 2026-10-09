@@ -28,6 +28,13 @@ import vm from 'node:vm';
 const her = dirname(fileURLToPath(import.meta.url));
 export const ROD = join(her, '..', '..');
 
+// R70 (Astra): et bundet klik sendes kun med en armeret vagt. En sele, der svarer det samme paa hvert Runtime.evaluate,
+// armerede aldrig vagten og maalte derfor en vej, der ikke findes laengere. medVagt svarer «armeret» paa armeringen og
+// giver alle andre kald videre uaendret.
+export const ARMERING = 'window.__bmcpVagt = v';
+export const medVagt = (send) => (m, metode, p) => (metode === 'Runtime.evaluate' && String(p?.expression || '').includes(ARMERING)
+  ? { result: { value: { armet: true } } } : send(m, metode, p));
+
 /** Optager hvad udvidelsen sendte til Chrome. */
 class Optager {
   constructor() { this.kald = []; }

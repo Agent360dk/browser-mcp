@@ -11,7 +11,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+import { indlaesUdvidelse, medVagt } from './hjaelp/udvidelses-sele.mjs';
 import { lavKlikDom } from './hjaelp/klik-dom.mjs';
 
 const KILDE = indlaesUdvidelse().hent('klikMaal').toString();
@@ -164,7 +164,7 @@ const DAEKKET = { x: 60, y: 35, tag: 'BUTTON', text: 'Add', found: true, covered
 function sele({ resolve = DAEKKET, skript = null } = {}) {
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined, 'debugger.getTargets': [{ tabId: 1, attached: true }],
-    'tabs.get': FANE, 'tabs.query': [FANE], 'debugger.sendCommand': () => ({}),
+    'tabs.get': FANE, 'tabs.query': [FANE], 'debugger.sendCommand': medVagt(() => ({})),
     'scripting.executeScript': skript ?? [{ result: resolve }],
   } });
   u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([1]), activeTabId: 1, groupId: 1, windowId: 1 });
@@ -230,7 +230,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : 'the rest of the presses and clicks are stopped \\(a release the page moves elsewhere is let through\\), and the answer';
     assert.match(d, new RegExp(`If the mouse would not reach the target at its center - another element lies in front of it \\(an overlay, a dialog\\\\'s backdrop\\),[^"]* - the answer is ok:false with error "covered" and covered_by\\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, ${hale} also has maybe_landed: true, because the page may already have reacted\\.(?! In the active tab the mouse)`), `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
-    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address does not count\)/, navn);
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(not a fragment with no target on the page\) does not count\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
@@ -582,7 +582,7 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
   assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times; pushed out of view meanwhile, it is scrolled into view again\)/);
-  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click, and only when the label's click was not cancelled; around the target, only its own button or link frame, not a container that listens for its children\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
+  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click, only when the label's click was not cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
   assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\) counts as covered by that element/);
 });
 
@@ -801,5 +801,56 @@ test('et passivt kort: <span role="link"> og et fragment uden maal paa siden, el
     const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el(tag, { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
     assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, `${tag} ${JSON.stringify(attrs)}`);
+  }
+});
+
+// ── R70 (Astra, maalt i model) ─────────────────────────────────────────────
+test('et passivt kort: en knap i en shadow root omkring en slot, der viser kortets span, er daekningen (R70)', () => {
+  const d = lavKlikDom();
+  const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+  const vaert = d.el('my-row', { id: 'vaert', rect: [190, 60, 100, 40], lag: 1 }, kort);
+  const knap = d.el('div', { id: 'slet', attrs: { role: 'button' }, rect: [190, 60, 100, 40], lag: 1 }, d.skygge(vaert));
+  const slot = d.el('slot', { rect: [190, 60, 100, 40], lag: 1 }, knap);
+  const span = d.el('span', { id: 'sp', tekst: 'Slet', rect: [190, 60, 100, 40], lag: 2 }, vaert);
+  span.assignedSlot = slot;
+  assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'slet');
+});
+
+test('fragmentopslaget foelger HTML: som skrevet, saa afkodet, saa top - og et spring til linket selv er en handling (R70)', () => {
+  for (const [href, andet, linketsId, daekket] of [
+    ['#section%20one', 'section%20one', null, false], ['#section%20one', 'section one', 'section%20one', true],
+    ['#top', null, 'top', true], ['#%74op', null, 'top', true], ['#x%E9', 'x�', null, false], ['#section%20one', 'section one', null, false]]) {
+    const d = lavKlikDom();
+    if (andet) d.el('section', { id: andet, rect: [0, 600, 1200, 100] });
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: linketsId || 'i', tekst: 'Slet', attrs: { href }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    const r = d.koer(KILDE, '#kort', null, null, false, false).svar;
+    assert.equal(!!r.covered, daekket, `${href} (andet: ${andet}, linket: ${linketsId}): ${JSON.stringify(r.covered)}`);
+  }
+});
+
+test('en label: et link i en shadow root omkring en slot, der viser labelens tekst, er daekningen (R70)', () => {
+  const d = lavKlikDom();
+  const felt = d.el('input', { id: 'cb', attrs: { type: 'checkbox' }, rect: [20, 20, 20, 20] });
+  const l = d.label(felt, { id: 'l', rect: [60, 20, 300, 30] });
+  const vaert = d.el('my-link', { rect: [60, 20, 300, 30], lag: 1 }, l);
+  const a = d.el('a', { id: 'vilk', attrs: { href: '/vilkaar' }, rect: [60, 20, 300, 30], lag: 1 }, d.skygge(vaert));
+  const slot = d.el('slot', { rect: [60, 20, 300, 30], lag: 1 }, a);
+  const span = d.el('span', { tekst: 'vilkaarene', rect: [60, 20, 300, 30], lag: 2 }, vaert);
+  span.assignedSlot = slot;
+  assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id, 'vilk');
+});
+
+// ── R70 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('et passivt kort: et link til samme dokument med pladsholder er en handling; en rute, en genindlaesning og <base> andetsteds er kortets link (R70)', () => {
+  for (const [href, base, daekket] of [
+    ['/side#!', null, true], ['https://x.example/side#', null, true], ['#x', null, true], ['http://[ugyldig', null, true],
+    ['/side', null, false], ['/side?q=1#!', null, false], ['#/ordre/7', null, false], ['#!/ordre/7', null, false],
+    ['#x', 'https://andet.example/', false]]) {
+    const d = lavKlikDom();
+    if (base) d.document.baseURI = base;
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: 'i', tekst: 'Slet', attrs: { href }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id === 'i', daekket, `${href} (base ${base})`);
   }
 });

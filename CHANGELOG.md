@@ -30,8 +30,8 @@ debugger path and the script fallback find their target with the same function. 
 press moves no mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
 or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
 found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
-counts as proof (for a field clicked through its label, the field's own click, and only when the label's click was not
-cancelled; around the target, only its own button or
+counts as proof (for a field clicked through its label, the field's own click, only when the label's click was not
+cancelled, and once; around the target, only its own button or
 link frame, not a container that listens for its children); a click stopped on the way, a target the page replaces during
 the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
@@ -40,18 +40,23 @@ for any other target that takes clicks itself, anything clickable inside it at i
 with a button role or an `onclick`, such as a delete button on a card) counts as covered by that control; for a passive
 container (a list item, a card that is not a button) its own link (an `a` with a real address, without a button role or
 `onclick`) is its action, and only a button or other action inside it counts, also one around a link however many link
-layers lie between, also across an open shadow root. An element with a link role that is not an `a`, an `a` with a role
+layers lie between, also across an open shadow root and through a slot. An element with a link role that is not an `a`, an `a` with a role
 other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be
 seen; no real address means none, `#`, `javascript:` (read as the browser reads it, so a tab or line break inside does not
-hide it) or a fragment whose target is not on the page, such as `#!` or `#0`. A delete link with a real address
-(rails-ujs `data-method`), or with a fragment whose target is on the page, cannot be told from a plain link. A field or
+hide it) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around
+it; the target is looked up as HTML does (the fragment as written, then percent-decoded, then `top`). The address is
+resolved as the browser resolves it, so a link to the same page that differs only in its fragment (`/orders#!`) counts
+as a fragment, and a hash route (`#/orders/7`, `#!/orders/7`) is a real address. A delete link with a real address
+(rails-ujs `data-method`), with a fragment whose target is elsewhere on the page, or with `#top`, cannot be told from a
+plain link. A field or
 other control whose center lies on a button around it is covered by that button: the click would go to the button, and
 whether the button changes the field cannot be told. A text selector picks a clickable child only when the text is in it,
 so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did, and a delete ran); a text next to an
 icon button with no text of its own now clicks the row, not the button. A text selector still picks the innermost element
 whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button. Hover and right-click do not click a control inside the target, so for them only something in front
 of it is cover; enter events on the target's ancestors are part of the hover. Inside a closed shadow root the guard
-cannot see which control gets the click. `browser_select_option` goes on to the option only when the trigger's press is
+cannot see which control gets the click. If the guard cannot be set up in the page, nothing is sent and the answer says
+so (1.30.1 clicked without it). `browser_select_option` goes on to the option only when the trigger's press is
 shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is
 clicked, and the answer says so.
 A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements
