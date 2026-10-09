@@ -256,3 +256,23 @@ test('vagtens bevis: intet set i en synlig side er uvist; i en skjult side er de
   assert.deepEqual(vb({ naaet: {}, sendt: 0, synlig: false }, ['dblclick']), { landed: false });
   assert.deepEqual(vb({ naaet: { dblclick: 1 }, sendt: 3, synlig: true }, ['dblclick']), { landed: true });
 });
+
+test('vagten udloeber selv i siden, ogsaa hvis ingen laeser den', async () => {
+  const b = browser(knapside());
+  await b.u.hent('resolveElement')(1, '#gem');
+  const armet = await b.u.hent('armerMaalVagt')(1, 120, 40, ['click'], 5);
+  assert.equal(armet.armet, true);
+  await new Promise((r) => setTimeout(r, 40));
+  b.fyr('click', 120, 40);
+  assert.equal(b.window.__bmcpVagt.sendt, 0, 'vagten lyttede stadig efter sin levetid');
+  assert.ok(b.side.includes('click:gem'));
+});
+
+test('CHANGELOG 1.30.2 siger, at kun en covered fundet foer trykket ikke flytter musen, og hvornaar svaret er delvist', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(cl, /A covered answer found before the press moves no mouse;/);
+  assert.match(cl, /if the first ones had already reached the target, the answer is `landed: null` with `maybe_landed: true`/);
+});
