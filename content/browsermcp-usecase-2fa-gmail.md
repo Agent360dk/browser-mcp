@@ -2,7 +2,7 @@
 
 # How an AI agent reads a 2FA code from your Gmail - mid-login
 
-*Suggested URL: `/use-cases/read-2fa-from-gmail` · Suggested title tag: "How an AI Agent Reads a 2FA Code From Gmail Mid-Login (Browser MCP)" · Suggested meta description: "A step-by-step walkthrough of the move headless browsers can't make: your agent hits a login wall, reads the 2FA code from the Gmail you're already signed into, and continues." · Last verified: July 22, 2026*
+*Suggested URL: `/use-cases/read-2fa-from-gmail` · Suggested title tag: "How an AI Agent Reads a 2FA Code From Gmail Mid-Login (Browser MCP)" · Suggested meta description: "A step-by-step walkthrough of the move a fresh headless browser without your login can't make: your agent hits a login wall, reads the 2FA code from the Gmail you're already signed into, and continues." · Last verified: July 22, 2026*
 
 ---
 

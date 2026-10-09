@@ -87,7 +87,8 @@ function forbindelsesAdvarsel() {
   if (!dubletter.length) return null;   // forskellige udvidelser: dem daekker advarOmKonflikt og provide_feedback
   return `${live.length} Browser MCP extension connections are open to this server, ` +
     dubletter.map(([id, n]) => `${n} of them from the same extension (${id})`).join(' and ') +
-    '. That is the extension enabled in more than one Chrome profile or browser. Every command goes to one of them, and ' +
+    '. That means the same extension is connected more than once, for instance from several Chrome profiles or browsers. ' +
+    'Every command goes to one of them, and ' +
     'this server cannot tell which profile that is. To drive a chosen profile, keep the extension enabled in that profile only.';
 }
 
@@ -989,10 +990,11 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     return medForbindelsesNote(response);
   } catch (err) {
-    return {
+    // R62 (Astra): advarslen kom ikke med, naar det naeste kald fejlede - og et fejlsvar er netop hvor den forklarer mest.
+    return medForbindelsesNote({
       content: [{ type: 'text', text: forklarSkaevhed(err.message) }],
       isError: true,
-    };
+    });
   }
 });
 

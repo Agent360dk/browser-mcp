@@ -12,12 +12,18 @@ vagten; et `srcdoc` er et helt dokument i en attribut (dobbelt kodet); og et sty
 @import. Afbrudte kommentarer afvises, srcdoc og base64-data:-dokumenter laeses som HTML, og .css-filer laeses ogsaa.
 Et script der saetter en adresse sammen mens siden koerer, kan ingen statisk vagt se - det dækkes ikke.
 
+R62 (Astra, MAALT): en afbrudt kommentar INDE i et srcdoc og en CSS-kommentarstart inde i en URL-streng skjulte en henvisning
+igen. Formerne lukkes derfor ikke enkeltvis laengere: hele filen afkodes til et fikspunkt (entiteter, CSS-escapes,
+procent-kodning, tabulatorer og linjeskift), og navnene maa derefter kun forekomme lige saa mange gange, som filen har
+kanoniske henvisninger. En omtale i en kommentar taeller ogsaa - det er prisen for en regel uden huller.
+
 Udskriver JSON: {side: {"kanon": [[endelse, noegle], ...], "raa": antal, "omtaler": [tekst, ...]}}.
   kanon   - <link href> eller <script src> med praecis /assets/docs.(css|js)?v=<8 hex>
   raa     - antal kanoniske henvisninger i kildeteksten i den citerede form, som generatoren opdaterer
   omtaler - alt andet, der efter afkodning naevner en af de to filer
 """
 import base64
+import html
 import json
 import os
 import re
@@ -68,7 +74,19 @@ def css_afkod(s):
     return ''.join(ud)
 
 
+def fikspunkt(tekst):
+    """Afkod til intet aendrer sig mere: HTML-entiteter, CSS-escapes, procent-kodning, tabulatorer og linjeskift."""
+    for _ in range(12):
+        ny = re.sub(r'[\t\n\r]', '', unquote(css_afkod(html.unescape(tekst)), errors='replace'))
+        if ny == tekst:
+            break
+        tekst = ny
+    return tekst
+
+
 def naevner(tekst):
+    if NAVN.search(fikspunkt(tekst)):
+        return True
     for v in (tekst, css_afkod(tekst)):
         v = re.sub(r'[\t\n\r]', '', v)
         if NAVN.search(v) or NAVN.search(unquote(v, errors='replace')):
@@ -118,6 +136,9 @@ class Side(HTMLParser):
         under.feed(indre)
         under.close()
         self.omtaler += [f'{navn}: {o}' for o in under.omtaler]
+        self.omtaler += [f'{navn}: afbrudt kommentar {m.group(0)}' for m in AFBRUDT.finditer(indre)]
+        if len(NAVN.findall(fikspunkt(indre))) > 0:
+            self.omtaler.append(f'{navn}: dokumentet naevner docs.css/docs.js')
         self.omtaler += [f'{navn}: docs.{e}?v={n}' for e, n in under.kanon]
 
     handle_startendtag = handle_starttag
@@ -144,8 +165,9 @@ def main(mappe):
         for f in filer:
             sti = os.path.join(rod, f)
             if f.endswith('.css'):
-                # Et stylesheet henter andre med @import og url(). En kommentar indlaeses ikke.
-                kilde = re.sub(r'/\*.*?\*/', '', open(sti, encoding='utf-8').read(), flags=re.S)
+                # Et stylesheet henter andre med @import og url(). Kommentarer fjernes ikke: en kommentarstart inde i en
+                # URL-streng er ikke en kommentar (R62), saa et stylesheet maa slet ikke naevne de to filer.
+                kilde = open(sti, encoding='utf-8').read()
                 ud[os.path.relpath(sti, mappe)] = {'kanon': [], 'raa': 0, 'omtaler': [kilde[:200]] if naevner(kilde) else []}
                 continue
             if not f.endswith('.html'):
@@ -155,6 +177,10 @@ def main(mappe):
             p.feed(kilde)
             p.close()
             omtaler = p.omtaler + [f'afbrudt kommentar {m.group(0)} - en browser lukker kommentaren dér' for m in AFBRUDT.finditer(kilde)]
+            # Lukkereglen: efter afkodning til fikspunkt maa navnene kun staa i de kanoniske henvisninger.
+            i_alt = len(NAVN.findall(fikspunkt(kilde)))
+            if i_alt != len(p.kanon):
+                omtaler.append(f'filen naevner docs.css/docs.js {i_alt} gange efter afkodning, men har {len(p.kanon)} kanoniske henvisninger')
             ud[os.path.relpath(sti, mappe)] = {'kanon': p.kanon, 'raa': len(RAA.findall(kilde)), 'omtaler': omtaler}
     print(json.dumps(ud, sort_keys=True))
 

@@ -53,11 +53,11 @@ Restart your Codex session. Full walkthrough: [Install for Codex](/docs/install-
 
 ## Where this beats the alternatives
 
-| | Browser MCP | Headless automation | Storing a TOTP secret |
+| | Browser MCP | A fresh headless browser | Storing a TOTP secret |
 |---|---|---|---|
 | Needs your credentials | No | Yes | Yes |
 | Works on a site that blocks automation | Yes - it is your session | Often not | Yes |
-| Survives the site changing its login | Yes | No | Usually |
+| Survives the site changing its login | Yes | Often not | Usually |
 | You stay in control of the code | Yes | - | No |
 
 ## Frequently asked questions

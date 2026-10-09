@@ -266,6 +266,25 @@ test('af to stablede modale dialoger vaelges den der ligger oeverst, ikke den fo
   assert.equal(elementFor(d, 'OK').id, 'aOk');
 });
 
+// R62 (Astra): to forskudte, delvist overlappende dialoger ligger begge oeverst ved deres eget midtpunkt.
+test('af to forskudte, overlappende modale dialoger vaelges den der ligger oeverst, hvor de overlapper', () => {
+  const d = lavKlikDom();
+  const oeverst = d.el('div', { id: 'oeverst', attrs: { 'aria-modal': 'true' }, rect: [100, 100, 400, 300], lag: 10 });
+  d.el('button', { id: 'upperAdd', tekst: 'Add', rect: [120, 120, 80, 30], lag: 10 }, oeverst);
+  const nederst = d.el('div', { id: 'nederst', attrs: { 'aria-modal': 'true' }, rect: [350, 250, 400, 300], lag: 1 });
+  d.el('button', { id: 'lowerAdd', tekst: 'Add', rect: [650, 500, 80, 30], lag: 1 }, nederst);
+  assert.equal(elementFor(d, 'Add').id, 'upperAdd', 'den nederste dialog blev valgt, fordi den staar sidst i DOM');
+});
+
+// Mutant (R62-koersel): en dialog med visibility:hidden har stadig et rektangel, men er ikke aaben.
+test('en aria-modal med visibility:hidden er ikke en aaben dialog', () => {
+  const d = lavKlikDom();
+  d.el('button', { id: 'sideAdd', tekst: 'Add', rect: [20, 20, 80, 30] });
+  const dlg = d.el('div', { attrs: { 'aria-modal': 'true' }, rect: [400, 300, 400, 200], skjult: true });
+  d.el('button', { id: 'dlgAdd', tekst: 'Add', rect: [600, 400, 80, 30] }, dlg);
+  assert.equal(elementFor(d, 'Add').id, 'sideAdd');
+});
+
 test('et maal uden for vinduet meldes som uden for, med en forklaring', async () => {
   const d = lavKlikDom();
   d.el('button', { id: 'langtVaek', tekst: 'Langt', rect: [1500, 900, 80, 30] });

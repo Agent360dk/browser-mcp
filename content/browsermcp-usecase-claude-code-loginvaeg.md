@@ -58,4 +58,4 @@ The server is local, there is no account and no telemetry. What the agent reads 
 It is your real Chrome with your real profile, so most detection does not fire. That is the honest answer for most sites and not a guarantee for all of them.
 
 **Can several Claude Code conversations use it at once?**
-Yes - up to 20, each in its own colour-coded tab group.
+Yes - up to 20 MCP servers at once, each in its own colour-coded tab group. The separation follows the server: conversations that share one server share its tab group.

@@ -298,6 +298,10 @@ test('vagten finder de former, der slap igennem tidligere runder', async () => {
     'srcdoc-kanonisk.html': `<iframe srcdoc='<link rel="stylesheet" href="/assets/docs.css?v=05f4bb13">'></iframe>`,
     'data-base64.html': `<iframe src="data:text/html;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg=="></iframe>`,
     'import.css': `@import url("/assets/docs.css?v=old");`,
+    // R62 (Astra): en afbrudt kommentar INDE i et srcdoc eller et base64-dokument, og en kommentarstart inde i en URL-streng.
+    'srcdoc-afbrudt.html': `<iframe srcdoc="&lt;!--&gt;&lt;link rel=stylesheet href=/assets/do&amp;#99;s.css?v=old&gt;&lt;!-- --&gt;"></iframe>`,
+    'data-afbrudt.html': `<iframe src="data:text/html;base64,PCEtLT48bGluayByZWw9c3R5bGVzaGVldCBocmVmPS9hc3NldHMvZG8mIzk5O3MuY3NzP3Y9b2xkPjwhLS0gLS0+"></iframe>`,
+    'url-streng.css': '@import url("data:text/css,/*");\n@import url("/assets/docs.css?v=old");\n/* end */',
   };
   const tmp = mkdtempSync(join(tmpdir(), 'vagt-'));
   try {
@@ -311,10 +315,11 @@ test('vagten finder de former, der slap igennem tidligere runder', async () => {
       const fanget = h[f].omtaler.length > 0 || h[f].raa !== h[f].kanon.length;
       assert.ok(fanget, `${f}: vagten saa ingen fejl i ${former[f]}`);
     }
-    assert.deepEqual(h['kommentar.html'], { kanon: [], raa: 1, omtaler: [] }, 'en henvisning i en rigtig kommentar taeller ikke som indlaesning');
-    // En rigtig kommentar indlaeses ikke, saa en gammel adresse dér er hverken en indlaesning eller en fejl.
-    assert.deepEqual(h['gammel-i-kommentar.html'], { kanon: [['css', '05f4bb13']], raa: 1, omtaler: [] });
-    assert.deepEqual(h['kommentar.css'], { kanon: [], raa: 0, omtaler: [] }, 'en CSS-kommentar indlaeses ikke');
+    // R62: lukkereglen taeller ogsaa en omtale i en kommentar - det er prisen for en regel uden huller.
+    assert.deepEqual([h['kommentar.html'].kanon.length, h['kommentar.html'].raa], [0, 1], 'en henvisning i en kommentar er ikke en indlaesning');
+    assert.ok(h['kommentar.html'].omtaler.length > 0, 'en kanonisk henvisning i en kommentar skal afvises');
+    assert.ok(h['gammel-i-kommentar.html'].omtaler.length > 0, 'en gammel adresse i en kommentar skal afvises');
+    assert.ok(h['kommentar.css'].omtaler.length > 0, 'et stylesheet maa slet ikke naevne de to filer, heller ikke i en kommentar');
     assert.deepEqual(h['rigtig.html'], { kanon: [['css', '05f4bb13']], raa: 1, omtaler: [] });
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });

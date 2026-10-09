@@ -151,6 +151,29 @@ test('en liste der beholder sine raekker, rulles helt til bunden - rulning er fr
   assert.equal(svar.reached_end, true);
 });
 
+// R62 (Astra, maalt i model): to tilfaelde hvor koerslen sluttede med reached_end:true midt i et feed.
+test('en kort liste i en fast boks der endnu ikke flyder over, findes som listen - uden at containeren er angivet', async () => {
+  const f = feed({ start: 6, i_alt: 16, parti: 10 });   // 6 x 50 px = boksens 300 px: ingen overflow endnu
+  f.container.getBoundingClientRect = () => ({ left: 100, top: 100, right: 500, bottom: 400, width: 400, height: 300 });
+  const svar = await udtraek(sele(f));
+  assert.equal(svar.count, 16, `${svar.count} af 16 - hjulet ramte uden for listen`);
+  assert.equal(f.s.hjulUdenfor, 0);
+});
+
+test('runden hvor listen naar bunden, er ikke en runde hvor den stod paa bunden', async () => {
+  const f = feed();
+  const svar = await udtraek(sele(f), { stable_rounds: 1 });
+  assert.equal(svar.count, 40, `${svar.count} af 40 med stable_rounds 1`);
+  assert.equal(svar.reached_end, true);
+});
+
+// Vaekst uden bevaegelse: hjulet ved bunden flytter intet, men loaderen laegger en pladsholder ind.
+test('en liste der vokser uden at flytte sig, er stadig i gang - ogsaa med stable_rounds 1', async () => {
+  const f = feed({ pladsholdere: 2 });
+  const svar = await udtraek(sele(f), { stable_rounds: 1 });
+  assert.equal(svar.count, 40, `stoppede ved ${svar.count}: vaekst uden bevaegelse blev ikke regnet som fremskridt`);
+});
+
 test('ruller hjulet ikke listen, rulles der med script, og svaret siger det', async () => {
   const f = feed({ hentPaa: 'scroll' });
   f.container.getBoundingClientRect = () => ({ left: 2000, top: 2000, right: 2100, bottom: 2100, width: 100, height: 100 });   // uden for vinduet

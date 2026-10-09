@@ -16,7 +16,7 @@ John H.**
 | `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger in `browser_select_option` | The mouse would not reach the target at its center: an element lies in front of it, or the target does not take clicks there. Nothing was done. Before, `browser_click` answered `ok: true` when the click hit an overlay |
 | `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
 | `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
-| `error: "file-access-off"` | `browser_upload_file`, `browser_drop_file` | Chrome refused the file because "Allow access to file URLs" is off for the extension |
+| `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
 | `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why (#11) |
 | `eget_vindue: false`, `advarsel` | `browser_navigate` with `eget_vindue` | The tab did not end up in its own window; `windowId` is the tab's real window |
 | a viewport note next to the image | `browser_screenshot` | The CSS viewport and devicePixelRatio for `browser_click_xy`, when Chrome reports them in time (#55) |
@@ -24,7 +24,7 @@ John H.**
 | `extension_connections`, verdict `conflict` | `browser_provide_feedback` | Several open connections from the same extension, for instance one per Chrome profile (#58) |
 
 **Clicks.** A text selector looks inside an open modal dialog first (also inside open shadow roots; of
-several, the one on top), so `click text=Add` presses the dialog's button, not the page's behind it. The
+several, the one on top where they overlap), so `click text=Add` presses the dialog's button, not the page's behind it. The
 debugger path and the script fallback find their target with the same function. In the active tab, a
 covered target gets one mouse move and a second measurement first, so a tooltip that hides when the
 mouse moves does not block.

@@ -13,16 +13,25 @@ import { fileURLToPath } from 'node:url';
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const laes = (f) => readFileSync(join(rod, f), 'utf8');
 const indhold = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md')).map((f) => ['content/' + f, laes('content/' + f)]);
-const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')]];
+// R62 (Astra, MAALT): vagten laeste kun kilderne, saa en paastand genindsat i den PUBLICEREDE html gik igennem. De udgivne
+// sider laeses nu ogsaa - som tekst, med entiteter afkodet og tags fjernet.
+const html = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/\s+/g, ' ');
+const sider = [];
+const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
+  if (e.isDirectory()) gaa(join(d, e.name)); else if (e.name.endsWith('.html')) sider.push([join(d, e.name), html(laes(join(d, e.name)))]); } };
+gaa('docs');
+const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
+  ['llms-install.md', laes('llms-install.md')], ...sider];
 
 const FORBUDT = [
-  [7, /a headless browser fundamentally can't/i, 'kategorisk om headless; en frisk profil uden dit login er det praecise'],
+  [7, /a headless browser fundamentally can't|the move headless browsers can't make|\| Headless automation \|/i, 'kategorisk om headless; en frisk profil uden dit login er det praecise'],
   [9, /is complete removal/i, 'npx har en kopi i ~/.npm/_npx'],
   [13, /the entire point|Cookies are how you stay logged in/i, 'cookies-tilladelsen bruges kun af cookie-vaerktoejerne'],
-  [14, /Twenty-one conversations|idle conversations do not consume/i, 'adskillelsen foelger MCP-serveren, ikke samtalen'],
+  [14, /Twenty-one conversations|idle conversations do not consume|Yes - up to 20, each in its own colou?r-coded tab group/i, 'adskillelsen foelger MCP-serveren, ikke samtalen'],
   [15, /\(~?\d+ seconds\)/i, 'tidsloefter uden maaling'],
   [38, /Fresh by default|That is the whole difference/, 'Playwright MCP har en dedikeret profil som standard og en extension-mode'],
-  [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one/, 'Zed, opencode og Codex bruger hver sin noegle'],
+  [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config/, 'Zed, opencode og Codex bruger hver sin noegle'],
 ];
 
 for (const [nr, moenster, hvorfor] of FORBUDT) {
@@ -45,4 +54,9 @@ test('bagudliste #29: konkurrent-vagten tager vores vaerktoejstal fra tools.js, 
   assert.doesNotMatch(vagt, /tal == 40/);
   assert.match(vagt, /VORES = len\(re\.findall\(r"name: 'browser_\[a-z_\]\+'", open\(os\.path\.join\(ROOT, 'mcp-server', 'tools\.js'\)/);
   assert.match(vagt, /if tal == VORES or tal == maalt:/);
+});
+
+test('bagudlisten laeser ogsaa de udgivne sider (R62)', () => {
+  assert.ok(sider.length >= 40, `kun ${sider.length} html-sider laest`);
+  assert.ok(sider.some(([f, t]) => f.endsWith('docs/use-cases/read-2fa-from-gmail/index.html') && /fresh headless browser without your login/.test(t)));
 });

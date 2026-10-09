@@ -1868,12 +1868,17 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement) {
       return (modal || (d.getAttribute && d.getAttribute('aria-modal') === 'true')) && iVinduet(d);
     });
     if (kandidater.length < 2) return kandidater[0] || null;
-    const oeverst = kandidater.filter((d) => {
-      const r = d.getBoundingClientRect();
-      const x = Math.min(Math.max((r.left + r.right) / 2, 0), window.innerWidth - 1);
-      const y = Math.min(Math.max((r.top + r.bottom) / 2, 0), window.innerHeight - 1);
-      return inde(dybtPunkt(x, y), d);
-    });
+    // R62 (Astra, maalt i model): to forskudte dialoger kan begge ligge oeverst ved deres EGET midtpunkt. Hvem der ligger
+    // oeverst, afgoeres derfor dér hvor de overlapper: den valgte maa ikke ligge under nogen anden kandidat.
+    const over = (a, b) => {
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      const l = Math.max(ra.left, rb.left, 0), r = Math.min(ra.right, rb.right, window.innerWidth);
+      const t = Math.max(ra.top, rb.top, 0), u = Math.min(ra.bottom, rb.bottom, window.innerHeight);
+      if (r <= l || u <= t) return null;
+      const h = dybtPunkt((l + r) / 2, (t + u) / 2);
+      return inde(h, a) && !inde(h, b) ? true : inde(h, b) && !inde(h, a) ? false : null;
+    };
+    const oeverst = kandidater.filter((d) => kandidater.every((o) => o === d || over(d, o) !== false));
     return (oeverst.length ? oeverst : kandidater)[(oeverst.length ? oeverst : kandidater).length - 1];
   }
   function findTekst() {
@@ -4021,6 +4026,17 @@ async function dispatch(port, method, params) {
               p = p.parentElement;
             }
           }
+          // R62 (Astra, maalt i model): en kort liste i en fast boks, der endnu ikke flyder over, blev ikke fundet - saa gik
+          // hjulet til vinduets midte, uden for listen, og feedet hentede aldrig. Anden runde: den naermeste boks med
+          // overflow auto/scroll, der er lavere end vinduet.
+          if (!c && rows.length) {
+            let p = rows[0].parentElement;
+            while (p && p !== document.documentElement) {
+              const s = getComputedStyle(p);
+              if (/(auto|scroll)/.test(s.overflowY) && p.clientHeight > 0 && p.clientHeight < window.innerHeight) { c = p; break; }
+              p = p.parentElement;
+            }
+          }
           const step = keep || (c ? c.clientHeight : window.innerHeight) * 0.85;
           const pos = c ? c.scrollTop : window.scrollY;
           const height = c ? c.scrollHeight : document.documentElement.scrollHeight;
@@ -4064,7 +4080,9 @@ async function dispatch(port, method, params) {
         // En liste der vokser uden nye raekker endnu (en loader der foerst laegger pladsholdere ind), er stadig i gang.
         if (nye === 0 && !voksede && !flyttede) stable++; else stable = 0;
         // reached_end kun naar listen stod paa bunden, intet nyt kom og den ikke voksede - stable_rounds runder i traek.
-        if (data.atBottom && nye === 0 && !voksede) bundRunder++; else bundRunder = 0;
+        // R62 (Astra): runden hvor listen NAAEDE bunden, talte som en runde den stod paa bunden - med stable_rounds 1 sluttede
+        // koerslen dér, foer et hjul ved bunden havde faaet feedet til at hente.
+        if (data.atBottom && nye === 0 && !voksede && !flyttede) bundRunder++; else bundRunder = 0;
         if (bundRunder >= stableNeeded) { atEnd = true; break; }
         // Ingen nye raekker i stable_rounds runder uden for bunden: stop, men uden at kalde det enden. Staar listen paa
         // bunden, afgoer reglen ovenfor det, saa et feed der henter ved bunden faar sine runder.
