@@ -23,7 +23,7 @@ The list below is what the client has to choose from.
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
-| `browser_extract_list` | Read every row of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. |
+| `browser_extract_list` | Read the rows of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. It scrolls by setting the container's position, so a feed that loads more rows only on mouse-wheel input can stop early, and rows with the same text come back once; compare the count with what the page says. |
 
 ## Interaction - 14 tools
 
@@ -84,13 +84,13 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_solve_captcha` | Detect and attempt reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, or FunCaptcha - auto-click checkbox, then AI-vision-guided grid click, then human fallback for the rest. |
+| `browser_solve_captcha` | Detect reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile or FunCaptcha and take one step per call: click the reCAPTCHA checkbox and check again, or click the reCAPTCHA image-challenge cells the agent picks. Anything else needs you to solve it in the agent's tab. |
 
 ## Human-in-the-Loop - 1 tool
 
 | Tool | Description |
 |---|---|
-| `browser_ask_user` | Show an overlay asking the user to perform an action or provide input (credentials, 2FA, CAPTCHA, OAuth consent); returns their response. |
+| `browser_ask_user` | Show a dialog over the page asking the user for input or a decision (credentials, a 2FA code, OAuth consent); returns their answer. The dialog covers the page until they answer. |
 
 ## Frequently asked questions
 
@@ -104,7 +104,7 @@ That the action was sent and the effect could not be read back. It is not a fail
 Chrome accepts mouse and keyboard commands for a background tab and silently drops them. Since 1.29.2 the tools measure whether the page actually received the event, so you get an honest failure with the remedy - call `browser_switch_tab` - instead of a silent one.
 
 **Can a tool ask me something in the middle of a run?**
-Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a CAPTCHA, a choice only you can make - and carries on in the same tab.
+Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a choice only you can make - and carries on in the same tab. A CAPTCHA the agent cannot clear, it asks you in the chat to solve in its tab.
 
 ## Meta & Recovery - 3 tools
 
