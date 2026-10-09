@@ -35,7 +35,7 @@ const FORBUDT = [
   [14, /Twenty-one conversations|idle conversations do not consume|Yes - up to 20, each in its own colou?r-coded tab group/i, 'adskillelsen foelger MCP-serveren, ikke samtalen'],
   [15, /\(~?\d+ seconds\)/i, 'tidsloefter uden maaling'],
   [38, /Fresh by default|That is the whole difference/, 'Playwright MCP har en dedikeret profil som standard og en extension-mode'],
-  [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config/, 'Zed, opencode og Codex bruger hver sin noegle'],
+  [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config|For any other client, add this block/, 'Zed, opencode og Codex bruger hver sin noegle (PR63 R2 Astra: ogsaa Claude Code-guidens FAQ)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med

@@ -221,7 +221,7 @@ An MCP (Model Context Protocol) server that gives Claude Code - or any MCP clien
 Yes. MIT license, no account, no paid tier.
 
 **Does it only work with Claude Code, or also Cursor / VS Code?**
-Any MCP client that can run local stdio servers. `npx @agent360/browser-mcp install` registers the server with Claude Code, Codex, VS Code and Cursor if it finds them. For any other client, add this block to its MCP config (VS Code uses the root key `servers` instead of `mcpServers`; see the [VS Code guide](/docs/install-vscode/)):
+Any MCP client that can run local stdio servers. `npx @agent360/browser-mcp install` registers the server with Claude Code, Codex, VS Code and Cursor if it finds them. For another client, add the server in its own MCP settings. Clients that read the common `mcpServers` format take this block; others use their own format (VS Code, for one, uses the root key `servers`; see the [VS Code guide](/docs/install-vscode/)), so follow the client's own MCP guide:
 ```json
 {"mcpServers": {"browser-mcp": {"command": "npx", "args": ["@agent360/browser-mcp@latest"]}}}
 ```
