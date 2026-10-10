@@ -1162,3 +1162,22 @@ test('ved et skjult felt med to rolle-bokse som naboer (Base UI-boks foer, en an
   assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id, 'nyt');
 });
 
+// ── R78 (Astra, maalt i model) ─────────────────────────────────────────────
+test('flere labels for samme skjulte felt: rolle-boksene taelles i den label, boksen ligger i (R78)', () => {
+  for (const [ekstraFoerst, ekstraRolle, daekket] of [[true, true, true], [false, true, true], [true, false, false], [false, false, false]]) {
+    const d = lavKlikDom();
+    const ekstra = () => { const e = d.el('label', { id: 'ekstra', rect: [20, 100, 300, 30] }); d.el('span', { attrs: ekstraRolle ? { role: 'checkbox' } : {}, tekst: 'Ekstra', rect: [20, 100, 100, 30] }, e); return e; };
+    const e1 = ekstraFoerst ? ekstra() : null;
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 20, 30] }, l);
+    const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [40, 20, 1, 1] }, l);
+    if (ekstraRolle) d.el('span', { id: 'nyt', attrs: { role: 'switch', onclick: 'nyt()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+    else d.el('span', { id: 'tekst', tekst: 'Accepter', rect: [60, 20, 260, 30], lag: 1 }, l);
+    const e2 = ekstraFoerst ? null : ekstra();
+    felt.labels.push(...(ekstraFoerst ? [e1, l] : [l, e2])); l.control = felt; (e1 || e2).control = felt;
+    // Med en anden rolle-boks i den klikkede label er intet feltets egen; med kun stedfortraederen er den det.
+    const svar = d.koer(KILDE, '#l', null, null, false, false).svar;
+    assert.equal(!!svar.covered, daekket, `ekstraFoerst=${ekstraFoerst} andenBoks=${ekstraRolle}: ${JSON.stringify(svar)}`);
+  }
+});
+

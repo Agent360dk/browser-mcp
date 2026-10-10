@@ -2232,7 +2232,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     if (Math.abs(born.indexOf(n) - born.indexOf(felt)) !== 1) return false;
     // R78 (maalt i Chrome med rigtig Base UI 1.9.0): en anden switch kan ligge lige efter det skjulte input, mens den rigtige boks
     // ligger lige foer. Er der flere rolle-bokse i labelen, er stedfortraederen ikke entydig, og ingen af dem er feltets egen.
-    const lab = felt.labels && felt.labels[0];
+    // R78 (Astra, maalt i model): optaellingen skete i felt.labels[0], ogsaa naar boksen laa i en anden af feltets labels. Det er
+    // den label, der rummer boksen, der taeller.
+    const lab = Array.from(felt.labels || []).find((l) => inde(n, l)) || null;
     return !lab || !lab.querySelectorAll || Array.from(lab.querySelectorAll(FELTROLLE)).filter((k) => !k.matches(INTERAKTIV)).length === 1;
   };
   const egenBoks = (n, felt) => !!felt && (inde(n, felt) ||
