@@ -12,12 +12,12 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // Et feed i en indre rulle-container. Det henter `parti` nye raekker, naar et hjul rammer containeren taet paa bunden.
 // En scrollTop-rulning flytter listen, men henter intet - som paa Threads.
-function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, voksFoerRul = false, kunVedBund = false, skjult = false } = {}) {
+function feed({ start = 10, i_alt = 40, parti = 10, hentPaa = 'wheel', raekkeHoejde = 50, hoejde = 300, pladsholdere = 0, pladsHoejde = 100, voksFoerRul = false, kunVedBund = false, skjult = false } = {}) {
   const s = { tegnet: start, scrollTop: 0, hjul: 0, hjulUdenfor: 0, ekstra: 0, venter: 0 };
   // En langsom loader: de foerste `pladsholdere` gange laegger den kun hoejde ind (skeletter), saa kommer raekkerne.
   const hent = () => {
     if (s.tegnet >= i_alt) return;
-    if (s.venter < pladsholdere) { s.venter++; s.ekstra += 100; return; }
+    if (s.venter < pladsholdere) { s.venter++; s.ekstra += pladsHoejde; return; }
     s.venter = 0; s.ekstra = 0; s.tegnet = Math.min(i_alt, s.tegnet + parti);
   };
   const container = {
@@ -250,4 +250,14 @@ test('en selektor der ingen raekker finder, giver no-rows og ikke reached_end', 
   assert.equal(svar.reached_end, false);
   assert.equal(svar.error, 'no-rows');
   assert.match(svar.note, /matched no rows with text on the page/);
+});
+
+// Fuld mutantkoersel 10/10: begge vaekst-mutanter overlevede, fordi modellens liste altid flyttede sig i samme runde, som den
+// voksede. En feed, der kun henter paa et hjul, mens listen allerede staar paa bunden, vokser uden at flytte sig.
+test('en liste der kun henter ved bunden og vokser uden at flytte sig, er stadig i gang (stable_rounds 1)', async () => {
+  for (const pladsHoejde of [100, 2]) {
+    const f = feed({ pladsholdere: 2, kunVedBund: true, pladsHoejde });
+    const svar = await udtraek(sele(f), { stable_rounds: 1 });
+    assert.equal(svar.count, 40, `pladsHoejde ${pladsHoejde}: stoppede ved ${svar.count}`);
+  }
 });

@@ -688,7 +688,7 @@ test('et klikbart kort (role=button) med et link i midten er daekket af linket; 
 });
 
 test('et passivt kort med <a role=button onclick> eller <a href role=button> i midten er daekket; et rigtigt link er kortets eget (R67)', () => {
-  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '/ordre/7' }, false]]) {
+  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '/ordre/7', onclick: 'slet()' }, true], [{ href: '/ordre/7' }, false]]) {
     const d = lavKlikDom();
     const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
@@ -1255,5 +1255,17 @@ test('en tom offentlig labels-liste og indlejrede labels: boksene taelles i den 
     const andet = d.el('input', { id: 'andet', attrs: { type: 'checkbox' }, rect: [500, 20, 20, 20] });
     ydre.control = felt; felt.labels.push(ydre); indre.control = andet; andet.labels.push(indre);
     assert.equal(d.koer(KILDE, '#ydre', null, null, false, false).svar.covered?.id, 'boks', 'boks i en anden felts label');
+  }
+});
+
+// Fuld mutantkoersel 10/10: «javascript: uden rensning» overlevede - URL-parseren renser det samme senere. Rensningen goer dog
+// en forskel for, hvad der er et rent fragment: et styretegn foran # med <base> et andet sted skal stadig laeses mod siden selv.
+test('et passivt kort: et styretegn foran et fragment med <base> et andet sted er stadig en pladsholder (R71/R69)', () => {
+  for (const href of ['\u0001#!', '\t#!', ' \n#0']) {
+    const d = lavKlikDom();
+    d.document.baseURI = 'https://x.example/';
+    const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
+    d.el('a', { id: 'i', tekst: 'Slet', attrs: { href }, rect: [190, 60, 100, 40], lag: 1 }, kort);
+    assert.equal(d.koer(KILDE, '#kort', null, null, false, false).svar.covered?.id, 'i', JSON.stringify(href));
   }
 });
