@@ -1,6 +1,6 @@
 // KILDE: https://code.visualstudio.com/docs/agent-customization/mcp-servers + https://code.visualstudio.com/docs/agents/reference/mcp-configuration (hentet 19/9-2026, to uafhaengige research-koersler enige om at noeglen er `servers`). 74.604.637 installationer af GitHub Copilot paa VS Code Marketplace, hentet 19/9. ⚠️ 128-vaerktoejs-graensen staar KUN i deres issue-tracker, ikke i dokumentationen - derfor er den formuleret forsigtigt her. Fjern ikke forbeholdet.
 
-# Install Browser MCP for GitHub Copilot agent mode
+# Browser MCP for GitHub Copilot
 
 *Suggested URL: `/docs/install-copilot` · Suggested title tag: "Browser MCP for GitHub Copilot Agent Mode (VS Code, 2026)" · Suggested meta description: "Four steps. Copilot agent mode drives the Chrome you are already signed in to - your cookies, your sessions, your 2FA - instead of a fresh headless browser." · Last verified: September 19, 2026*
 

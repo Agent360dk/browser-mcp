@@ -1,6 +1,6 @@
 // KILDE: alle tal fra fakta-ark 2026-07-21 (GitHub REST API + npm downloads API + PyPI JSON + README-fetches) - hvert tal dateret i teksten. Verificeret af research-agent + spot-tjekket (181 dl/uge, 2025-04-24 tvilling-commit, 23 stars) samme dag.
 
-# Browser automation MCP servers, compared: Playwright MCP, Chrome DevTools MCP, Browser Use, and the two Browser MCPs
+# Browser MCP servers, compared
 
 *Suggested URL: `/compare/browser-automation-mcp-servers` · Suggested title tag: "Browser Automation MCP Servers Compared (2026): Playwright, Chrome DevTools, Browser Use, Browser MCP" · Suggested meta description: "Dated, sourced comparison of the five browser automation MCP servers: which browser each one actually drives, maintenance status, tool counts, and when to pick which." · Last verified: September 19, 2026*
 

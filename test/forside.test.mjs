@@ -103,7 +103,8 @@ test('de billeder siderne peger paa findes og har det maal der staar', () => {
 test('bevaegelse er til at slaa fra, ogsaa det usynlige fokusstop, og animerer ikke alt', () => {
   const reduce = html.match(/@media \(prefers-reduced-motion:reduce\)\{([^\n]*)\}/);
   assert.ok(reduce, 'reduced-motion-reglen mangler');
-  assert.match(reduce[1], /\.pause-input\{display:none\}/, 'pause-afkrydsningsfeltet skjules ikke: usynligt fokusstop');
+  // 9/10 (PR63 R1): med filmen er knappen synlig («Play»), saa feltet maa IKKE skjules - ellers kan tastaturet ikke starte filmen
+  assert.doesNotMatch(reduce[1], /\.pause-input\{display:none\}/, 'Play skal kunne naas med tastaturet under reduceret bevaegelse');
   assert.match(reduce[1], /animation:none!important/);
   assert.match(reduce[1], /transition:none!important/);
   assert.doesNotMatch(html, /transition\s*:\s*all\b/);
@@ -122,6 +123,7 @@ test('forsiden lover ikke det koden ikke goer (Astra 2/10)', () => {
   const t = synlig(html);
   for (const [m, hvorfor] of [
     [/current Chrome tab/i, 'agenten arbejder ikke i faner brugeren selv har aabnet; en frisk session screenshotter about:blank og fejler'],
+    [/works in the tabs you(?:’|')re already signed into/i, 'PR63 R1: agenten aabner sine EGNE faner (switch_tab/close_tab afviser fremmede)'],
     [/Gmail tab/i, 'samme: agenten aabner selv Gmail'],
     [/leftover state/i, '~/.browser-mcp/ kan indeholde feedback-log og udpakket udvidelse'],
     [/\bEvery chat\b/i, 'gruppen følger MCP-sessionen, ikke chatten'],
@@ -169,61 +171,90 @@ test('udgivelsens tool-sweep omskriver vores tal men lader konkurrentens stå (O
   assert.match(side, /<span class="check">41 tools<\/span>/, 'forsiden: vores celle opdateres ikke af sweepet');
 });
 
-// ---- Scenens start- og fallback-logik, kørt med sidens EGNE scripts mod en minimal falsk DOM og et falsk ur.
-// Astra R3 (2/10) fandt at en ubetinget 30 s-timer satte .still midt i en afspilning og gjorde Replay virkningsløs.
-function simulerSide({ reducedMotion = false, utenObserver = false, observerKaster = false, kunHoved = false } = {}) {
-  const sider = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-  const hoved = sider.find((s) => s.includes("'hold'") && s.includes('IntersectionObserver'));
-  const bund = sider[sider.length - 1];
-  assert.ok(hoved && bund && hoved !== bund, 'kunne ikke finde sidens to inline-scripts');
-  const klasseSaet = () => { const k = new Set(); return { k, classList: { add: (...c) => c.forEach((x) => k.add(x)), remove: (...c) => c.forEach((x) => k.delete(x)), contains: (c) => k.has(c) } }; };
-  const rod = klasseSaet(), vindue = klasseSaet(), pause = { checked: true };
-  let replayKlik = null; const replay = { addEventListener: (_, f) => { replayKlik = f; } };
-  vindue.offsetWidth = 0; vindue.classList.add('run');
-  const timere = new Map(); let nu = 0, nr = 0;
-  const setTimeout_ = (f, ms) => { timere.set(++nr, { f, at: nu + ms }); return nr; };
-  const clearTimeout_ = (i) => { timere.delete(i); };
-  const gaaFrem = (ms) => { nu += ms; for (const [i, t] of [...timere]) if (t.at <= nu) { timere.delete(i); t.f(); } };
-  let observer = null;
-  class IO { constructor(cb, opt) { if (observerKaster) throw new Error('IO kan ikke oprettes'); this.cb = cb; this.opt = opt; this.frakoblet = false; observer = this; } observe() {} disconnect() { this.frakoblet = true; } }
-  const win = { bmcpHold: undefined }; if (!utenObserver) win.IntersectionObserver = IO;
-  const doc = { documentElement: rod, querySelectorAll: () => [], getElementById: (id) => ({ win: vindue, replay, pause }[id]) };
-  const kor = (kode) => new Function('document', 'window', 'matchMedia', 'IntersectionObserver', 'setTimeout', 'clearTimeout', 'navigator', kode)(doc, win, () => ({ matches: reducedMotion }), IO, setTimeout_, clearTimeout_, {});
-  kor(hoved);
-  if (!kunHoved) kor(bund);
-  return { rod, vindue, pause, timere, gaaFrem, get observer() { return observer; }, replay: () => replayKlik(), win };
+// ---- Heroens film (8/10-2026): afløste den tegnede CSS-scene og dens start/fallback-logik. Proeverne koerer
+// sidens EGET bundscript mod en falsk video, saa en aendring der faar filmen til at spille under «reduceret
+// bevaegelse», eller en Pause-knap der ikke stopper den, bliver roed.
+function simulerFilm({ reduceret = false, afvis = false, smal = false } = {}) {
+  const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
+  let spiller = false, kald = 0;
+  const video = { src: '/film-v2.mp4', poster: '/film-v2.jpg', play: () => { kald++; if (afvis) return Promise.reject(new Error('nej')); spiller = true; return Promise.resolve(); }, pause: () => { spiller = false; } };
+  let skift = null; const pause = { checked: false, addEventListener: (_, f) => { skift = f; } }, lbl = { textContent: 'Pause' };
+  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], getElementById: (id) => ({ filmv: video, pause, pauselbl: lbl }[id]) };
+  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, (q) => ({ matches: /reduce/.test(q) ? reduceret : smal }), {});
+  return { get spiller() { return spiller; }, get kald() { return kald; }, pause, lbl, video, tryk: (v) => { pause.checked = v; skift(); } };
 }
 
-test('scenen: observeren styrer starten, og fallbacken fryser aldrig en scene der spiller', () => {
-  const s = simulerSide();
-  assert.ok(s.rod.k.has('hold') && s.rod.k.has('js'));
-  assert.equal(s.timere.size, 0, 'fallback-timeren skal annulleres naar observeren er sat op');
-  assert.equal(s.observer.opt.threshold, 0.4);
-  s.observer.cb([{ isIntersecting: true, intersectionRatio: 0.01 }]);
-  assert.ok(s.rod.k.has('hold'), '1 % synlig maa ikke starte scenen');
-  s.observer.cb([{ isIntersecting: true, intersectionRatio: 0.45 }]);
-  assert.ok(!s.rod.k.has('hold') && s.observer.frakoblet, '45 % synlig starter scenen');
-  s.gaaFrem(120000);
-  assert.ok(!s.rod.k.has('still'), 'efter 2 minutter maa scenen ikke staa i .still');
-  s.replay();
-  assert.ok(s.vindue.k.has('run') && !s.rod.k.has('hold') && !s.rod.k.has('still'), 'Replay skal virke');
-  assert.equal(s.pause.checked, false, 'Replay slaar pausen fra');
+test('filmen: spiller uden reduceret bevaegelse, og Pause/Play styrer den', () => {
+  const f = simulerFilm();
+  assert.ok(f.spiller && f.kald === 1, 'filmen skal starte');
+  f.tryk(true); assert.ok(!f.spiller, 'Pause skal stoppe filmen'); assert.equal(f.lbl.textContent, 'Play');
+  f.tryk(false); assert.ok(f.spiller, 'Play skal starte den igen'); assert.equal(f.lbl.textContent, 'Pause');
 });
 
-test('scenen: hvis bundscriptet aldrig koerer, viser fallbacken den faerdige scene efter 5 s', () => {
-  const s = simulerSide({ kunHoved: true });
-  assert.ok(s.rod.k.has('hold'));
-  s.gaaFrem(4900); assert.ok(s.rod.k.has('hold') && !s.rod.k.has('still'));
-  s.gaaFrem(200); assert.ok(!s.rod.k.has('hold') && s.rod.k.has('still'));
+test('filmen: spiller ikke under reduceret bevaegelse, og en afvist afspilning viser Play', async () => {
+  const r = simulerFilm({ reduceret: true });
+  assert.ok(!r.spiller && r.kald === 0 && r.pause.checked, 'reduceret bevaegelse maa ikke starte filmen');
+  assert.equal(r.lbl.textContent, 'Play');
+  const a = simulerFilm({ afvis: true }); await new Promise((ok) => setTimeout(ok, 0));
+  assert.ok(a.pause.checked && a.lbl.textContent === 'Play', 'en afvist play() skal vise Play, ikke en Pause der intet goer');
 });
 
-test('scenen: observer der kaster giver sluttilstanden straks, og reduceret bevaegelse / manglende observer holder ikke scenen tilbage', () => {
-  const k = simulerSide({ observerKaster: true });
-  assert.ok(!k.rod.k.has('hold') && k.rod.k.has('still') && k.timere.size === 0);
-  k.replay();
-  assert.ok(!k.rod.k.has('still') && k.vindue.k.has('run'), 'Replay skal rydde .still, ellers er knappen doed efter en fejl');
-  assert.ok(!simulerSide({ reducedMotion: true }).rod.k.has('hold'));
-  assert.ok(!simulerSide({ utenObserver: true }).rod.k.has('hold'));
+test('filmen: en smal skaerm faar 4:5-klippet, en bred beholder 16:10, og brudpunktet er det samme som i CSS', () => {
+  const s = simulerFilm({ smal: true }), b = simulerFilm();
+  assert.equal(s.video.src, '/film-v2-mobil.mp4'); assert.equal(s.video.poster, '/film-v2-mobil.jpg');
+  assert.equal(b.video.src, '/film-v2.mp4'); assert.equal(b.video.poster, '/film-v2.jpg');
+  assert.ok(s.spiller, 'klippet skal ogsaa spille');
+  assert.match(html, /@media \(max-width:37\.5rem\)\{\.hero \.film video\{aspect-ratio:4\/5\}\}/, 'CSS-rammen skal skifte til 4:5 ved samme brudpunkt');
+  assert.ok(html.includes("matchMedia('(max-width:37.5rem)')"), 'scriptet skal bruge samme brudpunkt');
+  const mp4 = statSync(join(rod, 'docs/film-v2-mobil.mp4')).size, jpg = statSync(join(rod, 'docs/film-v2-mobil.jpg')).size;
+  assert.ok(mp4 > 10_000 && mp4 < 3_000_000, `film-v2-mobil.mp4 er ${mp4} byte`);
+  assert.ok(jpg > 5_000 && jpg < 300_000, `film-v2-mobil.jpg er ${jpg} byte`);
+});
+
+test('filmen: tavs, i loop, inline, uden autoplay-attribut, og filerne findes i fornuftig stoerrelse', () => {
+  const v = html.match(/<video[^>]*>/)[0];
+  for (const a of ['muted', 'loop', 'playsinline', 'poster="/film-v2.jpg"', 'src="/film-v2.mp4"', 'aria-label="']) assert.ok(v.includes(a), `video mangler ${a}`);
+  assert.doesNotMatch(v, /\bautoplay\b/, 'autoplay-attributten ville spille trods reduceret bevaegelse');
+  const mp4 = statSync(join(rod, 'docs/film-v2.mp4')).size, jpg = statSync(join(rod, 'docs/film-v2.jpg')).size;
+  assert.ok(mp4 > 10_000 && mp4 < 3_000_000, `film-v2.mp4 er ${mp4} byte`);
+  assert.ok(jpg > 5_000 && jpg < 300_000, `film-v2.jpg er ${jpg} byte`);
+});
+
+// ---- Toppen 9/10-2026 (Gustav: «forstå direkte hvad det er», flest installationer). Begge trin staar i heroen;
+// en telefon kan ikke installere en Chrome-udvidelse, saa den faar «send linket til din computer» og GitHub-stjernen.
+function simulerSend({ share = true } = {}) {
+  const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
+  let klik = null; const knap = { hidden: true, textContent: 'Send the link to my computer', addEventListener: (_, f) => { klik = f; } };
+  const delt = [], kopieret = [];
+  const nav = share ? { share: (d) => { delt.push(d); return Promise.resolve(); } } : { clipboard: { writeText: (t) => { kopieret.push(t); return Promise.resolve(); } } };
+  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: (sel) => (sel === '.sendlink' ? [knap] : []), querySelector: () => null, getElementById: () => null };
+  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, {}, () => ({ matches: false }), nav);
+  return { knap, klik: () => klik && klik(), delt, kopieret };
+}
+
+test('toppen: «send linket» deler browsermcp.dev, og uden deling kopieres adressen', async () => {
+  const a = simulerSend();
+  assert.equal(a.knap.hidden, false, 'knappen skal vises, naar scriptet koerer');
+  a.klik(); assert.deepEqual(a.delt.map((d) => d.url), ['https://browsermcp.dev/']);
+  const b = simulerSend({ share: false });
+  b.klik(); await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(b.kopieret, ['https://browsermcp.dev/']);
+  assert.match(b.knap.textContent, /Link copied/);
+});
+
+test('toppen: begge trin i heroen paa en computer; paa en beroeringsskaerm i stedet telefonkortet uden butiksknap', () => {
+  const hero = html.slice(html.indexOf('<section class="hero">'), html.indexOf('<figure class="film"'));
+  assert.match(hero, /<div class="inst kun-pc" id="install-hero">[\s\S]*chromewebstore\.google\.com[\s\S]*id="c1"/, 'trin 1 og trin 2 skal staa foer filmen');
+  assert.ok(html.includes('@media (hover:none) and (pointer:coarse){.kun-pc{display:none!important}.kun-tlf{display:block}.top .nav a.navcta{display:none}}'), 'beroeringsskaerm: skjul alt kun-pc og topbjaelkens butiksknap, vis telefonkortene');
+  // hvert afsnit med en butiksknap har den inde i kun-pc og har et telefonkort med send-knap og GitHub
+  const afsnit = html.split(/<section /).slice(1).filter((a) => /class="btn pri" href="https:\/\/chromewebstore/.test(a));
+  assert.equal(afsnit.length, 3, 'hero, Install og bundbaandet');
+  for (const a of afsnit) {
+    const knap = a.search(/class="btn pri" href="https:\/\/chromewebstore/), pc = a.lastIndexOf('kun-pc', knap);
+    assert.ok(pc > -1, 'butiksknappen skal ligge inde i et kun-pc-element: ' + a.slice(0, 40));
+    assert.match(a, /class="paa-tlf kun-tlf"[\s\S]*class="btn pri sendlink"[\s\S]*github\.com\/Agent360dk\/browser-mcp/, 'telefonkort mangler: ' + a.slice(0, 40));
+  }
+  assert.match(html, /<h1>Let your AI agent use your real Chrome\.<\/h1>/);
 });
 
 // 1.30.2 skive 19 (Opus R38): manifestets beskrivelse sagde «carries on in the tab you were already signed into» - kan
@@ -278,7 +309,7 @@ test('css og js hentes kun i den kanoniske form med en noegle, der passer til fi
       assert.equal(n, v[endelse], `${s}: docs.${endelse} hentes med en foraeldet noegle (${n}) - koer scripts/generate-docs.py`);
     }
   }
-  assert.equal(set, 82, `${set} kanoniske henvisninger - 42 sider henter css og 40 js; et andet tal betyder at noget er faldet ud`);
+  assert.equal(set, 86, `${set} kanoniske henvisninger - 44 sider henter css og 42 js; et andet tal betyder at noget er faldet ud`);
 });
 
 // Vagten maa ikke kunne snydes af de former, der slap igennem R58-R60. Hver skal give en omtale.
@@ -397,7 +428,7 @@ test('hele generatoren: nyt asset giver ny noegle paa hver henvisning, og sitema
         `${s}: henvisningerne efter generering er ikke de samme som foer med de nye noegler`);
       set += h.kanon.length;
     }
-    assert.equal(set, 82);
+    assert.equal(set, 86);
     const idag = execFileSync('python3', ['-c', 'import datetime; print(datetime.date.today().isoformat())'], { encoding: 'utf8' }).trim();
     assert.match(readFileSync(join(tmp, 'docs/sitemap.xml'), 'utf8'),
       new RegExp(`privacy\\.html</loc><lastmod>${idag}</lastmod>`), 'sitemappet saa ikke privacy-sidens nye dato i samme koersel');

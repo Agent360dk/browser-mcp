@@ -1,6 +1,6 @@
 // KILDE: egne dogfooding-fund - reliability-audit 2026-07-02 (FIX-1/2/4/5/13/17, staged til næste release), controlled-form-audit 2026-07-08 (R1-R4, rapport-fase), debugger-detach-quirk (kendt siden maj, memory + NOTES 2026-06-29), "extension not connected"-recovery = live-oplevet 2026-07-21 i denne chat. Gustav-godkendt at buggene offentliggøres (21/7). Versions-status: opdateret til v1.25.0 (24/7) - BEGGE halvdele af controlled-input-problemet nu fikset og live-verificeret på MUI (3/3 tests). Bonus-fund undervejs: opdigtede CDP key-codes (Key@ / Key.) var formentlig den største årsag, ikke per-tegn-skrivningen i sig selv.
 
-# Browser MCP troubleshooting: the real bugs we found dogfooding it
+# Troubleshooting: the real bugs
 
 *Suggested URL: `/docs/troubleshooting` · Suggested title tag: "Browser MCP Troubleshooting: Real Bugs, Real Fixes (2026)" · Suggested meta description: "Extension stuck on 'not connected'? You are probably missing the MCP server half - plus the real bugs we found dogfooding Browser MCP: debugger detach, React forms appending text, stale-server reconnects." · Last verified: July 21, 2026*
 

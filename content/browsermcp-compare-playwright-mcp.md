@@ -1,6 +1,6 @@
 // KILDE: alle tal genmålt 2026-09-19 (npm downloads-API, GitHub repos-API, microsoft/playwright-mcp README rå-fetch, microsoft/playwright packages/extension README rå-fetch). Playwright-tool-tal 72 (var 73 foer genoptaellingen 2026-09-19) = optalt som unikke browser_*-navne i deres README. ⚠️ RETTET 19/9: siden hævdede indtil i dag at Playwright MCP altid starter logget ud. Det er falsk - deres Chrome-udvidelse bruger din egen indloggede browser og giver hver klient sin egen farvede fanegruppe. Skriv aldrig en række her uden at have læst deres nuværende README samme dag.
 
-# Browser MCP vs Playwright MCP: when you need a real, logged-in browser
+# Browser MCP vs Playwright MCP
 
 *Suggested URL: `/compare/playwright-mcp` · Suggested title tag: "Browser MCP vs Playwright MCP (2026): Which One Can Ask You For The Code?" · Suggested meta description: "An honest comparison, corrected September 2026: Playwright MCP wins CI, scale and tool breadth, and it now drives your logged-in Chrome too. One difference is left, and it is measured." · Last verified: September 19, 2026*
 

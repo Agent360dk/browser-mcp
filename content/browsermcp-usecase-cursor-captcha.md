@@ -1,6 +1,6 @@
 // KILDE: browser_solve_captcha laest i extension/background.js + mcp-server/tools.js 19/9-2026. ⚠️ Vi udgiver INGEN loesnings-procent - den er aldrig maalt ordentligt, og et tal uden en maaling bag er praecis det vi brugte 19/9 paa at fjerne fra ni sider. Skriv aldrig et her.
 
-# Cursor and CAPTCHAs: your agent tries, and you solve what it cannot
+# Cursor meets a CAPTCHA
 
 *Suggested URL: `/use-cases/cursor-captcha` · Suggested title tag: "Cursor + CAPTCHA (2026): You Solve What The Agent Cannot" · Suggested meta description: "Cursor hits a CAPTCHA and the run dies. With Browser MCP the agent can try the reCAPTCHA checkbox, and ask you to solve the rest in the same tab before it carries on." · Last verified: September 19, 2026*
 

@@ -1,6 +1,6 @@
 // KILDE: alle tal selv-verificeret via GitHub API + npm downloads API 2026-07-22 (IKKE fra subagent): mcp-chrome 12.197★/223 åbne issues/sidste push 2026-01-06 · mcp-chrome-bridge 1.037 dl/uge · vores 204 dl/uge · 23★. Bevidst fair: mcp-chrome er større end os og det siges rent ud. Ingen feature-påstande om deres projekt jeg ikke har verificeret.
 
-# Browser MCP vs mcp-chrome: two extensions, one difference that matters
+# Browser MCP vs mcp-chrome
 
 *Suggested URL: `/compare/mcp-chrome` · Suggested title tag: "Browser MCP vs mcp-chrome (2026): Is mcp-chrome Still Maintained?" · Suggested meta description: "Both drive your real Chrome through an extension. A dated, sourced comparison of size, activity and support - including the maintenance question nobody has answered in English." · Last verified: July 22, 2026*
 

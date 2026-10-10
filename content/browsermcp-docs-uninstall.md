@@ -1,6 +1,6 @@
 // KILDE: permissions verbatim fra extension/manifest.json (tabs, tabGroups, cookies, scripting, activeTab, storage, alarms, offscreen, notifications, webNavigation, debugger + host_permissions <all_urls>). "100% local" fra README (verificeret 2026-07-21; "nothing leaves your machine" trukket tilbage 10/9 - agenten sender det den laeser videre til AI-klienten). Uninstall-trin fra CWS + npm standard.
 
-# Uninstalling Browser MCP - and exactly what data it touches
+# Uninstall, and what it touches
 
 *Suggested URL: `/docs/uninstall` · Suggested title tag: "Uninstall Browser MCP + Exactly What Data It Touches (2026)" · Suggested meta description: "How to fully remove Browser MCP, every Chrome permission it requests and why, and the one thing that matters most: nothing is sent to Agent360." · Last verified: July 21, 2026*
 

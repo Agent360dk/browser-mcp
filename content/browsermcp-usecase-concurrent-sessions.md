@@ -1,6 +1,6 @@
 // KILDE: grounded i README ("up to 20 concurrent", "Multi-session color-coded tab groups") + extension chrome.tabGroups.update + tools browser_list_tabs/get_new_tab/switch_tab (verificeret). INGEN performance-tal - ren walkthrough.
 
-# Running several AI agent sessions in one Chrome - without them colliding
+# Several agents, one Chrome
 
 *Suggested URL: `/use-cases/concurrent-sessions` · Suggested title tag: "Run Multiple AI Agent Sessions in One Chrome (Browser MCP)" · Suggested meta description: "How Browser MCP keeps several concurrent agent sessions isolated inside a single Chrome - up to 20, each in its own color-coded tab group, none able to see the others' tabs." · Last verified: July 22, 2026*
 

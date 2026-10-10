@@ -1,4 +1,4 @@
-# What Browser MCP can and cannot get past
+# What it can and can’t get past
 
 **Short answer:** most of the walls that stop browser automation exist because the tool is a
 stranger - a fresh browser with none of your sessions. Browser MCP is not a stranger, so those

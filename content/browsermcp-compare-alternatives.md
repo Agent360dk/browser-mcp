@@ -1,6 +1,6 @@
 // KILDE: alle tal MAALT 19-20/9-2026, samme minut for alle projekter: api.npmjs.org (ugentlige hentninger + 90-dages dagsserie), GitHub-API (stjerner, sidste push, aabne issues), npm-registret (udgivelsesdatoer). ⚠️ Siden findes fordi en soegning paa VORES eget pitch 19/9 gav ni resultater uden os. ⚠️ Hentninger er IKKE brugere - npm skelner ikke menneske fra CI, og en udgivelsesdag oppuster ethvert projekts tal, ogsaa vores. Det skal blive staaende paa siden. ⚠️ Opdater naar `konkurrent-vagt.py` bliver roed.
 
-# Browser MCP alternatives: the five that exist, measured
+# Browser MCP alternatives, measured
 
 *Suggested URL: `/compare/browser-mcp-alternatives` · Suggested title tag: "Browser MCP Alternatives (2026): Five Options, Measured" · Suggested meta description: "Looking for an alternative to Browser MCP? Five real options with downloads, maintenance status and what each one costs you - including where ours loses." · Last verified: September 20, 2026*
 
@@ -62,7 +62,7 @@ It cannot be fixed by configuration, and it will not be fixed there.
 
 ## Where ours wins, and where it loses
 
-**Wins:** the connection lives in an offscreen document rather than the service worker, so the eviction failure above does not occur. And when a step genuinely needs a person - a 2FA code, a CAPTCHA, a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab. We could not find another MCP server in this group with a tool that does that.
+**Wins:** the connection lives in an offscreen document rather than the service worker, so the eviction failure above does not occur. And when a step genuinely needs a person - a 2FA code or a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab. A CAPTCHA it cannot clear, the agent asks you to solve. If its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent. We could not find another MCP server in this group with a tool that does that.
 
 **Lost, then retracted:** on 19 September we reported a miss on a framework-controlled `<select>`. The fault was our own test page, not React; 1.30.0 lands the choice on real React. Method, raw results and the retraction: [/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), where we also publish the nine cases our own tools got wrong before we fixed them.
 
