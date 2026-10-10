@@ -2450,9 +2450,11 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // R77: en handling, der rummer labelens felt (og ikke er feltets egen boks - den er sprunget over), er en anden kontrol,
     // ogsaa naar den er en forfader til maalet; en knap om en tekst, der ikke rummer feltet, er stadig tekstens ramme.
     const omFeltet = !!hitKontrol && iEgenLabel && !!labelFelt && inde(labelFelt, hitKontrol) && hitKontrol.tagName !== 'LABEL';
-    const egenKontrol = !hitKontrol || hitKontrol === ramme || (inde(el, hitKontrol) && !omFeltet) || hitKontrol === el.control ||
+    // R78 (Opus, maalt i Chrome): med feltet som maal var en handling om feltet i labelen selve rammen (hitKontrol === ramme), og den
+    // blev godtaget, foer omFeltet blev proevet. En handling om labelens felt er en anden kontrol, ogsaa naar den er rammen.
+    const egenKontrol = !omFeltet && (!hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
       egenBoks(hitKontrol, el.control) ||
-      Array.from(el.labels || []).includes(hitKontrol);
+      Array.from(el.labels || []).includes(hitKontrol));
     const andenKontrol = !egenKontrol;
     if (ramme && (!elKontrol || ramme.tagName === 'LABEL') && inde(hit, ramme) && !andenKontrol && (semantisk || inde(el, hit))) return null;
     for (const l of Array.from(el.labels || [])) if (inde(hit, l) && !andenKontrol) return null;

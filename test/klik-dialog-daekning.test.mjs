@@ -230,7 +230,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : 'the rest of the presses and clicks are stopped \\(a release the page moves elsewhere is let through\\), and the answer';
     assert.match(d, new RegExp(`If the mouse would not reach the target at its center - another element lies in front of it \\(an overlay, a dialog\\\\'s backdrop\\),[^"]* - the answer is ok:false with error "covered" and covered_by\\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, ${hale} also has maybe_landed: true, because the page may already have reacted\\.(?! In the active tab the mouse)`), `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
-    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it\)/, navn);
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in its label, which counts as that field\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
@@ -1178,6 +1178,19 @@ test('flere labels for samme skjulte felt: rolle-boksene taelles i den label, bo
     // Med en anden rolle-boks i den klikkede label er intet feltets egen; med kun stedfortraederen er den det.
     const svar = d.koer(KILDE, '#l', null, null, false, false).svar;
     assert.equal(!!svar.covered, daekket, `ekstraFoerst=${ekstraFoerst} andenBoks=${ekstraRolle}: ${JSON.stringify(svar)}`);
+  }
+});
+
+// ── R78 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('feltet som maal med en handling om feltet i dets label (div role=button eller onclick) er daekket af handlingen (R78)', () => {
+  for (const attrs of [{ role: 'button' }, { onclick: 'aabn()' }]) {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 600, 40] });
+    const raekke = d.el('div', { id: 'raekke', attrs, rect: [20, 20, 600, 40] }, l);
+    const felt = d.el('input', { id: 'cb', attrs: { type: 'checkbox' }, rect: [20, 20, 600, 40] }, raekke);   // udspaendt, gennemsigtigt
+    felt.labels.push(l); l.control = felt;
+    d.el('span', { id: 'tekst', tekst: 'Ordre 7', rect: [20, 20, 600, 40], lag: 1 }, raekke);
+    assert.equal(d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id === 'tekst' || d.koer(KILDE, '#cb', null, null, false, false).svar.covered?.id === 'raekke', true, JSON.stringify(attrs));
   }
 });
 
