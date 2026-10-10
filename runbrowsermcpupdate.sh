@@ -36,7 +36,7 @@
 #   --cws-draft       Upload to CWS but leave as draft (no auto-submit for review)
 #   --allow-dirty     Proceed even if the working tree has unrelated changes
 #
-# One-time setup for the publish channels: docs/CWS_PUBLISH_SETUP.md  +  `npm login`
+# One-time setup for the publish channels: noter/CWS_PUBLISH_SETUP.md  +  `npm login`
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -419,7 +419,7 @@ fi
 if [[ "$SKIP_CWS" == 0 ]]; then
   # 24/9: paa GitHub kommer butikkens vaerdier fra miljoeet «udgivelse» som hemmeligheder, ikke fra
   # en .env-fil. Reglen er den samme - alle fem SKAL vaere der - kun kilden er en anden.
-  if [[ ! -f .env && "${GITHUB_ACTIONS:-}" != "true" ]]; then gate ".env missing (CWS secrets) - see docs/CWS_PUBLISH_SETUP.md, or --skip-cws"
+  if [[ ! -f .env && "${GITHUB_ACTIONS:-}" != "true" ]]; then gate ".env missing (CWS secrets) - see noter/CWS_PUBLISH_SETUP.md, or --skip-cws"
   else
     # .env already sourced early (top of file); just verify the required vars.
     CWS_MISSING=""
@@ -427,7 +427,7 @@ if [[ "$SKIP_CWS" == 0 ]]; then
     for v in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN CWS_EXTENSION_ID CWS_PUBLISHER_ID; do
       [[ -n "${!v:-}" ]] || CWS_MISSING="$CWS_MISSING $v"
     done
-    if [[ -n "$CWS_MISSING" ]]; then gate "CWS secrets missing in .env:$CWS_MISSING - see docs/CWS_PUBLISH_SETUP.md"
+    if [[ -n "$CWS_MISSING" ]]; then gate "CWS secrets missing in .env:$CWS_MISSING - see noter/CWS_PUBLISH_SETUP.md"
     elif [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then ok "CWS secrets present (GitHub-miljoeet «udgivelse»)"
     else ok "CWS secrets present in .env"; fi
   fi

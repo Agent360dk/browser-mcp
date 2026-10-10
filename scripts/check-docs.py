@@ -316,7 +316,7 @@ def _ver(t):
     return tuple(d)
 
 for doc in ['WISHLIST.md', 'README.md', 'CHANGELOG.md', 'llms-install.md',
-            os.path.join('docs', 'CWS_LISTING_TEXT.md')]:
+            os.path.join('noter', 'CWS_LISTING_TEXT.md')]:
     sti = os.path.join(ROOT, doc)
     if not os.path.exists(sti):
         continue

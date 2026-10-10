@@ -7,6 +7,32 @@
 import re, html, os, json, datetime, pathlib, subprocess
 
 REPO=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','docs')+os.sep  # site root (build output)
+
+# 1.30.2 skive 13 (D3): css/js havde ingen cachenoegle - Cloudflare holder dem i 10 min, og en browser kan holde
+# dem laengere, saa en aendret docs.css kunne mode en side, der forventede den gamle. Noeglen er de foerste 8 tegn af
+# filens sha256, saa den skifter praecis naar filen gor, og en regenerering er deterministisk.
+import hashlib
+def _noegle(navn):
+    return hashlib.sha256(open(os.path.join(REPO, 'assets', navn), 'rb').read()).hexdigest()[:8]
+CSS_V = _noegle('docs.css')
+JS_V = _noegle('docs.js')
+
+# De haandskrevne sider (privacy, 404) faar samme noegle, saa de ikke halter efter de genererede. R56 (Astra, MAALT):
+# det skal ske FOER sitemappet beregnes - ellers saa sitemappet foerst privacy-sidens nye dato ved naeste koersel, og en
+# CSS-aendring kraevede to genereringer. Enhver noegle og begge slags anfoerselstegn erstattes (R56: '...' og ?v=old slap).
+# R56b/R58 (Astra, MAALT): at fortolke alle taenkelige URL-former (relative, entiteter, <base href>, vaert med store
+# bogstaver, :443, fragmenter) blev et voksende maskineri for to haandskrevne sider. I stedet er der EN kanonisk form,
+# href="/assets/docs.css?v=<noegle>" (og src= for js). Generatoren retter kun den; test/forside.test.mjs afviser enhver
+# anden omtale af de to filer i docs/, saa en afvigende form stopper bygget i stedet for at blive gaettet.
+_KANON = re.compile(r'(?<![\w-])((?:href|src)=")/assets/docs\.(css|js)(?:\?v=[0-9A-Za-z]*)?"')
+def _saet_noegle(t):
+    return _KANON.sub(lambda m: '%s/assets/docs.%s?v=%s"' % (m.group(1), m.group(2), CSS_V if m.group(2) == 'css' else JS_V), t)
+for _haand in ('privacy.html', '404.html'):
+    _sti = REPO + _haand
+    _t = open(_sti, encoding='utf-8').read()
+    _ny = _saet_noegle(_t)
+    if _ny != _t:
+        open(_sti, 'w', encoding='utf-8').write(_ny)
 DRAFTS=os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','content')+os.sep  # markdown sources
 OG='https://browsermcp.dev/og-image.jpg'
 PAGES=[
@@ -288,7 +314,7 @@ def head(title, desc, url):
       '<meta name="twitter:description" content="%s">'%d,'<meta name="twitter:image" content="%s">'%OG,
       '<meta name="color-scheme" content="light dark">',
       '<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">',
-      '<link rel="stylesheet" href="/assets/docs.css">']
+      '<link rel="stylesheet" href="/assets/docs.css?v=%s">' % CSS_V]
     return '\n'.join(h)
 
 # Datoer til TechArticle og sitemap udledes af kildefilens historik. Uden dem skrev
@@ -513,7 +539,7 @@ for fn,grp,label,url in LIVE:
     # 2/10-2026: samme header som den nye forside (rigtigt logo, skip-link, <main id>, navigation med aria-label).
     page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star opt" href="https://github.com/Agent360dk/browser-mcp">GitHub</a><a class="navcta" href="'+CWS_URL+'" target="_blank" rel="noopener">Add to Chrome</a></nav></div></header>'
     page+='<div class="shell"><main class="content" id="main">'+body+(installer() if url.startswith('/use-cases/') else '')+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
-    page+='<script src="/assets/docs.js"></script></body></html>'
+    page+='<script src="/assets/docs.js?v=%s"></script></body></html>' % JS_V
     disk=REPO+url.strip('/')+'/index.html'
     os.makedirs(os.path.dirname(disk),exist_ok=True)
     open(disk,'w').write(page)

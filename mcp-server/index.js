@@ -74,12 +74,51 @@ function cmpVersion(a, b) {
   return 0;
 }
 
+// #58 (1.30.2): Web Store-udvidelsen har SAMME id i alle Chrome-profiler og browsere. distinctExtensions() grupperer paa id,
+// saa tre profiler talte som én, og ingen advarsel kom - mens kommandoerne gik til én af dem, og hvilken profil det var,
+// skiftede naar de andre genindlaeste. Serveren kan ikke se hvilken profil en forbindelse kommer fra, kun hvor mange der er
+// aabne, saa det er det advarslen siger.
+function forbindelsesAdvarsel() {
+  const live = liveConnections();
+  if (live.length < 2) return null;
+  const prId = new Map();
+  for (const c of live) if (c.extensionId) prId.set(c.extensionId, (prId.get(c.extensionId) || 0) + 1);
+  const dubletter = [...prId].filter(([, n]) => n > 1);
+  if (!dubletter.length) return null;   // forskellige udvidelser: dem daekker advarOmKonflikt og provide_feedback
+  return `${live.length} Browser MCP extension connections are open to this server, ` +
+    dubletter.map(([id, n]) => `${n} of them from the same extension (${id})`).join(' and ') +
+    '. That means the same extension is connected more than once, for instance from several Chrome profiles or browsers. ' +
+    'Every command goes to one of them, and ' +
+    'this server cannot tell which profile that is. To drive a chosen profile, keep the extension enabled in that profile only.';
+}
+
+// Det agenten ser: stderr naar ingen agent. Advarslen lægges i det naeste vaerktoejssvar, én gang pr. aendring.
+let sidsteVisteForbindelsesAdvarsel = '';
+let forbindelseSkiftet = false;
+function medForbindelsesNote(svar) {
+  if (forbindelseSkiftet && liveConnections().length) {
+    forbindelseSkiftet = false;
+    svar.content.push({ type: 'text', text: '\n⚠️ The extension connection this server was driving has closed, and commands now ' +
+      'go to another one - possibly another Chrome profile or browser. Tabs opened before are not in it.' });
+  }
+  const a = forbindelsesAdvarsel();
+  if (!a) { sidsteVisteForbindelsesAdvarsel = ''; return svar; }
+  if (a === sidsteVisteForbindelsesAdvarsel) return svar;
+  sidsteVisteForbindelsesAdvarsel = a;
+  svar.content.push({ type: 'text', text: '\n⚠️ ' + a });
+  return svar;
+}
+
 let sidsteKonfliktNoegle = '';
+let sidsteProfilAdvarsel = '';
 function advarOmKonflikt(conn) {
+  const profiler = forbindelsesAdvarsel();
+  if (profiler && profiler !== sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
+  sidsteProfilAdvarsel = profiler || '';
   const alle = distinctExtensions();
   if (alle.length < 2) return;
   // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
-  const noegle = alle.map(c => `${c.extensionId || 'ukendt'}@${c.version || '?'}`).sort().join('|');
+  const noegle = alle.map(c => `${c.extensionId || 'unknown'}@${c.version || '?'}`).sort().join('|');
   if (noegle === sidsteKonfliktNoegle) return;
   sidsteKonfliktNoegle = noegle;
   const aktiv = activeConnection();
@@ -89,7 +128,7 @@ function advarOmKonflikt(conn) {
   const kanVaelge = alle.some(c => c.version);
   process.stderr.write(
     `[MCP] WARNING: ${alle.length} Browser MCP extensions are connected to this server at the same time ` +
-    `(${alle.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
+    `(${alle.map(c => `${c.extensionId || 'unknown id'}${c.version ? ' v' + c.version : ''}`).join(', ')}). ` +
     'They share tabs and session state, so tabs can appear to vanish. ' +
     (kanVaelge
       ? `Commands are only sent to the newest one (${aktiv?.extensionId}). `
@@ -409,11 +448,14 @@ function createWSS(port = BASE_PORT) {
     // forklaring, "kommandoen tog for lang tid". For extract_list er timeouten 180
     // sekunder, altsaa tre minutters tavshed hvor sandheden var kendt med det samme.
     const afvisVentende = (grund) => {
-      // Kun naar ingen anden levende forbindelse kan svare - ellers ville et helt
-      // normalt skift mellem to udvidelser afbryde kald der er fuldt i orden.
-      if (!pending.size || liveConnections().length) return;
-      const antal = pending.size;
-      for (const [id, p] of pending) {
+      // ⛔ MAALT 1/10 af Astra: siden svarbindingen maa KUN den forbindelse et kald blev sendt til besvare det.
+      // Doer DEN, kan ingen anden svare - ogsaa selv om en anden udvidelse stadig lever. Foer sprang vi over saa laenge
+      // NOGEN levede, og kaldet ventede til sin frist (30 s, 180 s for extract_list) med en forkert forklaring.
+      // Kald sendt til ANDRE forbindelser roeres ikke: et normalt skift mellem to udvidelser afbryder dem ikke.
+      const mine = [...pending].filter(([, p]) => p.conn === conn);
+      if (!mine.length) return;
+      const antal = mine.length;
+      for (const [id, p] of mine) {
         clearTimeout(p.timer);
         pending.delete(id);
         p.reject(new Error(
@@ -436,8 +478,12 @@ function createWSS(port = BASE_PORT) {
 
     ws.on('close', () => {
       connections.delete(conn);
-      afvisVentende('udvidelsen koblede fra');
+      afvisVentende('the extension disconnected');
       process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
+      // R62 (Opus, maalt mod den aegte server): efter en lukning og en ny forbindelse tav stderr, fordi den samme tekst var
+      // skrevet foer. Og lukkede den forbindelse serveren STYREDE, gik kommandoerne stille videre til en anden profil.
+      if (!forbindelsesAdvarsel()) sidsteProfilAdvarsel = '';
+      if (conn === laastForbindelse && harSendtKommando) forbindelseSkiftet = true;
     });
   });
 
@@ -639,7 +685,7 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
 const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP server. Each session gets its own color-coded Chrome Tab Group.
 
 ## Key behaviors
-- **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens.
+- **Always use browser_ask_user** when you need credentials, 2FA codes, CAPTCHA help, or any user input. Never guess passwords or tokens. The page in the tab can see what is typed into the prompt, so ask only for secrets that belong to that page.
 - **ALWAYS close tabs when done** with browser_close_tab after completing each task. Don't leave tabs open - close them immediately after extracting the data you need. Use browser_list_tabs to find and close all session tabs when a task is complete.
 - **Check existing tabs first** with browser_list_tabs before navigating - reuse tabs instead of opening duplicates.
 - **One task per tab** - navigate to a URL, do your work, then close or move on.
@@ -682,14 +728,14 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - browser_press_key("a", ctrl=true) - select all
 
 ## CAPTCHA handling
-Use browser_solve_captcha to detect and solve CAPTCHAs automatically:
-1. Call browser_solve_captcha() - detects CAPTCHA type on page
-2. If reCAPTCHA v2 checkbox found → call browser_solve_captcha(action="click_checkbox") - auto-clicks; often passes when signed into Google
-3. If image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7]) with the correct cell indices
-4. If all else fails → call browser_solve_captcha(action="ask_human") to show overlay to user
+browser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:
+1. Call browser_solve_captcha() - detects the CAPTCHA type on the page
+2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action="click_checkbox") - tries the checkbox and detects again
+3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action="click_grid", cells=[2,5,7], grid=3) with the correct cell indices and the grid size you see
+4. If that does not clear it → call browser_ask_user and let the user solve it (action="ask_human" only returns that message)
 5. After solving, retry the action that was blocked
 
-For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15.
+For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher.
 
 ## OAuth popups
 - OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group
@@ -703,7 +749,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 ## Hard inputs - use the specialised tools first
 - **Date inputs** → use browser_set_date (NOT browser_fill). Handles native date inputs, masked text inputs (MM/DD/YYYY etc.), AND calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). 3-path fallback with read-back verification.
 - **Autocomplete / combobox** (Languages on Meta Ads, country selects, async dropdowns) → use browser_set_combobox (NOT browser_select_option). Types partial query, waits for filtered listbox, clicks option. Supports multi-value chips.
-- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). Finds hidden input in subtree/parent.
+- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). It looks for a hidden input in the target, then up to 2 parent levels, and as a last resort takes the first file input on the page. If an upload answers file-access-off, follow its note.
 - **Annoying popups blocking the flow** (cookie banners, "Don't show again", Advantage+ tooltips, draft-confirm prompts) → call browser_dismiss_overlays before each major step. It only clicks safe close affordances by default; preserves forms with editable text fields.
 
 ## When things fail
@@ -711,9 +757,9 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
 - A click, hover or key press answers "CDP did not respond within … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click)
-- An answer with maybe_landed: true means the action was sent but its effect could not be confirmed. Check the page first (browser_get_page_content or browser_screenshot) and do not repeat it blindly: a second click can submit twice. landed: false means the page showed no visible reaction to the click. landed: null with unknown: true means something on the page changed when the mouse went down, but not from the click itself - it may be a ripple effect, and it may be a menu that opens on mousedown. Read the page before clicking again: a second click closes a menu that is already open. landed: null with unverified: true means the mouse button was sent but the page could not be read afterwards - same rule: read the page before repeating. browser_scroll uses uvist with its own meaning - there it means the scroll was sent but the movement could not be seen, and the answer carries ok:true, a note and the measured position
-- Since 1.29.2 the tools that send mouse, keyboard or file input measure whether the page actually received it. An error of key-not-delivered, hover-not-delivered, double-click-not-delivered, right-click-not-delivered, field-is-empty, search-text-not-delivered or file-not-attached is a measurement, not a guess: nothing reached the page. Almost always the tab is in the background - call browser_switch_tab to it and repeat the one action. browser_upload_file and browser_drop_file also report vedhaeftet (the file names actually on the field) and differs: true when the field took fewer files than you sent.
-- browser_fill with differs: true means the field shows something other than what you typed; read faktisk. unchanged: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check faktisk before moving on
+- An answer with maybe_landed: true means the action was sent but its effect could not be confirmed. Check the page first (browser_get_page_content or browser_screenshot) and do not repeat it blindly: a second click can submit twice. landed: false means the page showed no visible reaction to the click. landed: null with unknown: true means something on the page changed when the mouse went down, but not from the click itself - it may be a ripple effect, and it may be a menu that opens on mousedown. Read the page before clicking again: a second click closes a menu that is already open. landed: null with unverified: true means the mouse button was sent but the page could not be read afterwards - same rule: read the page before repeating. browser_scroll uses unknown with its own meaning - there it means the scroll was sent but the movement could not be seen, and the answer carries ok:true, a note and the measured position
+- Since 1.29.2 the tools that send mouse, keyboard or file input measure whether the page actually received it. An error of key-not-delivered, hover-not-delivered, double-click-not-delivered, right-click-not-delivered, field-is-empty, search-text-not-delivered or file-not-attached is a measurement, not a guess: nothing reached the page. Almost always the tab is in the background - call browser_switch_tab to it and repeat the one action. browser_upload_file and browser_drop_file also report attached (the file names actually on the field) and differs: true when the field took fewer files than you sent.
+- browser_fill with differs: true means the field shows something other than what you typed; read actual. unchanged: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check actual before moving on
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 - **If the thing being asked for is not in a web page at all** - a desktop application, an OS-level dialog, the native file picker, a menu bar - then no browser tool can reach it, and neither can this one. Say so plainly. If you also have desktop-level tools available in this session (for example an OS automation MCP server such as computer-mcp), that is the right tool for that step; hand it over instead of retrying here. Do not claim this applies to an ordinary page problem: a background tab, a React-controlled field or a CAPTCHA are all solved by the tools above
@@ -725,7 +771,7 @@ If browser_provide_feedback reports that the extension is older than this server
 You cannot navigate to chrome:// pages - the user must do this manually.
 
 ## When Browser MCP itself is the obstacle - call browser_provide_feedback
-Before you tell the user "browser-mcp can't do X", or give up on a tool that errored, timed out, or did something other than what it promised: call **browser_provide_feedback** with what_happened. Do it yourself, without asking. It checks the install first - the extension against this server, whether more than one Browser MCP extension is connected at once, and (only when BROWSER_MCP_CHECK_NPM=1) this server against the latest on npm - because those explain most "it's broken" moments, and none of them are visible to you otherwise. Read the verdict:
+Before you tell the user "browser-mcp can't do X", or give up on a tool that errored, timed out, or did something other than what it promised: call **browser_provide_feedback** with what_happened, and with worked if another route did work in the end. Do it yourself, without asking. It checks the install first - the extension against this server, whether more than one Browser MCP extension is connected at once, and (only when BROWSER_MCP_CHECK_NPM=1) this server against the latest on npm - because those explain most "it's broken" moments, and none of them are visible to you otherwise. Read the verdict:
 - **outdated** or **disconnected** → relay fix_steps to the user, then retry the action. An outdated install explains most failures, so try the fix first - but if the behaviour still looks wrong after that, report it anyway. A release window is not a reason to stay silent about a real bug.
 - **conflict** → more than one extension is loaded; tabs and sessions will keep behaving randomly until the user disables the extras at chrome://extensions. Say so plainly.
 - **current** → the install is fine, so this is a genuine gap. Offer the returned submit_url as a clickable link.
@@ -751,7 +797,11 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+// R63 (Astra, maalt): #58-advarslen manglede paa de tidlige svar (en afvist upload, et ukendt vaerktoej, browser_about), fordi
+// hver svarvej selv skulle huske den. Nu gaar ALLE svar gennem én indpakning.
+mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => medForbindelsesNote(await kaldVaerktoej(request)));
+
+async function kaldVaerktoej(request) {
   const { name, arguments: args } = request.params;
   lastActivity = Date.now();
 
@@ -808,7 +858,8 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await handleExtractToken(args);
     }
 
-    const method = methodMap[name];
+    // Kun methodMap's egne noegler (samme fejlklasse som extract_token, R53-Opus): «constructor» fandtes paa prototypen.
+    const method = Object.hasOwn(methodMap, name) ? methodMap[name] : undefined;
     if (!method) {
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };
     }
@@ -881,6 +932,16 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const prefix = isJpeg ? /^data:image\/jpeg;base64,/ : /^data:image\/png;base64,/;
       const mimeType = isJpeg ? 'image/jpeg' : 'image/png';
       const base64 = result.image.replace(prefix, '');
+      // The image is in DEVICE pixels; browser_click_xy takes CSS pixels. Measured 2026-10-04 at
+      // devicePixelRatio 1.65: a position read off the image missed by ~450 px. Say how to convert.
+      const vp = result.viewport;
+      const viewportNote = vp && vp.css_width && vp.css_height && vp.device_pixel_ratio
+        ? [{ type: 'text', text:
+            `Viewport: ${vp.css_width}×${vp.css_height} CSS pixels, devicePixelRatio ${vp.device_pixel_ratio}` +
+            (vp.image_width ? `, image ${vp.image_width}×${vp.image_height} pixels` : '') + '. ' +
+            `browser_click_xy takes CSS pixels: for a point at (x, y) in an image shown W pixels wide, ` +
+            `click (x / W × ${vp.css_width}, y / W × ${vp.css_width}).` }]
+        : [];
 
       if (args && args.path) {
         // MAALT 23/8: ingen indeslutning. En sti med ../../.. skrev til
@@ -919,12 +980,13 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         return {
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
-            { type: 'image', data: base64, mimeType }
+            { type: 'image', data: base64, mimeType },
+            ...viewportNote,
           ]
         };
       }
 
-      return { content: [{ type: 'image', data: base64, mimeType }] };
+      return { content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] };
     }
 
     const response = {
@@ -942,12 +1004,13 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     return response;
   } catch (err) {
+    // R62 (Astra): advarslen kom ikke med, naar det naeste kald fejlede - nu faar ogsaa fejlsvaret den via indpakningen.
     return {
       content: [{ type: 'text', text: forklarSkaevhed(err.message) }],
       isError: true,
     };
   }
-});
+}
 
 // Naar udvidelsen er aeldre end serveren, svarer den `Unknown method: X` - og det er
 // alt brugeren ser. Det sker GARANTERET: serveren kommer fra npm og opdateres straks,
@@ -959,7 +1022,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Serveren VED at udvidelsen er gammel: den sendte intet haandtryk. Saa i stedet for
 // en gaadefuld fejl faar brugeren at vide hvorfor - og hvad de kan goere imens.
 const ERSTATNINGER = {
-  double_click: 'kald `browser_click` to gange',
+  double_click: 'call `browser_click` twice',
   right_click: 'use `browser_execute_script` with a contextmenu event',
   click_xy: 'use `browser_click` with a selector',
   extract_list: 'use `browser_get_page_content` and scroll with `browser_scroll`',
@@ -978,12 +1041,12 @@ function forklarSkaevhed(besked) {
       const aktiv = activeConnection();
       return `Error: ${besked}\n\n` +
         `FIRST: ${alle.length} Browser MCP extensions are connected at the same time ` +
-        `(${alle.map((c) => c.extensionId || 'ukendt id').join(', ')}). Chrome tillader kun ÉN ` +
+        `(${alle.map((c) => c.extensionId || 'unknown id').join(', ')}). Chrome allows only ONE ` +
         'debugger per tab, so they fight over it, and every mouse, keyboard or file action ' +
         'fails like this. It is probably not the page.\n\n' +
-        'To veje ud:\n' +
+        'Two ways out:\n' +
         '1. Disable all but one on chrome://extensions (the user has to do it - ' +
-        'chrome:// kan ikke styres herfra).\n' +
+        'chrome:// cannot be controlled from here).\n' +
         `2. Without touching Chrome: set BROWSER_MCP_EXTENSION_ID=${aktiv?.extensionId || '<id>'} ` +
         'in the client configuration, so this server talks only to that one.';
     }
@@ -997,9 +1060,9 @@ function forklarSkaevhed(besked) {
   const alt = ERSTATNINGER[m[1]];
   return `Error: browser_${m[1]} exists in this server, but not in your Chrome extension.\n\n` +
     'The extension is updated through the Chrome Web Store and can be 1-3 days behind after a ' +
-    'udgivelse - serveren opdateres med det samme via npm. Alt andet virker imens.\n' +
+    'release - the server updates immediately via npm. Everything else works meanwhile.\n' +
     (alt ? `\nUntil then: ${alt}.\n` : '') +
-    '\nTjek om en opdatering venter: chrome://extensions → Agent360 Browser MCP. ' +
+    '\nCheck whether an update is waiting: chrome://extensions → Agent360 Browser MCP. ' +
     'If it is loaded as "unpacked", run `npx @agent360/browser-mcp install`.';
 }
 
@@ -1090,6 +1153,30 @@ function npmLatestVersion() {
 const FEEDBACK_LOG = join(homedir(), '.browser-mcp', 'feedback.jsonl');
 const setteFingeraftryk = new Set();   // samme graense logges én gang pr. serverliv
 
+// 1.30.2 skive 5 (Gustavs ja, T25 punkt 2): tal og e-mailadresser fjernes fra fritekstfelterne, foer de skrives -
+// i logbogen og i issue-linket. Samme regel og samme loft som computer-mcp's rensLaering (mcp-server/index.js der),
+// saa de to vaerktoejers logboeger kan laeses ens. Linjeskift bevares (dér afviger vi): issue-titlen er foerste linje.
+// R47 (Astra, MAALT): .slice() taeller UTF-16-enheder. En emoji paa graensen blev skaaret midt over, og den enlige halvdel
+// fik encodeURIComponent til at kaste «URI malformed», FOER logbogen blev skrevet - rapporten forsvandt. Hele tegn her.
+function skaerTegn(t, n) {
+  return Array.from(String(t)).slice(0, n).join('');
+}
+
+function rensFritekst(t, loft = 600) {
+  // R47 (Opus, MAALT): 200.000 tegn uden @ tog 28 s i e-mail-udtrykket med serveren laast. Skaer foerst ned til 4 x loftet.
+  const s = String(t ?? '').slice(0, loft * 4).toWellFormed().replace(/[^\S\n]+/g, ' ').trim()
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email]');
+  // R47 (begge): et tal delt af et linjeskift («12 34\n56 78») slap igennem. Tallene findes i en kopi med mellemrum i
+  // stedet for linjeskift - samme laengde - og maskeres de samme steder i originalen, saa linjeskiftene ellers bevares.
+  const flad = s.replace(/\n/g, ' ');
+  let ud = '', fra = 0;
+  for (const m of flad.matchAll(/\+?\d[\d ,.\-]{4,}\d/g)) {
+    ud += s.slice(fra, m.index) + '[number]';
+    fra = m.index + m[0].length;
+  }
+  return skaerTegn(ud + s.slice(fra), loft);
+}
+
 function fingeraftryk(kind, tool, what) {
   // Tal, id'er og lange hex-strenge varierer fra gang til gang og maa ikke goere to ens
   // haendelser forskellige.
@@ -1109,12 +1196,13 @@ function afkortUrl(u) {
 
 function skrivTilLogbog(post) {
   const fp = fingeraftryk(post.kind, post.tool, post.what_happened);
-  const foerste = !setteFingeraftryk.has(fp);
-  setteFingeraftryk.add(fp);
-  if (!foerste) return { logged: false, reason: 'allerede logget i denne session', fingerprint: fp };
+  if (setteFingeraftryk.has(fp)) return { logged: false, reason: 'already logged in this server run', fingerprint: fp };
   try {
     mkdirSync(dirname(FEEDBACK_LOG), { recursive: true });
     appendFileSync(FEEDBACK_LOG, JSON.stringify({ ...post, fingerprint: fp }) + '\n');
+    // Foerst efter en lykket skrivning (skive 5, T25 punkt 4): foer blev aftrykket sat inden forsoeget, saa en
+    // skrivning der fejlede, spaerrede for den samme rapport resten af serverlivet - og den blev aldrig skrevet.
+    setteFingeraftryk.add(fp);
     return { logged: true, path: FEEDBACK_LOG, fingerprint: fp };
   } catch (e) {
     // En logbog der ikke kan skrives maa aldrig vaere det der braekker vaerktoejet.
@@ -1123,11 +1211,13 @@ function skrivTilLogbog(post) {
 }
 
 async function handleProvideFeedback(args) {
-  const what = String(args?.what_happened || '').trim();
+  const what = rensFritekst(args?.what_happened);
   const kind = args?.kind || 'blocked';
   const tool = args?.tool || null;
   const url = args?.url || null;
-  const attempted = args?.attempted || null;
+  const attempted = rensFritekst(args?.attempted) || null;
+  // Samme felt som computer-mcp's computer_learning: den vej der virkede til sidst er den mest brugbare del.
+  const worked = rensFritekst(args?.worked) || null;
 
   const npmLatest = await npmLatestVersion();
   const exts = distinctExtensions();
@@ -1148,16 +1238,24 @@ async function handleProvideFeedback(args) {
     const kanVaelge = exts.some(c => c.version);
     findings.push(
       `${exts.length} Browser MCP extensions are loaded in Chrome and connected to this server at the same time ` +
-      `(${exts.map(c => `${c.extensionId || 'ukendt id'}${c.version ? ' v' + c.version : ' (oplyser ikke version)'}`).join(' + ')}). ` +
+      `(${exts.map(c => `${c.extensionId || 'unknown id'}${c.version ? ' v' + c.version : ' (does not report its version)'}`).join(' + ')}). ` +
       'Each keeps its own session map and its own tab groups in the same browser, ' +
       'so tabs can appear to vanish and sessions to merge. ' +
       (kanVaelge
-        ? `Denne server sender kun til den nyeste (${active?.extensionId}).`
+        ? `This server only sends to the newest one (${active?.extensionId}).`
         : `None of them reports its version, so which one is driven (${active?.extensionId}) is arbitrary and can change between sessions.`),
     );
     fix_steps.push(
       'Open chrome://extensions and disable all Browser MCP extensions but one. ' +
       'The user has to do it - chrome:// cannot be driven from here. Keep the newest.',
+    );
+  }
+  const profilAdvarsel = forbindelsesAdvarsel();
+  if (profilAdvarsel) {
+    findings.push(profilAdvarsel);
+    fix_steps.push(
+      'Keep the extension enabled in one Chrome profile only (chrome://extensions in each of the other profiles). ' +
+      'The user has to do it - chrome:// cannot be driven from here.',
     );
   }
   if (!active && activePort === null) {
@@ -1193,7 +1291,7 @@ async function handleProvideFeedback(args) {
         // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
         // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
         : 'If the extension is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload. Kommer den fra Chrome Web Store: den nye version ' +
+          'chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome Web Store: the new version ' +
           'is probably in review (1-3 days after a release), and ↻ reload does NOT fetch it before Google has ' +
           'approved - that is expected and passes by itself. Everything else works meanwhile.',
     );
@@ -1214,7 +1312,7 @@ async function handleProvideFeedback(args) {
   // tilstand for at kunne maale den) - det er at sige praecis hvad der er tilfaeldet.
   const ingenPortEndnu = activePort === null;
   const verdict =
-    exts.length > 1 ? 'conflict'
+    (exts.length > 1 || profilAdvarsel) ? 'conflict'
     : (serverOutdated || extOutdated) ? 'outdated'
     : (!active && ingenPortEndnu) ? 'idle'
     : !active ? 'disconnected'
@@ -1233,6 +1331,8 @@ async function handleProvideFeedback(args) {
       active: c === active,
     })),
     extension_up_to_date: extOutdated === null ? null : !extOutdated,
+    // #58: aabne forbindelser, ikke udvidelser - samme udvidelse i flere profiler giver flere forbindelser.
+    extension_connections: liveConnections().length,
     ws_port: activePort,
     node: process.version,
     platform: `${process.platform} ${process.arch}`,
@@ -1247,15 +1347,17 @@ async function handleProvideFeedback(args) {
     // OFFENTLIGT GitHub-issue. Praecis den forkerte vej rundt.
     url && `\n**URL**: ${afkortUrl(url)}`,
     attempted && `\n**Already tried**\n${attempted}`,
+    worked && `\n**What worked**\n${worked}`,
     `\n**Environment**\n\`\`\`json\n${JSON.stringify(environment, null, 2)}\n\`\`\``,
   ].filter(Boolean).join('\n');
 
   const template = kind === 'wish' ? ISSUE_TEMPLATES.wish
                  : kind === 'use_case' ? ISSUE_TEMPLATES.use_case
                  : ISSUE_TEMPLATES.bug;
-  const issueTitle = what.split('\n')[0].slice(0, 90) || 'Browser MCP feedback';
+  const issueTitle = skaerTegn(what.split('\n')[0], 90) || 'Browser MCP feedback';
   const submit_url = `${REPO_URL}/issues/new?template=${template}` +
-    `&title=${encodeURIComponent(issueTitle)}&body=${encodeURIComponent(issueBody)}`;
+    // toWellFormed: ogsaa en enlig halvdel i tool eller url maa ikke faa linket til at kaste (R47).
+    `&title=${encodeURIComponent(issueTitle.toWellFormed())}&body=${encodeURIComponent(issueBody.toWellFormed())}`;
 
   const instruction =
     verdict === 'idle'
@@ -1270,7 +1372,7 @@ async function handleProvideFeedback(args) {
 
   const logbog = skrivTilLogbog({
     at: new Date().toISOString(),
-    kind, tool, what_happened: what, attempted,
+    kind, tool, what_happened: what, attempted, worked,
     url: afkortUrl(url),
     verdict,
     server_version: PKG_VERSION,
@@ -1282,7 +1384,7 @@ async function handleProvideFeedback(args) {
     content: [{
       type: 'text',
       text: JSON.stringify({
-        reported: { kind, what_happened: what, tool, url, attempted },
+        reported: { kind, what_happened: what, tool, url, attempted, worked },
         verdict,
         findings,
         fix_steps,
@@ -1297,7 +1399,9 @@ async function handleProvideFeedback(args) {
 
 async function handleExtractToken(args) {
   const { provider } = args;
-  const info = PROVIDER_PAGES[provider];
+  // R52 (Astra, MAALT): «constructor», «toString» og «__proto__» findes paa objektets prototype og gik uden om
+  // «Unknown provider» - handleren navigerede til url undefined. Kun udbyderens egne noegler taeller.
+  const info = Object.hasOwn(PROVIDER_PAGES, String(provider)) ? PROVIDER_PAGES[provider] : undefined;
 
   if (!info) {
     return {

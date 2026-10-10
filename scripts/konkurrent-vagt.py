@@ -26,6 +26,8 @@ Brug:
 import json, os, re, sys, urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Vores eget vaerktoejstal, talt i tools.js som check-docs.py goer det.
+VORES = len(re.findall(r"name: 'browser_[a-z_]+'", open(os.path.join(ROOT, 'mcp-server', 'tools.js'), encoding='utf-8').read()))
 PIN = os.path.join(ROOT, 'data', 'konkurrent-pin.json')
 
 # True betyder at kilden SKAL indeholde en vaerktoejsliste. Svarer den 0, er det
@@ -122,9 +124,9 @@ def egne_paastande(stand):
             tekst = open(sti, encoding='utf-8', errors='replace').read()
             for m in moenster.finditer(tekst):
                 tal = int(m.group(1))
-                # 40 er VORES eget antal; det staar i de samme tabeller og er ikke en
-                # paastand om dem. Alt andet der ligner et konkurrent-tal, skal passe.
-                if tal == 40 or tal == maalt:
+                # VORES eget antal staar i de samme tabeller og er ikke en paastand om dem. Det laeses fra
+                # tools.js (1.30.2 skive 12, bagudliste #29: her stod et haardkodet 40). Alt andet skal passe.
+                if tal == VORES or tal == maalt:
                     continue
                 if abs(tal - maalt) > 40:
                     continue   # aabenlyst et andet tal (stjerner, downloads)

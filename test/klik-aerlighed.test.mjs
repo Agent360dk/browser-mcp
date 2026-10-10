@@ -14,7 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+import { indlaesUdvidelse, medVagt, ARMERING } from './hjaelp/udvidelses-sele.mjs';
 
 function selePaaKlik(settleVaerdi) {
   return indlaesUdvidelse({ svar: {
@@ -22,10 +22,10 @@ function selePaaKlik(settleVaerdi) {
     'debugger.getTargets': [{ tabId: 1, attached: true }],
     'tabs.get': { id: 1, url: 'https://example.com', windowId: 1 },
     'tabs.query': [{ id: 1, url: 'https://example.com', windowId: 1, active: true }],
-    'debugger.sendCommand': (_maal, metode) => {
+    'debugger.sendCommand': medVagt((_maal, metode) => {
       if (metode === 'Runtime.evaluate') return { result: { value: settleVaerdi } };
       return {};
-    },
+    }),
     // resolveElement gaar gennem chrome.scripting foerst; uden et svar her naar vi
     // aldrig frem til klikket, og testen maaler noget helt andet end den paastaar.
     'scripting.executeScript': [{ result: { found: true, x: 10, y: 10, tag: 'DIV', text: 'Vaelg', method: 'debugger' } }],
@@ -84,6 +84,7 @@ test('select_option paastaar ikke at klikket blev afvist, naar den ikke ved det'
     'tabs.query': [{ id: 1, url: 'https://example.com', windowId: 1, active: true }],
     'debugger.sendCommand': (_maal, metode, p) => {
       if (metode !== 'Runtime.evaluate') return {};
+      if (String(p?.expression || '').includes(ARMERING)) return { result: { value: { armet: true } } };
       const udtryk = String(p?.expression || '');
       if (udtryk.includes("tagName === 'SELECT'")) return { result: { value: false } };   // ikke en native select
       return { result: { value: { landed: null, unknown: true, fallbackFired: true } } };
@@ -91,7 +92,9 @@ test('select_option paastaar ikke at klikket blev afvist, naar den ikke ved det'
     'scripting.executeScript': [{ result: { found: true, x: 10, y: 10, tag: 'DIV', text: 'Roed', method: 'debugger' } }],
   } }));
   const svar = await u.hent('dispatch')(9876, 'select_option', { selector: '#drop', value: 'Roed' });
-  assert.equal(svar.type, 'custom_dropdown', `proeven naaede ikke dropdown-stien: ${JSON.stringify(svar)}`);
+  // R69 (Astra): et uvist udloeserklik giver ikke laengere et klik paa valget - svaret stopper uvist ved udloeseren.
+  assert.match(String(svar.error || ''), /^Whether the click on the dropdown reached it cannot be told/, `proeven naaede ikke udloeserens stop: ${JSON.stringify(svar)}`);
+  assert.equal(svar.landed, null, JSON.stringify(svar));
   assert.doesNotMatch(String(svar.error || ''), /was not accepted by the page/,
     `koden ved ikke om klikket landede, men skriver en benaegtelse: ${JSON.stringify(svar)}`);
   assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
@@ -109,6 +112,7 @@ function seleUdenSettle() {
     'tabs.query': [{ id: 1, url: 'https://example.com', windowId: 1, active: true }],
     'debugger.sendCommand': (_maal, metode, p) => {
       if (metode !== 'Runtime.evaluate') return {};
+      if (String(p?.expression || '').includes(ARMERING)) return { result: { value: { armet: true } } };
       // Ikke navigation: fanen lever, adressen er uaendret. Altsaa uverificeret, ikke detached.
       const udtryk = String(p?.expression || '');
       if (udtryk.includes("tagName === 'SELECT'")) return { result: { value: false } };
@@ -137,7 +141,9 @@ for (const vaerktoej of ['click', 'click_xy']) {
 test('select_option benaegter heller ikke, naar opslaget fejlede uden navigation', async () => {
   const u = medSession(seleUdenSettle());
   const svar = await u.hent('dispatch')(9876, 'select_option', { selector: '#drop', value: 'Roed' });
-  assert.equal(svar.unverified, true, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
+  // R69 (Astra): select_option stopper ved det uverificerede udloeserklik; noten er uverificeret-kanalens.
+  assert.match(String(svar.note || ''), /the page could not be read afterwards/, `proeven ramte en anden gren: ${JSON.stringify(svar)}`);
+  assert.match(String(svar.error || ''), /^Whether the click on the dropdown reached it cannot be told/, JSON.stringify(svar));
   assert.doesNotMatch(String(svar.error || ''), /was not accepted by the page/,
     `benaegtelse oven paa en uvished koden selv har navngivet: ${JSON.stringify(svar)}`);
   assert.equal(svar.maybe_landed, true, JSON.stringify(svar));

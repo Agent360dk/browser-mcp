@@ -15,6 +15,7 @@ on:
     paths:
       - 'docs/**'
       - 'content/**'
+      - 'noter/**'
       - 'scripts/generate-docs.py'
       - 'scripts/check-docs.py'
       - 'mcp-server/tools.js'

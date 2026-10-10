@@ -8,7 +8,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -149,7 +150,7 @@ test('privacy-teksten er last (hash af den synlige tekst: beviser stabilitet, ik
   const body = docs('privacy.html').match(/<body>([\s\S]*)<\/body>/)[1].replace(/<a class="skip"[\s\S]*?<\/header>/, '');
   const tekst = body.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
   // Aendres politikken med vilje, opdateres hashen i samme commit og begrundelsen staar i commit-beskeden.
-  assert.equal(createHash('sha256').update(tekst).digest('hex'), 'b9d7879ff496fff8c1a799a835d5fd33060e60c898f0d280bd2f01aa9ed783c8');
+  assert.equal(createHash('sha256').update(tekst).digest('hex'), '92883499c28184bc77c42844c7dbfbc8b16fd58b6e454763a50d90f09279b160');
   assert.match(docs('404.html'), /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(rod, 'docs/sitemap.xml'), 'utf8'), /404\.html/);
 });
@@ -254,4 +255,185 @@ test('toppen: begge trin i heroen paa en computer; paa en beroeringsskaerm i ste
     assert.match(a, /class="paa-tlf kun-tlf"[\s\S]*class="btn pri sendlink"[\s\S]*github\.com\/Agent360dk\/browser-mcp/, 'telefonkort mangler: ' + a.slice(0, 40));
   }
   assert.match(html, /<h1>Let your AI agent use your real Chrome\.<\/h1>/);
+});
+
+// 1.30.2 skive 19 (Opus R38): manifestets beskrivelse sagde «carries on in the tab you were already signed into» - kan
+// laeses som brugerens EGEN fane; agenten arbejder i sine egne faner i brugerens Chrome. Samme budskab som butiksteksten v5
+// («Your agent works in the Chrome you're already signed into»), ikke ordret samme tekst.
+test('manifestets korte beskrivelse siger «the Chrome you\'re signed into», ikke brugerens egen fane, og holder sig under 132 tegn', () => {
+  for (const f of ['extension/manifest.json', 'mcp-server/extension/manifest.json']) {
+    const d = JSON.parse(readFileSync(join(rod, f), 'utf8')).description;
+    assert.ok(d.length <= 132, `${f}: ${d.length} tegn - Chrome Web Store tillader 132`);
+    assert.match(d, /the Chrome you're signed into/, `${f}: siger ikke at det er brugerens Chrome`);
+    assert.doesNotMatch(d, /the tab you were already signed into|carries on in the tab/, `${f}: kan laeses som brugerens egen fane`);
+  }
+  // R62 (Opus): npm-beskrivelsen og to sider havde stadig samme formulering.
+  const npm = JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).description;
+  for (const [f, t] of [['mcp-server/package.json', npm], ...['content/browsermcp-compare-playwright-mcp.md', 'content/browsermcp-usecase-codex-2fa.md'].map((x) => [x, readFileSync(join(rod, x), 'utf8')])]) {
+    assert.doesNotMatch(t, /the tab you were already signed into|carries on in the tab that was already signed in/, `${f}: kan laeses som brugerens egen fane`);
+  }
+});
+
+// 1.30.2 skive 11 (F9): docs/ serveres som browsermcp.dev. Tre interne noter (butikstekst-revision, opsaetning af
+// butiksudgivelse, en performance-maaling) laa der og blev serveret med status 200. De ligger nu i noter/.
+test('docs/ indeholder ingen interne noter, kun den genererede llms-install.md', () => {
+  // R56 (Astra): kun docs/ selv blev laest - en note i docs/internal/ slap igennem. Hele traeet gennemgaas.
+  const md = [];
+  const gaa = (d) => { for (const e of readdirSync(join(rod, d), { withFileTypes: true })) {
+    if (e.isDirectory()) gaa(join(d, e.name)); else if (/\.(md|markdown)$/i.test(e.name)) md.push(join(d, e.name).split('\\').join('/')); } };
+  gaa('docs');
+  assert.deepEqual(md, ['docs/llms-install.md'], `markdown i docs/ bliver serveret offentligt: ${md.join(', ')}`);
+  for (const f of ['CWS_LISTING_TEXT.md', 'CWS_PUBLISH_SETUP.md', 'PERFORMANCE-2026-09-08.md']) {
+    assert.ok(existsSync(join(rod, 'noter', f)), `noter/${f} mangler - en henvisning peger paa en fil der ikke findes`);
+  }
+});
+
+// 1.30.2 skive 13 (D3): hver side, der henter docs.css eller docs.js, bruger den noegle, filens indhold giver.
+// R58-R60 (Astra, MAALT): en tekstsoegning blev snydt af entiteter, tabulatorer, CSS-escapes, procent-kodning og til
+// sidst af kommentartegn inde i en attributvaerdi. Siderne laeses nu med en HTML-tokenizer (test/hjaelp/asset-henvisninger.py),
+// og der er EN tilladt form: <link href> / <script src> med praecis /assets/docs.(css|js)?v=<noegle>. Hver anden omtale af
+// de to filer i en attribut eller en tekst er en fejl.
+const henvisninger = (mappe) => JSON.parse(execFileSync('python3', ['-I', join(rod, 'test/hjaelp/asset-henvisninger.py'), mappe],
+  { encoding: 'utf8' }));
+const noegle8 = (f) => createHash('sha256').update(readFileSync(f)).digest('hex').slice(0, 8);
+
+test('css og js hentes kun i den kanoniske form med en noegle, der passer til filens indhold', () => {
+  const v = { css: noegle8(join(rod, 'docs/assets/docs.css')), js: noegle8(join(rod, 'docs/assets/docs.js')) };
+  const sider = henvisninger(join(rod, 'docs'));
+  let set = 0;
+  for (const [s, h] of Object.entries(sider)) {
+    assert.deepEqual(h.omtaler, [], `${s}: docs.css/docs.js naevnes uden for den kanoniske form href="/assets/docs.css?v=<noegle>"`);
+    assert.equal(h.raa, h.kanon.length, `${s}: ${h.kanon.length} kanoniske henvisninger, men ${h.raa} i den citerede form generatoren opdaterer`);
+    for (const [endelse, n] of h.kanon) {
+      set++;
+      assert.equal(n, v[endelse], `${s}: docs.${endelse} hentes med en foraeldet noegle (${n}) - koer scripts/generate-docs.py`);
+    }
+  }
+  assert.equal(set, 86, `${set} kanoniske henvisninger - 44 sider henter css og 42 js; et andet tal betyder at noget er faldet ud`);
+});
+
+// Vagten maa ikke kunne snydes af de former, der slap igennem R58-R60. Hver skal give en omtale.
+test('vagten finder de former, der slap igennem tidligere runder', async () => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const k = '<link rel="stylesheet" href="/assets/docs.css?v=05f4bb13">';
+  const former = {
+    'tab-entitet.html': `<link rel='stylesheet' href='/assets/do&#9;cs.css?v=old'>`,
+    'kommentar-i-attribut.html': `<meta name="a" content="<!--">\n<link rel="stylesheet" href='/assets/docs.css?v=old'>\n<meta name="b" content="-->">`,
+    'css-tab-escape.html': `<style>@import url("/assets/do\\9 cs.css?v=old");</style>`,
+    'css-hex-med-tab.html': `<style>@import url("/assets/d\\6f\tcs.css?v=old");</style>`,
+    'procent.html': `<img srcset="/assets/do%63s.css?v=old 1x" alt="">`,
+    'relativ.html': `<link rel="stylesheet" href="assets/docs.css?v=old">`,
+    'data-href.html': `<a data-href="/assets/docs.css?v=05f4bb13">x</a>`,
+    'forkert-element.html': `<script src="/assets/docs.css?v=05f4bb13"></script>`,
+    'ucciteret.html': `<link rel="stylesheet" href=/assets/docs.css?v=05f4bb13>`,
+    // R61 (Astra): en afbrudt kommentar lukker i browseren, men ikke i parseren; srcdoc og data: er dokumenter i en attribut.
+    'afbrudt-kommentar.html': `<!--><link rel='stylesheet' href='/assets/docs.css?v=old'><!-- -->`,
+    'afbrudt-kommentar2.html': `<!---><link rel='stylesheet' href='/assets/docs.css?v=old'><!-- -->`,
+    'srcdoc.html': `<iframe srcdoc="<link rel=stylesheet href=/assets/do&amp;#99;s.css?v=old>"></iframe>`,
+    'srcdoc-kanonisk.html': `<iframe srcdoc='<link rel="stylesheet" href="/assets/docs.css?v=05f4bb13">'></iframe>`,
+    'data-base64.html': `<iframe src="data:text/html;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg=="></iframe>`,
+    'import.css': `@import url("/assets/docs.css?v=old");`,
+    // R62 (Astra): en afbrudt kommentar INDE i et srcdoc eller et base64-dokument, og en kommentarstart inde i en URL-streng.
+    'srcdoc-afbrudt.html': `<iframe srcdoc="&lt;!--&gt;&lt;link rel=stylesheet href=/assets/do&amp;#99;s.css?v=old&gt;&lt;!-- --&gt;"></iframe>`,
+    'data-afbrudt.html': `<iframe src="data:text/html;base64,PCEtLT48bGluayByZWw9c3R5bGVzaGVldCBocmVmPS9hc3NldHMvZG8mIzk5O3MuY3NzP3Y9b2xkPjwhLS0gLS0+"></iframe>`,
+    'url-streng.css': '@import url("data:text/css,/*");\n@import url("/assets/docs.css?v=old");\n/* end */',
+    // R63 (Astra): base64 i srcdoc, base64 i base64, base64 i CSS, base64 efter en afbrudt kommentar, 16 lag srcdoc og
+    // «; base64» med mellemrum.
+    "srcdoc-base64.html": "<iframe srcdoc=\"<iframe src=&quot;data:text/html;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==&quot;></iframe>\"></iframe>",
+    "base64-i-base64.html": "<iframe src=\"data:text/html;base64,PGlmcmFtZSBzcmM9ImRhdGE6dGV4dC9odG1sO2Jhc2U2NCxQR3hwYm1zZ2NtVnNQWE4wZVd4bGMyaGxaWFFnYUhKbFpqMHZZWE56WlhSekwyUnZZM011WTNOelAzWTliMnhrUGc9PSI+PC9pZnJhbWU+\"></iframe>",
+    "base64-css.html": "<style>@import url(\"data:text/css;base64,QGltcG9ydCB1cmwoL2Fzc2V0cy9kb2NzLmNzcz92PW9sZCk7\");</style>",
+    "base64-efter-afbrudt.html": "<!--><iframe src=\"data:text/html;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe><!-- -->",
+    "srcdoc-16-lag.html": "<iframe srcdoc=\"&lt;iframe srcdoc=&quot;&amp;lt;iframe srcdoc=&amp;quot;&amp;amp;lt;iframe srcdoc=&amp;amp;quot;&amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;quot;&amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;iframe srcdoc=&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;link rel=stylesheet href=/assets/do&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;#99;s.css?v=old&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;quot;&amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;amp;gt;&amp;amp;amp;amp;quot;&amp;amp;amp;amp;gt;&amp;amp;amp;amp;lt;/iframe&amp;amp;amp;amp;gt;&amp;amp;amp;quot;&amp;amp;amp;gt;&amp;amp;amp;lt;/iframe&amp;amp;amp;gt;&amp;amp;quot;&amp;amp;gt;&amp;amp;lt;/iframe&amp;amp;gt;&amp;quot;&amp;gt;&amp;lt;/iframe&amp;gt;&quot;&gt;&lt;/iframe&gt;\"></iframe>",
+    "base64-mellemrum.html": "<iframe src=\"data:text/html; base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    // R64 (Astra): mellemrum, tabulator, linjeskift og procent-kodning INDE i dataene. Base64-data er nu forbudt i sig selv,
+    // saa ogsaa et ufarligt billede, en kodet `;base64,` og et komma kodet som %2C i medietypen afvises.
+    "base64-mellemrum-i-data.html": "<iframe src=\"data:text/html;base64,PGxpbmsgcmVs PXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    "base64-tab-i-data.html": "<iframe src=\"data:text/html;base64,PGxpbmsgcmVs\tPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    "base64-linjeskift-i-data.html": "<iframe src=\"data:text/html;base64,PGxpbmsgcmVs\nPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    "base64-procent-i-data.html": "<iframe src=\"data:text/html;base64,PGxpbmsgcmVs%50XN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    "base64-uciteret-boolesk.html": "<iframe srcdoc=\"<iframe src=data:text/html;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg hidden></iframe>\"></iframe>",
+    "base64-komma-i-medietype.html": "<iframe src=\"data:text/html%2C;base64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    "base64-kodet-ord.html": "<iframe src=\"data:text/html;&#98;ase64,PGxpbmsgcmVsPXN0eWxlc2hlZXQgaHJlZj0vYXNzZXRzL2RvY3MuY3NzP3Y9b2xkPg==\"></iframe>",
+    "base64-ufarligt-billede.html": "<img src=\"data:image/gif;base64,R0lGODlhAQABAAAAACw=\" alt=\"\">",
+    "base64.css": "@import url(\"data:text/css;base64,QGltcG9ydCB1cmwoL2Fzc2V0cy9kb2NzLmNzcz92PW9sZCk7\");",
+  };
+  const tmp = mkdtempSync(join(tmpdir(), 'vagt-'));
+  try {
+    for (const [f, html] of Object.entries(former)) writeFileSync(join(tmp, f), html);
+    writeFileSync(join(tmp, 'kommentar.html'), `<!-- ${k} -->`);
+    writeFileSync(join(tmp, 'rigtig.html'), k);
+    writeFileSync(join(tmp, 'base64-ord.html'), `${k}<p>returns base64 PNG; base64 of the config</p>`);
+    writeFileSync(join(tmp, 'gammel-i-kommentar.html'), `<!-- foer: /assets/docs.css?v=old -->\n${k}`);
+    writeFileSync(join(tmp, 'kommentar.css'), '/* tidligere: docs.css?v=old */ body { color: red }');
+    const h = henvisninger(tmp);
+    for (const f of Object.keys(former)) {
+      const fanget = h[f].omtaler.length > 0 || h[f].raa !== h[f].kanon.length;
+      assert.ok(fanget, `${f}: vagten saa ingen fejl i ${former[f]}`);
+    }
+    // R62: lukkereglen taeller ogsaa en omtale i en kommentar - det er prisen for en regel uden huller.
+    assert.deepEqual([h['kommentar.html'].kanon.length, h['kommentar.html'].raa], [0, 1], 'en henvisning i en kommentar er ikke en indlaesning');
+    assert.ok(h['kommentar.html'].omtaler.length > 0, 'en kanonisk henvisning i en kommentar skal afvises');
+    assert.ok(h['gammel-i-kommentar.html'].omtaler.length > 0, 'en gammel adresse i en kommentar skal afvises');
+    assert.ok(h['kommentar.css'].omtaler.length > 0, 'et stylesheet maa slet ikke naevne de to filer, heller ikke i en kommentar');
+    assert.deepEqual(h['rigtig.html'], { kanon: [['css', '05f4bb13']], raa: 1, omtaler: [] });
+    // R64: ordet base64 i almindelig tekst er ikke data - de udgivne sider skriver «returns base64 PNG».
+    assert.deepEqual(h['base64-ord.html'], { kanon: [['css', '05f4bb13']], raa: 1, omtaler: [] });
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('generatorens noeglefunktion retter den kanoniske form og intet andet', () => {
+  const kilde = readFileSync(join(rod, 'scripts/generate-docs.py'), 'utf8');
+  const blok = kilde.slice(kilde.indexOf('_KANON = re.compile'), kilde.indexOf("CSS_V if m.group(2) == 'css' else JS_V), t)") + "CSS_V if m.group(2) == 'css' else JS_V), t)".length);
+  const py = `import re\nCSS_V = 'aaaa1111'\nJS_V = 'bbbb2222'\n${blok}\nimport json, sys\nprint(json.dumps([_saet_noegle(x) for x in json.loads(sys.argv[1])]))`;
+  const ind = ['<link href="/assets/docs.css?v=old">', '<script src="/assets/docs.js"></script>', '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">'];
+  const ud = JSON.parse(execFileSync('python3', ['-c', py, JSON.stringify(ind)], { encoding: 'utf8' }));
+  assert.deepEqual(ud, ['<link href="/assets/docs.css?v=aaaa1111">', '<script src="/assets/docs.js?v=bbbb2222"></script>',
+    '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">']);
+});
+
+// R59-R60 (Astra): funktionsproeven fangede ikke, at generatoren holdt op med at bruge funktionen paa de haandskrevne
+// sider, og R60 viste at en side uden js-noegle, med css-noeglen som js-noegle eller helt uden script-tag ogsaa slap
+// igennem. Her koeres hele generatoren paa en kopi med egen git-historik (dateret 2020-01-01), efter at begge assets er
+// aendret. Hver side skal bagefter have praecis de samme henvisninger som foer, i samme raekkefoelge, med de nye noegler -
+// laest med samme tokenizer som vagten ovenfor. Privacy-sidens sitemap-dato skal vaere i dag efter foerste koersel (R56:
+// omskrivningen skal ske foer sitemappet), og en anden koersel maa ikke aendre noget.
+test('hele generatoren: nyt asset giver ny noegle paa hver henvisning, og sitemappet ser det i samme koersel', async () => {
+  const { mkdtempSync, cpSync, appendFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const tmp = mkdtempSync(join(tmpdir(), 'gen-'));
+  const git = (...a) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'core.hooksPath=/dev/null',
+    '-c', 'commit.gpgsign=false', ...a], { cwd: tmp, stdio: 'pipe',
+    env: { ...process.env, GIT_AUTHOR_DATE: '2020-01-01T12:00:00', GIT_COMMITTER_DATE: '2020-01-01T12:00:00' } });
+  const alle = (d) => readdirSync(d, { recursive: true }).filter((f) => /\.(html|xml)$/.test(f)).sort()
+    .map((f) => [f, readFileSync(join(d, f), 'utf8')]);
+  try {
+    for (const d of ['docs', 'content', 'scripts']) cpSync(join(rod, d), join(tmp, d), { recursive: true });
+    cpSync(join(rod, 'llms-install.md'), join(tmp, 'llms-install.md'));
+    cpSync(join(rod, 'mcp-server/tools.js'), join(tmp, 'mcp-server/tools.js'));
+    git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base');
+    const foer = henvisninger(join(tmp, 'docs'));
+    appendFileSync(join(tmp, 'docs/assets/docs.css'), '\n/* proeve */\n');
+    appendFileSync(join(tmp, 'docs/assets/docs.js'), '\n// proeve\n');
+    const ny = { css: noegle8(join(tmp, 'docs/assets/docs.css')), js: noegle8(join(tmp, 'docs/assets/docs.js')) };
+    const gen = () => execFileSync('python3', [join(tmp, 'scripts/generate-docs.py')], { cwd: tmp, stdio: 'ignore' });
+    gen();
+    const efter = henvisninger(join(tmp, 'docs'));
+    assert.deepEqual(Object.keys(efter).sort(), Object.keys(foer).sort(), 'generatoren aendrede hvilke sider der findes');
+    let set = 0;
+    for (const [s, h] of Object.entries(efter)) {
+      assert.deepEqual(h.omtaler, [], `${s}: docs.css/docs.js naevnes uden for den kanoniske form efter generering`);
+      assert.equal(h.raa, h.kanon.length, `${s}: en kanonisk henvisning staar ikke i den citerede form`);
+      assert.deepEqual(h.kanon, foer[s].kanon.map(([endelse]) => [endelse, ny[endelse]]),
+        `${s}: henvisningerne efter generering er ikke de samme som foer med de nye noegler`);
+      set += h.kanon.length;
+    }
+    assert.equal(set, 86);
+    const idag = execFileSync('python3', ['-c', 'import datetime; print(datetime.date.today().isoformat())'], { encoding: 'utf8' }).trim();
+    assert.match(readFileSync(join(tmp, 'docs/sitemap.xml'), 'utf8'),
+      new RegExp(`privacy\\.html</loc><lastmod>${idag}</lastmod>`), 'sitemappet saa ikke privacy-sidens nye dato i samme koersel');
+    const efter1 = alle(join(tmp, 'docs'));
+    gen();
+    assert.deepEqual(alle(join(tmp, 'docs')), efter1, 'en anden koersel aendrede noget');
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
 });

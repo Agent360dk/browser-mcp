@@ -38,15 +38,15 @@ const ext = (version, id) => ({ ws: { readyState: AABEN }, seq: ++seq, extension
 
 // Bygger handleProvideFeedback med kontrolleret omverden: hvilke udvidelser der er
 // forbundet, hvad npm siger, og hvilken version serveren selv har.
-function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')], activePort = 9876 } = {}) {
+function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext('1.28.0', 'a')], activePort = 9876, skrivFejl = () => null } = {}) {
   const connections = new Set(udvidelser);
   // fingeraftryk/afkortUrl/skrivTilLogbog hentes ud af den RIGTIGE kilde. Kun
   // filsystemet stubbes - ellers ville testen maale sin egen attrap i stedet for
   // dedup-logikken, som er hele pointen.
   const src = [
     udtraek('cmpVersion'), udtraek('liveConnections'),
-    udtraek('activeConnection'), udtraek('distinctExtensions'),
-    udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
+    udtraek('activeConnection'), udtraek('distinctExtensions'), udtraek('forbindelsesAdvarsel'),
+    udtraek('skaerTegn'), udtraek('rensFritekst'), udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
     udtraek('handleProvideFeedback'),
   ].join('\n\n');
   // laastForbindelse/harSendtKommando er modul-variable i index.js; de erklaeres her
@@ -73,7 +73,7 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
     { wish: 'wish.yml', use_case: 'use-case.yml', bug: 'bug.yml' },
     async () => npmLatest,
     { version: 'v22.0.0', platform: 'darwin', arch: 'arm64' },
-    (_sti, linje) => { skrevet.push(JSON.parse(linje)); },   // appendFileSync
+    (_sti, linje) => { const f = skrivFejl(); if (f) throw new Error(f); skrevet.push(JSON.parse(linje)); },   // appendFileSync
     () => {},                                                 // mkdirSync
     (x) => x, (...x) => x.join('/'), () => '/attrap',          // dirname, join, homedir
     class { toISOString() { return '2026-08-21T00:00:00.000Z'; } },
@@ -124,6 +124,23 @@ test('gammel udvidelse med kendt version: raadet naevner ogsaa butikkens venteti
   assert.match(tekst, /1-3 days|review/i, 'ventetiden skal siges, saa den ikke ligner en fejl');
 });
 
+// MAALT 28/9 (backlog 1.30.2 #13): raadet med kendt version skiftede sprog midt i saetningen - «Kommer den fra
+// Chrome Web Store: den nye version is probably in review». Agenten viderebringer fix_steps ordret til brugeren.
+test('fix-skridtene er paa engelsk i alle tilfaelde (intet dansk midt i en saetning)', async () => {
+  const dansk = /[æøåÆØÅ]|\b(?:Kommer|den|nye|fra|og|ikke|er|med|skal)\b/;
+  const tilfaelde = [
+    { serverVersion: '1.29.1', npmLatest: '1.29.1', udvidelser: [ext('1.29.0', 'a')] },
+    { serverVersion: '1.28.0', npmLatest: '1.28.0', udvidelser: [ext('1.26.0', 'a')] },
+    { serverVersion: '1.25.0', npmLatest: '1.28.0' },
+    { udvidelser: [] },
+    { udvidelser: [ext('1.28.0', 'a'), ext('1.28.0', 'b')] },
+  ];
+  for (const t of tilfaelde) {
+    const r = await byg(t)({ what_happened: 'x' });
+    for (const s of r.fix_steps) assert.doesNotMatch(s, dansk, `dansk i et engelsk raad: «${s}»`);
+  }
+});
+
 test('udvidelse uden haandtryk regnes som for gammel', async () => {
   const r = await byg({ udvidelser: [ext(null, null)] })({ what_happened: 'noget gik galt' });
   assert.equal(r.verdict, 'outdated');
@@ -140,6 +157,23 @@ test('to udvidelser → conflict, og det slaar alt andet', async () => {
   assert.ok(r.fix_steps.some(s => s.includes('chrome://extensions')));
   // Den gamle server naevnes stadig - konflikten skjuler ikke det andet fund.
   assert.ok(r.findings.some(f => f.includes('1.25.0')));
+});
+
+// #58: samme Web Store-udvidelse i tre Chrome-profiler = tre forbindelser med SAMME id. Foer talte de som én udvidelse,
+// og diagnosen sagde «current», mens kommandoerne gik til en tilfaeldig profil.
+test('samme udvidelse i flere profiler → conflict, med antallet af forbindelser og vejen ud', async () => {
+  const r = await byg({ udvidelser: [ext('1.28.0', 'kmbhc'), ext('1.28.0', 'kmbhc'), ext('1.28.0', 'kmbhc')] })({ what_happened: 'skifter profil' });
+  assert.equal(r.verdict, 'conflict');
+  assert.equal(r.environment.extension_connections, 3);
+  assert.ok(r.findings.some((f) => f.startsWith('3 Browser MCP extension connections are open to this server, 3 of them from the same extension (kmbhc)')), JSON.stringify(r.findings));
+  assert.ok(r.findings.some((f) => /cannot tell which profile that is/.test(f)), 'fundet maa ikke paastaa at vide hvilken profil');
+  assert.ok(r.fix_steps.some((s) => /Keep the extension enabled in one Chrome profile only/.test(s)));
+});
+
+test('én forbindelse pr. udvidelse giver ingen profil-advarsel', async () => {
+  const r = await byg({ udvidelser: [ext('1.28.0', 'kmbhc')] })({ what_happened: 'x' });
+  assert.equal(r.environment.extension_connections, 1);
+  assert.ok(!r.findings.some((f) => /extension connections are open/.test(f)));
 });
 
 test('ingen udvidelse → disconnected', async () => {
@@ -189,7 +223,64 @@ test('flerlinjet beskrivelse giver enkeltlinjet titel', async () => {
 
 test('rapporten spejler det der blev meldt ind', async () => {
   const r = await byg()({ what_happened: 'x', kind: 'missing', tool: 'browser_hover', url: 'https://a.dk', attempted: 'proevede text=-selector' });
-  assert.deepEqual(r.reported, { kind: 'missing', what_happened: 'x', tool: 'browser_hover', url: 'https://a.dk', attempted: 'proevede text=-selector' });
+  assert.deepEqual(r.reported, { kind: 'missing', what_happened: 'x', tool: 'browser_hover', url: 'https://a.dk', attempted: 'proevede text=-selector', worked: null });
+});
+
+// ── skive 5 (1.30.2): worked, rensning og aftryk efter skrivning ────────────
+// Gustavs ja (T25 punkt 2 og 4): feltet worked som i computer-mcp; tal og e-mailadresser fjernes fra fritekstfelterne,
+// foer de skrives; fingeraftrykket markeres foerst efter en lykket skrivning.
+
+test('worked kommer med i logbogen, i issue-linket og i svaret', async () => {
+  const h = byg();
+  const r = await h({ what_happened: 'browser_click ramte ikke', tool: 'browser_click', worked: 'browser_click_xy paa knappens midte' });
+  assert.equal(h.skrevet[0].worked, 'browser_click_xy paa knappens midte', 'worked blev ikke skrevet i logbogen');
+  assert.match(decodeURIComponent(r.submit_url), /\*\*What worked\*\*\nbrowser_click_xy paa knappens midte/, 'worked mangler i issue-linket');
+  assert.equal(r.reported.worked, 'browser_click_xy paa knappens midte');
+});
+
+test('e-mailadresser og lange tal fjernes fra alle tre fritekstfelter, i logbogen og i linket', async () => {
+  const h = byg();
+  const r = await h({
+    what_happened: 'Kunne ikke sende til jens.hansen+kunde@firma.dk, ordre 4471 9920 3381',
+    attempted: 'ringede +45 12 34 56 78 og proevede kort 4571-1234-5678-9010',
+    worked: 'skrev til support@example.co.uk med kundenr 99887766',
+  });
+  const linje = h.skrevet[0];
+  const link = decodeURIComponent(r.submit_url);
+  for (const hemmelig of ['jens.hansen', 'firma.dk', '4471', '12 34 56 78', '4571', '5678', 'support@', '99887766']) {
+    assert.ok(!JSON.stringify(linje).includes(hemmelig), `logbogen bar «${hemmelig}»`);
+    assert.ok(!link.includes(hemmelig), `issue-linket bar «${hemmelig}»`);
+  }
+  assert.equal(linje.what_happened, 'Kunne ikke sende til [email], ordre [number]');
+  assert.equal(linje.attempted, 'ringede [number] og proevede kort [number]');
+  assert.equal(linje.worked, 'skrev til [email] med kundenr [number]');
+});
+
+test('korte tal bevares - fejltekstens tal er ofte det brugbare', async () => {
+  const h = byg();
+  await h({ what_happened: 'timeout efter 30000 ms paa trin 3' });
+  assert.equal(h.skrevet[0].what_happened, 'timeout efter 30000 ms paa trin 3', 'rensningen tog tal under seks tegn');
+});
+
+test('fritekst afkortes til 600 tegn, som i computer-mcp', async () => {
+  const h = byg();
+  await h({ what_happened: 'a'.repeat(900), attempted: 'b'.repeat(700) });
+  assert.equal(h.skrevet[0].what_happened.length, 600);
+  assert.equal(h.skrevet[0].attempted.length, 600);
+});
+
+test('en skrivning der fejler, spaerrer ikke den samme rapport resten af serverlivet', async () => {
+  let fejl = 'ENOSPC: no space left on device';
+  const h = byg({ skrivFejl: () => fejl });
+  const r1 = await h({ what_happened: 'klik landede ikke', tool: 'browser_click' });
+  assert.equal(r1.logged_locally.logged, false);
+  assert.match(r1.logged_locally.reason, /ENOSPC/);
+  fejl = null;
+  const r2 = await h({ what_happened: 'klik landede ikke', tool: 'browser_click' });
+  assert.equal(r2.logged_locally.logged, true, 'aftrykket blev sat foer skrivningen - den samme rapport kan aldrig skrives');
+  const r3 = await h({ what_happened: 'klik landede ikke', tool: 'browser_click' });
+  assert.equal(r3.logged_locally.logged, false, 'efter en lykket skrivning skal gentagelsen springes over');
+  assert.equal(h.skrevet.length, 1);
 });
 
 // ── kontrakter mod resten af systemet ───────────────────────────────────────
@@ -203,7 +294,7 @@ test('vaerktoejet er registreret og routet', async () => {
   const t = TOOLS.find(x => x.name === 'browser_provide_feedback');
   assert.ok(t, 'browser_provide_feedback mangler i tools.js');
   assert.deepEqual(t.inputSchema.required, ['what_happened']);
-  assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['attempted', 'kind', 'tool', 'url', 'what_happened']);
+  assert.deepEqual(Object.keys(t.inputSchema.properties).sort(), ['attempted', 'kind', 'tool', 'url', 'what_happened', 'worked']);
   assert.match(kilde, /name === 'browser_provide_feedback'/, 'ikke routet i index.js');
 });
 
@@ -338,4 +429,67 @@ test('port taget, men udvidelsen svarer ikke → stadig disconnected', async () 
   const r = await kald({ what_happened: 'noget gik galt' });
   assert.equal(r.verdict, 'disconnected', 'den aegte fejltilstand blev tavs af rettelsen');
   assert.ok(r.fix_steps.length > 0, 'en aegte afbrudt forbindelse skal stadig give skridt');
+});
+
+// ── R47: graenserne for rensningen ───────────────────────────────────────────
+
+test('en emoji paa 600-graensen braekker ikke rapporten (R47, Astra)', async () => {
+  for (const felt of ['what_happened', 'attempted', 'worked']) {
+    const h = byg();
+    const r = await h({ what_happened: 'Upload failed', [felt]: 'x'.repeat(599) + '\u{1F600}' + 'y' });
+    assert.equal(r.logged_locally.logged, true, `${felt}: rapporten blev ikke skrevet`);
+    const v = h.skrevet[0][felt];
+    assert.equal(Array.from(v).length, 600, `${felt}: loftet er 600 hele tegn`);
+    assert.ok(v.endsWith('\u{1F600}'), `${felt}: emoji'en skal staa hel`);
+    assert.ok(!/[\uD800-\uDFFF]/.test(v.replace(/\u{1F600}/gu, '')), `${felt}: en enlig halvdel slap igennem`);
+  }
+});
+
+test('en emoji paa titlens 90-graense og en enlig halvdel i tool braekker ikke linket', async () => {
+  const h = byg();
+  const r = await h({ what_happened: 'a'.repeat(89) + '\u{1F600}b', tool: 'browser_click\uD83D' });
+  assert.equal(new URL(r.submit_url).searchParams.get('title'), 'a'.repeat(89) + '\u{1F600}');
+  assert.equal(r.logged_locally.logged, true);
+});
+
+test('praecis seks tegn er et tal der fjernes, fem er ikke', async () => {
+  const h = byg();
+  await h({ what_happened: 'kode 123456 og trin 12345' });
+  assert.equal(h.skrevet[0].what_happened, 'kode [number] og trin 12345');
+});
+
+test('et tal delt af et linjeskift fjernes, og linjeskiftene ellers bevares', async () => {
+  const h = byg();
+  await h({ what_happened: 'ring til 12 34\n56 78\nlinje to\nlinje tre' });
+  assert.equal(h.skrevet[0].what_happened, 'ring til [number]\nlinje to\nlinje tre');
+});
+
+test('worked har ogsaa loftet paa 600', async () => {
+  const h = byg();
+  await h({ what_happened: 'x', worked: 'w'.repeat(1500) });
+  assert.equal(h.skrevet[0].worked.length, 600);
+});
+
+test('meget lang tekst uden @ laaser ikke serveren (R47, Opus: 28 s ved 200.000 tegn)', async () => {
+  const h = byg();
+  const t0 = Date.now();
+  await h({ what_happened: 'a'.repeat(200000), attempted: 'b'.repeat(200000), worked: 'c'.repeat(200000) });
+  assert.ok(Date.now() - t0 < 2000, `rensningen tog ${Date.now() - t0} ms`);
+});
+
+// R47 (Opus og Astra): README-punktet lovede rensning ogsaa for adressen og «Nothing is sent or posted unless you submit
+// that link» - rapporten gaar til AI-klienten, og at aabne linket viser indholdet til GitHub.
+test('README-punktet om rapporterne siger hvor de gaar, og hvad der renses', () => {
+  for (const f of ['README.md', 'mcp-server/README.md']) {
+    const md = readFileSync(join(rod, f), 'utf8').replace(/\s+/g, ' ');
+    assert.match(md, /returns its report to your AI client like any other tool result/, `${f}: rapporten til AI-klienten mangler`);
+    assert.match(md, /In the three things the agent wrote \(what happened, what it tried, what worked\), email addresses and numbers of six or more characters are replaced/, `${f}: rensningen er ikke afgraenset til de tre felter`);
+    assert.match(md, /the page address is only cut to origin and path/, `${f}: adressen renses ikke - det skal staa`);
+    assert.match(md, /Opening the link sends its contents to GitHub; an issue is created only when you submit it/, `${f}: linket sender indholdet til GitHub ved aabning`);
+    assert.doesNotMatch(md, /Nothing is sent or posted unless/i, `${f}: loefter at intet sendes`);
+  }
+});
+
+test('instruksen beder agenten skrive worked, naar en anden vej virkede', () => {
+  assert.match(kilde, /call \*\*browser_provide_feedback\*\* with what_happened, and with worked if another route did work in the end\./);
 });

@@ -47,7 +47,7 @@ Restart your Codex session. Full walkthrough: [Install for Codex](/docs/install-
 
 ## Two things to know before you rely on it
 
-**The tab has to be the one in front.** Chrome does not deliver keystrokes to a tab you are not looking at - it accepts the command and drops it. Since 1.29.2 the tools tell you that instead of pretending it worked, and the fix is `browser_switch_tab`. We tried to measure whether giving the session its own window removes the problem, but that measurement probably tested a background tab: the tool moved the tab back into the session's first window (found on 9 October 2026). Until it is measured again, treat a window without focus like a background tab.
+**The tab has to be the one in front.** Chrome does not deliver keystrokes to a tab you are not looking at - it accepts the command and drops it. Since 1.29.2 the tools tell you that instead of pretending it worked, and the fix is `browser_switch_tab`. We tried to measure whether giving the session its own window removes the problem, but that measurement probably tested a background tab: the tool moved the tab back into the session's first window (found on 9 October 2026, fixed in 1.30.2). Until it is measured again, treat a window without focus like a background tab.
 
 **The code is still yours to read.** We do not read your phone, your authenticator or your SMS. The agent asks; you answer. That is the whole mechanism, and it is why it works on sites that would block anything more automated.
 

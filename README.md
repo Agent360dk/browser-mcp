@@ -222,7 +222,7 @@ All three are optional. None is needed for normal use.
 | Variable | Effect |
 |---|---|
 | `BROWSER_MCP_CHECK_NPM=1` | Makes `browser_provide_feedback` also compare this server against the latest version published on npm. Off by default, so the call stays fast and works offline. |
-| `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. |
+| `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile. |
 | `BROWSER_MCP_TOKEN` | **Withdrawn in 1.30.1 and ignored** - the server says so when it starts. Pairing shipped in 1.30.0 but kept nobody out, so it was taken back rather than left as false protection. It will return redesigned. |
 
 ## 40 Tools
@@ -234,24 +234,24 @@ All three are optional. None is needed for normal use.
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |
-| `browser_extract_list` | Read every row of a long/virtualised list by scrolling its container until no new rows appear |
+| `browser_extract_list` | Read the rows of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a hidden page (a background tab) a list that loads while scrolling stops early, and `reached_end` is false |
 
 ### Interaction
 | Tool | Description |
 |------|-------------|
-| `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`) |
-| `browser_fill` | Fill input fields (works on CSP-strict sites) |
+| `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
+| `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
 | `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers) |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
-| `browser_hover` | Hover for tooltips/dropdowns |
-| `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select) |
+| `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
+| `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select); a custom trigger or option the mouse would not reach is not clicked (`covered`) |
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
 | `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt dialogs |
-| `browser_double_click` | True double-click (two trusted press/release pairs) |
-| `browser_right_click` | Right-click to open page-level context menus |
+| `browser_double_click` | True double-click (two trusted press/release pairs); answers `covered` when the mouse would not reach it |
+| `browser_right_click` | Right-click to open page-level context menus; answers `covered` when the mouse would not reach it |
 | `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
 | `browser_reattach_debugger` | Recovery: force-detach and re-attach the Chrome debugger on the current tab |
 
@@ -268,19 +268,19 @@ All three are optional. None is needed for normal use.
 ### Data & Network
 | Tool | Description |
 |------|-------------|
-| `browser_fetch` | HTTP request from extension (bypasses CORS) |
+| `browser_fetch` | HTTPS request from the extension (bypasses the page's CORS and CSP), without your browser cookies (none are sent, none are stored) - pass a token in headers; plain http only to 127.0.0.1 |
 | `browser_wait_for_network` | Wait for specific API call to complete |
-| `browser_extract_token` | Navigate to provider dashboard + extract API token |
+| `browser_extract_token` | Open a known provider's API page and get instructions for finding or creating the token there (9 providers, below); it reads nothing itself |
 
 ### CAPTCHA Solving
 | Tool | Description |
 |------|-------------|
-| `browser_solve_captcha` | Detect and solve CAPTCHAs. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (auto-click, often passes when signed into Google), `click_grid` (AI vision guided), `ask_human` (fallback) |
+| `browser_solve_captcha` | Detect CAPTCHAs and work through them one step per call. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (tries the reCAPTCHA checkbox), `click_grid` (clicks the reCAPTCHA cells you choose; it returns no image, so take a screenshot first), `ask_human` (returns the message to show with `browser_ask_user`) |
 
 ### Human-in-the-Loop
 | Tool | Description |
 |------|-------------|
-| `browser_ask_user` | Show overlay dialog for 2FA, CAPTCHA, credentials, or any user input |
+| `browser_ask_user` | Ask you to act or answer: a small card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code. The page can see what you type into it, so it is for secrets that belong to that page. It needs a page that loaded: on Chrome's error page or about:blank it fails at once and shows nothing. It makes the tab active and restores a minimized window, but does not bring Chrome in front of other apps. |
 
 ### Data
 | Tool | Description |
@@ -290,13 +290,13 @@ All three are optional. None is needed for normal use.
 | `browser_get_local_storage` | Read localStorage from page |
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
-| `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog) |
-| `browser_drop_file` | Upload via drop-zones: finds hidden `<input type="file">` in target subtree/parent (up to 2 levels). Use when `browser_upload_file` fails because the zone has no visible input |
+| `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog). Needs "Allow access to file URLs" for the Agent360 Browser MCP extension, which is off by default for Chrome Web Store installs and also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on |
+| `browser_drop_file` | Upload via drop-zones: finds a hidden `<input type="file">` in the target, then up to 2 parent levels, and as a last resort the first file input on the page; with no input at all it intercepts the native file chooser. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
 
 ### Diagnostics & feedback
 | Tool | Description |
 |------|-------------|
-| `browser_provide_feedback` | Self-check + report in one call. Compares the connected extension against this server and detects **more than one Browser MCP extension connected at once**; with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected` / `idle` / `unknown`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
+| `browser_provide_feedback` | Self-check + report in one call. Compares the connected extension against this server and detects **more than one Browser MCP extension connected at once**, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected` / `idle` / `unknown`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
 | `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
 
 ## Multi-Session Support
@@ -363,7 +363,7 @@ Replace `server-name`, then `systemctl --user enable --now browser-mcp-tunnel.se
 
 ## Built-in Provider Integrations
 
-`browser_extract_token` navigates to the provider's API settings page and guides token extraction:
+`browser_extract_token` opens the provider's API page and returns instructions for finding or creating the credentials. It reads nothing itself, and for HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list on the way to the token, not the token page itself. Any other provider answers `Unknown provider`.
 
 | Provider | Token Format | Dashboard |
 |----------|-------------|-----------|
@@ -429,6 +429,11 @@ Browser MCP has two parts, and they update independently - how the **extension**
 - Try text selector: `browser_click("text=Submit")`
 - Uses real mouse events via Chrome Debugger API automatically
 
+**Upload fails with "Not allowed"**
+- Chrome only hands a file to the page when "Allow access to file URLs" is on for the Agent360 Browser MCP extension (chrome://extensions, Agent360 Browser MCP, Details). It is off by default for Chrome Web Store installs
+- The switch also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself
+- From 1.30.2 a "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on
+
 **Stale processes**
 - Processes auto-exit when Claude Code closes (stdin detection)
 - Idle timeout: 4 hours without commands → auto-exit
@@ -475,7 +480,7 @@ account and no server of ours between you and the page.
 - **Page content** - what a tool reads from a tab goes to the MCP client you
   configured, and nowhere else. We never see it.
 - **Cookies, local storage and tokens** are not copied anywhere by default, and
-  the server keeps no store of its own - but they are reachable. Three tools read
+  the server keeps no copy of them - but they are reachable. Three tools read
   them directly (`browser_get_cookies`, `browser_get_local_storage`,
   `browser_extract_token`), two more write them (`browser_set_cookies`,
   `browser_set_local_storage`), and three more can get
@@ -486,6 +491,18 @@ account and no server of ours between you and the page.
   tool result. Nowhere else, and never to us.
 - **We collect nothing.** No identifiers, no usage counts, no crash reports, no
   analytics in the extension or the server.
+- **Your agent's own reports.** `browser_provide_feedback` returns its report to
+  your AI client like any other tool result, and it tries to add one line per new
+  report to `~/.browser-mcp/feedback.jsonl` on your machine: the time, the kind,
+  the tool, what the agent says happened, what it tried and what worked in the
+  end, the page's origin and path, version numbers, a short diagnosis, the number
+  of connected extensions and a fingerprint used to skip repeats. In the three
+  things the agent wrote (what happened, what it tried, what worked), email
+  addresses and numbers of six or more characters are replaced with `[email]` and
+  `[number]` first, in the file and in the pre-filled issue link it returns; the
+  page address is only cut to origin and path. The server does not submit the
+  report. Opening the link sends its contents to GitHub; an issue is created only
+  when you submit it. Delete the file to clear it.
 - The bridge between the extension and the MCP client runs on `localhost`, on
   the same machine; the server reaches the network only for the npm version check
   you can turn on with `BROWSER_MCP_CHECK_NPM=1`. That bridge is **local and unauthenticated**:
