@@ -194,10 +194,10 @@ test('runden hvor listen naar bunden, er ikke en runde hvor den stod paa bunden'
 });
 
 // Vaekst uden bevaegelse: hjulet ved bunden flytter intet, men loaderen laegger en pladsholder ind.
-test('en liste der vokser uden at flytte sig, er stadig i gang - ogsaa med stable_rounds 1', async () => {
+test('en liste der vokser med pladsholdere, mens den rulles, er stadig i gang - ogsaa med stable_rounds 1', async () => {
   const f = feed({ pladsholdere: 2 });
   const svar = await udtraek(sele(f), { stable_rounds: 1 });
-  assert.equal(svar.count, 40, `stoppede ved ${svar.count}: vaekst uden bevaegelse blev ikke regnet som fremskridt`);
+  assert.equal(svar.count, 40, `stoppede ved ${svar.count}: vaekst med pladsholdere blev ikke regnet som fremskridt`);
 });
 
 test('ruller hjulet ikke listen, rulles der med script, og svaret siger det', async () => {
