@@ -1,6 +1,6 @@
 // KILDE: root-cause + fix er vores egen verificerede audit (per-tegn-typing vs Input.insertText · Ctrl+A vs Cmd+A på macOS · native value-setter + input/change-events til React controlled components). Fixet er brugt live af os selv flere gange 21-22/7 (Smithery-kodefelter, Cloudflare-settings, GSC/GA4). Ingen opdigtede tal.
 
-# Why browser automation fails on React forms - and the fix that works
+# Why automation fails on React forms
 
 *Suggested URL: `/learn/browser-automation-react-forms` · Suggested title tag: "Why Browser Automation Fails on React Forms (And How to Fix It)" · Suggested meta description: "Your script sets the value, the field looks right, and the app submits empty. The root cause in React-controlled inputs, plus the native-setter fix that actually works." · Last verified: July 22, 2026*
 

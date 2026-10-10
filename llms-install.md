@@ -46,7 +46,7 @@ vscode:mcp/install?%7B%22name%22%3A%22browser-mcp%22%2C%22type%22%3A%22stdio%22%
 trae://trae.ai-ide/mcp-import?type=stdio&name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBhZ2VudDM2MC9icm93c2VyLW1jcEBsYXRlc3QiXX0%3D
 ```
 
-Any other client - write this into that client's MCP config:
+Most other clients (Cursor, Windsurf, Cline, Claude Desktop and others) take this JSON in their MCP config. Zed puts the same entry under `context_servers` (https://browsermcp.dev/docs/install-zed/), and opencode under `mcp` with `command` as an array (https://browsermcp.dev/docs/install-opencode/):
 
 ```json
 {

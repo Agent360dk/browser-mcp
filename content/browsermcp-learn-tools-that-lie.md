@@ -1,6 +1,6 @@
 // KILDE: alt paa denne side er maalt i vores eget repo mellem 13. og 18. september 2026 og staar i CHANGELOG.md for 1.29.1, 1.29.2 og 1.30.0, med commit pr. rettelse. De to eksterne fund er offentlige paa issue #19. Ingen tal uden en maaling bag.
 
-# Nine tools that said yes when nothing had happened
+# Nine tools that said yes
 
 *Suggested URL: `/learn/tools-that-lie` · Suggested title tag: "Nine Browser Tools That Reported Success Without Doing Anything" · Suggested meta description: "An agent tool that quietly reports success is worse than one that fails. Here is the whole class of bug we found in our own code, how each one was measured, and what the tools answer now." · Last verified: September 18, 2026*
 

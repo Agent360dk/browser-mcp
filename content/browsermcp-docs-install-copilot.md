@@ -1,12 +1,14 @@
 // KILDE: https://code.visualstudio.com/docs/agent-customization/mcp-servers + https://code.visualstudio.com/docs/agents/reference/mcp-configuration (hentet 19/9-2026, to uafhaengige research-koersler enige om at noeglen er `servers`). 74.604.637 installationer af GitHub Copilot paa VS Code Marketplace, hentet 19/9. ⚠️ 128-vaerktoejs-graensen staar KUN i deres issue-tracker, ikke i dokumentationen - derfor er den formuleret forsigtigt her. Fjern ikke forbeholdet.
 
-# Install Browser MCP for GitHub Copilot agent mode
+# Browser MCP for GitHub Copilot
 
 *Suggested URL: `/docs/install-copilot` · Suggested title tag: "Browser MCP for GitHub Copilot Agent Mode (VS Code, 2026)" · Suggested meta description: "Four steps. Copilot agent mode drives the Chrome you are already signed in to - your cookies, your sessions, your 2FA - instead of a fresh headless browser." · Last verified: September 19, 2026*
 
 ---
 
 **Give Copilot agent mode control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
+
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
 
 ## The whole thing, in four steps
 
@@ -38,7 +40,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 **The key is `servers`. Not `mcpServers`.**
 
-Every other client on this site uses `mcpServers`. VS Code does not. If you paste a working block from Cline, Cursor or Claude Desktop straight into `.vscode/mcp.json`, nothing happens and nothing tells you why. It is the single most common reason this looks broken.
+Most clients on this site use `mcpServers`. VS Code does not (Zed uses `context_servers`, opencode `mcp`, and Codex a TOML table). If you paste a working block from Cline, Cursor or Claude Desktop straight into `.vscode/mcp.json`, nothing happens and nothing tells you why. It is the single most common reason this looks broken.
 
 ## Things worth knowing before you hit them
 

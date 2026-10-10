@@ -1,6 +1,6 @@
 // KILDE: alle tal MAALT 19/9-2026 med api.npmjs.org (ugentlige hentninger, hentet samme minut for alle fem) + GitHub-API for commit-datoer. Vibe fundet 19/9 ved at soege paa vores EGET pitch: de staar nr. 1, vi staar ingen steder. ⚠️ Tallene er ugentlige hentninger, IKKE brugere - npm skelner ikke menneske fra CI, og det skal staa paa siden. ⚠️ Opdater tabellen naar `konkurrent-vagt.py` bliver roed; skriv ALDRIG et tal her uden at hente det samme dag.
 
-# How to control your real, logged-in Chrome from an AI coding agent
+# Control your logged-in Chrome with AI
 
 *Suggested URL: `/learn/control-your-real-chrome` · Suggested title tag: "Control Your Real Logged-In Chrome From an AI Agent (2026)" · Suggested meta description: "Five ways to give Claude Code, Cursor or Codex your actual Chrome instead of a headless one - what each costs you, measured, including where ours loses." · Last verified: September 19, 2026*
 
@@ -52,7 +52,7 @@ Weekly npm downloads, all fetched the same minute on 19 September 2026. These co
 
 ## What we do differently, and where we lose
 
-Ours keeps the connection in an **offscreen document** instead of the service worker, which is why the eviction failure above does not happen. And when a step genuinely needs a person - a 2FA code, a CAPTCHA, a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab.
+Ours keeps the connection in an **offscreen document** instead of the service worker, which is why the eviction failure above does not happen. And when a step genuinely needs a person - a 2FA code or a choice only you can make - it stops and asks you on your own screen, then carries on in the same tab. A CAPTCHA it cannot clear, the agent asks you to solve. If its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 **Where we thought we lost, measured on 19 September 2026:** a framework-controlled `<select>`. The fault was our own test page, not React; 1.30.0 lands the choice on real React. The method, the raw result and the retraction are on [/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), including the two other cases we measured where nobody lied.
 

@@ -8,6 +8,8 @@
 
 **Give Continue.dev control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl).
@@ -35,7 +37,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 **MCP only works in agent mode.** Their documentation says it outright. In chat mode the tools simply are not there, with no error to tell you why. If you have added the server and nothing happens, check which mode you are in before you check anything else.
 
-**It is YAML with a list, not JSON with an object.** Every other client on this site takes a JSON object keyed by server name. Continue takes a YAML array of entries, each with its own `name`. Pasting a JSON block from Cline or Cursor will not work.
+**It is YAML with a list, not JSON with an object.** Most other clients on this site take a JSON object keyed by server name (Codex takes TOML). Continue takes a YAML array of entries, each with its own `name`. Pasting a JSON block from Cline or Cursor will not work.
 
 ## The other way in
 

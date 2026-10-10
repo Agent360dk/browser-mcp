@@ -6,6 +6,8 @@
 
 **Give your ZCode agent control of your real, already-logged-in Chrome in four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
@@ -151,11 +153,11 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
-| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
-| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA, CAPTCHA, or credential input, right inside the page |
+| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox and click reCAPTCHA grid cells it chooses, one step per call, and asks you to solve what it cannot clear (if its dialog covers the page, press Skip, solve it in the tab and tell the agent). No third-party solving service |
+| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for a 2FA code, a credential or a choice, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
-`browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) - but it isn't limited to those. For anything else, the agent falls back to `browser_navigate` + `browser_get_page_content` and walks the dashboard itself.
+`browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. For any other provider, the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
 
@@ -168,7 +170,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | 2FA / CAPTCHA-gated sites | Works, and `browser_ask_user` can ask you for the code mid-run | Reachable in extension mode, but nothing can ask you for a code |
 | Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 72 tools, none of which can ask the person anything (checked 2026-09-19) |
 | Several agents at once | 20 concurrent, color-coded tab groups | Also supported via their extension: one tab group per connected client |
-| Provider dashboards | Zero-config shortcuts for 9 common ones, works with any | None |
+| Provider dashboards | 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn); any other through browser_navigate and reading the page | None |
 | Install | Chrome extension + one `mcp.json` entry | `npx @playwright/mcp` |
 
 

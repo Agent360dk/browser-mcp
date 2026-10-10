@@ -129,3 +129,17 @@ tr:last-child td{border-bottom:0}
 .toc a:hover{text-decoration:underline}
 @media (max-width:30rem){.turn{grid-template-columns:1fr;gap:.2rem}.turn .who{text-align:left;line-height:1.4}.vin{padding:.9rem}}
 .subhero+h2{border-top:0;padding-top:0;margin-top:0}
+/* 8/10 ekspertpanel R1: butiksknap i undersidernes topbjaelke + installationsblok paa use case-siderne */
+.tn a.navcta{background:var(--ink);color:var(--paper);text-decoration:none;font-weight:600;font-size:.9rem;padding:.45rem .85rem;border-radius:10px;white-space:nowrap}
+.tn a.navcta:hover{opacity:.9}
+/* PR63 R1: en telefon kan ikke installere en Chrome-udvidelse - topbjaelkens butiksknap og installationsblokken skjules paa beroeringsskaerme */
+@media (hover:none) and (pointer:coarse){.tn a.navcta,.install2{display:none}}
+@media (max-width:36rem){.tn a.opt{display:none}}
+.install2{margin:3rem 0 0;padding:1.4rem 1.4rem 1.2rem;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+.install2 h2{border:0;padding:0;margin:0 0 1rem;font-size:1.3rem}
+.install2 ol{list-style:none;margin:0;padding:0;display:grid;gap:1rem}
+.install2 li{display:grid;grid-template-columns:1.9rem minmax(0,1fr);gap:.75rem;align-items:start}
+.install2 li>b{width:1.9rem;height:1.9rem;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-size:.85rem;margin-top:.2rem}
+.install2 p{margin:0 0 .5rem}
+.install2 .alt{color:var(--muted);font-size:.9rem;margin-top:.5rem}
+.install2 .code{margin:0}

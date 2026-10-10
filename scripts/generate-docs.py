@@ -44,6 +44,8 @@ PAGES=[
  ('browsermcp-usecase-codex-2fa.md','Use cases','Codex + 2FA','/use-cases/codex-2fa'),
  ('browsermcp-usecase-2fa-gmail.md','Use cases','Read a 2FA code from Gmail','/use-cases/read-2fa-from-gmail'),
  ('browsermcp-usecase-concurrent-sessions.md','Use cases','Concurrent sessions','/use-cases/concurrent-sessions'),
+ ('browsermcp-usecase-signup-qa.md','Use cases','Test your signup','/use-cases/test-your-signup-flow'),
+ ('browsermcp-usecase-dashboards.md','Use cases','Dashboard numbers','/use-cases/pull-numbers-from-dashboards'),
  ('browsermcp-learn-model-context-protocol.md','Learn','Model Context Protocol','/learn/model-context-protocol'),
  ('browsermcp-learn-what-is-an-mcp-server.md','Learn','What is an MCP server','/learn/what-is-an-mcp-server'),
  ('browsermcp-learn-check-ai-mentions-brand.md','Learn','Check if AI mentions you','/learn/check-if-ai-mentions-your-brand'),
@@ -92,7 +94,9 @@ for _fn,_grp,_label,_url in PAGES:
         continue
     SOURCES[_url]=_body; LIVE.append((_fn,_grp,_label,_url))
 LABELS={url:label for _,_,label,url in LIVE}
-# <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form)
+# <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form).
+# 8/10-2026: synlige h1 er kortet til <=7 ord (Gustav: «mindre tekst i h1»). Sider der ikke havde en title-override,
+# fik deres gamle h1 her, saa <title> og dermed SEO-titlen er uaendret.
 TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io - which is maintained? (2026)',
  '/compare/browser-automation-mcp-servers':'Best Browser Automation MCP Servers (2026) - Compared',
  '/docs/install-claude-code':'Browser MCP for Claude Code - Give Claude Your Real, Logged-In Chrome',
@@ -107,7 +111,20 @@ TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io - which is ma
  '/learn/what-is-an-mcp-server':'What Is an MCP Server? A Practical Explanation (2026)',
  '/learn/check-if-ai-mentions-your-brand':'How to Check if ChatGPT & Perplexity Mention Your Brand (2026)',
  '/learn/browser-automation-react-forms':'Why Browser Automation Fails on React Forms (And How to Fix It)',
- '/learn/tools-that-lie':'Nine Browser Tools That Reported Success Without Doing Anything'}
+ '/learn/tools-that-lie':'Nine Browser Tools That Reported Success Without Doing Anything',
+ '/use-cases/claude-code-login-wall':'Claude Code behind a login wall: use the session you already have · Browser MCP',
+ '/learn/control-your-real-chrome':'How to control your real, logged-in Chrome from an AI coding agent · Browser MCP',
+ '/use-cases/test-your-signup-flow':'Test Your Signup Flow With an AI Agent in Your Real Chrome (Browser MCP)',
+ '/use-cases/pull-numbers-from-dashboards':'Pull Numbers From Any Dashboard With an AI Agent, No API Key (Browser MCP)',
+ '/compare/browser-use':'Browser MCP vs browser-use: they are not the same kind of thing · Browser MCP',
+ '/use-cases/codex-2fa':'Codex and 2FA: let the agent ask you for the code · Browser MCP',
+ '/use-cases/vscode-concurrent-sessions':'Several VS Code agents, one browser, no fighting over tabs · Browser MCP',
+ '/use-cases/cursor-captcha':'Cursor and CAPTCHAs: your agent tries, and you solve what it cannot · Browser MCP',
+ '/migrate/from-browsermcp-io':'Moving from @browsermcp/mcp to Browser MCP by Agent360 · Browser MCP',
+ '/docs/install-vscode':'Add Browser MCP to VS Code (Agent Mode) · Browser MCP',
+ '/docs/install-copilot':'Install Browser MCP for GitHub Copilot agent mode · Browser MCP',
+ '/docs/capability-matrix':'What Browser MCP can and cannot get past · Browser MCP',
+ '/compare/browser-mcp-alternatives':'Browser MCP alternatives: the five that exist, measured · Browser MCP'}
 def related(url):
     if url=='/docs/what-is-browser-mcp': links=INSTALL+['/docs/tools','/compare/browsermcp-io']
     elif url in INSTALL: links=['/docs/what-is-browser-mcp','/docs/tools','/compare/browsermcp-io']+[u for u in INSTALL if u!=url][:2]
@@ -457,6 +474,16 @@ def _figur(url, grp, body):
     if len(afsnit)<3: return None
     return 'On this page', '<ol class="toc">'+''.join('<li><a href="#%s">%s</a></li>'%(i,html.escape(t)) for i,t in afsnit[:7])+'</ol>'
 
+def installer():
+    # 8/10 (ekspertpanel R1, CRO 4): use case-siderne er hvor soegetrafikken lander, og flere havde ingen vej til
+    # installationen. Samme to trin som forsiden; butikken aabner i ny fane, saa trin 2 bliver staaende.
+    return ('<section class="install2" aria-label="Install"><h2>Install it in two steps</h2><ol>'
+            '<li><b>1</b><div><a class="pill" href="%s" target="_blank" rel="noopener">Add to Chrome, free</a></div></li>'
+            '<li><b>2</b><div><p>Paste this in your terminal, then restart your agent:</p>'
+            '<div class="code"><pre tabindex="0" translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</pre><button class="copy">Copy</button></div>'
+            '<p class="alt">Cursor, VS Code, Codex: <code>npx @agent360/browser-mcp@latest install --skip-extension</code>. Other clients: <a href="/docs/install-cursor/">the guides</a>.</p></div></li>'
+            '</ol></section>') % CWS_URL
+
 def subhero(url, grp, body):
     m=re.match(r'\s*(<h1[^>]*>.*?</h1>)\s*(?:<hr>\s*)?(<p>.*?</p>)?', body, re.S)
     if not m: return body
@@ -484,8 +511,8 @@ for fn,grp,label,url in LIVE:
     body=subhero(url,grp,body)
     page='<!doctype html><html lang="en"><head>\n'+head(title,desc,url)+'\n'+jsonld(title,desc,url,grp,faq,git_datoer(fn))+'\n</head><body>'
     # 2/10-2026: samme header som den nye forside (rigtigt logo, skip-link, <main id>, navigation med aria-label).
-    page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star" href="https://github.com/Agent360dk/browser-mcp">GitHub</a></nav></div></header>'
-    page+='<div class="shell"><main class="content" id="main">'+body+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
+    page+='<a class="skip" href="#main">Skip to content</a><header class="top"><div class="top-in"><a class="logo" href="/"><img src="/logo.svg" alt="" width="24" height="24"><span translate="no">Browser MCP</span></a><nav class="tn" aria-label="Main"><a href="/docs/install-claude-code/">Install</a><a class="opt" href="/compare/browser-automation-mcp-servers/">Compare</a><a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a><a class="star opt" href="https://github.com/Agent360dk/browser-mcp">GitHub</a><a class="navcta" href="'+CWS_URL+'" target="_blank" rel="noopener">Add to Chrome</a></nav></div></header>'
+    page+='<div class="shell"><main class="content" id="main">'+body+(installer() if url.startswith('/use-cases/') else '')+related(url)+'</main><nav class="side" aria-label="Documentation">'+sidebar(url)+'</nav></div>'
     page+='<script src="/assets/docs.js"></script></body></html>'
     disk=REPO+url.strip('/')+'/index.html'
     os.makedirs(os.path.dirname(disk),exist_ok=True)

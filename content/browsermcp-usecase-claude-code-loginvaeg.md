@@ -1,6 +1,6 @@
 // KILDE: adfaerd laest i extension/background.js + mcp-server/tools.js 19/9-2026. Soegedata GSC 90 dage: `claude code browser mcp` 65 visn/pos 28,4 · `browser mcp claude code` 89 visn/pos 22,8 · `claude code chrome mcp login workaround` (Bings query-stats, pos 1). ⚠️ Ingen paastand om at vi er de eneste der bruger din indloggede Chrome - det goer Microsoft, Google og Anthropic ogsaa (maalt 19/9).
 
-# Claude Code behind a login wall: use the session you already have
+# Claude Code behind a login wall
 
 *Suggested URL: `/use-cases/claude-code-login-wall` · Suggested title tag: "Claude Code Behind a Login Wall (2026): Use Your Real Session" · Suggested meta description: "Claude Code cannot read the page because it is behind a login. Browser MCP drives the Chrome you are already signed in to, so there is no login to get past." · Last verified: September 19, 2026*
 
@@ -38,7 +38,7 @@ Restart Claude Code. Full walkthrough: [Install for Claude Code](/docs/install-c
 
 ## When it still asks you for something
 
-Some pages re-challenge even an authenticated session: a step-up 2FA prompt, a CAPTCHA, a "choose an account" screen. The agent stops and asks you on your own screen, then carries on in the same tab. That is `browser_ask_user`, and it is covered in [Codex + 2FA](/use-cases/codex-2fa/) - the mechanism is identical whichever client you use.
+Some pages re-challenge even an authenticated session: a step-up 2FA prompt or a "choose an account" screen. The agent stops and asks you on your own screen, then carries on in the same tab. That is `browser_ask_user`, and it is covered in [Codex + 2FA](/use-cases/codex-2fa/) - the mechanism is identical whichever client you use. A CAPTCHA it cannot clear, the agent asks you to solve. If its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 ## Two things to know before you rely on it
 
@@ -58,4 +58,4 @@ The server is local, there is no account and no telemetry. What the agent reads 
 It is your real Chrome with your real profile, so most detection does not fire. That is the honest answer for most sites and not a guarantee for all of them.
 
 **Can several Claude Code conversations use it at once?**
-Yes - up to 20, each in its own colour-coded tab group.
+Yes - up to 20 MCP servers at once, each in its own colour-coded tab group. The separation follows the server: conversations that share one server share its tab group.

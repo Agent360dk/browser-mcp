@@ -1,8 +1,8 @@
 // KILDE: sessions-modellen laest i extension/background.js (tabGroups, 20 porte 9876-9895) + mcp-server/index.js:45-46, 19/9-2026. ⚠️ Microsofts udvidelse giver OGSAA hver klient sin egen fanegruppe (deres README l.41-43, maalt 19/9) - siden maa ikke paastaa at det er vores alene.
 
-# Several VS Code agents, one browser, no fighting over tabs
+# Several VS Code agents, one browser
 
-*Suggested URL: `/use-cases/vscode-concurrent-sessions` · Suggested title tag: "Multiple VS Code Agents, One Chrome (2026): Colour-Coded Tab Groups" · Suggested meta description: "Run several agent conversations against the same logged-in Chrome. Each gets its own colour-coded tab group and cannot touch the others' tabs." · Last verified: September 19, 2026*
+*Suggested URL: `/use-cases/vscode-concurrent-sessions` · Suggested title tag: "Multiple VS Code Agents, One Chrome (2026): Colour-Coded Tab Groups" · Suggested meta description: "Run several agents, each with its own MCP server, against the same logged-in Chrome. Each gets its own colour-coded tab group and cannot touch the others' tabs." · Last verified: September 19, 2026*
 
 ---
 
@@ -12,7 +12,7 @@ Browser MCP gives each session its own colour-coded Chrome tab group. A session 
 
 ## What it looks like
 
-Three conversations running against one Chrome:
+Three agents, each with its own MCP server, running against one Chrome:
 
 ```
   ● blue    Claude 1  - Claude Code, reading the analytics dashboard
@@ -60,17 +60,17 @@ would make three parallel agents unusable the first time two of them disagreed.
 }
 ```
 
-⚠️ VS Code's key is `servers`, not `mcpServers`. Every other client uses the other one. Full walkthrough: [Install for VS Code](/docs/install-vscode/).
+⚠️ VS Code's key is `servers`, not `mcpServers`, which most other clients use. Full walkthrough: [Install for VS Code](/docs/install-vscode/).
 
 ## How the isolation actually works
 
-Each server takes one port from a range of twenty (9876-9895), and the port is what identifies the session. The extension keeps a tab group per port. A tool call arrives on a port, and it can only reach the tabs in that port's group.
+Each server takes one port from a range of twenty (9876-9895), and the port is what identifies the session. The extension keeps a tab group per port. The separation follows the MCP server, not the conversation: conversations that share one server share its tab group. A tool call arrives on a port, and it can only reach the tabs in that port's group.
 
 Two consequences worth knowing:
 
-**Twenty is the real ceiling.** Twenty-one conversations, and the twenty-first gets no port and says so rather than sharing someone else's.
+**Twenty is the real ceiling.** Twenty-one servers, and the twenty-first gets no port and says so rather than sharing someone else's.
 
-**The port is taken on first use, not at startup.** A server that never touches the browser never takes a port, so idle conversations do not consume the range.
+**The port is taken on first use, not at startup.** A server that never touches the browser never takes a port, so idle servers do not consume the range.
 
 ## The honest comparison
 
@@ -82,7 +82,7 @@ What differs is what happens when a run needs a human: none of Playwright MCP's 
 
 **Only the visible tab gets mouse and keyboard.** Chrome does not deliver input to a tab that is not the visible one in its window - so with three sessions running, only the one you are looking at gets key presses, hover, double- and right-click and coordinate clicks. Reading, clicking and filling a field by CSS selector work in every session. Since 1.29.2 the tools say which case you are in instead of reporting a success that did not happen.
 
-We measured whether giving each session its own window would fix that. **It does not** - what matters is whether the window has focus, not whether the tab is visible in it. [The measurement](https://github.com/Agent360dk/browser-mcp/blob/main/test/aerlighed/RESULTAT-vindueshypotesen-2026-09-19.md).
+We tried to measure whether giving each session its own window would fix that. The measurement probably tested a background tab: the tool moved the tab back into the session's first window (found on 9 October 2026). So the question is open until it is measured again. [The original measurement](https://github.com/Agent360dk/browser-mcp/blob/main/test/aerlighed/RESULTAT-vindueshypotesen-2026-09-19.md).
 
 ## Frequently asked questions
 

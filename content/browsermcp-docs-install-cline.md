@@ -8,6 +8,8 @@
 
 **Give Cline control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank browser that hits every login wall as a stranger.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl).
@@ -49,7 +51,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 The point is not "Cline can browse". It is that it browses **as you**. It opens your admin dashboard already signed in, reads the 2FA code from your Gmail, already signed in, and fills the form on the page you point it to. Nothing to re-authenticate, because it is your authenticated browser.
 
-And when it hits something only you can decide - a 2FA code, a CAPTCHA, a choice between three accounts - `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab.
+And when it hits something only you can decide - a 2FA code or a choice between three accounts - `browser_ask_user` stops, asks you on your own screen, and carries on in the same tab. A CAPTCHA it cannot clear, the agent asks you to solve. If its dialog covers the page, press Skip, solve the CAPTCHA in the tab, and tell the agent.
 
 ## Frequently asked questions
 

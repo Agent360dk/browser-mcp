@@ -19,8 +19,9 @@ for (const top of ['docs/docs', 'docs/compare', 'docs/use-cases', 'docs/learn', 
 const tekst = (s) => s.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 const bg = readFileSync(join(rod, 'extension/background.js'), 'utf8');
 
-test('alle 40 genererede undersider aabner med en topsektion og en figur', () => {
-  assert.equal(sider.length, 40);
+test('alle genererede undersider aabner med en topsektion og en figur', () => {
+  // 8/10-2026: 42 (to nye use case-sider). Tallet skal foelge PAGES i generate-docs.py.
+  assert.equal(sider.length, 42);
   const uden = sider.filter(([, h]) => !/<header class="subhero">[\s\S]*?<figure class="viz">/.test(h)).map(([s]) => s);
   assert.deepEqual(uden, []);
 });

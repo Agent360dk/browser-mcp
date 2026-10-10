@@ -1,6 +1,6 @@
 // KILDE: tvillingens vaerktoejsnavne laest 19/9-2026 ud af den udgivne pakke `@browsermcp/mcp@0.1.3` (npm pack + grep i dist/). Vores 40 fra `mcp-server/tools.js` samme dag. Hentninger og commit-dato fra npm-API + GitHub-API 19/9. ⚠️ browser_go_back, browser_go_forward og browser_drag findes IKKE hos os - det staar paa siden, fordi en migrationsside der skjuler et hul er en faelde.
 
-# Moving from @browsermcp/mcp to Browser MCP by Agent360
+# Moving from browsermcp.io
 
 *Suggested URL: `/migrate/from-browsermcp-io` · Suggested title tag: "Migrate from browsermcp.io to Browser MCP by Agent360 (2026)" · Suggested meta description: "Same idea, different package. Seven of thirteen tools have the same name. Here is the config diff, the three that are renamed, and the three we do not have." · Last verified: September 19, 2026*
 

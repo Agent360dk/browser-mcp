@@ -6,6 +6,8 @@
 
 **Give Codex control of your real, already-logged-in Chrome in four steps.** Your cookies, your sessions, your 2FA, instead of a blank headless browser that gets blocked on every login wall.
 
+**You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
+
 ## The whole thing, in four steps
 
 **1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? The unpacked install is further down.
@@ -26,7 +28,7 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 Everything below is the long version.
 
-## Install - 3 steps (~90 seconds)
+## Install
 
 ### Step 1: Add the MCP server to Codex
 
@@ -99,7 +101,7 @@ The pattern: **anything you would do yourself in a browser, on a site you are al
 
 ### The 2FA-killer move
 
-This is the thing headless tools can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
+This is what a fresh headless browser without your login can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
 ### 40 tools, no server-side moving parts
 
@@ -109,11 +111,11 @@ This is the thing headless tools can't do: Codex hits a login wall, reads the on
 | **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_hover`, `browser_scroll`, `browser_press_key`, `browser_wait`, `browser_handle_dialog` |
 | **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab` (for OAuth popups), `browser_list_frames` / `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch` (bypasses CORS from the extension), `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
-| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha, attempts the checkbox, then hands the challenge to you if it cannot. No third-party solving service |
-| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA codes, CAPTCHA grids, or any credential Codex shouldn't guess at |
+| **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox and click reCAPTCHA grid cells it chooses, one step per call, and asks you to solve what it cannot clear (if its dialog covers the page, press Skip, solve it in the tab and tell the agent). No third-party solving service |
+| **Human-in-the-loop** | `browser_ask_user` - overlay dialog for 2FA codes or any credential Codex shouldn't guess at |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
 
-`browser_extract_token` ships with zero-config shortcuts for 9 common dashboards (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) - but it isn't limited to those. Point it at any provider's API-settings page and it'll navigate there and walk you through pulling the token the same way; the 9 are just shortcuts, not a whitelist.
+`browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. For any other provider, the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 
 Runs up to 20 concurrent browser sessions with color-coded Chrome tab groups, so parallel Codex tasks don't step on each other's tabs.
 
@@ -133,7 +135,7 @@ No. `codex mcp add` writes straight to Codex's own `~/.codex/config.toml` - noth
 It runs on your machine. The extension talks to an MCP server on `127.0.0.1` that you started - nothing is sent to Agent360, and there is no telemetry or analytics. What your agent reads goes to your AI client and its model provider, like anything else you show it. Cookies and tokens are only pulled when your agent explicitly asks for them, one call at a time. Source is [open and auditable on GitHub](https://github.com/Agent360dk/browser-mcp).
 
 **How does CAPTCHA assistance actually work?**
-Three layers: (1) auto-detect and click reCAPTCHA/hCaptcha/Turnstile checkboxes, (2) AI-vision-guided grid solving for image challenges, (3) `browser_ask_user` shows you the challenge to solve by hand if the first two miss - then the agent continues. Nothing is routed through a third-party CAPTCHA-solving service. We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one.
+Three steps the agent takes one call at a time: (1) `browser_solve_captcha` detects the kind and can click a reCAPTCHA v2 checkbox, (2) for an image challenge the agent takes its own screenshot and tells the tool which grid cells to click, (3) the agent asks you to solve it by hand; if its dialog covers the page, press Skip, solve it in the tab and tell the agent, and it continues. Nothing is routed through a third-party CAPTCHA-solving service. We publish no solve-rate figure - we haven't benchmarked it rigorously enough to stand behind one.
 
 **Is it really free?**
 Yes - MIT-licensed, open source, no paywall, no account, no API key. Built by [Agent360](https://agent360.dk) as part of its developer-tools work.
