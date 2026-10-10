@@ -688,7 +688,7 @@ test('et klikbart kort (role=button) med et link i midten er daekket af linket; 
 });
 
 test('et passivt kort med <a role=button onclick> eller <a href role=button> i midten er daekket; et rigtigt link er kortets eget (R67)', () => {
-  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '/ordre/7', onclick: 'slet()' }, true], [{ href: '/ordre/7' }, false]]) {
+  for (const [attrs, daekket] of [[{ role: 'button', onclick: 'slet()' }, true], [{ href: '#s', role: 'button' }, true], [{ href: '#s', onclick: 'slet()' }, true], [{ href: '/ordre/7', onclick: 'slet()' }, true], [{ href: '/ordre/7', role: 'button' }, true], [{ href: '/ordre/7' }, false]]) {
     const d = lavKlikDom();
     const kort = d.el('div', { id: 'kort', tekst: 'Ordre 7', rect: [40, 40, 400, 80] });
     d.el('a', { id: 'i', tekst: 'Slet', attrs, rect: [190, 60, 100, 40], lag: 1 }, kort);
