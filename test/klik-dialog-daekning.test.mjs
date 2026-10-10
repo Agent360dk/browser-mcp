@@ -1194,3 +1194,28 @@ test('feltet som maal med en handling om feltet i dets label (div role=button el
   }
 });
 
+// ── R79 (Astra, maalt i model) ─────────────────────────────────────────────
+test('rolle-bokse taelles ogsaa i aabne shadow roots i labelen; et custom-felt uden labels findes via label.control (R79)', () => {
+  // 1) Den rigtige stedfortraeder ligger i en komponents skygge; en anden switch lige efter det skjulte felt.
+  {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    const xboks = d.el('x-box', { rect: [20, 20, 20, 30] }, l);
+    d.el('span', { attrs: { role: 'checkbox' }, rect: [20, 20, 20, 30] }, d.skygge(xboks));
+    const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [40, 20, 1, 1] }, l);
+    felt.labels.push(l); l.control = felt;
+    d.el('span', { id: 'nyt', attrs: { role: 'switch', onclick: 'nyt()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+    assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id, 'nyt', 'boks i skygge');
+  }
+  // 2) Et form-associeret custom-felt uden offentlig labels-egenskab mellem to rolle-bokse.
+  for (const [toBokse, daekket] of [[true, true], [false, false]]) {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    if (toBokse) d.el('span', { attrs: { role: 'checkbox' }, rect: [20, 20, 20, 30] }, l);
+    const felt = d.el('x-felt', { id: 'xf', rect: [40, 20, 1, 1] }, l);
+    delete felt.labels; l.control = felt;
+    d.el('span', { id: 'nyt', attrs: { role: 'switch', onclick: 'nyt()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+    assert.equal(!!d.koer(KILDE, '#l', null, null, false, false).svar.covered, daekket, `custom-felt, to bokse=${toBokse}`);
+  }
+});
+

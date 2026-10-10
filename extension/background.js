@@ -2234,8 +2234,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // ligger lige foer. Er der flere rolle-bokse i labelen, er stedfortraederen ikke entydig, og ingen af dem er feltets egen.
     // R78 (Astra, maalt i model): optaellingen skete i felt.labels[0], ogsaa naar boksen laa i en anden af feltets labels. Det er
     // den label, der rummer boksen, der taeller.
-    const lab = Array.from(felt.labels || []).find((l) => inde(n, l)) || null;
-    return !lab || !lab.querySelectorAll || Array.from(lab.querySelectorAll(FELTROLLE)).filter((k) => !k.matches(INTERAKTIV)).length === 1;
+    // R79 (Astra, maalt i model): et form-associeret custom-felt har ingen offentlig `labels`, saa ingen label blev fundet, og
+    // kandidaten blev godtaget uden optaelling; og querySelectorAll saa hverken bokse i aabne shadow roots eller slottede bokse.
+    // Labelen findes nu ogsaa via label.control, og boksene taelles i hele det flade traee under den (som daekningen ser det).
+    const alle = collectAll(document, []);
+    const lab = Array.from(felt.labels || alle.filter((l) => l.tagName === 'LABEL' && l.control === felt)).find((l) => inde(n, l)) || null;
+    return !lab || alle.filter((k) => k !== lab && inde(k, lab) && !!k.matches && k.matches(FELTROLLE) && !k.matches(INTERAKTIV)).length === 1;
   };
   const egenBoks = (n, felt) => !!felt && (inde(n, felt) ||
     (inde(felt, n) && (!n.matches || !n.matches(HANDLING) || boksRolle(n))) ||
