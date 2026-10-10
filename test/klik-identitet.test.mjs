@@ -940,3 +940,29 @@ test('en label med et felt: et aktiveringsklik, som siden stopper foer feltet, e
   }
 });
 
+// ── R79 (Opus, maalt i Chrome) ─────────────────────────────────────────────
+test('feltet som maal i sin egen rolle-boks: et klik, der kun naar boksen, er ikke et ja (R79)', async () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+  const boks = d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 30, 30] }, l);
+  const felt = d.el('input', { id: 'cb', attrs: { type: 'checkbox' }, rect: [25, 25, 20, 20], ingenPeg: true }, boks);   // sr-only
+  felt.labels.push(l); l.control = felt;
+  const b = browser(d);
+  boks.addEventListener('click', (ev) => ev.preventDefault());   // boksen haandterer selv klikket, feltet faar intet
+  const svar = await b.koer('click', { selector: '#cb' });
+  assert.notEqual(svar.landed, true, JSON.stringify(svar));
+  assert.ok(!b.side.includes('click:cb'), String(b.side));
+});
+
+test('tekst i en label som maal: labelens aktiveringsklik til feltet er ikke noget, der kom foran (R79)', async () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', rect: [20, 20, 600, 40] });
+  const felt = d.el('input', { id: 'cb', attrs: { type: 'checkbox' }, rect: [700, 20, 20, 20] });
+  felt.labels.push(l); l.control = felt;
+  d.el('span', { id: 't', tekst: 'Ordre 7', rect: [20, 20, 600, 40] }, l);
+  const b = browser(d);   // aktiveringsklikket sendes med musens koordinater
+  const svar = await b.koer('click', { selector: '#t' });
+  assert.equal(svar.landed, true, JSON.stringify(svar));
+  assert.ok(b.side.includes('click:cb'), String(b.side));
+});
+

@@ -1697,6 +1697,14 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
       const v = { typer, maal, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [], labelKlik: false,
         felt, kunAktivering: !!felt && typer.includes('click'), feltKlik: null,
         synligVedArm: document.visibilityState === 'visible' };
+      // R79 (Opus, maalt i Chrome): feltets egen rolle-boks om feltet talte som bevis, naar maalet var feltet, selv om feltet intet
+      // fik (CB:false, landed:true). For et felt som maal er kun et klik, der naar feltet selv, et bevis.
+      v.maalFelt = !!maal.matches && maal.matches('input,select,textarea');
+      // R79 (Opus, maalt i Chrome): med en tekst i en label som maal blev labelens aktiveringsklik til dens felt stoppet som «noget,
+      // der kom foran» - musen afkrydser dér. Labelen om maalet, hvis felt ligger uden for maalet, huskes.
+      for (let n = maal, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
+        if (n.tagName === 'LABEL') { if (n !== maal && n.control && !inde(n.control, maal)) v.tekstLabel = n; break; }
+      }
       v.fn = (ev) => {
         if (!ev.isTrusted) return;
         const vej = ev.composedPath ? ev.composedPath() : [];
@@ -1707,6 +1715,8 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         // (Et annulleret labelklik giver ingen aktivering - HTML - saa der skal ikke tjekkes for det her.)
         const feltAktivering = v.kunAktivering && ev.type === 'click' && ev !== v.feltKlik && vej.includes(v.felt) && !!v.feltKlik;
         if (feltAktivering) v.feltKlik = null;
+        if (ev.type === 'click' && v.tekstLabel && v.tekstLabelKlik && ev !== v.tekstLabelKlik && !v.tekstLabelKlik.defaultPrevented &&
+          vej.includes(v.tekstLabel.control)) { v.tekstLabelKlik = null; return; }
         const vores = vedPunkt || aktivering || feltAktivering;
         if (!vores) return;
         if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
@@ -1731,11 +1741,15 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
           setTimeout(() => { if (v.feltKlik === ev) v.feltKlik = null; }, 0);
           return;
         }
+        if (ev.type === 'click' && v.tekstLabel && inde(knude, v.tekstLabel)) {
+          v.tekstLabelKlik = ev;
+          setTimeout(() => { if (v.tekstLabelKlik === ev) v.tekstLabelKlik = null; }, 0);
+        }
         if (ev.type === 'click' && !inde(knude, maal) && maal.labels && Array.from(maal.labels).some((l) => inde(knude, l))) {
           v.labelKlik = ev;
           setTimeout(() => { if (v.labelKlik === ev) v.labelKlik = null; }, 0);
         }
-        if (!(inde(knude, maal) || (inde(maal, knude) && knude.tagName !== 'LABEL' && !!knude.matches &&
+        if (!(inde(knude, maal) || (!v.maalFelt && inde(maal, knude) && knude.tagName !== 'LABEL' && !!knude.matches &&
           knude.matches('button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]')))) {
           if (knude !== maal && inde(maal, knude)) v.forfader = true;
           return;

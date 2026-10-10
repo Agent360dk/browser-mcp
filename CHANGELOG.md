@@ -31,8 +31,8 @@ press moves no mouse; its note says what lies over the target and, when an earli
 or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
 found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
 counts as proof (for a field clicked through its label, the field's own click, only when the label's click was not
-cancelled, and once; around the target, only its own button or
-link frame, not a container that listens for its children); a click stopped on the way, a target the page replaces during
+cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children, and for a field as the
+target not even its own box: only a click that reaches the field itself); a click stopped on the way, a target the page replaces during
 the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
 address, a button, a field), or on anything else clickable in it (a link without an address, an element with a button role or an
