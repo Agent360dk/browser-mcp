@@ -40,8 +40,8 @@ address, a button, a field), or on anything else clickable in it (a link without
 activate the label's field, or may not; anything inside the label's
 field is the field's own, and so is an element around it that is not itself an action (or is a box with a checkbox,
 switch or radio role), and a box with such a role right next to the label's field when the field itself is hidden (a 1x1 or
-non-displayed stand-in input, as Base UI and sr-only patterns draw it); next to a visible field, or further from a hidden
-one, such a box is another control. With a label that has a field as the target, only the field's own activation
+non-displayed stand-in input, as Base UI and sr-only patterns draw it) and it is the only such box in the label; next to
+a visible field, further from a hidden one, or with a second such box in the label, such a box is another control. With a label that has a field as the target, only the field's own activation
 click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an
 activation stopped on the way, is `maybe_landed`, not a yes;
 for any other target that takes clicks itself, anything clickable inside it at its center (a link, a button, an element

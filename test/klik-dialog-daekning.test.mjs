@@ -1151,3 +1151,14 @@ test('en onclick-handling uden om feltets egen rolle-boks i en label er daekning
   }
 });
 
+// ── R78 (maalt i Chrome med rigtig Base UI 1.9.0) ──────────────────────────
+test('ved et skjult felt med to rolle-bokse som naboer (Base UI-boks foer, en anden switch efter) er ingen af dem feltets egen (R78)', () => {
+  const d = lavKlikDom();
+  const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+  d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 20, 30] }, l);
+  const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [40, 20, 1, 1] }, l);
+  felt.labels.push(l); l.control = felt;
+  d.el('span', { id: 'nyt', attrs: { role: 'switch', onclick: 'nyt()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+  assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id, 'nyt');
+});
+
