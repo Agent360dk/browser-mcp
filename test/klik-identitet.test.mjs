@@ -982,8 +982,9 @@ test('en button og et form-associeret custom-felt som maal i en rolle-boks: et k
     const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
     const boks = d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 30, 30] }, l);
     const felt = d.el(tag.split('-uden')[0], { id: 'cb', rect: [25, 25, 20, 20], ingenPeg: true }, boks);
-    // x-felt: kendes paa sin klasse (static formAssociated) og har ingen label; x-ctl: kendes kun paa labelens control
-    if (tag === 'x-felt') { felt.constructor = { formAssociated: true }; delete felt.labels; }
+    // x-felt: et custom element uden label, hvis klasse kaster; x-ctl: et custom element med en label
+    // R81: klassens formAssociated er siden aendret (eller kaster) - den native status er den samme, og reglen maa ikke afhaenge af den
+    if (tag === 'x-felt') { Object.defineProperty(felt, 'constructor', { get() { throw new Error('x'); } }); delete felt.labels; }
     else if (tag === 'x-ctl') { delete felt.labels; l.control = felt; }
     else if (tag === 'button') { felt.labels.push(l); l.control = felt; }
     const b = browser(d);

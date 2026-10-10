@@ -1700,15 +1700,12 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
       // R79 (Opus, maalt i Chrome): feltets egen rolle-boks om feltet talte som bevis, naar maalet var feltet, selv om feltet intet
       // fik (CB:false, landed:true). For et felt som maal er kun et klik, der naar feltet selv, et bevis.
       // R80 (Astra, maalt i model): reglen gjaldt kun input/select/textarea, saa et form-associeret custom-felt og en button (begge
-      // kan have en label) i en rolle-boks, der selv tog klikket, gav landed:true uden at feltet fik noget. Siden koerer vagten i
-      // sidens egen verden, kan custom-feltets klasse ses (static formAssociated); og en label, hvis control er maalet, viser det
-      // ogsaa (kun et felt kan vaere en labels control).
-      const erControl = (rod) => { for (const e of rod.querySelectorAll('*')) {
-        if (e.tagName === 'LABEL' && e.control === maal) return true;
-        if (e.shadowRoot && erControl(e.shadowRoot)) return true;
-      } return false; };
-      v.maalFelt = (!!maal.matches && maal.matches('input,select,textarea,button')) ||
-        (() => { try { return !!(maal.constructor && maal.constructor.formAssociated) || erControl(document); } catch (e) { return false; } })();
+      // kan have en label) i en rolle-boks, der selv tog klikket, gav landed:true uden at feltet fik noget.
+      // R81 (Astra, maalt i model): custom-feltet blev kendt paa klassens formAssociated - en egenskab, siden kan aendre eller faa til
+      // at kaste, mens den native status (gemt ved define) er uaendret; saa gav en boks' klik igen landed:true. Enhver selvstaendig
+      // custom element (navn med bindestreg - det har alle form-associerede felter) er derfor omfattet: kun en haendelse, der naar
+      // den selv, er bevis. Prisen: et custom-ikon, hvis klik kun naar knappen om det, svarer maybe_landed, ikke ja.
+      v.maalFelt = !!maal.matches && (maal.matches('input,select,textarea,button') || String(maal.tagName || '').includes('-'));
       // R79 (Opus, maalt i Chrome): med en tekst i en label som maal blev labelens aktiveringsklik til dens felt stoppet som «noget,
       // der kom foran» - musen afkrydser dér. Labelen om maalet, hvis felt ligger uden for maalet, huskes.
       for (let n = maal, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
