@@ -811,7 +811,7 @@ test('tools.js: select_option-stoppet og click/double_clicks fragmentregel staar
   assert.doesNotMatch(sel, /never clicked unless|only (?:when|if) the trigger click (?:itself )?landed/i);
   for (const navn of ['click', 'double_click']) {
     const b = beskrivelse(navn);
-    assert.match(b, /its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in its label, which counts as that field\)/, navn);
+    assert.match(b, /its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in the nearest label around it, a label of that field \(a box inside a closed shadow root cannot be seen and is not counted\), which counts as that field\)/, navn);
     assert.doesNotMatch(b, /every fragment|any fragment link|fragment links? (?:is|are) (?:always )?allowed|hash routes? (?:is|are) not (?:a )?real address|bare #\/ is a (?:hash )?route|#\/ alone (?:is|counts)/i, navn);
   }
 });
@@ -885,7 +885,7 @@ test('CHANGELOG siger, at feltets egen boks ikke er daekning, og at kun feltets 
   const { join } = await import('node:path');
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.match(cl, /anything inside the label's field is the field's own, and so is an element around it that is not itself an action \(or is a box with a checkbox, switch or radio role\), and a box with such a role right next to the label's field when the field itself is hidden \(a 1x1 or non-displayed stand-in input, as Base UI and sr-only patterns draw it\) and it is the only such box in the label; next to a visible field, further from a hidden one, or with a second such box in the label, such a box is another control\. That is a rule about the page's structure, not proof of ownership: a separate control with such a role that is the only one in its label and sits right next to a hidden field counts as that field's own\. With a label that has a field as the target, only the field's own activation click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an activation stopped on the way, is `maybe_landed`, not a yes;/);
+  assert.match(cl, /anything inside the label's field is the field's own, and so is an element around it that is not itself an action \(or is a box with a checkbox, switch or radio role\), and a box with such a role right next to the label's field when the field itself is hidden \(a 1x1 or non-displayed stand-in input, as Base UI and sr-only patterns draw it\) and it is the only such box in the nearest label around it, which must be that field's \(a box inside a closed shadow root cannot be seen, so it is not counted\); next to a visible field, further from a hidden one, with a second such box in that label, or with no label of that field around it, such a box is another control\. That is a rule about the page's structure, not proof of ownership: a separate control with such a role that is the only one in its label and sits right next to a hidden field counts as that field's own\. With a label that has a field as the target, only the field's own activation click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an activation stopped on the way, is `maybe_landed`, not a yes;/);
 });
 
 test('feltets egen boks med role=checkbox i labelen (Element UI, Base UI) er ikke daekning, og aktiveringen er ja (R75)', async () => {
@@ -966,3 +966,30 @@ test('tekst i en label som maal: labelens aktiveringsklik til feltet er ikke nog
   assert.ok(b.side.includes('click:cb'), String(b.side));
 });
 
+test('CHANGELOG siger, at en labels aktiveringsklik til feltet slippes igennem for et maal i labelen (R80)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
+  const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(cl, /when the target lies inside a label whose field is outside the target \(text in a label\), that label's activation click to its field is let through and not counted as proof, as a mouse would send it;/);
+});
+
+
+// ── R80 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en button og et form-associeret custom-felt som maal i en rolle-boks: et klik, der kun naar boksen, er ikke et ja (R80)', async () => {
+  for (const tag of ['button', 'button-uden-label', 'x-felt', 'x-ctl']) {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    const boks = d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 30, 30] }, l);
+    const felt = d.el(tag.split('-uden')[0], { id: 'cb', rect: [25, 25, 20, 20], ingenPeg: true }, boks);
+    // x-felt: kendes paa sin klasse (static formAssociated) og har ingen label; x-ctl: kendes kun paa labelens control
+    if (tag === 'x-felt') { felt.constructor = { formAssociated: true }; delete felt.labels; }
+    else if (tag === 'x-ctl') { delete felt.labels; l.control = felt; }
+    else if (tag === 'button') { felt.labels.push(l); l.control = felt; }
+    const b = browser(d);
+    boks.addEventListener('click', (ev) => ev.preventDefault());
+    const svar = await b.koer('click', { selector: '#cb' });
+    assert.notEqual(svar.landed, true, tag + ' ' + JSON.stringify(svar));
+    assert.ok(!b.side.includes('click:cb'), String(b.side));
+  }
+});

@@ -1699,7 +1699,16 @@ async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = fals
         synligVedArm: document.visibilityState === 'visible' };
       // R79 (Opus, maalt i Chrome): feltets egen rolle-boks om feltet talte som bevis, naar maalet var feltet, selv om feltet intet
       // fik (CB:false, landed:true). For et felt som maal er kun et klik, der naar feltet selv, et bevis.
-      v.maalFelt = !!maal.matches && maal.matches('input,select,textarea');
+      // R80 (Astra, maalt i model): reglen gjaldt kun input/select/textarea, saa et form-associeret custom-felt og en button (begge
+      // kan have en label) i en rolle-boks, der selv tog klikket, gav landed:true uden at feltet fik noget. Siden koerer vagten i
+      // sidens egen verden, kan custom-feltets klasse ses (static formAssociated); og en label, hvis control er maalet, viser det
+      // ogsaa (kun et felt kan vaere en labels control).
+      const erControl = (rod) => { for (const e of rod.querySelectorAll('*')) {
+        if (e.tagName === 'LABEL' && e.control === maal) return true;
+        if (e.shadowRoot && erControl(e.shadowRoot)) return true;
+      } return false; };
+      v.maalFelt = (!!maal.matches && maal.matches('input,select,textarea,button')) ||
+        (() => { try { return !!(maal.constructor && maal.constructor.formAssociated) || erControl(document); } catch (e) { return false; } })();
       // R79 (Opus, maalt i Chrome): med en tekst i en label som maal blev labelens aktiveringsklik til dens felt stoppet som «noget,
       // der kom foran» - musen afkrydser dér. Labelen om maalet, hvis felt ligger uden for maalet, huskes.
       for (let n = maal, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
@@ -2251,9 +2260,16 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // R79 (Astra, maalt i model): et form-associeret custom-felt har ingen offentlig `labels`, saa ingen label blev fundet, og
     // kandidaten blev godtaget uden optaelling; og querySelectorAll saa hverken bokse i aabne shadow roots eller slottede bokse.
     // Labelen findes nu ogsaa via label.control, og boksene taelles i hele det flade traee under den (som daekningen ser det).
+    // R80 (Astra, maalt i model): en tom offentlig labels-liste sprang label.control-opslaget over, og uden label blev boksen
+    // godtaget uden optaelling; og ved indlejrede labels blev den yderste valgt, saa dens bokse talte med. Labelen er nu den
+    // naermeste label om boksen, den skal have feltet som control, og uden en saadan er boksen ikke feltets.
+    let lab = null;
+    for (let l = n.assignedSlot || n.parentNode || n.host, i = 0; l && i < 1000; l = l.assignedSlot || l.parentNode || l.host, i++) {
+      if (l.tagName === 'LABEL') { lab = l.control === felt ? l : null; break; }
+    }
+    if (!lab) return false;
     const alle = collectAll(document, []);
-    const lab = Array.from(felt.labels || alle.filter((l) => l.tagName === 'LABEL' && l.control === felt)).find((l) => inde(n, l)) || null;
-    return !lab || alle.filter((k) => k !== lab && inde(k, lab) && !!k.matches && k.matches(FELTROLLE) && !k.matches(INTERAKTIV)).length === 1;
+    return alle.filter((k) => k !== lab && inde(k, lab) && !!k.matches && k.matches(FELTROLLE) && !k.matches(INTERAKTIV)).length === 1;
   };
   const egenBoks = (n, felt) => !!felt && (inde(n, felt) ||
     (inde(felt, n) && (!n.matches || !n.matches(HANDLING) || boksRolle(n))) ||

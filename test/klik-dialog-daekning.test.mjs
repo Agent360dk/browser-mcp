@@ -230,7 +230,7 @@ test('teksterne paa alle flader siger det samme som koden', async () => {
       : 'the rest of the presses and clicks are stopped \\(a release the page moves elsewhere is let through\\), and the answer';
     assert.match(d, new RegExp(`If the mouse would not reach the target at its center - another element lies in front of it \\(an overlay, a dialog\\\\'s backdrop\\),[^"]* - the answer is ok:false with error "covered" and covered_by\\. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, ${hale} also has maybe_landed: true, because the page may already have reacted\\.(?! In the active tab the mouse)`), `browser_${navn}s beskrivelse`);
     // R66: kun click og double_click naevner en anden kontrol INDE i maalet; hover og right_click klikker den ikke.
-    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in its label, which counts as that field\)/, navn);
+    if (['click', 'double_click'].includes(navn)) assert.match(d, /or a different control inside it would get the click \(a delete button on a card; for a container that is not clickable itself, its own plain link with a real address \(a hash route with a path, such as #\/orders, counts; a fragment with no target on the page does not\) does not count, nor does a web component\\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in the nearest label around it, a label of that field \(a box inside a closed shadow root cannot be seen and is not counted\), which counts as that field\)/, navn);
     else assert.doesNotMatch(d, /a different control inside it/, navn);
   }
   assert.match(tools, /A text selector looks inside an open modal dialog first \(a <dialog> opened with showModal, or a visible element with aria-modal="true"\), exact text before partial/);
@@ -582,7 +582,7 @@ test('CHANGELOG 1.30.2 siger, hvad et klik paa en iframe svarer, og hvad 1.30.1 
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
   assert.match(cl, /A press that lands in an iframe - the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`\. 1\.30\.1 answered `ok: false` and sent a second, synthetic click/);
   assert.match(cl, /A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements agree \(at most three times; pushed out of view meanwhile, it is scrolled into view again\)/);
-  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click, only when the label's click was not cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children, and for a field as the target not even its own box: only a click that reaches the field itself\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
+  assert.match(cl, /only that very event reaching the target counts as proof \(for a field clicked through its label, the field's own click, only when the label's click was not cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children, and for a field or a button as the target, also a form-associated custom element, not even its own box: only an event that reaches the field itself\); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes\. A real mouse at the same point at the same time cannot be told apart from the tool's\./);
   assert.match(cl, /A label whose center lies on interactive content inside it \(as the HTML standard defines it: a link with an address, a button, a field\), or on anything else clickable in it \(a link without an address, an element with a button role or an `onclick`, whose own handler can cancel the click unseen\), counts as covered by that element/);
 });
 
@@ -1219,3 +1219,41 @@ test('rolle-bokse taelles ogsaa i aabne shadow roots i labelen; et custom-felt u
   }
 });
 
+
+// ── R80 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en tom offentlig labels-liste og indlejrede labels: boksene taelles i den naermeste label om boksen (R80)', () => {
+  // 1) Custom-felt med en tom labels-liste mellem to rolle-bokse: labelen findes via label.control, og to bokse er ikke entydige.
+  {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    d.el('span', { attrs: { role: 'checkbox' }, rect: [20, 20, 20, 30] }, l);
+    const felt = d.el('x-felt', { id: 'xf', rect: [40, 20, 1, 1] }, l);
+    felt.labels = []; l.control = felt;
+    d.el('span', { id: 'nyt', attrs: { role: 'switch', onclick: 'nyt()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+    assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id, 'nyt', 'tom labels-liste');
+  }
+  // 2) Indlejrede labels for samme felt: den inderste har kun stedfortraederen; den yderste har en boks mere.
+  for (const [indreFor, daekket] of [['cb', false], ['andet', true]]) {
+    const d = lavKlikDom();
+    const ydre = d.el('label', { id: 'ydre', rect: [20, 20, 400, 70] });
+    d.el('span', { attrs: { role: 'checkbox' }, rect: [20, 20, 20, 20] }, ydre);
+    const indre = d.el('label', { id: 'indre', rect: [20, 50, 300, 30] }, ydre);
+    const felt = d.el('input', { id: 'cb', attrs: { type: 'checkbox' }, rect: [20, 50, 1, 1] }, indre);
+    d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 50, 300, 30], lag: 1 }, indre);
+    const andet = d.el('input', { id: 'andet', attrs: { type: 'checkbox' }, rect: [500, 20, 20, 20] });
+    ydre.control = felt; felt.labels.push(ydre);
+    if (indreFor === 'cb') { indre.control = felt; felt.labels.push(indre); } else { indre.control = andet; andet.labels.push(indre); }
+    assert.equal(!!d.koer(KILDE, '#indre', null, null, false, false).svar.covered, daekket, `indre label for ${indreFor}`);
+  }
+  // 3) Boksen ligger i en anden felts label (den naermeste label om den): den er ikke feltets, selv om den er nabo til det.
+  {
+    const d = lavKlikDom();
+    const ydre = d.el('label', { id: 'ydre', rect: [20, 20, 400, 70] });
+    const indre = d.el('label', { id: 'indre', rect: [20, 20, 400, 70] }, ydre);
+    const felt = d.el('input', { id: 'cb', attrs: { type: 'checkbox' }, rect: [20, 20, 1, 1] }, indre);
+    d.el('span', { id: 'boks', attrs: { role: 'checkbox' }, rect: [20, 20, 400, 70], lag: 1 }, indre);
+    const andet = d.el('input', { id: 'andet', attrs: { type: 'checkbox' }, rect: [500, 20, 20, 20] });
+    ydre.control = felt; felt.labels.push(ydre); indre.control = andet; andet.labels.push(indre);
+    assert.equal(d.koer(KILDE, '#ydre', null, null, false, false).svar.covered?.id, 'boks', 'boks i en anden felts label');
+  }
+});

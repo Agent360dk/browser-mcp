@@ -31,8 +31,8 @@ press moves no mouse; its note says what lies over the target and, when an earli
 or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
 found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
 counts as proof (for a field clicked through its label, the field's own click, only when the label's click was not
-cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children, and for a field as the
-target not even its own box: only a click that reaches the field itself); a click stopped on the way, a target the page replaces during
+cancelled, and once; around the target, only its own button or link frame, not a container that listens for its children, and for a field or a button as the
+target, also a form-associated custom element, not even its own box: only an event that reaches the field itself); a click stopped on the way, a target the page replaces during
 the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
 same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
 address, a button, a field), or on anything else clickable in it (a link without an address, an element with a button role or an
@@ -40,12 +40,14 @@ address, a button, a field), or on anything else clickable in it (a link without
 activate the label's field, or may not; anything inside the label's
 field is the field's own, and so is an element around it that is not itself an action (or is a box with a checkbox,
 switch or radio role), and a box with such a role right next to the label's field when the field itself is hidden (a 1x1 or
-non-displayed stand-in input, as Base UI and sr-only patterns draw it) and it is the only such box in the label; next to
-a visible field, further from a hidden one, or with a second such box in the label, such a box is another control. That is a rule about the page's structure, not
+non-displayed stand-in input, as Base UI and sr-only patterns draw it) and it is the only such box in the nearest label around it, which must be that field's (a box inside a closed shadow root cannot be seen, so it is not counted); next to
+a visible field, further from a hidden one, with a second such box in that label, or with no label of that field around it, such a box is another control. That is a rule about the page's structure, not
 proof of ownership: a separate control with such a role that is the only one in its label and sits right next to a hidden
 field counts as that field's own. With a label that has a field as the target, only the field's own activation
 click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an
-activation stopped on the way, is `maybe_landed`, not a yes;
+activation stopped on the way, is `maybe_landed`, not a yes; when the target lies inside a label whose field is outside
+the target (text in a label), that label's activation click to its field is let through and not counted as proof, as
+a mouse would send it;
 for any other target that takes clicks itself, anything clickable inside it at its center (a link, a button, an element
 with a button role or an `onclick`, such as a delete button on a card) counts as covered by that control; for a passive
 container (a list item, a card that is not a button) its own link (an `a` with a real address, without a button role or
