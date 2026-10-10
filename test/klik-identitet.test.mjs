@@ -885,7 +885,7 @@ test('CHANGELOG siger, at feltets egen boks ikke er daekning, og at kun feltets 
   const { join } = await import('node:path');
   const { ROD } = await import('./hjaelp/udvidelses-sele.mjs');
   const cl = readFileSync(join(ROD, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
-  assert.match(cl, /anything inside the label's field is the field's own, and so is an element around it that is not itself an action \(or is a box with a checkbox, switch or radio role\), and a box with such a role when the label's field itself is hidden \(a 1x1 stand-in input, as Base UI and sr-only patterns draw it\); next to a visible field, such a box is another control\. With a label that has a field as the target, only the field's own activation click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an activation stopped on the way, is `maybe_landed`, not a yes;/);
+  assert.match(cl, /anything inside the label's field is the field's own, and so is an element around it that is not itself an action \(or is a box with a checkbox, switch or radio role\), and a box with such a role right next to the label's field when the field itself is hidden \(a 1x1 or non-displayed stand-in input, as Base UI and sr-only patterns draw it\); next to a visible field, or further from a hidden one, such a box is another control\. With a label that has a field as the target, only the field's own activation click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an activation stopped on the way, is `maybe_landed`, not a yes;/);
 });
 
 test('feltets egen boks med role=checkbox i labelen (Element UI, Base UI) er ikke daekning, og aktiveringen er ja (R75)', async () => {

@@ -1122,14 +1122,32 @@ test('et form-associeret felts eget indre input (md-switch i en label) er feltet
 });
 
 // ── R76 (Astra, maalt i model) ─────────────────────────────────────────────
-test('en selvstaendig kontrol med feltrolle i en label med et synligt felt er daekning; med et skjult felt er boksen feltets (R76)', () => {
-  for (const [skjult, daekket] of [[false, true], [true, false]]) {
+test('en rolle-boks i en label: ved et synligt felt en anden kontrol; ved et skjult felt kun feltets, naar den er dets nabo (R76, R77)', () => {
+  // R77 Opus (maalt i Chrome, rigtig Base UI): en nyhedsbrevs-switch laengere inde i labelen fik klikket ved et skjult felt.
+  for (const [skjult, nabo, daekket] of [[false, true, true], [true, true, false], [true, false, true]]) {
     const d = lavKlikDom();
     const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
     const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: skjult ? [20, 20, 1, 1] : [20, 25, 20, 20] }, l);
     felt.labels.push(l); l.control = felt;
-    d.el('span', { id: 'anden', attrs: { role: 'checkbox', tabindex: '0', onclick: 'andet()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
-    assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id === 'anden', daekket, skjult ? 'skjult felt' : 'synligt felt');
+    if (!nabo) d.el('span', { id: 'tekst', tekst: 'Opret konto', rect: [25, 20, 30, 30] }, l);
+    d.el('span', { id: 'anden', attrs: { role: 'switch', tabindex: '0', onclick: 'andet()' }, rect: [60, 20, 260, 30], lag: 1 }, l);
+    assert.equal(d.koer(KILDE, '#l', null, null, false, false).svar.covered?.id === 'anden', daekket, `skjult=${skjult} nabo=${nabo}`);
+  }
+});
+
+// ── R77 (Astra, maalt i model) ─────────────────────────────────────────────
+test('en onclick-handling uden om feltets egen rolle-boks i en label er daekning (soegningen standser ikke ved boksen) (R77)', () => {
+  for (const rolle of ['checkbox', 'switch', 'radio']) for (const maal of ['#l', '#c']) {
+    const d = lavKlikDom();
+    const l = d.el('label', { id: 'l', rect: [20, 20, 300, 30] });
+    const ydre = d.el('span', { id: 'ydre', attrs: { onclick: 'aabnDetaljer()' }, rect: [20, 20, 200, 30] }, l);   // over labelens midtpunkt
+    const boks = d.el('span', { id: 'boks', attrs: { role: rolle }, rect: [20, 20, 200, 30] }, ydre);
+    // Feltet ligger under teksten (et udspaendt, gennemsigtigt input), saa ogsaa feltet som maal rammer teksten i boksen.
+    const felt = d.el('input', { id: 'c', attrs: { type: 'checkbox' }, rect: [20, 20, 200, 30] }, boks);
+    felt.labels.push(l); l.control = felt;
+    d.el('span', { id: 't', tekst: 'Accepter', rect: [20, 20, 200, 30], lag: 1 }, boks);
+    const svar = d.koer(KILDE, maal, null, null, false, false).svar;
+    assert.ok(svar.covered, `${rolle} ${maal}: ${JSON.stringify(svar)}`);
   }
 });
 

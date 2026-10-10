@@ -2222,9 +2222,18 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // to gange med landed:true. En beholder om feltet er kun feltets egen, naar den ikke selv er en handling - eller er en boks med
   // feltrolle (el-checkbox__input om sit input).
   const boksRolle = (n) => !!n.matches && n.matches(FELTROLLE) && !n.matches(INTERAKTIV);
+  // R77 (Opus, maalt i Chrome med rigtig Base UI 1.9.0): ved et skjult felt blev ENHVER rolle-boks i labelen feltets egen, saa en
+  // anden kontrol (en nyhedsbrevs-switch) fik klikket med landed:true. Stedfortraederen ligger lige ved siden af sit skjulte input
+  // (Base UI: boksen umiddelbart foer; et sr-only input foer sin switch); en anden kontrol goer ikke.
+  const naboTil = (n, felt) => {
+    const p = n.parentNode;
+    if (!p || p !== felt.parentNode || !p.children) return false;
+    const born = Array.from(p.children);
+    return Math.abs(born.indexOf(n) - born.indexOf(felt)) === 1;
+  };
   const egenBoks = (n, felt) => !!felt && (inde(n, felt) ||
     (inde(felt, n) && (!n.matches || !n.matches(HANDLING) || boksRolle(n))) ||
-    (boksRolle(n) && feltSkjult(felt)));
+    (boksRolle(n) && feltSkjult(felt) && naboTil(n, felt)));
   const feltetSelv = egenBoks;
   const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
   function daekketVed(el, hit) {
@@ -2319,7 +2328,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // det kan ikke ses foer klikket. I label-tilstand er en handling (alt klikbart: rolle, onclick, link uden adresse) derfor
       // ogsaa en daekning, i light DOM som i en komponent; labelens eget felt er det ikke.
       if (erLabel) {
-        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (iLabelHandling(n)) { indre = lukket(n); break; }
+        // R77 (Astra, maalt i model): soegningen standsede ved feltets egen boks og saa aldrig en onclick-handling uden om den. Feltets
+        // egne knuder springes nu over, og soegningen fortsaetter op til labelen.
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (iLabelHandling(n) && !feltetSelv(n, el.control)) { indre = lukket(n); break; }
       } else {
         let fundet = null, link = null;
         // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
@@ -2344,7 +2355,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         // der selv daekker komponenten, blev sprunget over foer det blev gemt, og et felt, en select, en video eller et
         // billedkort i labelen er slet ikke en HANDLING. Alle gav landed:true, mens boksen forblev tom. Det foerste interaktive
         // indhold (HTML-standardens liste) under punktet huskes derfor for sig, uanset om det selv er en handling.
-        let interaktiv = null;
+        // R77: alle kandidater huskes, saa labelens check kan springe feltets egne over og finde en handling uden om dem.
+        const interaktive = [];
         for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
           const handling = !!n.matches && n.matches(HANDLING) && !!lukket(n);
           // R72 (Opus, maalt i Chrome): en komponent, hvis hele flade er ET link i dens egen shadow root (sl-button med href),
@@ -2356,14 +2368,15 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
           // feltet); labelens eget felt er det ikke.
           // R75 (Astra, maalt i model): et custom-felt (form-associated) har sin egen boks i sin skygge; den er feltet selv, ikke en
           // anden kontrol. Alt inde i labelens eget felt er derfor feltet.
-          if (egenStor && n.tagName === 'LABEL' && interaktiv && !feltetSelv(interaktiv, n.control)) { fundet = interaktiv; break; }
+          const fremmed = n.tagName === 'LABEL' ? interaktive.find((k) => !feltetSelv(k, n.control)) : null;
+          if (egenStor && fremmed) { fundet = fremmed; break; }
           // R74 (Astra, maalt i model): en label i labelen (ugyldig HTML, men muligt) blev ikke husket, saa en stor indre label
           // med for= et andet felt aktiverede det med landed:true. En label er ogsaa interaktivt indhold; den huskes efter, at den
           // selv er proevet som komponentens label.
           // R75 (Astra, maalt i model): en stor rolle-span, onclick eller et link uden adresse inde i komponentens label blev fritaget
           // som komponentens egen og ikke husket, saa en annullerende handling gav landed:true med boksen tom. Som i label-tilstanden
           // (R74) huskes enhver handling ogsaa.
-          if (!interaktiv && iLabelHandling(n) && lukket(n)) interaktiv = n;
+          if (iLabelHandling(n) && lukket(n)) interaktive.push(n);
           if (!handling || egenStor) continue;
           // R75 (Astra, maalt i model): komponentens eget felt (et native input med rolle eller onclick) under 90 % blev afvist som
           // «en anden kontrol», selv om komponentens egen label om det daekker komponenten. Er n feltet for en saadan label laengere
@@ -2379,7 +2392,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         indre = fundet || (klikbartMaal ? link : null);
       }
       // R75 (Astra, maalt i model): ogsaa et punkt i labelens eget custom-felts skygge (dets egen boks) er feltet, ikke en anden kontrol.
-      if (indre && indre !== el && inde(indre, el) && !feltetSelv(indre, el.control)) {
+      if (indre && indre !== el && inde(indre, el)) {   // (feltets egne knuder er sprunget over i soegningen)
         // R73 (Opus, maalt i Chrome): noten naevnte BUTTON#button i en md-filled-buttons skygge, agenten klikkede `#button`, og det
         // ramte den foerste Material-knap paa siden (Annuller) med landed:true. En kontrol i en shadow root faar et flag, saa noten
         // ikke peger paa et id, som andre komponenter deler.
@@ -2421,11 +2434,17 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     // R74 (Opus, maalt i Chrome): i en label-ramme saa vaelgeren kun INTERAKTIV, saa en Slet med en rolle over teksten fik
     // klikket. En handling er ogsaa her en anden kontrol (se label-tilstanden ovenfor).
     let hitKontrol = null;
+    // R77: i label-tilstand springes labelens eget felt og dets egen boks over, saa en handling uden om dem ses.
+    // Er maalet selv et felt med en label om punktet, er det feltet, der springes over (R77, ogsaa naar rammen er dets boks).
+    const labelFelt = (!!ramme && ramme.tagName === 'LABEL' && ramme.control) ||
+      (Array.from(el.labels || []).some((l) => inde(hit, l)) ? el : null) || el.control || null;
     for (let n = hit, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
-      if (iEgenLabel ? iLabelHandling(n) : (!!n.matches && n.matches(CLICKABLE + ',input,select,textarea'))) { hitKontrol = lukket(n); break; }
+      if (iEgenLabel ? (iLabelHandling(n) && !feltetSelv(n, labelFelt)) : (!!n.matches && n.matches(CLICKABLE + ',input,select,textarea'))) { hitKontrol = lukket(n); break; }
     }
-    const egenKontrol = !hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
-      (!!ramme && ramme.tagName === 'LABEL' && (hitKontrol === ramme.control || egenBoks(hitKontrol, ramme.control))) ||
+    // R77: en handling, der rummer labelens felt (og ikke er feltets egen boks - den er sprunget over), er en anden kontrol,
+    // ogsaa naar den er en forfader til maalet; en knap om en tekst, der ikke rummer feltet, er stadig tekstens ramme.
+    const omFeltet = !!hitKontrol && iEgenLabel && !!labelFelt && inde(labelFelt, hitKontrol) && hitKontrol.tagName !== 'LABEL';
+    const egenKontrol = !hitKontrol || hitKontrol === ramme || (inde(el, hitKontrol) && !omFeltet) || hitKontrol === el.control ||
       egenBoks(hitKontrol, el.control) ||
       Array.from(el.labels || []).includes(hitKontrol);
     const andenKontrol = !egenKontrol;
