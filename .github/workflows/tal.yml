@@ -3,11 +3,19 @@ name: tal
 # Daglige tal paa browsermcp.dev (Gustav 10/10: «ja til daglig stjernekoersel»). Siden lover ingen kald til
 # tredjepart ved indlaesning, saa GitHub-stjerner, npm-hentninger sidste maaned og Chrome Web Store-brugere
 # bages ind i docs/index.html af scripts/stjerner.py - én gang i doegnet i stedet for live i browseren.
-# Vagter: skriver KUN naar et tal har aendret sig, KUN i docs/index.html, KUN naar stjerner.py --tjek siger OK
-# efter indbagningen, og KUN naar forsidens proever bestaar. Fejler en kilde (fx butikssiden), bliver jobbet
-# roedt, og intet skrives.
 # NB: Chrome Web Store viser offentligt kun et afrundet tal («1,000 users»); det praecise staar kun i
 # udviklerkonsollen, som ikke har et aabent API.
+#
+# Vagter:
+# - commit KUN naar et tal har aendret sig (en ny maaledato alene giver ingen commit);
+# - siderne genereres igen, fordi generate-docs.py daterer forsidens <lastmod> i sitemappen efter seneste commit
+#   paa docs/index.html; KUN docs/index.html og docs/sitemap.xml maa vaere aendret;
+# - stjerner.py --tjek, check-docs.py (docs-gaten), regen-diff og forsidens proever skal vaere groenne;
+# - skubbet til main gaar uden om de paakraevede tjek paa main, derfor koerer docs-gaten og forsidens proever her
+#   i jobbet selv foer skubbet; fejler en kilde eller et tjek, bliver jobbet roedt, og intet skrives;
+# - actions er laast til SHA (samme som udgivelse.yml); checkout gemmer IKKE tokenet, og npm koerer uden
+#   install-scripts - tokenet gives kun i skub-trinnet.
+# Gennemgaaet af browser-mcp-chatten 10/10 (PR #64).
 
 on:
   schedule:
@@ -26,43 +34,56 @@ jobs:
   tal:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
       - name: bag tallene ind
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: python3 scripts/stjerner.py
-      - name: kun docs/index.html maa vaere aendret
+      - name: er et tal aendret?
         id: diff
         run: |
           aendret=$(git status --porcelain | awk '{print $2}')
           if [ -z "$aendret" ]; then echo "ingen nye tal"; echo "ny=0" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if [ "$aendret" != "docs/index.html" ]; then echo "uventede filer: $aendret"; exit 1; fi
+          if [ "$aendret" != "docs/index.html" ]; then echo "uventede filer efter indbagning: $aendret"; exit 1; fi
           # stjerne-teksten baerer maaledatoen («GitHub stars on 10 Oct 2026»); kun datoen ny = ingen commit
-          if git show HEAD:docs/index.html | sed -E 's/ on [0-9]{1,2} [A-Z][a-z]{2} 20[0-9]{2}//g' > /tmp/foer.html \
-             && sed -E 's/ on [0-9]{1,2} [A-Z][a-z]{2} 20[0-9]{2}//g' docs/index.html > /tmp/efter.html \
-             && cmp -s /tmp/foer.html /tmp/efter.html; then
+          git show HEAD:docs/index.html | sed -E 's/ on [0-9]{1,2} [A-Z][a-z]{2} 20[0-9]{2}//g' > "$RUNNER_TEMP/foer.html"
+          sed -E 's/ on [0-9]{1,2} [A-Z][a-z]{2} 20[0-9]{2}//g' docs/index.html > "$RUNNER_TEMP/efter.html"
+          if cmp -s "$RUNNER_TEMP/foer.html" "$RUNNER_TEMP/efter.html"; then
             echo "kun datoen er ny"; git checkout -- docs/index.html; echo "ny=0" >> "$GITHUB_OUTPUT"; exit 0
           fi
           echo "ny=1" >> "$GITHUB_OUTPUT"
+      - name: generer siderne igen (sitemappens lastmod for forsiden)
+        if: steps.diff.outputs.ny == '1'
+        run: |
+          python3 scripts/generate-docs.py > /dev/null
+          aendret=$(git status --porcelain | awk '{print $2}' | sort | tr '\n' ' ')
+          case "$aendret" in
+            "docs/index.html "|"docs/index.html docs/sitemap.xml ") echo "aendret: $aendret" ;;
+            *) echo "uventede filer efter generering: $aendret"; exit 1 ;;
+          esac
       - name: tjek og proever
         if: steps.diff.outputs.ny == '1'
         run: |
           python3 scripts/stjerner.py --tjek
-          npm install --prefix mcp-server --no-audit --no-fund
+          python3 scripts/check-docs.py
+          npm ci --prefix mcp-server --ignore-scripts --no-audit --no-fund
           node --test test/forside.test.mjs
-      - name: commit og skub
+      - name: commit, regen-diff og skub
         if: steps.diff.outputs.ny == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config user.name "browsermcp-tal[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html
+          git add docs/index.html docs/sitemap.xml
           git commit -m "tal: stjerner, npm og Chrome Web Store $(date -u +%Y-%m-%d)"
-          git push origin HEAD:main
+          python3 scripts/generate-docs.py > /dev/null
+          if [ -n "$(git status --porcelain -- docs/)" ]; then echo "regen-diff efter commit:"; git status --porcelain -- docs/; exit 1; fi
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
       - name: byg siden (et skub med GITHUB_TOKEN starter ikke altid Pages)
         if: steps.diff.outputs.ny == '1'
         env:
