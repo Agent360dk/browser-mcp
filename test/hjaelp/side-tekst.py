@@ -67,5 +67,5 @@ if __name__ == '__main__':
             for f in filer:
                 if f.endswith('.html'):
                     sti = os.path.join(rod, f)
-                    ud[os.path.relpath(sti, mappe)] = tekst(open(sti, encoding='utf-8').read())
+                    ud[os.path.relpath(sti, mappe).replace(os.sep, '/')] = tekst(open(sti, encoding='utf-8').read())   # '/' ogsaa paa Windows
         print(json.dumps(ud, sort_keys=True))

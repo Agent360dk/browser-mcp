@@ -293,8 +293,8 @@ test('docs/ indeholder ingen interne noter, kun den genererede llms-install.md',
 // sidst af kommentartegn inde i en attributvaerdi. Siderne laeses nu med en HTML-tokenizer (test/hjaelp/asset-henvisninger.py),
 // og der er EN tilladt form: <link href> / <script src> med praecis /assets/docs.(css|js)?v=<noegle>. Hver anden omtale af
 // de to filer i en attribut eller en tekst er en fejl.
-const henvisninger = (mappe) => JSON.parse(execFileSync('python3', ['-I', join(rod, 'test/hjaelp/asset-henvisninger.py'), mappe],
-  { encoding: 'utf8' }));
+const henvisninger = (mappe) => JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', join(rod, 'test/hjaelp/asset-henvisninger.py'), mappe],
+  { encoding: 'utf8' }));   // -X utf8: Windows bruger ellers cp1252 (og -I ignorerer PYTHONUTF8)
 const noegle8 = (f) => createHash('sha256').update(readFileSync(f)).digest('hex').slice(0, 8);
 
 test('css og js hentes kun i den kanoniske form med en noegle, der passer til filens indhold', () => {
@@ -387,7 +387,7 @@ test('generatorens noeglefunktion retter den kanoniske form og intet andet', () 
   const blok = kilde.slice(kilde.indexOf('_KANON = re.compile'), kilde.indexOf("CSS_V if m.group(2) == 'css' else JS_V), t)") + "CSS_V if m.group(2) == 'css' else JS_V), t)".length);
   const py = `import re\nCSS_V = 'aaaa1111'\nJS_V = 'bbbb2222'\n${blok}\nimport json, sys\nprint(json.dumps([_saet_noegle(x) for x in json.loads(sys.argv[1])]))`;
   const ind = ['<link href="/assets/docs.css?v=old">', '<script src="/assets/docs.js"></script>', '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">'];
-  const ud = JSON.parse(execFileSync('python3', ['-c', py, JSON.stringify(ind)], { encoding: 'utf8' }));
+  const ud = JSON.parse(execFileSync('python3', ['-c', py, JSON.stringify(ind)], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } }));
   assert.deepEqual(ud, ['<link href="/assets/docs.css?v=aaaa1111">', '<script src="/assets/docs.js?v=bbbb2222"></script>',
     '<a data-href="/assets/docs.css?v=old">', '<link href="https://x.example/assets/docs.css?v=old">']);
 });
@@ -416,7 +416,7 @@ test('hele generatoren: nyt asset giver ny noegle paa hver henvisning, og sitema
     appendFileSync(join(tmp, 'docs/assets/docs.css'), '\n/* proeve */\n');
     appendFileSync(join(tmp, 'docs/assets/docs.js'), '\n// proeve\n');
     const ny = { css: noegle8(join(tmp, 'docs/assets/docs.css')), js: noegle8(join(tmp, 'docs/assets/docs.js')) };
-    const gen = () => execFileSync('python3', [join(tmp, 'scripts/generate-docs.py')], { cwd: tmp, stdio: 'ignore' });
+    const gen = () => execFileSync('python3', [join(tmp, 'scripts/generate-docs.py')], { cwd: tmp, stdio: 'ignore', env: { ...process.env, PYTHONUTF8: '1' } });   // Windows: cp1252 uden
     gen();
     const efter = henvisninger(join(tmp, 'docs'));
     assert.deepEqual(Object.keys(efter).sort(), Object.keys(foer).sort(), 'generatoren aendrede hvilke sider der findes');

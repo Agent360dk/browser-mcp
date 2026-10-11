@@ -22,9 +22,11 @@ const indhold = readdirSync(join(rod, 'content')).filter((f) => f.endsWith('.md'
 // en citeret vaerdi slap igennem. Siderne laeses nu af en HTML-parser (test/hjaelp/side-tekst.py): tekst, attributvaerdier
 // og kommentarer, med tegnreferencer afkodet efter HTML5-reglerne.
 const SIDE_TEKST = join(rod, 'test/hjaelp/side-tekst.py');
-const html = (s) => JSON.parse(execFileSync('python3', ['-I', SIDE_TEKST, '-'], { input: JSON.stringify([s]), encoding: 'utf8' }))[0];
-const sider = Object.entries(JSON.parse(execFileSync('python3', ['-I', SIDE_TEKST, join(rod, 'docs')], { encoding: 'utf8' })))
-  .map(([f, tekst]) => [join('docs', f), tekst]);
+// Windows-CI 10/10: Python bruger der cp1252 til stdin/stdout og open(), saa typografiske tegn blev forvansket. UTF-8 overalt:
+// -X utf8, fordi -I (isoleret) ignorerer PYTHONUTF8.
+const html = (s) => JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', SIDE_TEKST, '-'], { input: JSON.stringify([s]), encoding: 'utf8' }))[0];
+const sider = Object.entries(JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', SIDE_TEKST, join(rod, 'docs')], { encoding: 'utf8' })))
+  .map(([f, tekst]) => ['docs/' + f, tekst]);   // Windows: join giver \, og proeverne matcher paa docs/...
 const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
   ['llms-install.md', laes('llms-install.md')], ...sider];
 
