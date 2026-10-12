@@ -28,7 +28,7 @@ const html = (s) => JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', SIDE
 const sider = Object.entries(JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', SIDE_TEKST, join(rod, 'docs')], { encoding: 'utf8' })))
   .map(([f, tekst]) => ['docs/' + f, tekst]);   // Windows: join giver \, og proeverne matcher paa docs/...
 const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
-  ['llms-install.md', laes('llms-install.md')], ...sider];
+  ['llms-install.md', laes('llms-install.md')], ['noter/CWS_LISTING_TEXT.md', laes('noter/CWS_LISTING_TEXT.md')], ...sider];
 
 const FORBUDT = [
   [7, /a headless browser fundamentally can't|the move headless browsers can(?:'t|not) make|Headless automation cannot do this|the thing headless tools can't do|\| Headless automation \|/i, 'kategorisk om headless; en frisk profil uden dit login er det praecise'],
@@ -39,6 +39,8 @@ const FORBUDT = [
   [38, /Fresh by default|That is the whole difference/, 'Playwright MCP har en dedikeret profil som standard og en extension-mode'],
   [63, /Read every row of a long/i, 'extract_list: raekker med samme tekst kommer en gang, og en baggrundsfane stopper tidligt (PR63 R3 Astra)'],
   [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config|For any other client, add this block/, 'Zed, opencode og Codex bruger hver sin noegle (PR63 R2 Astra: ogsaa Claude Code-guidens FAQ)'],
+  [87, /take over the whole profile|a second agent has to wait/i, 'Playwright MCP-udvidelsen giver ogsaa hver klient sin egen fanegruppe; butiksteksten paastod det modsatte (R87 Astra)'],
+  [88, /the tool says so and brings the tab/i, 'vaerktoejet henter ikke selv fanen frem; det siger key-not-delivered, og agenten kan bruge browser_switch_tab (R87 Astra)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med

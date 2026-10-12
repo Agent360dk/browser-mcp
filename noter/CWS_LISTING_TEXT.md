@@ -199,8 +199,7 @@ dashboards, admin panels, portals.
 
 Up to 20 agent sessions can use one Chrome at the same time. Every chat gets
 its own colour-coded tab group, can only see its own tabs, and can hold up to
-20 of them. Close the chat and its tabs go with it. Other browser
-automation tools take over the whole profile, so a second agent has to wait.
+20 of them. Close the chat and its tabs go with it.
 
 ═══ WHAT IT DOES WITH YOUR DATA ═══
 
@@ -217,8 +216,8 @@ run scripts, click, and fill a field it finds by CSS selector. It cannot press
 keys, hover, double-click, right-click, click by coordinate, type into a
 combobox, or fill a field found by its visible text - Chrome does not deliver
 mouse and keyboard events to a tab that is not the visible one in its window.
-When one of those is needed, the tool says so and brings the tab in front of
-you rather than failing silently. This is a Chrome limitation, not a bug we
+When one of those is needed, the tool says so instead of failing silently,
+and the agent can bring the tab in front of you with browser_switch_tab. This is a Chrome limitation, not a bug we
 are about to fix.
 
 MIT licensed, source at https://github.com/Agent360dk/browser-mcp
