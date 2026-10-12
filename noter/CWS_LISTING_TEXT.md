@@ -13,7 +13,7 @@ developer Agent360 Group ApS, category Developer Tools).
 | Product name | "Agent360 Browser MCP" | ✅ keep |
 | **Summary** (132 char) | "Give Claude Code your real logged-in Chrome. Two parts: this extension + one npx command." | ✅ **already fixed** - `extension/manifest.json`'s `description` overwrote it when 1.29.0 published on 7 Sept. Nothing to paste. |
 | **Detailed description** | Says **29 browser tools** and **up to 10 concurrent sessions**; claims **"~80% pass rate"** on CAPTCHAs; the setup block still tells store users to run `npx … install` and load an unpacked extension | 🔴 replace - §1 below |
-| **Screenshots** | Three, dated 3 May, all crops of the *old website* | 🔴 replace - §2 |
+| **Screenshots** | Three, dated 3 May, all crops of the *old website* (12/10: målt FEM live, se §2) | 🔴 replace - §2 |
 | **Small promo tile** (440×280) | Not produced in this repo before today | 🟡 upload - §2 |
 | **Marquee tile** (1400×560) | Never produced | 🟡 upload - §2 |
 | **YouTube video** | Empty. `docs/demo.mp4` exists (20 June) but is on no video host, so the listing's video slot is unused | 🟡 §3 |
@@ -255,7 +255,7 @@ dated 3 May. `docs/screenshots/multi-session.png` - the one whose name promises 
 shows the April-2025 hero *"Your AI can't use a browser. Until now."*, a large empty black box, and
 `npx @agent360/browser-mcp install` as the install command, which copies extension files but does
 not register the server. It sold the exact failure this listing rewrite exists to fix. Delete all
-three; do not reuse.
+three; do not reuse. (12/10: der er FEM live - slet alle fem; se ⛔ nedenfor.)
 
 Google's rule for screenshots is that they must *"demonstrate the actual user experience, focusing
 on the core features and content."* So four of the five below are the product's own interface -
@@ -264,7 +264,12 @@ the popup, the session cards, the action log and the in-page dialog are rendered
 
 New set: `docs/store-2026-09-08/`, upload in this order.
 
-⛔ **12/10 (R90 Astra + Opus): upload INGEN af `01.png`-`05.png`.** 01 siger «the icon stays red» (ikonet skifter aldrig; badget er tomt), 03 siger at
+⛔ **12/10 (R91 Opus, målt live): butikken har i dag FEM billeder, ikke tre** - fire udsnit af det gamle website («29 Tools», «10 Concurrent
+Sessions», «The only browser MCP with CAPTCHA solving», den gamle installationskommando) og en 2FA-dialog med «Done» (koden viser «Submit»).
+**Slet alle fem, og upload `docs/store-2026-10-12/01-ask-user.png`** - den rigtige 1.30.2-dialog fra `browser_ask_user`, fotograferet af Chrome
+12/10 (1280×800) over en neutral loginside; teksten i dialogen er agentens egen besked. Butikken kræver mindst ét skærmbillede.
+
+⛔ **12/10 (R90 Astra + Opus): upload INGEN af `01.png`-`05.png` fra `docs/store-2026-09-08/`.** 01 siger «the icon stays red» (ikonet skifter aldrig; badget er tomt), 03 siger at
 agenten kan læse koden fra «your own Gmail tab» (den ser kun sine egne faner) og «It never guesses», 05 siger «Solves CAPTCHAs» og «Asks before
 anything sensitive» (at spørge er agentens valg, ikke en spærre), og kilden `demo-video-src/src/Store.tsx` (l.116, 205-209, 301-319) siger det samme.
 Genrender først efter rettet kilde, og læs hvert billede mod koden. Herunder: hvorfor 02 og 04 blev trukket tilbage først.
@@ -423,15 +428,23 @@ gem den som kladde, og lad udgivelsen indsende pakken. Efterprøv bagefter, at �
 
 **Efterprøv efter rettelsen - hele teksten, ikke stikprøver** (R90: de gamle kontroller søgte kun efter enkelte strenge og kunne melde
 «rent» om en forkert tekst; «UNIQUE» findes desuden altid i Googles egen D-U-N-S-tekst). Kør fra repoets rod; den sammenligner HELE
-§1-blokken i denne fil, med mellemrum udjævnet, med butikssidens tekst og navngiver den første linje der mangler:
+§1-blokken i denne fil med butikkens BESKRIVELSESFELT som helhed (mellemrum udjævnet): feltet skal være præcis §1 og intet andet, så en
+halv udskiftning (gammel tekst tilbage før eller efter) også afviger (R91 Opus). Kalibreret 12/10: levende side → AFVIGER; præcis §1 → «hele §1
+live, og intet andet i feltet»; ny+gammel og gammel+ny → AFVIGER; én forkert sætning → AFVIGER med stedet. Siden skifter først, når Google har
+godkendt indsendelsen; før det siger kontrollen AFVIGER. Kør fra en checkout, hvor PR #66 er flettet:
 
 ```
 curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" > /tmp/butik.html
 python3 - /tmp/butik.html <<'PY'
 import sys,re,html
-side=re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',open(sys.argv[1],encoding='utf-8').read())))
-s=open('noter/CWS_LISTING_TEXT.md',encoding='utf-8').read(); i=s.index('## §1 Detailed description'); a=s.index('```\n',i)+4; blok=s[a:s.index('\n```',a)]
-mangler=[l.strip() for l in blok.splitlines() if l.strip() and re.sub(r'\s+',' ',l.strip()) not in side]
-print('hele §1 live' if not mangler and re.sub(r'\s+',' ',blok).strip() in side else 'MANGLER: '+(mangler[0] if mangler else 'rækkefølge/ombrydning'))
+n=lambda x: re.sub(r'\s+',' ',x).strip()
+raw=open(sys.argv[1],encoding='utf-8').read()
+felter=[n(html.unescape(re.sub(r'<[^>]+>',' ',x))) for x in re.findall(r'<p[^>]*>(.*?)</p>',raw,re.S) if 'MIT licensed, source at' in x]
+s=open('noter/CWS_LISTING_TEXT.md',encoding='utf-8').read(); i=s.index('## §1 Detailed description'); a=s.index('```\n',i)+4; blok=n(s[a:s.index('\n```',a)])
+if len(felter)!=1: print('AFVIGER: fandt %d beskrivelsesfelter, ikke 1' % len(felter))
+elif felter[0]==blok: print('hele §1 live, og intet andet i feltet')
+else:
+    f=felter[0]; k=next((j for j in range(min(len(f),len(blok))) if f[j]!=blok[j]), min(len(f),len(blok)))
+    print('AFVIGER fra tegn %d (feltet %d tegn, §1 %d): «%s»' % (k,len(f),len(blok),f[max(0,k-20):k+60]))
 PY
 ```
