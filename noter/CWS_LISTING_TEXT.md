@@ -62,6 +62,9 @@ ask the human - so describe the mechanism instead of inventing a hit rate.
 
 ## ⚠️ KLADDEN BAERER EN AELDRE UDGAVE END §1 - laes det her foerst
 
+⛔ **AFLØST 12/10:** teksten der skal ind er nu `~/.claude/plans/browsermcp-1302-2026-10-07/BUTIKSTEKST-1.30.2.txt` (= §1-blokken
+herunder). Filen `browsermcp-2026-09-07/BUTIKSTEKST-klar-til-indsaettelse.txt`, som afsnittet nævner, har påstande R87-R90 afviste - brug den ikke.
+
 **Hvad der ER i dashboardets felt `Beskrivelse*` lige nu** (indsat og gemt 20/9, efterproevet
 efter en fuld genindlaesning): den rettede tekst uden nogen af de fem usandheder.
 
@@ -216,7 +219,7 @@ on 127.0.0.1 that you started. The pages your agent opens, and the HTTPS calls
 of browser_fetch, go to the sites you point it at. There is no account, no telemetry, no server of ours,
 and no payment. What your agent reads goes to your AI client and its model
 provider, the same as anything else you show it. The extension keeps a short local log of the agent's recent actions, with
-cookie, storage, script and token reads highlighted, so you can look at what
+cookie, storage and script reads highlighted, so you can look at what
 happened.
 
 ═══ WHAT IT CANNOT DO ═══
@@ -260,6 +263,11 @@ the popup, the session cards, the action log and the in-page dialog are rendered
 `extension/popup.html` and the overlay code in `extension/background.js`, not drawn freehand.
 
 New set: `docs/store-2026-09-08/`, upload in this order.
+
+⛔ **12/10 (R90 Astra + Opus): upload INGEN af `01.png`-`05.png`.** 01 siger «the icon stays red» (ikonet skifter aldrig; badget er tomt), 03 siger at
+agenten kan læse koden fra «your own Gmail tab» (den ser kun sine egne faner) og «It never guesses», 05 siger «Solves CAPTCHAs» og «Asks before
+anything sensitive» (at spørge er agentens valg, ikke en spærre), og kilden `demo-video-src/src/Store.tsx` (l.116, 205-209, 301-319) siger det samme.
+Genrender først efter rettet kilde, og læs hvert billede mod koden. Herunder: hvorfor 02 og 04 blev trukket tilbage først.
 
 ⛔ **12/10 (R89 Astra): upload IKKE `02.png` og `04.png`.** 02 siger «Each chat claims its own…» og «Close a chat, its tabs go with it»
 (adskillelsen følger MCP-serveren); 04 siger «Every action, written down» og at udvidelsen kun taler med localhost (loggen er kort, og
@@ -413,18 +421,17 @@ Listningen bor i CWS-dashboardet. Ingen commit og intet script rører den - hell
 **12/10: erstat HELE den detaljerede beskrivelse med §1-blokken** (ikke kun enkelte sætninger - den levende tekst er en ældre udgave),
 gem den som kladde, og lad udgivelsen indsende pakken. Efterprøv bagefter, at §1 står live, med anden kommando herunder.
 
-**Efterprøv efter rettelsen** med præcis denne kommando, som fandt fejlene:
+**Efterprøv efter rettelsen - hele teksten, ikke stikprøver** (R90: de gamle kontroller søgte kun efter enkelte strenge og kunne melde
+«rent» om en forkert tekst; «UNIQUE» findes desuden altid i Googles egen D-U-N-S-tekst). Kør fra repoets rod; den sammenligner HELE
+§1-blokken i denne fil, med mellemrum udjævnet, med butikssidens tekst og navngiver den første linje der mangler:
 
 ```
-curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" \
-  | python3 -c "import sys,re,html;t=html.unescape(re.sub(r'<[^>]+>',' ',sys.stdin.read()));t=re.sub(r'\s+',' ',t);
-print([n for n in ['29 browser tools','10 concurrent','pass rate','UNIQUE'] if n.lower() in t.lower()] or 'rent')"
-```
-
-Og at hele §1 står live (alle fire skal findes; den gamle tekst har ingen af dem):
-
-```
-curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" \
-  | python3 -c "import sys,re,html;t=html.unescape(re.sub(r'<[^>]+>',' ',sys.stdin.read()));t=re.sub(r'\s+',' ',t);
-m=['Each MCP server gets its own colour-coded tab group','takes its orders from one place','short local log','install --skip-extension'];print([n for n in m if n not in t] or 'hele §1 live')"
+curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" > /tmp/butik.html
+python3 - /tmp/butik.html <<'PY'
+import sys,re,html
+side=re.sub(r'\s+',' ',html.unescape(re.sub(r'<[^>]+>',' ',open(sys.argv[1],encoding='utf-8').read())))
+s=open('noter/CWS_LISTING_TEXT.md',encoding='utf-8').read(); i=s.index('## §1 Detailed description'); a=s.index('```\n',i)+4; blok=s[a:s.index('\n```',a)]
+mangler=[l.strip() for l in blok.splitlines() if l.strip() and re.sub(r'\s+',' ',l.strip()) not in side]
+print('hele §1 live' if not mangler and re.sub(r'\s+',' ',blok).strip() in side else 'MANGLER: '+(mangler[0] if mangler else 'rækkefølge/ombrydning'))
+PY
 ```

@@ -104,6 +104,8 @@ The one that shows the difference - it works because it is *your* browser, alrea
 
 A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first.
 
+Where a prompt says example.com, put your own site.
+
 > Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
 You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone.

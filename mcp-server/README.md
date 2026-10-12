@@ -130,7 +130,7 @@ Skip step 2 and the extension icon will sit on **"Not connected"** forever - tha
 
 ## You're in. Now what?
 
-Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Paste one of these to your agent:
+Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Paste one of these to your agent (where it says example.com, put your own site):
 
 | Say this | What it shows |
 |---|---|

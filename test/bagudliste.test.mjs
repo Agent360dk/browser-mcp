@@ -49,7 +49,8 @@ const FORBUDT = [
   [94, /SETUP \(2 minutes\)/i, 'opsaetningstiden er umaalt (R89 Astra)'],
   [95, /cannot open URLs: npx @agent360\/browser-mcp install(?! --skip-extension)/i, 'butiksbrugeren har udvidelsen; install uden --skip-extension leder mod en udvidelse mere (R89 Astra)'],
   [96, /Any dashboard you are already logged into|The pattern: anything you would do yourself/i, 'ikke ethvert dashboard eller enhver browseropgave (R89 Astra)'],
-  [97, /and marks the sensitive ones/i, 'loggen fremhaever kun cookie-, storage-, script- og token-vaerktoejer (R89 Astra)'],
+  [97, /and marks the sensitive ones/i, 'loggen fremhaever kun cookie-, storage- og script-vaerktoejer (R89/R90)'],
+  [98, /token reads highlighted/i, 'extract_token naar udvidelsen som navigate; token-laesning fremhaeves ikke (R90 Astra + Opus)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med
