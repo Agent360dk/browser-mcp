@@ -4,7 +4,7 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
-## 1.30.2 (2026-10-12)
+## 1.30.2 (2026-10-13)
 
 **Tool texts that match the code, clicks that say when they could not land, and the pull requests from
 John H.**
@@ -17,6 +17,11 @@ John H.**
 | `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
 | `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
 | `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
+| `consumed_by_page`, `input` | `browser_upload_file`, `browser_drop_file` | The page read the file and then cleared the field itself, as X and Facebook do: it got the file, so do not attach it again. `input` names the field that got it (#67) |
+| `other_file_inputs` | `browser_drop_file` | No file input at the target and no file chooser opened when it was clicked: the page's other file inputs, none of which got the file (#67) |
+| `error: "beforeunload-blocked"` | `browser_navigate` | The page asked "Leave site?" because something is unsaved. The tool answered Stay and nothing navigated; `leave_page: true` leaves (#69) |
+| `error: "tab-not-responding"` | `browser_handle_dialog` | Chrome did not answer on the tab, for instance because a dialog is already open, which cannot be answered from here; the note says what can be done (#69) |
+| `shortcut` | `browser_press_key` | The editing command a ctrl or meta key ran: `selectAll`, `copy`, `cut`, `paste`, `undo` or `redo` (#68) |
 | `error: "no-rows"` | `browser_extract_list` | The selector matched no rows with text. Before, the answer was `count: 0` with `reached_end: true` |
 | `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why; in a hidden page, why `reached_end` is false (#11) |
 | `eget_vindue: false`, `advarsel` | `browser_navigate` with `eget_vindue` | The tab did not end up in its own window; `windowId` is the tab's real window |
@@ -100,6 +105,18 @@ a row.
 **`browser_fetch`** can reach HTTPS addresses (the extension's own content security policy blocked every
 outside address, also in 1.30.1). It sends no browser cookies and stores none from the answer, also not
 to 127.0.0.1, where 1.30.1 did: pass a token in headers.
+
+**From the reports in #67-#70.** `browser_drop_file` no longer hands the file to the first file input anywhere on the
+page when there is none at the target: it clicks the target and fills the file chooser that opens, so an "Add photo"
+button that makes its own field gets the file, not a field that belongs to something else. The file chooser path is
+judged by the field afterwards, like the other paths, instead of answering yes on Chrome's receipt (#67).
+`browser_press_key` with ctrl, meta or alt types no character, sends the key code for letters and digits, and runs
+select all, copy, cut, paste, undo and redo as Chrome's own editing commands. Before, Ctrl+A typed "a" on Windows, did
+nothing on macOS, and answered `landed: true` (#68). `browser_navigate` answers "Leave site?" itself. Before, it waited
+15 seconds, reported the old address with no error, and left a tab that answered nothing, not even
+`browser_handle_dialog` (#69). A text selector prefers a visible match to a hidden copy; `browser_fill` reads a
+contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
+accepts a path whose letter case differs from the working directory's on Windows and macOS (#70).
 
 **Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer
 (also an error answer) and stderr say how many connections are open and that the server cannot tell which

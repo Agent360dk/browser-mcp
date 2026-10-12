@@ -148,7 +148,7 @@ The pattern: **many of the browser tasks you would do yourself, on sites you are
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.30.2 (2026-10-12) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.30.2 (2026-10-13) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
 | **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 72 documented tools, none that can ask the person (checked 2026-09-19) | None |
@@ -230,7 +230,7 @@ All three are optional. None is needed for normal use.
 ### Navigation & Content
 | Tool | Description |
 |------|-------------|
-| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`) |
+| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). If the page asks "Leave site?", it stays and says `beforeunload-blocked`; `leave_page=true` leaves |
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |
@@ -241,7 +241,7 @@ All three are optional. None is needed for normal use.
 |------|-------------|
 | `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
-| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers) |
+| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). With ctrl or meta: a, c, x, v, z, y run select all, copy, cut, paste, undo, redo |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
@@ -291,7 +291,7 @@ All three are optional. None is needed for normal use.
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
 | `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog). Needs "Allow access to file URLs" for the Agent360 Browser MCP extension, which is off by default for Chrome Web Store installs and also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on |
-| `browser_drop_file` | Upload via drop-zones: finds a hidden `<input type="file">` in the target, then up to 2 parent levels, and as a last resort the first file input on the page; with no input at all it intercepts the native file chooser. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
+| `browser_drop_file` | Upload via drop-zones: finds a hidden `<input type="file">` in the target, then up to 2 parent levels; with none there it clicks the target and intercepts the native file chooser. A file input elsewhere on the page never gets the file. The answer names the input used, and says `consumed_by_page` when the page read the file and cleared the field. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
 
 ### Diagnostics & feedback
 | Tool | Description |

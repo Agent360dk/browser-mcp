@@ -651,7 +651,9 @@ function cdpMedFrist(tabId, method, params) {
       // MAALT 11/9 (raa CDP-proeve i Chrome for Testing): Chrome leverer ikke Input.* til en fane i baggrunden.
       // Kaldet haenger, og efter aktivering svarer det paa millisekunder. Fejlen siger det, saa agenten ved hvad den goer.
       const hint = String(method).startsWith('Input.')
-        ? ' (the tab is probably in the background - Chrome does not deliver mouse or keyboard input to a tab that is not active; call browser_switch_tab and try again)'
+        // #69 (MAALT 13/10): et klik paa et link, der aabnede «Leave site?», endte her ogsaa - og svaret pegede kun paa en baggrundsfane.
+        ? ' (the tab is probably in the background - Chrome does not deliver mouse or keyboard input to a tab that is not active; call browser_switch_tab and try again. ' +
+          'Or the input opened a dialog - an alert, a confirm or "Leave site?" - which blocks the tab until it is answered; see browser_handle_dialog)'
         : '';
       ur = setTimeout(() => afvis(cdpFristFejl(`CDP did not respond within ${frist} ms: ${method}${hint}`)), frist);
     }),
@@ -1408,6 +1410,57 @@ function fieldBlockedAnswer(blocked, method) {
           'browser_click and pick the option, or use browser_select_option / browser_set_combobox.' };
 }
 
+// Teksten i en contenteditable, som den staar paa skaermen: én linje pr. blok, <br> er et linjeskift, og en <br> sidst i sin
+// blok er Chromes pladsholder for en tom linje. Mellemrum foelger feltets white-space, som i innerText. Selvstaendig, saa
+// den kan sendes som tekst til siden (#70).
+function redigerbarTekst(rod) {
+  if (!rod) return null;
+  const stil = (n) => getComputedStyle(n);
+  const blok = (n) => n !== rod && n.nodeType === 1 && !/^(inline|contents|none)/.test(stil(n).display);
+  // Kommer der noget efter <br>'en i dens egen blok? Ellers er den kun pladsholder.
+  const pladsholder = (br) => {
+    for (let n = br; n && n !== rod; n = n.parentNode) {
+      for (let s = n.nextSibling; s; s = s.nextSibling) {
+        if (s.nodeType === 1 && stil(s).display !== 'none') return false;
+        if (s.nodeType === 3 && s.data !== '') return false;
+      }
+      if (blok(n.parentNode) || n.parentNode === rod) return true;
+    }
+    return true;
+  };
+  const linjer = [''];
+  let lukket = false;   // en blok er sluttet; det naeste indhold staar paa en ny linje
+  const nyLinjeEfterBlok = () => { if (lukket) { linjer.push(''); lukket = false; } };
+  const gaa = (n) => {
+    for (const b of n.childNodes) {
+      if (b.nodeType === 3) {
+        const ws = stil(b.parentNode).whiteSpace;
+        let t = b.data;
+        if (ws === 'normal' || ws === 'nowrap') { if (!t.trim()) continue; t = t.replace(/[\t\n\r ]+/g, ' '); }
+        if (!t) continue;
+        nyLinjeEfterBlok();
+        linjer[linjer.length - 1] += t;
+      } else if (b.nodeType === 1) {
+        if (stil(b).display === 'none') continue;
+        if (b.tagName === 'BR') {
+          if (pladsholder(b)) continue;
+          nyLinjeEfterBlok();
+          linjer.push('');
+        } else if (blok(b)) {
+          if (lukket) nyLinjeEfterBlok();
+          else if (linjer[linjer.length - 1] !== '') linjer.push('');
+          gaa(b);
+          lukket = true;
+        } else {
+          gaa(b);
+        }
+      }
+    }
+  };
+  gaa(rod);
+  return linjer.join('\n');
+}
+
 async function debuggerFill(tabId, selector, value) {
   // Check if element is contenteditable (rich text editors: LinkedIn, Slack)
   const isContentEditable = await debuggerEval(tabId, `
@@ -1435,10 +1488,12 @@ async function debuggerFill(tabId, selector, value) {
     // Samme form som den anden returvej, ellers faar kalderen to forskellige slags svar.
     // rammeHoerte er null her med vilje: en contenteditable (LinkedIn, Slack) har ingen
     // _valueTracker, saa teksten i elementet ER hele sandheden.
-    const ceTekst = await debuggerEval(tabId, `(() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
-      return el ? (el.textContent ?? null) : null;
-    })()`).catch(() => null);
+    // #70 (arasmileska; MAALT 13/10 i headless Chrome): textContent mister linjeskiftene, saa «line1\nline2» blev laest
+    // som «line1line2» og meldt differs, netop naar teksten var landet. innerText er heller ikke svaret: Chrome skriver
+    // «a\n\nb» som a<div><br></div><div>b</div>, og innerText giver «a\n\n\nb». Teksten laeses derfor som linjer: en blok
+    // (div, p, li ...) begynder en ny linje, en <br> er et linjeskift, og en <br> sidst i sin blok er kun pladsholder.
+    const ceTekst = await debuggerEval(tabId, `(${redigerbarTekst.toString()})(document.querySelector(${JSON.stringify(selector)}))`)
+      .catch(() => null);
     return { value: ceTekst, rammeHoerte: null };
   }
 
@@ -1624,8 +1679,39 @@ async function filAdgangsSvar(besked) {
   };
 }
 
-/** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
-function fildSvar(vedhaeftet, oenskede, ekstra) {
+// #67 (arasmileska; X og 37 af 37 Facebook-gruppeopslag): siden laeste filen i sin change-lytter og ryddede feltet
+// (input.value = ''), og saa var svaret file-not-attached - en agent, der troede paa det, vedhaeftede igen og postede to
+// gange. En lytter i fangstfasen, sat FOER filen afleveres, ser feltet i det oejeblik siden faar det: paa window for et
+// felt i dokumentet (window kommer foer alle sidens egne lyttere), paa feltet selv for et felt uden for dokumentet.
+// Svaret er { antal, navne } eller null (ingen change). Selvstaendig, saa den kan koere i siden.
+function armerFilSkiftISiden(el, noegle) {
+  if (!el) return false;
+  const lager = window.__bmcpFilSkift || (window.__bmcpFilSkift = {});
+  const fang = (e) => {
+    if (e.target !== el || lager[noegle]) return;
+    lager[noegle] = { antal: el.files ? el.files.length : 0, navne: el.files ? [...el.files].map((f) => f.name) : [] };
+  };
+  const vaerter = el.isConnected ? [window, el] : [el];
+  for (const v of vaerter) v.addEventListener('change', fang, true);
+  lager[noegle + ':af'] = () => { for (const v of vaerter) v.removeEventListener('change', fang, true); };
+  return true;
+}
+function laesFilSkiftISiden(noegle) {
+  const lager = window.__bmcpFilSkift || {};
+  try { if (lager[noegle + ':af']) lager[noegle + ':af'](); } catch (e) {}
+  const svar = lager[noegle] || null;
+  delete lager[noegle]; delete lager[noegle + ':af'];
+  return svar ? JSON.stringify(svar) : null;
+}
+
+/** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. `skift` er hvad feltet bar, da siden fik change. */
+function fildSvar(vedhaeftet, oenskede, ekstra, skift) {
+  if (vedhaeftet && vedhaeftet.antal === 0 && skift && skift.antal > 0) {
+    return { ok: true, ...ekstra, attached: skift.navne, consumed_by_page: true,
+      note: 'The page received the file: its change handler saw it in the field, and the page cleared the field ' +
+            'afterwards, as X and Facebook do once they have read the file. Do not attach it again; check that the ' +
+            'page shows the attachment.' };
+  }
   if (!vedhaeftet) {
     return { ok: true, ...ekstra, unknown: true,
       note: 'The file was sent to the field, but the field could not be read afterwards, so it is unknown ' +
@@ -2177,7 +2263,15 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       if (desc && (desc.textContent || '').includes(tekst)) return desc;
       return el;
     }
-    function pick(kandidater, test) {
+    // #70 (arasmileska; Search Console og Facebook har skjulte kopier af knapper): `text=Request indexing` stoppede ved en
+    // skjult foerste «Request indexing» og meldte «not visible», skoent en synlig knap med samme tekst fandtes. Et maal
+    // med en boks og uden visibility:hidden foretraekkes nu; findes der kun skjulte, vaelges som foer, og svaret siger det.
+    const synlig = (el) => {
+      if (!el || !el.getBoundingClientRect) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    };
+    function pick(kandidater, test, kunSynlige) {
       const matches = kandidater.filter((el) => tagOk(el) && test((el.textContent || '').trim()));
       if (!matches.length) return null;
       // Prefer the INNERMOST matches (an element that is not an ancestor of another match).
@@ -2186,19 +2280,21 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // Prefer a match that resolves to a real interactive control.
       for (const el of pool) {
         const c = toClickable(el);
-        if (c && c.matches && c.matches(CLICKABLE)) return c;
+        if (c && c.matches && c.matches(CLICKABLE) && (!kunSynlige || synlig(c))) return c;
       }
-      return toClickable(pool[0]);
+      if (!kunSynlige) return toClickable(pool[0]);
+      for (const el of pool) { const c = toClickable(el); if (synlig(c)) return c; }
+      return null;
     }
     const eksakt = (t) => t === tekst;
     const delvis = (t) => t && t.includes(tekst);
     const dlg = aabenDialog(all);
-    if (dlg) {
-      const iDlg = all.filter((el) => inde(el, dlg));
-      return pick(iDlg, eksakt) || pick(all, eksakt) || pick(iDlg, delvis) || pick(all, delvis);
-    }
-    // Exact match first, then partial fallback.
-    return pick(all, eksakt) || pick(all, delvis);
+    const iDlg = dlg ? all.filter((el) => inde(el, dlg)) : null;
+    const kaede = (s) => dlg
+      ? pick(iDlg, eksakt, s) || pick(all, eksakt, s) || pick(iDlg, delvis, s) || pick(all, delvis, s)
+      // Exact match first, then partial fallback.
+      : pick(all, eksakt, s) || pick(all, delvis, s);
+    return kaede(true) || kaede(false);
   }
   // Hvad ligger oeverst ved punktet? Elementet selv, noget inde i det, en forfader (klikket bobler gennem den), dets
   // label eller dets egen knap/link-ramme er ikke en daekning. Alt andet er: et overlay, en backdrop, en anden dialog.
@@ -4256,16 +4352,16 @@ async function dropFileOnTarget(tabId, selector, files) {
     if (candidates.length === 0 && target.parentElement?.parentElement) {
       candidates.push(...target.parentElement.parentElement.querySelectorAll('input[type="file"]'));
     }
-    if (candidates.length === 0) {
-      // Last resort: any file input on the page
-      candidates.push(...document.querySelectorAll('input[type="file"]'));
-    }
+    // #67 (arasmileska, MAALT 13/10 i headless Chrome): her stod en sidste udvej - ethvert filfelt paa siden. Med en
+    // «Add photo»-knap, der laver sit eget felt ved klik, fik et ANDET felt paa siden filen, og svaret var ok:true. Saa
+    // filvaelger-vejen (strategi 2), som knappen selv aabner, proeves nu i stedet.
     if (candidates.length === 0) return JSON.stringify({ found: false });
 
     // Tag the first viable input with a unique data-attribute so we can re-query reliably
     const tag = '__bmcp_drop_target_' + Math.random().toString(36).slice(2, 10);
     candidates[0].setAttribute('data-bmcp-drop-tag', tag);
-    return JSON.stringify({ found: true, tag, accept: candidates[0].accept || '', multiple: !!candidates[0].multiple });
+    return JSON.stringify({ found: true, tag, accept: candidates[0].accept || '', multiple: !!candidates[0].multiple,
+      input: (${filFeltNavn.toString()})(candidates[0]) });
   })()`);
 
   const inputInfo = JSON.parse(inputJson);
@@ -4282,14 +4378,17 @@ async function dropFileOnTarget(tabId, selector, files) {
         selector: taggedSel,
       });
       if (queryResult.nodeId) {
+        await debuggerEval(tabId, `(${armerFilSkiftISiden.toString()})(document.querySelector(${JSON.stringify(taggedSel)}), ${JSON.stringify(inputInfo.tag)})`).catch(() => {});
         await cdpSend(tabId, 'DOM.setFileInputFiles', {
           nodeId: queryResult.nodeId,
           files: fileList,
         });
         // Laeses HER, mens maerket stadig sidder - `finally` nedenfor fjerner det.
         const vedhaeftet = await laesVedhaeftedeFiler(tabId, taggedSel);
+        const skift = await debuggerEval(tabId, `(${laesFilSkiftISiden.toString()})(${JSON.stringify(inputInfo.tag)})`)
+          .then((j) => (j ? JSON.parse(j) : null)).catch(() => null);
         result = fildSvar(vedhaeftet, fileList,
-          { method: 'hidden-input', files: fileList, accept: inputInfo.accept });
+          { method: 'hidden-input', files: fileList, accept: inputInfo.accept, input: inputInfo.input }, skift);
       }
     } catch (e) {
       caughtError = e?.message || String(e);
@@ -4328,10 +4427,59 @@ async function dropFileOnTarget(tabId, selector, files) {
   const chooserResult = await interceptFileChooser(tabId, selector, fileList);
   if (chooserResult) return chooserResult;
 
+  // #67: filfelterne andre steder paa siden naevnes, men faar ikke filen - kun agenten kan vide, om et af dem er det rigtige.
+  const andre = await debuggerEval(tabId, `JSON.stringify([...document.querySelectorAll('input[type="file"]')].slice(0, 10).map(${filFeltNavn.toString()}))`)
+    .then((j) => JSON.parse(j || '[]')).catch(() => []);
   return {
     ok: false,
     error: 'no-file-input-found',
-    hint: 'No <input type="file"> found, and the native file-chooser interception did not fire. The trigger element may not open a file dialog at all — check the selector.',
+    hint: 'No <input type="file"> inside or near the target, and clicking the target opened no file chooser. The trigger element may not open a file dialog at all — check the selector.' +
+      (andre.length ? ' The page has other file inputs, listed in other_file_inputs. None of them got the file, because nothing ties them to this target; pass one as the selector if it is the right field.' : ''),
+    ...(andre.length ? { other_file_inputs: andre } : {}),
+  };
+}
+
+// Et filfelt beskrevet, saa agenten kan se HVILKET felt der fik filen (#67) - og bruge det som selector. Selvstaendig.
+function filFeltNavn(i) {
+  if (i.id) return '#' + CSS.escape(i.id);
+  if (i.name) return 'input[type="file"][name="' + String(i.name).replace(/["\\]/g, '\\$&') + '"]';
+  const alle = [...document.querySelectorAll('input[type="file"]')];
+  const nr = alle.indexOf(i);
+  return nr >= 0 ? 'input[type="file"] (number ' + (nr + 1) + ' of ' + alle.length + ' on the page)' : 'an <input type="file"> outside the page\'s document';
+}
+
+// #69 (arasmileska; MAALT 13/10 i headless Chrome): en side med en beforeunload-lytter (et ugemt udkast) fik «Leave site?»
+// frem, naar navigate skiftede adressen. Ingen svarede boksen; navigate ventede sine 15 sekunder og meldte den GAMLE adresse
+// uden fejl, og bagefter svarede fanen ikke paa noget (skaermbillede, sideindhold og handle_dialog loeb alle ud), fordi
+// en boks, der kom frem foer nogen lyttede, ikke kan besvares gennem CDP. Vagten lytter derfor FOER adresseskiftet og
+// svarer straks: Stay (standard - intet ugemt gaar tabt) eller Leave, naar agenten har bedt om det med leave_page.
+// Har agenten selv armeret handle_dialog paa fanen, er det dens svar, der gaelder. Svarer siden ikke inden for 3 s
+// (fx fordi en boks allerede staar aaben), navigeres der som foer, uden vagt.
+async function armerForladVagt(tabId, forlad) {
+  if (armeredeDialoger.has(tabId)) return null;
+  try {
+    await debuggerAttach(tabId);
+    await Promise.race([
+      cdpSend(tabId, 'Page.enable', {}),
+      new Promise((_, nej) => setTimeout(() => nej(new Error('Page.enable answered too slowly')), 3000)),
+    ]);
+  } catch { return null; }
+  const tilstand = { set: false, forlod: false, besvaret: false };
+  let vedSvar = null;
+  const lytter = (source, method, ep) => {
+    if (source.tabId !== tabId || method !== 'Page.javascriptDialogOpening' || ep?.type !== 'beforeunload') return;
+    if (armeredeDialoger.has(tabId)) return;
+    tilstand.set = true;
+    tilstand.forlod = forlad;
+    cdpSend(tabId, 'Page.handleJavaScriptDialog', { accept: forlad })
+      .catch(() => {})
+      .then(() => { tilstand.besvaret = true; if (!forlad && vedSvar) vedSvar(); });
+  };
+  chrome.debugger.onEvent.addListener(lytter);
+  return {
+    // Bliver der svaret Stay, venter navigate ikke paa en side, der aldrig kommer.
+    vedSvar(f) { vedSvar = f; if (tilstand.besvaret && !tilstand.forlod) f(); },
+    af() { chrome.debugger.onEvent.removeListener(lytter); return tilstand.set ? { forlod: tilstand.forlod } : null; },
   };
 }
 
@@ -4366,13 +4514,27 @@ async function interceptFileChooser(tabId, selector, fileList) {
           finish({ ok: false, error: 'file-chooser-without-node', detail: 'Chrome fired fileChooserOpened but supplied no backendNodeId.', note: 'The dialog exists, but not as an element in the page, so it cannot be filled from here. If you have desktop-level tools in this session (an OS automation MCP server such as computer-mcp), that dialog is theirs to drive.' });
           return;
         }
-        cdpSend(tabId, 'DOM.setFileInputFiles', { backendNodeId, files: fileList })
-          .then(() => finish({
-            ok: true,
-            method: 'native-chooser-intercepted',
-            files: fileList,
-            mode: eventParams.mode,
-          }))
+        // #67: ogsaa her afgoer feltet svaret, ikke kvitteringen - og en side, der laeser filen og rydder feltet, ses.
+        // Feltet er tit skabt af knappen og ligger uden for dokumentet, saa det naas gennem sin node, ikke en selector.
+        // Funktionerne sendes som kildetekst i selve kaldet (ingen eval i siden, saa en streng CSP stopper det ikke).
+        const iFeltet = async (kilde, noegle) => {
+          const { object } = await cdpSend(tabId, 'DOM.resolveNode', { backendNodeId });
+          const r = await cdpSend(tabId, 'Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true,
+            functionDeclaration: `function (noegle) { return (${kilde})(this, noegle); }`, arguments: [{ value: noegle }] });
+          return r?.result?.value;
+        };
+        const LAES_FELTET = `(el, noegle) => JSON.stringify({ antal: el.files ? el.files.length : 0,
+          navne: el.files ? [...el.files].map((f) => f.name) : [], input: (${filFeltNavn.toString()})(el),
+          skift: JSON.parse((${laesFilSkiftISiden.toString()})(noegle) || 'null') })`;
+        const noegle = '__bmcp_valg_' + Math.random().toString(36).slice(2, 10);
+        const armeret = iFeltet(armerFilSkiftISiden.toString(), noegle).catch(() => false);
+        armeret.then(() => cdpSend(tabId, 'DOM.setFileInputFiles', { backendNodeId, files: fileList }))
+          .then(async () => {
+            const laest = await iFeltet(LAES_FELTET, noegle).then((j) => JSON.parse(j)).catch(() => null);
+            finish(fildSvar(laest && { antal: laest.antal, navne: laest.navne }, fileList,
+              { method: 'native-chooser-intercepted', files: fileList, mode: eventParams.mode, ...(laest ? { input: laest.input } : {}) },
+              laest && laest.skift));
+          })
           .catch(async e => {
             const m = e?.message || String(e);
             const filAdgang = await filAdgangsSvar(m);
@@ -4413,6 +4575,7 @@ async function dispatch(port, method, params) {
       // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
       let nyFane = !!(tab && tab.oprettetMedUrl);
       let tidligt = null;
+      let forladVagt = null;
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
@@ -4553,6 +4716,7 @@ async function dispatch(port, method, params) {
           if (info.status === 'complete') { tidligt.complete = true; tidligt.url = String((t && t.url) || info.url || ''); }
         };
         chrome.tabs.onUpdated.addListener(opfang);
+        forladVagt = await armerForladVagt(tab.id, params.leave_page === true);
         try { await chrome.tabs.update(tab.id, { url: params.url }); } finally { chrome.tabs.onUpdated.removeListener(opfang); }
       }
 
@@ -4593,6 +4757,7 @@ async function dispatch(port, method, params) {
         };
         chrome.tabs.onUpdated.addListener(listener);
         const timer = setTimeout(finish, 15000);
+        if (forladVagt) forladVagt.vedSvar(finish);
         // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
         // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
         // R76 (Astra, maalt i model): en gammel sides 'complete' (fx en gammel omdirigering) med en anden adresse end den oprindelige
@@ -4601,10 +4766,17 @@ async function dispatch(port, method, params) {
         if (nyFane || alleredeFaerdig) loadedNow().then((ok) => { if (ok) finish(); });
       });
 
+      const forladt = forladVagt ? forladVagt.af() : null;
       // Set as active tab for this session
       session.activeTabId = tab.id;
       persistSessions();
       const updated = await chrome.tabs.get(tab.id);
+      if (forladt && !forladt.forlod) {
+        return { ok: false, error: 'beforeunload-blocked', url: updated.url, requested_url: params.url, tab_id: tab.id,
+          note: 'The page asked "Leave site?" - it has something unsaved, such as a draft. The tool answered Stay, so ' +
+                'nothing navigated and the page is as it was, and the tab still works. To leave anyway and lose what is ' +
+                'unsaved, call browser_navigate again with leave_page: true.' };
+      }
 
       // Check for CAPTCHA after navigation
       const captcha = await detectCaptcha(tab.id);
@@ -5559,8 +5731,21 @@ async function dispatch(port, method, params) {
         'ArrowLeft': 37, 'ArrowUp': 38, 'ArrowRight': 39, 'ArrowDown': 40,
         'Delete': 46,
       };
-      const vkCode = VK_CODES[key];
+      // #68 (arasmileska, MAALT 13/10 i headless Chrome paa macOS): ctrl/meta+a sendte `text: 'a'` og ingen tastkode. Paa
+      // Windows indsatte Chrome et «a»; paa macOS skete intet - og svaret var landed:true begge steder. En genvej har ingen
+      // tekst, bogstaver og cifre faar deres tastkode, og de fem redigeringsgenveje sendes som Chromes egen kommando:
+      // kun `commands` udloeste markeringen paa macOS (uden: markering 3-3, med: 0-3, baade med Cmd og Ctrl).
+      const genvej = !!(params.ctrl || params.meta || params.alt);
+      const etTegn = typeof key === 'string' && key.length === 1;
+      const stort = etTegn ? key.toUpperCase() : '';
+      const bogstav = etTegn && stort >= 'A' && stort <= 'Z';
+      const ciffer = etTegn && key >= '0' && key <= '9';
+      const vkCode = VK_CODES[key] || (bogstav || ciffer ? stort.charCodeAt(0) : undefined);
       const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
+      const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : key);
+      const REDIGERING = { A: 'selectAll', C: 'copy', X: 'cut', V: 'paste', Z: 'undo', Y: 'redo' };
+      let kommando = (params.ctrl || params.meta) && !params.alt && bogstav ? REDIGERING[stort] : undefined;
+      if (kommando === 'undo' && params.shift) kommando = 'redo';
 
       // MAALT 10/9 af Astra: keyDown og keyUp stod i samme try. Timede keyDown ud — og det
       // kan det, selv naar tasten LANDEDE (Enter der sender en formular) — blev keyUp aldrig
@@ -5575,17 +5760,18 @@ async function dispatch(port, method, params) {
           await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
             type: 'keyDown',
             key,
-            code: params.code || key,
+            code: kode,
             modifiers,
-            text: key.length === 1 ? key : '',
+            text: etTegn && !genvej ? key : '',
             ...vkParams,
+            ...(kommando ? { commands: [kommando] } : {}),
           });
         } catch (e) { tastFejl = e; }
         try {
           await cdpSend(tab.id, 'Input.dispatchKeyEvent', {
             type: 'keyUp',
             key,
-            code: params.code || key,
+            code: kode,
             modifiers,
             ...vkParams,
           });
@@ -5605,11 +5791,11 @@ async function dispatch(port, method, params) {
       // Vaerktoejets egen dom SIDST, som i click: kvitteringen fra Chrome er ikke et bevis.
       const bevis = bevisId ? await laesTastBevis(tab.id, bevisId) : { landed: null };
       if (bevis.landed === true) {
-        return { ok: true, key, landed: true,
+        return { ok: true, key, landed: true, ...(kommando ? { shortcut: kommando } : {}),
           ...(bevis.navigeret ? { note: 'The page navigated on the key press.' } : {}) };
       }
       if (bevis.landed === null) {
-        return { ok: true, key, landed: null, maybe_landed: true,
+        return { ok: true, key, landed: null, maybe_landed: true, ...(kommando ? { shortcut: kommando } : {}),
           note: 'The key was sent, but whether the page received it could not be read. ' +
                 'Check the page before pressing again.' };
       }
@@ -6152,7 +6338,19 @@ async function dispatch(port, method, params) {
       const levetid = params.timeout || 60000;
 
       await debuggerAttach(tab.id);
-      await cdpSend(tab.id, 'Page.enable', {});
+      // #69 (MAALT 13/10 i headless Chrome): staar en boks allerede aaben, svarer fanen ikke, og her kom Chromes noegne
+      // «CDP did not respond within 8000 ms: Page.enable». En boks, der kom frem foer nogen lyttede, kan ikke besvares
+      // gennem CDP - svaret siger det, og hvad der kan goeres.
+      try {
+        await cdpSend(tab.id, 'Page.enable', {});
+      } catch (e) {
+        if (!erCdpFrist(e)) throw e;
+        return { ok: false, error: 'tab-not-responding', detail: e.message,
+          note: 'Chrome did not answer on this tab. A common cause is a dialog that is already open - an alert, a confirm or ' +
+                'a "Leave site?" prompt that appeared before anything was listening. Such a dialog cannot be answered from ' +
+                'here: ask the user to answer it in Chrome, or close the tab with browser_close_tab, which skips the prompt ' +
+                'but loses anything unsaved on the page. Next time, arm browser_handle_dialog before the action that opens it.' };
+      }
       afvaebnDialog(tab.id, 'a new arming took over this tab');   // kun én ad gangen
 
       let opfyld;
@@ -6861,6 +7059,9 @@ async function dispatch(port, method, params) {
           await debuggerDetach(tab.id);
           return { ok: false, error: 'No file given. Use `files` (array) or `file` (a single path).' };
         }
+        // #67: samme fejlklasse som drop_file - en side, der laeser filen og rydder feltet, gav file-not-attached.
+        const noegle = '__bmcp_upload_' + Math.random().toString(36).slice(2, 10);
+        await evalAttached(tab.id, `(${armerFilSkiftISiden.toString()})(document.querySelector(${JSON.stringify(selector)}), ${JSON.stringify(noegle)})`).catch(() => {});
         await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,
           files: files,
@@ -6869,7 +7070,9 @@ async function dispatch(port, method, params) {
         await debuggerDetach(tab.id);
         // Vaerktoejets egen dom SIDST, som i click og press_key: kvitteringen er ikke et bevis.
         const vedhaeftet = await laesVedhaeftedeFiler(tab.id, selector);
-        return fildSvar(vedhaeftet, files, { files: files, input: info });
+        const skift = await debuggerEval(tab.id, `(${laesFilSkiftISiden.toString()})(${JSON.stringify(noegle)})`)
+          .then((j) => (j ? JSON.parse(j) : null)).catch(() => null);
+        return fildSvar(vedhaeftet, files, { files: files, input: info }, skift);
       } catch (e) {
         try { await debuggerDetach(tab.id); } catch {}
         const filAdgang = await filAdgangsSvar(e.message);

@@ -19,7 +19,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. |
+| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. If the page asks "Leave site?" (something unsaved), it stays on the page and answers `beforeunload-blocked`; pass `leave_page=true` to leave anyway. |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
@@ -34,7 +34,7 @@ The list below is what the client has to choose from.
 | `browser_right_click` | Right-click an element to open its context menu. Answers `covered` when the mouse would not reach it. |
 | `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
 | `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. With a text selector, nothing is typed (`covered`) when the mouse would not reach the field. |
-| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. |
+| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. With ctrl or meta, a, c, x, v, z and y run select all, copy, cut, paste, undo and redo on every platform. |
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
 | `browser_wait` | Wait for an element matching a CSS or text selector to appear. |
 | `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. Answers `covered` when the mouse would not reach it. |
@@ -70,7 +70,7 @@ The list below is what the client has to choose from.
 | Tool | Description |
 |---|---|
 | `browser_upload_file` | Upload file(s) to an `<input type="file">` via the Chrome Debugger API - no OS file dialog needed. Files must be regular files inside the folder your agent's server runs in; anything else is refused. Chrome only hands a file to the page when "Allow access to file URLs" is on for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); the switch also lets the extension open any local file as a page, so turning it on is your call. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on. |
-| `browser_drop_file` | Upload into a drag-drop zone by locating a hidden file input in its subtree, then up to 2 parent levels, and as a last resort the first file input on the page (which can belong to a different upload field); with no input at all it intercepts the native file chooser. Use when `browser_upload_file` finds no input. Needs the same switch as `browser_upload_file`. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
+| `browser_drop_file` | Upload into a drag-drop zone by locating a hidden file input in its subtree, then up to 2 parent levels; with none there it clicks the target and intercepts the native file chooser. A file input elsewhere on the page never gets the file - the error lists those inputs instead. The answer names the input used, and says `consumed_by_page` when the page read the file and then cleared the field. Use when `browser_upload_file` finds no input. Needs the same switch as `browser_upload_file`. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
 
 ## Network - 3 tools
 

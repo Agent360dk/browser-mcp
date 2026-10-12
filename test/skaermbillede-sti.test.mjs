@@ -12,7 +12,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, mkdirSync, symlinkSync, existsSync, rmSync, writeFileSync, linkSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, existsSync, rmSync, writeFileSync, linkSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -133,4 +133,27 @@ test('arbejdsmappen "/" afviser ikke en almindelig sti (F10)', { timeout: 45000 
   const svar = await skaermbillede(maal, roden);
   assert.match(svar, /successfully saved/, `afvist med arbejdsmappe "/": ${svar.slice(0, 240)}`);
   assert.ok(existsSync(maal));
+});
+
+// #70 (arasmileska): VS Code starter serveren i «c:\Projects\X», og «C:\Projects\X\shot.png» blev afvist som «points outside»,
+// fordi tekst-tjekket skelnede store og smaa bogstaver. Windows' og macOS' standarddiske goer ikke. Proeven koerer kun, hvor
+// disken selv er ufoelsom for store og smaa bogstaver (den samme mappe kan naas med den anden stavemaade).
+const anden = (sti) => {
+  const p = parse(sti);
+  const rod = process.platform === 'win32' ? p.root.toLowerCase() : p.root;
+  return join(rod, p.dir.slice(p.root.length), p.base.toUpperCase());
+};
+// Ud fra den rigtige sti (macOS' midlertidige mappe naas ellers gennem /var -> /private/var), saa kun bogstaverne er anderledes.
+const arbejdReel = realpathSync.native(arbejd), udenforReel = realpathSync.native(udenfor);
+const ufoelsom = existsSync(anden(arbejdReel)) && anden(arbejdReel) !== arbejdReel;
+test('#70: en absolut sti med anden bogstavstoerrelse paa arbejdsmappen godtages, hvor disken er ufoelsom', { timeout: 45000, skip: !ufoelsom && 'disken skelner store og smaa bogstaver' }, async () => {
+  const maal = join(anden(arbejdReel), 'inde', 'stor.png');
+  const svar = await skaermbillede(maal);
+  assert.match(svar, /successfully saved/, `afvist paa bogstavstoerrelsen alene: ${svar.slice(0, 240)}`);
+  assert.ok(existsSync(join(arbejd, 'inde', 'stor.png')));
+});
+test('#70 positiv kontrol: anden bogstavstoerrelse aabner ikke for en mappe udenfor', { timeout: 45000, skip: !ufoelsom && 'disken skelner store og smaa bogstaver' }, async () => {
+  const svar = await skaermbillede(join(anden(udenforReel), 'stor.png'));
+  assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 240)}`);
+  assert.ok(!existsSync(join(udenfor, 'stor.png')), 'PNG-bytes blev skrevet uden for arbejdsmappen');
 });

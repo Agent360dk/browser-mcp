@@ -950,7 +950,12 @@ async function kaldVaerktoej(request) {
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
         const rod = resolve(process.cwd());
         const targetPath = resolve(rod, args.path);
-        if (targetPath !== rod && !targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep)) {   // "/" giver ikke "//" (R5 F10)
+        // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside».
+        // Windows' og macOS' standarddiske skelner ikke store og smaa bogstaver, saa tekst-tjekket goer det heller ikke dér.
+        // Det afgoerende tjek er realpath-tjekket nedenfor: det sammenligner operativsystemets egne, kanoniske stier eksakt.
+        const somDisken = process.platform === 'win32' || process.platform === 'darwin' ? (x) => x.toLowerCase() : (x) => x;
+        const rodT = somDisken(rod), maalT = somDisken(targetPath);
+        if (maalT !== rodT && !maalT.startsWith(rodT.endsWith(sep) ? rodT : rodT + sep)) {   // "/" giver ikke "//" (R5 F10)
           throw new Error(
             `path must be inside the working directory (${rod}). ` +
             `"${args.path}" points outside. Use a relative path without ../.`,
