@@ -45,6 +45,7 @@ const FORBUDT = [
   [90, /talks to one thing: a server on 127\.0\.0\.1/i, 'browser_fetch laver HTTPS-kald direkte fra udvidelsen (R88 Astra)'],
   [91, /The move no API can make|A headless tool hits a login wall here/i, 'headless kan genbruge et login, og Gmail har et API; sammenligningen er en frisk browser uden login (R88 Astra)'],
   [92, /log of every action/i, 'handlingsloggen gemmer de seneste 50 (R88 Astra)'],
+  [93, /hands you a screenshot/i, 'solve_captcha returnerer intet billede; agenten tager selv skaermbilledet (R88 Opus)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med

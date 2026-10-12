@@ -191,8 +191,9 @@ dashboards, admin panels, portals.
   • Work inside iframes, switch and close tabs, wait for network activity
   • Read and write cookies and localStorage, extract API tokens
   • Detect CAPTCHAs (reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile,
-    FunCaptcha): it tries the checkbox, then hands you a screenshot to
-    look at, then asks you to finish it yourself
+    FunCaptcha): it tries the reCAPTCHA checkbox; for an image grid your
+    agent takes a screenshot and picks the cells; if that does not work,
+    it asks you to finish it yourself
   • Ask you directly - an in-page dialog for 2FA codes, passwords and
     anything else it should not decide alone
 
