@@ -9,7 +9,7 @@
 #   ./scripts/publish-cws.sh --draft      # upload only, leave as draft for manual review
 #   ./scripts/publish-cws.sh --trusted    # publish to trusted-testers track instead
 #
-# One-time setup: see docs/CWS_PUBLISH_SETUP.md
+# One-time setup: see noter/CWS_PUBLISH_SETUP.md
 
 set -euo pipefail
 
@@ -36,7 +36,7 @@ if [[ -f .env ]]; then
 fi
 
 # Required env vars
-: "${CWS_CLIENT_ID:?missing in .env - see docs/CWS_PUBLISH_SETUP.md}"
+: "${CWS_CLIENT_ID:?missing in .env - see noter/CWS_PUBLISH_SETUP.md}"
 : "${CWS_CLIENT_SECRET:?missing in .env}"
 : "${CWS_REFRESH_TOKEN:?missing in .env}"
 : "${CWS_EXTENSION_ID:?missing in .env - find at chrome.google.com/webstore/devconsole}"

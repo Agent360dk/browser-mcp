@@ -11,14 +11,14 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        eget_vindue: { type: 'boolean', description: 'Requires new_tab. Opens the page in its own Chrome window. On its own this does NOT make input work: measured 19 Sept, an unfocused window delivers no keystrokes at all, exactly like a background tab - what decides it is whether the WINDOW has the operating system\'s focus, not whether the tab is the visible one in it. What this is genuinely for: on a machine with more than one display, put the window on a screen nobody is looking at and pass fokuser:true. Then Chrome delivers input - but focus is exclusive: while this window has it, whatever the person types lands in it. Use it only on a machine nobody is typing on.' },
-        fokuser: { type: 'boolean', description: 'With eget_vindue: ASK for the new window to get the operating system\'s focus, which keyboard and mouse input needs. ⛔ Measured 21 Sept: Chrome often refuses, and the window was on none of the machine\'s three screens. The reply now carries what actually happened - read `fokuseret` and `placeret_som_bedt` rather than assuming this worked. Do not rely on vindue_x to keep a run off the user\'s screen.' },
+        eget_vindue: { type: 'boolean', description: 'Requires new_tab. Opens the page in its own Chrome window, without focus unless you pass fokuser:true. Whether Chrome delivers mouse and keyboard input to a window without focus is unmeasured in desktop Chrome (a measurement on 19 Sept probably tested a background tab, because the tab was moved back into the session\'s first window; fixed in 1.30.2), so read landed in each input tool\'s answer. On a machine with more than one display, you can put the window on a screen nobody is looking at and pass fokuser:true - but focus is exclusive: while this window has it, whatever the person types lands in it. Use that only on a machine nobody is typing on.' },
+        fokuser: { type: 'boolean', description: 'With eget_vindue: ASK for the new window to get the operating system\'s focus. Chrome can refuse it. The reply carries what actually happened - read `fokuseret` and `placeret_som_bedt` rather than assuming this worked. Do not rely on vindue_x to keep a run off the user\'s screen.' },
         vindue_x: { type: 'number', description: 'With eget_vindue: the window\'s left edge in global screen points. A NEGATIVE value is a display to the left of the main one - that is how you put it on another screen. No tool lists the displays: use a coordinate you know is on an unused screen, and read `placeret_som_bedt` in the reply.' },
         vindue_y: { type: 'number', description: 'With eget_vindue: the window\'s top edge in global screen points.' },
         vindue_bredde: { type: 'number', description: 'With eget_vindue: window width in points.' },
         vindue_hoejde: { type: 'number', description: 'With eget_vindue: window height in points.' },
         url: { type: 'string', description: 'URL to navigate to' },
-        new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false)' },
+        new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false). If the session\'s only tab is still an empty about:blank placeholder, that tab is used instead of opening another.' },
       },
       required: ['url'],
     },
@@ -37,14 +37,14 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_list',
-    description: 'Read EVERY row of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport - mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. Returns deduplicated row text plus reached_end so you know whether you saw the whole list.',
+    description: 'Read the rows of a long or virtualised list by scrolling its container until no new rows appear. Use this instead of browser_get_page_content whenever a page shows a repeating list longer than the viewport - mail lists (Outlook, Gmail), invoice/billing tables, search results, transaction histories. Those UIs keep only ~7 rows in the DOM at a time, so a single page read returns a sliver and looks complete. Pass the CSS selector of one repeating row (e.g. \'[role="option"]\', \'tr\', \'[role="listitem"]\'); the scrollable ancestor is found automatically. When the tab is the active one in its window, it scrolls with real wheel events, also at the bottom, so a feed that loads more rows on wheel (Threads, X) loads them. A hidden page (a background tab) gets no wheel or scroll events, IntersectionObserver callbacks or animation frames, so a list that loads or renders rows while you scroll stops at what is already there; then reached_end is false and `note` says why. Returns deduplicated row text, scroll_method (wheel or script) and reached_end, which is true only when the list stood at its bottom in a visible page with no new rows, growth or movement for stable_rounds rounds in a row. If the selector matches no rows with text, the answer is error "no-rows".',
     inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector matching ONE repeating row (e.g. \'[role="option"]\' in Outlook, \'tr\' in a table)' },
         container: { type: 'string', description: 'Optional CSS selector for the scrollable container. Omit to auto-detect the row\'s nearest scrollable ancestor.' },
         max_rows: { type: 'number', description: 'Stop after this many unique rows (default 500, max 5000)' },
-        stable_rounds: { type: 'number', description: 'Consecutive scrolls with no new rows before stopping (default 3)' },
+        stable_rounds: { type: 'number', description: 'Rounds in a row with no new rows, growth or movement before stopping, and at the bottom before reached_end (default 3)' },
         scroll_step: { type: 'number', description: 'Pixels per scroll. Omit for 85% of the container height.' },
         wait_ms: { type: 'number', description: 'Wait after each scroll so new rows can render (default 350)' },
       },
@@ -53,7 +53,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided.',
+    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; when Chrome reports them in time, the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -74,7 +74,7 @@ export const TOOLS = [
   },
 {
     name: 'browser_double_click',
-    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view).',
+    description: 'True double-click on an element (two trusted press/release pairs with escalating clickCount). Use for open-item actions (calendar events, file lists) where two single clicks would trigger inline-rename instead (e.g. OWA month view). If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), the target does not take clicks there (pointer-events, visibility, clipping), or a different control inside it would get the click (a delete button on a card; for a container that is not clickable itself, its own plain link with a real address (a hash route with a path, such as #/orders, counts; a fragment with no target on the page does not) does not count, nor does a web component\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in the nearest label around it, a label of that field (a box inside a closed shadow root cannot be seen and is not counted), which counts as that field) - the answer is ok:false with error "covered" and covered_by. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the presses and clicks are stopped (a release the page moves elsewhere is let through), and the answer also has maybe_landed: true, because the page may already have reacted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -85,7 +85,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_right_click',
-    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus.',
+    description: 'Right-click an element (trusted CDP mouse events) to open page-level context menus (web apps like OWA/Google Docs render their own). Note: Chrome\'s NATIVE context menu does not open via CDP - only in-page menus. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the answer is ok:false with error "covered" and covered_by. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the presses and clicks are stopped (a release the page moves elsewhere is let through), and the answer also has maybe_landed: true, because the page may already have reacted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -96,7 +96,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click_xy',
-    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Combine with browser_screenshot for coordinates.',
+    description: 'ESCAPE HATCH: Click at raw viewport coordinates (CSS pixels) with fully trusted mouse events. Use when a visible button resists every selector strategy (Azure portal dialogs, Knockout-bound divs, canvas UIs): take a screenshot, read the button\'s position, click its center. Coordinates are CSS pixels, NOT image pixels: convert with the viewport line browser_screenshot returns: x_css = x / W * css_width and y_css = y / W * css_width, where (x, y) is the point in the image and W is the width the image is shown to you at.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -113,7 +113,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_click',
-    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
+    description: 'Click an element on the page. Supports CSS selectors AND text-based selectors. Auto-scrolls element into view. Uses real mouse events (works on Angular/React SPAs and CSP-strict sites like Google, Stripe). A text selector looks inside an open modal dialog first (a <dialog> opened with showModal, or a visible element with aria-modal="true"), exact text before partial. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), the target does not take clicks there (pointer-events, visibility, clipping), or a different control inside it would get the click (a delete button on a card; for a container that is not clickable itself, its own plain link with a real address (a hash route with a path, such as #/orders, counts; a fragment with no target on the page does not) does not count, nor does a web component\'s own button that covers it, nor a box with a checkbox, switch or radio role right next to a hidden field and the only one in the nearest label around it, a label of that field (a box inside a closed shadow root cannot be seen and is not counted), which counts as that field) - the answer is ok:false with error "covered" and covered_by. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the presses and clicks are stopped (a release the page moves elsewhere is let through), and the answer also has maybe_landed: true, because the page may already have reacted. Examples: "button:text(Get started)", "text=Submit", "#my-button", "a.btn-primary"',
     inputSchema: {
       type: 'object',
       properties: {
@@ -124,7 +124,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_fill',
-    description: 'Fill a form input field with a value. Supports CSS selectors AND text-based selectors. Auto-scrolls and focuses the element. Works on CSP-strict sites via Chrome Debugger API. For date inputs use browser_set_date, for autocomplete/combobox use browser_set_combobox.',
+    description: 'Fill a form input field with a value. Supports CSS selectors AND text-based selectors. Auto-scrolls and focuses the element. Works on CSP-strict sites via Chrome Debugger API. For date inputs use browser_set_date, for autocomplete/combobox use browser_set_combobox. With a text selector the field is clicked first, so the same check as browser_click applies: if the mouse would not reach it at its center, nothing is typed and the answer is ok:false with error "covered".',
     inputSchema: {
       type: 'object',
       properties: {
@@ -176,7 +176,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_hover',
-    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors.',
+    description: 'Hover over an element to trigger tooltips, dropdown menus, or hover states. Supports CSS and text selectors. If the mouse would not reach the target at its center - another element lies in front of it (an overlay, a dialog\'s backdrop), or the target does not take clicks there (pointer-events, visibility, clipping) - the answer is ok:false with error "covered" and covered_by. Found before the mouse is sent, nothing is sent; if it comes in front afterwards, the rest of the mouse movement is stopped and the answer also has maybe_landed: true, because the page may already have reacted.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,7 +188,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_option',
-    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead.',
+    description: 'Select an option from a dropdown menu. Works with native <select> elements AND custom dropdowns (Angular Material, React Select, etc.). For custom dropdowns: clicks the trigger, waits for options, then clicks the matching option by text. For autocomplete (typing filters options) use browser_set_combobox instead. A custom dropdown\'s trigger gets the same check as browser_click: if the mouse would not reach it at its center, nothing is opened and the answer is ok:false with error "covered". So does the option once the list is open: if it is covered, it is not clicked, and the answer is ok:false with error "covered" and trigger_clicked: true - the list may still be open. If the click on the trigger was sent, but neither its press is shown to have reached it nor its click landed, no option is clicked and the answer is ok:false with maybe_landed: true; a click that cannot be checked in the page is not sent, and the answer says so; if it opens a dialog, or the option is not found, the answer has trigger_clicked: true.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -228,7 +228,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_drop_file',
-    description: 'Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree or up to 2 ancestor levels; (2) if there is no input at all, intercepts the NATIVE OS file-chooser - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 handles sites like Google Ads that never put a file input in the DOM. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
+    description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree, then up to 2 ancestor levels, and as a last resort the first file input anywhere on the page, which can belong to a different upload field; (2) if there is no input at all, intercepts the NATIVE OS file-chooser - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 is for upload buttons that open the file chooser without any file input in the DOM. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -278,7 +278,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_fetch',
-    description: 'Make an HTTP request from the extension background (NOT subject to CORS). Use this when page-context fetch would be blocked by CORS or CSP. Useful for API calls to Google, Stripe, Slack APIs while on their pages.',
+    description: 'Make an HTTPS request from the extension background. It is not subject to the page\'s CORS or CSP, so it works for API calls (Google, Stripe, Slack) where a fetch from the page would be blocked. Your browser cookies are not sent and the answer\'s cookies are not stored: pass a token in headers. Plain http works only to 127.0.0.1.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -292,7 +292,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_list_tabs',
-    description: 'List all open browser tabs with their URLs and titles.',
+    description: 'List the tabs this session owns (tabs it opened or adopted): id, URL, title, and each tab\'s active flag (whether Chrome shows it in front of its window, not which tab this session is working in). Tabs of other sessions are not included.',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -359,7 +359,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_ask_user',
-    description: 'Show an overlay dialog asking the user to perform an action or provide information (credentials, 2FA, CAPTCHA, OAuth consent). Can include input fields for the user to fill in. Returns user responses.',
+    description: 'Ask the user to do something or give information. Without fields it shows a small card in the bottom-left corner that the user can drag away while they act on the page (log in, solve a CAPTCHA, give consent); with fields it shows a dialog over the page. The prompt is drawn again after a navigation in the tab, but a prompt with fields ends with action navigated if the tab moves to another origin (another domain, subdomain or port) or, on a local file, to another file. Returns acknowledged, action (done, skip, timeout, tab_closed, replaced when a newer question in the same tab takes over, navigated, or removed_by_page when the page keeps removing the prompt) and, for done, values. The page cannot read the field values, but it can see the keystrokes, so ask only for secrets that belong to the page the tab is on. The tab must show a page that loaded (a web page or a local file): on Chrome\'s error page or about:blank the call fails at once and shows nothing. It makes the tab the active one in its window and restores a minimized window, but it does not bring Chrome in front of other apps.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -429,7 +429,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_upload_file',
-    description: 'Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
+    description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -442,26 +442,31 @@ export const TOOLS = [
   },
   {
     name: 'browser_extract_token',
-    description: 'Navigate to a provider\'s API settings page so you can read its API token from the page.',
+    description: 'Open a known provider\'s API page (stripe, hubspot, slack, shopify, mailchimp, pipedrive, calendly, google, linkedin) and get instructions for finding or creating its API credentials there. It reads nothing itself: read the page with browser_get_page_content or browser_screenshot afterwards. For HubSpot, Slack, Shopify and LinkedIn the page is a settings or app list on the way to the token, not the token page itself. Any other provider answers Unknown provider; use browser_navigate and read the page yourself.',
     inputSchema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', description: 'Provider slug (stripe, hubspot, slack, etc.)' },
+        provider: { type: 'string', description: 'One of: stripe, hubspot, slack, shopify, mailchimp, pipedrive, calendly, google, linkedin' },
       },
       required: ['provider'],
     },
   },
   {
     name: 'browser_solve_captcha',
-    description: 'Detect and solve CAPTCHAs on the current page. Auto-detects reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, and FunCaptcha. Tries auto-click first (often clears reCAPTCHA v2 when signed into Google), then returns a screenshot for AI vision analysis, then falls back to asking the user. Returns detection info and solving status.',
+    description: 'Detect CAPTCHAs on the current page and work through them, one action per call. "detect" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. "click_checkbox" tries the reCAPTCHA checkbox and detects again. "click_grid" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. "ask_human" returns the message to show the user with browser_ask_user.',
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['detect', 'click_checkbox', 'click_grid', 'ask_human'], description: 'Action to take. "detect" scans for CAPTCHAs. "click_checkbox" clicks the reCAPTCHA checkbox. "click_grid" clicks specific grid cells (pass cells param). "ask_human" shows overlay to user. Default: "detect"' },
+        action: { type: 'string', enum: ['detect', 'click_checkbox', 'click_grid', 'ask_human'], description: 'Action to take. "detect" scans for CAPTCHAs. "click_checkbox" clicks the reCAPTCHA checkbox. "click_grid" clicks specific reCAPTCHA grid cells (pass cells, and grid 3 or 4). "ask_human" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: "detect"' },
         cells: {
           type: 'array',
-          items: { type: 'number' },
-          description: 'Grid cell indices to click (0-indexed, left-to-right, top-to-bottom) for image challenges. E.g. [2, 5, 7] to click cells 3, 6, 8.',
+          items: { type: 'integer' },
+          description: 'Grid cell indices to click (0-indexed, left-to-right, top-to-bottom) for image challenges. E.g. [2, 5, 7] to click cells 3, 6, 8. Pass grid to say which grid you see; without it, the grid is read as 4x4 only when an index is 9 or higher.',
+        },
+        grid: {
+          type: 'number',
+          enum: [3, 4],
+          description: 'For click_grid: the size of the reCAPTCHA image grid in your screenshot, 3 (3x3) or 4 (4x4).',
         },
       },
     },
@@ -490,7 +495,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_provide_feedback',
-    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap, read-only, and safe to call speculatively - never sends anything anywhere by itself.',
+    description: 'Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user "browser-mcp cannot do X". It first CHECKS THE INSTALL - the connected Chrome extension\'s version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once, also the same extension connected more than once, for instance from several Chrome profiles or browsers (a known cause of tabs and sessions behaving randomly) - so a problem that is really "your copy is outdated" or "you have two extensions loaded" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (a report with the same kind, tool and first 160 characters of what_happened, with numbers and long hex strings ignored, is written once per server run, and again only if the earlier write failed; logged_locally says whether a line was written). Email addresses and numbers of six or more characters are replaced with [email] and [number] in what_happened, attempted and worked before they are written or put in the issue link. With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -514,6 +519,10 @@ export const TOOLS = [
         attempted: {
           type: 'string',
           description: 'What you already tried (other selectors, other tools, retries) so the report does not suggest what you have ruled out.',
+        },
+        worked: {
+          type: 'string',
+          description: 'The route that did work in the end, if any. This is the most useful part.',
         },
       },
       required: ['what_happened'],

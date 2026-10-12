@@ -216,7 +216,7 @@ async function evictOldestTabs(session, justAddedTabId) {
   }
 }
 
-async function addTabToSession(port, tabId) {
+async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   const session = getSession(port);
   session.tabIds.add(tabId);
   // Sessionen lever igen — aflys en eventuel port-frigivelse (se tabs.onRemoved).
@@ -227,6 +227,10 @@ async function addTabToSession(port, tabId) {
     await evictOldestTabs(session, tabId);
   }
 
+  // R57 (Opus, maalt i Chrome): chrome.tabs.group flytter fanen ind i gruppens vindue. For en fane i sit eget vindue
+  // (navigate eget_vindue) betoed det, at fanen blev flyttet tilbage til sessionens foerste vindue, og det nye vindue
+  // forsvandt. En saadan fane grupperes ikke, og en ny gruppe samler kun faner fra samme vindue.
+  if (!gruppe) { persistSessions(); return; }
   try {
     if (session.groupId !== null) {
       try {
@@ -238,7 +242,13 @@ async function addTabToSession(port, tabId) {
     }
 
     if (session.groupId === null) {
-      const groupId = await chrome.tabs.group({ tabIds: [...session.tabIds] });
+      const vindue = (await chrome.tabs.get(tabId).catch(() => null))?.windowId;
+      const samme = [];
+      for (const id of session.tabIds) {
+        const t = id === tabId ? { windowId: vindue } : await chrome.tabs.get(id).catch(() => null);
+        if (t && t.windowId === vindue) samme.push(id);
+      }
+      const groupId = await chrome.tabs.group({ tabIds: samme.length ? samme : [tabId] });
       session.groupId = groupId;
       await chrome.tabGroups.update(groupId, {
         title: session.label,
@@ -338,7 +348,7 @@ function persistSessions() {
 // Get the active tab for this session (last navigated), or create one.
 // activate=false (default): runs in background — no focus stealing.
 // activate=true: only for commands that NEED visible tab (screenshot, ask_user, navigate, execute_script).
-async function getSessionTab(port, activate = false) {
+async function getSessionTab(port, activate = false, opretMed = null) {
   const session = getSession(port);
   let target = null;
   // Remember our OWN about:blank placeholder so we reuse it instead of spawning another
@@ -384,8 +394,12 @@ async function getSessionTab(port, activate = false) {
 
   // No usable tab at all — create ONE placeholder and pin it as the active tab so the
   // NEXT call reuses it (FIX-4) instead of creating a fresh about:blank every time.
+  // Gustav 9/10 (set i sin egen Chrome): en ny sessions foerste navigate aabnede foerst en tom about:blank-fane og skiftede
+  // den saa til adressen - about:blank stod hver gang som det foerste. Kender kalderen adressen (navigate), oprettes fanen
+  // direkte med den.
   if (!target) {
-    target = await chrome.tabs.create({ url: 'about:blank', active: false });
+    target = await chrome.tabs.create({ url: opretMed || 'about:blank', active: false });
+    if (opretMed) target.oprettetMedUrl = true;
     await addTabToSession(port, target.id);
     session.activeTabId = target.id;
     persistSessions();
@@ -911,6 +925,8 @@ function klikLandede(r) {
 // Teksten der foelger med et unknown klik. Staar ét sted, fordi den skal vaere ens for click, click_xy og select_option -
 // tre kaldesteder med den samme regel har foer drevet fra hinanden (select_option havde den gamle i to udgaver).
 const UVIST_NOTE = 'The click was sent, and the page changed on mousedown - but not from the click itself. That may be a ripple, and it may be a menu that opens on mousedown. Check the state before clicking again: a second click closes a menu that is already open.';
+const IRAMME_NOTE = 'The click went into a frame (an iframe), and the page around it cannot see what happened inside. ' +
+  'It may have landed: check the frame before clicking again (browser_select_frame reads inside it).';
 const UVERIFICERET_NOTE = 'The mouse button was sent, but the page could not be read afterwards (the lookup failed and the page did not navigate). ' +
   'The click may have landed. Check the state before clicking again.';
 
@@ -927,7 +943,14 @@ function uvisVurdering(r, egenNote) {
   if (!r || r.landed !== null) return null;
   if (egenNote) return { maybe_landed: true, note: egenNote };
   if (r.unknown) return { maybe_landed: true, note: UVIST_NOTE };
+  if (r.unverified && r.dialog) return { maybe_landed: true, note: 'A dialog opened during the click, and the page could not be read while it was open, so whether the target got the click cannot be told. Answer the dialog with browser_handle_dialog, then check the state before clicking again.' };
   if (r.unverified) return { maybe_landed: true, note: UVERIFICERET_NOTE };
+  if (r.iRamme) return { maybe_landed: true, note: IRAMME_NOTE };
+  if (r.udskiftetMaal) return { maybe_landed: true, note: 'The page replaced the target while the mouse was on it (for instance on the press), so whether the new element got the click cannot be told. Check the state before clicking again.' };
+  if (r.ingenHaendelse) return { maybe_landed: true, note: 'The click was sent, but no mouse event reached the page around the target - it may have gone into a frame, or a listener on the window stopped it. Check the state before clicking again.' };
+  if (r.slipAndetSted) return { maybe_landed: true, note: 'The press reached the target, but the page moved the release elsewhere (a menu or backdrop that opened on the press, or a drag), so whether the click completed cannot be told. Check the state before clicking again.' };
+  if (r.forfaderUdenBevis) return { maybe_landed: true, note: 'The click reached an element around the target that listens for clicks itself, not the target; whether that was the target\'s action cannot be told. Check the state before clicking again.' };
+  if (r.stoppetUndervejs) return { maybe_landed: true, note: 'The click reached the page, but something on the way stopped it before the target - the page may have acted on it itself. Check the state before clicking again.' };
   return { maybe_landed: true, note: 'The action was sent, but its effect could not be confirmed. Check the state before repeating it.' };
 }
 
@@ -938,7 +961,7 @@ function uvisVurdering(r, egenNote) {
 // naar nogen aabner DevTools. Bevis er nu: fanen er lukket, adressen er skiftet, eller JavaScript-konteksten
 // blev revet ned (det sker kun naar dokumentet blev udskiftet). Alt andet er unknown og siges som unknown.
 async function tolkManglendeSettle(tabId, settle, urlFoer) {
-  const fejl = settle?.__fejl || 'settle-opslaget gav intet svar';
+  const fejl = settle?.__fejl || 'the settle lookup returned nothing';
   const fane = await chrome.tabs.get(tabId).catch(() => null);
   const urlEfter = fane?.url ?? null;
   const kontekstVaek = /Execution context was destroyed|Cannot find context with specified id|Inspected target navigated/i.test(fejl);
@@ -948,11 +971,34 @@ async function tolkManglendeSettle(tabId, settle, urlFoer) {
   return { landed: null, fallbackFired: false, unverified: true, fejl };
 }
 
-async function debuggerClick(tabId, x, y) {
+async function debuggerClick(tabId, x, y, bundet = false) {
   await debuggerAttach(tabId);
   // Er museknappen sendt ned, kan klikket vaere landet - saa maa en fejl bagefter ikke fore til et klik til.
   let trykSendt = false;
+  let vagtArmet = false;
   try {
+    // R64 (Opus' ramme.html, maalt i Chrome 9/10): et klik paa en iframe gaar ind i rammens eget dokument, som lytteren her
+    // ikke ser. Betalingsknappen i rammen fik klikket, svaret var ok:false, og reserven sendte et klik til. Nu: ingen reserve,
+    // og svaret er uvist (iRamme), saa agenten tjekker rammen i stedet for at klikke igen.
+    // R67 (Astra, maalt i model): en fremmed ramme, der kom foran EFTER trykket (sendt > 0), gav «stoppet undervejs» og
+    // ikke covered. Ligger der en fremmed ramme i punktet, og naaede klikket ikke maalet, er svaret nu altid covered + uvist.
+    // R65 (Opus, maalt i Chrome): testen saa paa det fundne maal, ikke paa det trykket ramte - en div om en betalingsramme
+    // (som Stripe) og en fremmed iframe, der kom frem over maalet, gav stadig et syntetisk klik nr. 2. Nu: saa vagten ingen
+    // haendelse overhovedet, er der ingen reserve; ligger der en ramme i punktet, er den maalets (uvist) eller fremmed (covered).
+    // R64: `bundet` = klikket hoerer til et element, resolveElement lige har fundet. Vagten i siden binder haendelserne til
+    // det (armerMaalVagt). Ligger noget andet i punktet nu, sendes intet. Kan vagten ikke armeres, sendes intet (R70).
+    // Med vagten svarer efterkontrollen ud fra vagten alene (blokeret, ingen haendelse, naaet maalet, udskiftet, stoppet
+    // undervejs), og reserven naas aldrig - saa den kan ikke ramme et overlay, der kom frem efter opslaget.
+    if (bundet) {
+      const vagt = await armerMaalVagt(tabId, x, y, VAGT_KLIK);
+      if (vagt && vagt.daekket) return { landed: false, fallbackFired: false, blokeret: vagt.daekket, foerSendt: true };
+      if (vagt && vagt.vaek) return { landed: false, fallbackFired: false, vaek: true };
+      vagtArmet = !!(vagt && vagt.armet);
+      // R70 (Astra, maalt i model): uden armeret vagt faldt klikket tilbage paa 1.30.1's bevis (en lytter paa dokumentet), der
+      // saa et klik, siden stoppede foer maalet, og gav ok:true, eller et nej efter en handling og et syntetisk klik til. Et
+      // bundet klik sendes derfor kun med vagten; kan den ikke armeres, sendes intet.
+      if (!vagtArmet) return { landed: false, fallbackFired: false, ikkeArmeret: true };
+    }
     // Adressen foer klikket - et skift bagefter er bevis for en virkning (se tolkManglendeSettle).
     const urlFoer = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
     // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
@@ -1029,11 +1075,14 @@ async function debuggerClick(tabId, x, y) {
       returnByValue: true,
       expression: `(() => {
         const el = window.__bmcpClickTarget;
+        const vagt = ${vagtArmet} ? window.__bmcpVagt : null;
         const landed = window.__bmcpClicked === true;
+        const iMaal = vagt ? (!vagt.urent && ((vagt.naaet && vagt.naaet.click) || 0) > 0) : landed;
         const ryd = () => {
           try { window.__bmcpClickListener && document.removeEventListener('click', window.__bmcpClickListener, true); } catch (e) {}
           try { delete window.__bmcpClickTarget; delete window.__bmcpClicked; delete window.__bmcpClickListener; } catch (e) {}
         };
+        if (${vagtArmet} && !vagt) { ryd(); return { landed: null, fallbackFired: false, unverified: true, fejl: 'the guard was gone' }; }
         // Et billigt fingeraftryk af det et klik plejer at aendre: antal noder, synlig tekst,
         // adressen, og om noget er aabnet/valgt. Bevidst groft — det skal kunne tages to gange
         // paa faa millisekunder, ikke beskrive siden.
@@ -1056,7 +1105,28 @@ async function debuggerClick(tabId, x, y) {
                    hash(Array.from(document.querySelectorAll('input,textarea,select')).map((e) => String(e.value || '')).join('\0'));
           } catch (e) { return 'aftryk-fejlede'; }
         };
-        if (landed) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
+        // R69: uden en armeret vagt vides det ikke, om trykket naaede maalet - null, ikke false (ellers sagde select_option «did not reach it»).
+        const trykNaaet = vagt ? (((vagt.naaet && vagt.naaet.pointerdown) || 0) + ((vagt.naaet && vagt.naaet.mousedown) || 0)) > 0 : null;
+        if (vagt && vagt.blokeret) { ryd(); return { landed: false, fallbackFired: false, blokeret: vagt.blokeret, delvis: !!vagt.delvis, trykNaaet }; }
+        let p = vagt ? document.elementFromPoint(${x}, ${y}) : null;
+        for (let i = 0; i < 20 && p && p.shadowRoot; i++) { const n = p.shadowRoot.elementFromPoint(${x}, ${y}); if (!n || n === p) break; p = n; }
+        const rammeIPunkt = !!p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '');
+        // R68 (Astra, maalt i model): el er det, der laa i punktet ved gemningen - en fremmed iframe, der kom frem foer den,
+        // blev regnet for maalets egen. Sammenlign med det fundne maal (vagtens).
+        const maalEl = (vagt && vagt.maal) || el;
+        let rammeIMaalet = false;
+        for (let n = p; n; n = n.parentNode || n.host) if (n === maalEl) { rammeIMaalet = true; break; }
+        if (vagt && !iMaal && rammeIPunkt && !rammeIMaalet) {
+          ryd();
+          return { landed: null, fallbackFired: false, fremmedRamme: { tag: p.tagName, id: p.id || null, text: '' }, trykNaaet };
+        }
+        if (vagt && vagt.sendt === 0) { ryd(); return { landed: null, fallbackFired: false, trykNaaet, ...(rammeIPunkt ? { iRamme: true } : { ingenHaendelse: true }) }; }
+        if (el && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(el.tagName || '')) { ryd(); return { landed: null, fallbackFired: false, iRamme: true }; }
+        if (iMaal) { ryd(); return { landed: true, fallbackFired: false }; }   // FIX-13: trusted click already landed — do NOT double-fire
+        if (vagt && vagt.vaek) { ryd(); return { landed: null, fallbackFired: false, udskiftetMaal: true, trykNaaet }; }
+        if (vagt && vagt.urent) { ryd(); return { landed: null, fallbackFired: false, slipAndetSted: true, trykNaaet }; }
+        if (vagt && vagt.forfader) { ryd(); return { landed: null, fallbackFired: false, forfaderUdenBevis: true, trykNaaet }; }
+        if (vagt && vagt.sendt > 0) { ryd(); return { landed: null, fallbackFired: false, stoppetUndervejs: true, trykNaaet }; }
         if (el === null) { ryd(); return { landed: false, fallbackFired: false, intetMaal: true }; }   // intet element under punktet (fx uden for vinduet) - ingen virkning
         if (!el || !el.isConnected) { ryd(); return { landed: false, fallbackFired: false, detached: true }; }   // already navigated/handled — don't double-fire
         const foerAftryk = aftryk();
@@ -1142,11 +1212,16 @@ async function debuggerClick(tabId, x, y) {
         dialogLoefter.delete(tabId);
       }
     }
+    // R67 (Opus, maalt i Chrome): et slip, siden flyttede, aabnede en alert; efterkontrollen kunne ikke laese vagten, mens
+    // dialogen holdt siden, og faldt tilbage til landed:true - selv om klikket aldrig naaede maalet. Med vagten armet er det
+    // nu uvist.
+    if (vagtArmet && vaerdi && vaerdi.rendererSvarede === false) return { landed: null, fallbackFired: false, unverified: true, dialog: true };
     return vaerdi ?? await tolkManglendeSettle(tabId, settle, urlFoer);
   } catch (e) {
     if (trykSendt && e && typeof e === 'object') e.trykSendt = true;
     throw e;
   } finally {
+    if (vagtArmet) await laesMaalVagt(tabId);
     await debuggerDetach(tabId);
   }
 }
@@ -1177,6 +1252,57 @@ async function evalAttached(tabId, expression) {
   return result.result?.value;
 }
 
+// CSS viewport and devicePixelRatio for a screenshot. Page.captureScreenshot returns DEVICE
+// pixels, but browser_click_xy takes CSS pixels. Measured 2026-10-04 at devicePixelRatio 1.65
+// (display scaling 150 % x page zoom 110 %): a position read off the image and passed to
+// click_xy missed by ~450 px, and click_xy still answered landed:true. Read through CDP, so it
+// also works where page scripts are blocked. Best-effort: a screenshot never fails because of it.
+function pngSize(dataUrl) {
+  try {
+    const b64 = String(dataUrl || '').replace(/^data:image\/png;base64,/, '');
+    const bin = atob(b64.slice(0, 44));   // signature (8) + IHDR length/type (8) + width/height (8)
+    if (bin.slice(12, 16) !== 'IHDR') return null;
+    const u32 = (i) => ((bin.charCodeAt(i) << 24) | (bin.charCodeAt(i + 1) << 16) |
+                        (bin.charCodeAt(i + 2) << 8) | bin.charCodeAt(i + 3)) >>> 0;
+    return { width: u32(16), height: u32(20) };
+  } catch (e) {
+    return null;
+  }
+}
+
+// R50 (Astra, MAALT): maalingen laa uden for skaermbilledets budget - et billede der kom efter 29 s, fulgt af en
+// maaling der hang i 1,5 s, naaede ikke serverens frist paa 30 s. Den faar nu kun det, der er tilbage (maxMs).
+async function screenshotViewport(tabId, image, maxMs = 1500) {
+  const frist = Math.min(1500, maxMs);
+  if (!(frist > 0)) return undefined;
+  try {
+    let timer;
+    const m = await Promise.race([
+      cdpSend(tabId, 'Page.getLayoutMetrics', {}),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), frist); }),
+    ]).finally(() => clearTimeout(timer));
+    const css = m?.cssVisualViewport;
+    if (!css?.clientWidth || !css?.clientHeight) return undefined;
+    // R50 (Opus, MAALT i Chrome med en klassisk rullebjaelke): billedet rummer rullebjaelken, men
+    // cssVisualViewport goer ikke, saa forholdet blev 2,033 i stedet for 2 og et klik ved hoejre kant
+    // ramte op til 15 px skaevt. Forholdet tages fra Chromes to maal af SAMME flade (visualViewport i
+    // enhedspixel og cssVisualViewport i CSS-pixel, begge uden rullebjaelke), og billedets CSS-stoerrelse
+    // er billedets stoerrelse delt med forholdet.
+    const png = pngSize(image);
+    const dpr = m?.visualViewport?.clientWidth ? m.visualViewport.clientWidth / css.clientWidth
+      : (png ? png.width / css.clientWidth : 0);
+    if (!dpr) return undefined;
+    return {
+      css_width: Math.round(png ? png.width / dpr : css.clientWidth),
+      css_height: Math.round(png ? png.height / dpr : css.clientHeight),
+      device_pixel_ratio: Math.round(dpr * 1000) / 1000,
+      ...(png ? { image_width: png.width, image_height: png.height } : {}),
+    };
+  } catch (e) {
+    return undefined;
+  }
+}
+
 // En tast ned og op igen - og op igen UANSET hvad. MAALT 10/9 af Astra (anden runde): press_key fik
 // keyUp-altid i foerste runde, men de tre hjaelpere der ogsaa sender taster gjorde ikke. Timede et
 // keyDown ud efter at det VAR landet, forlod hjaelperen funktionen foer sit keyUp, og tasten sad fast
@@ -1194,14 +1320,31 @@ async function clearFieldAttached(tabId) {
   await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
 }
 
+// Clear only when the focused field has something in it. Backspace in an EMPTY
+// multi-select search input deletes the previous chip (Ant Design Select/TreeSelect,
+// react-select, MUI Autocomplete) - the same reason setCombobox never presses it on an
+// empty field. Measured 2026-10-04 on Ant Design TreeSelect: fill removed the selected
+// chip on every call. When the value cannot be read, clear as before.
+async function clearFieldIfFilledAttached(tabId) {
+  const current = await evalAttached(tabId, `
+    (function() {
+      const el = document.activeElement;
+      return el && 'value' in el ? String(el.value) : null;
+    })()
+  `).catch(() => null);
+  if (current === '') return false;
+  await clearFieldAttached(tabId);
+  return true;
+}
+
 /**
  * Tre-vejs dom paa hvad der FAKTISK staar i feltet. Delt af fill's to grene.
  *
  * FUNDET 13/9 af Astra: tekst-grenen fik den her dom om formiddagen, CSS-grenen ikke - og
  * CSS-grenen er den mest brugte. Én funktion, saa de ikke kan drive fra hinanden igen.
  */
-// `faktisk` staar ved siden af `vaerdi` fordi serverens instruktion til agenten siger
-// «browser_fill with differs: true … read `faktisk`» (mcp-server/index.js:694). FUNDET 19/9:
+// `actual` staar ved siden af `value` fordi serverens instruktion til agenten siger
+// «browser_fill with differs: true … read actual» (mcp-server/index.js INSTRUCTIONS; navnene hed `faktisk`/`vaerdi` foer 1.30.0). FUNDET 19/9:
 // kun reservestien satte det felt; den her - den almindelige - svarede `vaerdi` alene, saa
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
@@ -1238,6 +1381,33 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
           'the value - or something was already there.' };
 }
 
+// Why a field cannot take typed text: 'readonly', 'disabled', or null. Checked BEFORE typing.
+// Measured 2026-10-04 on a readonly multi-select search input (Ant Design TreeSelect without
+// showSearch): fill typed, saw nothing land and blamed a background tab - the tab was in front,
+// and switch_tab changed nothing. With no selector it checks the focused element.
+function fieldBlockedExpression(selector) {
+  const el = selector ? `document.querySelector(${JSON.stringify(selector)})` : 'document.activeElement';
+  return `(function() {
+    const el = ${el};
+    if (!el || !('value' in el)) return null;
+    if (el.disabled || (el.matches && el.matches(':disabled'))) return 'disabled';
+    if (el.readOnly) return 'readonly';
+    return null;
+  })()`;
+}
+
+async function fieldBlocked(tabId, selector) {
+  const r = await debuggerEval(tabId, fieldBlockedExpression(selector)).catch(() => null);
+  return r === 'readonly' || r === 'disabled' ? r : null;
+}
+
+function fieldBlockedAnswer(blocked, method) {
+  return { ok: false, method, error: 'field-is-' + blocked,
+    note: `The field is ${blocked === 'readonly' ? 'read-only' : 'disabled'}, so it does not take typed text, ` +
+          'and the text did not land. If it opens a list (select, combobox, multi-select), click it with ' +
+          'browser_click and pick the option, or use browser_select_option / browser_set_combobox.' };
+}
+
 async function debuggerFill(tabId, selector, value) {
   // Check if element is contenteditable (rich text editors: LinkedIn, Slack)
   const isContentEditable = await debuggerEval(tabId, `
@@ -1272,11 +1442,17 @@ async function debuggerFill(tabId, selector, value) {
     return { value: ceTekst, rammeHoerte: null };
   }
 
+  // R50 (Opus, MAALT i Chrome): Ant Design 5 saetter readOnly paa sine soegefelter, indtil de faar fokus, og
+  // anti-autofill-felter goer det samme - i en baggrundsfane forbliver de readonly efter el.focus(). En
+  // kontrol FOER fokus afviste dem med «read-only». Kun disabled afvises nu foerst; readonly navngives
+  // foerst, naar teksten ikke landede.
+  if (await fieldBlocked(tabId, selector) === 'disabled') return { value: null, blocked: 'disabled' };
+
   // Standard input/textarea — focus, clear, fill
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    await clearFieldAttached(tabId);
+    await clearFieldIfFilledAttached(tabId);
 
     // ── Blev feltet FAKTISK tomt? (MAALT 8/9) ────────────────────────────────
     //
@@ -1298,7 +1474,8 @@ async function debuggerFill(tabId, selector, value) {
       await evalAttached(tabId, `
         (function() {
           const el = document.activeElement;
-          if (!el || !('value' in el)) return false;
+          // R50: et readonly- eller disabled-felt ryddes ikke med setteren - 875b160 slettede saadan en vaerdi.
+          if (!el || !('value' in el) || el.readOnly || el.disabled || (el.matches && el.matches(':disabled'))) return false;
           const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
           if (setter) setter.call(el, ''); else el.value = '';
@@ -1348,8 +1525,12 @@ async function debuggerFill(tabId, selector, value) {
     `);
     let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
     let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
+    if (landed !== String(value)) {
+      const nu = await evalAttached(tabId, fieldBlockedExpression(null)).catch(() => null);
+      if (nu === 'readonly' || nu === 'disabled') return { value: null, blocked: nu };
+    }
     if (!landed) {
-      await clearFieldAttached(tabId);
+      await clearFieldIfFilledAttached(tabId);
       await typeCharsAttached(tabId, value);
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
@@ -1420,6 +1601,29 @@ async function laesVedhaeftedeFiler(tabId, selector) {
   } catch { return null; }
 }
 
+// 1.30.2 skive 6 (maalt i Chromium-kilden 8/10): DOM.setFileInputFiles svarer «Not allowed», naar udvidelsen
+// ikke har «Allow access to file URLs» (content/browser/devtools/protocol/dom_handler.cc; for chrome.debugger er
+// MayReadLocalFiles() = util::AllowFileAccess). Butiksinstallationer har kontakten slaaet fra som standard. Fejlen
+// skal sige det, i stedet for at gentage Chromes to ord, saa agenten ikke proever igen og igen.
+// R45 (Opus): kortet hedder «Agent360 Browser MCP» - browsermcp.io's udvidelse hedder «Browser MCP» og kan vaere installeret
+// samtidig. Og kontakten lader udvidelsen aabne enhver lokal fil som side, saa noten siger prisen, hvis brugeren skal hoere om den.
+async function filAdgangsSvar(besked) {
+  if (!/Not allowed/i.test(String(besked || ''))) return null;
+  let tilladt = null;
+  try { tilladt = await chrome.extension.isAllowedFileSchemeAccess(); } catch {}
+  if (tilladt === true) return null;
+  return {
+    error: 'file-access-off',
+    detail: String(besked),
+    file_access: tilladt,
+    note: (tilladt === false ? 'Chrome refused to hand the file to the page because ' : 'Chrome refused to hand the file to the page; this usually means ') +
+          `"Allow access to file URLs" is off for the Agent360 Browser MCP extension (chrome://extensions/?id=${chrome.runtime?.id}). ` +
+          'It is off by default for Chrome Web Store installs, and browser_upload_file and browser_drop_file both hand files over this way. ' +
+          'Ask the user to attach the file. If you tell them about the setting, also tell them that it lets this extension, and so you, ' +
+          'open and read any local file as a page, and that changing it reloads the extension; whether to turn it on is their call.',
+  };
+}
+
 /** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. */
 function fildSvar(vedhaeftet, oenskede, ekstra) {
   if (!vedhaeftet) {
@@ -1439,6 +1643,189 @@ function fildSvar(vedhaeftet, oenskede, ekstra) {
                 'a field without `multiple` discards the rest.';
   }
   return svar;
+}
+
+// ── Maalets identitet helt ind i haendelsen (R64, R65) ─────────────────────
+// R64 (Astra, maalt i model): et overlay der kom frem MELLEM opslaget og afsendelsen, fik haendelserne, og svaret var
+// ok:true - click genfandt sit maal ud fra koordinaten, og double_click, right_click og hover talte haendelser i hele fanen.
+// Nu foelger maalet med ind i siden, beslaegtet med Playwrights hit-target-tjek: en lytter i fangstfasen paa window doemmer
+// HVER haendelse i vores punkt (eller med maalet i stien) paa den knude, der fik den, efter samme regel som foer afsendelsen
+// (maalet, dets egen ramme eller label). Er knuden en anden, stoppes den og resten (preventDefault +
+// stopImmediatePropagation), og svaret bliver covered.
+// R65 (Astra, maalt i model): R64 afgjorde kun ved den FOERSTE haendelse og talte resten - et overlay efter pointerdown
+// fik dblclick og contextmenu med ok:true, og et link, der dukkede op i en label, fik klikket. Og en haendelse talte som
+// bevis, saa snart den passerede window, selv om en lytter senere i stien stoppede den. Nu doemmes hver haendelse, og kun
+// en haendelse, der NAAR knuden (en lytter paa selve knuden, sat paa under afsendelsen), taeller som bevis. Vagten fjernes
+// paa hver udgang og udloeber selv i siden, saa en fejl undervejs aldrig efterlader den over brugerens egne klik.
+// Haendelser andre steder (en rigtig mus) hverken doemmes eller taeller.
+// R66 (Astra, maalt i model): (1) lytteren paa knuden talte en SENERE, syntetisk haendelse af samme type, som siden sendte,
+// efter at vores var stoppet undervejs - beviset binder nu til selve haendelsesobjektet; (2) et klik paa en felts label
+// talte som feltets, ogsaa naar labelen annullerede aktiveringen - bevis er nu kun en haendelse paa maalet, inde i det,
+// eller paa en forfader, der ikke er en label (feltets eget aktiveringsklik er beviset); (3) «vores» er kun haendelser i
+// punktet (et klik ogsaa med maalet i stien - labelens aktiveringsklik), og efter en blokering stoppes kun haendelser i
+// punktet, ikke en rigtig mus andre steder paa maalet. En rigtig mus i samme punkt samtidig kan ikke skelnes fra vores.
+// R67 (Astra, maalt i model): «et klik med maalet i stien» tog ogsaa et brugerklik et andet sted paa maalet som bevis. Et
+// klik uden for punktet taeller nu kun, naar det er labelens simulerede aktiveringsklik (uden koordinater).
+// R68 (Astra, maalt i model): og kun naar maalet har en label, og vores klik i punktet gik til den - et uvedkommende klik
+// ved (0,0) beviste ellers vaerktoejets klik.
+// R69 (Astra, maalt i model): et labelklik, siden annullerede, efterfulgt af et uvedkommende klik ved (0,0) under
+// efterkontrollen, gav landed:true. Labelens aktivering sker i samme opgave som labelklikket (HTML-standarden), saa
+// markeringen er selve haendelsen, og den gaelder kun til naeste opgave, kun hvis den ikke blev annulleret, og kun een gang.
+// R67 (Opus, maalt i Chrome): en deaktiveret raekke i en liste med EN onclick fik sit «bevis» paa listen - klikket naaede aldrig
+// raekken. En forfader er nu kun bevis, naar den er maalets semantiske ramme (knap, link, rolle), ikke en lyttende beholder.
+const VAGT_KLIK = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
+const VAGT_HOVER = ['pointerover', 'pointerenter', 'pointermove', 'mouseover', 'mouseenter', 'mousemove'];
+
+async function armerMaalVagt(tabId, x, y, typer, levetid = 10000, inderOk = false) {
+  let r;
+  try {
+    r = await cdpSend(tabId, 'Runtime.evaluate', { returnByValue: true, expression: `(() => {
+      const tjek = window.__bmcpMaalTjek, maal = window.__bmcpMaal, typer = ${JSON.stringify(typer)}, inderOk = ${!!inderOk};
+      try { delete window.__bmcpMaalTjek; } catch (e) {}
+      const gl = window.__bmcpVagt;
+      if (gl && gl.ryd) gl.ryd();
+      window.__bmcpVagt = null;
+      if (typeof tjek !== 'function' || !maal) return { ingen: true };
+      if (!maal.isConnected) return { vaek: true };
+      const nu = tjek(${x}, ${y});
+      if (nu && !(inderOk && nu.inside)) return { daekket: nu };
+      const inde = (n, m) => { for (let i = 0; n && i < 1000; i++) { if (n === m) return true; n = n.assignedSlot || n.parentNode || n.host; } return false; };
+      // R75 (Opus, maalt i Chrome): en label med et felt som maal gav landed:true, naar labelens klik kom frem - ogsaa naar en
+      // lytter (Reacts onClick, addEventListener) annullerede det, og feltet aldrig blev aktiveret. For et saadant maal er beviset
+      // derfor feltets eget aktiveringsklik (eller et klik direkte paa feltet); uden det er svaret uvist, ikke ja.
+      const felt = maal.tagName === 'LABEL' && maal.control ? maal.control : null;
+      const v = { typer, maal, blokeret: null, delvis: false, sendt: 0, naaet: {}, vaek: false, paa: [], labelKlik: false,
+        felt, kunAktivering: !!felt && typer.includes('click'), feltKlik: null,
+        synligVedArm: document.visibilityState === 'visible' };
+      // R79 (Opus, maalt i Chrome): feltets egen rolle-boks om feltet talte som bevis, naar maalet var feltet, selv om feltet intet
+      // fik (CB:false, landed:true). For et felt som maal er kun et klik, der naar feltet selv, et bevis.
+      // R80 (Astra, maalt i model): reglen gjaldt kun input/select/textarea, saa et form-associeret custom-felt og en button (begge
+      // kan have en label) i en rolle-boks, der selv tog klikket, gav landed:true uden at feltet fik noget.
+      // R81 (Astra, maalt i model): custom-feltet blev kendt paa klassens formAssociated - en egenskab, siden kan aendre eller faa til
+      // at kaste, mens den native status (gemt ved define) er uaendret; saa gav en boks' klik igen landed:true. Enhver selvstaendig
+      // custom element (navn med bindestreg - det har alle form-associerede felter) er derfor omfattet: kun en haendelse, der naar
+      // den selv, er bevis. Prisen: et custom-ikon, hvis klik kun naar knappen om det, svarer maybe_landed, ikke ja.
+      v.maalFelt = !!maal.matches && (maal.matches('input,select,textarea,button') || String(maal.tagName || '').includes('-'));
+      // R79 (Opus, maalt i Chrome): med en tekst i en label som maal blev labelens aktiveringsklik til dens felt stoppet som «noget,
+      // der kom foran» - musen afkrydser dér. Labelen om maalet, hvis felt ligger uden for maalet, huskes.
+      for (let n = maal, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
+        if (n.tagName === 'LABEL') { if (n !== maal && n.control && !inde(n.control, maal)) v.tekstLabel = n; break; }
+      }
+      v.fn = (ev) => {
+        if (!ev.isTrusted) return;
+        const vej = ev.composedPath ? ev.composedPath() : [];
+        const vedPunkt = Math.abs(ev.clientX - ${x}) <= 1 && Math.abs(ev.clientY - ${y}) <= 1;
+        const aktivering = ev.type === 'click' && vej.includes(maal) && ev.clientX === 0 && ev.clientY === 0 && !!v.labelKlik && !v.labelKlik.defaultPrevented;
+        if (aktivering) v.labelKlik = null;
+        // Chrome sender aktiveringsklikket med eller uden museens koordinater (maalt R68); begge taeller.
+        // (Et annulleret labelklik giver ingen aktivering - HTML - saa der skal ikke tjekkes for det her.)
+        const feltAktivering = v.kunAktivering && ev.type === 'click' && ev !== v.feltKlik && vej.includes(v.felt) && !!v.feltKlik;
+        if (feltAktivering) v.feltKlik = null;
+        if (ev.type === 'click' && v.tekstLabel && v.tekstLabelKlik && ev !== v.tekstLabelKlik && !v.tekstLabelKlik.defaultPrevented &&
+          vej.includes(v.tekstLabel.control)) { v.tekstLabelKlik = null; return; }
+        const vores = vedPunkt || aktivering || feltAktivering;
+        if (!vores) return;
+        if (v.blokeret) { if (vedPunkt) { ev.preventDefault(); ev.stopImmediatePropagation(); } return; }
+        if (!maal.isConnected) { v.vaek = true; return; }
+        // R76 (Astra, maalt i model): aktiveringen blev talt ved window - en lytter, der stoppede den, foer den naaede feltet,
+        // gav landed:true med boksen tom. Den taelles nu paa knuden selv, naar netop denne haendelse naar den.
+        if (feltAktivering) {
+          const k = vej[0] || ev.target;
+          const naaetFelt = (e2) => { if (e2 === ev) v.naaet.click = (v.naaet.click || 0) + 1; };
+          try { k.addEventListener('click', naaetFelt, { once: true, capture: true }); v.paa.push([k, 'click', naaetFelt]); } catch (e) {}
+          return;
+        }
+        const knude = vej[0] || ev.target;
+        if ((ev.type === 'pointerenter' || ev.type === 'mouseenter') && knude !== maal && inde(maal, knude)) return;
+        let d = tjek(${x}, ${y}, knude);
+        if (d && inderOk && d.inside) d = null;
+        if (d && v.sendt > 0 && (ev.type === 'pointerup' || ev.type === 'mouseup')) { v.urent = true; return; }
+        if (d) { v.blokeret = d; v.delvis = v.sendt > 0; ev.preventDefault(); ev.stopImmediatePropagation(); return; }
+        v.sendt++;
+        if (v.kunAktivering && ev.type === 'click' && !inde(knude, v.felt)) {
+          v.feltKlik = ev;
+          setTimeout(() => { if (v.feltKlik === ev) v.feltKlik = null; }, 0);
+          return;
+        }
+        if (ev.type === 'click' && v.tekstLabel && inde(knude, v.tekstLabel)) {
+          v.tekstLabelKlik = ev;
+          setTimeout(() => { if (v.tekstLabelKlik === ev) v.tekstLabelKlik = null; }, 0);
+        }
+        if (ev.type === 'click' && !inde(knude, maal) && maal.labels && Array.from(maal.labels).some((l) => inde(knude, l))) {
+          v.labelKlik = ev;
+          setTimeout(() => { if (v.labelKlik === ev) v.labelKlik = null; }, 0);
+        }
+        if (!(inde(knude, maal) || (!v.maalFelt && inde(maal, knude) && knude.tagName !== 'LABEL' && !!knude.matches &&
+          knude.matches('button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]')))) {
+          if (knude !== maal && inde(maal, knude)) v.forfader = true;
+          return;
+        }
+        const type = ev.type;
+        const naaet = (e2) => { if (e2 === ev) v.naaet[type] = (v.naaet[type] || 0) + 1; };
+        try { knude.addEventListener(type, naaet, { once: true, capture: true }); v.paa.push([knude, type, naaet]); } catch (e) {}
+      };
+      v.ryd = () => {
+        for (const t of typer) window.removeEventListener(t, v.fn, true);
+        for (const [k, t, f] of v.paa) { try { k.removeEventListener(t, f, true); } catch (e) {} }
+        v.paa = [];
+        clearTimeout(v.udloeb);
+      };
+      for (const t of typer) window.addEventListener(t, v.fn, true);
+      v.udloeb = setTimeout(() => v.ryd(), ${Number(levetid) || 10000});
+      window.__bmcpVagt = v;
+      return { armet: true };
+    })()` });
+  } catch { return null; }
+  return r?.result?.value ?? null;
+}
+
+async function laesMaalVagt(tabId, x, y) {
+  let r;
+  try {
+    r = await cdpSend(tabId, 'Runtime.evaluate', { returnByValue: true, expression: `(() => {
+      const v = window.__bmcpVagt, maal = window.__bmcpMaal;
+      window.__bmcpVagt = null;
+      try { delete window.__bmcpMaal; } catch (e) {}
+      if (!v || !v.ryd) return { udskiftet: true };
+      v.ryd();
+      let fremmedRamme = null;
+      if (${typeof x === 'number' && typeof y === 'number'}) {
+        let p = document.elementFromPoint(${Number(x) || 0}, ${Number(y) || 0});
+        for (let i = 0; i < 20 && p && p.shadowRoot; i++) { const n = p.shadowRoot.elementFromPoint(${Number(x) || 0}, ${Number(y) || 0}); if (!n || n === p) break; p = n; }
+        let iMaalet = false;
+        for (let n = p; n; n = n.parentNode || n.host) if (n === maal) { iMaalet = true; break; }
+        if (p && /^(IFRAME|FRAME|OBJECT|EMBED)$/.test(p.tagName || '') && !iMaalet) fremmedRamme = { tag: p.tagName, id: p.id || null, text: '' };
+      }
+      const trykNaaet = ((v.naaet.pointerdown || 0) + (v.naaet.mousedown || 0)) > 0;
+      return { naaet: v.naaet, blokeret: v.blokeret, delvis: v.delvis, sendt: v.sendt, vaek: v.vaek, fremmedRamme, urent: !!v.urent, trykNaaet,
+        kunAktivering: !!v.kunAktivering,
+        skjultHele: !v.synligVedArm && document.visibilityState !== 'visible' };
+    })()` });
+  } catch { return null; }
+  return r?.result?.value ?? null;
+}
+
+/** Vagtens dom som et haendelsesbevis (samme form som laesHaendelsesBevis). */
+function vagtBevis(laest, typer) {
+  if (!laest) return { landed: null };
+  if (laest.blokeret) return { landed: false, blokeret: laest.blokeret, delvis: !!laest.delvis };
+  // R66 (Astra, maalt i model): en vagt, der er vaek ved aflaesningen, beviser ikke en navigation (den kan vaere fjernet af
+  // siden eller udloebet) - det er uvist, ikke ja.
+  if (laest.udskiftet) return { landed: null };
+  // R75: for en label med et felt er kun feltets aktiveringsklik (eller et klik paa feltet selv) et ja.
+  // Kun for klik-beviser (click, dblclick): et hoejreklik eller en hover paa en label aktiverer ikke feltet og beviser sig selv.
+  if (laest.kunAktivering && (typer.includes('click') || typer.includes('dblclick'))) {
+    if (!laest.urent && (laest.naaet?.click || 0) > 0) return { landed: true };
+  }
+  else if (!laest.urent && typer.some((t) => (laest.naaet?.[t] || 0) > 0)) return { landed: true };
+  // R67 (Astra): en fremmed ramme i punktet, og haendelsen naaede ikke maalet: covered + uvist, ogsaa naar noget blev sendt.
+  if (laest.fremmedRamme) return { landed: null, blokeret: laest.fremmedRamme, iFremmedRamme: true, trykNaaet: !!laest.trykNaaet };
+  // R65 (Astra, maalt i model): intet naaede maalet. I en synlig side kan en lytter undervejs have stoppet haendelsen - og
+  // selv have handlet - saa det er uvist, ikke et nej med raad om at proeve igen.
+  // R66 (Astra, maalt i model): synligheden blev maalt ved AFLAESNINGEN, saa en fane, der blev skjult efter handlingen, gav
+  // et nej. Nej kraever nu, at siden var skjult baade ved armeringen og ved aflaesningen, og at intet blev set.
+  if (laest.skjultHele && !laest.sendt && !laest.vaek) return { landed: false };
+  return { landed: null };
 }
 
 async function armerHaendelsesBevis(tabId, type) {
@@ -1585,27 +1972,25 @@ async function laesTastBevis(tabId, bevis) {
 
 async function scriptingClick(tabId, selector) {
   try {
+    // R57 (Opus, maalt i Chrome): reserven havde sin egen soegning (foerste eksakte match i en fast liste) og klikkede
+    // med el.click(), som ikke rammer-tester - saa den klikkede sidens knap gennem en modal dialogs overlay. Maalet findes
+    // nu af klikMaal, samme funktion som debugger-vejen, og et daekket maal klikkes ikke.
+    const p = parseSelector(selector);
+    const [maal] = await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN', func: klikMaal,
+      args: p.type === 'css' ? [p.selector, null, null, true, false] : [null, p.text, p.tag, true, false],
+    });
+    const info = maal?.result;
+    if (!info) return { ok: false, reason: 'not_found' };
+    if (info.hidden) return { ok: false, reason: 'hidden', tag: info.tag };
+    if (info.covered) return { ok: false, reason: 'covered', tag: info.tag, covered: info.covered, ...(info.text ? { text: info.text } : {}) };
     const [result] = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
-      func: (sel) => {
-        let el;
-        if (sel.startsWith('text=')) {
-          const text = sel.slice(5).trim();
-          el = Array.from(document.querySelectorAll('button, a, [role="button"], [role="menuitem"], [role="tab"], [role="option"], input, label, span, div, p, li, td'))
-            .find(e => (e.textContent || '').trim() === text);
-        } else {
-          const m = sel.match(/^([\w-]+):text\(([^)]+)\)$/);
-          if (m) {
-            const needle = m[2].trim();
-            el = Array.from(document.querySelectorAll(m[1]))
-              .find(e => (e.textContent || '').trim().includes(needle));
-          } else {
-            el = document.querySelector(sel);
-          }
-        }
-        if (!el) return { ok: false, reason: 'not_found' };
-        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      func: () => {
+        const el = window.__bmcpMaal;
+        try { delete window.__bmcpMaal; } catch (e) {}
+        if (!el || !el.isConnected) return { ok: false, reason: 'not_found' };
         // Sign-off 11/9 (Astra og Fable, begge reproduceret): paa en baggrundsfane blev et klik der krævede isTrusted,
         // eller kun lyttede paa pointerdown, meldt ok:true uden nogen virkning. Klikket maaler nu sidens reaktion med
         // samme aftryk og samme regel som debuggerens reserve (debuggerClick) - ingen backticks herinde.
@@ -1642,7 +2027,6 @@ async function scriptingClick(tabId, selector) {
         // derfor landed:false og maaske_landet - aerligt, aldrig en falsk succes.
         return { ok: true, tag: el.tagName, landed: aftryk() !== foer, detached: el.isConnected === false };
       },
-      args: [selector],
     });
     return result?.result || { ok: false, reason: 'no_result' };
   } catch (e) {
@@ -1675,48 +2059,129 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 //   "#my-id" → standard CSS selector
 //   "text=Submit" → any element containing "Submit"
 
-function buildTextFinderJS(textPattern, tagFilter) {
-  const escaped = JSON.stringify(textPattern);
-  const wantTag = tagFilter ? JSON.stringify(tagFilter.toUpperCase()) : 'null';
-  return `(function() {
-    const text = ${escaped};
-    const wantTag = ${wantTag};
-    // Interactive controls we prefer to actually click. Fixes the class of bug where a
-    // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
-    // toolbar, list-item) whose center is NOT over the real <button> — so the trusted
-    // click misses and menus/dropdowns never open.
-    const CLICKABLE = 'a,button,summary,label,[role="button"],[role="menuitem"],' +
-      '[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],' +
-      '[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[onclick],' +
-      '[mat-button],[mat-raised-button],[mat-stroked-button],[mat-flat-button],' +
-      '[mat-icon-button],[mat-fab],[mat-mini-fab],[mat-menu-item],[mat-list-item],' +
-      'mat-checkbox,mat-slide-toggle,mat-radio-button';
-    function collectAll(root, results) {
-      for (const el of root.querySelectorAll('*')) {
-        results.push(el);
-        if (el.shadowRoot) collectAll(el.shadowRoot, results);
-      }
-      return results;
+// ── Klikkets maal ──────────────────────────────────────────────────────────
+// R57 (Opus, maalt i Chrome 9/10): `click text=Add` valgte den foerste «Add» i DOM-raekkefoelgen, ogsaa naar en modal
+// dialog var aaben, og svarede ok:true, selv naar klikket ramte overlayet eller dialogens backdrop. Reserven (script-
+// klikket) havde sin egen, simplere soegning og klikkede sidens knap gennem overlayet. Nu findes maalet EET sted, her:
+//   - en aaben modal dialog (dialog:modal eller en synlig [aria-modal="true"]) soeges foerst, eksakt tekst foer delvis;
+//   - ligger et andet element over maalets midtpunkt, meldes det i `covered`, og musevaerktoejerne klikker ikke.
+// Funktionen er selvstaendig, saa den kan sendes som `func` til chrome.scripting OG som tekst til Runtime.evaluate.
+// `gem` lægger elementet paa window.__bmcpMaal og dets daekningsregel paa window.__bmcpMaalTjek (til script-klikket og
+// vagten i armerMaalVagt); `kunElement` returnerer selve elementet.
+function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
+  // Interactive controls we prefer to actually click. Fixes the class of bug where a
+  // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
+  // toolbar, list-item) whose center is NOT over the real <button> - so the trusted
+  // click misses and menus/dropdowns never open.
+  const CLICKABLE = 'a,button,summary,label,[role="button"],[role="menuitem"],' +
+    '[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"],[role="tab"],' +
+    '[role="link"],[role="checkbox"],[role="radio"],[role="switch"],[onclick],' +
+    '[mat-button],[mat-raised-button],[mat-stroked-button],[mat-flat-button],' +
+    '[mat-icon-button],[mat-fab],[mat-mini-fab],[mat-menu-item],[mat-list-item],' +
+    'mat-checkbox,mat-slide-toggle,mat-radio-button';
+  function collectAll(root, results) {
+    for (const el of root.querySelectorAll('*')) {
+      results.push(el);
+      if (el.shadowRoot) collectAll(el.shadowRoot, results);
     }
+    return results;
+  }
+  function queryDeep(root, s) {
+    const el = root.querySelector(s);
+    if (el) return el;
+    for (const node of root.querySelectorAll('*')) {
+      if (node.shadowRoot) { const f = queryDeep(node.shadowRoot, s); if (f) return f; }
+    }
+    return null;
+  }
+  // Ligger n i maal - ogsaa paa tvaers af shadow roots? R71 (Astra): i den flade kaede, saa en knaps eget slottede ikon er knappens.
+  function inde(n, maal) {
+    for (let i = 0; n && i < 1000; i++) { if (n === maal) return true; n = n.assignedSlot || n.parentNode || n.host; }
+    return false;
+  }
+  // R61 (Astra og Opus, maalt): en modal i en aaben shadow root blev ikke fundet, selv om tekstsoegningen gaar gennem
+  // shadow roots; en lukket skuffe med aria-modal, skubbet ud af billedet, blev valgt; og af to stablede dialoger blev
+  // den foerste i DOM valgt, ikke den oeverste. Dialogen soeges nu i de samme elementer som teksten, den skal ligge i
+  // vinduet, og af flere er det den, der ligger oeverst ved sit eget midtpunkt.
+  function aabenDialog(all) {
+    const iRuden = (r) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
+    // Dialogens synlige rektangel. R62 (Opus): Tailwind/Headless UI saetter aria-modal paa en indpakning med hoejde 0, hvor
+    // alle boern er fixed - saa er rektanglet foreningen af de synlige boern. R63 (Astra): det samme rektangel bruges ogsaa,
+    // naar to dialoger sammenlignes; foer blev to tomme indpakninger uafgjort, og den sidste i DOM vandt.
+    const visRekt = (d) => {
+      const egen = d.getBoundingClientRect();
+      if (egen.width > 0 && egen.height > 0) return egen;
+      let l = Infinity, o = Infinity, h = -Infinity, u = -Infinity;
+      for (const b of Array.from(d.querySelectorAll ? d.querySelectorAll('*') : []).slice(0, 200)) {
+        const bs = getComputedStyle(b);
+        if (bs.visibility === 'hidden' || bs.display === 'none') continue;
+        const r = b.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0)) continue;
+        l = Math.min(l, r.left); o = Math.min(o, r.top); h = Math.max(h, r.right); u = Math.max(u, r.bottom);
+      }
+      return h > l ? { left: l, top: o, right: h, bottom: u, width: h - l, height: u - o } : egen;
+    };
+    const iVinduet = (d) => {
+      const cs = getComputedStyle(d);
+      if (cs.visibility === 'hidden' || cs.display === 'none') return false;
+      return iRuden(visRekt(d));
+    };
+    const kandidater = all.filter((d) => {
+      let modal = false;
+      try { modal = d.matches('dialog:modal'); } catch (e) {}
+      return (modal || (d.getAttribute && d.getAttribute('aria-modal') === 'true')) && iVinduet(d);
+    });
+    if (kandidater.length < 2) return kandidater[0] || null;
+    // R62 (Astra, maalt i model): to forskudte dialoger kan begge ligge oeverst ved deres EGET midtpunkt. Hvem der ligger
+    // oeverst, afgoeres derfor dér hvor de overlapper: den valgte maa ikke ligge under nogen anden kandidat.
+    // R64 (Astra, maalt i model): foreningsrektanglet om to adskilte paneler omsluttede ogsaa hullet imellem, og punktet
+    // landede dér. Nu sammenlignes de synlige bokse parvis, og punktet tages i en ægte overlapning.
+    const bokse = (d) => {
+      const egen = d.getBoundingClientRect();
+      if (egen.width > 0 && egen.height > 0) return [egen];
+      return Array.from(d.querySelectorAll ? d.querySelectorAll('*') : []).slice(0, 200).filter((b) => {
+        const bs = getComputedStyle(b);
+        const r = b.getBoundingClientRect();
+        return bs.visibility !== 'hidden' && bs.display !== 'none' && r.width > 0 && r.height > 0;
+      }).map((b) => b.getBoundingClientRect()).slice(0, 50);
+    };
+    const over = (a, b) => {
+      for (const ra of bokse(a)) for (const rb of bokse(b)) {
+        const l = Math.max(ra.left, rb.left, 0), r = Math.min(ra.right, rb.right, window.innerWidth);
+        const t = Math.max(ra.top, rb.top, 0), u = Math.min(ra.bottom, rb.bottom, window.innerHeight);
+        if (r <= l || u <= t) continue;
+        const h = dybtPunkt((l + r) / 2, (t + u) / 2);
+        if (inde(h, a) && !inde(h, b)) return true;
+        if (inde(h, b) && !inde(h, a)) return false;
+      }
+      return null;
+    };
+    const oeverst = kandidater.filter((d) => kandidater.every((o) => o === d || over(d, o) !== false));
+    return (oeverst.length ? oeverst : kandidater)[(oeverst.length ? oeverst : kandidater).length - 1];
+  }
+  function findTekst() {
     const all = collectAll(document, []);
-    const tagOk = (el) => !wantTag || el.tagName === wantTag;
+    const tag = wantTag ? String(wantTag).toUpperCase() : null;
+    const tagOk = (el) => !tag || el.tagName === tag;
     // Map a matched element to the ACTIONABLE control: itself if clickable, else the
     // nearest clickable ancestor (only if its own text isn't much larger than the match,
     // so we don't grab a whole toolbar), else a clickable descendant.
     function toClickable(el) {
       if (el.matches && el.matches(CLICKABLE)) return el;
       const anc = el.closest && el.closest(CLICKABLE);
-      if (anc && (anc.textContent || '').trim().length <= text.length + 40) return anc;
+      if (anc && (anc.textContent || '').trim().length <= tekst.length + 40) return anc;
+      // R68 (Opus, maalt i Chrome, ogsaa i 1.30.1): `text=Ordre 7` paa et kort valgte det FOERSTE klikbare barn - kortets
+      // Slet-knap - og slettede med ok:true. Et barn vaelges nu kun, naar teksten staar i det; ellers er maalet elementet
+      // med teksten, og en handling inde i det er en daekning.
       const desc = el.querySelector && el.querySelector(CLICKABLE);
-      if (desc) return desc;
+      if (desc && (desc.textContent || '').includes(tekst)) return desc;
       return el;
     }
-    function pick(test) {
-      const matches = all.filter(el => tagOk(el) && test((el.textContent || '').trim()));
+    function pick(kandidater, test) {
+      const matches = kandidater.filter((el) => tagOk(el) && test((el.textContent || '').trim()));
       if (!matches.length) return null;
-      // Prefer the INNERMOST matches (an element that is not an ancestor of another
-      // match) — this is what "prefer leaf nodes" was supposed to do.
-      const inner = matches.filter(el => !matches.some(o => o !== el && el.contains && el.contains(o)));
+      // Prefer the INNERMOST matches (an element that is not an ancestor of another match).
+      const inner = matches.filter((el) => !matches.some((o) => o !== el && el.contains && el.contains(o)));
       const pool = inner.length ? inner : matches;
       // Prefer a match that resolves to a real interactive control.
       for (const el of pool) {
@@ -1725,11 +2190,448 @@ function buildTextFinderJS(textPattern, tagFilter) {
       }
       return toClickable(pool[0]);
     }
+    const eksakt = (t) => t === tekst;
+    const delvis = (t) => t && t.includes(tekst);
+    const dlg = aabenDialog(all);
+    if (dlg) {
+      const iDlg = all.filter((el) => inde(el, dlg));
+      return pick(iDlg, eksakt) || pick(all, eksakt) || pick(iDlg, delvis) || pick(all, delvis);
+    }
     // Exact match first, then partial fallback.
-    return pick(t => t === text) || pick(t => t && t.includes(text));
-  })()`;
+    return pick(all, eksakt) || pick(all, delvis);
+  }
+  // Hvad ligger oeverst ved punktet? Elementet selv, noget inde i det, en forfader (klikket bobler gennem den), dets
+  // label eller dets egen knap/link-ramme er ikke en daekning. Alt andet er: et overlay, en backdrop, en anden dialog.
+  function dybtPunkt(x, y) {
+    let hit = document.elementFromPoint(x, y);
+    for (let i = 0; i < 20 && hit && hit.shadowRoot; i++) {
+      const indre = hit.shadowRoot.elementFromPoint(x, y);
+      if (!indre || indre === hit) break;
+      hit = indre;
+    }
+    return hit;
+  }
+  // R61 (Opus, maalt i Chrome): en forfader under midtpunktet blev regnet for «ikke daekning, klikket bobler gennem den».
+  // Men saa gaar klikket til forfaderen og naar aldrig maalet - et deaktiveret link (pointer-events:none), en knap med
+  // visibility:hidden, en afklippet slide og en skjult afkrydsning svarede ok:true uden at maalet fik klikket. En forfader
+  // er nu ogsaa en daekning, medmindre den er maalets egen knap-, link- eller label-ramme.
+  function daekketAf(el, x, y) {
+    const hit = dybtPunkt(x, y);
+    if (!hit) return { tag: null, id: null, text: '', outside: true };
+    return daekketVed(el, hit);
+  }
+  // R65 (Astra, maalt i model): samme regel for den knude, der faktisk fik en haendelse - maalvagten doemmer hver haendelse
+  // paa sin knude, ikke kun den foerste i punktet.
+  // HTML-standardens «interactive content»: et klik dér aktiverer ikke en omsluttende labels felt.
+  // R74 (Astra, laest): `object` staar ikke paa standardens nuvaerende liste; dens reservetekst er almindelig tekst.
+  const INTERAKTIV = 'a[href],button,input,select,textarea,details,embed,iframe,audio[controls],video[controls],img[usemap],label';
+  // R66 (Astra): en handling er alt det, klikMaal selv regner for klikbart (CLICKABLE), plus input-knapper. (Flyttet herop i R74,
+  // saa ogsaa label-rammen nedenfor kan bruge den.)
+  const HANDLING = CLICKABLE + ',input[type="button"],input[type="submit"],input[type="reset"],input[type="image"]';
+  // R75 (Opus, maalt i Chrome med Element UI og Base UI-DOM): i en label er en boks med rollen checkbox, switch eller radio
+  // feltets egen (el-checkbox__input, Base UI's span role=checkbox) - ikke en anden kontrol. Det samme er alt, der rummer
+  // labelens felt eller ligger i det (et custom-felts egen boks i dets skygge, el-checkbox'ens span om sit input).
+  const FELTROLLE = '[role="checkbox"],[role="switch"],[role="radio"]';
+  const iLabelHandling = (n) => !!n.matches && n.matches(INTERAKTIV + ',' + HANDLING);
+  // R76 (Astra, maalt i model): en rolle alene beviser ikke, hvilket felt kontrollen hoerer til - en selvstaendig span med
+  // role=checkbox og onclick ved siden af labelens synlige input slap igennem. En boks med feltrolle er derfor kun feltets
+  // egen, naar labelens felt er skjult (Base UI, sr-only: inputtet er 1x1 px, og boksen er dets synlige stedfortraeder);
+  // ellers skal den rumme feltet eller ligge i det.
+  const feltSkjult = (felt) => { if (!felt || !felt.getBoundingClientRect) return false; const r = felt.getBoundingClientRect(); return r.width * r.height <= 1; };
+  // R76 (Opus, maalt i Chrome): en div med onclick («aabn detaljer») om feltet blev regnet for feltets egen, og dens handling koerte
+  // to gange med landed:true. En beholder om feltet er kun feltets egen, naar den ikke selv er en handling - eller er en boks med
+  // feltrolle (el-checkbox__input om sit input).
+  const boksRolle = (n) => !!n.matches && n.matches(FELTROLLE) && !n.matches(INTERAKTIV);
+  // R77 (Opus, maalt i Chrome med rigtig Base UI 1.9.0): ved et skjult felt blev ENHVER rolle-boks i labelen feltets egen, saa en
+  // anden kontrol (en nyhedsbrevs-switch) fik klikket med landed:true. Stedfortraederen ligger lige ved siden af sit skjulte input
+  // (Base UI: boksen umiddelbart foer; et sr-only input foer sin switch); en anden kontrol goer ikke.
+  const naboTil = (n, felt) => {
+    const p = n.parentNode;
+    if (!p || p !== felt.parentNode || !p.children) return false;
+    const born = Array.from(p.children);
+    if (Math.abs(born.indexOf(n) - born.indexOf(felt)) !== 1) return false;
+    // R78 (maalt i Chrome med rigtig Base UI 1.9.0): en anden switch kan ligge lige efter det skjulte input, mens den rigtige boks
+    // ligger lige foer. Er der flere rolle-bokse i labelen, er stedfortraederen ikke entydig, og ingen af dem er feltets egen.
+    // R78 (Astra, maalt i model): optaellingen skete i felt.labels[0], ogsaa naar boksen laa i en anden af feltets labels. Det er
+    // den label, der rummer boksen, der taeller.
+    // R79 (Astra, maalt i model): et form-associeret custom-felt har ingen offentlig `labels`, saa ingen label blev fundet, og
+    // kandidaten blev godtaget uden optaelling; og querySelectorAll saa hverken bokse i aabne shadow roots eller slottede bokse.
+    // Labelen findes nu ogsaa via label.control, og boksene taelles i hele det flade traee under den (som daekningen ser det).
+    // R80 (Astra, maalt i model): en tom offentlig labels-liste sprang label.control-opslaget over, og uden label blev boksen
+    // godtaget uden optaelling; og ved indlejrede labels blev den yderste valgt, saa dens bokse talte med. Labelen er nu den
+    // naermeste label om boksen, den skal have feltet som control, og uden en saadan er boksen ikke feltets.
+    let lab = null;
+    for (let l = n.assignedSlot || n.parentNode || n.host, i = 0; l && i < 1000; l = l.assignedSlot || l.parentNode || l.host, i++) {
+      if (l.tagName === 'LABEL') { lab = l.control === felt ? l : null; break; }
+    }
+    if (!lab) return false;
+    const alle = collectAll(document, []);
+    return alle.filter((k) => k !== lab && inde(k, lab) && !!k.matches && k.matches(FELTROLLE) && !k.matches(INTERAKTIV)).length === 1;
+  };
+  const egenBoks = (n, felt) => !!felt && (inde(n, felt) ||
+    (inde(felt, n) && (!n.matches || !n.matches(HANDLING) || boksRolle(n))) ||
+    (boksRolle(n) && feltSkjult(felt) && naboTil(n, felt)));
+  const feltetSelv = egenBoks;
+  const lukket = (k) => (k && k.tagName === 'INPUT' && String(k.getAttribute('type') || '').toLowerCase() === 'hidden' ? null : k);
+  function daekketVed(el, hit) {
+    if (inde(hit, el)) {
+      // R64 (Opus' etiket.html, maalt i Chrome 9/10): `click text=Jeg accepterer` fandt labelen, men dens midtpunkt laa paa
+      // et link inde i den. Linket fik klikket, afkrydsningen intet, og svaret var ok:true: et klik paa interaktivt indhold
+      // i en label aktiverer ikke labelens felt (HTML-standarden). En anden kontrol i en labels punkt er derfor en daekning;
+      // labelens eget felt er ikke.
+      // R65 (Opus, maalt i Chrome): reglen brugte CLICKABLE - men et link uden href, en span med role=button eller onclick
+      // afkrydser feltet med en rigtig mus. Chrome foelger HTML-standardens «interactive content», og det goer reglen nu.
+      // R65 (Opus' r65-kortbarn.html, maalt i Chrome): et kort med en Slet-knap i midten svarede ok:true, og Slet blev udfoert -
+      // kortets eget klik kom aldrig. En HANDLING inde i maalet er derfor en daekning for ethvert maal; et felt inde i maalet
+      // er det ikke (det er saadan en combobox-beholder virker).
+      // R66 (Astra, maalt i model): handlingen var kun native knapper og links - en Slet som span role=button eller span med
+      // onclick kom igennem med ok:true. Nu er en handling alt det, klikMaal selv regner for klikbart (CLICKABLE), plus
+      // input-knapper.
+      const erLabel = el.tagName === 'LABEL';
+      // R69 (Astra, maalt i model): closest() krydser ikke en aaben shadow root, saa en role=button-vaert uden om en span i
+      // dens shadow root blev aldrig set, og Slet koerte med ok:true. Kaeden gaas derfor knude for knude (parentNode || host).
+      let indre = null;
+      // R66 (Opus, maalt i Chrome): et WordPress-menupunkt (li med sit link), et produktkort med et billedlink og et kort med
+      // et «stretched link» blev afvist - linket ER den passive beholders egen handling. Er maalet ikke selv klikbart, er et
+      // link inde i det derfor ikke en daekning; en knap eller en anden handling (Slet paa et kort) er det stadig.
+      const klikbartMaal = !!el.matches && (el.matches(CLICKABLE) || (!!el.getAttribute && el.getAttribute('tabindex') !== null));
+      // R67 (Astra, maalt i model): `<a role="button" onclick="slet()">` i et passivt kort blev fritaget som «link». Kun et
+      // rigtigt link er beholderens egen handling: et a med adresse (eller role=link), uden knaprolle og uden onclick.
+      // R67 (Opus, maalt i Chrome): og en role=button uden om et ikon-link blev aldrig set, fordi closest standsede ved linket.
+      // Er det fundne et rent link, ses der videre ud; en knap uden om det er handlingen.
+      // R68 (Opus, maalt i Chrome): `href="#"`, `javascript:` og en rolle som menuitem blev godtaget som «adresse» - Reacts
+      // <a href="#" onClick> slettede med ok:true. Et rent link har en rigtig adresse og ingen anden rolle end link.
+      const etLink = (n) => {
+        const rolle = String((n.getAttribute && n.getAttribute('role')) || '');
+        if (n.getAttribute('onclick') !== null || (rolle && rolle !== 'link')) return false;
+        // R69 (Opus, maalt i Chrome): en <span role="link"> med en lytter slettede med ok:true - den har ingen adresse og
+        // virker kun via script. Kun et <a> kan vaere et rent link.
+        if (n.tagName !== 'A') return false;
+        const href = n.getAttribute('href');
+        if (href === null) return false;
+        // R69 (Astra, maalt i model): `java\nscript:` og en tabulator i protokollen er javascript:-adresser for browseren, men
+        // ikke for et regulaert udtryk paa den raa attribut. Adressen renses som URL-parseren goer det (tabulatorer og
+        // linjeskift fjernes overalt, styre- og mellemrumstegn i enderne), foer den proeves.
+        const a = href.replace(/[\t\n\r]/g, '').replace(/^[\u0000- ]+|[\u0000- ]+$/g, '');
+        // R71 (Astra): et bart # afvises ikke foer opløsningen - med <base> andetsteds peger det paa et andet dokument.
+        if (a === '' || /^javascript:/i.test(a)) return false;
+        // R70 (Opus, maalt i Chrome): `<sti>#!` og `<hele adressen>#` peger paa samme dokument og slettede med ok:true - reglen
+        // saa kun paa href, der begyndte med #. Adressen oploeses nu som browseren goer det (mod baseURI): peger den paa et
+        // andet dokument, eller paa samme uden fragment (en genindlaesning), er den rigtig; ellers gaelder fragmentreglen.
+        let u = null;
+        // R71 (Opus, maalt i Chrome): med <base> et andet sted (Angulars <base href="/">) blev `#!` en «rigtig adresse», og Slet
+        // koerte med ok:true. Et link, der kun er et fragment, er i praksis en pladsholder og laeses derfor mod siden selv (en
+        // bevidst afvisning: en rigtig mus ville indlaese base-siden).
+        try { u = new URL(a, a[0] === '#' ? document.URL : document.baseURI); } catch (e) {}
+        if (!u || u.protocol === 'javascript:') return false;
+        const udenFrag = (s) => String(s).replace(/#.*$/, '');
+        if (!u.href.includes('#') || udenFrag(u.href) !== udenFrag(document.URL)) return true;
+        // R69 (Opus, maalt i Chrome): `#!`, `#0` og `#slet` med en lytter slettede med ok:true. Et fragment, hvis maal ikke
+        // findes paa siden, flytter intet af sig selv (kun et script giver det en virkning); det goer et spring til linket
+        // selv eller til noget, der rummer det, heller ikke (Opus' Slet havde id="slet"). Et spring til et andet afsnit, der
+        // findes (eller til toppen), er et rent link.
+        // R70 (Astra, maalt i model): som HTML-standardens «indicated part of the document»: foerst fragmentet som skrevet, saa
+        // procent-afkodet (UTF-8, ugyldige bytes som U+FFFD), og foerst derefter «top».
+        // R70 (Opus, maalt i Chrome): en hash-rute (`#/ordre/7`, `#!/ordre/7`) er en navigation i appen, ikke en pladsholder.
+        {
+          const frag = u.hash.slice(1);
+          if (frag === '') return false;
+          if (/^!?\/./.test(frag)) return true;   // R71 (Opus): `#/` og `#!/` alene er ikke en rute
+          const find = (f) => (document.getElementById && document.getElementById(f)) ||
+            Array.from(document.querySelectorAll('a[name]')).find((x) => x.getAttribute('name') === f) || null;
+          let spring = find(frag), afkodet = frag;
+          if (!spring) {
+            const b = new TextEncoder().encode(frag), ud = [];
+            for (let i = 0; i < b.length; i++) {
+              const hex = i + 2 < b.length ? String.fromCharCode(b[i + 1], b[i + 2]) : '';
+              if (b[i] === 37 && /^[0-9a-f]{2}$/i.test(hex)) { ud.push(parseInt(hex, 16)); i += 2; } else ud.push(b[i]);
+            }
+            // R71 (Astra): «UTF-8 decode without BOM» bevarer en indledende U+FEFF; TextDecoder fjerner den uden ignoreBOM.
+            afkodet = new TextDecoder('utf-8', { ignoreBOM: true }).decode(new Uint8Array(ud));
+            spring = find(afkodet);
+          }
+          if (!spring) return afkodet.toLowerCase() === 'top';
+          return !inde(n, spring);
+        }
+        return true;
+      };
+      // R68 (Astra, maalt i model): kun det naeste lag blev undersoegt, saa <div role=button><span role=link><a href> skjulte
+      // knappen. Nu gaas hele kaeden fra punktet op til maalet: den foerste handling, der ikke er et rent link, er daekningen.
+      // Et rent link er en passiv beholders egen handling; for et klikbart maal er ogsaa det en anden kontrol.
+      // R68 (Opus' r66-rollekort, maalt i Chrome): et <a> uden adresse blev en tid regnet for «inert» og sprunget over - men
+      // en lytter sat med addEventListener kan ikke ses, og Slet koerte med ok:true. Et <a> uden adresse er derfor en handling.
+      // R74 (Opus, maalt i Chrome): en span med role=button i en label, hvis egen klikhaandtering annullerer klikket, gav
+      // ok:true og landed:true med boksen tom - R65/R66's «en rigtig mus afkrydser dér» holder kun, naar intet annullerer, og
+      // det kan ikke ses foer klikket. I label-tilstand er en handling (alt klikbart: rolle, onclick, link uden adresse) derfor
+      // ogsaa en daekning, i light DOM som i en komponent; labelens eget felt er det ikke.
+      if (erLabel) {
+        // R77 (Astra, maalt i model): soegningen standsede ved feltets egen boks og saa aldrig en onclick-handling uden om den. Feltets
+        // egne knuder springes nu over, og soegningen fortsaetter op til labelen.
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) if (iLabelHandling(n) && !feltetSelv(n, el.control)) { indre = lukket(n); break; }
+      } else {
+        let fundet = null, link = null;
+        // R70 (Astra, maalt i model): indhold, en slot viser, haenger i light DOM; dets vej gaar gennem slotten og knappen
+        // omkring den i shadow root'en (den flade kaede), saa assignedSlot foelges foer parentNode.
+        // R71 (Opus, maalt i Chrome): klikket paa en webkomponents vaert (ion-button, sl-button) gik via slotten
+        // til vaertens EGEN knap og blev afvist som «en anden kontrol». En handling i maalets egen shadow root (eller dybere),
+        // der fylder det meste af maalet, er maalets egen knap; en lille Slet inde i en kort-komponent er det ikke (R72: graensen
+        // er overlap, ikke areal - se nedenfor).
+        const iEgenSkygge = (k) => { for (let x = k, i = 0; x && i < 1000; x = x.parentNode || x.host, i++) if (x.host === el) return true; return false; };
+        // R72 (Astra, maalt i model): arealet alene godtog en knap paa 10000 x 2 px over en vaert paa 200 x 100 (2 % overlap),
+        // `break` sprang en Slet omkring den store kontrol over, og et stort skygge-link med # eller javascript: slap uden om
+        // linkreglen. Nu er kun en kontrol, hvis overlap med maalet daekker mindst 90 % af maalet, maalets
+        // egen (saadan tegner ion-button og sl-button deres knap; R73 Opus maalte Material Webs md-filled-button til 15-31 % (afhaengigt af teksten), saa den
+        // afvises fortsat som en graense); kaeden gaas videre forbi den, saa en handling
+        // omkring den stadig er en daekning.
+        const daekker = (k) => {
+          const a = k.getBoundingClientRect(), b = el.getBoundingClientRect();
+          const bred = Math.min(a.right, b.right) - Math.max(a.left, b.left), hoej = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          return b.width * b.height > 0 && bred > 0 && hoej > 0 && bred * hoej >= 0.9 * b.width * b.height;
+        };
+        // R73 (Astra, maalt i model): labelreglen herunder saa kun et link, der var gemt - men et link i komponentens egen skygge,
+        // der selv daekker komponenten, blev sprunget over foer det blev gemt, og et felt, en select, en video eller et
+        // billedkort i labelen er slet ikke en HANDLING. Alle gav landed:true, mens boksen forblev tom. Det foerste interaktive
+        // indhold (HTML-standardens liste) under punktet huskes derfor for sig, uanset om det selv er en handling.
+        // R77: alle kandidater huskes, saa labelens check kan springe feltets egne over og finde en handling uden om dem.
+        const interaktive = [];
+        for (let n = hit; n && n !== el; n = n.assignedSlot || n.parentNode || n.host) {
+          const handling = !!n.matches && n.matches(HANDLING) && !!lukket(n);
+          // R72 (Opus, maalt i Chrome): en komponent, hvis hele flade er ET link i dens egen shadow root (sl-button med href),
+          // er det link; en rigtig mus og 1.30.1 kører det. Knap eller link: det, der daekker komponenten, er komponenten.
+          const egenStor = handling && iEgenSkygge(n) && daekker(n);
+          // R72 (Opus, maalt i Chrome): en checkbox-komponents egen <label> (ion-checkbox, sl-checkbox) fritog et vilkaarslink
+          // midt i labelteksten - linket aabnede, boksen blev ikke afkrydset, og svaret var ok:true. Interaktivt indhold mellem
+          // punktet og komponentens egen label er en daekning (HTML: et klik paa interaktivt indhold i en label aktiverer ikke
+          // feltet); labelens eget felt er det ikke.
+          // R75 (Astra, maalt i model): et custom-felt (form-associated) har sin egen boks i sin skygge; den er feltet selv, ikke en
+          // anden kontrol. Alt inde i labelens eget felt er derfor feltet.
+          const fremmed = n.tagName === 'LABEL' ? interaktive.find((k) => !feltetSelv(k, n.control)) : null;
+          if (egenStor && fremmed) { fundet = fremmed; break; }
+          // R74 (Astra, maalt i model): en label i labelen (ugyldig HTML, men muligt) blev ikke husket, saa en stor indre label
+          // med for= et andet felt aktiverede det med landed:true. En label er ogsaa interaktivt indhold; den huskes efter, at den
+          // selv er proevet som komponentens label.
+          // R75 (Astra, maalt i model): en stor rolle-span, onclick eller et link uden adresse inde i komponentens label blev fritaget
+          // som komponentens egen og ikke husket, saa en annullerende handling gav landed:true med boksen tom. Som i label-tilstanden
+          // (R74) huskes enhver handling ogsaa.
+          if (iLabelHandling(n) && lukket(n)) interaktive.push(n);
+          if (!handling || egenStor) continue;
+          // R75 (Astra, maalt i model): komponentens eget felt (et native input med rolle eller onclick) under 90 % blev afvist som
+          // «en anden kontrol», selv om komponentens egen label om det daekker komponenten. Er n feltet for en saadan label laengere
+          // oppe i kaeden, er det komponentens eget felt.
+          let egetFelt = false;
+          for (let o = n.assignedSlot || n.parentNode || n.host, i = 0; o && o !== el && i < 1000; o = o.assignedSlot || o.parentNode || o.host, i++) {
+            if (o.tagName === 'LABEL' && o.control && inde(n, o.control) && o.matches && o.matches(HANDLING) && iEgenSkygge(o) && daekker(o)) { egetFelt = true; break; }
+          }
+          if (egetFelt) continue;
+          if (etLink(n)) { link = link || n; continue; }
+          fundet = n; break;
+        }
+        indre = fundet || (klikbartMaal ? link : null);
+      }
+      // R75 (Astra, maalt i model): ogsaa et punkt i labelens eget custom-felts skygge (dets egen boks) er feltet, ikke en anden kontrol.
+      if (indre && indre !== el && inde(indre, el)) {   // (feltets egne knuder er sprunget over i soegningen)
+        // R73 (Opus, maalt i Chrome): noten naevnte BUTTON#button i en md-filled-buttons skygge, agenten klikkede `#button`, og det
+        // ramte den foerste Material-knap paa siden (Annuller) med landed:true. En kontrol i en shadow root faar et flag, saa noten
+        // ikke peger paa et id, som andre komponenter deler.
+        const iSkygge = !!indre.getRootNode && indre.getRootNode() !== document;
+        return { tag: indre.tagName, id: indre.id || null, text: (indre.textContent || '').trim().slice(0, 60), inside: true, ...(erLabel ? { label: true } : {}), ...(iSkygge ? { skygge: true } : {}) };
+      }
+      return null;
+    }
+    // R63 (Astra og Opus, maalt): undtagelserne fra R62 for en label uden for=, en pladsholder og tekst i et kort lod click og
+    // fill ramme et FREMMED felt (en nyhedsbrevs-popup) og indpakningen om et deaktiveret link med ok:true. De er fjernet: de
+    // tilfaelde afvises igen, sikkert og forklaret, og noten peger paa at klikke feltet eller kortet direkte.
+    const SEMANTISK = 'label,button,a,summary,[role="button"],[role="link"],[role="menuitem"],[role="menuitemcheckbox"],' +
+      '[role="menuitemradio"],[role="option"],[role="tab"],[role="checkbox"],[role="radio"],[role="switch"]';
+    // R72 (Opus, maalt i Chrome): closest() saa ikke en checkbox-komponents label i shadow root'en, naar maalet var den slottede
+    // labeltekst - aktiveringsklikket paa feltet blev stoppet som «daekning». Rammen findes i den flade kaede, som resten.
+    let ramme = null;
+    for (let n = el, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
+      if (n.matches && n.matches(SEMANTISK + ',[onclick]')) { ramme = n; break; }
+    }
+    // R65 (Opus, maalt i Chrome): en delegerende beholder (en liste med EN onclick) blev hver raekkes «egen ramme», saa
+    // naboraekken blev godtaget, og den forkerte raekke valgt med ok:true. En ramme, der kun er en onclick-beholder, godtager
+    // derfor kun det, der ligger MELLEM maalet og den (en forfader til maalet), ikke en anden raekke; en aegte knap, et link,
+    // en label eller en rolle godtager som foer alt inden i sig.
+    const semantisk = !!ramme && !!ramme.matches && ramme.matches(SEMANTISK);
+    // R68 (Astra, maalt i model): et felt med pointer-events:none i en div role=button fik knappens klik som «sin egen ramme»,
+    // og svaret var landed:true, mens feltet intet fik. Er maalet selv en kontrol, er en ydre ramme en anden kontrol; rammen
+    // gaelder kun tekst og ikoner inde i en knap, et link eller en label (feltets egen label haandteres for sig herunder).
+    const elKontrol = !!el.matches && el.matches(CLICKABLE + ',input,select,textarea') && el.tagName !== 'LABEL';
+    // R64 (Astra, maalt i model): et input oven paa teksten i et role=button-kort, og et link inde i en afkrydsnings label,
+    // blev godtaget som maalets egen ramme. Rammen og labelen taeller kun, naar det der ligger oeverst, ikke selv er en
+    // anden kontrol: klik paa et link i en label aktiverer ikke labelens kontrol (HTML-standarden).
+    // R66 (Astra, maalt i model): et felt, hvis label rummer en span med role=button, blev afvist, naar punktet ramte spanen -
+    // men en rigtig mus afkrydser feltet dér. Ligger punktet i feltets egen label, gaelder HTML-standardens regel, som for
+    // en label, der selv er maalet.
+    const iEgenLabel = Array.from(el.labels || []).some((l) => inde(hit, l)) || (!!ramme && ramme.tagName === 'LABEL');
+    // R73 (Astra, maalt i model): rammen blev fundet i den flade kaede, men kontrollen under punktet stadig med closest(), som
+    // ikke foelger en slot. Et ikon slottet ind i et andet link eller en anden knap i rammen blev derfor ikke set, og den
+    // handling koerte. Kontrollen under punktet findes nu i samme flade kaede.
+    // R74 (Opus, maalt i Chrome): i en label-ramme saa vaelgeren kun INTERAKTIV, saa en Slet med en rolle over teksten fik
+    // klikket. En handling er ogsaa her en anden kontrol (se label-tilstanden ovenfor).
+    let hitKontrol = null;
+    // R77: i label-tilstand springes labelens eget felt og dets egen boks over, saa en handling uden om dem ses.
+    // Er maalet selv et felt med en label om punktet, er det feltet, der springes over (R77, ogsaa naar rammen er dets boks).
+    const labelFelt = (!!ramme && ramme.tagName === 'LABEL' && ramme.control) ||
+      (Array.from(el.labels || []).some((l) => inde(hit, l)) ? el : null) || el.control || null;
+    for (let n = hit, i = 0; n && i < 1000; n = n.assignedSlot || n.parentNode || n.host, i++) {
+      if (iEgenLabel ? (iLabelHandling(n) && !feltetSelv(n, labelFelt)) : (!!n.matches && n.matches(CLICKABLE + ',input,select,textarea'))) { hitKontrol = lukket(n); break; }
+    }
+    // R77: en handling, der rummer labelens felt (og ikke er feltets egen boks - den er sprunget over), er en anden kontrol,
+    // ogsaa naar den er en forfader til maalet; en knap om en tekst, der ikke rummer feltet, er stadig tekstens ramme.
+    const omFeltet = !!hitKontrol && iEgenLabel && !!labelFelt && inde(labelFelt, hitKontrol) && hitKontrol.tagName !== 'LABEL';
+    // R78 (Opus, maalt i Chrome): med feltet som maal var en handling om feltet i labelen selve rammen (hitKontrol === ramme), og den
+    // blev godtaget, foer omFeltet blev proevet. En handling om labelens felt er en anden kontrol, ogsaa naar den er rammen.
+    const egenKontrol = !omFeltet && (!hitKontrol || hitKontrol === ramme || inde(el, hitKontrol) || hitKontrol === el.control ||
+      egenBoks(hitKontrol, el.control) ||
+      Array.from(el.labels || []).includes(hitKontrol));
+    const andenKontrol = !egenKontrol;
+    if (ramme && (!elKontrol || ramme.tagName === 'LABEL') && inde(hit, ramme) && !andenKontrol && (semantisk || inde(el, hit))) return null;
+    for (const l of Array.from(el.labels || [])) if (inde(hit, l) && !andenKontrol) return null;
+    // R61 (Astra): en svaevende label med pointer-events:none over sit eget felt - musen rammer feltet, og det er netop
+    // hvad et klik paa labelen goer. Labelens eget felt er ikke en daekning.
+    if (el.control && inde(hit, el.control)) return null;
+    return { tag: hit.tagName, id: hit.id || null, text: (hit.textContent || '').trim().slice(0, 60) };
+  }
+
+  const el = tekst != null ? findTekst() : queryDeep(document, sel);
+  if (kunElement) return el;
+  if (!el) return null;
+  // R64: med `gem` foelger ogsaa daekningsreglen for netop dette element med, saa vagten i siden (armerMaalVagt) kan afgoere
+  // i selve haendelsen, om den ramte maalet - ikke kun hvad der laa i punktet, da maalet blev fundet.
+  if (gem) { window.__bmcpMaal = el; window.__bmcpMaalTjek = (px, py, knude) => (knude ? daekketVed(el, knude) : daekketAf(el, px, py)); }
+  const txt = tekst != null ? { text: (el.textContent || '').trim().slice(0, 80) } : {};
+  const rFoer = el.getBoundingClientRect();
+  // R66 (Opus, maalt i Chrome): genmaalingen rullede maalet til midten igen, saa to maalinger var ens per konstruktion. En
+  // genmaaling (ingenRul) maaler nu, hvor maalet staar, uden at flytte det.
+  if (!ingenRul) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  const r = el.getBoundingClientRect();
+  const rullet = r.top !== rFoer.top || r.left !== rFoer.left;
+  // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
+  // og debuggerClick sendte et AEGTE museklik i sidens oeverste venstre hjoerne -
+  // paa hvad der nu laa der (logo, menu, link) - og svarede ok:true. Det er ikke en
+  // rapporteringsfejl men en handlingsfejl: vi klikker et andet sted end der blev bedt om.
+  if (r.width <= 0 || r.height <= 0) {
+    return { found: false, hidden: true, tag: el.tagName, ...txt, rect: { w: r.width, h: r.height } };
+  }
+  // MAALT i Chrome 9/10: et link brudt over to linjer har sit midtpunkt i hullet mellem linjerne, og klikket ramte afsnittet.
+  // Et menneske klikker paa teksten, saa et element med flere linjebokse klikkes midt i den foerste.
+  const bokse = el.getClientRects ? Array.from(el.getClientRects()).filter((b) => b.width > 0 && b.height > 0) : [];
+  // R64 (Astra, maalt i model): ligger den foerste linjeboks under noget andet, klikkes den foerste linjeboks, hvis midtpunkt
+  // rammer maalet selv. Ingen undtagelse: kun et punkt, der rammer linket eller noget inde i det, vaelges; ellers den foerste,
+  // og daekningen meldes som foer.
+  const boks = bokse.length > 1
+    ? (bokse.find((b) => inde(dybtPunkt(b.x + b.width / 2, b.y + b.height / 2), el)) || bokse[0]) : r;
+  const x = boks.x + boks.width / 2;
+  const y = boks.y + boks.height / 2;
+  const daekket = daekketAf(el, x, y);
+  return { x, y, tag: el.tagName, ...txt, found: true, ...(rullet ? { rullet: true } : {}), ...(daekket ? { covered: daekket } : {}) };
 }
 
+// Udtrykket der finder et element ud fra tekst (bruges af proever og som tekst til Runtime.evaluate).
+function buildTextFinderJS(textPattern, tagFilter) {
+  return `(${klikMaal})(null, ${JSON.stringify(textPattern)}, ${JSON.stringify(tagFilter || null)}, false, true)`;
+}
+
+// Svaret naar et andet element ligger over maalet: intet klikkes (R57).
+function daekketSvar(selector, el, method) {
+  const c = el.covered || {};
+  const hvad = (c.tag || 'an element') + (c.id ? '#' + c.id : '');
+  const svar = { ok: false, error: 'covered', ...(method ? { method } : {}), tag: el.tag, ...(el.text ? { text: el.text } : {}),
+    covered_by: c, landed: false };
+  // R61 (Opus): uden forklaring fik et maal uden for vinduet bare ok:false.
+  if (c.outside) {
+    svar.note = `The center of ${selector} is outside the visible part of the page, so the mouse cannot reach it there. Nothing was done.`;
+    return svar;
+  }
+  if (c.inside) {
+    svar.note = c.label
+      ? `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that, ` +
+        'and a click on a control inside a label does not, or may not, activate the label\'s own field (its own click handler can cancel it). Nothing was done. Click the one you ' +
+        'mean with its own selector (for a checkbox in the label, the checkbox itself).'
+      : `At the center of ${selector} lies ${hvad}, a different control inside it, so the mouse would click that instead ` +
+        'and run its action. Nothing was done. Click the one you mean with its own selector.';
+    if (c.skygge) svar.note += ' It sits in a web component\'s own shadow root, so a selector for it (such as its id) can match the same ' +
+      'part of another component on the page first; check what a selector matches before you click it.';
+    return svar;
+  }
+  // R63: ingen musebevaegelse foer en afvisning (den aabnede menuer, der blev staaende). Noten siger, hvad der ligger der nu,
+  // og hvad agenten selv kan goere.
+  svar.note = `At the center of ${selector} lies ${hvad} right now - an element in front of it, or one around it when the ` +
+    'target itself does not take clicks there (pointer-events, visibility, clipping, or a gap such as between the lines of a ' +
+    'wrapped link) - so the mouse would reach that instead. Nothing was done. If an earlier mouse action opened it (a ' +
+    'tooltip or a menu), move the mouse away with browser_hover on another element and try again. ' +
+    'If a dialog or overlay is in front, act inside it or close it first with its own close or accept button ' +
+    '(browser_dismiss_overlays knows some common banners). If that element is the one you mean - the field under a label or a ' +
+    'placeholder, the card around a text, or a styled box over a hidden input - click it directly with its own selector.';
+  return svar;
+}
+
+// R64: daekningen kom frem efter opslaget. Opdagede vagten det foer afsendelsen, blev intet sendt; ellers stoppede den
+// haendelserne i siden, foer sidens egne lyttere saa dem.
+function vagtSvar(selector, el, r) {
+  const svar = daekketSvar(selector, { ...el, covered: r.blokeret });
+  if (r.iFremmedRamme) {
+    // R65 (Opus, maalt i Chrome): en fremmed iframe kom frem over maalet; trykket gik ind i den, og vagten i toppen saa intet.
+    // R68 (Opus, maalt i Chrome): naaede trykket maalet, foer rammen kom, siger noten det - ikke «the press went into it».
+    const c = r.blokeret || {};
+    const hvad = (c.tag || 'a frame') + (c.id ? '#' + c.id : '');
+    svar.landed = null;
+    svar.maybe_landed = true;
+    // R69 (Opus, maalt i Chrome): hover sender ingen tryk - dens note taler om musens bevaegelse.
+    svar.note = r.hover
+      ? `When the mouse moved onto ${selector}, ${hvad} - a frame - lay in front of it, and the mouse movement went into the frame; ` +
+        'the page around it cannot see what happened there (a preview or menu may have opened). Check the state before trying again.'
+      : r.trykNaaet
+      ? `The press reached ${selector}, then ${hvad} - a frame - came in front of it, and the rest of the click went into the frame; ` +
+        'the page around it cannot see what happened there. Check the state before trying again.'
+      : `When the mouse pressed, ${hvad} - a frame - lay in front of ${selector}, ` +
+        'and the press went into it; the page around it cannot see what happened there. Check the state before trying again.';
+    return svar;
+  }
+  if (r.delvis) {
+    // R65 (Astra): de foerste haendelser naaede maalet, foer noget kom foran - handlingen kan vaere delvist sket.
+    const c = r.blokeret || {};
+    svar.landed = null;
+    svar.maybe_landed = true;
+    svar.note = r.hover
+      ? `The first mouse movement reached ${selector}, then ${(c.tag || 'an element') + (c.id ? '#' + c.id : '')} came in front of it, ` +
+        'and the rest of the mouse movement was stopped at the window. The page may have reacted to the movement (a menu or preview may ' +
+        'have opened): check the state before trying again.'
+      : `The first mouse events reached ${selector}, then ${(c.tag || 'an element') + (c.id ? '#' + c.id : '')} came in ` +
+      'front of it, and the rest of the presses and clicks were stopped at the window, so the action did not complete. The page may have reacted to ' +
+      'the press: check the state before trying again.';
+    return svar;
+  }
+  if (!r.foerSendt) {
+    // R65 (Opus' r65-vindue.html, maalt i Chrome): en side, der selv lytter paa window, handlede, selv om vagten stoppede
+    // haendelsen - saa svaret er uvist, ikke et nej.
+    svar.landed = null;
+    svar.maybe_landed = true;
+    svar.note = svar.note.replace('Nothing was done.', 'The mouse events were sent, but stopped at the window before they ' +
+      'reached any element of the page, so neither element got them - but a listener on the window itself may still have ' +
+      'acted on them: check the state before trying again.');
+  }
+  return svar;
+}
+
+// R70 (Astra): vagten kunne ikke armeres i siden (fx midt i en indlaesning) - intet er sendt.
+function ikkeArmeretSvar(selector, el) {
+  return { ok: false, error: 'The click could not be checked in the page, so it was not sent: ' + selector, tag: el.tag, landed: false,
+    note: 'The page could not be prepared to check that the mouse reaches the element (it may be loading or busy). Nothing was done; try again.' };
+}
+
+// R65 (Astra): maalet blev fundet, men siden fjernede det, foer musen kom - intet er sendt.
+function vaekSvar(selector, el) {
+  return { ok: false, error: 'Element not found: ' + selector, tag: el.tag, landed: false,
+    note: 'The element was found, but the page removed it before the mouse got there. Nothing was done.' };
+}
+
+// R61 (Opus, maalt i Chrome): et tooltip, som vaerktoejets EGET hover havde aabnet, laa over naboknappen, og klikket blev
+// afvist med «the mouse reaches that instead». En rigtig mus skjuler tooltippet, naar den flyttes. Er maalet daekket,
+// flyttes musen derfor hen til det, og daekningen maales igen - kun i den aktive fane: i en baggrundsfane leverer Chrome
+// ikke musen, og en bevaegelse der falder paa fristen, lander senere (maalt 19/9).
 function parseSelector(selector) {
   // "button:text(Get started)" → { tag: 'button', text: 'Get started' }
   const tagTextMatch = selector.match(/^(\w+):text\((.+)\)$/);
@@ -1742,80 +2644,46 @@ function parseSelector(selector) {
   return { type: 'css', selector };
 }
 
+// R64 (Opus' hop.html, maalt i Chrome 9/10): en header, der bliver position:fixed, naar siden rulles, flyttede alt 140 px op
+// EFTER at maalet var maalt. Koden foer klikkede saa raekken nedenunder med ok:true; maalvagten afviser det sikkert. Er maalet
+// blevet rullet frem, maales det derfor igen, til to maalinger med 100 ms imellem er ens (hoejst tre gange).
+// R65 (Opus, maalt i Chrome): en fast pause paa 150 ms er ikke «staar stille» - et indsat element 200 ms efter rulningen kom
+// efter maalingen. Nu ventes der paa to ens maalinger; flytter siden sig senere, afviser vagten.
 async function resolveElement(tabId, selectorStr) {
+  let r = await findElement(tabId, selectorStr);
+  if (!r || !r.rullet) return r;
+  for (let i = 0; i < 3; i++) {
+    await new Promise((ok) => setTimeout(ok, 100));
+    // R65 (Astra, maalt i model): her stod `|| foerst`. Var maalet forsvundet ved anden maaling, blev det gamle punkt
+    // klikket - paa den knap, der nu laa der, med ok:true. Findes maalet ikke igen, findes det ikke.
+    let igen = await findElement(tabId, selectorStr, true);
+    // R67 (Opus, maalt i Chrome): et billede over maalet, der blev indlaest efter rulningen, skubbede det ud af vinduet, og
+    // klikket blev afvist som «outside» - en rigtig bruger ruller bare til det. Er maalet uden for vinduet, rulles det frem igen.
+    if (igen && igen.covered && igen.covered.outside) igen = await findElement(tabId, selectorStr);
+    if (!igen) return null;
+    const stille = igen.found && r.found && Math.abs(igen.x - r.x) <= 1 && Math.abs(igen.y - r.y) <= 1;
+    r = igen;
+    if (stille) break;
+  }
+  return r;
+}
+
+async function findElement(tabId, selectorStr, ingenRul = false) {
   const parsed = parseSelector(selectorStr);
 
   if (parsed.type === 'css') {
-    // Standard CSS with shadow DOM traversal — try executeScript first, debugger fallback
-    const deepQueryFn = (sel) => {
-      function queryDeep(root, s) {
-        const el = root.querySelector(s);
-        if (el) return el;
-        for (const node of root.querySelectorAll('*')) {
-          if (node.shadowRoot) {
-            const found = queryDeep(node.shadowRoot, s);
-            if (found) return found;
-          }
-        }
-        return null;
-      }
-      const el = queryDeep(document, sel);
-      if (!el) return null;
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-      const r = el.getBoundingClientRect();
-      // MAALT 21/8: et skjult element har rect 0x0 ved (0,0), saa midtpunktet blev (0,0)
-      // og debuggerClick sendte et AEGTE museklik i sidens oeverste venstre hjoerne —
-      // paa hvad der nu laa der (logo, menu, link) — og svarede ok:true. Det er ikke en
-      // rapporteringsfejl men en handlingsfejl: vi klikker et andet sted end der blev bedt om.
-      if (r.width <= 0 || r.height <= 0) {
-        return { found: false, hidden: true, tag: el.tagName, rect: { w: r.width, h: r.height } };
-      }
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2, tag: el.tagName, found: true };
-    };
-
-    const scriptResult = await safeExecuteScript(tabId, deepQueryFn, [parsed.selector]);
-
+    // Standard CSS with shadow DOM traversal - try executeScript first, debugger fallback on CSP
+    const scriptResult = await safeExecuteScript(tabId, klikMaal, [parsed.selector, null, null, true, false, ingenRul]);
     if (scriptResult.cspBlocked) {
-      const sel = JSON.stringify(parsed.selector);
-      const result = await debuggerEval(tabId, `
-        (function() {
-          function queryDeep(root, s) {
-            const el = root.querySelector(s);
-            if (el) return el;
-            for (const node of root.querySelectorAll('*')) {
-              if (node.shadowRoot) { const f = queryDeep(node.shadowRoot, s); if (f) return f; }
-            }
-            return null;
-          }
-          const el = queryDeep(document, ${sel});
-          if (!el) return null;
-          el.scrollIntoView({ block: 'center', behavior: 'instant' });
-          const r = el.getBoundingClientRect();
-          if (r.width <= 0 || r.height <= 0) {
-            return { found: false, hidden: true, tag: el.tagName, rect: { w: r.width, h: r.height } };
-          }
-          return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, found: true };
-        })()
-      `);
+      const result = await debuggerEval(tabId, `(${klikMaal})(${JSON.stringify(parsed.selector)}, null, null, true, false, ${!!ingenRul})`);
       return result ? { ...result, method: 'debugger' } : null;
     }
     return scriptResult.result;
   }
 
-  // Text-based selector — always use debugger (more reliable, no CSP issues)
-  const finderJS = buildTextFinderJS(parsed.text, parsed.tag);
-  const result = await debuggerEval(tabId, `
-    (function() {
-      const el = ${finderJS};
-      if (!el) return null;
-      el.scrollIntoView({ block: 'center', behavior: 'instant' });
-      const r = el.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) {
-        return { found: false, hidden: true, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), rect: { w: r.width, h: r.height } };
-      }
-      return { x: r.x + r.width/2, y: r.y + r.height/2, tag: el.tagName, text: el.textContent?.trim().slice(0, 80), found: true };
-    })()
-  `);
+  // Text-based selector - always use debugger (more reliable, no CSP issues)
+  const result = await debuggerEval(tabId,
+    `(${klikMaal})(null, ${JSON.stringify(parsed.text)}, ${JSON.stringify(parsed.tag)}, true, false, ${!!ingenRul})`);
   return result ? { ...result, method: 'debugger' } : null;
 }
 
@@ -1834,7 +2702,7 @@ async function offscreenSvarer() {
   try {
     const svar = await Promise.race([
       chrome.runtime.sendMessage({ type: 'bmcp_ping' }),
-      new Promise((_, afvis) => setTimeout(() => afvis(new Error('intet svar')), 1500)),
+      new Promise((_, afvis) => setTimeout(() => afvis(new Error('no answer')), 1500)),
     ]);
     if (svar?.ok !== true) return false;
     // "Svarer den?" er ikke nok — den skal ogsaa vaere den udgave vi koerer nu.
@@ -2114,6 +2982,336 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return;
   }
+});
+
+// ── ask_user: the wait lives in the background, not in the page ────────────
+//
+// MEASURED 2026-10-08: the prompt used to be a Promise inside the page. "Please log in, then
+// click Done" is the common case - and submitting the login form navigates the page. The
+// prompt vanished with the old document, executeScript rejected, and the agent got an error
+// for the very step it had asked the user to do. Now the page only draws the prompt and
+// messages the answer back; the background owns the wait and redraws the prompt on every new
+// document in the tab until it is answered, skipped, timed out or the tab is closed.
+const pendingAsks = new Map(); // askId -> { tabId, spec, finish }
+let lastAskPosition = null;    // where the user last dragged the floating card
+
+// Runs in the page's ISOLATED world. It is serialized by executeScript, so it must not use
+// anything from the service worker's scope.
+function renderAskPrompt(spec, replay) {
+  // R51 (Astra): en tegning, der allerede var planlagt, kunne lande paa et dokument fra et andet origin. En prompt med
+  // felter tegnes kun paa det origin, den blev stillet paa.
+  if (spec.origin) {
+    const her = location.protocol === 'file:' ? 'file://' + location.host + location.pathname
+      : (/^https?:$/.test(location.protocol) ? new URL(location.href).origin : null);
+    if (her !== spec.origin) return;
+  }
+  // R48 (Astra og Opus, MAALT): siden kunne saette data-closed og saa fjerne prompten, saa den aldrig kom igen, og
+  // en falsk vaert med samme data-ask-id fik en gentegning til at springe over. Hvilke prompter vi har tegnet, og om
+  // de er lukket, staar nu i udvidelsens egen (ISOLATED) verden, som siden ikke kan se - ikke i DOM'en.
+  const reg = (globalThis.__a360Asks ||= new Map());
+  const prior = reg.get(spec.askId);
+  if (prior && prior.host.isConnected) return;
+  for (const [id, other] of reg) if (id !== spec.askId) other.close();
+  const send = (msg) => chrome.runtime.sendMessage({ ...msg, askId: spec.askId }).catch(() => {});
+  // Sidens egen frist (R48, Opus: efter et workerstop stod en foraeldreloes prompt tilbage efter fristen).
+  if (Number.isFinite(spec.deadline) && spec.deadline <= Date.now()) return;
+
+  // Notification sound — short pleasant chime. Not again when the prompt is redrawn after a
+  // navigation: the user is already looking at it.
+  if (!replay) {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+      // Second tone (higher, pleasant ding-dong)
+      setTimeout(() => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.frequency.value = 1320;
+        osc2.type = 'sine';
+        gain2.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc2.start(ctx.currentTime);
+        osc2.stop(ctx.currentTime + 0.3);
+      }, 150);
+    } catch {}
+  }
+
+  // The prompt lives in a CLOSED shadow root on a host element. The page's own
+  // scripts get no reference into it, so they cannot read the field values or press the
+  // buttons, and the page's CSS cannot restyle it. It is NOT keyboard isolation: keydown and
+  // input events still pass the page's capture listeners on window and document, also in a
+  // password field (measured in Chrome 154, R48), so the page can see what is typed. A secret
+  // that does not belong to this page must not be asked for here.
+  const host = document.createElement('div');
+  host.id = 'a360-overlay';
+  host.dataset.askId = spec.askId;
+  host.style.cssText = 'all:initial';
+  const root = host.attachShadow({ mode: 'closed' });
+  // Keystrokes in the prompt would still bubble out of the shadow root to the
+  // page's document listeners. Stop them at the host.
+  for (const type of ['keydown', 'keyup', 'keypress', 'input', 'beforeinput']) {
+    host.addEventListener(type, (e) => e.stopPropagation());
+  }
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  `;
+  root.appendChild(style);
+
+  const card = document.createElement('div');
+  const anim = replay ? '' : 'animation:a360-slide-up 0.4s ease-out;';
+  if (spec.hasFields) {
+    // Asking for values: a modal is right, the answer goes to the agent, not the page.
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;' + (replay ? '' : 'animation:a360-fade-in 0.3s ease-out');
+    card.style.cssText = 'background:#1e293b;border-radius:12px;padding:24px;max-width:420px;width:90%;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.5);' + anim;
+    overlay.appendChild(card);
+    root.appendChild(overlay);
+  } else {
+    // Asking the user to act ON the page (log in, solve a CAPTCHA): a full-screen modal
+    // covered the very form they had to fill in. A small card bottom-left instead - not
+    // bottom-right, where OS notifications appear - that can be dragged out of the way.
+    card.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:2147483647;box-sizing:border-box;width:320px;max-width:calc(100vw - 32px);background:#1e293b;border-radius:12px;padding:16px;color:#e2e8f0;box-shadow:0 12px 40px rgba(0,0,0,0.45);font-family:-apple-system,BlinkMacSystemFont,sans-serif;' + anim;
+    root.appendChild(card);
+  }
+
+  const h = document.createElement('div');
+  h.style.cssText = 'font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:4px';
+  const title = spec.title;
+  h.textContent = title || 'Agent360 - Action Required';
+  card.appendChild(h);
+  const badge = document.createElement('div');
+  badge.style.cssText = 'font-size:10px;color:#94a3b8;margin-bottom:12px';
+  badge.textContent = spec.sessionLabel;
+  card.appendChild(badge);
+  const msg = document.createElement('div');
+  msg.style.cssText = 'font-size:13px;color:#cbd5e1;margin-bottom:16px;line-height:1.5';
+  msg.textContent = spec.message;
+  card.appendChild(msg);
+  const inputs = {};
+  if (spec.hasFields) {
+    spec.fields.forEach(f => {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;margin-top:8px';
+      label.textContent = f.label || f.name;
+      card.appendChild(label);
+      const input = document.createElement('input');
+      input.type = f.type || 'text';
+      input.placeholder = f.label || f.name;
+      input.style.cssText = 'width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box';
+      input.addEventListener('focus', () => input.style.borderColor = '#3b82f6');
+      input.addEventListener('blur', () => input.style.borderColor = '#334155');
+      card.appendChild(input);
+      inputs[f.name] = input;
+    });
+  }
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:16px';
+  const doneBtn = document.createElement('button');
+  doneBtn.textContent = spec.hasFields ? 'Submit' : '✓ Done';
+  doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
+  let closed = false;
+  let observer = null;
+  const close = () => {
+    closed = true;
+    if (observer) observer.disconnect();
+    host.remove();
+    reg.delete(spec.askId);
+  };
+  reg.set(spec.askId, { host, close });
+  const answer = (action) => {
+    if (closed) return;
+    const values = {};
+    if (action === 'done') Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
+    close();
+    send({ type: 'ask_user_answer', action, values });
+  };
+  // Only a real click or keypress counts. A synthetic event dispatched by the
+  // page (isTrusted false) must never answer on the user's behalf.
+  doneBtn.addEventListener('click', (e) => { if (e.isTrusted) answer('done'); });
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = '✗ Skip';
+  skipBtn.style.cssText = 'flex:1;padding:10px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
+  skipBtn.addEventListener('click', (e) => { if (e.isTrusted) answer('skip'); });
+  btnRow.appendChild(doneBtn);
+  btnRow.appendChild(skipBtn);
+  card.appendChild(btnRow);
+  card.addEventListener('keydown', (e) => { if (e.isTrusted && e.key === 'Enter') answer('done'); });
+  (document.body || document.documentElement).appendChild(host);
+  // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> by script after
+  // DOMContentLoaded, and the prompt went with it - the form had posted to a JSON endpoint.
+  // Pages that re-render their whole body do the same. Put the prompt back until it is
+  // answered or the background erases it - but at most 20 times within 2 s. R48 (Opus, MAALT): a
+  // page that removes the prompt every time it comes back made the two observers chase each
+  // other, 633,333 removals in 2 s with the tab frozen. R51 (Opus, MAALT): a cap over the whole
+  // life of the prompt also stopped a page that only rewrites its body every 300 ms. After the
+  // 21st put-back within 2 s the prompt stays gone, and the background is told.
+  let reinserts = [];
+  observer = new MutationObserver(() => {
+    if (closed || host.isConnected) return;
+    const nu = Date.now();
+    reinserts = reinserts.filter((t) => nu - t < 2000);
+    reinserts.push(nu);
+    if (reinserts.length > 20) {
+      close();
+      send({ type: 'ask_user_lost' });
+      return;
+    }
+    (document.body || document.documentElement).appendChild(host);
+  });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  if (Number.isFinite(spec.deadline)) setTimeout(close, Math.max(0, spec.deadline - Date.now()));
+
+  if (!spec.hasFields) {
+    // The whole card drags, except its buttons and inputs. A grip bar on top, a grab
+    // cursor and a highlighted border say so. The position is kept in the viewport and sent
+    // to the background, so the card comes back where the user put it after a navigation.
+    const place = (x, y) => {
+      const maxX = Math.max(0, window.innerWidth - card.offsetWidth);
+      const maxY = Math.max(0, window.innerHeight - card.offsetHeight);
+      card.style.left = Math.min(Math.max(0, x), maxX) + 'px';
+      card.style.top = Math.min(Math.max(0, y), maxY) + 'px';
+      card.style.bottom = 'auto';
+    };
+    const grip = document.createElement('div');
+    grip.title = 'Drag to move';
+    grip.style.cssText = 'width:40px;height:5px;border-radius:3px;background:#475569;margin:-6px auto 10px';
+    card.prepend(grip);
+    card.style.border = '1px solid #334155';
+    card.style.cursor = 'grab';
+    card.style.userSelect = 'none';
+    for (const b of [doneBtn, skipBtn]) b.style.cursor = 'pointer';
+    const hot = (on) => {
+      card.style.borderColor = on ? '#3b82f6' : '#334155';
+      grip.style.background = on ? '#3b82f6' : '#475569';
+    };
+    card.addEventListener('pointerenter', () => hot(true));
+    card.addEventListener('pointerleave', () => { if (!drag) hot(false); });
+    if (spec.position) place(spec.position.left, spec.position.top);
+    let drag = null;
+    card.addEventListener('pointerdown', (e) => {
+      if (!e.isTrusted || e.button !== 0) return;
+      if (e.composedPath().some((el) => el instanceof HTMLButtonElement || el instanceof HTMLInputElement)) return;
+      const r = card.getBoundingClientRect();
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      card.setPointerCapture(e.pointerId);
+      card.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+    card.addEventListener('pointermove', (e) => { if (drag) place(e.clientX - drag.dx, e.clientY - drag.dy); });
+    const drop = () => {
+      if (!drag) return;
+      drag = null;
+      card.style.cursor = 'grab';
+      if (!card.matches(':hover')) hot(false);
+      const r = card.getBoundingClientRect();
+      send({ type: 'ask_user_moved', left: Math.round(r.left), top: Math.round(r.top) });
+    };
+    card.addEventListener('pointerup', drop);
+    card.addEventListener('pointercancel', drop);
+  }
+
+  const firstInput = Object.values(inputs)[0];
+  if (firstInput) setTimeout(() => firstInput.focus(), 100);
+}
+
+function drawAskPrompt(ask, replay) {
+  return chrome.scripting.executeScript({
+    target: { tabId: ask.tabId },
+    func: renderAskPrompt,
+    args: [{ ...ask.spec, position: lastAskPosition }, Boolean(replay)],
+    world: 'ISOLATED',
+  });
+}
+
+function eraseAskPrompt(tabId, askId) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    func: (id) => {
+      const reg = globalThis.__a360Asks;
+      const ask = reg && reg.get(id);
+      if (ask) ask.close();
+    },
+    args: [askId],
+    world: 'ISOLATED',
+  }).catch(() => {});
+}
+
+// A new document in the tab (the login form submitted, a redirect) wiped the prompt with
+// the old one. Draw it again - as soon as the DOM is there, and once more when the page has
+// loaded, in case a script replaced the document in between. A prompt already on the page
+// is left alone, so the second draw is a no-op when the first one held.
+// R48 (Opus, MAALT ende-til-ende): en prompt med felter blev tegnet igen paa et FREMMED origin efter en navigation;
+// dets capture-lyttere fik koden, og svaret derfra blev godtaget som svar til den foerste side. En prompt med felter
+// hoerer nu til sit origin: skifter fanen origin, slutter kaldet med action 'navigated'. En prompt uden felter
+// foelger med, for et SSO-login skifter netop origin.
+// Kun et http(s)-origin kan baere en binding. R51 (Astra, MAALT): en tom tab.url gav origin null, og saa slog
+// begge kontroller fra, fordi de begyndte med `if (ask.origin && ...)` - et svar fra et fremmed origin blev godtaget.
+// R51 (Opus, MAALT i Chrome): bindingen sammenligner ADRESSENS origin, ikke dokumentets. En side med CSP
+// `sandbox` (fx raw.githubusercontent.com) har et opakt origin, og Chrome saetter sender.origin til "null" - svaret
+// blev tabt, og agenten fik timeout, selvom brugeren havde svaret. En lokal fil faar sin egen binding, "file://".
+// R52 (Astra, MAALT): en faelles binding "file://" lod en prompt med felter foelge med fra én lokal fil til en hvilken
+// som helst anden. En lokal fil binder nu til sin egen adresse (vaert og sti, uden ? og #).
+function askOrigin(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol === 'file:') return 'file://' + u.host + u.pathname;
+    return /^https?:$/.test(u.protocol) ? u.origin : null;
+  } catch { return null; }
+}
+
+function redrawAskPrompts({ tabId, frameId, url }) {
+  if (frameId !== 0) return;
+  for (const ask of [...pendingAsks.values()]) {
+    if (ask.tabId !== tabId) continue;
+    if (ask.spec.hasFields && askOrigin(url) !== ask.origin) {
+      ask.finish({ acknowledged: false, action: 'navigated', values: {} });
+      continue;
+    }
+    drawAskPrompt(ask, true).catch(() => {});
+  }
+}
+chrome.webNavigation.onDOMContentLoaded.addListener(redrawAskPrompts);
+chrome.webNavigation.onCompleted.addListener(redrawAskPrompts);
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  for (const ask of [...pendingAsks.values()]) {
+    if (ask.tabId === tabId) ask.finish({ acknowledged: false, action: 'tab_closed', values: {} });
+  }
+});
+
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type !== 'ask_user_answer' && msg?.type !== 'ask_user_moved' && msg?.type !== 'ask_user_lost') return;
+  const ask = pendingAsks.get(msg.askId);
+  // Only the prompt we drew, in the tab we drew it in - and for a prompt with fields, on the
+  // origin it was asked on - can answer it.
+  if (!ask || sender.id !== chrome.runtime.id || sender.tab?.id !== ask.tabId) return;
+  if (ask.spec.hasFields && (!ask.origin || askOrigin(sender.url) !== ask.origin)) return;
+  if (msg.type === 'ask_user_lost') {
+    ask.finish({ acknowledged: false, action: 'removed_by_page', values: {} });
+    return;
+  }
+  if (msg.type === 'ask_user_moved') {
+    if (Number.isFinite(msg.left) && Number.isFinite(msg.top)) lastAskPosition = { left: msg.left, top: msg.top };
+    return;
+  }
+  const values = {};
+  if (msg.action === 'done') {
+    for (const f of ask.spec.fields) values[f.name] = String(msg.values?.[f.name] ?? '');
+  }
+  ask.finish({ acknowledged: true, action: msg.action === 'done' ? 'done' : 'skip', values });
 });
 
 // ── OAuth Popup Interception ─────────────────────────────────────────────────
@@ -3106,6 +4304,8 @@ async function dropFileOnTarget(tabId, selector, files) {
     }
     if (result) return result;
     if (caughtError) {
+      const filAdgang = await filAdgangsSvar(caughtError);
+      if (filAdgang) return { ok: false, method: 'hidden-input', ...filAdgang };
       return {
         ok: false,
         error: 'setFileInputFiles-failed',
@@ -3173,7 +4373,11 @@ async function interceptFileChooser(tabId, selector, fileList) {
             files: fileList,
             mode: eventParams.mode,
           }))
-          .catch(e => finish({ ok: false, error: 'setFileInputFiles-failed', detail: e?.message || String(e) }));
+          .catch(async e => {
+            const m = e?.message || String(e);
+            const filAdgang = await filAdgangsSvar(m);
+            finish(filAdgang ? { ok: false, method: 'native-chooser-intercepted', ...filAdgang } : { ok: false, error: 'setFileInputFiles-failed', detail: m });
+          });
       };
       chrome.debugger.onEvent.addListener(listener);
 
@@ -3200,11 +4404,21 @@ async function dispatch(port, method, params) {
   switch (method) {
     case 'navigate': {
       const session = getSession(port);
-      let tab = await getSessionTab(port);
+      // R73 (Astra, maalt i model): med new_tab og eget_vindue oprettede getSessionTab() stadig en tom about:blank, foer vinduet
+      // blev aabnet med adressen - to faner i sessionen. Et eget vindue bruger ikke sessionens fane, saa der hentes ingen.
+      const egetVindue = !!(params.new_tab && params.eget_vindue);
+      let tab = egetVindue ? null : await getSessionTab(port, false, params.url);
+      // R73 (Astra, maalt i model): en ny fane, hvis adresse var faerdigindlaest, mens fanen blev lagt i sessionens gruppe, naaede
+      // sin eneste 'complete' foer lytteren herunder fandtes, og navigate ventede de fulde 15 sekunder. For en fane uden en
+      // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
+      let nyFane = !!(tab && tab.oprettetMedUrl);
+      let tidligt = null;
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
-      if (params.new_tab) {
+      if (tab && tab.oprettetMedUrl) {
+        // Sessionen havde ingen fane: getSessionTab() oprettede den med adressen, saa der er intet at skifte.
+      } else if (params.new_tab) {
         // EKSPERIMENT 19/9 (vindues-hypotesen, 1.30). Hele vores fejlklasse kommer af at
         // Chrome ikke leverer Input.* til en fane der ikke er den viste i sit vindue - og
         // maalingen 19/9 viste at det er en klasse konkurrenterne IKKE har, fordi de koerer
@@ -3217,6 +4431,10 @@ async function dispatch(port, method, params) {
         // ⚠️ Tilvalg, ikke standard: om Chrome leverer input dér er PRAECIS det ubesvarede
         // spoergsmaal. Ingen adfaerd aendrer sig for nogen der ikke beder om det.
         if (params.eget_vindue) {
+          // ⚠️ RETTET 9/10 (R57, Opus maalte i Chrome): fanen blev flyttet tilbage i sessionens gruppe i det FOERSTE
+          // vindue (addTabToSession -> chrome.tabs.group), og navigate-svaret meldte alligevel det nye vindues id. 19/9-
+          // og 21/9-maalingerne laeste netop det svar, saa tilstand B var sandsynligvis en baggrundsfane. Om et ufokuseret
+          // vindue faar input i desktop-Chrome er derfor UMAALT. Den oprindelige konklusion herunder staar som historik.
           // ⛔ MAALT 19/9 og FALSIFICERET: et eget vindue UDEN fokus leverer nul taster,
           // praecis som en baggrundsfane. Det er ikke fanens synlighed i sit vindue der
           // afgoer det - det er om VINDUET har operativsystemets fokus.
@@ -3246,7 +4464,7 @@ async function dispatch(port, method, params) {
           const vindue = await chrome.windows.create(spec);
           tab = vindue.tabs && vindue.tabs[0];
           if (!tab) return { ok: false, error: 'eget_vindue: Chrome created a window with no tab' };
-          await addTabToSession(port, tab.id);
+          await addTabToSession(port, tab.id, { gruppe: false });
           getSession(port).activeTabId = tab.id;
           persistSessions();
 
@@ -3259,8 +4477,13 @@ async function dispatch(port, method, params) {
           // koersler vaek fra menneskets skaerm. En koersel kunne tro den laa et andet sted.
           //
           // Vinduet laeses nu tilbage fra Chrome, og svaret siger om det landede som bedt.
-          let faktisk = vindue;
-          try { faktisk = await chrome.windows.get(vindue.id); } catch (e) { /* beholder create-svaret */ }
+          // R57 (Opus): svaret meldte vinduets id fra create(), ogsaa da fanen var flyttet til et andet vindue, og 19/9- og
+          // 21/9-maalingerne laeste netop det felt. Fanens faktiske vindue laeses nu tilbage.
+          const fane = await chrome.tabs.get(tab.id).catch(() => null);
+          const iEgetVindue = fane?.windowId === vindue.id;
+          // R61 (Astra): fokus, position og note skal komme fra det vindue fanen ER i - ikke fra det nye, hvis den er flyttet.
+          let faktisk = iEgetVindue || fane?.windowId == null ? vindue : null;
+          try { faktisk = await chrome.windows.get(fane?.windowId ?? vindue.id); } catch (e) { /* beholder create-svaret */ }
           const bedtOm = { left: spec.left ?? null, top: spec.top ?? null };
           const landede = {
             left: Number.isFinite(faktisk?.left) ? faktisk.left : null,
@@ -3268,8 +4491,8 @@ async function dispatch(port, method, params) {
           };
           const somBedt = (bedtOm.left == null || bedtOm.left === landede.left)
             && (bedtOm.top == null || bedtOm.top === landede.top);
-          return { ok: true, url: params.url, tabId: tab.id, windowId: vindue.id,
-            eget_vindue: true,
+          return { ok: true, url: params.url, tabId: tab.id, windowId: fane?.windowId ?? null,
+            eget_vindue: iEgetVindue,
             // Chromes eget svar, ikke parameteret vi sendte.
             fokuseret: !!faktisk?.focused,
             placeret: bedtOm.left != null || bedtOm.top != null ? landede : null,
@@ -3277,9 +4500,12 @@ async function dispatch(port, method, params) {
             bedt_om: bedtOm.left != null || bedtOm.top != null ? bedtOm : null,
             // ⛔ Advar ogsaa naar KUN fokus blev naegtet. Foer stod der intet i det tilfaelde -
             // kun den ene boolean, modsagt af prosaen ved siden af. Fundet af et modstander-review.
-            advarsel: (params.fokuser && !faktisk?.focused)
-              ? 'Focus was refused by Chrome. Input tools will not reach this window - call '
-                + 'browser_switch_tab, or do not assume this run is off the user\'s screen.'
+            advarsel: !iEgetVindue
+              ? `The tab is not in its own window: Chrome put it in window ${fane?.windowId ?? 'unknown'}. `
+                + 'Treat it as an ordinary session tab.'
+              : (params.fokuser && !faktisk?.focused)
+              ? 'Focus was refused by Chrome. Input tools may not reach this window - read landed in their '
+                + 'answers, and do not assume this run is off the user\'s screen.'
               : ((bedtOm.left != null || bedtOm.top != null) && !somBedt
                 ? `The window was asked for ${JSON.stringify(bedtOm)} but Chrome put it at `
                   + `${JSON.stringify(landede)}. Do not assume the run is off the user's screen.`
@@ -3295,29 +4521,84 @@ async function dispatch(port, method, params) {
                 'has it, whatever the person types goes here - even on another display. Use it only on a ' +
                 'machine nobody is typing on.'
               : (params.fokuser
-                ? 'You asked for focus and Chrome did not give it. This window now behaves exactly like a '
-                  + 'background tab: no mouse or keyboard input is delivered to it. Measured 21 Sept - read '
-                  + '`fokuseret` rather than assuming.'
-                : 'Without focus this window behaves exactly like a background tab: Chrome delivers no mouse '
-                  + 'or keyboard input to it. Measured 19 Sept. Pass fokuser:true, and place it with vindue_x.'),
+                ? 'You asked for focus and Chrome did not give it. Whether Chrome delivers mouse and keyboard input '
+                  + 'to a window without focus is unmeasured in desktop Chrome; read landed in each input tool\'s answer.'
+                : 'The window has no focus. Whether Chrome delivers mouse and keyboard input to it is unmeasured in '
+                  + 'desktop Chrome; read landed in each input tool\'s answer. Pass fokuser:true, and place it with vindue_x.'),
           };
         }
-        tab = await chrome.tabs.create({ url: params.url, active: false });
-        await addTabToSession(port, tab.id);
+        // getSessionTab() above hands a fresh session its empty about:blank placeholder.
+        // new_tab means "keep the current page"; an empty placeholder is not a page anyone
+        // keeps. Measured 2026-10-04: navigate(new_tab) as a session's first call left that
+        // about:blank in the group for the session's whole life. Use it instead.
+        const isPlaceholder = tab && (tab.url === 'about:blank' ||
+          (tab.url === '' && tab.pendingUrl === 'about:blank'));
+        nyFane = true;
+        if (isPlaceholder) {
+          await chrome.tabs.update(tab.id, { url: params.url });
+        } else {
+          tab = await chrome.tabs.create({ url: params.url, active: false });
+          await addTabToSession(port, tab.id);
+        }
       } else {
-        await chrome.tabs.update(tab.id, { url: params.url });
+        // R75 (Astra, maalt i model): en eksisterende side, hvis navigation var faerdig, foer lytteren nedenfor fandtes (en side fra
+        // cachen, samme adresse, et fragment), ventede de fulde 15 sekunder. Haendelserne under opdateringen opfanges derfor. En
+        // 'complete' taeller kun, hvis navigationen er set begynde ('loading') eller adressen er skiftet - ellers kan den vaere den
+        // gamle sides.
+        // En side, der allerede var faerdig, da opdateringen blev sendt, kan ikke give en ny 'complete' af sig selv.
+        tidligt = { tabId: tab.id, loading: false, complete: false, url: '', gammelUrl: String(tab.url || ''), gammelKlar: tab.status === 'complete' };
+        const opfang = (tabId, info, t) => {
+          if (tabId !== tidligt.tabId) return;
+          if (info.status === 'loading') tidligt.loading = true;
+          if (info.status === 'complete') { tidligt.complete = true; tidligt.url = String((t && t.url) || info.url || ''); }
+        };
+        chrome.tabs.onUpdated.addListener(opfang);
+        try { await chrome.tabs.update(tab.id, { url: params.url }); } finally { chrome.tabs.onUpdated.removeListener(opfang); }
       }
 
-      // Wait for load
+      // Wait for load. A 'complete' can be the about:blank placeholder's OWN load
+      // (getSessionTab() created it a moment ago), not the URL we asked for. Measured
+      // 2026-10-05: taking it made a session's first navigate answer url "about:blank", and
+      // checking the url in the event's tab snapshot was not enough against real Chrome. So
+      // each 'complete' is confirmed against the tab as it is NOW.
+      const awaitingRealUrl = !String(params.url).startsWith('about:');
+      const loadedNow = async () => {
+        if (!awaitingRealUrl) return true;
+        const now = await chrome.tabs.get(tab.id).catch(() => null);
+        if (!now) return true;   // tab gone - nothing left to wait for
+        return now.status === 'complete' && !String(now.url || '').startsWith('about:blank');
+      };
       await new Promise(resolve => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          chrome.tabs.onUpdated.removeListener(listener);
+          clearTimeout(timer);
+          resolve();
+        };
+        // R76 (Astra, maalt i model): i en eksisterende fane taeller en senere 'complete' ogsaa kun, naar navigationen er set
+        // begynde, den gamle side allerede var faerdig, eller adressen er den oenskede - ellers kan den vaere den gamle sides.
+        let saaLoading = false;
+        const nyNok = async () => {
+          if (!tidligt || tidligt.loading || saaLoading || tidligt.gammelKlar) return true;
+          const nu = await chrome.tabs.get(tab.id).catch(() => null);
+          return !nu || String(nu.url || '') === String(params.url);
+        };
         const listener = (tabId, info) => {
-          if (tabId === tab.id && info.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(listener);
-            resolve();
-          }
+          if (tabId !== tab.id) return;
+          if (info.status === 'loading') saaLoading = true;
+          if (info.status !== 'complete') return;
+          Promise.all([loadedNow(), nyNok()]).then(([ok, ny]) => { if (ok && ny) finish(); });
         };
         chrome.tabs.onUpdated.addListener(listener);
-        setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 15000);
+        const timer = setTimeout(finish, 15000);
+        // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
+        // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
+        // R76 (Astra, maalt i model): en gammel sides 'complete' (fx en gammel omdirigering) med en anden adresse end den oprindelige
+        // blev taget som den nye side. En 'complete' taeller kun, naar navigationen er set begynde, eller adressen er den oenskede.
+        const alleredeFaerdig = !!tidligt && tidligt.complete && (tidligt.loading || tidligt.url === String(params.url) || tidligt.gammelKlar);
+        if (nyFane || alleredeFaerdig) loadedNow().then((ok) => { if (ok) finish(); });
       });
 
       // Set as active tab for this session
@@ -3395,19 +4676,40 @@ async function dispatch(port, method, params) {
       const stableNeeded = params.stable_rounds || 3;
       const waitMs = params.wait_ms || 350;
 
+      // #11 (1.30.2 skive 9): listen blev rullet med scrollTop/scrollBy. Det udloeser `scroll`, aldrig `wheel`, saa et feed
+      // der henter flere raekker paa hjulet (Threads, X) hentede intet, og reached_end blev sand ved bunden af det der
+      // allerede var tegnet. Nu rulles der med rigtige hjul gennem debuggeren, naar fanen er den aktive i sit vindue - ogsaa
+      // ved bunden, for det er dér et feed henter. I en baggrundsfane leverer Chrome ikke hjul (maalt 11/9), og et hjul der
+      // falder paa fristen, lander senere som en ekstra rulning (maalt 19/9) - saa dér rulles der med script, og svaret siger det.
+      const erAktiv = async () => { try { const f = await chrome.tabs.get(tab.id); return !!f && f.active === true; } catch { return false; } };
+      const BAGGRUND = 'The tab is not the active one in its window, so the list was scrolled without wheel events (Chrome does ' +
+        'not deliver them there). A feed that loads more rows on wheel may have stopped early, and reached_end then only means the ' +
+        'bottom of what loaded without them: call browser_switch_tab and run again.';
+      let hjul = await erAktiv();
+      let note = hjul ? null : BAGGRUND;
+      const metoder = new Set();
+
+      // R62 (Opus, maalt i Chrome): en skjult side (en baggrundsfane) faar hverken scroll-events, IntersectionObserver-kald
+      // eller animation frames. Script-rulningen flytter siden, men intet hentes eller tegnes - en virtualiseret liste gav 20
+      // af 300 raekker med reached_end:true. Var siden skjult i en runde, kan enden ikke vaere naaet.
+      const SKJULT = 'The page was hidden (a background tab or a minimized window), and a hidden page gets no scroll events, IntersectionObserver ' +
+        'callbacks or animation frames. Lists that load or render rows while you scroll stop at what is already there, so ' +
+        'reached_end is false. Call browser_switch_tab and run again.';
+      let varSkjult = false;
       const seen = new Set();
-      let stable = 0, rounds = 0, atEnd = false;
+      let stable = 0, rounds = 0, atEnd = false, bundRunder = 0, stilleHjul = 0;
+      let lastHeight = null, lastPos = null;
       const MAX_ROUNDS = 300; // backstop: a list that never stabilises must not spin forever
 
-      while (seen.size < maxRows && stable < stableNeeded && rounds < MAX_ROUNDS) {
+      while (seen.size < maxRows && rounds < MAX_ROUNDS) {
         rounds++;
-        const r = await safeExecuteScript(tab.id, (rs, cs, keep) => {
+        const r = await safeExecuteScript(tab.id, (rs, cs, keep, medScript) => {
           const rows = Array.from(document.querySelectorAll(rs));
           const texts = rows
             .map(el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())
             .filter(t => t.length > 0);
 
-          // Scroll the row's own scrollable ancestor — scrolling window does nothing when the
+          // Scroll the row's own scrollable ancestor - scrolling window does nothing when the
           // list lives in an inner overflow container (the normal case in webmail).
           let c = cs ? document.querySelector(cs) : null;
           if (!c && rows.length) {
@@ -3418,33 +4720,106 @@ async function dispatch(port, method, params) {
               p = p.parentElement;
             }
           }
+          // R62 (Astra, maalt i model): en kort liste i en fast boks, der endnu ikke flyder over, blev ikke fundet - saa gik
+          // hjulet til vinduets midte, uden for listen, og feedet hentede aldrig. Anden runde: den naermeste boks med
+          // overflow auto/scroll, der er lavere end vinduet.
+          if (!c && rows.length) {
+            let p = rows[0].parentElement;
+            while (p && p !== document.documentElement) {
+              const s = getComputedStyle(p);
+              if (/(auto|scroll)/.test(s.overflowY) && p.clientHeight > 0 && p.clientHeight < window.innerHeight) { c = p; break; }
+              p = p.parentElement;
+            }
+          }
           const step = keep || (c ? c.clientHeight : window.innerHeight) * 0.85;
-          const before = c ? c.scrollTop : window.scrollY;
-          if (c) c.scrollTop = before + step; else window.scrollBy(0, step);
-          const after = c ? c.scrollTop : window.scrollY;
-          const done = c
+          const pos = c ? c.scrollTop : window.scrollY;
+          const height = c ? c.scrollHeight : document.documentElement.scrollHeight;
+          const atBottom = c
             ? c.scrollTop + c.clientHeight >= c.scrollHeight - 4
             : window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 4;
-          return { texts, moved: after - before, done, container: !!c };
-        }, [rowSel, containerSel, params.scroll_step || 0]);
+          // Hjulet rammer det element der ligger under punktet, saa det sendes midt i det synlige stykke af listen.
+          let point = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+          if (c) {
+            const b = c.getBoundingClientRect();
+            const x0 = Math.max(0, b.left), x1 = Math.min(window.innerWidth, b.right);
+            const y0 = Math.max(0, b.top), y1 = Math.min(window.innerHeight, b.bottom);
+            if (x1 > x0 && y1 > y0) point = { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+          }
+          if (medScript) { if (c) c.scrollTop = pos + step; else window.scrollBy(0, step); }
+          return { texts, pos, height, atBottom, step, point, container: !!c, skjult: document.visibilityState === 'hidden' };
+        }, [rowSel, containerSel, params.scroll_step || 0, !hjul]);
 
         if (r.cspBlocked) throw new Error('extract_list: this page blocks script injection — use screenshots instead');
         const data = r.result || { texts: [] };
+        if (data.skjult) varSkjult = true;
+        metoder.add(hjul ? 'wheel' : 'script');
         const before = seen.size;
         for (const t of data.texts) seen.add(t);
-        // Two independent stop signals: nothing new appeared, or the container hit its end.
-        if (seen.size === before) stable++; else stable = 0;
-        if (data.done) { atEnd = true; stable++; }
+        const nye = seen.size - before;
+        const voksede = lastHeight !== null && data.height > lastHeight;
+        // Flyttede sidste rundes hjul overhovedet listen? To stille runder uden for bunden: hjulet rammer ikke listen
+        // (et overlay, et punkt uden for den), saa resten rulles med script.
+        if (hjul && lastPos !== null && data.pos === lastPos && !data.atBottom) {
+          if (++stilleHjul >= 2) {
+            hjul = false;
+            stable = 0;   // en ny rullemaade faar sine egne runder
+            note = 'Wheel events did not move the list, so it was scrolled with a script instead. A feed that loads more ' +
+              'rows on wheel may have stopped early.';
+          }
+        } else stilleHjul = 0;
+        // MAALT i Chrome 9/10: en liste der beholder alle sine raekker i DOM, stoppede midt i det allerede hentede, fordi
+        // rulningen gennem dem talte som «ingen nye raekker». En liste der flyttede sig, er paa vej mod bunden.
+        const flyttede = lastPos !== null && data.pos !== lastPos;
+        lastHeight = data.height;
+        lastPos = data.pos;
+        // En liste der vokser uden nye raekker endnu (en loader der foerst laegger pladsholdere ind), er stadig i gang.
+        if (nye === 0 && !voksede && !flyttede) stable++; else stable = 0;
+        // reached_end kun naar listen stod paa bunden, intet nyt kom og den ikke voksede - stable_rounds runder i traek.
+        // R62 (Astra): runden hvor listen NAAEDE bunden, talte som en runde den stod paa bunden - med stable_rounds 1 sluttede
+        // koerslen dér, foer et hjul ved bunden havde faaet feedet til at hente.
+        if (data.atBottom && nye === 0 && !voksede && !flyttede) bundRunder++; else bundRunder = 0;
+        if (bundRunder >= stableNeeded) { atEnd = true; break; }
+        // Ingen nye raekker i stable_rounds runder uden for bunden: stop, men uden at kalde det enden. Staar listen paa
+        // bunden, afgoer reglen ovenfor det, saa et feed der henter ved bunden faar sine runder.
+        if (stable >= stableNeeded && bundRunder === 0) break;
         if (!data.texts.length && rounds > 2) break; // selector matches nothing — fail fast
+
+        if (hjul && !(await erAktiv())) { hjul = false; stable = 0; note = BAGGRUND; }
+        if (hjul) {
+          try {
+            await debuggerAttach(tab.id);
+            const trin = Math.max(1, Math.ceil(Math.abs(data.step) / 300));
+            for (let i = 0; i < trin; i++) {
+              await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
+                type: 'mouseWheel', x: Math.round(data.point.x), y: Math.round(data.point.y), deltaX: 0, deltaY: data.step / trin,
+              });
+              if (i < trin - 1) await new Promise(res => setTimeout(res, 80));
+            }
+          } catch (e) {
+            hjul = false;
+            stable = 0;
+            note = `A wheel event failed (${e?.message || e}), so the rest of the list was scrolled with a script. A feed that ` +
+              'loads more rows on wheel may have stopped early.';
+          }
+        }
         await new Promise(res => setTimeout(res, waitMs));
       }
 
+      // R62 (Opus): max_rows skar ikke raekkerne til - den sidste runde kunne laegge flere til.
+      const raekker = [...seen].slice(0, maxRows);
+      // MAALT i Chrome 9/10: en selektor der intet fandt, gav count 0 med reached_end:true - den tomme side «stod paa bunden».
+      if (!seen.size) {
+        return { rows: [], count: 0, rounds, reached_end: false, truncated: false,
+          error: 'no-rows', note: `The selector ${rowSel} matched no rows with text on the page. Check the selector.` };
+      }
       return {
-        rows: [...seen],
-        count: seen.size,
+        rows: raekker,
+        count: raekker.length,
         rounds,
-        reached_end: atEnd,
+        reached_end: atEnd && !varSkjult,
         truncated: seen.size >= maxRows,
+        scroll_method: metoder.size > 1 ? 'wheel, then script' : [...metoder][0] || (hjul ? 'wheel' : 'script'),
+        ...(varSkjult ? { note: SKJULT } : note ? { note } : {}),
       };
     }
 
@@ -3542,9 +4917,14 @@ async function dispatch(port, method, params) {
         }
       };
 
+      const withViewport = async (shot) => {
+        const viewport = await screenshotViewport(tab.id, shot?.image, budgetSlut - Date.now());
+        return viewport ? { ...shot, viewport } : shot;
+      };
+
       // Attempt 1 — focus-neutral. Handles the vast majority (background-but-visible window).
       try {
-        return await tryCapture();
+        return await withViewport(await tryCapture());
       } catch (firstErr) {
         // 10/9 (Astra, R2) stod her: en frist betyder at kompositoren ikke svarede, saa en ny runde fordobler kun
         // ventetiden. MAALT 11/9 af Fable: paa en TILDAEKKET skaerm haenger begge optagelser netop indtil vinduet haeves -
@@ -3562,7 +4942,7 @@ async function dispatch(port, method, params) {
           await chrome.windows.update(tab.windowId, { focused: true, state: 'normal' });
           await chrome.tabs.update(tab.id, { active: true }).catch(() => {});
           await new Promise(r => setTimeout(r, 250)); // let it composite
-          return await tryCapture({ sidsteUdvej: true });   // resten af budgettet - der er ikke en runde mere efter denne
+          return await withViewport(await tryCapture({ sidsteUdvej: true }));   // resten af budgettet - der er ikke en runde mere efter denne
         } catch (secondErr) {
           throw new Error(
             `Screenshot failed after focus-neutral AND raised attempts. ` +
@@ -3743,7 +5123,7 @@ async function dispatch(port, method, params) {
       // the scripting-fallback. v1.21.2: previously only debuggerClick was wrapped,
       // leaving text-selector clicks unrecoverable when debugger was user-blocked.
       try {
-        const el = await resolveElement(tab.id, params.selector);
+        let el = await resolveElement(tab.id, params.selector);
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
         // Elementet findes, men har ingen udstraekning — at klikke ville ramme (0,0),
         // altsaa et HELT andet element end det der blev bedt om. Sig det i stedet.
@@ -3755,9 +5135,15 @@ async function dispatch(port, method, params) {
             tag: el.tag,
           };
         }
+        // R57: et andet element ligger over maalets midtpunkt (overlay, backdrop, en anden dialog) - musen ville ramme det.
+        if (el.covered) return daekketSvar(params.selector, el);
 
         // Primary path: debugger mouse events (isTrusted=true, works on React/Angular SPAs)
-        const clickResult = await debuggerClick(tab.id, el.x, el.y);
+        const clickResult = await debuggerClick(tab.id, el.x, el.y, true);
+        if (clickResult && clickResult.blokeret) return vagtSvar(params.selector, el, clickResult);
+        if (clickResult && clickResult.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: clickResult.fremmedRamme, iFremmedRamme: true, trykNaaet: clickResult.trykNaaet });
+        if (clickResult && clickResult.vaek) return vaekSvar(params.selector, el);
+        if (clickResult && clickResult.ikkeArmeret) return ikkeArmeretSvar(params.selector, el);
         return {
           method: el.method || 'debugger',
           tag: el.tag,
@@ -3812,6 +5198,11 @@ async function dispatch(port, method, params) {
           // fjernede rammen foer scriptet koerte, og reglen svarede ok:true med nul handlinger. En afvisning beviser ikke at
           // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
           const r = await scriptingClick(tab.id, params.selector);
+          if (r.reason === 'covered') return daekketSvar(params.selector, r, 'scripting-fallback');
+          if (r.reason === 'hidden') {
+            return { ok: false, method: 'scripting-fallback', hidden: true, tag: r.tag,
+              error: 'Element found but not visible (0x0) - a click would hit the page corner: ' + params.selector };
+          }
           if (r.ok && !inputFristFoerTryk) {
             if (klikLandede(r)) return { ok: true, method: 'scripting-fallback', tag: r.tag, landed: true };
             // MAALT 17/9 mod Stripe Dashboard: her stod et bart `ok: true` naar klikket ikke var bevist, med
@@ -3860,10 +5251,18 @@ async function dispatch(port, method, params) {
 
       // For text-based selectors, click the element first then type
       if (parsed.type === 'text') {
-        const el = await resolveElement(tab.id, params.selector);
+        let el = await resolveElement(tab.id, params.selector);
         if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
-        await debuggerClick(tab.id, el.x, el.y);
+        // R61 (Opus, maalt i Chrome): fill text= klikkede paa overlayet og svarede ok:true.
+        if (el.covered) return daekketSvar(params.selector, el);
+        const fillKlik = await debuggerClick(tab.id, el.x, el.y, true);
+        if (fillKlik && fillKlik.blokeret) return vagtSvar(params.selector, el, fillKlik);
+        if (fillKlik && fillKlik.fremmedRamme) return vagtSvar(params.selector, el, { blokeret: fillKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: fillKlik.trykNaaet });
+        if (fillKlik && fillKlik.vaek) return vaekSvar(params.selector, el);
+        if (fillKlik && fillKlik.ikkeArmeret) return ikkeArmeretSvar(params.selector, el);
         await new Promise(r => setTimeout(r, 100));
+        // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
+        if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
         await debuggerType(tab.id, params.value);
         // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
         // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
@@ -3877,13 +5276,15 @@ async function dispatch(port, method, params) {
             note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
                   'it landed. Read the field with browser_execute_script if it matters.' };
         }
-        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst };
+        if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
+        const spaerret = await fieldBlocked(tab.id, null);
+        if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
         if (efterTekst === '') {
-          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst,
+          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst, actual: efterTekst,
             note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'er i baggrunden, hvor Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
         }
-        return { ok: true, method: 'debugger', differs: true, value: efterTekst,
+        return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
                 'the value - or something was already there.' };
       }
@@ -3891,6 +5292,7 @@ async function dispatch(port, method, params) {
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
+        if (efterFyld?.blocked) return fieldBlockedAnswer(efterFyld.blocked, 'debugger');
         return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
                         efterFyld?.rammeHoerte);
       } catch (e) {
@@ -3913,7 +5315,7 @@ async function dispatch(port, method, params) {
         // side der afviste vaerdien (feltet stod stille) fra en side der formaterede den (feltet aendrede sig).
         const foer = await laesFelt();
         if (fristUdloeb && foer === params.value) {
-          return { ok: true, method: 'debugger', note: 'landede trods fristen' };
+          return { ok: true, method: 'debugger', note: 'landed despite the timeout' };
         }
         // Fallback to executeScript if debugger fails
         const scriptResult = await safeExecuteScript(tab.id, (sel, val) => {
@@ -3921,6 +5323,9 @@ async function dispatch(port, method, params) {
           if (!el) return { ok: false, error: 'Element not found: ' + sel };
           el.scrollIntoView({ block: 'center', behavior: 'instant' });
           el.focus();
+          // R50 (Astra, MAALT): reservevejen skrev med setteren i et readonly-felt og svarede ok:true.
+          if (el.disabled || (el.matches && el.matches(':disabled'))) return { ok: false, blocked: 'disabled' };
+          if (el.readOnly) return { ok: false, blocked: 'readonly' };
           // Use nativeInputValueSetter to bypass React controlled input
           const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
@@ -3930,6 +5335,7 @@ async function dispatch(port, method, params) {
           return { ok: true };
         }, [parsed.selector, params.value]);
         if (scriptResult.cspBlocked) return { ok: false, error: e.message, method: 'debugger' };
+        if (scriptResult.result?.blocked) return fieldBlockedAnswer(scriptResult.result.blocked, 'fallback');
         if (!scriptResult.result?.ok) return scriptResult.result;
         await new Promise((r) => setTimeout(r, 300));
         const endelig = await laesFelt();
@@ -3968,14 +5374,14 @@ async function dispatch(port, method, params) {
             return {
               ok: true, method: 'fallback', value: endelig, differs: true, unchanged: true, expected: v, actual: endelig,
               note: 'The field showed the same before and after the write. Either the value was already there in the page\'s own ' +
-                    'format, or the page did not accept it. Check `faktisk` before moving on.',
+                    'format, or the page did not accept it. Check `actual` before moving on.',
             };
           }
           return {
             ok: true, method: 'fallback', value: endelig, differs: true, expected: v, actual: endelig,
             ...(typeof foer === 'string' ? {} : { foer_ukendt: true }),
             note: 'The field changed, but shows different text than what was written - for example formatting ' +
-                  '("5,00 kr", "+45 12 34 56 78") or a truncation. Check `faktisk` if the exact value matters.',
+                  '("5,00 kr", "+45 12 34 56 78") or a truncation. Check `actual` if the exact value matters.',
           };
         }
         return {
@@ -4024,7 +5430,7 @@ async function dispatch(port, method, params) {
             const v = await readBackValue(tab.id, params.selector).catch(() => null);
             tried.push({ path: 'masked', error: e.message, value: v });
             if (valueLooksLikeIso(v, iso, fmt)) {
-              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landede trods fejl i afsendelsen' };
+              return { ok: true, method: 'masked', value: v, format: fmt.order.join(fmt.sep), note: 'landed despite an error while sending' };
             }
           }
         } else {
@@ -4192,7 +5598,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, key, error: tastFejl.message,
           ...(frist ? { maybe_landed: true,
-            note: 'Chrome kvitterede ikke inden fristen. Tasten kan alligevel have virket ' +
+            note: 'Chrome did not acknowledge in time. The key may still have worked ' +
                   '(for example a form that was submitted) - check the page before pressing again.' } : {}),
         };
       }
@@ -4372,20 +5778,32 @@ async function dispatch(port, method, params) {
     case 'double_click': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const el = await resolveElement(tab.id, params.selector);
+      let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
-      const dblBevis = await armerHaendelsesBevis(tab.id, 'dblclick').catch(() => null);
       const { x, y } = el;
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      await new Promise(r => setTimeout(r, 30));
-      // Proper dblclick: two press/release pairs with escalating clickCount.
-      await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
-      await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
-      await new Promise(r => setTimeout(r, 40));
-      await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
-      await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
-      const db = dblBevis ? await laesHaendelsesBevis(tab.id, dblBevis) : { landed: null };
+      // R64: vagten binder haendelserne til maalet; kan den ikke armeres, bruges fanebeviset som foer.
+      const vagtD = await armerMaalVagt(tab.id, x, y, VAGT_KLIK);
+      if (vagtD && vagtD.daekket) return vagtSvar(params.selector, el, { blokeret: vagtD.daekket, foerSendt: true });
+      if (vagtD && vagtD.vaek) return vaekSvar(params.selector, el);
+      if (!vagtD || !vagtD.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
+      let laestD = null;
+      try {
+        await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await new Promise(r => setTimeout(r, 30));
+        // Proper dblclick: two press/release pairs with escalating clickCount.
+        await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+        await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+        await new Promise(r => setTimeout(r, 40));
+        await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 2 });
+        await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 2 });
+        if (vagtD && vagtD.armet) laestD = await laesMaalVagt(tab.id, x, y);
+      } finally {
+        if (vagtD && vagtD.armet && !laestD) await laesMaalVagt(tab.id);   // R65: aldrig en efterladt vagt
+      }
+      const db = vagtBevis(laestD, ['dblclick']);
+      if (db.blokeret) return vagtSvar(params.selector, el, db);
       return haendelsesSvar(db, 'double-click-not-delivered',
         { double_clicked: db.landed === true, tag: el.tag, text: el.text });
     }
@@ -4393,16 +5811,28 @@ async function dispatch(port, method, params) {
     case 'right_click': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const el = await resolveElement(tab.id, params.selector);
+      let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      // R66 (Opus, maalt i Chrome): et hoejreklik klikker ikke en kontrol inde i maalet - contextmenu bobler gennem maalet.
+      if (el.covered && !el.covered.inside) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
-      const hoejreBevis = await armerHaendelsesBevis(tab.id, 'contextmenu').catch(() => null);
       const { x, y } = el;
-      await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      await new Promise(r => setTimeout(r, 30));
-      await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
-      await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
-      const hb2 = hoejreBevis ? await laesHaendelsesBevis(tab.id, hoejreBevis) : { landed: null };
+      const vagtR = await armerMaalVagt(tab.id, x, y, VAGT_KLIK, 10000, true);   // R64, som double_click
+      if (vagtR && vagtR.daekket) return vagtSvar(params.selector, el, { blokeret: vagtR.daekket, foerSendt: true });
+      if (vagtR && vagtR.vaek) return vaekSvar(params.selector, el);
+      if (!vagtR || !vagtR.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
+      let laestR = null;
+      try {
+        await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await new Promise(r => setTimeout(r, 30));
+        await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
+        await dispatchTaalmodigt(tab.id, { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
+        if (vagtR && vagtR.armet) laestR = await laesMaalVagt(tab.id, x, y);
+      } finally {
+        if (vagtR && vagtR.armet && !laestR) await laesMaalVagt(tab.id);   // R65: aldrig en efterladt vagt
+      }
+      const hb2 = vagtBevis(laestR, ['contextmenu']);
+      if (hb2.blokeret) return vagtSvar(params.selector, el, hb2);
       const svarH = haendelsesSvar(hb2, 'right-click-not-delivered',
         { right_clicked: hb2.landed === true, tag: el.tag, text: el.text });
       // Den gamle note gaelder stadig naar haendelsen LANDEDE: Chromes egen menu aabner ikke via CDP.
@@ -4457,25 +5887,37 @@ async function dispatch(port, method, params) {
     case 'hover': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const el = await resolveElement(tab.id, params.selector);
+      let el = await resolveElement(tab.id, params.selector);
       if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      // R66 (Opus, maalt i Chrome): hover klikker ikke en kontrol inde i maalet (en menu-li med sit link, et kort med et
+      // billedlink) - mouseover og :hover gaelder ogsaa maalet. Kun noget foran maalet er en daekning.
+      if (el.covered && !el.covered.inside) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       // ANTAGET 13/9 af Fable, MAALT 18/9 i flow-spaerren: Blink fyrer `mouseover` KUN naar
       // elementet under markoeren SKIFTER. Hover to gange paa det samme, eller klik og hover
       // saa det samme, og anden gang giver kun `mousemove`. Beviset lyttede kun paa mouseover,
       // saa en helt almindelig raekkefoelge svarede "ikke leveret" - et falsk NEJ, som faar
       // agenten til at skifte fane og proeve igen paa noget der virkede.
-      const hoverBevis = await armerHaendelsesBevis(tab.id, ['mouseover', 'mousemove']).catch(() => null);
+      // R64: vagten binder haendelserne til maalet; kan den ikke armeres, bruges fanebeviset som foer.
+      const vagtH = await armerMaalVagt(tab.id, el.x, el.y, VAGT_HOVER, (params.duration || 500) + 10000, true);
+      if (vagtH && vagtH.daekket) { await debuggerDetach(tab.id); return vagtSvar(params.selector, el, { blokeret: vagtH.daekket, foerSendt: true, hover: true }); }
+      if (vagtH && vagtH.vaek) { await debuggerDetach(tab.id); return vaekSvar(params.selector, el); }
+      const hoverBevis = vagtH && vagtH.armet ? null : await armerHaendelsesBevis(tab.id, ['mouseover', 'mousemove']).catch(() => null);
+      let vagtLaest = null;
       try {
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', {
           type: 'mouseMoved', x: el.x, y: el.y,
         });
         // Hold hover for duration (default 500ms) so menus/tooltips appear
         await new Promise(r => setTimeout(r, params.duration || 500));
+        if (vagtH && vagtH.armet) vagtLaest = await laesMaalVagt(tab.id, el.x, el.y);
       } finally {
+        if (vagtH && vagtH.armet && !vagtLaest) await laesMaalVagt(tab.id);   // R65: aldrig en efterladt vagt
         await debuggerDetach(tab.id);
       }
-      const hb = hoverBevis ? await laesHaendelsesBevis(tab.id, hoverBevis) : { landed: null };
+      const hb = vagtH && vagtH.armet ? vagtBevis(vagtLaest, ['mouseover', 'mousemove'])
+        : hoverBevis ? await laesHaendelsesBevis(tab.id, hoverBevis) : { landed: null };
+      if (hb.blokeret) return vagtSvar(params.selector, el, { ...hb, hover: true });
       return haendelsesSvar(hb, 'hover-not-delivered', { tag: el.tag, text: el.text });
     }
 
@@ -4528,13 +5970,13 @@ async function dispatch(port, method, params) {
         const valg = await debuggerEval(tab.id, `
           (function() {
             const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ found: false, error: 'select ikke fundet' });
+            if (!sel) return JSON.stringify({ found: false, error: 'select not found' });
             const oensket = ${JSON.stringify(oensket)};
             const opt = Array.from(sel.options).find(o => o.value === oensket)
                      || Array.from(sel.options).find(o => o.text.trim() === oensket)
                      || Array.from(sel.options).find(o => o.text.includes(oensket));
             if (!opt) {
-              return JSON.stringify({ found: false, error: 'Ingen mulighed matchede: ' + oensket,
+              return JSON.stringify({ found: false, error: 'No option matched: ' + oensket,
                 available: Array.from(sel.options).map(o => o.text.trim()).slice(0, 25) });
             }
             const foer = ${aftryk};
@@ -4562,15 +6004,26 @@ async function dispatch(port, method, params) {
 
         // Feltet holder ikke vaerdien. Giv rammen tid til at gen-rendere, og se saa efter
         // om NOGET andet aendrede sig. Gjorde det det, blev valget taget imod.
-        await new Promise((res) => setTimeout(res, 150));
-        const efter = await debuggerEval(tab.id, `
-          (function() {
-            const sel = document.querySelector(${JSON.stringify(params.selector)});
-            if (!sel) return JSON.stringify({ value: null, aftryk: null });
-            return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
-          })()
-        `);
-        let e; try { e = JSON.parse(efter); } catch { e = null; }
+        // MAALT 28/9 paa Railway (backlog 1.30.2 #11): ét kig efter 150 ms kaldte et valg «rullet tilbage»,
+        // som siden gemte asynkront - en frisk indlaesning viste det gemt. Derfor kigges der igen i op til
+        // ~2,2 s og stoppes ved foerste tegn (vaerdien staar der, eller siden aendrede sig). Et felt der
+        // VIRKELIG afviser valget, koster de 2,2 s og er stadig «rullet tilbage».
+        const laesEfter = async () => {
+          const efter = await debuggerEval(tab.id, `
+            (function() {
+              const sel = document.querySelector(${JSON.stringify(params.selector)});
+              if (!sel) return JSON.stringify({ value: null, aftryk: null });
+              return JSON.stringify({ value: sel.value, aftryk: ${aftryk} });
+            })()
+          `);
+          try { return JSON.parse(efter); } catch { return null; }
+        };
+        let e = null;
+        for (const vent of [150, 250, 400, 600, 800]) {
+          await new Promise((res) => setTimeout(res, vent));
+          e = await laesEfter();
+          if (!e || !e.aftryk || !r.foer || e.value === r.wanted || e.aftryk !== r.foer) break;
+        }
 
         if (e && e.value === r.wanted) {
           return { ok: true, type: 'native_select', selected: r.text, value: e.value };
@@ -4587,7 +6040,7 @@ async function dispatch(port, method, params) {
           return {
             ok: true, type: 'native_select', landed: null, selected: r.text, value: e.value, ...unknown,
             note: `The field reset itself to "${e.value}", and the page changed - but the change ` +
-                  'beviser ikke at det var valget. ' + unknown.note,
+                  'does not prove it was the selection. ' + unknown.note,
           };
         }
         // Kunne aftrykket slet ikke laeses, er det ogsaa unknown. Her stod et haardt "rullet tilbage".
@@ -4603,17 +6056,69 @@ async function dispatch(port, method, params) {
 
       // Custom dropdown (Angular Material, React Select, etc.)
       // Step 1: Click the trigger to open
-      const trigger = await resolveElement(tab.id, params.selector);
+      let trigger = await resolveElement(tab.id, params.selector);
       if (!trigger) return { ok: false, error: 'Dropdown trigger not found: ' + params.selector };
-      await debuggerClick(tab.id, trigger.x, trigger.y);
+      // R61 (Opus, maalt i Chrome): select_option klikkede paa overlayet og svarede selected.
+      if (trigger.covered) return daekketSvar(params.selector, trigger);
+      const udloeserKlik = await debuggerClick(tab.id, trigger.x, trigger.y, true);
+      // R66 (Opus, maalt i Chrome): en dropdown, der aabner paa mousedown med en usynlig backdrop (MUI), fik slippet paa
+      // backdroppen, og svaret var covered, mens listen stod aaben. Naaede trykket udloeseren, fortsaettes til valget.
+      // R67 (Astra, maalt i model): `delvis` betoed kun, at trykket passerede window - en lytter kunne have stoppet det foer
+      // udloeseren. Videre gaar det nu kun, naar trykket NAAEDE udloeseren.
+      const udloeserDelvis = !!(udloeserKlik && udloeserKlik.blokeret && udloeserKlik.delvis && udloeserKlik.trykNaaet);
+      if (udloeserKlik && udloeserKlik.blokeret && !udloeserDelvis) return vagtSvar(params.selector, trigger, udloeserKlik);
+      if (udloeserKlik && udloeserKlik.fremmedRamme) return vagtSvar(params.selector, trigger, { blokeret: udloeserKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: udloeserKlik.trykNaaet });
+      if (udloeserKlik && udloeserKlik.vaek) return vaekSvar(params.selector, trigger);
+      if (udloeserKlik && udloeserKlik.ikkeArmeret) return ikkeArmeretSvar(params.selector, trigger);
+      // R68 (Opus, maalt i Chrome): et udloeserklik, der aabnede en dialog, gik videre til at lede efter valget paa den
+      // frosne side og endte efter 19 s i en bar CDP-fejl - efter at handlingen var sket. Nu stoppes der straks.
+      if (udloeserKlik && udloeserKlik.dialog) {
+        return { ok: false, error: 'A dialog opened when the dropdown was clicked, so no option was looked for.', trigger_clicked: true,
+          landed: null, maybe_landed: true, note: (uvisVurdering(udloeserKlik) || {}).note };
+      }
+      // R68 (Astra, maalt i model): udloeserens tryk blev stoppet (af en lytter foer eller efter vagten), svaret var uvist og
+      // ikke blokeret - og vaerktoejet klikkede alligevel et valg. Naaede trykket ikke udloeseren, aabnes intet valg.
+      // R69 (Astra, maalt i model): et svar UDEN trykNaaet (vagten var vaek, efterkontrollen fejlede eller gav intet) gik
+      // stadig videre. Videre kraever nu positivt bevis: trykket naaede udloeseren, eller klikket landede.
+      if (udloeserKlik && !udloeserKlik.trykNaaet && !klikLandede(udloeserKlik)) {
+        return { ok: false, error: udloeserKlik.trykNaaet === false ? 'The click on the dropdown did not reach it, so no option was clicked.'
+          : 'Whether the click on the dropdown reached it cannot be told, so no option was clicked.', landed: udloeserKlik.landed === false ? false : null,
+          ...(uvisVurdering(udloeserKlik) || {}) };
+      }
 
       // Step 2: Wait for options to appear
       await new Promise(r => setTimeout(r, params.wait || 300));
 
       // Step 3: Find and click the option by text
       const option = await resolveElement(tab.id, `text=${oensket}`);
-      if (!option) return { ok: false, error: 'Option not found: ' + oensket };
-      const valgKlik = await debuggerClick(tab.id, option.x, option.y);
+      if (!option) {
+        return { ok: false, error: 'Option not found: ' + oensket,
+          ...(udloeserDelvis ? { trigger_clicked: true, maybe_landed: true,
+            note: 'The trigger was pressed, but the page moved the rest of the click elsewhere, and the option was not found; the list may still be open.' }
+            // R67 (Opus, maalt i Chrome): et uvist udloeserklik (fx et slip, der udfoerte noget andet) forsvandt i et bart nej.
+            : udloeserKlik && udloeserKlik.landed === null ? { trigger_clicked: true, landed: null, maybe_landed: true,
+              note: 'The click on the dropdown may have done something else: ' + ((uvisVurdering(udloeserKlik) || {}).note || 'it was not confirmed.') }
+            // R68 (Astra): ogsaa et udloeserklik, der landede, siges - listen kan staa aaben.
+            : { trigger_clicked: true, note: 'The dropdown was clicked, but the option was not found; the list may still be open.' }) };
+      }
+      // R64 (Astra, maalt i model): kun udloeseren blev tjekket for daekning - et valg under en fremmed knap blev klikket, og
+      // svaret sagde selected. Valget tjekkes nu ogsaa; udloeseren ER klikket, saa svaret siger at listen kan staa aaben.
+      if (option.covered) {
+        const svar = daekketSvar(`text=${oensket}`, option);
+        svar.note = 'The dropdown was opened, but its option is covered: ' + svar.note + ' The list may still be open.';
+        return { ...svar, trigger_clicked: true };
+      }
+      const valgKlik = await debuggerClick(tab.id, option.x, option.y, true);
+      if (valgKlik && valgKlik.vaek) return { ...vaekSvar(`text=${oensket}`, option), trigger_clicked: true };
+      // R71 (Astra): udloeseren ER klikket - noten maa ikke sige, at intet blev gjort.
+      if (valgKlik && valgKlik.ikkeArmeret) return { ...ikkeArmeretSvar(`text=${oensket}`, option), trigger_clicked: true,
+        note: 'The dropdown was clicked, but the click on the option could not be checked in the page, so it was not sent; the list may still be open. Check the state before trying again.' };
+      if (valgKlik && valgKlik.fremmedRamme) return { ...vagtSvar(`text=${oensket}`, option, { blokeret: valgKlik.fremmedRamme, iFremmedRamme: true, trykNaaet: valgKlik.trykNaaet }), trigger_clicked: true };
+      if (valgKlik && valgKlik.blokeret) {
+        const svar = vagtSvar(`text=${oensket}`, option, valgKlik);
+        svar.note = 'The dropdown was opened, but its option is covered: ' + svar.note + ' The list may still be open.';
+        return { ...svar, trigger_clicked: true };
+      }
 
       // MAALT 22/8 ved review: aerlighedsfixet blev kun anvendt paa native-grenen
       // ovenfor. Her stod stadig `return { ok: true }` ubetinget, selv om resultatet
@@ -4666,7 +6171,7 @@ async function dispatch(port, method, params) {
 
       const timer = setTimeout(() => {
         afvaebnDialog(tab.id);
-        opfyld({ ok: false, error: `Ingen dialog dukkede op inden for ${levetid} ms` });
+        opfyld({ ok: false, error: `No dialog appeared within ${levetid} ms` });
       }, levetid);
 
       armeredeDialoger.set(tab.id, { listener, timer, action, opfyld });
@@ -4756,9 +6261,13 @@ async function dispatch(port, method, params) {
 
     case 'fetch': {
       // HTTP requests from background — NOT subject to CORS
+      // R55 (Opus, MAALT i Chrome): uden credentials:'omit' bar kaldet brugerens cookies til enhver https-adresse og
+      // gemte svarets cookies i profilen - uden fane og uden for sessionens sider. Det er netop hvad get_cookies og
+      // set_cookies afviser. Et API-kald bruger et token i headers; brugerens cookies foelger ikke med og gemmes ikke.
       const options = {
         method: params.method || 'GET',
         headers: params.headers || {},
+        credentials: 'omit',
       };
       if (params.body) options.body = typeof params.body === 'string' ? params.body : JSON.stringify(params.body);
       try {
@@ -4796,7 +6305,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false,
           error: 'domain-missing',
-          hint: 'Angiv `domain`. Uden det ville kaldet returnere HVER cookie i profilen — ' +
+          hint: 'Give `domain`. Without it the call would return EVERY cookie in the profile — ' +
                 'including from pages that have nothing to do with the task.',
         };
       }
@@ -4834,7 +6343,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was read - otherwise ' +
-                'den almindelige profils cookies blive leveret i stedet.',
+                'the regular profile\'s cookies would be returned instead.',
         };
       }
       const vaertsnavne = sider.map((x) => x.vaert);
@@ -4927,7 +6436,7 @@ async function dispatch(port, method, params) {
         return {
           ok: false, error: 'cookie-store-unknown',
           hint: 'The tab is an incognito window, and Chrome did not report its cookie store. Nothing was written - otherwise ' +
-                'cookien lande i den almindelige profil i stedet.',
+                'the cookie would land in the regular profile instead.',
         };
       }
       // Sidens vaert faar cookies fra sig selv og fra sine overdomaener - ikke fra et underdomaene den ikke har aabnet.
@@ -5036,18 +6545,43 @@ async function dispatch(port, method, params) {
     }
 
     case 'ask_user': {
-      const tab = await getSessionTab(port, true);
-      const timeout = params.timeout || 120000;
-      const fields = params.fields || [];
+      // R57 (Opus, maalt i Chrome): paa Chromes fejlside og paa sider udvidelsen ikke maa tegne paa (about:blank,
+      // chrome-extension://) kastede kaldet Chromes raa fejltekst - EFTER at fanen var aktiveret og en notifikation
+      // oprettet, som aldrig blev ryddet. Derfor tjekkes fanen nu foer den aktiveres, og intet vises, naar spoergsmaalet
+      // ikke kan tegnes.
+      const tab0 = await getSessionTab(port);
+      const adresse = tab0.url || tab0.pendingUrl || '';
+      const vist = adresse.split(/[?#]/)[0] || 'an empty tab';
+      const timeout = Number(params.timeout) || 120000;
+      const fields = Array.isArray(params.fields) ? params.fields : [];
       const hasFields = fields.length > 0;
       const session = getSession(port);
+      // En prompt med felter hoerer til det site, fanen staar paa. Uden et http(s)-origin kan svaret ikke bindes til
+      // noget, saa den stilles ikke (R51).
+      const origin = hasFields ? askOrigin(adresse) : null;
+      if (hasFields && !origin) {
+        throw new Error('browser_ask_user with fields needs the tab to be on a web page (http or https) or a local file, ' +
+          'so the answer can be tied to that address. Navigate to the page first, or ask without fields.');
+      }
+      if (!/^(https?|file):/i.test(adresse)) {
+        throw new Error(`browser_ask_user draws the question in the tab, and the tab shows ${vist}, where the extension ` +
+          'cannot draw. Navigate to a web page or a local file first. Nothing was shown to the user.');
+      }
+      // R61 (Astra): «Nothing was shown» er kun sandt, naar fejlsiden opdages FOER fanen aktiveres.
+      const fejlside = (vist2 = 'Nothing was shown to the user.') => new Error(`The tab shows Chrome's error page: ${vist} did ` +
+        `not load, so the question cannot be drawn there. Navigate to a page that loads, then ask again. ${vist2}`);
+      const rammer = await chrome.webNavigation.getAllFrames({ tabId: tab0.id }).catch(() => null);
+      if (Array.isArray(rammer) && rammer.some((f) => f.frameId === 0 && f.errorOccurred)) throw fejlside();
+      const tab = await getSessionTab(port, true);
 
       // Activate tab + alert badge
       await chrome.tabs.update(tab.id, { active: true });
       chrome.action.setBadgeText({ text: '!' });
       chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
       const notifId = 'mcp-ask-' + Date.now();
-      chrome.notifications.create(notifId, {
+      // R57 (Opus): clear() kunne koere, foer create() var faerdig, og saa blev notifikationen staaende for et spoergsmaal,
+      // agenten allerede havde opgivet. Rydningen venter nu paa oprettelsen.
+      const notifKlar = Promise.resolve(chrome.notifications.create(notifId, {
         type: 'basic',
         iconUrl: 'icons/icon-128.png',
         title: `${session.label} - Action Required`,
@@ -5055,142 +6589,71 @@ async function dispatch(port, method, params) {
         requireInteraction: true,
         silent: false,
         priority: 2,
+      })).catch(() => {});
+
+      // A newer question in the same tab replaces the old one. Before, the old prompt was
+      // removed from the page but its caller was left waiting until the server gave up.
+      for (const ask of [...pendingAsks.values()]) {
+        if (ask.tabId === tab.id) ask.finish({ acknowledged: false, action: 'replaced', values: {} });
+      }
+
+      // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
+      // med standarden "Agent360 - Action Required", men udelades den, er vaerdien
+      // undefined — og chrome.scripting.executeScript afviser hele kaldet med
+      // "Error at property 'args': Error at index 1: Value is unserializable".
+      // Altsaa styrtede human-in-the-loop-vaerktoejet hver gang en agent fulgte sit
+      // eget skema. Det blev aldrig fanget, fordi ask_user stod som "springes over"
+      // i flowtesten — den eneste der kunne have set det.
+      //
+      // Alle vaerdier tvinges nu til serialiserbare vaerdier, og standarden
+      // anvendes der hvor den er lovet.
+      const askId = 'ask-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+      const spec = {
+        askId,
+        message: String(params.message ?? ''),
+        title: String(params.title ?? 'Agent360 - Action Required'),
+        fields: fields.map((f) => ({
+          name: String(f?.name ?? ''),
+          label: String(f?.label ?? f?.name ?? ''),
+          type: String(f?.type ?? 'text'),
+        })),
+        hasFields: Boolean(hasFields),
+        sessionLabel: String(session.label ?? 'Claude'),
+        deadline: Date.now() + timeout,
+        origin,
+      };
+
+      let finish;
+      const answered = new Promise((resolve) => {
+        let timer;
+        finish = (result) => {
+          if (!pendingAsks.has(askId)) return;
+          pendingAsks.delete(askId);
+          clearTimeout(timer);
+          if (result.action !== 'done' && result.action !== 'skip') eraseAskPrompt(tab.id, askId);
+          // Restore badge
+          const count = sessions.size;
+          chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
+          chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
+          notifKlar.then(() => chrome.notifications.clear(notifId)).catch(() => {});
+          resolve(result);
+        };
+        timer = setTimeout(() => finish({ acknowledged: false, action: 'timeout', values: {} }), timeout);
       });
+      const ask = { tabId: tab.id, spec, finish, origin };
+      pendingAsks.set(askId, ask);
 
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: (message, title, fields, hasFields, timeout, sessionLabel) => {
-          return new Promise((resolve) => {
-            document.getElementById('a360-overlay')?.remove();
-
-            // Notification sound — short pleasant chime
-            try {
-              const ctx = new AudioContext();
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.connect(gain);
-              gain.connect(ctx.destination);
-              osc.frequency.value = 880;
-              osc.type = 'sine';
-              gain.gain.setValueAtTime(0.3, ctx.currentTime);
-              gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-              osc.start(ctx.currentTime);
-              osc.stop(ctx.currentTime + 0.4);
-              // Second tone (higher, pleasant ding-dong)
-              setTimeout(() => {
-                const osc2 = ctx.createOscillator();
-                const gain2 = ctx.createGain();
-                osc2.connect(gain2);
-                gain2.connect(ctx.destination);
-                osc2.frequency.value = 1320;
-                osc2.type = 'sine';
-                gain2.gain.setValueAtTime(0.2, ctx.currentTime);
-                gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                osc2.start(ctx.currentTime);
-                osc2.stop(ctx.currentTime + 0.3);
-              }, 150);
-            } catch {}
-
-            // Inject animation keyframes
-            if (!document.getElementById('a360-styles')) {
-              const style = document.createElement('style');
-              style.id = 'a360-styles';
-              style.textContent = `
-                @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
-                @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
-              `;
-              document.head.appendChild(style);
-            }
-
-            const overlay = document.createElement('div');
-            overlay.id = 'a360-overlay';
-            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:2147483647;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;animation:a360-fade-in 0.3s ease-out';
-
-            const card = document.createElement('div');
-            card.style.cssText = 'background:#1e293b;border-radius:12px;padding:24px;max-width:420px;width:90%;color:#e2e8f0;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:a360-slide-up 0.4s ease-out';
-
-            const h = document.createElement('div');
-            h.style.cssText = 'font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:4px';
-            h.textContent = title || 'Agent360 - Action Required';
-            card.appendChild(h);
-            const badge = document.createElement('div');
-            badge.style.cssText = 'font-size:10px;color:#94a3b8;margin-bottom:12px';
-            badge.textContent = sessionLabel;
-            card.appendChild(badge);
-            const msg = document.createElement('div');
-            msg.style.cssText = 'font-size:13px;color:#cbd5e1;margin-bottom:16px;line-height:1.5';
-            msg.textContent = message;
-            card.appendChild(msg);
-            const inputs = {};
-            if (hasFields) {
-              fields.forEach(f => {
-                const label = document.createElement('label');
-                label.style.cssText = 'display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;margin-top:8px';
-                label.textContent = f.label || f.name;
-                card.appendChild(label);
-                const input = document.createElement('input');
-                input.type = f.type || 'text';
-                input.placeholder = f.label || f.name;
-                input.style.cssText = 'width:100%;padding:8px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;outline:none;box-sizing:border-box';
-                input.addEventListener('focus', () => input.style.borderColor = '#3b82f6');
-                input.addEventListener('blur', () => input.style.borderColor = '#334155');
-                card.appendChild(input);
-                inputs[f.name] = input;
-              });
-            }
-            const btnRow = document.createElement('div');
-            btnRow.style.cssText = 'display:flex;gap:8px;margin-top:16px';
-            const doneBtn = document.createElement('button');
-            doneBtn.textContent = hasFields ? 'Submit' : '✓ Done';
-            doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
-            doneBtn.addEventListener('click', () => {
-              const values = {};
-              Object.entries(inputs).forEach(([k, el]) => values[k] = el.value);
-              overlay.remove();
-              resolve({ acknowledged: true, action: 'done', values });
-            });
-            const skipBtn = document.createElement('button');
-            skipBtn.textContent = '✗ Skip';
-            skipBtn.style.cssText = 'flex:1;padding:10px;background:#334155;color:#94a3b8;border:none;border-radius:6px;font-size:13px;cursor:pointer';
-            skipBtn.addEventListener('click', () => { overlay.remove(); resolve({ acknowledged: true, action: 'skip', values: {} }); });
-            btnRow.appendChild(doneBtn);
-            btnRow.appendChild(skipBtn);
-            card.appendChild(btnRow);
-            overlay.appendChild(card);
-            document.body.appendChild(overlay);
-            const firstInput = Object.values(inputs)[0];
-            if (firstInput) setTimeout(() => firstInput.focus(), 100);
-            card.addEventListener('keydown', (e) => { if (e.key === 'Enter') doneBtn.click(); });
-            setTimeout(() => { if (document.getElementById('a360-overlay')) { overlay.remove(); resolve({ acknowledged: false, action: 'timeout', values: {} }); } }, timeout);
-          });
-        },
-        // MAALT 21/8: her stod `params.title` raat. Skemaet siger at title er VALGFRI
-        // med standarden "Agent360 - Action Required", men udelades den, er vaerdien
-        // undefined — og chrome.scripting.executeScript afviser hele kaldet med
-        // "Error at property 'args': Error at index 1: Value is unserializable".
-        // Altsaa styrtede human-in-the-loop-vaerktoejet hver gang en agent fulgte sit
-        // eget skema. Det blev aldrig fanget, fordi ask_user stod som "springes over"
-        // i flowtesten — den eneste der kunne have set det.
-        //
-        // Alle argumenter tvinges nu til serialiserbare vaerdier, og standarden
-        // anvendes der hvor den er lovet.
-        args: [
-          String(params.message ?? ''),
-          String(params.title ?? 'Agent360 - Action Required'),
-          Array.isArray(fields) ? fields : [],
-          Boolean(hasFields),
-          Number(timeout) || 120000,
-          String(session.label ?? 'Claude'),
-        ],
-        world: 'MAIN',
-      });
-
-      // Restore badge
-      const count = sessions.size;
-      chrome.action.setBadgeText({ text: count > 0 ? String(count) : '' });
-      chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
-      chrome.notifications.clear(notifId);
-      return result.result;
+      try {
+        await drawAskPrompt(ask, false);
+      } catch (e) {
+        finish({ acknowledged: false, action: 'error', values: {} });
+        // Fejlsiden kan ogsaa opstaa mellem tjekket og tegningen.
+        if (/showing error page/i.test(e?.message || '')) {
+          throw fejlside('The tab had already been made active and a notification posted; the notification is removed as soon as it exists.');
+        }
+        throw e;
+      }
+      return answered;
     }
 
     case 'select_frame': {
@@ -5256,7 +6719,7 @@ async function dispatch(port, method, params) {
             error: 'not-ours',
             hint: 'The most recent new tab was not opened from one of your own tabs, so it ' +
                   'belongs to the user. Use browser_navigate(new_tab: true) if you need to ' +
-                  'have en ny fane.',
+                  'open a new tab.',
             tab_id: tab.id,
           };
         }
@@ -5333,7 +6796,7 @@ async function dispatch(port, method, params) {
       if (action === 'click_grid') {
         const cells = params.cells || [];
         if (!cells.length) return { error: 'No cells specified' };
-        const result = await clickCaptchaGridCells(tab.id, cells);
+        const result = await clickCaptchaGridCells(tab.id, cells, params.grid);
         return result;
       }
 
@@ -5376,7 +6839,7 @@ async function dispatch(port, method, params) {
         const docResult = await cdpSend(tab.id, 'DOM.getDocument', {});
         if (!docResult?.root?.nodeId) {
           await debuggerDetach(tab.id);
-          return { ok: false, error: 'DOM.getDocument gav intet rod-element' };
+          return { ok: false, error: 'DOM.getDocument returned no root element' };
         }
         const { nodeId } = await cdpSend(tab.id, 'DOM.querySelector', {
           nodeId: docResult.root.nodeId,
@@ -5396,7 +6859,7 @@ async function dispatch(port, method, params) {
                     : [params.files || params.file || params.file_path].filter(Boolean);
         if (!files.length) {
           await debuggerDetach(tab.id);
-          return { ok: false, error: 'Ingen fil angivet. Brug `files` (array) eller `file` (enkelt sti).' };
+          return { ok: false, error: 'No file given. Use `files` (array) or `file` (a single path).' };
         }
         await cdpSend(tab.id, 'DOM.setFileInputFiles', {
           nodeId: nodeId,
@@ -5409,6 +6872,8 @@ async function dispatch(port, method, params) {
         return fildSvar(vedhaeftet, files, { files: files, input: info });
       } catch (e) {
         try { await debuggerDetach(tab.id); } catch {}
+        const filAdgang = await filAdgangsSvar(e.message);
+        if (filAdgang) return { ok: false, ...filAdgang };
         return { ok: false, error: e.message };
       }
     }
@@ -5459,7 +6924,7 @@ async function detectCaptcha(tabId) {
         if (recaptchaV3 && !recaptchaAnchor) {
           res.found = true;
           res.types.push('recaptcha_v3_invisible');
-          res.note = 'reCAPTCHA v3 is invisible and score-based. Real Chrome with Google login usually passes automatically. No action needed.';
+          res.note = 'reCAPTCHA v3 is invisible and score-based: there is nothing to click. If the page still blocks you, ask the user with browser_ask_user.';
         }
 
         // hCaptcha
@@ -5484,7 +6949,7 @@ async function detectCaptcha(tabId) {
         if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
           res.found = true;
           res.types.push('cloudflare_challenge_page');
-          res.note = 'Cloudflare challenge page. Wait 5-10 seconds — real Chrome usually passes automatically.';
+          res.note = 'Cloudflare challenge page. It may clear by itself: wait 5-10 seconds with browser_wait and detect again, and if it does not clear, ask the user with browser_ask_user.';
         }
 
         // FunCaptcha / Arkose Labs
@@ -5547,7 +7012,17 @@ async function clickRecaptchaCheckbox(tabId) {
   }
 }
 
-async function clickCaptchaGridCells(tabId, cells) {
+async function clickCaptchaGridCells(tabId, cells, grid) {
+  // 8/10 (1.30.2 skive 1b): gitteret blev gaettet ud fra de valgte celler, saa et 4x4-gitter med fx [8]
+  // blev klikket som 3x3. Agenten har lige set udfordringen paa sit skaermbillede og kan sige det selv.
+  if (grid === null) grid = undefined; // null betyder udeladt (R39)
+  // R40 (Astra): et decimalt indeks som 3.9 gav et klik uden for gitteret og clicked: true.
+  if (!Array.isArray(cells) || cells.some(c => !Number.isInteger(c))) {
+    return { clicked: false, error: `cells must be whole numbers (0-indexed grid cells), not ${JSON.stringify(cells)}` };
+  }
+  if (grid !== undefined && grid !== 3 && grid !== 4) {
+    return { clicked: false, error: `grid must be 3 or 4 (the size of the image grid you see), not ${JSON.stringify(grid)}` };
+  }
   try {
     await debuggerAttach(tabId);
     // Find the challenge iframe position and dimensions
@@ -5571,11 +7046,17 @@ async function clickCaptchaGridCells(tabId, cells) {
     const gridTop = frame.y + 100;
     const gridLeft = frame.x + 14;
     const gridSize = frame.width - 28; // padding on each side
-    const cols = cells.some(c => c >= 9) ? 4 : 3;
+    const cols = grid ?? (cells.some(c => c >= 9) ? 4 : 3);
     const rows = cols;
     const cellSize = gridSize / cols;
 
     const maxCell = cols * rows - 1;
+    // R39/R40: en celle uden for gitteret er en fejl i kaldet, ikke noget der tavst springes over -
+    // med eller uden opgivet grid (indeks 16 er aldrig gyldigt, et negativt heller ikke).
+    if (cells.some(c => c < 0 || c > maxCell)) {
+      await debuggerDetach(tabId);
+      return { clicked: false, error: `Cell indices ${JSON.stringify(cells.filter(c => c < 0 || c > maxCell))} do not fit a ${cols}x${rows} grid (valid range: 0-${maxCell})` };
+    }
     const validCells = cells.filter(c => c >= 0 && c <= maxCell);
     if (!validCells.length) {
       await debuggerDetach(tabId);
@@ -5612,6 +7093,7 @@ async function clickCaptchaGridCells(tabId, cells) {
       clicked: true,
       cells: clicked,
       grid: `${cols}x${rows}`,
+      gridFrom: grid ? 'given' : 'guessed from the cell indices; pass grid: 3 or 4 to say which grid you see',
       note: 'Cells clicked. Take a screenshot to verify, then click the "Verify" / "Skip" button if needed.',
     };
   } catch (e) {

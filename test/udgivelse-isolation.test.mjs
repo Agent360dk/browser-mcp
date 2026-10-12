@@ -243,6 +243,14 @@ test('workflow: tredjeparts-actions i de privilegerede job er fastlaast til comm
   }
 });
 
+test('workflow: spaerren, som udgivelsen kalder, har ogsaa sine actions fastlaast til commit-id', () => {
+  // R40 (Opus): spaerre.yml brugte flytbare tags, mens udgivelse.yml var laast; setup-node@v7 pegede allerede paa 7.1.0.
+  const sp = readFileSync(join(rod, '.github/workflows/spaerre.yml'), 'utf8');
+  const uses = [...sp.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]).filter((u) => !u.startsWith('./'));
+  assert.ok(uses.length >= 4, `spaerre.yml: forventede mindst 4 eksterne actions, fandt ${uses.length}`);
+  for (const u of uses) assert.match(u, /@[0-9a-f]{40}$/, `spaerre.yml: «${u}» er et flytbart tag, ikke et commit-id`);
+});
+
 // ── vagten: skip-flagene maa kun bruges i den isolerede udgivelse ───────────
 
 function koerVagt(args, miljoe = {}) {

@@ -19,6 +19,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /**
  * Rejser udvidelsen med et felt der ender med `slutVaerdi`, og en ramme hvis tracker
@@ -107,8 +110,11 @@ test('tomt felt slaar stadig igennem, uanset hvad trackeren siger', async () => 
 test('differs: true leverer ogsaa det felt instruktionen beder agenten laese', async () => {
   const svar = await fyld(sele({ slutVaerdi: 'Gustav Louv', ramme: null }));
   assert.equal(svar.differs, true, 'feltet viser noget andet end det skrevne - det er afvigelsen');
-  assert.equal(svar.actual, 'Gustav Louv',
-    'instruktionen siger «read faktisk» - staar det ikke i svaret, er raadet uudfoerligt');
+  assert.equal(svar.actual, 'Gustav Louv', 'svaret har feltet actual');
+  // R42 (Opus): instruktionen sagde «read faktisk», mens svaret hed `actual` - bind ordet til feltet.
+  const instruks = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8').match(/browser_fill with differs: true[^\n]*?read `?(\w+)`?\./);
+  assert.ok(instruks, 'instruktionen om differs findes');
+  assert.ok(instruks[1] in svar, `instruktionen beder agenten laese «${instruks[1]}», men svaret har ikke det felt`);
   assert.equal(svar.value, 'Gustav Louv', 'det gamle navn maa ikke forsvinde - det er API-overflade');
 });
 

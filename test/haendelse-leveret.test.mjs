@@ -34,6 +34,11 @@ function sele({ leverer, feltVaerdi, rulPosition }) {
       const udtryk = String(p?.expression || '');
       if (udtryk.includes('scrollX')) return { result: { value: rulPosition ?? { x: 0, y: 0 } } };
       if (udtryk.includes('activeElement')) return { result: { value: feltVaerdi ?? null } };
+      // R70: vagten armeres, og dens aflaesning siger det, en rigtig side ville: haendelsen naaede maalet, eller fanen var
+      // skjult hele vejen, og intet blev set.
+      if (udtryk.includes('window.__bmcpVagt = v')) return { result: { value: { armet: true } } };
+      if (udtryk.includes('return { udskiftet: true }')) return { result: { value: leverer
+        ? { naaet: { dblclick: 1, contextmenu: 1, mouseover: 1, mousemove: 1 }, sendt: 3 } : { naaet: {}, sendt: 0, skjultHele: true } } };
       return { result: { value: null } };
     },
     'tabs.update': undefined,
@@ -203,7 +208,8 @@ test('kalibrering: hovedrammens EGEN udskiftning betyder stadig at siden naviger
     if (k.includes('removeEventListener')) return [{ frameId: 0, result: { udskiftet: true } }];
     return [{ result: null }];
   };
-  const svar = await u.hent('dispatch')(9876, 'double_click', { selector: '#x' });
+  // R70: double_click og right_click sender intet uden en armeret vagt; den gamle bevisvej bruges stadig af hover.
+  const svar = await u.hent('dispatch')(9876, 'hover', { selector: '#x' });
   assert.equal(svar.landed, true,
     'hovedrammen mistede maerket, og det sker kun ved en navigation - den dom maa ikke gaa tabt');
 });

@@ -87,6 +87,14 @@ lsof -iTCP:9876-9895 -sTCP:LISTEN    # macOS/Linux - expect one line per session
 
 Nothing listed means no server, which means nothing for the extension to find. (The server is not a daemon: it starts when your agent starts and exits when it disconnects, so an empty list while no agent is running is also normal.)
 
+## Upload fails with "Not allowed"
+
+**Symptom:** `browser_upload_file` or `browser_drop_file` fails, and the error says "Not allowed".
+
+**Cause:** Chrome only hands a file to the page when "Allow access to file URLs" is on for the Agent360 Browser MCP extension (chrome://extensions, Agent360 Browser MCP, Details). It is off by default for Chrome Web Store installs, and both tools hand files over the same way.
+
+**What you can do:** attach the file yourself. The switch also lets the extension open any local file as a page, so turning it on is your call. From 1.30.2 a "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on, and the answer says the same.
+
 ## "Chrome extension not connected after 5 retries"
 
 **Symptom:** every tool call fails with this error even though Chrome is open and the extension is installed.
