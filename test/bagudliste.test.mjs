@@ -46,6 +46,10 @@ const FORBUDT = [
   [91, /The move no API can make|A headless tool hits a login wall here/i, 'headless kan genbruge et login, og Gmail har et API; sammenligningen er en frisk browser uden login (R88 Astra)'],
   [92, /log of every action/i, 'handlingsloggen gemmer de seneste 50 (R88 Astra)'],
   [93, /hands you a screenshot/i, 'solve_captcha returnerer intet billede; agenten tager selv skaermbilledet (R88 Opus)'],
+  [94, /SETUP \(2 minutes\)/i, 'opsaetningstiden er umaalt (R89 Astra)'],
+  [95, /cannot open URLs: npx @agent360\/browser-mcp install(?! --skip-extension)/i, 'butiksbrugeren har udvidelsen; install uden --skip-extension leder mod en udvidelse mere (R89 Astra)'],
+  [96, /Any dashboard you are already logged into|The pattern: anything you would do yourself/i, 'ikke ethvert dashboard eller enhver browseropgave (R89 Astra)'],
+  [97, /and marks the sensitive ones/i, 'loggen fremhaever kun cookie-, storage-, script- og token-vaerktoejer (R89 Astra)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med

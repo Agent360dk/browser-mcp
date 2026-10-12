@@ -115,7 +115,7 @@ The move that needs no email-API setup: it opens your Gmail, reads the one-time 
 
 End-to-end QA of your own product, in the same browser your users have.
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. [More examples](https://browsermcp.dev/#try).
+The pattern: **many of the browser tasks you would do yourself, on sites you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. [More examples](https://browsermcp.dev/#try).
 
 ---
 

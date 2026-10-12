@@ -40,8 +40,8 @@ indeholder dette afsnit:
 > **clicks, fills**, screenshots - runs without stealing focus.
 
 **Det er det modsatte af hvad vi selv har maalt.** Chrome leverer ikke mus- og tastatur-haendelser
-til en tab der ikke er den synlige i sit vindue, saa klik og udfyldning i en baggrunds-tab virker
-netop ikke - vaerktoejet siger det, og agenten kan hente fanen frem med browser_switch_tab. Sitet, CHANGELOG og den nye indsaet-tekst
+til en tab der ikke er den synlige i sit vindue, saa tastetryk, hover, dobbelt-/hoejreklik, koordinatklik og udfyldning af et felt fundet via tekst
+i en baggrunds-tab virker netop ikke (klik og udfyldning via CSS-selektor goer) - vaerktoejet siger det, og agenten kan hente fanen frem med browser_switch_tab. Sitet, CHANGELOG og den nye indsaet-tekst
 siger alle sandheden; kun butikken lover det modsatte.
 
 Erstatningsteksten i §1 loeser det: den har intet positivt baggrunds-loefte, og den har til
@@ -111,7 +111,7 @@ Browser MCP is a Chrome extension PLUS a local MCP server. This page can only gi
 you the extension. On its own it will sit on "Not connected" forever, because there
 is no server for it to talk to. The other half takes one paste.
 
-═══ SETUP (2 minutes) ═══
+═══ SETUP ═══
 
 1. Install this extension (you are here).
 
@@ -124,11 +124,13 @@ is no server for it to talk to. The other half takes one paste.
    only I can do - tell me which one, and wait for me. When I confirm,
    call browser_list_tabs to prove both halves are talking.
 
-   If you cannot open URLs: npx @agent360/browser-mcp install
+   If you cannot open URLs: npx @agent360/browser-mcp install --skip-extension
+   (it registers the server in Claude Code, Codex, VS Code and Cursor; in
+   other clients, add it by hand as below)
    ----------------------------------------------------------------
 
 3. Restart your AI client when it tells you to. A green badge appears on the extension's icon
-   the first time the browser is actually used - grey before that is normal.
+   the first time the browser is actually used - no badge before that is normal.
 
 Rather do it by hand? Pick your client:
 
@@ -154,7 +156,8 @@ Stuck on "Not connected"? https://browsermcp.dev/docs/troubleshooting/
 
 ═══ WHAT TO SAY ONCE IT WORKS ═══
 
-Nothing happens until you ask. Paste one of these to your agent:
+Nothing happens until you ask. Paste one of these to your agent (put your own
+site where it says example.com):
 
   "Open example.com and take a screenshot."
      Start here - a screenshot back means both halves are talking.
@@ -166,7 +169,8 @@ Nothing happens until you ask. Paste one of these to your agent:
 
   "Go to my analytics dashboard, pull this month's numbers, and put
    them in a table."
-     Any dashboard you are already logged into - no API key, no export.
+     A dashboard you are already logged into, when the numbers are on the
+     page - no API key, no export.
 
   "Fill in the signup form at example.com/signup with my details. Stop
    and ask me before anything sensitive."
@@ -176,7 +180,7 @@ Nothing happens until you ask. Paste one of these to your agent:
    the code and continue."
      No email API to set up - it reads the code the way you would.
 
-The pattern: anything you would do yourself in a browser, on a site you
+The pattern: many of the browser tasks you would do yourself, on sites you
 are already signed into. Strongest where there is no API - internal
 dashboards, admin panels, portals.
 
@@ -211,8 +215,9 @@ Nothing is sent to us. The extension takes its orders from one place: a server
 on 127.0.0.1 that you started. The pages your agent opens, and the HTTPS calls
 of browser_fetch, go to the sites you point it at. There is no account, no telemetry, no server of ours,
 and no payment. What your agent reads goes to your AI client and its model
-provider, the same as anything else you show it. The extension keeps a local log of the agent's latest actions (the last 50)
-and marks the sensitive ones, so you can look at what happened.
+provider, the same as anything else you show it. The extension keeps a short local log of the agent's recent actions, with
+cookie, storage, script and token reads highlighted, so you can look at what
+happened.
 
 ═══ WHAT IT CANNOT DO ═══
 
@@ -256,12 +261,17 @@ the popup, the session cards, the action log and the in-page dialog are rendered
 
 New set: `docs/store-2026-09-08/`, upload in this order.
 
+⛔ **12/10 (R89 Astra): upload IKKE `02.png` og `04.png`.** 02 siger «Each chat claims its own…» og «Close a chat, its tabs go with it»
+(adskillelsen følger MCP-serveren); 04 siger «Every action, written down» og at udvidelsen kun taler med localhost (loggen er kort, og
+`browser_fetch` laver HTTPS-kald), og den farver `ask_user`/`fill` følsomme, som koden ikke gør. Kilden `demo-video-src/src/Store.tsx`
+(l.155, 183, 266) siger det samme, så en genrendering skal ske efter rettet kilde. Billedtekst 2 og 4 nedenfor er trukket tilbage.
+
 | # | File | Shows | Caption (optional in the store) |
 |---|---|---|---|
 | 1 | `01.png` | The popup in its real not-connected state, with the setup card and the command | Two parts: this extension plus one command. The extension tells you so itself. |
-| 2 | `02.png` | Real Chrome tab strip with four agent groups, plus the popup listing who owns what | Twenty agents in one signed-in browser - each sees only its own tabs. |
+| 2 | `02.png` | Real Chrome tab strip with four agent groups, plus the popup listing who owns what | ⛔ trukket tilbage 12/10 - se ovenfor |
 | 3 | `03.png` | The in-page dialog asking for a 2FA code, over a dimmed login page | It asks you. It never guesses. |
-| 4 | `04.png` | The action log, sensitive entries in amber | Every action written down. Runs locally, no account, nothing sent to us. |
+| 4 | `04.png` | The action log, sensitive entries in amber | ⛔ trukket tilbage 12/10 - se ovenfor |
 | 5 | `05.png` | 40 tools · 20 sessions · 9 integrations · $0, plus the capability chips | Free, MIT, open source. Works with Claude Code, Codex, Cursor, VS Code, Windsurf. |
 
 Two more image fields, both empty today:
@@ -370,6 +380,8 @@ direkte på den offentlige butiksside i dag (973 brugere, 0 anmeldelser, v1.29.2
 
 ## Paste-klar erstatning for de fire afsnit
 
+⛔ **AFLØST 12/10 af hele §1** (`BUTIKSTEKST-1.30.2`): brug ikke blokkene herunder; de har bl.a. «often clears it» uden måling.
+
 **Installations-linjen:**
 > 3. Restart your client - 40 browser tools are now available
 
@@ -398,10 +410,21 @@ Listningen bor i CWS-dashboardet. Ingen commit og intet script rører den - hell
 `publish:cws`, som kun uploader pakken. Det kræver login på
 <https://chrome.google.com/webstore/devconsole/> → Agent360 Browser MCP → Store listing.
 
+**12/10: erstat HELE den detaljerede beskrivelse med §1-blokken** (ikke kun enkelte sætninger - den levende tekst er en ældre udgave),
+gem den som kladde, og lad udgivelsen indsende pakken. Efterprøv bagefter, at §1 står live, med anden kommando herunder.
+
 **Efterprøv efter rettelsen** med præcis denne kommando, som fandt fejlene:
 
 ```
 curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" \
   | python3 -c "import sys,re,html;t=html.unescape(re.sub(r'<[^>]+>',' ',sys.stdin.read()));t=re.sub(r'\s+',' ',t);
 print([n for n in ['29 browser tools','10 concurrent','pass rate','UNIQUE'] if n.lower() in t.lower()] or 'rent')"
+```
+
+Og at hele §1 står live (alle fire skal findes; den gamle tekst har ingen af dem):
+
+```
+curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" \
+  | python3 -c "import sys,re,html;t=html.unescape(re.sub(r'<[^>]+>',' ',sys.stdin.read()));t=re.sub(r'\s+',' ',t);
+m=['Each MCP server gets its own colour-coded tab group','takes its orders from one place','short local log','install --skip-extension'];print([n for n in m if n not in t] or 'hele §1 live')"
 ```

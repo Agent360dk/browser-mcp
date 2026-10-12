@@ -95,7 +95,7 @@ A dashboard you are signed into in this Chrome. No API key, no export, no integr
 
 You stay in the loop - the agent can pause and ask you before anything it should not decide alone.
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** Strongest where there is no API. [More examples](https://browsermcp.dev/#try).
+The pattern: **many of the browser tasks you would do yourself, on sites you are already signed into.** Strongest where there is no API. [More examples](https://browsermcp.dev/#try).
 
 ## What your Codex agent can do
 
