@@ -370,3 +370,28 @@ test('#69: en input-frist naevner ogsaa en aaben dialog, ikke kun en baggrundsfa
   assert.match(String(fejl.message), /background/);
   assert.match(String(fejl.message), /opened a dialog/, `fristen peger kun paa baggrundsfanen: ${fejl.message}`);
 });
+
+// Mutant M12 (13/10) overlevede: drop_file's skjulte-felt-vej kunne miste sin change-laesning, uden at noget blev roedt.
+test('#67: drop_file (skjult felt) - siden laeste filen og ryddede feltet, svaret er modtaget og navngiver feltet', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'debugger.sendCommand': (_m, metode, p) => {
+      if (metode === 'Runtime.evaluate') {
+        const x = String(p.expression);
+        if (x.includes('candidates')) return { result: { value: JSON.stringify({ found: true, tag: 'T1', accept: '', multiple: false, input: '#f' }) } };
+        if (x.includes(':off') && !x.includes('addEventListener')) return { result: { value: JSON.stringify({ antal: 1, navne: ['a.png'] }) } };
+        return { result: { value: true } };
+      }
+      if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };
+      if (metode === 'DOM.querySelector') return { nodeId: 2 };
+      return {};
+    },
+  } });
+  u.ctx.chrome.scripting.executeScript = async ({ func }) => (String(func).includes('.files') ? [{ result: { antal: 0, navne: [] } }] : [{ result: null }]);
+  const svar = await u.hent('dropFileOnTarget')(1, '#f', ['/x/a.png']);
+  assert.equal(svar.ok, true, `drop_file meldte file-not-attached, skoent siden fik filen: ${JSON.stringify(svar)}`);
+  assert.equal(svar.consumed_by_page, true);
+  assert.equal(svar.method, 'hidden-input');
+  assert.equal(svar.input, '#f');
+});
