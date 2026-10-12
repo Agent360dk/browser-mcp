@@ -311,7 +311,7 @@ test('#67: upload_file - siden laeste filen og ryddede feltet, svaret er modtage
       if (metode === 'Runtime.evaluate') {
         const x = String(p.expression);
         if (x.includes('found: true')) return { result: { value: JSON.stringify({ found: true, tag: 'INPUT', type: 'file', accept: '', multiple: false }) } };
-        if (x.includes('removeEventListener') || x.includes(':af')) return { result: { value: x.includes('lager[noegle + \':af\']()') && !x.includes('addEventListener') ? JSON.stringify({ antal: 1, navne: ['a.png'] }) : true } };
+        if (x.includes('removeEventListener') || x.includes(':off')) return { result: { value: x.includes('lager[noegle + \':off\']()') && !x.includes('addEventListener') ? JSON.stringify({ antal: 1, navne: ['a.png'] }) : true } };
         return { result: { value: true } };
       }
       if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };

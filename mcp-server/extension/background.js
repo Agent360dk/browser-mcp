@@ -1693,14 +1693,14 @@ function armerFilSkiftISiden(el, noegle) {
   };
   const vaerter = el.isConnected ? [window, el] : [el];
   for (const v of vaerter) v.addEventListener('change', fang, true);
-  lager[noegle + ':af'] = () => { for (const v of vaerter) v.removeEventListener('change', fang, true); };
+  lager[noegle + ':off'] = () => { for (const v of vaerter) v.removeEventListener('change', fang, true); };
   return true;
 }
 function laesFilSkiftISiden(noegle) {
   const lager = window.__bmcpFilSkift || {};
-  try { if (lager[noegle + ':af']) lager[noegle + ':af'](); } catch (e) {}
+  try { if (lager[noegle + ':off']) lager[noegle + ':off'](); } catch (e) {}
   const svar = lager[noegle] || null;
-  delete lager[noegle]; delete lager[noegle + ':af'];
+  delete lager[noegle]; delete lager[noegle + ':off'];
   return svar ? JSON.stringify(svar) : null;
 }
 
@@ -4520,12 +4520,12 @@ async function interceptFileChooser(tabId, selector, fileList) {
         const iFeltet = async (kilde, noegle) => {
           const { object } = await cdpSend(tabId, 'DOM.resolveNode', { backendNodeId });
           const r = await cdpSend(tabId, 'Runtime.callFunctionOn', { objectId: object.objectId, returnByValue: true,
-            functionDeclaration: `function (noegle) { return (${kilde})(this, noegle); }`, arguments: [{ value: noegle }] });
+            functionDeclaration: `function (key) { return (${kilde})(this, key); }`, arguments: [{ value: noegle }] });
           return r?.result?.value;
         };
-        const LAES_FELTET = `(el, noegle) => JSON.stringify({ antal: el.files ? el.files.length : 0,
+        const LAES_FELTET = `(el, key) => JSON.stringify({ antal: el.files ? el.files.length : 0,
           navne: el.files ? [...el.files].map((f) => f.name) : [], input: (${filFeltNavn.toString()})(el),
-          skift: JSON.parse((${laesFilSkiftISiden.toString()})(noegle) || 'null') })`;
+          skift: JSON.parse((${laesFilSkiftISiden.toString()})(key) || 'null') })`;
         const noegle = '__bmcp_valg_' + Math.random().toString(36).slice(2, 10);
         const armeret = iFeltet(armerFilSkiftISiden.toString(), noegle).catch(() => false);
         armeret.then(() => cdpSend(tabId, 'DOM.setFileInputFiles', { backendNodeId, files: fileList }))
