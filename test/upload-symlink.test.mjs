@@ -25,8 +25,19 @@ symlinkSync(join(udenfor, 'dir'), join(arbejd, 'link'));
 symlinkSync(join(udenfor, 'findes-ikke-endnu.txt'), join(arbejd, 'dinglende'));
 writeFileSync(join(arbejd, 'egen.txt'), 'OK');
 const boern = [];
-after(() => { for (const b of boern) try { b.kill('SIGKILL'); } catch {}
-  rmSync(arbejd, { recursive: true, force: true }); rmSync(udenfor, { recursive: true, force: true }); });
+// Windows (MAALT 29/9 paa GitHub, EBUSY): serverne koerer med arbejdsmappen som cwd, og en proces laaser sin cwd
+// til den er HELT afsluttet. kill() venter ikke paa det, og maxRetries alene hjalp ikke (oprydningen tog 1,9 ms).
+// Derfor ventes paa hver proces' exit (hoejst 5 s), foer mapperne slettes.
+after(async () => {
+  await Promise.all(boern.map((b) => new Promise((ok) => {
+    if (b.exitCode !== null || b.signalCode !== null) return ok();
+    const t = setTimeout(ok, 5000);
+    b.once('exit', () => { clearTimeout(t); ok(); });
+    try { b.kill('SIGKILL'); } catch { clearTimeout(t); ok(); }
+  })));
+  const r = { recursive: true, force: true, maxRetries: 10, retryDelay: 200 };
+  rmSync(arbejd, r); rmSync(udenfor, r);
+});
 
 function kald(filer, ms = 35000) {
   const p = spawn(process.execPath, [SRV], { cwd: arbejd, stdio: ['pipe', 'pipe', 'pipe'],
@@ -63,7 +74,12 @@ test('en sti med ../ ud af arbejdsmappen afvises stadig', { timeout: 40000 }, as
 // faktisk blev laest laa udenfor.
 test('link/../fil afvises - stien loeses af operativsystemet, ikke som tekst', { timeout: 40000 }, async () => {
   const svar = await kald(['link/../hemmelig.txt']);
-  assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 200)}`);
+  // MAALT 29/9 paa GitHubs Windows-maskine: Win32 loeser `link\\..` som TEKST foer filsystemet spoerges, saa stien
+  // bliver <arbejd>/hemmelig.txt, som ikke findes - og uploadet afvises med «does not exist». Egenskaben der skal holde
+  // er den samme paa begge platforme: filen udenfor bliver IKKE sendt. Kun begrundelsen afhaenger af styresystemet.
+  const grund = process.platform === 'win32' ? /points outside|does not exist/ : /points outside/;
+  assert.match(svar, grund, `slap forbi vagten: ${svar.slice(0, 200)}`);
+  assert.doesNotMatch(svar, /NOEGLE/, 'indholdet af filen udenfor kom med i svaret');
 });
 
 test('et dinglende symlink ud af mappen afvises', { timeout: 40000 }, async () => {

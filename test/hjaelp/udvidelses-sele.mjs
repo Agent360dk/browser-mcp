@@ -28,6 +28,13 @@ import vm from 'node:vm';
 const her = dirname(fileURLToPath(import.meta.url));
 export const ROD = join(her, '..', '..');
 
+// R70 (Astra): et bundet klik sendes kun med en armeret vagt. En sele, der svarer det samme paa hvert Runtime.evaluate,
+// armerede aldrig vagten og maalte derfor en vej, der ikke findes laengere. medVagt svarer «armeret» paa armeringen og
+// giver alle andre kald videre uaendret.
+export const ARMERING = 'window.__bmcpVagt = v';
+export const medVagt = (send) => (m, metode, p) => (metode === 'Runtime.evaluate' && String(p?.expression || '').includes(ARMERING)
+  ? { result: { value: { armet: true } } } : send(m, metode, p));
+
 /** Optager hvad udvidelsen sendte til Chrome. */
 class Optager {
   constructor() { this.kald = []; }
@@ -131,7 +138,8 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       get: (navn, cb) => { optager.kald.push({ sti: 'alarms.get', args: [navn] }); if (cb) cb(svar['alarms.get']); },
       onAlarm: haendelse('alarms.onAlarm'),
     },
-    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames') },
+    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
+    notifications: { create: kald('notifications.create'), clear: kald('notifications.clear') },
     cookies: { getAll: kald('cookies.getAll'), set: kald('cookies.set'), getAllCookieStores: kald('cookies.getAllCookieStores') },
     permissions: { contains: kald('permissions.contains'), request: kald('permissions.request') },
   };
@@ -178,6 +186,7 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
   const loeft = [
     'armeredeDialoger', 'dialogLoefter', 'sessions', 'debuggerAttached',
     'agentLukkedeFaner', 'SELECT_ALL_MODS', 'CDP_CHAR_CODES', 'RETRYABLE_CDP_METHODS',
+    'pendingAsks',
   ];
   const hale = '\n;' + loeft.map((n) => `try { globalThis.__t_${n} = ${n}; } catch (e) {}`).join('\n');
 

@@ -38,9 +38,19 @@ def tid(s):
     return datetime.fromisoformat(s.replace('Z', '+00:00'))
 
 
+def er_bot(forfatter):
+    """1.30.2 skive 14: Dependabot og andre bot-konti venter ikke paa et svar fra et menneske. `gh` giver dem
+    is_bot, og deres login ender paa «[bot]» eller begynder med «app/» (Dependabot vises som app/dependabot)."""
+    f = forfatter or {}
+    login = f.get('login') or ''
+    return bool(f.get('is_bot')) or login.endswith('[bot]') or login.startswith('app/')
+
+
 def maal(traad, vedligeholdere):
-    """(timer, tilstand) for én traad. Tilstand: 'svaret' | 'venter' | 'vores egen'."""
+    """(timer, tilstand) for én traad. Tilstand: 'svaret' | 'venter' | 'vores egen' | 'bot'."""
     aabnet = tid(traad['createdAt'])
+    if er_bot(traad.get('author')):
+        return (0.0, 'bot')
     forfatter = (traad.get('author') or {}).get('login')
     if forfatter and forfatter in vedligeholdere:
         # Vores eget notat. En traad vi selv har aabnet skylder ingen et svar.
@@ -69,8 +79,13 @@ def selvtest():
                 'author': {'login': 'fremmed'}, 'comments': [
                     {'createdAt': (nu - timedelta(days=8)).isoformat().replace('+00:00', 'Z'),
                      'authorAssociation': 'MEMBER', 'author': {'login': 'vedligeholder'}}]}
+    bot = {'number': 0, 'title': 'syntetisk', 'createdAt': gammel,
+           'author': {'login': 'app/dependabot', 'is_bot': True}, 'comments': []}
     vh = {'vedligeholder'}
     fejl = []
+    timer, tilstand = maal(bot, vh)
+    if tilstand != 'bot':
+        fejl.append(f'en 9 dage gammel bot-PR blev laest som {tilstand!r}/{timer:.0f}t - den maa ikke goere vagten roed')
     timer, tilstand = maal(ubesvaret, vh)
     if tilstand != 'venter' or timer < 72:
         fejl.append(f'en 9 dage gammel ubesvaret traad blev laest som {tilstand!r}/{timer:.0f}t')
@@ -112,11 +127,14 @@ def main():
               file=sys.stderr)
         return 2
 
-    over, svartider, egne = [], [], 0
+    over, svartider, egne, bots = [], [], 0, 0
     for t in traade:
         timer, tilstand = maal(t, vedligeholdere)
         if tilstand == 'vores egen':
             egne += 1
+            continue
+        if tilstand == 'bot':
+            bots += 1
             continue
         if tilstand == 'svaret':
             svartider.append(timer)
@@ -125,7 +143,7 @@ def main():
 
     print(f'SVARTID · {a.repo}   (selvtest groen)')
     print(f'  vedligeholdere udledt af data: {", ".join(sorted(vedligeholdere))}')
-    print(f'  aabne traade fra udenforstaaende: {len(traade) - egne}   (vores egne notater: {egne})')
+    print(f'  aabne traade fra udenforstaaende: {len(traade) - egne - bots}   (vores egne notater: {egne}, bots: {bots})')
     if svartider:
         svartider.sort()
         median = svartider[len(svartider) // 2]

@@ -1,5 +1,12 @@
 # Vindues-hypotesen - FALSIFICERET 19. september 2026
 
+> **⚠️ Rettet 9. oktober 2026: maalingen holder ikke.** En maaling i headless Chrome (konsulentrunde R57) viste, at
+> `navigate(eget_vindue)` flyttede fanen tilbage i sessionens gruppe i det FOERSTE vindue (`addTabToSession` ->
+> `chrome.tabs.group`), saa det nye vindue forsvandt - mens svaret stadig meldte `eget_vindue: true` og det nye vindues
+> `windowId`. Tilstand B nedenfor blev bekraeftet med netop det svar, saa B var sandsynligvis endnu en baggrundsfane.
+> Fejlen er rettet i 1.30.2 (fanen grupperes ikke, og svaret laeser fanens faktiske vindue). Om et ufokuseret vindue faar
+> input i desktop-Chrome er **umaalt**. Teksten nedenfor staar som den blev skrevet.
+
 **Spoergsmaalet (planens spor 8.3, og hele praemissen for 1.30):** hvis en session faar sit
 EGET Chrome-vindue, er dens fane altid den viste dér. Leverer Chrome saa input til den,
 ogsaa naar vinduet ikke har fokus? Er svaret ja, forsvinder hele vores fejlklasse.

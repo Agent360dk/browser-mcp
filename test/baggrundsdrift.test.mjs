@@ -102,7 +102,8 @@ test('getSessionTab aktiverer IKKE som standard', () => {
   // `getSessionTab(port)` og arver defaulten. Vendes defaulten fra false til true,
   // river alle 30 brugerens fane frem igen - og hele suiten forbliver groen.
   // Defaulten er den baerende kontrakt; den skal staa her.
-  const m = kilde.match(/async function getSessionTab\(port,\s*activate\s*=\s*(\w+)\)/);
+  // 9/10: getSessionTab fik en tredje parameter (opretMed, about:blank-rettelsen); defaulten for activate er stadig kontrakten.
+  const m = kilde.match(/async function getSessionTab\(port,\s*activate\s*=\s*(\w+)(?:,[^)]*)?\)/);
   assert.ok(m, 'fandt ikke getSessionTab-signaturen');
   assert.equal(m[1], 'false',
     'defaulten er vendt til true - de 30 kaldesteder der arver den river nu brugerens fane frem');

@@ -39,7 +39,9 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
         ? 'echo   --add-mcp ^<json^>  Adds a Model Context Protocol server definition'
         : 'echo.';
       writeFileSync(join(bin, k + '.cmd'),
-        `@echo off\r\nif "%1"=="--help" ( ${hjaelp} & exit /b 0 )\r\n` +
+        // MAALT 29/9 paa GitHub: cli.js citerer argumenterne gennem cmd.exe, saa %1 er "--help" MED citationstegn og
+        // sammenligningen ramte aldrig - attrappen loggede «code --help», og --add-mcp blev aldrig fundet. %~1 fjerner dem.
+        `@echo off\r\nif "%~1"=="--help" ( ${hjaelp} & exit /b 0 )\r\n` +
         `>>"${log}" echo ${k} %*\r\nexit /b 0\r\n`);
     } else {
       const hjaelp = kanAdd ? 'echo "  --add-mcp <json>  Adds a Model Context Protocol server definition"' : 'true';

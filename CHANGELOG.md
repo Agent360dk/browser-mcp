@@ -4,6 +4,121 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.30.2 (not released yet)
+
+**Tool texts that match the code, clicks that say when they could not land, and the pull requests from
+John H.**
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `error: "covered"`, `covered_by` | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_hover`, `browser_fill` with a text selector, a custom dropdown's trigger or option in `browser_select_option` (for the option with `trigger_clicked: true`: the list may still be open) | The mouse would not reach the target at its center: an element lies in front of it, the target does not take clicks there, or (for click, double-click, fill and select_option) a different control inside it would get the click; `covered_by.outside` when the center is outside the visible page. Found before the mouse is sent, nothing is sent. When the cover appears after the target was found, the remaining presses and clicks are stopped at the window, before any element of the page gets them (the element in front may still see the mouse move over it, and a release the page moves elsewhere is let through); because a listener on the window itself still gets them, and the first ones may already have reached the target, the answer is then `landed: null` with `maybe_landed: true`. A release that the page moves elsewhere after the press reached the target (a menu that opens on the press, a slider that captures the pointer) is let through, and the answer is at most `maybe_landed`. Before, `browser_click` answered `ok: true` when the click hit an overlay |
+| `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
+| `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
+| `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
+| `error: "no-rows"` | `browser_extract_list` | The selector matched no rows with text. Before, the answer was `count: 0` with `reached_end: true` |
+| `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why; in a hidden page, why `reached_end` is false (#11) |
+| `eget_vindue: false`, `advarsel` | `browser_navigate` with `eget_vindue` | The tab did not end up in its own window; `windowId` is the tab's real window |
+| a viewport note next to the image | `browser_screenshot` | The CSS viewport and devicePixelRatio for `browser_click_xy`, when Chrome reports them in time (#55) |
+| `worked` | `browser_provide_feedback` | The route that did work in the end |
+| `extension_connections`, verdict `conflict` | `browser_provide_feedback` | Several open connections from the same extension, for instance one per Chrome profile (#58) |
+
+**Clicks.** A text selector looks inside an open modal dialog first (also inside open shadow roots; of
+several, the one on top where they overlap), so `click text=Add` presses the dialog's button, not the page's behind it. The
+debugger path and the script fallback find their target with the same function. A covered answer found before the
+press moves no mouse; its note says what lies over the target and, when an earlier mouse action may have opened it (a tooltip
+or a menu), to move the mouse away with `browser_hover` and try again. The mouse events are bound to the target that was
+found: each one at the click point is judged on the element that gets it, and only that very event reaching the target
+counts as proof (for a field clicked through its label, the field's own click, only when the label's click was not
+cancelled, and once; around the target, only its own control frame (a button, link or summary, or an element with a button, link, menu item, option, tab, checkbox, radio or switch role), not a container that listens for its children, and for a field, a button or any custom element (a tag name with a hyphen, as every form-associated custom field has) as the
+target, not even its own box: only an event that reaches the target itself, so a custom icon whose click only reaches the button around it is `maybe_landed`); a click stopped on the way, a target the page replaces during
+the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes. A real mouse at the same point at the
+same time cannot be told apart from the tool's. A label whose center lies on interactive content inside it (as the HTML standard defines it: a link with an
+address, a button, a field), or on anything else clickable in it (a link without an address, an element with a button role or an
+`onclick`, whose own handler can cancel the click unseen), counts as covered by that element, because a click there does not
+activate the label's field, or may not; anything inside the label's
+field is the field's own, and so is an element around it that is not itself an action (or is a box with a checkbox,
+switch or radio role), and a box with such a role right next to the label's field when the field itself is hidden (a 1x1 or
+non-displayed stand-in input, as Base UI and sr-only patterns draw it) and it is the only such box in the nearest label around it, which must be that field's (a box inside a closed shadow root cannot be seen, so it is not counted); next to
+a visible field, further from a hidden one, with a second such box in that label, or with no label of that field around it, such a box is another control. That is a rule about the page's structure, not
+proof of ownership: a separate control with such a role that is the only one in its label and sits right next to a hidden
+field counts as that field's own. With a label that has a field as the target, only the field's own activation
+click, counted when it reaches the field, counts as proof: a click on the label that a page listener cancels, or an
+activation stopped on the way, is `maybe_landed`, not a yes; when the target lies inside a label whose field is outside
+the target (text in a label), that label's activation click to its field is let through and not counted as proof, as
+a mouse would send it;
+for any other target that takes clicks itself, anything clickable inside it at its center (a link, a button, an element
+with a button role or an `onclick`, such as a delete button on a card) counts as covered by that control; for a passive
+container (a list item, a card that is not a button) its own link (an `a` with a real address, without a button role or
+`onclick`) is its action, and only a button or other action inside it counts, also one around a link however many link
+layers lie between, also across an open shadow root and through a slot. An element with a link role that is not an `a`, an `a` with a role
+other than link, and an `a` without a real address are actions, not plain links, since a script handler on them cannot be
+seen; no real address means none, `#`, `javascript:` (read as the browser reads it, so a tab or line break inside does not
+hide it) or a fragment whose target is not on the page, such as `#!` or `#0`, or is the link itself or something around
+it; the target is looked up as HTML does (the fragment as written, then percent-decoded, then `top`). The address is
+resolved as the browser resolves it, so a link to the same page that differs only in its fragment (`/orders#!`) counts
+as a fragment, and a hash route with a path (`#/orders/7`, `#!/orders/7`; not `#/` alone) is a real address. A link that is only a fragment (`#!`)
+is read against the page itself, also when `<base>` points elsewhere: such links are placeholders in practice, so this is
+a deliberate refusal (a real mouse would load the base page). A web component's own button - a control in its own
+shadow root whose box (the rectangle around it) covers at least 90% of the component, button or link, as `ion-button` and `sl-button` draw it - is the
+component's action, not a control inside it, and so is an action around it that also covers 90% of the component; a
+smaller button inside a component (a delete on a card component), a smaller action around that control, or interactive
+content in a checkbox component's own label (a link, a field, a video, but not the box itself), is. A delete
+link with a real address (rails-ujs `data-method`), with a fragment whose target is elsewhere on the page, or with
+`#top`, cannot be told from a plain link. A field or
+other control whose center lies on a button around it is covered by that button: the click would go to the button, and
+whether the button changes the field cannot be told. A text selector picks a clickable child only when the text is in it,
+so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did, and a delete ran); a text next to an
+icon button with no text of its own now clicks the row, not the button. A text selector still picks the innermost element
+whose text contains it, so on a card whose delete button reads "Slet Ordre 7", `text=Ordre 7` picks that button. Hover and right-click do not click a control inside the target, so for them only something in front
+of it is cover; enter events on the target's ancestors are part of the hover. Inside a closed shadow root the guard
+cannot see which control gets the click. If the guard cannot be set up in the page, no press or click is sent and the answer says
+so (1.30.1 clicked without it). `browser_select_option` goes on to the option only when the trigger's press is
+shown to have reached the trigger, or its click landed; otherwise, and when the trigger's click opens a dialog, no option is
+clicked, and the answer says so.
+A target that had to be scrolled into view is measured again without scrolling, 100 ms apart, until two measurements
+agree (at most three times; pushed out of view meanwhile, it is scrolled into view again), so a header that turns fixed on scroll does not move the click to another row. A press that lands in an iframe -
+the target itself, or one inside it such as a payment frame in a wrapper - goes into the frame, where the page around it
+cannot see it: the answer is `landed: null` with `maybe_landed: true` and a note to check the frame, and no synthetic
+click follows; a frame that came in front of the target is `covered`, also with `maybe_landed`. 1.30.1 answered
+`ok: false` and sent a second, synthetic click, after the button inside the frame had already been pressed.
+
+**`browser_ask_user`** fails at once, and shows nothing, on Chrome's error page or about:blank, instead of
+activating the tab, posting a notification and failing with Chrome's own text. The notification of a
+question that ends is cleared once it exists. The prompt is drawn in the extension's isolated world in a
+closed shadow root, a prompt without fields is a card the user can drag aside, and a prompt with fields
+is bound to the page's origin (or a local file's path) (#61, #62).
+
+**`browser_extract_list`** scrolls with real wheel events in the active tab, also at the bottom, so a
+feed that loads on wheel loads (#11). A hidden page (a background tab) gets no scroll events,
+IntersectionObserver callbacks or animation frames, so a list that loads or renders while you scroll stops at
+what is already there; then `reached_end` is false and `note` says why. `reached_end` is true only when the
+list stood at its bottom in a visible page with no new rows, growth or movement for `stable_rounds` rounds in
+a row.
+
+**`browser_fetch`** can reach HTTPS addresses (the extension's own content security policy blocked every
+outside address, also in 1.30.1). It sends no browser cookies and stores none from the answer, also not
+to 127.0.0.1, where 1.30.1 did: pass a token in headers.
+
+**Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer
+(also an error answer) and stderr say how many connections are open and that the server cannot tell which
+profile it drives (#58). When the connection the server was driving closes and another takes over, the next
+answer says so. Routing to a chosen profile is not in this release.
+
+**`eget_vindue` keeps its tab in its own window.** Before, the tab was moved back into the session's
+first window, and the answer still reported the new one. **Corrected:** the 1.30.1 notes say Chrome
+"often refuses" focus, and the 19 September measurement said a window without focus gets no input.
+Both read that answer, so they probably measured a background tab. Whether a window without focus gets
+input in desktop Chrome is unmeasured.
+
+**Also:** `browser_fill` skips Backspace in a field known to be empty (#54); `browser_navigate` with
+`new_tab` uses the session's empty placeholder tab (#57), and a new session's first `browser_navigate` opens its tab
+with the address directly, so an empty about:blank no longer opens first; `click_grid` takes `grid` (3 or 4); agent-facing
+answers that were still in Danish are English (#43); a call over a connection that dies is rejected at
+once (#45); `browser_extract_token` answers `Unknown provider` also for a name like `constructor`, and a
+tool name like that is an unknown tool; the response-time check ignores bot pull requests.
+
 ## 1.30.1 (2026-10-07)
 
 **Pairing is withdrawn, and a new install could get a bridge that never connected. This release

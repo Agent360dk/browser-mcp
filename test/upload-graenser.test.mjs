@@ -106,7 +106,9 @@ test('file og file_path laegges ikke sammen - den foerste vinder, som foer', { t
 // MAALT 11/9 af Astra (R5 F10), reproduceret: med arbejdsmappen "/" blev praefikset "//", og en almindelig fil
 // blev afvist som "udenfor". 1.29.0 sendte filen videre. Samme fejl stod i skaermbilledets vagt.
 // Platformens egen rod: "/" paa mac og Linux, "C:\\" (eller hvad drevet nu hedder) paa Windows.
-const roden = parse(process.cwd()).root;
+// MAALT 29/9 paa GitHubs Windows-maskine: process.cwd() ligger paa D:, temp-mappen paa C:. Roden skal
+// vaere roden af den sti MAALET ligger paa, ikke af den mappe proeven koeres fra.
+const roden = parse(arbejd).root;
 
 test('arbejdsmappen "/" afviser ikke en almindelig fil (F10)', { timeout: 45000 }, async () => {
   // MAALT 19/9: proeven sendte bogstaveligt "/" som arbejdsmappe. Paa Windows er "/" ikke

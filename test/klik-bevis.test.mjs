@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+import { indlaesUdvidelse, medVagt } from './hjaelp/udvidelses-sele.mjs';
 
 const FANE = { id: 1, url: 'https://x.example', windowId: 1, active: true };
 function sele(sendCommand, executeScript, tabsGet) {
@@ -23,7 +23,7 @@ function sele(sendCommand, executeScript, tabsGet) {
     'debugger.attach': undefined, 'debugger.detach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
     'tabs.get': tabsGet ?? FANE, 'tabs.query': [FANE],
-    'debugger.sendCommand': sendCommand,
+    'debugger.sendCommand': medVagt(sendCommand),
     'scripting.executeScript': executeScript ?? [{ result: { found: true, x: 10, y: 10, tag: 'BUTTON', text: 'OK', method: 'debugger' } }],
   } });
   u.hent('sessions').set(9876, { label: 'c', color: 'blue', tabIds: new Set([1]), activeTabId: 1, groupId: 1, windowId: 1 });
@@ -124,8 +124,9 @@ function scriptSide(reagererPaa) {
     querySelectorAll: (s) => (s === '*' ? { length: 5 + t.noder } : s.startsWith('input,textarea') ? [] : { length: 0 }),
     body: { get innerText() { return t.tekst; } },
   };
+  // R57: maalet findes af klikMaal (samme funktion som debugger-vejen) og ligger paa window.__bmcpMaal, naar klikket koerer.
   const koer = (kilde, sel) => new Function('window', 'document', 'location', 'MouseEvent', 'PointerEvent', 'return (' + kilde + ')')(
-    {}, document, { href: 'https://x.example/' }, Ev, Ev)(sel);
+    { __bmcpMaal: el }, document, { href: 'https://x.example/' }, Ev, Ev)(sel);
   return { t, koer };
 }
 async function scriptKlikKilde() {
