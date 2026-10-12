@@ -41,7 +41,7 @@ indeholder dette afsnit:
 
 **Det er det modsatte af hvad vi selv har maalt.** Chrome leverer ikke mus- og tastatur-haendelser
 til en tab der ikke er den synlige i sit vindue, saa klik og udfyldning i en baggrunds-tab virker
-netop ikke - vaerktoejet siger det og henter fanen frem. Sitet, CHANGELOG og den nye indsaet-tekst
+netop ikke - vaerktoejet siger det, og agenten kan hente fanen frem med browser_switch_tab. Sitet, CHANGELOG og den nye indsaet-tekst
 siger alle sandheden; kun butikken lover det modsatte.
 
 Erstatningsteksten i §1 loeser det: den har intet positivt baggrunds-loefte, og den har til
@@ -161,7 +161,8 @@ Nothing happens until you ask. Paste one of these to your agent:
 
   "Open Gmail and tell me who sent my last 3 emails."
      The one that shows the difference: it works because it is YOUR
-     browser, already signed in. A headless tool hits a login wall here.
+     browser, already signed in. A fresh browser without your login would
+     hit a login wall here.
 
   "Go to my analytics dashboard, pull this month's numbers, and put
    them in a table."
@@ -173,7 +174,7 @@ Nothing happens until you ask. Paste one of these to your agent:
 
   "Log me in at app.example.com. If it emails a code, open Gmail, read
    the code and continue."
-     The move no API can make.
+     No email API to set up - it reads the code the way you would.
 
 The pattern: anything you would do yourself in a browser, on a site you
 are already signed into. Strongest where there is no API - internal
@@ -197,16 +198,19 @@ dashboards, admin panels, portals.
 
 ═══ TWENTY AGENTS, ONE BROWSER ═══
 
-Up to 20 agent sessions can use one Chrome at the same time. Every chat gets
-its own colour-coded tab group, can only see its own tabs, and can hold up to
-20 of them. Close the chat and its tabs go with it.
+Up to 20 agent sessions can use one Chrome at the same time. Each MCP server
+gets its own colour-coded tab group, can only see its own tabs, and can hold up
+to 20 of them. Clients that start one server per chat, such as Claude Code, get
+one group per chat; chats that share a server share its group. When the server
+goes away, its tabs close with it.
 
 ═══ WHAT IT DOES WITH YOUR DATA ═══
 
-Nothing is sent to us. The extension talks to one thing: a server on
-127.0.0.1 that you started. There is no account, no telemetry, no server of ours,
+Nothing is sent to us. The extension takes its orders from one place: a server
+on 127.0.0.1 that you started. The pages your agent opens, and the HTTPS calls
+of browser_fetch, go to the sites you point it at. There is no account, no telemetry, no server of ours,
 and no payment. What your agent reads goes to your AI client and its model
-provider, the same as anything else you show it. The extension keeps a local log of every action the agent took,
+provider, the same as anything else you show it. The extension keeps a local log of the agent's latest actions (the last 50)
 and marks the sensitive ones, so you can look at what happened.
 
 ═══ WHAT IT CANNOT DO ═══
@@ -230,7 +234,7 @@ MIT licensed, source at https://github.com/Agent360dk/browser-mcp
 In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, click
 and fill a field it finds by CSS selector. Chrome does not deliver mouse and keyboard events to a tab that is not the visible one in
 its window, so key presses, hover, double-click, right-click, coordinate clicks, combobox typing and filling a field found by its text fail with an
-error that says so, and the agent then brings that tab in front of you. ~~Fully hands-off background work is the goal for 1.30.~~ **Trukket tilbage 20/9:** 1.30 er ude og
+error that says so, and the agent can then bring that tab in front of you with browser_switch_tab. ~~Fully hands-off background work is the goal for 1.30.~~ **Trukket tilbage 20/9:** 1.30 er ude og
 leverede det ikke. Chrome leverer ikke input til en tab der ikke er den synlige i sit vindue - det er
 maalt, ikke antaget, og det er ikke noget vi kan rette. Formuleringen ovenfor staar nu i selve
 indsaet-teksten som en begraensning, ikke som et loefte.

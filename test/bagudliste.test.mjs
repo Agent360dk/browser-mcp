@@ -41,6 +41,10 @@ const FORBUDT = [
   [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config|For any other client, add this block/, 'Zed, opencode og Codex bruger hver sin noegle (PR63 R2 Astra: ogsaa Claude Code-guidens FAQ)'],
   [87, /take over the whole profile|a second agent has to wait/i, 'Playwright MCP-udvidelsen giver ogsaa hver klient sin egen fanegruppe; butiksteksten paastod det modsatte (R87 Astra)'],
   [88, /the tool says so and brings the tab/i, 'vaerktoejet henter ikke selv fanen frem; det siger key-not-delivered, og agenten kan bruge browser_switch_tab (R87 Astra)'],
+  [89, /Every chat gets its own|Close the chat and its tabs go/i, 'adskillelsen og oprydningen foelger MCP-serveren, ikke chatten (R88 Astra)'],
+  [90, /talks to one thing: a server on 127\.0\.0\.1/i, 'browser_fetch laver HTTPS-kald direkte fra udvidelsen (R88 Astra)'],
+  [91, /The move no API can make|A headless tool hits a login wall here/i, 'headless kan genbruge et login, og Gmail har et API; sammenligningen er en frisk browser uden login (R88 Astra)'],
+  [92, /log of every action/i, 'handlingsloggen gemmer de seneste 50 (R88 Astra)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med
