@@ -130,7 +130,7 @@ Skip step 2 and the extension icon will sit on **"Not connected"** forever - tha
 
 ## You're in. Now what?
 
-Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Paste one of these to your agent:
+Nothing happens until you ask, and the hardest part of a new tool is knowing what to ask for. Paste one of these to your agent (where it says example.com, put your own site):
 
 | Say this | What it shows |
 |---|---|
@@ -141,7 +141,7 @@ Nothing happens until you ask, and the hardest part of a new tool is knowing wha
 | *"Log me in at app.example.com. If it emails a code, open Gmail, read the code and continue."* | The move that needs no email-API setup: it opens your Gmail, reads the one-time code and finishes the sign-in. |
 | *"Walk through my app's signup flow as a real user and tell me where it breaks."* | End-to-end QA of your own product, in the same browser your users have. |
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
+The pattern: **many of the browser tasks you would do yourself, on sites you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. Built something good? [Add it to the gallery](USE_CASES.md).
 
 ## Why This Over Playwright MCP / BrowserMCP?
 

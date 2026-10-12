@@ -13,7 +13,7 @@ developer Agent360 Group ApS, category Developer Tools).
 | Product name | "Agent360 Browser MCP" | ✅ keep |
 | **Summary** (132 char) | "Give Claude Code your real logged-in Chrome. Two parts: this extension + one npx command." | ✅ **already fixed** - `extension/manifest.json`'s `description` overwrote it when 1.29.0 published on 7 Sept. Nothing to paste. |
 | **Detailed description** | Says **29 browser tools** and **up to 10 concurrent sessions**; claims **"~80% pass rate"** on CAPTCHAs; the setup block still tells store users to run `npx … install` and load an unpacked extension | 🔴 replace - §1 below |
-| **Screenshots** | Three, dated 3 May, all crops of the *old website* | 🔴 replace - §2 |
+| **Screenshots** | Three, dated 3 May, all crops of the *old website* (12/10: målt FEM live, se §2) | 🔴 replace - §2 |
 | **Small promo tile** (440×280) | Not produced in this repo before today | 🟡 upload - §2 |
 | **Marquee tile** (1400×560) | Never produced | 🟡 upload - §2 |
 | **YouTube video** | Empty. `docs/demo.mp4` exists (20 June) but is on no video host, so the listing's video slot is unused | 🟡 §3 |
@@ -40,8 +40,8 @@ indeholder dette afsnit:
 > **clicks, fills**, screenshots - runs without stealing focus.
 
 **Det er det modsatte af hvad vi selv har maalt.** Chrome leverer ikke mus- og tastatur-haendelser
-til en tab der ikke er den synlige i sit vindue, saa klik og udfyldning i en baggrunds-tab virker
-netop ikke - vaerktoejet siger det og henter fanen frem. Sitet, CHANGELOG og den nye indsaet-tekst
+til en tab der ikke er den synlige i sit vindue, saa tastetryk, hover, dobbelt-/hoejreklik, koordinatklik og udfyldning af et felt fundet via tekst
+i en baggrunds-tab virker netop ikke (klik og udfyldning via CSS-selektor goer) - vaerktoejet siger det, og agenten kan hente fanen frem med browser_switch_tab. Sitet, CHANGELOG og den nye indsaet-tekst
 siger alle sandheden; kun butikken lover det modsatte.
 
 Erstatningsteksten i §1 loeser det: den har intet positivt baggrunds-loefte, og den har til
@@ -61,6 +61,9 @@ ask the human - so describe the mechanism instead of inventing a hit rate.
 ---
 
 ## ⚠️ KLADDEN BAERER EN AELDRE UDGAVE END §1 - laes det her foerst
+
+⛔ **AFLØST 12/10:** teksten der skal ind er nu `~/.claude/plans/browsermcp-1302-2026-10-07/BUTIKSTEKST-1.30.2.txt` (= §1-blokken
+herunder). Filen `browsermcp-2026-09-07/BUTIKSTEKST-klar-til-indsaettelse.txt`, som afsnittet nævner, har påstande R87-R90 afviste - brug den ikke.
 
 **Hvad der ER i dashboardets felt `Beskrivelse*` lige nu** (indsat og gemt 20/9, efterproevet
 efter en fuld genindlaesning): den rettede tekst uden nogen af de fem usandheder.
@@ -111,7 +114,7 @@ Browser MCP is a Chrome extension PLUS a local MCP server. This page can only gi
 you the extension. On its own it will sit on "Not connected" forever, because there
 is no server for it to talk to. The other half takes one paste.
 
-═══ SETUP (2 minutes) ═══
+═══ SETUP ═══
 
 1. Install this extension (you are here).
 
@@ -124,11 +127,13 @@ is no server for it to talk to. The other half takes one paste.
    only I can do - tell me which one, and wait for me. When I confirm,
    call browser_list_tabs to prove both halves are talking.
 
-   If you cannot open URLs: npx @agent360/browser-mcp install
+   If you cannot open URLs: npx @agent360/browser-mcp install --skip-extension
+   (it registers the server in Claude Code, Codex, VS Code and Cursor; in
+   other clients, add it by hand as below)
    ----------------------------------------------------------------
 
 3. Restart your AI client when it tells you to. A green badge appears on the extension's icon
-   the first time the browser is actually used - grey before that is normal.
+   the first time the browser is actually used - no badge before that is normal.
 
 Rather do it by hand? Pick your client:
 
@@ -154,18 +159,21 @@ Stuck on "Not connected"? https://browsermcp.dev/docs/troubleshooting/
 
 ═══ WHAT TO SAY ONCE IT WORKS ═══
 
-Nothing happens until you ask. Paste one of these to your agent:
+Nothing happens until you ask. Paste one of these to your agent (put your own
+site where it says example.com):
 
   "Open example.com and take a screenshot."
      Start here - a screenshot back means both halves are talking.
 
   "Open Gmail and tell me who sent my last 3 emails."
      The one that shows the difference: it works because it is YOUR
-     browser, already signed in. A headless tool hits a login wall here.
+     browser, already signed in. A fresh browser without your login would
+     hit a login wall here.
 
   "Go to my analytics dashboard, pull this month's numbers, and put
    them in a table."
-     Any dashboard you are already logged into - no API key, no export.
+     A dashboard you are already logged into, when the numbers are on the
+     page - no API key, no export.
 
   "Fill in the signup form at example.com/signup with my details. Stop
    and ask me before anything sensitive."
@@ -173,9 +181,9 @@ Nothing happens until you ask. Paste one of these to your agent:
 
   "Log me in at app.example.com. If it emails a code, open Gmail, read
    the code and continue."
-     The move no API can make.
+     No email API to set up - it reads the code the way you would.
 
-The pattern: anything you would do yourself in a browser, on a site you
+The pattern: many of the browser tasks you would do yourself, on sites you
 are already signed into. Strongest where there is no API - internal
 dashboards, admin panels, portals.
 
@@ -190,25 +198,29 @@ dashboards, admin panels, portals.
   • Work inside iframes, switch and close tabs, wait for network activity
   • Read and write cookies and localStorage, extract API tokens
   • Detect CAPTCHAs (reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile,
-    FunCaptcha): it tries the checkbox, then hands you a screenshot to
-    look at, then asks you to finish it yourself
+    FunCaptcha): it tries the reCAPTCHA checkbox; for an image grid your
+    agent takes a screenshot and picks the cells; if that does not work,
+    it asks you to finish it yourself
   • Ask you directly - an in-page dialog for 2FA codes, passwords and
     anything else it should not decide alone
 
 ═══ TWENTY AGENTS, ONE BROWSER ═══
 
-Up to 20 agent sessions can use one Chrome at the same time. Every chat gets
-its own colour-coded tab group, can only see its own tabs, and can hold up to
-20 of them. Close the chat and its tabs go with it. Other browser
-automation tools take over the whole profile, so a second agent has to wait.
+Up to 20 agent sessions can use one Chrome at the same time. Each MCP server
+gets its own colour-coded tab group, can only see its own tabs, and can hold up
+to 20 of them. Clients that start one server per chat, such as Claude Code, get
+one group per chat; chats that share a server share its group. When the server
+goes away, its tabs close with it.
 
 ═══ WHAT IT DOES WITH YOUR DATA ═══
 
-Nothing is sent to us. The extension talks to one thing: a server on
-127.0.0.1 that you started. There is no account, no telemetry, no server of ours,
+Nothing is sent to us. The extension takes its orders from one place: a server
+on 127.0.0.1 that you started. The pages your agent opens, and the HTTPS calls
+of browser_fetch, go to the sites you point it at. There is no account, no telemetry, no server of ours,
 and no payment. What your agent reads goes to your AI client and its model
-provider, the same as anything else you show it. The extension keeps a local log of every action the agent took,
-and marks the sensitive ones, so you can look at what happened.
+provider, the same as anything else you show it. The extension keeps a short local log of the agent's recent actions, with
+cookie, storage and script reads highlighted, so you can look at what
+happened.
 
 ═══ WHAT IT CANNOT DO ═══
 
@@ -217,8 +229,8 @@ run scripts, click, and fill a field it finds by CSS selector. It cannot press
 keys, hover, double-click, right-click, click by coordinate, type into a
 combobox, or fill a field found by its visible text - Chrome does not deliver
 mouse and keyboard events to a tab that is not the visible one in its window.
-When one of those is needed, the tool says so and brings the tab in front of
-you rather than failing silently. This is a Chrome limitation, not a bug we
+When one of those is needed, the tool says so instead of failing silently,
+and the agent can bring the tab in front of you with browser_switch_tab. This is a Chrome limitation, not a bug we
 are about to fix.
 
 MIT licensed, source at https://github.com/Agent360dk/browser-mcp
@@ -231,7 +243,7 @@ MIT licensed, source at https://github.com/Agent360dk/browser-mcp
 In a tab you are not looking at, the agent can navigate, read, screenshot, run scripts, click
 and fill a field it finds by CSS selector. Chrome does not deliver mouse and keyboard events to a tab that is not the visible one in
 its window, so key presses, hover, double-click, right-click, coordinate clicks, combobox typing and filling a field found by its text fail with an
-error that says so, and the agent then brings that tab in front of you. ~~Fully hands-off background work is the goal for 1.30.~~ **Trukket tilbage 20/9:** 1.30 er ude og
+error that says so, and the agent can then bring that tab in front of you with browser_switch_tab. ~~Fully hands-off background work is the goal for 1.30.~~ **Trukket tilbage 20/9:** 1.30 er ude og
 leverede det ikke. Chrome leverer ikke input til en tab der ikke er den synlige i sit vindue - det er
 maalt, ikke antaget, og det er ikke noget vi kan rette. Formuleringen ovenfor staar nu i selve
 indsaet-teksten som en begraensning, ikke som et loefte.
@@ -243,7 +255,7 @@ dated 3 May. `docs/screenshots/multi-session.png` - the one whose name promises 
 shows the April-2025 hero *"Your AI can't use a browser. Until now."*, a large empty black box, and
 `npx @agent360/browser-mcp install` as the install command, which copies extension files but does
 not register the server. It sold the exact failure this listing rewrite exists to fix. Delete all
-three; do not reuse.
+three; do not reuse. (12/10: der er FEM live - slet alle fem; se ⛔ nedenfor.)
 
 Google's rule for screenshots is that they must *"demonstrate the actual user experience, focusing
 on the core features and content."* So four of the five below are the product's own interface -
@@ -252,12 +264,27 @@ the popup, the session cards, the action log and the in-page dialog are rendered
 
 New set: `docs/store-2026-09-08/`, upload in this order.
 
+⛔ **12/10 (R91 Opus, målt live): butikken har i dag FEM billeder, ikke tre** - fire udsnit af det gamle website («29 Tools», «10 Concurrent
+Sessions», «The only browser MCP with CAPTCHA solving», den gamle installationskommando) og en 2FA-dialog med «Done» (koden viser «Submit»).
+**Slet alle fem, og upload `docs/store-2026-10-12/01-ask-user.png`** - den rigtige 1.30.2-dialog fra `browser_ask_user`, fotograferet af Chrome
+12/10 (1280×800) over en neutral loginside; teksten i dialogen er agentens egen besked. Butikken kræver mindst ét skærmbillede.
+
+⛔ **12/10 (R90 Astra + Opus): upload INGEN af `01.png`-`05.png` fra `docs/store-2026-09-08/`.** 01 siger «the icon stays red» (ikonet skifter aldrig; badget er tomt), 03 siger at
+agenten kan læse koden fra «your own Gmail tab» (den ser kun sine egne faner) og «It never guesses», 05 siger «Solves CAPTCHAs» og «Asks before
+anything sensitive» (at spørge er agentens valg, ikke en spærre), og kilden `demo-video-src/src/Store.tsx` (l.116, 205-209, 301-319) siger det samme.
+Genrender først efter rettet kilde, og læs hvert billede mod koden. Herunder: hvorfor 02 og 04 blev trukket tilbage først.
+
+⛔ **12/10 (R89 Astra): upload IKKE `02.png` og `04.png`.** 02 siger «Each chat claims its own…» og «Close a chat, its tabs go with it»
+(adskillelsen følger MCP-serveren); 04 siger «Every action, written down» og at udvidelsen kun taler med localhost (loggen er kort, og
+`browser_fetch` laver HTTPS-kald), og den farver `ask_user`/`fill` følsomme, som koden ikke gør. Kilden `demo-video-src/src/Store.tsx`
+(l.155, 183, 266) siger det samme, så en genrendering skal ske efter rettet kilde. Billedtekst 2 og 4 nedenfor er trukket tilbage.
+
 | # | File | Shows | Caption (optional in the store) |
 |---|---|---|---|
 | 1 | `01.png` | The popup in its real not-connected state, with the setup card and the command | Two parts: this extension plus one command. The extension tells you so itself. |
-| 2 | `02.png` | Real Chrome tab strip with four agent groups, plus the popup listing who owns what | Twenty agents in one signed-in browser - each sees only its own tabs. |
+| 2 | `02.png` | Real Chrome tab strip with four agent groups, plus the popup listing who owns what | ⛔ trukket tilbage 12/10 - se ovenfor |
 | 3 | `03.png` | The in-page dialog asking for a 2FA code, over a dimmed login page | It asks you. It never guesses. |
-| 4 | `04.png` | The action log, sensitive entries in amber | Every action written down. Runs locally, no account, nothing sent to us. |
+| 4 | `04.png` | The action log, sensitive entries in amber | ⛔ trukket tilbage 12/10 - se ovenfor |
 | 5 | `05.png` | 40 tools · 20 sessions · 9 integrations · $0, plus the capability chips | Free, MIT, open source. Works with Claude Code, Codex, Cursor, VS Code, Windsurf. |
 
 Two more image fields, both empty today:
@@ -366,6 +393,8 @@ direkte på den offentlige butiksside i dag (973 brugere, 0 anmeldelser, v1.29.2
 
 ## Paste-klar erstatning for de fire afsnit
 
+⛔ **AFLØST 12/10 af hele §1** (`BUTIKSTEKST-1.30.2`): brug ikke blokkene herunder; de har bl.a. «often clears it» uden måling.
+
 **Installations-linjen:**
 > 3. Restart your client - 40 browser tools are now available
 
@@ -394,10 +423,28 @@ Listningen bor i CWS-dashboardet. Ingen commit og intet script rører den - hell
 `publish:cws`, som kun uploader pakken. Det kræver login på
 <https://chrome.google.com/webstore/devconsole/> → Agent360 Browser MCP → Store listing.
 
-**Efterprøv efter rettelsen** med præcis denne kommando, som fandt fejlene:
+**12/10: erstat HELE den detaljerede beskrivelse med §1-blokken** (ikke kun enkelte sætninger - den levende tekst er en ældre udgave),
+gem den som kladde, og lad udgivelsen indsende pakken. Efterprøv bagefter, at §1 står live, med anden kommando herunder.
+
+**Efterprøv efter rettelsen - hele teksten, ikke stikprøver** (R90: de gamle kontroller søgte kun efter enkelte strenge og kunne melde
+«rent» om en forkert tekst; «UNIQUE» findes desuden altid i Googles egen D-U-N-S-tekst). Kør fra repoets rod; den sammenligner HELE
+§1-blokken i denne fil med butikkens BESKRIVELSESFELT som helhed (mellemrum udjævnet): feltet skal være præcis §1 og intet andet, så en
+halv udskiftning (gammel tekst tilbage før eller efter) også afviger (R91 Opus). Kalibreret 12/10: levende side → AFVIGER; præcis §1 → «hele §1
+live, og intet andet i feltet»; ny+gammel og gammel+ny → AFVIGER; én forkert sætning → AFVIGER med stedet. Siden skifter først, når Google har
+godkendt indsendelsen; før det siger kontrollen AFVIGER. Kør fra en checkout, hvor PR #66 er flettet:
 
 ```
-curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" \
-  | python3 -c "import sys,re,html;t=html.unescape(re.sub(r'<[^>]+>',' ',sys.stdin.read()));t=re.sub(r'\s+',' ',t);
-print([n for n in ['29 browser tools','10 concurrent','pass rate','UNIQUE'] if n.lower() in t.lower()] or 'rent')"
+curl -s -L "https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" > /tmp/butik.html
+python3 - /tmp/butik.html <<'PY'
+import sys,re,html
+n=lambda x: re.sub(r'\s+',' ',x).strip()
+raw=open(sys.argv[1],encoding='utf-8').read()
+felter=[n(html.unescape(re.sub(r'<[^>]+>',' ',x))) for x in re.findall(r'<p[^>]*>(.*?)</p>',raw,re.S) if 'MIT licensed, source at' in x]
+s=open('noter/CWS_LISTING_TEXT.md',encoding='utf-8').read(); i=s.index('## §1 Detailed description'); a=s.index('```\n',i)+4; blok=n(s[a:s.index('\n```',a)])
+if len(felter)!=1: print('AFVIGER: fandt %d beskrivelsesfelter, ikke 1' % len(felter))
+elif felter[0]==blok: print('hele §1 live, og intet andet i feltet')
+else:
+    f=felter[0]; k=next((j for j in range(min(len(f),len(blok))) if f[j]!=blok[j]), min(len(f),len(blok)))
+    print('AFVIGER fra tegn %d (feltet %d tegn, §1 %d): «%s»' % (k,len(f),len(blok),f[max(0,k-20):k+60]))
+PY
 ```

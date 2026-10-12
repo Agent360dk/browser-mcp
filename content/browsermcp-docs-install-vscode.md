@@ -132,6 +132,8 @@ The one that shows the difference - it works because it is *your* browser, alrea
 
 A dashboard you are signed into in this Chrome. No API key, no export, no integration to build first.
 
+Where a prompt says example.com, put your own site.
+
 > Fill in the signup form at example.com/signup with my details. Stop and ask me before anything sensitive.
 
 You stay in the loop - the agent can pause and ask you before passwords, payment details, or anything it should not decide alone.
@@ -144,7 +146,7 @@ The move that needs no email-API setup: it opens your Gmail, reads the one-time 
 
 End-to-end QA of your own product, in the same browser your users have.
 
-The pattern: **anything you would do yourself in a browser, on a site you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. [More examples](https://browsermcp.dev/#try).
+The pattern: **many of the browser tasks you would do yourself, on sites you are already signed into.** It is strongest where there is no API - internal dashboards, admin panels, portals, LinkedIn. [More examples](https://browsermcp.dev/#try).
 
 ---
 

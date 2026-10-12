@@ -28,7 +28,7 @@ const html = (s) => JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', SIDE
 const sider = Object.entries(JSON.parse(execFileSync('python3', ['-I', '-X', 'utf8', SIDE_TEKST, join(rod, 'docs')], { encoding: 'utf8' })))
   .map(([f, tekst]) => ['docs/' + f, tekst]);   // Windows: join giver \, og proeverne matcher paa docs/...
 const flader = [...indhold, ['README.md', laes('README.md')], ['mcp-server/README.md', laes('mcp-server/README.md')],
-  ['llms-install.md', laes('llms-install.md')], ...sider];
+  ['llms-install.md', laes('llms-install.md')], ['noter/CWS_LISTING_TEXT.md', laes('noter/CWS_LISTING_TEXT.md')], ...sider];
 
 const FORBUDT = [
   [7, /a headless browser fundamentally can't|the move headless browsers can(?:'t|not) make|Headless automation cannot do this|the thing headless tools can't do|\| Headless automation \|/i, 'kategorisk om headless; en frisk profil uden dit login er det praecise'],
@@ -39,6 +39,18 @@ const FORBUDT = [
   [38, /Fresh by default|That is the whole difference/, 'Playwright MCP har en dedikeret profil som standard og en extension-mode'],
   [63, /Read every row of a long/i, 'extract_list: raekker med samme tekst kommer en gang, og en baggrundsfane stopper tidligt (PR63 R3 Astra)'],
   [43, /Every other client (?:on this site )?(?:uses|takes)|Every other client uses the other one|Any other client - write this into that client's MCP config|For any other client, add this block/, 'Zed, opencode og Codex bruger hver sin noegle (PR63 R2 Astra: ogsaa Claude Code-guidens FAQ)'],
+  [87, /take over the whole profile|a second agent has to wait/i, 'Playwright MCP-udvidelsen giver ogsaa hver klient sin egen fanegruppe; butiksteksten paastod det modsatte (R87 Astra)'],
+  [88, /the tool says so and brings the tab/i, 'vaerktoejet henter ikke selv fanen frem; det siger key-not-delivered, og agenten kan bruge browser_switch_tab (R87 Astra)'],
+  [89, /Every chat gets its own|Close the chat and its tabs go/i, 'adskillelsen og oprydningen foelger MCP-serveren, ikke chatten (R88 Astra)'],
+  [90, /talks to one thing: a server on 127\.0\.0\.1/i, 'browser_fetch laver HTTPS-kald direkte fra udvidelsen (R88 Astra)'],
+  [91, /The move no API can make|A headless tool hits a login wall here/i, 'headless kan genbruge et login, og Gmail har et API; sammenligningen er en frisk browser uden login (R88 Astra)'],
+  [92, /log of every action/i, 'handlingsloggen gemmer de seneste 50 (R88 Astra)'],
+  [93, /hands you a screenshot/i, 'solve_captcha returnerer intet billede; agenten tager selv skaermbilledet (R88 Opus)'],
+  [94, /SETUP \(2 minutes\)/i, 'opsaetningstiden er umaalt (R89 Astra)'],
+  [95, /cannot open URLs: npx @agent360\/browser-mcp install(?! --skip-extension)/i, 'butiksbrugeren har udvidelsen; install uden --skip-extension leder mod en udvidelse mere (R89 Astra)'],
+  [96, /Any dashboard you are already logged into|The pattern: anything you would do yourself/i, 'ikke ethvert dashboard eller enhver browseropgave (R89 Astra)'],
+  [97, /and marks the sensitive ones/i, 'loggen fremhaever kun cookie-, storage- og script-vaerktoejer (R89/R90)'],
+  [98, /token reads highlighted/i, 'extract_token naar udvidelsen som navigate; token-laesning fremhaeves ikke (R90 Astra + Opus)'],
 ];
 
 // R65 (Opus, maalt): `&rsquo;` bliver til ’ og `&nbsp;` til et haardt mellemrum, saa «can’t» og «fundamentally can't» med
