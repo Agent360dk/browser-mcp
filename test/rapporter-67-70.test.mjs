@@ -131,6 +131,9 @@ test('#70: contenteditable laeses som linjer, ikke som textContent eller innerTe
   // R95 (Opus, maalt i Chrome): et tomt stykke efter en pre-teksts linjeskift lod mellemrummet staa i starten af linjen.
   assert.equal(laes([['SPAN', { ws: 'pre' }, 'a\n'], ['SPAN', {}, ' b']]), 'a\nb');
   assert.equal(laes(['x ', ['SPAN', { ws: 'pre' }, 'a\n'], ' b']), 'x a\nb');
+  // R96 (Opus, maalt i Chrome): et sammenfoldeligt mellemrum lige foer et bevaret linjeskift er synligt (innerText «x \ny»).
+  assert.equal(laes(['x ', ['SPAN', { ws: 'pre' }, '\ny']]), 'x \ny');
+  assert.equal(laes([['SPAN', {}, 'x '], ['SPAN', { ws: 'pre-wrap' }, '\ny']]), 'x \ny');
   const stor = 'a '.repeat(100000) + 'z';
   assert.equal(laes([stor]), stor, 'en stor tekstknude kunne ikke laeses');
   assert.equal(laes([' a ', ['DIV', {}, ' b ']]), 'a\nb', 'mellemrum i linjens kanter er ikke tekst');
@@ -823,4 +826,16 @@ test('#69: handle_dialog besvarer en alert, og beforeunload kommer foer kvitteri
   };
   const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
   assert.equal(s.error, 'beforeunload-unanswered', `handle_dialog's svar paa alerten blev taget som svaret paa boksen: ${JSON.stringify(s)}`);
+});
+
+// Opus' egne mutanter Y2 og Y6 (R96) overlevede: vagtens forlaengelse paa 60 s, og at noten foelger leave_page.
+test('#69: efter tab-not-responding lytter vagten 60 s, og noten foelger leave_page (Y2, Y6)', { timeout: 30000 }, async () => {
+  const { u } = fastlaast();
+  const frister = [];
+  const aegte = u.ctx.setTimeout;
+  u.ctx.setTimeout = (f, ms, ...a) => { frister.push(ms); return aegte(f, ms, ...a); };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: true });
+  assert.equal(s.error, 'tab-not-responding');
+  assert.ok(frister.includes(60000), `vagten blev ikke forlaenget med 60 s: ${JSON.stringify(frister.filter((x) => x > 1000))}`);
+  assert.match(s.note, /next minute is answered Leave/, s.note);
 });

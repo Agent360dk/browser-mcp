@@ -1455,8 +1455,10 @@ function redigerbarTekst(rod) {
           if (lukket && stykker.every(tom)) continue;   // mellemrum efter en blok, foer noget andet
         } else {
           // R95 (Opus, maalt i Chrome): et tomt stykke ('' efter et afsluttende linjeskift) spaerrede for, at et sammenfoldeligt
-          // mellemrum i starten af naeste linje blev fjernet («a\n b» mod innerText «a\nb»).
-          stykker = t.split('\n').map((l) => (l ? [l] : []));
+          // mellemrum i starten af naeste linje blev fjernet («a\n b» mod innerText «a\nb»). R96 (Opus, maalt i Chrome og i
+          // 4000 tilfaeldige traeer mod innerText): det FOERSTE stykke skal blive, ogsaa tomt - det holder et mellemrum lige foer
+          // et bevaret linjeskift paa sin linje («x <pre>\ny» er «x \ny», ikke «x\ny»).
+          stykker = t.split('\n').map((l, k) => (l || k === 0 ? [l] : []));
         }
         nyLinjeEfterBlok();
         // R95 (Astra, maalt i model): push(...stykker) gav «Maximum call stack size exceeded» ved 200.000 tegn.
