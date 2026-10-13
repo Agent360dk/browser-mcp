@@ -405,7 +405,7 @@ test('#69: en side der REGNER i over 3 s kan stadig forlades - navigate sender a
   assert.equal(svar.url, 'https://ny.example/');
 });
 
-test('#69: vagten udloeber selv efter 20 s - ingen lytter bliver haengende (kendt graense 7)', async () => {
+test('#69: vagten udloeber selv efter 30 s - ingen lytter bliver haengende (kendt graense 7)', async () => {
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
@@ -413,7 +413,7 @@ test('#69: vagten udloeber selv efter 20 s - ingen lytter bliver haengende (kend
   } });
   const ure = [];
   const aegte = u.ctx.setTimeout;
-  u.ctx.setTimeout = (f, ms, ...a) => { if (ms === 20000) { ure.push(f); return 0; } return aegte(f, ms, ...a); };
+  u.ctx.setTimeout = (f, ms, ...a) => { if (ms === 30000) { ure.push(f); return 0; } return aegte(f, ms, ...a); };
   await u.hent('armerForladVagt')(1, false);
   assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 1, 'vagten blev ikke sat');
   assert.equal(ure.length, 1, 'vagten satte intet udloeb');
@@ -946,4 +946,94 @@ test('#69: en vagt svarer paa hver «Leave site?» i sin levetid, ikke kun den f
     await new Promise((r) => setTimeout(r, 20));
   }
   assert.deepEqual(svarDialog, [false, false], `kun den foerste boks blev besvaret: ${JSON.stringify(svarDialog)}`);
+});
+
+// ── R98 (Astra): overhalede kald, en armering bruges én gang, og uret efter opsaetningen ─────────
+test('#69: et kald, der overhales MENS det saetter sin vagt op, sender intet og svarer navigation-superseded (R98)', async () => {
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  let n = 0;
+  u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Page.enable' && n++ === 0) await new Promise((r) => setTimeout(r, 150));   // kald A er langsomt
+    return send(m, metode, p);
+  };
+  const adresser = [];
+  u.chrome.tabs.update = async (id, o) => {
+    adresser.push(o.url);
+    setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 5);
+    return { id };
+  };
+  const pA = u.hent('dispatch')(9876, 'navigate', { url: 'https://a.example/', leave_page: true });
+  await new Promise((r) => setTimeout(r, 20));
+  const sB = await u.hent('dispatch')(9876, 'navigate', { url: 'https://b.example/' });
+  const sA = await pA;
+  assert.equal(sB.error, 'beforeunload-blocked', JSON.stringify(sB));
+  assert.equal(sA.error, 'navigation-superseded', `det overhalede kald sendte alligevel sin adresse: ${JSON.stringify(sA)}`);
+  assert.deepEqual(adresser, ['https://b.example/'], `adresser sendt: ${JSON.stringify(adresser)}`);
+  assert.deepEqual(svarDialog, [false]);
+  assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 0, 'en vagt blev haengende');
+});
+
+test('#69: et kald, der overhales EFTER sin adresse, genopliver ikke sin vagt bagefter (R98)', { timeout: 60000 }, async () => {
+  const { u, svarDialog, frigiv } = fastlaastDerefterLedig({ forladt: false });
+  const pA = u.hent('dispatch')(9876, 'navigate', { url: 'https://a.example/', leave_page: true });   // haenger: tab-not-responding efter ~18 s
+  await new Promise((r) => setTimeout(r, 4000));   // A har sendt sin adresse og venter
+  frigiv();
+  const sB = await u.hent('dispatch')(9876, 'navigate', { url: 'https://b.example/' });
+  assert.equal(sB.error, 'beforeunload-blocked', JSON.stringify(sB));
+  const sA = await pA;
+  assert.equal(sA.error, 'tab-not-responding');
+  assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 0, 'det overhalede kalds Leave-vagt blev genoplivet');
+  await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(svarDialog, [false], `en senere boks fik den gamle vagts Leave: ${JSON.stringify(svarDialog)}`);
+});
+
+test('#69: en handle_dialog-armering bruges paa én boks - en forsinket kvittering daekker ikke den naeste (R98)', async () => {
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  let foersteSvar = true;
+  u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Page.enable') {
+      // den overhalede navigations boks kommer under opsaetningen; handle_dialog svarer, men kvitteringen er forsinket
+      await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    if (metode === 'Page.handleJavaScriptDialog' && foersteSvar) { foersteSvar = false; await new Promise((r) => setTimeout(r, 250)); }
+    return send(m, metode, p);
+  };
+  await u.hent('dispatch')(9876, 'handle_dialog', { action: 'dismiss', timeout: 20000 });
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => {
+    setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 5);
+    return opdater(id, o);
+  };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: true });
+  await new Promise((r) => setTimeout(r, 300));
+  // Svarene logges i den raekkefoelge, de bliver faerdige; armeringens er forsinket 250 ms. Ét dismiss (armeringen) og ét Leave (vagten).
+  assert.deepEqual([...svarDialog].sort(), [false, true], `armeringen skulle svare den foerste, vagten den anden med Leave: ${JSON.stringify(svarDialog)}`);
+  assert.notEqual(s.error, 'beforeunload-blocked', `en ubesvaret boks blev meldt som besvaret af handle_dialog: ${JSON.stringify(s)}`);
+});
+
+test('#69: vagten daekker hele afslutningen - en boks under et langsomt afsluttende tabs.get besvares (R98)', { timeout: 60000 }, async () => {
+  const { u, svarDialog } = fastlaast();
+  let opdateret = false;
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => { opdateret = true; return opdater(id, o); };
+  const hent = u.chrome.tabs.get;
+  let fyret = false;
+  u.chrome.tabs.get = async (id) => {
+    const svar = await hent(id);
+    if (opdateret && !fyret && svar.status === 'complete') {
+      fyret = true;
+      await new Promise((r) => setTimeout(r, 2100));
+      await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    return svar;
+  };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.ok(fyret);
+  assert.deepEqual(svarDialog, [false], `boksen under det langsomme tabs.get blev ikke besvaret: ${JSON.stringify(svarDialog)}`);
+  assert.equal(s.error, 'beforeunload-blocked', JSON.stringify(s));
 });
