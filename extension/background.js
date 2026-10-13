@@ -1457,7 +1457,8 @@ function redigerbarTekst(rod) {
           stykker = t.split('\n').map((l) => [l]);
         }
         nyLinjeEfterBlok();
-        sidste().push(...stykker[0]);
+        // R95 (Astra, maalt i model): push(...stykker) gav «Maximum call stack size exceeded» ved 200.000 tegn.
+        for (const x of stykker[0]) sidste().push(x);
         for (const l of stykker.slice(1)) linjer.push([...l]);
       } else if (b.nodeType === 1) {
         if (stil(b).display === 'none') continue;
@@ -4578,7 +4579,14 @@ async function armerForladVagt(tabId, forlad) {
     haenger,
     // Bliver der svaret Stay (eller gik svaret ikke igennem), venter navigate ikke paa en side, der aldrig kommer.
     vedSvar(f) { vedSvar = f; if (tilstand.faerdig && (!tilstand.forlod || tilstand.fejl)) f(); },
-    af() { af(); return tilstand.set ? { forlod: tilstand.forlod && !tilstand.fejl, fejl: tilstand.fejl, afHandleDialog: tilstand.afHandleDialog } : null; },
+    // R95 (Astra, maalt i model): sluttede navigate (15 s), foer svaret paa boksen var bekraeftet, blev standardvaerdierne
+    // laest som et bekraeftet Stay. En boks set uden bekraeftet svar er nu altid ubekraeftet.
+    af() {
+      af();
+      if (!tilstand.set) return null;
+      const fejl = tilstand.fejl || (tilstand.faerdig ? null : 'the answer to this prompt was not confirmed in time');
+      return { forlod: tilstand.forlod && !fejl, fejl, afHandleDialog: fejl ? null : tilstand.afHandleDialog };
+    },
   };
 }
 
@@ -4880,7 +4888,9 @@ async function dispatch(port, method, params) {
       const updated = await chrome.tabs.get(tab.id);
       // Svarede fanen ikke, da vagten blev sat, og er navigationen aldrig set begynde, er det ikke en side, der kom: enten en
       // boks, der allerede stod aaben, eller en side, der stadig regner. Begge siges, og det billige raad kommer foerst.
-      if (forladVagt && forladVagt.haenger && !forladt && !navBegyndt && !(tidligt && tidligt.loading) && String(updated.url) !== String(params.url)) {
+      if (forladVagt && forladVagt.haenger && !forladt && !navBegyndt && !(tidligt && tidligt.loading)
+          // R95 (Astra, maalt i model): samme adresse som foer er ikke et bevis paa en navigation - kun en anden end den gamle er.
+          && (String(updated.url) !== String(params.url) || String(updated.url) === tidligt.gammelUrl)) {
         return { ok: false, error: 'tab-not-responding', url: updated.url, requested_url: params.url, tab_id: tab.id,
           note: 'Chrome did not answer on this tab, and the page did not start loading the new address. Either the page is ' +
                 'busy running a long script - try browser_navigate again in a few seconds - or a dialog is already open ' +

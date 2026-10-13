@@ -127,6 +127,9 @@ test('#70: contenteditable laeses som linjer, ikke som textContent eller innerTe
   // R94 (Astra, maalt i model): et bogstaveligt U+0001 i teksten blev til et mellemrum.
   assert.equal(laes(['a\u0001b']), 'a\u0001b', 'et tegn i sidens tekst blev forvekslet med markoeren for mellemrum');
   assert.equal(laes([['DIV', { ws: 'pre-wrap' }, 'a\u0001 b']]), 'a\u0001 b');
+  // R95 (Astra, maalt i model): én stor tekstknude gav «Maximum call stack size exceeded» (push med 200.000 argumenter).
+  const stor = 'a '.repeat(100000) + 'z';
+  assert.equal(laes([stor]), stor, 'en stor tekstknude kunne ikke laeses');
   assert.equal(laes([' a ', ['DIV', {}, ' b ']]), 'a\nb', 'mellemrum i linjens kanter er ikke tekst');
   assert.equal(laes(['a\u00a0\u00a0b']), 'a\u00a0\u00a0b', 'haarde mellemrum foldes ikke');
 });
@@ -667,4 +670,25 @@ test('#69: en travl side, der omdirigerer, er en gennemfoert navigation - ikke t
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
   assert.equal(svar.error, undefined, `en omdirigeret navigation blev meldt som en fane, der ikke svarer: ${JSON.stringify(svar)}`);
   assert.equal(svar.url, 'https://ny.example/login');
+});
+
+// ── R95 (Astra): et ubekraeftet svar ved navigates frist, og samme adresse paa en fastlaast fane ─────────
+test('#69: naar navigates frist kommer, foer handle_dialog har bekraeftet sit svar, er svaret ubekraeftet - ikke Stay', { timeout: 60000 }, async () => {
+  for (const action of ['dismiss', 'accept']) {
+    const { u } = navSele({ forladt: false, forsinkelse: 14800 });
+    const send = u.chrome.debugger.sendCommand;
+    u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.handleJavaScriptDialog' ? new Promise(() => {}) : send(m, metode, p));
+    await u.hent('dispatch')(9876, 'handle_dialog', { action, timeout: 60000 });
+    const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+    assert.equal(svar.error, 'beforeunload-unanswered', `${action}: et ubekraeftet svar blev meldt som bekraeftet: ${JSON.stringify(svar)}`);
+    assert.doesNotMatch(String(svar.note), /answered Stay|still works/);
+  }
+});
+
+test('#69: en fastlaast fane og samme adresse som foer er ikke en navigation - tab-not-responding', { timeout: 30000 }, async () => {
+  const { u } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://kladde.example/' });
+  assert.equal(svar.error, 'tab-not-responding', `samme adresse paa en fastlaast fane blev meldt som gennemfoert: ${JSON.stringify(svar)}`);
 });
