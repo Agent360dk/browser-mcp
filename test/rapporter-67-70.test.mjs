@@ -325,6 +325,21 @@ test('#69: handle_dialog paa en fane med en aaben boks siger hvad der er galt, i
   assert.match(svar.note, /browser_close_tab/);
 });
 
+test('#69: en anden Page.enable-fejl end fristen meldes som den er, ikke som tab-not-responding (R99, Opus)', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': { id: 1, url: 'https://kladde.example/', windowId: 1, active: true },
+    'tabs.query': [{ id: 1, url: 'https://kladde.example/', windowId: 1, active: true }],
+    'debugger.sendCommand': (_m, metode) => { if (metode === 'Page.enable') throw new Error('Cannot access a chrome:// URL'); return {}; },
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  let svar;
+  try { svar = await u.hent('dispatch')(9876, 'handle_dialog', { wait: true }); } catch (e) { svar = { kastet: e.message }; }
+  assert.notEqual(svar.error, 'tab-not-responding', JSON.stringify(svar));
+  assert.match(JSON.stringify(svar), /Cannot access a chrome:\/\/ URL/, 'den egentlige fejl forsvandt');
+});
+
 // ── #67 ogsaa upload_file og filvaelger-vejen ────────────────────────────────
 // R93 (Astra, maalt): stubbene leverede observationen, ogsaa naar ingen lytter var armeret - saa en fjernet armering var
 // groen. Nu ser «siden» kun filen, hvis armeringen kom FOER afleveringen.

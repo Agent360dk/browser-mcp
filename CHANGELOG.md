@@ -114,8 +114,9 @@ judged by the field afterwards, like the other paths, instead of answering yes o
 select all, copy, cut, paste, undo and redo as Chrome's own editing commands (with shift, only z: redo). Before, Ctrl+A typed "a" on Windows, did
 nothing on macOS, and answered `landed: true` (#68). `browser_handle_dialog` on a tab behind a dialog that is
 already open answers `tab-not-responding`, with what can be done, instead of a bare CDP timeout, and a mouse or key timeout
-also names an open dialog as a possible cause. `browser_navigate` itself still waits and reports the old address when the page
-asks "Leave site?"; answering that prompt comes in a later version (#69, in part). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
+also names an open dialog as a possible cause. `browser_navigate` itself still waits and reports the old address, without an error, when the page
+asks "Leave site?", and the prompt stays open, so the tab does not respond until the user answers it in Chrome;
+answering that prompt comes in a later version (#69, in part). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
 contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
 judges a path by the operating system's own canonical path, so a different letter case, a Windows short name such as
 `RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70).
