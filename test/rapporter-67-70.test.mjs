@@ -636,3 +636,35 @@ test('#67: teksterne om selector passer til filFeltNavn - ingen «null naar felt
     assert.doesNotMatch(t, /without an id or name has none|null when the input has no id or name/, `${navn} siger, at et felt uden id/name ingen selector har`);
   }
 });
+
+// Mutanterne R3 og R4 (13/10) overlevede: ingen proeve viste, at vagten stadig besvarer en boks, naar en travl side bliver
+// ledig, eller at en travl side, der omdirigerer, ikke meldes som tab-not-responding.
+function travlSele({ boks = false, slutUrl = 'https://ny.example/' } = {}) {
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise((r) => setTimeout(() => r({}), 3500)) : send(m, metode, p));
+  u.chrome.tabs.update = async (id) => {
+    setTimeout(async () => {
+      if (boks) { await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }); return; }
+      await u.fyr('tabs.onUpdated', 1, { status: 'loading' }, {});
+      u.chrome.tabs.get = async () => ({ id: 1, url: slutUrl, status: 'complete', windowId: 1, active: true });
+      await u.fyr('tabs.onUpdated', 1, { status: 'complete' }, { url: slutUrl });
+    }, 4000);
+    return { id };
+  };
+  return { u, svarDialog };
+}
+
+test('#69: en travl side, der bliver ledig og saa spoerger «Leave site?», faar vagtens svar (R3)', { timeout: 30000 }, async () => {
+  const { u, svarDialog } = travlSele({ boks: true });
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.deepEqual(svarDialog, [false], `boksen efter den travle periode blev ikke besvaret: ${JSON.stringify(svarDialog)}`);
+  assert.equal(svar.error, 'beforeunload-blocked', JSON.stringify(svar));
+});
+
+test('#69: en travl side, der omdirigerer, er en gennemfoert navigation - ikke tab-not-responding (R4)', { timeout: 30000 }, async () => {
+  const { u } = travlSele({ slutUrl: 'https://ny.example/login' });
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, undefined, `en omdirigeret navigation blev meldt som en fane, der ikke svarer: ${JSON.stringify(svar)}`);
+  assert.equal(svar.url, 'https://ny.example/login');
+});
