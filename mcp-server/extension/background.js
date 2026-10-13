@@ -4524,25 +4524,9 @@ function filFeltNavn(i) {
 // (Stay og Leave). Der er nu én vagt pr. fane; et nyt kald overtager og tager den gamle af.
 const forladVagter = new Map();   // tabId -> den vagt, der svarer paa fanens «Leave site?»
 async function armerForladVagt(tabId, forlad) {
-  const gammel = forladVagter.get(tabId);
-  if (gammel) gammel.af();
-  // R93 (Opus, maalt i Chrome): to veje var stadig tavse. (a) Med handle_dialog armeret (dismiss) svarede navigate efter 15 s
-  // med den gamle adresse og ingen fejl - vagten trak sig helt. Nu lytter den passivt: handle_dialog svarer, vagten noterer
-  // hvad, og navigate melder det. (b) Stod en boks allerede aaben, loeb Page.enable ud, og navigate koerte blindt videre i 26 s.
-  // Nu svarer navigate straks tab-not-responding.
-  try { await debuggerAttach(tabId); } catch { return null; }   // fx en chrome://-side: ingen vagt, som foer
-  let haenger = false;
-  try {
-    await Promise.race([
-      cdpSend(tabId, 'Page.enable', {}),
-      new Promise((_, nej) => setTimeout(() => { haenger = true; nej(new Error('Page.enable answered too slowly')); }, 3000)),
-    ]);
-  } catch (e) {
-    // R94 (Opus, maalt i Chrome): en side, der REGNER i mere end 3 s, svarer heller ikke - og at afvise navigationen dér
-    // var en regression (1.30.1 navigerede efter 6,8 s). Vagten bliver derfor paa (Page.enable kan stadig naa frem, og saa
-    // ses en boks), navigate sender adressen som foer, og dommen tages paa resultatet: se `haenger` i navigate.
-    if (!(haenger || erCdpFrist(e))) return null;
-  }
+  // R97 (Astra, maalt i model): vagten blev bygget EFTER debuggerAttach og Page.enable. Den gamle vagt var taget af foerst, saa en
+  // boks i mellemtiden blev ikke besvaret, og to overlappende kald kunne begge registrere en lytter. Nu bygges vagten, lytter og
+  // overtager fanen i ét synkront skridt foer det foerste await; den gamle tages af i samme skridt.
   const tilstand = { set: false, forlod: false, faerdig: false, fejl: null, afHandleDialog: null };
   // MAALT 13/10 i Chrome: handle_dialog's egen lytter kommer foer vagtens og fjerner sin armering, foer vagten ser boksen.
   // R94 (Astra, maalt i model): men en armering, der allerede var UDLOEBET eller BRUGT paa en anden boks, maa ikke tælle, og
@@ -4596,11 +4580,14 @@ async function armerForladVagt(tabId, forlad) {
     return { forlod: tilstand.forlod && !fejl, fejl, afHandleDialog: fejl ? null : tilstand.afHandleDialog };
   };
   vagt = {
-    haenger,
+    haenger: false,
     // R95 (Opus, maalt i Chrome): paa en side, der regnede i 20 s, var adressen sendt, men vagten taget af - saa aabnede vores
     // egen ventende navigation «Leave site?», da siden blev ledig, og ingen svarede. Paa den vej bliver vagten et minut mere.
     bliv(ms) {
+      // En nyere vagt ejer fanen: denne vender ikke tilbage (R97).
+      if (forladVagter.has(tabId) && forladVagter.get(tabId) !== vagt) return;
       if (slukket) { slukket = false; chrome.debugger.onEvent.addListener(lytter); }
+      forladVagter.set(tabId, vagt);
       clearTimeout(udloeb);
       udloeb = setTimeout(af, ms);
     },
@@ -4611,7 +4598,27 @@ async function armerForladVagt(tabId, forlad) {
     status,
     af() { af(); return status(); },
   };
+  const gammel = forladVagter.get(tabId);
   forladVagter.set(tabId, vagt);
+  if (gammel && gammel !== vagt) gammel.af();
+  // R93 (Opus, maalt i Chrome): to veje var stadig tavse. (a) Med handle_dialog armeret (dismiss) svarede navigate efter 15 s
+  // med den gamle adresse og ingen fejl - vagten trak sig helt. Nu lytter den passivt: handle_dialog svarer, vagten noterer
+  // hvad, og navigate melder det. (b) Stod en boks allerede aaben, loeb Page.enable ud, og navigate koerte blindt videre i 26 s.
+  // Nu svarer navigate straks tab-not-responding.
+  try { await debuggerAttach(tabId); } catch { af(); return null; }   // fx en chrome://-side: ingen vagt, som foer
+  let haenger = false;
+  try {
+    await Promise.race([
+      cdpSend(tabId, 'Page.enable', {}),
+      new Promise((_, nej) => setTimeout(() => { haenger = true; nej(new Error('Page.enable answered too slowly')); }, 3000)),
+    ]);
+  } catch (e) {
+    // R94 (Opus, maalt i Chrome): en side, der REGNER i mere end 3 s, svarer heller ikke - og at afvise navigationen dér
+    // var en regression (1.30.1 navigerede efter 6,8 s). Vagten bliver derfor paa (Page.enable kan stadig naa frem, og saa
+    // ses en boks), navigate sender adressen som foer, og dommen tages paa resultatet: se `haenger` i navigate.
+    if (!(haenger || erCdpFrist(e))) { af(); return null; }
+  }
+  vagt.haenger = haenger;
   return vagt;
 }
 

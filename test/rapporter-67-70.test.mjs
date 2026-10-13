@@ -850,3 +850,41 @@ test('#69: efter en almindelig navigation, og efter en blokeret, lytter ingen va
     assert.equal(tilbage, 0, `${navn}: ${tilbage} vagt-lytter(e) blev haengende efter kaldet`);
   }
 });
+
+// ── R97 (Astra): overdragelsen mellem vagter uden hul, og overlappende kald ─────────────────
+test('#69: en sen boks fra det forrige kald, der kommer MENS et nyt kald saetter sin vagt op, besvares (R97)', { timeout: 60000 }, async () => {
+  const { u, svarDialog, frigiv } = fastlaastDerefterLedig({ forladt: false });
+  const s1 = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(s1.error, 'tab-not-responding');
+  frigiv();
+  u.chrome.tabs.update = async (id) => ({ id });   // det nye kald udloeser ikke selv en boks
+  const targets = u.chrome.debugger.getTargets;
+  u.chrome.debugger.getTargets = async (...a) => { await new Promise((r) => setTimeout(r, 100)); return targets(...a); };
+  const p2 = u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  p2.catch(() => {});
+  await new Promise((r) => setTimeout(r, 50));   // det nye kald venter paa debuggerAttach
+  await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+  await new Promise((r) => setTimeout(r, 400));   // svaret gaar ogsaa gennem det forsinkede getTargets
+  assert.deepEqual(svarDialog, [false], `boksen under overdragelsen blev ikke besvaret: ${JSON.stringify(svarDialog)}`);
+});
+
+test('#69: to overlappende navigate paa samme fane giver én vagt - boksen faar ét svar, det nyeste kalds (R97)', async () => {
+  for (const [foer, nu, forventet] of [[true, false, [false]], [false, true, [true]]]) {
+    const { u, svarDialog } = navSele({ forladt: false, forsinkelse: null });
+    const send = u.chrome.debugger.sendCommand;
+    u.chrome.debugger.sendCommand = async (m, metode, p) => {
+      if (metode === 'Page.enable') await new Promise((r) => setTimeout(r, 40));
+      return send(m, metode, p);
+    };
+    u.chrome.tabs.update = async (id) => ({ id });
+    const p1 = u.hent('dispatch')(9876, 'navigate', { url: 'https://a.example/', leave_page: foer });
+    const p2 = u.hent('dispatch')(9876, 'navigate', { url: 'https://b.example/', leave_page: nu });
+    p1.catch(() => {}); p2.catch(() => {});
+    await new Promise((r) => setTimeout(r, 150));   // begge vagter er sat op
+    const lyttere = (u.lyttere.get('debugger.onEvent') || []).length;
+    await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(lyttere, 1, `${foer} og ${nu}: ${lyttere} vagt-lyttere paa fanen`);
+    assert.deepEqual(svarDialog, forventet, `${foer} og ${nu}: ${JSON.stringify(svarDialog)}`);
+  }
+});
