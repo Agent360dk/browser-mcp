@@ -230,7 +230,7 @@ All three are optional. None is needed for normal use.
 ### Navigation & Content
 | Tool | Description |
 |------|-------------|
-| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). If the page asks "Leave site?", it stays and says `beforeunload-blocked`; `leave_page=true` leaves. A tab stuck behind an open dialog says `tab-not-responding` |
+| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`) |
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |

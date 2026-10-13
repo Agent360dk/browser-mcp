@@ -19,9 +19,7 @@ John H.**
 | `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
 | `cleared_by_page`, `seen_in_field`, `input` | `browser_upload_file`, `browser_drop_file` | The field is empty afterwards, but the page's change handler saw the file in it: X and Facebook empty the field after reading the file, and a page that rejects a file can too, so check the page before attaching again. `input` describes the field that got the file (#67) |
 | `other_file_inputs` | `browser_drop_file` | No file input at the target and no file chooser opened when it was clicked: the page's other file inputs, none of which got the file, each with a `selector` that matched that input alone (null when none did) (#67) |
-| `error: "beforeunload-blocked"`, `error: "beforeunload-unanswered"` | `browser_navigate` | The page asked "Leave site?" because something is unsaved. The tool answered Stay and nothing navigated; `leave_page: true` leaves. `beforeunload-unanswered`: the answer did not go through, so the prompt may still be open (#69) |
-| `error: "navigation-superseded"` | `browser_navigate` | A newer `browser_navigate` on the same tab started before this one sent its address, so this one sent nothing; the newer call decides (#69) |
-| `error: "tab-not-responding"` | `browser_handle_dialog`, `browser_navigate` | Chrome did not answer on the tab, for instance because a dialog is already open, which cannot be answered from here; the note says what can be done (#69) |
+| `error: "tab-not-responding"` | `browser_handle_dialog` | Chrome did not answer on the tab, for instance because a dialog is already open, which cannot be answered from here; the note says what can be done (#69, in part) |
 | `shortcut` | `browser_press_key` | The editing command sent with a ctrl or meta key: `selectAll`, `copy`, `cut`, `paste`, `undo` or `redo`. `landed` says the page got the key, not what the command did (#68) |
 | `error: "no-rows"` | `browser_extract_list` | The selector matched no rows with text. Before, the answer was `count: 0` with `reached_end: true` |
 | `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why; in a hidden page, why `reached_end` is false (#11) |
@@ -114,9 +112,10 @@ clicks the target and fills the file chooser that opens, so an
 judged by the field afterwards, like the other paths, instead of answering yes on Chrome's receipt (#67).
 `browser_press_key` with ctrl, meta or alt types no character, sends the key code for letters and digits, and sends
 select all, copy, cut, paste, undo and redo as Chrome's own editing commands (with shift, only z: redo). Before, Ctrl+A typed "a" on Windows, did
-nothing on macOS, and answered `landed: true` (#68). `browser_navigate` answers "Leave site?" itself, or reports the answer of an armed `browser_handle_dialog`, and when the tab
-does not answer and the new address has not started loading, it says `tab-not-responding` instead of the old address. Before, it waited 15 seconds or more,
-reported the old address with no error, and left a tab that answered nothing, not even `browser_handle_dialog` (#69). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
+nothing on macOS, and answered `landed: true` (#68). `browser_handle_dialog` on a tab behind a dialog that is
+already open answers `tab-not-responding`, with what can be done, instead of a bare CDP timeout, and a mouse or key timeout
+also names an open dialog as a possible cause. `browser_navigate` itself still waits and reports the old address when the page
+asks "Leave site?"; answering that prompt comes in a later version (#69, in part). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
 contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
 judges a path by the operating system's own canonical path, so a different letter case, a Windows short name such as
 `RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70).

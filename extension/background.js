@@ -4513,166 +4513,6 @@ function filFeltNavn(i) {
   return { selector, description: hvor + (i.id ? ', id "' + i.id + '"' : '') + (i.name ? ', name "' + i.name + '"' : '') };
 }
 
-// #69 (arasmileska; MAALT 13/10 i headless Chrome): en side med en beforeunload-lytter (et ugemt udkast) fik «Leave site?»
-// frem, naar navigate skiftede adressen. Ingen svarede boksen; navigate ventede sine 15 sekunder og meldte den GAMLE adresse
-// uden fejl, og bagefter svarede fanen ikke paa noget (skaermbillede, sideindhold og handle_dialog loeb alle ud), fordi
-// en boks, der kom frem foer nogen lyttede, ikke kan besvares gennem CDP. Vagten lytter derfor FOER adresseskiftet og
-// svarer straks: Stay (standard - intet ugemt gaar tabt) eller Leave, naar agenten har bedt om det med leave_page.
-// Har agenten selv armeret handle_dialog paa fanen, er det dens svar, der gaelder. Svarer siden ikke inden for 3 s
-// (fx fordi en boks allerede staar aaben), navigeres der som foer, uden vagt.
-// R96 (Astra, maalt i model): en forlaenget vagt fra et tidligere kald og et nyt kalds vagt svarede begge paa samme boks
-// (Stay og Leave). Der er nu én vagt pr. fane; et nyt kald overtager og tager den gamle af.
-const forladVagter = new Map();   // tabId -> den vagt, der svarer paa fanens «Leave site?»
-async function armerForladVagt(tabId, forlad) {
-  // R97 (Astra, maalt i model): vagten blev bygget EFTER debuggerAttach og Page.enable. Den gamle vagt var taget af foerst, saa en
-  // boks i mellemtiden blev ikke besvaret, og to overlappende kald kunne begge registrere en lytter. Nu bygges vagten, lytter og
-  // overtager fanen i ét synkront skridt foer det foerste await; den gamle tages af i samme skridt.
-  const tilstand = { set: false, forlod: false, faerdig: false, fejl: null, afHandleDialog: null, gen: 0 };
-  // Hvem venter paa, at svaret paa den AKTUELLE boks er afgjort (navigate, foer det laeser status).
-  let ventere = [];
-  const afgjort = () => { const v = ventere; ventere = []; for (const f of v) f(); };
-  // MAALT 13/10 i Chrome: handle_dialog's egen lytter kommer foer vagtens og fjerner sin armering, foer vagten ser boksen.
-  // R94 (Astra, maalt i model): men en armering, der allerede var UDLOEBET eller BRUGT paa en anden boks, maa ikke tælle, og
-  // et svar taeller foerst, naar handle_dialog har BEKRAEFTET det paa netop en beforeunload. Vagten holder derfor loeftet
-  // fra armeringen, der fandtes ved start, og om det allerede var afgjort, da boksen kom.
-  const startLoefte = armeredeDialoger.has(tabId) ? dialogLoefter.get(tabId) || null : null;
-  let startAfgjort = false;
-  // R98 (Astra, maalt med den rigtige handle_dialog): en armering, der allerede har svaret paa en boks, maa ikke regnes som
-  // svaret paa den naeste, ogsaa mens dens kvittering er undervejs. Hver armering bruges paa én boks.
-  let armeringBrugt = false;
-  // R98 (Opus, maalt i headless Chrome 8 af 15): Stay paa den overhalede boks var ikke gennemfoert, naar kaldets eget adresseskift
-  // blev sendt, og saa annullerede vores eget Stay kaldets EGEN navigation. Svaret holdes her, saa navigate kan vente paa det.
-  let overhaletSvar = null;
-  if (startLoefte) startLoefte.then(() => { startAfgjort = true; }, () => { startAfgjort = true; });
-  let vedSvar = null;
-  let slukket = false;
-  const lytter = (source, method, ep) => {
-    if (source.tabId !== tabId || method !== 'Page.javascriptDialogOpening' || ep?.type !== 'beforeunload') return;
-    // MAALT 13/10 i Chrome (R98-forarbejde): en boks, der kommer, FOER dette kald har sendt sin egen adresse, hoerer til det
-    // forrige kalds ventende navigation, som dette kald har overhalet. Den faar Stay (den gamle navigation annulleres; kladden
-    // bliver) og taeller ikke i dette kalds dom; dette kalds eget adresseskift giver sin egen boks, som faar dette kalds svar.
-    // Foer sendte et nyt kald med leave_page fanen til den GAMLE adresse (maalt: efter=1 i stedet for efter=2).
-    const nuLoefte0 = armeredeDialoger.has(tabId) ? dialogLoefter.get(tabId) || null : null;
-    const armLoefte = nuLoefte0 || (startLoefte && !startAfgjort && !armeringBrugt ? startLoefte : null);
-    if (!vagt.egetSkift) {
-      // handle_dialog svarer selv paa boksen (dens lytter kommer foer vagtens); ellers faar den overhalede navigation Stay.
-      if (armLoefte) armeringBrugt = true;
-      else overhaletSvar = cdpSend(tabId, 'Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
-      return;
-    }
-    // MAALT 13/10 i Chrome (R98-forarbejde): et nyt navigate med leave_page svarede Leave paa den sene boks fra det forrige
-    // kalds navigation - og saa udloeste sit EGET adresseskift en boks til, som vagten ikke svarede paa (den svarede kun én
-    // gang), og fanen laaste. Vagten svarer nu paa hver «Leave site?» i sin levetid; hver boks har sit eget nummer, saa et
-    // sent svar paa en tidligere boks ikke blandes med den naeste.
-    tilstand.gen++;
-    Object.assign(tilstand, { set: false, forlod: false, faerdig: false, fejl: null, afHandleDialog: null });
-    const minGen = tilstand.gen;
-    const gaelder = () => tilstand.gen === minGen;
-    const loefte = armLoefte;
-    if (loefte) {
-      armeringBrugt = true;
-      // handle_dialog svarer selv; vagten svarer ikke oven i den, men venter paa dens BEKRAEFTEDE svar paa denne boks.
-      tilstand.set = true;
-      Promise.race([loefte, new Promise((r) => setTimeout(() => r(null), 5000))]).then((r) => {
-        if (!gaelder()) return;
-        if (r && r.ok && r.dialog_type === 'beforeunload') {
-          tilstand.forlod = r.action === 'accept';
-          tilstand.afHandleDialog = r.action;
-        } else {
-          tilstand.fejl = (r && r.error) || 'browser_handle_dialog did not confirm an answer to this prompt';
-        }
-        tilstand.faerdig = true;
-        afgjort();
-        if ((!tilstand.forlod || tilstand.fejl) && vedSvar) vedSvar();
-      });
-      return;
-    }
-    tilstand.set = true;
-    tilstand.forlod = forlad;
-    // R93 (Astra, maalt i model): et svar, der ikke gik igennem, blev meldt som Stay med «the tab still works».
-    cdpSend(tabId, 'Page.handleJavaScriptDialog', { accept: forlad })
-      .catch((e) => { if (gaelder()) tilstand.fejl = e?.message || String(e); })
-      .then(() => { if (!gaelder()) return; tilstand.faerdig = true; afgjort(); if ((!forlad || tilstand.fejl) && vedSvar) vedSvar(); });
-  };
-  chrome.debugger.onEvent.addListener(lytter);
-  let vagt = null;
-  const af = () => {
-    if (!slukket) { slukket = true; clearTimeout(udloeb); chrome.debugger.onEvent.removeListener(lytter); }
-    if (forladVagter.get(tabId) === vagt) forladVagter.delete(tabId);
-  };
-  // Og vagten udloeber selv efter navigates eget loft (15 s) plus margin, saa ingen fejlvej kan efterlade den.
-  // R98 (Astra, maalt i model): uret startede FOER debuggerAttach og Page.enable, saa 3 s + 15 s + tabs.get + afklaret kunne naa
-  // det, og vagten forsvandt under det afsluttende tabs.get. Nu startes det efter opsaetningen, med plads til hele kaldet.
-  let udloeb = null;
-  // Tilstanden som navigate laeser den - uden at tage vagten af (R96, Astra: et hul mellem af() og bliv() lod en sen boks
-  // passere ubesvaret). En boks set uden bekraeftet svar er ubekraeftet (R95).
-  const status = () => {
-    if (!tilstand.set) return null;
-    const fejl = tilstand.fejl || (tilstand.faerdig ? null : 'the answer to this prompt was not confirmed in time');
-    return { forlod: tilstand.forlod && !fejl, fejl, afHandleDialog: fejl ? null : tilstand.afHandleDialog };
-  };
-  vagt = {
-    haenger: false,
-    egetSkift: false,   // saettes af navigate lige foer dette kalds eget adresseskift
-    // R95 (Opus, maalt i Chrome): paa en side, der regnede i 20 s, var adressen sendt, men vagten taget af - saa aabnede vores
-    // egen ventende navigation «Leave site?», da siden blev ledig, og ingen svarede. Paa den vej bliver vagten et minut mere.
-    bliv(ms) {
-      // En nyere vagt ejer fanen: denne vender ikke tilbage (R97).
-      if (vagt.overhalet || (forladVagter.has(tabId) && forladVagter.get(tabId) !== vagt)) return;
-      if (slukket) { slukket = false; chrome.debugger.onEvent.addListener(lytter); }
-      forladVagter.set(tabId, vagt);
-      clearTimeout(udloeb);
-      udloeb = setTimeout(af, ms);
-    },
-    // Bliver der svaret Stay (eller gik svaret ikke igennem), venter navigate ikke paa en side, der aldrig kommer.
-    vedSvar(f) { vedSvar = f; if (tilstand.faerdig && (!tilstand.forlod || tilstand.fejl)) f(); },
-    // R95 (Astra, maalt i model): sluttede navigate (15 s), foer svaret paa boksen var bekraeftet, blev standardvaerdierne
-    // laest som et bekraeftet Stay. En boks set uden bekraeftet svar er nu altid ubekraeftet.
-    status,
-    // MAALT 13/10 i Chrome: en ny boks kom, mens navigate laeste status, og svaret paa den var undervejs - saa blev et Stay,
-    // der VAR givet, meldt som ubekraeftet. navigate venter kort paa et svar under afgoerelse; kommer det ikke, er det
-    // ubekraeftet som foer (R95).
-    afklaret(ms) {
-      if (!tilstand.set || tilstand.faerdig) return Promise.resolve();
-      return new Promise((r) => { const ur = setTimeout(r, ms); ventere.push(() => { clearTimeout(ur); r(); }); });
-    },
-    af() { af(); return status(); },
-    // Foer kaldets eget adresseskift: vent paa Stay til en overhalet boks (hoejst 3 s pr. boks), saa det Stay ikke rammer
-    // kaldets egen navigation. Opus' rettelse (R98), maalt 6 af 6 i Chrome.
-    async foerEgetSkift() {
-      while (overhaletSvar) {
-        const p = overhaletSvar;
-        await Promise.race([p, new Promise((r) => setTimeout(r, 3000))]);
-        if (overhaletSvar === p) overhaletSvar = null;
-      }
-      this.egetSkift = true;
-    },
-  };
-  const gammel = forladVagter.get(tabId);
-  forladVagter.set(tabId, vagt);
-  if (gammel && gammel !== vagt) { gammel.overhalet = true; gammel.af(); }
-  // R93 (Opus, maalt i Chrome): to veje var stadig tavse. (a) Med handle_dialog armeret (dismiss) svarede navigate efter 15 s
-  // med den gamle adresse og ingen fejl - vagten trak sig helt. Nu lytter den passivt: handle_dialog svarer, vagten noterer
-  // hvad, og navigate melder det. (b) Stod en boks allerede aaben, loeb Page.enable ud, og navigate koerte blindt videre i 26 s.
-  // Nu svarer navigate straks tab-not-responding.
-  try { await debuggerAttach(tabId); } catch { af(); return null; }   // fx en chrome://-side: ingen vagt, som foer
-  let haenger = false;
-  try {
-    await Promise.race([
-      cdpSend(tabId, 'Page.enable', {}),
-      new Promise((_, nej) => setTimeout(() => { haenger = true; nej(new Error('Page.enable answered too slowly')); }, 3000)),
-    ]);
-  } catch (e) {
-    // R94 (Opus, maalt i Chrome): en side, der REGNER i mere end 3 s, svarer heller ikke - og at afvise navigationen dér
-    // var en regression (1.30.1 navigerede efter 6,8 s). Vagten bliver derfor paa (Page.enable kan stadig naa frem, og saa
-    // ses en boks), navigate sender adressen som foer, og dommen tages paa resultatet: se `haenger` i navigate.
-    if (!(haenger || erCdpFrist(e))) { af(); return null; }
-  }
-  vagt.haenger = haenger;
-  if (!slukket) udloeb = setTimeout(af, 30000);
-  return vagt;
-}
-
 // Arms Page.fileChooserOpened, clicks the trigger, and fulfils the chooser with
 // the given files. Returns null if no chooser opened (so the caller can fall
 // through to its own error), or a result object on success/explicit failure.
@@ -4765,8 +4605,6 @@ async function dispatch(port, method, params) {
       // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
       let nyFane = !!(tab && tab.oprettetMedUrl);
       let tidligt = null;
-      let forladVagt = null;
-      let navBegyndt = false;   // er navigationen set begynde ('loading') nogen sinde under kaldet?
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
@@ -4907,30 +4745,7 @@ async function dispatch(port, method, params) {
           if (info.status === 'complete') { tidligt.complete = true; tidligt.url = String((t && t.url) || info.url || ''); }
         };
         chrome.tabs.onUpdated.addListener(opfang);
-        forladVagt = await armerForladVagt(tab.id, params.leave_page === true);
-        // R98 (Astra, maalt i model): et kald, som et nyere navigate paa samme fane overhalede, mens det satte sin vagt op,
-        // sendte bagefter sin adresse uden vagt - og boksen den gav, blev aldrig besvaret. Det nyeste kald bestemmer.
-        if (forladVagt && forladVagt.overhalet) {
-          chrome.tabs.onUpdated.removeListener(opfang);
-          return { ok: false, error: 'navigation-superseded', url: String(tab.url || ''), requested_url: params.url, tab_id: tab.id,
-            note: 'A newer browser_navigate on this tab started before this one sent its address, so this one sent nothing. ' +
-                  'The newer call decides where the tab goes; read its answer.' };
-        }
-        if (forladVagt) await forladVagt.foerEgetSkift();
-        if (forladVagt && forladVagt.overhalet) {
-          chrome.tabs.onUpdated.removeListener(opfang);
-          return { ok: false, error: 'navigation-superseded', url: String(tab.url || ''), requested_url: params.url, tab_id: tab.id,
-            note: 'A newer browser_navigate on this tab started before this one sent its address, so this one sent nothing. ' +
-                  'The newer call decides where the tab goes; read its answer.' };
-        }
-        try {
-          await chrome.tabs.update(tab.id, { url: params.url });
-        } catch (e) {
-          // R93 (Astra, maalt i model): en navigation, der fejlede her, efterlod vagten - og med leave_page svarede den
-          // Leave paa den NAESTE «Leave site?» paa fanen. Vagten tages af paa alle udgange.
-          if (forladVagt) forladVagt.af();
-          throw e;
-        } finally { chrome.tabs.onUpdated.removeListener(opfang); }
+        try { await chrome.tabs.update(tab.id, { url: params.url }); } finally { chrome.tabs.onUpdated.removeListener(opfang); }
       }
 
       // Wait for load. A 'complete' can be the about:blank placeholder's OWN load
@@ -4964,13 +4779,12 @@ async function dispatch(port, method, params) {
         };
         const listener = (tabId, info) => {
           if (tabId !== tab.id) return;
-          if (info.status === 'loading') { saaLoading = true; navBegyndt = true; }
+          if (info.status === 'loading') saaLoading = true;
           if (info.status !== 'complete') return;
           Promise.all([loadedNow(), nyNok()]).then(([ok, ny]) => { if (ok && ny) finish(); });
         };
         chrome.tabs.onUpdated.addListener(listener);
         const timer = setTimeout(finish, 15000);
-        if (forladVagt) forladVagt.vedSvar(finish);
         // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
         // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
         // R76 (Astra, maalt i model): en gammel sides 'complete' (fx en gammel omdirigering) med en anden adresse end den oprindelige
@@ -4983,48 +4797,6 @@ async function dispatch(port, method, params) {
       session.activeTabId = tab.id;
       persistSessions();
       const updated = await chrome.tabs.get(tab.id);
-      // Vagtens tilstand laeses EFTER fanen, saa en boks under tabs.get ogsaa taeller i dommen (R96).
-      if (forladVagt) await forladVagt.afklaret(2000);
-      const forladt = forladVagt ? forladVagt.status() : null;
-      // Svarede fanen ikke, da vagten blev sat, og er navigationen aldrig set begynde, er det ikke en side, der kom: enten en
-      // boks, der allerede stod aaben, eller en side, der stadig regner. Begge siges, og det billige raad kommer foerst.
-      if (forladVagt && forladVagt.haenger && !forladt && !navBegyndt && !(tidligt && tidligt.loading)
-          // R95 (Astra, maalt i model): samme adresse som foer er ikke et bevis paa en navigation - kun en anden end den gamle er.
-          && (String(updated.url) !== String(params.url) || String(updated.url) === tidligt.gammelUrl)) {
-        forladVagt.bliv(60000);
-        const arm = armeredeDialoger.get(tab.id);
-        const politik = (params.leave_page === true ? 'Leave' : 'Stay');
-        return { ok: false, error: 'tab-not-responding', url: updated.url, requested_url: params.url, tab_id: tab.id,
-          note: 'Chrome did not answer on this tab, and the page has not started loading the new address. The address was ' +
-                'sent, so the tab may still go there once the page frees up; a "Leave site?" prompt in the next minute is answered ' +
-                // R96 (Astra): en armeret handle_dialog har forrang - noten maa ikke love politikken ubetinget.
-                (arm ? `by your armed browser_handle_dialog (${arm.action}) while it is armed, otherwise ${politik}` : politik) +
-                '. Either the page is busy running a long ' +
-                'script - check the tab with browser_list_tabs in a few seconds before navigating again - or a dialog is ' +
-                'already open (an alert, a confirm or "Leave site?") that appeared before anything was listening. Such a ' +
-                'dialog cannot be answered from here: ask the user to answer it in Chrome, or close the tab with ' +
-                'browser_close_tab, which skips the prompt but loses anything unsaved on the page.' };
-      }
-      // Paa alle andre veje er kaldet slut, og vagten tages af her - foerst nu, efter at fanens tilstand er laest (R96).
-      if (forladVagt) forladVagt.af();
-      if (forladt && forladt.fejl) {
-        return { ok: false, error: 'beforeunload-unanswered', detail: forladt.fejl, url: updated.url, requested_url: params.url, tab_id: tab.id,
-          note: 'The page asked "Leave site?", and no answer to it was confirmed, so the prompt may still be open ' +
-                'and the tab may not respond. Ask the user to answer it in Chrome, or close the tab with browser_close_tab, ' +
-                'which skips the prompt but loses anything unsaved on the page.' };
-      }
-      if (forladt && !forladt.forlod && forladt.afHandleDialog) {
-        return { ok: false, error: 'beforeunload-blocked', url: updated.url, requested_url: params.url, tab_id: tab.id,
-          note: `The page asked "Leave site?", and your armed browser_handle_dialog answered it (${forladt.afHandleDialog}), so ` +
-                'nothing navigated and the page is as it was. To leave anyway and lose what is unsaved, call browser_navigate ' +
-                'again with leave_page: true and no armed dialog handling.' };
-      }
-      if (forladt && !forladt.forlod) {
-        return { ok: false, error: 'beforeunload-blocked', url: updated.url, requested_url: params.url, tab_id: tab.id,
-          note: 'The page asked "Leave site?" - it has something unsaved, such as a draft. The tool answered Stay, so ' +
-                'nothing navigated and the page is as it was, and the tab still works. To leave anyway and lose what is ' +
-                'unsaved, call browser_navigate again with leave_page: true.' };
-      }
 
       // Check for CAPTCHA after navigation
       const captcha = await detectCaptcha(tab.id);
