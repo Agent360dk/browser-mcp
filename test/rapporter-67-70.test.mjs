@@ -292,6 +292,14 @@ test('#67: filFeltNavn giver en selector, der rammer netop feltet - ogsaa uden i
   assert.equal(navn(c).selector, 'input[type="file"][name="pic"]');
   assert.equal(navn(e).selector, '#wrap > input:nth-of-type(5)', 'et navn, to felter deler, blev brugt som selector');
   assert.equal(navn(b, { querySelectorAll: () => [] }).selector, null, 'et felt uden for dokumentet kan ikke naas med en selector');
+  // R94 (Opus K): et forfader-id, der ikke er entydigt, giver en sti der rammer to felter - saa bruges hele stien fra <html>.
+  const html = { nodeType: 1, tagName: 'HTML', id: '', parentElement: null, previousElementSibling: null };
+  const dup = { nodeType: 1, tagName: 'DIV', id: 'dup', parentElement: html, previousElementSibling: null };
+  const f = felt({ parentElement: dup });
+  const andet = felt({});
+  const doc2 = { querySelectorAll: (q) => ({ 'input[type="file"]': [f, andet], '#dup > input:nth-of-type(1)': [f, andet],
+    'html:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)': [f] })[q] || [] };
+  assert.equal(navn(f, doc2).selector, 'html:nth-of-type(1) > div:nth-of-type(1) > input:nth-of-type(1)', 'et dublet-id gav ingen selector');
 });
 
 // ── #69 navigate og «Leave site?» ────────────────────────────────────────────
