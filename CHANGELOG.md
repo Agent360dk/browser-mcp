@@ -114,7 +114,7 @@ judged by the field afterwards, like the other paths, instead of answering yes o
 `browser_press_key` with ctrl, meta or alt types no character, sends the key code for letters and digits, and sends
 select all, copy, cut, paste, undo and redo as Chrome's own editing commands (with shift, only z: redo). Before, Ctrl+A typed "a" on Windows, did
 nothing on macOS, and answered `landed: true` (#68). `browser_navigate` answers "Leave site?" itself, or reports the answer of an armed `browser_handle_dialog`, and when the tab
-does not answer and the new address never starts loading, it says `tab-not-responding` instead of the old address. Before, it waited 15 seconds or more,
+does not answer and the new address has not started loading, it says `tab-not-responding` instead of the old address. Before, it waited 15 seconds or more,
 reported the old address with no error, and left a tab that answered nothing, not even `browser_handle_dialog` (#69). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
 contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
 judges a path by the operating system's own canonical path, so a different letter case, a Windows short name such as

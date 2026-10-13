@@ -888,3 +888,27 @@ test('#69: to overlappende navigate paa samme fane giver én vagt - boksen faar 
     assert.deepEqual(svarDialog, forventet, `${foer} og ${nu}: ${JSON.stringify(svarDialog)}`);
   }
 });
+
+// R97 (Opus, maalt i headless Chrome 3/3 og i model): et nyt navigate tog den gamle vagt af, foer det selv lyttede; en boks under
+// det nye kalds Page.enable fik intet svar, og fanen laaste. Proeven er Opus' egen («R97-hul»), ordret.
+test('R97-hul: en boks under det nye kalds Page.enable besvares', { timeout: 60000 }, async () => {
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  let fase = 1;
+  u.chrome.debugger.sendCommand = (m, metode, p) => {
+    if (metode !== 'Page.enable') return send(m, metode, p);
+    if (fase === 1) return new Promise(() => {});
+    return new Promise((r) => {
+      setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 50);
+      setTimeout(() => r({}), 200);
+    });
+  };
+  const s1 = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(s1.error, 'tab-not-responding');
+  fase = 2;
+  const p2 = u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  await new Promise((r) => setTimeout(r, 400));
+  const foer = [...svarDialog];
+  await p2;
+  assert.ok(foer.length === 1, `boksen under det nye kalds Page.enable fik ${foer.length} svar: ${JSON.stringify(foer)}`);
+});
