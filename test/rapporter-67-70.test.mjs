@@ -839,3 +839,14 @@ test('#69: efter tab-not-responding lytter vagten 60 s, og noten foelger leave_p
   assert.ok(frister.includes(60000), `vagten blev ikke forlaenget med 60 s: ${JSON.stringify(frister.filter((x) => x > 1000))}`);
   assert.match(s.note, /next minute is answered Leave/, s.note);
 });
+
+// Mutant U4 (13/10) overlevede: ingen proeve viste, at vagten tages af, naar navigate er slut ad en almindelig vej.
+test('#69: efter en almindelig navigation, og efter en blokeret, lytter ingen vagt videre paa fanen (U4)', async () => {
+  for (const [navn, forladt, leave] of [['blokeret (Stay)', false, false], ['forladt (Leave)', true, true]]) {
+    const { u } = navSele({ forladt });
+    const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: leave });
+    assert.notEqual(s.error, 'tab-not-responding', JSON.stringify(s));
+    const tilbage = (u.lyttere.get('debugger.onEvent') || []).length;
+    assert.equal(tilbage, 0, `${navn}: ${tilbage} vagt-lytter(e) blev haengende efter kaldet`);
+  }
+});
