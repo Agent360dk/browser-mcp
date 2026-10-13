@@ -1430,40 +1430,45 @@ function redigerbarTekst(rod) {
   };
   // R93 (Astra, maalt i model): et mellemrum mellem to <span> blev smidt vaek («helloworld»), og to mellemrum paa hver
   // side af en elementgraense blev ikke foldet sammen. Et sammenfoldeligt mellemrum (white-space normal, nowrap,
-  // pre-line) markeres med \u0001 og foldes, som CSS goer det: en raekke bliver ét mellemrum, og intet i linjens start
-  // eller slutning. pre-line beholder sine linjeskift; pre og pre-wrap beholder alt.
-  const FOLD = '\u0001';
-  const linjer = [''];
+  // pre-line) er sit eget tegn i linjen, FOLD, og foldes som i CSS: en raekke bliver ét mellemrum, og intet i linjens
+  // start eller slutning. pre-line beholder sine linjeskift; pre og pre-wrap beholder alt.
+  // R94 (Astra, maalt i model): FOLD var tegnet U+0001, saa et U+0001 i sidens egen tekst blev til et mellemrum. Nu er
+  // FOLD et objekt i en liste af tekststykker, saa intet i teksten kan forveksles med det.
+  const FOLD = {};
+  const linjer = [[]];
+  const sidste = () => linjer[linjer.length - 1];
   let lukket = false;   // en blok er sluttet; det naeste indhold staar paa en ny linje
-  const nyLinjeEfterBlok = () => { if (lukket) { linjer.push(''); lukket = false; } };
-  const tom = (l) => l.split(FOLD).join('') === '';
+  const nyLinjeEfterBlok = () => { if (lukket) { linjer.push([]); lukket = false; } };
+  const tom = (l) => l.every((x) => x === FOLD || x === '');
   const gaa = (n) => {
     for (const b of n.childNodes) {
       if (b.nodeType === 3) {
         const ws = stil(b.parentNode).whiteSpace;
         const folder = ws === 'normal' || ws === 'nowrap' || ws === 'pre-line';
-        let t = b.data;
+        const t = b.data;
         if (!t) continue;
+        let stykker;   // linjer af tekststykker
         if (folder) {
-          t = ws === 'pre-line'
-            ? t.replace(/[ \t]*\r?\n[ \t]*/g, '\n').replace(/[ \t]+/g, FOLD)
-            : t.replace(/[\t\n\r ]+/g, FOLD);
-          if (lukket && t.split(FOLD).join('') === '') continue;   // mellemrum efter en blok, foer noget andet
+          const raa = ws === 'pre-line' ? t.replace(/[ \t]*\r?\n[ \t]*/g, '\n').split('\n') : [t];
+          stykker = raa.map((l) => l.split(ws === 'pre-line' ? /([ \t]+)/ : /([\t\n\r ]+)/)
+            .map((x) => (/^[\t\n\r ]+$/.test(x) ? FOLD : x)).filter((x) => x !== ''));
+          if (lukket && stykker.every(tom)) continue;   // mellemrum efter en blok, foer noget andet
+        } else {
+          stykker = t.split('\n').map((l) => [l]);
         }
         nyLinjeEfterBlok();
-        const dele = t.split('\n');
-        linjer[linjer.length - 1] += dele[0];
-        for (const d of dele.slice(1)) linjer.push(d);
+        sidste().push(...stykker[0]);
+        for (const l of stykker.slice(1)) linjer.push([...l]);
       } else if (b.nodeType === 1) {
         if (stil(b).display === 'none') continue;
         if (b.tagName === 'BR') {
           if (pladsholder(b)) continue;
           nyLinjeEfterBlok();
-          linjer.push('');
+          linjer.push([]);
         } else if (blok(b)) {
           if (lukket) nyLinjeEfterBlok();
-          else if (!tom(linjer[linjer.length - 1])) linjer.push('');
-          else linjer[linjer.length - 1] = '';
+          else if (!tom(sidste())) linjer.push([]);
+          else linjer[linjer.length - 1] = [];
           gaa(b);
           lukket = true;
         } else {
@@ -1473,8 +1478,12 @@ function redigerbarTekst(rod) {
     }
   };
   gaa(rod);
-  const fold = new RegExp(FOLD + '+', 'g'), kant = new RegExp('^' + FOLD + '|' + FOLD + '$', 'g'), rest = new RegExp(FOLD, 'g');
-  return linjer.map((l) => l.replace(fold, FOLD).replace(kant, '').replace(rest, ' ')).join('\n');
+  return linjer.map((l) => {
+    const u = l.filter((x, k) => x !== FOLD || l[k - 1] !== FOLD);   // en raekke FOLD bliver én
+    while (u[0] === FOLD) u.shift();
+    while (u[u.length - 1] === FOLD) u.pop();
+    return u.map((x) => (x === FOLD ? ' ' : x)).join('');
+  }).join('\n');
 }
 
 async function debuggerFill(tabId, selector, value) {
@@ -4374,16 +4383,12 @@ async function dropFileOnTarget(tabId, selector, files) {
     const FIL = 'input[type="file"]';
     const candidates = [];
     // R93 (Astra, maalt med sideudtrykket): et filfelt valgt direkte (#target) blev sprunget over, og soeskendet #other fik
-    // filen. Og to niveauer op kan vaere <body>, saa «i naerheden» blev hele siden. Nu: feltet selv, saa dets indhold, saa
-    // op til to niveauer - men kun et niveau med praecis ét filfelt, og aldrig <body> eller <html>.
+    // filen. R94 (Astra, maalt i model): ogsaa ét felt i en faelles forælder (<div><input id=avatar><button id=add>) fik
+    // filen, uden at knappen blev klikket - et felt i naerheden beviser ikke, at det er knappens. Nu kun feltet selv eller et
+    // felt INDE i maalet; ellers klikkes maalet, og den filvaelger, det selv aabner, afgoer feltet (strategi 2) - ogsaa naar
+    // knappen blot kalder .click() paa et skjult felt ved siden af.
     if (target.matches && target.matches(FIL)) candidates.push(target);
     if (candidates.length === 0) candidates.push(...target.querySelectorAll(FIL));
-    for (let op = target.parentElement, n = 0; candidates.length === 0 && op && n < 2; op = op.parentElement, n++) {
-      if (op === document.body || op === document.documentElement) break;
-      const her = op.querySelectorAll(FIL);
-      if (her.length === 1) candidates.push(her[0]);
-      if (her.length > 1) break;
-    }
     // #67 (arasmileska, MAALT 13/10 i headless Chrome): her stod en sidste udvej - ethvert filfelt paa siden. Med en
     // «Add photo»-knap, der laver sit eget felt ved klik, fik et ANDET felt paa siden filen, og svaret var ok:true. Saa
     // filvaelger-vejen (strategi 2), som knappen selv aabner, proeves nu i stedet.
@@ -4466,7 +4471,7 @@ async function dropFileOnTarget(tabId, selector, files) {
     ok: false,
     error: 'no-file-input-found',
     hint: 'No <input type="file"> at the target, and clicking the target opened no file chooser. The trigger element may not open a file dialog at all — check the selector.' +
-      (andre.length ? ' The page has other file inputs, listed in other_file_inputs. None of them got the file, because nothing ties them to this target. If one is the right field, pass its `selector` (an input without an id or name has none).' : ''),
+      (andre.length ? ' The page has other file inputs, listed in other_file_inputs. None of them got the file, because nothing ties them to this target. If one is the right field, pass its `selector` - a CSS selector that matched that field alone when the tool looked, or null when none did.' : ''),
     ...(andre.length ? { other_file_inputs: andre } : {}),
   };
 }
@@ -4478,21 +4483,26 @@ async function dropFileOnTarget(tabId, selector, files) {
 function filFeltNavn(i) {
   const alle = [...document.querySelectorAll('input[type="file"]')];
   const nr = alle.indexOf(i);
-  const hvor = nr >= 0 ? 'file input ' + (nr + 1) + ' of ' + alle.length + ' on the page' : 'a file input outside the page\'s document';
+  const hvor = nr >= 0 ? 'file input ' + (nr + 1) + ' of ' + alle.length + ' on the page'
+    : 'a file input the page\'s document does not list (outside the document, or inside a shadow root)';
   const rammer = (sel) => { try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === i; } catch (e) { return false; } };
   let selector = null;
   if (nr >= 0) {
     const kandidater = [];
     if (i.id) kandidater.push('#' + CSS.escape(i.id));
     if (i.name) kandidater.push('input[type="file"][name="' + CSS.escape(String(i.name)) + '"]');
-    const dele = [];
-    for (let n = i; n && n.nodeType === 1; n = n.parentElement) {
-      if (n !== i && n.id) { dele.unshift('#' + CSS.escape(n.id)); break; }
-      let k = 1;
-      for (let b = n.previousElementSibling; b; b = b.previousElementSibling) if (b.tagName === n.tagName) k++;
-      dele.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + k + ')');
-    }
-    kandidater.push(dele.join(' > '));
+    // Stien fra naermeste forfader med id, og - hvis det id ikke er entydigt (R94, Opus) - hele stien fra <html>.
+    const sti = (medId) => {
+      const dele = [];
+      for (let n = i; n && n.nodeType === 1; n = n.parentElement) {
+        if (medId && n !== i && n.id) { dele.unshift('#' + CSS.escape(n.id)); break; }
+        let k = 1;
+        for (let b = n.previousElementSibling; b; b = b.previousElementSibling) if (b.tagName === n.tagName) k++;
+        dele.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + k + ')');
+      }
+      return dele.join(' > ');
+    };
+    kandidater.push(sti(true), sti(false));
     selector = kandidater.find(rammer) || null;
   }
   return { selector, description: hvor + (i.id ? ', id "' + i.id + '"' : '') + (i.name ? ', name "' + i.name + '"' : '') };
@@ -4518,27 +4528,39 @@ async function armerForladVagt(tabId, forlad) {
       new Promise((_, nej) => setTimeout(() => { haenger = true; nej(new Error('Page.enable answered too slowly')); }, 3000)),
     ]);
   } catch (e) {
-    if (haenger || erCdpFrist(e)) return { haenger: true, vedSvar() {}, af() { return null; } };
-    return null;
+    // R94 (Opus, maalt i Chrome): en side, der REGNER i mere end 3 s, svarer heller ikke - og at afvise navigationen dér
+    // var en regression (1.30.1 navigerede efter 6,8 s). Vagten bliver derfor paa (Page.enable kan stadig naa frem, og saa
+    // ses en boks), navigate sender adressen som foer, og dommen tages paa resultatet: se `haenger` i navigate.
+    if (!(haenger || erCdpFrist(e))) return null;
   }
   const tilstand = { set: false, forlod: false, faerdig: false, fejl: null, afHandleDialog: null };
-  // MAALT 13/10 i Chrome (R94-forarbejde): handle_dialog's egen lytter er registreret foer vagtens og fjerner sin armering,
-  // foer vagten ser haendelsen - saa vagten troede, ingen var armeret, svarede selv, fik «no dialog» og meldte unanswered.
-  // Armeringen, der fandtes, da vagten blev sat, taeller derfor ogsaa.
-  const armeretVedStart = armeredeDialoger.get(tabId) || null;
+  // MAALT 13/10 i Chrome: handle_dialog's egen lytter kommer foer vagtens og fjerner sin armering, foer vagten ser boksen.
+  // R94 (Astra, maalt i model): men en armering, der allerede var UDLOEBET eller BRUGT paa en anden boks, maa ikke tælle, og
+  // et svar taeller foerst, naar handle_dialog har BEKRAEFTET det paa netop en beforeunload. Vagten holder derfor loeftet
+  // fra armeringen, der fandtes ved start, og om det allerede var afgjort, da boksen kom.
+  const startLoefte = armeredeDialoger.has(tabId) ? dialogLoefter.get(tabId) || null : null;
+  let startAfgjort = false;
+  if (startLoefte) startLoefte.then(() => { startAfgjort = true; }, () => { startAfgjort = true; });
   let vedSvar = null;
   let slukket = false;
   const lytter = (source, method, ep) => {
     if (source.tabId !== tabId || method !== 'Page.javascriptDialogOpening' || ep?.type !== 'beforeunload') return;
     if (tilstand.set) return;
-    const armeret = armeredeDialoger.get(tabId) || armeretVedStart;
-    if (armeret) {
-      // handle_dialog svarer selv; vagten svarer ikke oven i den, men noterer svaret.
+    const nuLoefte = armeredeDialoger.has(tabId) ? dialogLoefter.get(tabId) || null : null;
+    const loefte = nuLoefte || (startLoefte && !startAfgjort ? startLoefte : null);
+    if (loefte) {
+      // handle_dialog svarer selv; vagten svarer ikke oven i den, men venter paa dens BEKRAEFTEDE svar paa denne boks.
       tilstand.set = true;
-      tilstand.forlod = armeret.action === 'accept';
-      tilstand.afHandleDialog = armeret.action;
-      tilstand.faerdig = true;
-      if (!tilstand.forlod && vedSvar) vedSvar();
+      Promise.race([loefte, new Promise((r) => setTimeout(() => r(null), 5000))]).then((r) => {
+        if (r && r.ok && r.dialog_type === 'beforeunload') {
+          tilstand.forlod = r.action === 'accept';
+          tilstand.afHandleDialog = r.action;
+        } else {
+          tilstand.fejl = (r && r.error) || 'browser_handle_dialog did not confirm an answer to this prompt';
+        }
+        tilstand.faerdig = true;
+        if ((!tilstand.forlod || tilstand.fejl) && vedSvar) vedSvar();
+      });
       return;
     }
     tilstand.set = true;
@@ -4553,6 +4575,7 @@ async function armerForladVagt(tabId, forlad) {
   // Og vagten udloeber selv efter navigates eget loft (15 s) plus margin, saa ingen fejlvej kan efterlade den.
   const udloeb = setTimeout(af, 20000);
   return {
+    haenger,
     // Bliver der svaret Stay (eller gik svaret ikke igennem), venter navigate ikke paa en side, der aldrig kommer.
     vedSvar(f) { vedSvar = f; if (tilstand.faerdig && (!tilstand.forlod || tilstand.fejl)) f(); },
     af() { af(); return tilstand.set ? { forlod: tilstand.forlod && !tilstand.fejl, fejl: tilstand.fejl, afHandleDialog: tilstand.afHandleDialog } : null; },
@@ -4652,6 +4675,7 @@ async function dispatch(port, method, params) {
       let nyFane = !!(tab && tab.oprettetMedUrl);
       let tidligt = null;
       let forladVagt = null;
+      let navBegyndt = false;   // er navigationen set begynde ('loading') nogen sinde under kaldet?
 
       // Always reuse the active tab — navigate in place, don't create new tabs
       // Only create new tab if explicitly requested via new_tab param
@@ -4793,14 +4817,6 @@ async function dispatch(port, method, params) {
         };
         chrome.tabs.onUpdated.addListener(opfang);
         forladVagt = await armerForladVagt(tab.id, params.leave_page === true);
-        if (forladVagt && forladVagt.haenger) {
-          chrome.tabs.onUpdated.removeListener(opfang);
-          return { ok: false, error: 'tab-not-responding', url: String(tab.url || ''), requested_url: params.url, tab_id: tab.id,
-            note: 'Chrome did not answer on this tab, so nothing was navigated. A common cause is a dialog that is already ' +
-                  'open - an alert, a confirm or a "Leave site?" prompt that appeared before anything was listening. Such a ' +
-                  'dialog cannot be answered from here: ask the user to answer it in Chrome, or close the tab with ' +
-                  'browser_close_tab, which skips the prompt but loses anything unsaved on the page.' };
-        }
         try {
           await chrome.tabs.update(tab.id, { url: params.url });
         } catch (e) {
@@ -4842,7 +4858,7 @@ async function dispatch(port, method, params) {
         };
         const listener = (tabId, info) => {
           if (tabId !== tab.id) return;
-          if (info.status === 'loading') saaLoading = true;
+          if (info.status === 'loading') { saaLoading = true; navBegyndt = true; }
           if (info.status !== 'complete') return;
           Promise.all([loadedNow(), nyNok()]).then(([ok, ny]) => { if (ok && ny) finish(); });
         };
@@ -4862,9 +4878,19 @@ async function dispatch(port, method, params) {
       session.activeTabId = tab.id;
       persistSessions();
       const updated = await chrome.tabs.get(tab.id);
+      // Svarede fanen ikke, da vagten blev sat, og er navigationen aldrig set begynde, er det ikke en side, der kom: enten en
+      // boks, der allerede stod aaben, eller en side, der stadig regner. Begge siges, og det billige raad kommer foerst.
+      if (forladVagt && forladVagt.haenger && !forladt && !navBegyndt && !(tidligt && tidligt.loading) && String(updated.url) !== String(params.url)) {
+        return { ok: false, error: 'tab-not-responding', url: updated.url, requested_url: params.url, tab_id: tab.id,
+          note: 'Chrome did not answer on this tab, and the page did not start loading the new address. Either the page is ' +
+                'busy running a long script - try browser_navigate again in a few seconds - or a dialog is already open ' +
+                '(an alert, a confirm or "Leave site?") that appeared before anything was listening. Such a dialog cannot be ' +
+                'answered from here: ask the user to answer it in Chrome, or close the tab with browser_close_tab, which ' +
+                'skips the prompt but loses anything unsaved on the page.' };
+      }
       if (forladt && forladt.fejl) {
         return { ok: false, error: 'beforeunload-unanswered', detail: forladt.fejl, url: updated.url, requested_url: params.url, tab_id: tab.id,
-          note: 'The page asked "Leave site?", and the tool\'s answer did not go through, so the prompt may still be open ' +
+          note: 'The page asked "Leave site?", and no answer to it was confirmed, so the prompt may still be open ' +
                 'and the tab may not respond. Ask the user to answer it in Chrome, or close the tab with browser_close_tab, ' +
                 'which skips the prompt but loses anything unsaved on the page.' };
       }

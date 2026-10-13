@@ -124,6 +124,9 @@ test('#70: contenteditable laeses som linjer, ikke som textContent eller innerTe
   assert.equal(laes([['SPAN', {}, 'hello'], ' ', ['SPAN', {}, 'world']]), 'hello world', 'mellemrummet mellem to span forsvandt');
   assert.equal(laes([['SPAN', {}, 'hello '], ['SPAN', {}, ' world']]), 'hello world', 'to mellemrum over en elementgraense blev ikke foldet');
   assert.equal(laes([['DIV', { ws: 'pre-line' }, 'a  b\nc']]), 'a b\nc', 'pre-line foldede ikke mellemrum eller mistede linjeskiftet');
+  // R94 (Astra, maalt i model): et bogstaveligt U+0001 i teksten blev til et mellemrum.
+  assert.equal(laes(['a\u0001b']), 'a\u0001b', 'et tegn i sidens tekst blev forvekslet med markoeren for mellemrum');
+  assert.equal(laes([['DIV', { ws: 'pre-wrap' }, 'a\u0001 b']]), 'a\u0001 b');
   assert.equal(laes([' a ', ['DIV', {}, ' b ']]), 'a\nb', 'mellemrum i linjens kanter er ikke tekst');
   assert.equal(laes(['a\u00a0\u00a0b']), 'a\u00a0\u00a0b', 'haarde mellemrum foldes ikke');
 });
@@ -292,7 +295,7 @@ test('#67: filFeltNavn giver en selector, der rammer netop feltet - ogsaa uden i
 });
 
 // ── #69 navigate og «Leave site?» ────────────────────────────────────────────
-function navSele({ forladt }) {
+function navSele({ forladt, forsinkelse = 5 }) {
   const tilstand = { url: 'https://kladde.example/', status: 'complete' };
   const svarDialog = [];
   let u;
@@ -303,7 +306,7 @@ function navSele({ forladt }) {
     'tabs.query': [{ id: 1, url: tilstand.url, windowId: 1, active: true }],
     'tabs.update': (_id, o) => {
       // Siden har et ugemt udkast: Chrome viser «Leave site?» i stedet for at navigere.
-      if (o && o.url) setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 5);
+      if (o && o.url && forsinkelse != null) setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), forsinkelse);
       return { id: 1 };
     },
     'debugger.sendCommand': (_m, metode, p) => {
@@ -356,15 +359,47 @@ test('#69: en armeret handle_dialog (dismiss) bestemmer selv - og navigate melde
   assert.match(svar.note, /handle_dialog/);
 });
 
-test('#69: svarer fanen ikke (en boks staar allerede aaben), navigerer navigate ikke blindt (R93)', async () => {
-  const { u } = navSele({ forladt: false });
+test('#69: svarer fanen ikke, og begynder navigationen aldrig (en boks staar aaben), er svaret tab-not-responding - ikke den gamle adresse (R93/R94)', { timeout: 30000 }, async () => {
+  const { u } = navSele({ forladt: false, forsinkelse: null });
   const send = u.chrome.debugger.sendCommand;
   u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
-  const t0 = Date.now();
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
-  assert.equal(svar.error, 'tab-not-responding', JSON.stringify(svar));
-  assert.ok(Date.now() - t0 < 6000, `navigate ventede ${Date.now() - t0} ms`);
-  assert.equal(u.optager.til('tabs.update').length, 0, 'navigate sendte adressen til en fane, der ikke svarer');
+  assert.equal(svar.error, 'tab-not-responding', `navigate meldte den gamle adresse uden fejl: ${JSON.stringify(svar)}`);
+  assert.match(svar.note, /try browser_navigate again in a few seconds/, 'det billige raad (siden regner) mangler foerst');
+});
+
+test('#69: en side der REGNER i over 3 s kan stadig forlades - navigate sender adressen og ender paa den (R94, Opus)', { timeout: 30000 }, async () => {
+  const { u } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise((r) => setTimeout(() => r({}), 3500)) : send(m, metode, p));
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => {
+    setTimeout(async () => {           // siden bliver ledig efter 4 s, og navigationen gaar igennem
+      await u.fyr('tabs.onUpdated', 1, { status: 'loading' }, {});
+      u.chrome.tabs.get = async () => ({ id: 1, url: 'https://ny.example/', status: 'complete', windowId: 1, active: true });
+      await u.fyr('tabs.onUpdated', 1, { status: 'complete' }, { url: 'https://ny.example/' });
+    }, 4000);
+    return opdater ? { id } : { id };
+  };
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, undefined, `en travl side blev afvist: ${JSON.stringify(svar)}`);
+  assert.equal(svar.url, 'https://ny.example/');
+});
+
+test('#69: vagten udloeber selv efter 20 s - ingen lytter bliver haengende (kendt graense 7)', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'debugger.sendCommand': () => ({}),
+  } });
+  const ure = [];
+  const aegte = u.ctx.setTimeout;
+  u.ctx.setTimeout = (f, ms, ...a) => { if (ms === 20000) { ure.push(f); return 0; } return aegte(f, ms, ...a); };
+  await u.hent('armerForladVagt')(1, false);
+  assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 1, 'vagten blev ikke sat');
+  assert.equal(ure.length, 1, 'vagten satte intet udloeb');
+  ure[0]();
+  assert.equal((u.lyttere.get('debugger.onEvent') || []).length, 0, 'vagten blev haengende efter sit udloeb');
 });
 
 test('#69: handle_dialog paa en fane med en aaben boks siger hvad der er galt, ikke Chromes noegne frist', async () => {
@@ -524,4 +559,72 @@ test('#69: gaar svaret paa «Leave site?» ikke igennem, siges det - ikke «Stay
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
   assert.equal(svar.error, 'beforeunload-unanswered', JSON.stringify(svar));
   assert.doesNotMatch(String(svar.note), /still works/, 'svaret lover en fane, der virker');
+});
+
+// ── R94 (Astra): handle_dialog's svar skal vaere BEKRAEFTET paa netop denne boks ─────────────
+test('#69: handle_dialog armeret, men dens svar paa boksen fejler - beforeunload-unanswered, ikke blocked og ikke 15 s', async () => {
+  for (const action of ['dismiss', 'accept']) {
+    const { u } = navSele({ forladt: false });
+    const send = u.chrome.debugger.sendCommand;
+    u.chrome.debugger.sendCommand = async (m, metode, p) => {
+      if (metode === 'Page.handleJavaScriptDialog') throw new Error('CDP did not respond within 8000 ms: Page.handleJavaScriptDialog');
+      return send(m, metode, p);
+    };
+    await u.hent('dispatch')(9876, 'handle_dialog', { action, timeout: 20000 });
+    const t0 = Date.now();
+    const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+    assert.equal(svar.error, 'beforeunload-unanswered', `${action}: ${JSON.stringify(svar)}`);
+    assert.ok(Date.now() - t0 < 6000, `${action}: navigate ventede ${Date.now() - t0} ms`);
+  }
+});
+
+test('#69: en UDLOEBET armering taeller ikke - vagten svarer selv', async () => {
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: 80 });
+  await u.hent('dispatch')(9876, 'handle_dialog', { action: 'dismiss', timeout: 25 });
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.deepEqual(svarDialog, [false], `boksen blev ikke besvaret af vagten: ${JSON.stringify(svarDialog)}`);
+  assert.equal(svar.error, 'beforeunload-blocked', JSON.stringify(svar));
+  assert.doesNotMatch(svar.note, /handle_dialog answered/, 'svaret tilskriver en udloebet armering boksen');
+});
+
+test('#69: en armering BRUGT paa en anden boks (alert) taeller ikke - vagten svarer selv', async () => {
+  // Astras forloeb: armeringen findes, naar vagten saettes, men bruges paa en alert UNDER navigationen, foer «Leave site?».
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: 60 });
+  await u.hent('dispatch')(9876, 'handle_dialog', { action: 'accept', timeout: 20000 });
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => {
+    setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'alert', message: 'hej' }), 5);
+    return opdater(id, o);
+  };
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.deepEqual(svarDialog, [true, false], `alerten skulle have handle_dialog's svar, beforeunload vagtens: ${JSON.stringify(svarDialog)}`);
+  assert.equal(svar.error, 'beforeunload-blocked', JSON.stringify(svar));
+});
+
+// ── R94 (Astra): et felt i en faelles forælder er ikke knappens ────────────────────────────
+test('#67: ét filfelt ved siden af knappen faar ikke filen - knappen klikkes i stedet', async () => {
+  let udtryk = null;
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'debugger.sendCommand': (_m, metode, p) => {
+      if (metode === 'Runtime.evaluate' && String(p.expression).includes('candidates')) { udtryk = p.expression; return { result: { value: JSON.stringify({ found: false }) } }; }
+      if (metode === 'Runtime.evaluate') return { result: { value: '[]' } };
+      throw new Error('ingen filvaelger her');
+    },
+  } });
+  await u.hent('dropFileOnTarget')(1, '#add', ['/x/a.png']);
+  const avatar = { id: 'avatar', attrs: {}, setAttribute(k, v) { this.attrs[k] = v; } };
+  const knap = { matches: () => false, querySelectorAll: () => [] };
+  knap.parentElement = { querySelectorAll: () => [avatar], parentElement: { querySelectorAll: () => [avatar], parentElement: null } };
+  const r = JSON.parse(new Function('document', 'CSS', 'return ' + udtryk)({ body: {}, querySelector: () => knap, querySelectorAll: () => [avatar] }, { escape: (x) => x }));
+  assert.equal(r.found, false, `et felt i den faelles forælder blev valgt uden at knappen blev klikket: ${JSON.stringify(r)}`);
+});
+
+test('#67: teksterne om selector passer til filFeltNavn - ingen «null naar feltet mangler id og name»', async () => {
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const kilde = indlaesUdvidelse().hent('dropFileOnTarget').toString();
+  for (const [navn, t] of [['tools.js drop_file', TOOLS.find((x) => x.name === 'browser_drop_file').description], ['drop_file-svaret', kilde]]) {
+    assert.doesNotMatch(t, /without an id or name has none|null when the input has no id or name/, `${navn} siger, at et felt uden id/name ingen selector har`);
+  }
 });
