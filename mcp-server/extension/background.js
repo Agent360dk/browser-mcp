@@ -4522,12 +4522,16 @@ async function armerForladVagt(tabId, forlad) {
     return null;
   }
   const tilstand = { set: false, forlod: false, faerdig: false, fejl: null, afHandleDialog: null };
+  // MAALT 13/10 i Chrome (R94-forarbejde): handle_dialog's egen lytter er registreret foer vagtens og fjerner sin armering,
+  // foer vagten ser haendelsen - saa vagten troede, ingen var armeret, svarede selv, fik «no dialog» og meldte unanswered.
+  // Armeringen, der fandtes, da vagten blev sat, taeller derfor ogsaa.
+  const armeretVedStart = armeredeDialoger.get(tabId) || null;
   let vedSvar = null;
   let slukket = false;
   const lytter = (source, method, ep) => {
     if (source.tabId !== tabId || method !== 'Page.javascriptDialogOpening' || ep?.type !== 'beforeunload') return;
     if (tilstand.set) return;
-    const armeret = armeredeDialoger.get(tabId);
+    const armeret = armeredeDialoger.get(tabId) || armeretVedStart;
     if (armeret) {
       // handle_dialog svarer selv; vagten svarer ikke oven i den, men noterer svaret.
       tilstand.set = true;

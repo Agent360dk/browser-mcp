@@ -345,10 +345,12 @@ test('#69: med leave_page forlades siden, og navigate ender paa den nye adresse'
 
 test('#69: en armeret handle_dialog (dismiss) bestemmer selv - og navigate melder det straks (R93)', async () => {
   const { u, svarDialog } = navSele({ forladt: false });
-  u.hent('armeredeDialoger').set(1, { listener: () => {}, timer: null, action: 'dismiss', opfyld: () => {} });
+  // Den RIGTIGE armering (MAALT i Chrome: dens lytter kommer foer vagtens og fjerner armeringen, foer vagten ser boksen).
+  const arm = await u.hent('dispatch')(9876, 'handle_dialog', { action: 'dismiss', timeout: 20000 });
+  assert.equal(arm.armed, true);
   const t0 = Date.now();
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
-  assert.deepEqual(svarDialog, [], 'vagten svarede boksen, skoent agenten havde armeret handle_dialog');
+  assert.deepEqual(svarDialog, [false], `boksen skulle besvares én gang, af handle_dialog (dismiss): ${JSON.stringify(svarDialog)}`);
   assert.ok(Date.now() - t0 < 3000, `navigate ventede ${Date.now() - t0} ms`);
   assert.equal(svar.error, 'beforeunload-blocked', `navigate meldte den gamle adresse uden fejl: ${JSON.stringify(svar)}`);
   assert.match(svar.note, /handle_dialog/);
