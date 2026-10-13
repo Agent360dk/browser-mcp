@@ -746,3 +746,81 @@ test('#69: en navigation, der begyndte UNDER tabs.update og blev omdirigeret, er
   assert.equal(svar.error, undefined, `en omdirigeret navigation blev meldt som en fane, der ikke svarer: ${JSON.stringify(svar)}`);
   assert.equal(svar.url, 'https://ny.example/login');
 });
+
+// ── R96 (Astra): én vagt pr. fane, intet hul foer forlaengelsen, og noten respekterer handle_dialog ─────────
+function fastlaastDerefterLedig({ forladt }) {
+  const { u, svarDialog } = navSele({ forladt, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  let laast = true;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' && laast ? new Promise(() => {}) : send(m, metode, p));
+  const opdater = u.chrome.tabs.update;
+  return { u, svarDialog, frigiv() {
+    laast = false;
+    u.chrome.tabs.update = async (id, o) => { setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 5); return opdater(id, o); };
+  } };
+}
+
+test('#69: et nyt navigate overtager fanens vagt - samme boks faar ét svar, det nye kalds (R96)', { timeout: 60000 }, async () => {
+  for (const [foer, nu, forventet] of [[false, true, [true]], [true, false, [false]]]) {
+    const { u, svarDialog, frigiv } = fastlaastDerefterLedig({ forladt: true });
+    const s1 = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: foer });
+    assert.equal(s1.error, 'tab-not-responding');
+    frigiv();
+    const s2 = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: nu });
+    assert.deepEqual(svarDialog, forventet, `leave_page ${foer} -> ${nu}: to vagter svarede (${JSON.stringify(svarDialog)}); ${JSON.stringify(s2)}`);
+    assert.notEqual(s2.error, 'beforeunload-unanswered', JSON.stringify(s2));
+  }
+});
+
+test('#69: en boks under det afsluttende tabs.get besvares og taeller i dommen (R96)', { timeout: 30000 }, async () => {
+  const { u, svarDialog } = fastlaast();
+  let opdateret = false;
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => { opdateret = true; return opdater(id, o); };
+  const hent = u.chrome.tabs.get;
+  let fyret = false;
+  u.chrome.tabs.get = async (id) => {
+    const svar = await hent(id);
+    if (opdateret && !fyret && svar.status === 'complete') {
+      fyret = true;
+      await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    return svar;
+  };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.ok(fyret, 'proeven naaede aldrig det afsluttende tabs.get');
+  assert.deepEqual(svarDialog, [false], `boksen under tabs.get blev ikke besvaret: ${JSON.stringify(svarDialog)}`);
+  assert.equal(s.error, 'beforeunload-blocked', JSON.stringify(s));
+});
+
+test('#69: noten ved tab-not-responding naevner en armeret handle_dialog i stedet for at love leave_page-svaret (R96)', { timeout: 30000 }, async () => {
+  // Armeringen sker, mens fanen svarer (handle_dialog slaar selv Page til); bagefter regner siden og svarer ikke.
+  const { u } = navSele({ forladt: false, forsinkelse: null });
+  const arm = await u.hent('dispatch')(9876, 'handle_dialog', { action: 'accept', timeout: 60000 });
+  assert.equal(arm.armed, true);
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(s.error, 'tab-not-responding');
+  assert.match(s.note, /armed browser_handle_dialog \(accept\) while it is armed, otherwise Stay/, s.note);
+});
+
+test('#69: handle_dialog besvarer en alert, og beforeunload kommer foer kvitteringen - ubekraeftet, ikke blocked (X6)', async () => {
+  const { u } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  let foerste = true;
+  u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Page.handleJavaScriptDialog' && foerste) { foerste = false; await new Promise((r) => setTimeout(r, 300)); }
+    return send(m, metode, p);
+  };
+  await u.hent('dispatch')(9876, 'handle_dialog', { action: 'accept', timeout: 20000 });
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => {
+    setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'alert', message: 'hej' }), 1);
+    setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 30);
+    return opdater(id, o);
+  };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(s.error, 'beforeunload-unanswered', `handle_dialog's svar paa alerten blev taget som svaret paa boksen: ${JSON.stringify(s)}`);
+});
