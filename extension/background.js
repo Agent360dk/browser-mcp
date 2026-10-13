@@ -4540,6 +4540,9 @@ async function armerForladVagt(tabId, forlad) {
   // R98 (Astra, maalt med den rigtige handle_dialog): en armering, der allerede har svaret paa en boks, maa ikke regnes som
   // svaret paa den naeste, ogsaa mens dens kvittering er undervejs. Hver armering bruges paa én boks.
   let armeringBrugt = false;
+  // R98 (Opus, maalt i headless Chrome 8 af 15): Stay paa den overhalede boks var ikke gennemfoert, naar kaldets eget adresseskift
+  // blev sendt, og saa annullerede vores eget Stay kaldets EGEN navigation. Svaret holdes her, saa navigate kan vente paa det.
+  let overhaletSvar = null;
   if (startLoefte) startLoefte.then(() => { startAfgjort = true; }, () => { startAfgjort = true; });
   let vedSvar = null;
   let slukket = false;
@@ -4554,7 +4557,7 @@ async function armerForladVagt(tabId, forlad) {
     if (!vagt.egetSkift) {
       // handle_dialog svarer selv paa boksen (dens lytter kommer foer vagtens); ellers faar den overhalede navigation Stay.
       if (armLoefte) armeringBrugt = true;
-      else cdpSend(tabId, 'Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
+      else overhaletSvar = cdpSend(tabId, 'Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
       return;
     }
     // MAALT 13/10 i Chrome (R98-forarbejde): et nyt navigate med leave_page svarede Leave paa den sene boks fra det forrige
@@ -4634,6 +4637,16 @@ async function armerForladVagt(tabId, forlad) {
       return new Promise((r) => { const ur = setTimeout(r, ms); ventere.push(() => { clearTimeout(ur); r(); }); });
     },
     af() { af(); return status(); },
+    // Foer kaldets eget adresseskift: vent paa Stay til en overhalet boks (hoejst 3 s pr. boks), saa det Stay ikke rammer
+    // kaldets egen navigation. Opus' rettelse (R98), maalt 6 af 6 i Chrome.
+    async foerEgetSkift() {
+      while (overhaletSvar) {
+        const p = overhaletSvar;
+        await Promise.race([p, new Promise((r) => setTimeout(r, 3000))]);
+        if (overhaletSvar === p) overhaletSvar = null;
+      }
+      this.egetSkift = true;
+    },
   };
   const gammel = forladVagter.get(tabId);
   forladVagter.set(tabId, vagt);
@@ -4903,7 +4916,13 @@ async function dispatch(port, method, params) {
             note: 'A newer browser_navigate on this tab started before this one sent its address, so this one sent nothing. ' +
                   'The newer call decides where the tab goes; read its answer.' };
         }
-        if (forladVagt) forladVagt.egetSkift = true;
+        if (forladVagt) await forladVagt.foerEgetSkift();
+        if (forladVagt && forladVagt.overhalet) {
+          chrome.tabs.onUpdated.removeListener(opfang);
+          return { ok: false, error: 'navigation-superseded', url: String(tab.url || ''), requested_url: params.url, tab_id: tab.id,
+            note: 'A newer browser_navigate on this tab started before this one sent its address, so this one sent nothing. ' +
+                  'The newer call decides where the tab goes; read its answer.' };
+        }
         try {
           await chrome.tabs.update(tab.id, { url: params.url });
         } catch (e) {

@@ -1037,3 +1037,52 @@ test('#69: vagten daekker hele afslutningen - en boks under et langsomt afslutte
   assert.deepEqual(svarDialog, [false], `boksen under det langsomme tabs.get blev ikke besvaret: ${JSON.stringify(svarDialog)}`);
   assert.equal(s.error, 'beforeunload-blocked', JSON.stringify(s));
 });
+
+// R98 (Opus, maalt i headless Chrome 8 af 15): kaldets eget adresseskift blev sendt, mens Stay paa den overhalede boks stadig var
+// undervejs, og det Stay annullerede kaldets egen navigation. Proeven er Opus' egen («R98-vindue»), ordret.
+test('R98-vindue: kaldets eget adresseskift sendes foerst, naar Stay paa den overhalede boks er gennemfoert', { timeout: 60000 }, async () => {
+  const { u, svarDialog } = navSele({ forladt: true });
+  const send = u.chrome.debugger.sendCommand;
+  let stayFaerdig = false;
+  u.chrome.debugger.sendCommand = (m, metode, p) => {
+    if (metode === 'Page.enable') {
+      setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 2500);
+      return new Promise(() => {});   // siden svarer ikke, mens boksen staar aaben
+    }
+    if (metode === 'Page.handleJavaScriptDialog' && p.accept === false && !stayFaerdig) {
+      return new Promise((r) => setTimeout(() => { stayFaerdig = true; r(send(m, metode, p)); }, 1000));   // Stay naar frem efter 3 s-graensen
+    }
+    return send(m, metode, p);
+  };
+  const opdater = u.chrome.tabs.update;
+  let sendtIAabenBoks = null;
+  u.chrome.tabs.update = async (id, o) => { if (o && o.url && sendtIAabenBoks === null) sendtIAabenBoks = !stayFaerdig; return opdater(id, o); };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: true });
+  assert.equal(sendtIAabenBoks, false, `adressen blev sendt, mens den overhalede boks stod aaben: ${JSON.stringify(s)}`);
+  assert.deepEqual(svarDialog, [false, true], JSON.stringify(svarDialog));
+});
+
+// Mutant Z3 (Opus R98) overlevede: ingen proeve viste, at navigate venter paa et svar under afgoerelse, foer det laeser vagten.
+test('#69: en boks under det afsluttende tabs.get, hvis svar er undervejs, meldes ikke som ubekraeftet (afklaret, Z3)', async () => {
+  const { u, svarDialog } = navSele({ forladt: false });
+  const send = u.chrome.debugger.sendCommand;
+  let n = 0;
+  u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Page.handleJavaScriptDialog' && n++ === 1) await new Promise((r) => setTimeout(r, 500));   // anden boks: langsomt Stay
+    return send(m, metode, p);
+  };
+  const hent = u.chrome.tabs.get;
+  let fyret = false, efterSvar = false;
+  u.chrome.tabs.get = async (id) => {
+    const svar = await hent(id);
+    if (svarDialog.length === 1 && !fyret) {
+      fyret = true;
+      await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    return svar;
+  };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.ok(fyret, 'proeven naaede ikke det afsluttende tabs.get efter foerste svar');
+  assert.equal(s.error, 'beforeunload-blocked', `et Stay undervejs blev meldt som ubekraeftet: ${JSON.stringify(s)}`);
+});
