@@ -230,7 +230,7 @@ All three are optional. None is needed for normal use.
 ### Navigation & Content
 | Tool | Description |
 |------|-------------|
-| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). If the page asks "Leave site?", it stays and says `beforeunload-blocked`; `leave_page=true` leaves |
+| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). If the page asks "Leave site?", it stays and says `beforeunload-blocked`; `leave_page=true` leaves. A tab stuck behind an open dialog says `tab-not-responding` |
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
 | `browser_execute_script` | Run JavaScript in page context |
@@ -241,7 +241,7 @@ All three are optional. None is needed for normal use.
 |------|-------------|
 | `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
-| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). With ctrl or meta: a, c, x, v, z, y run select all, copy, cut, paste, undo, redo |
+| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
@@ -291,7 +291,7 @@ All three are optional. None is needed for normal use.
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
 | `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog). Needs "Allow access to file URLs" for the Agent360 Browser MCP extension, which is off by default for Chrome Web Store installs and also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on |
-| `browser_drop_file` | Upload via drop-zones: finds a hidden `<input type="file">` in the target, then up to 2 parent levels; with none there it clicks the target and intercepts the native file chooser. A file input elsewhere on the page never gets the file. The answer names the input used, and says `consumed_by_page` when the page read the file and cleared the field. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
+| `browser_drop_file` | Upload via drop-zones: uses the target if it is a file input, then a hidden `<input type="file">` inside it, then the only file input up to 2 parent levels up; with none it clicks the target and intercepts the native file chooser. Other file inputs on the page do not get the file. The answer describes the input used, and says `cleared_by_page` when the page emptied the field after its change handler saw the file. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
 
 ### Diagnostics & feedback
 | Tool | Description |

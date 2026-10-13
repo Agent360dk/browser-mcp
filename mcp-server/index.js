@@ -950,17 +950,11 @@ async function kaldVaerktoej(request) {
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
         const rod = resolve(process.cwd());
         const targetPath = resolve(rod, args.path);
-        // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside».
-        // Windows' og macOS' standarddiske skelner ikke store og smaa bogstaver, saa tekst-tjekket goer det heller ikke dér.
-        // Det afgoerende tjek er realpath-tjekket nedenfor: det sammenligner operativsystemets egne, kanoniske stier eksakt.
-        const somDisken = process.platform === 'win32' || process.platform === 'darwin' ? (x) => x.toLowerCase() : (x) => x;
-        const rodT = somDisken(rod), maalT = somDisken(targetPath);
-        if (maalT !== rodT && !maalT.startsWith(rodT.endsWith(sep) ? rodT : rodT + sep)) {   // "/" giver ikke "//" (R5 F10)
-          throw new Error(
-            `path must be inside the working directory (${rod}). ` +
-            `"${args.path}" points outside. Use a relative path without ../.`,
-          );
-        }
+        // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside»,
+        // fordi et tekst-tjek her afgjorde sagen. R93 (Opus, maalt paa GitHubs Windows): ogsaa et 8.3-kortnavn (RUNNER~1 mod
+        // runneradmin) er samme mappe stavet anderledes. Afgoerelsen tages derfor KUN paa operativsystemets kanoniske stier
+        // nedenfor (realpath af arbejdsmappen og af den dybeste del af stien, der findes); teksten vaelger kun fejlbeskeden.
+        const tekstInde = targetPath === rod || targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep);   // "/" giver ikke "//" (R5 F10)
         // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
         // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
         // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
@@ -977,7 +971,9 @@ async function kaldVaerktoej(request) {
         if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
           throw new Error(
             `path must be inside the working directory (${rod}). ` +
-            `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`,
+            (tekstInde
+              ? `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`
+              : `"${args.path}" points outside. Use a relative path without ../.`),
           );
         }
         mkdirSync(dirname(targetPath), { recursive: true });

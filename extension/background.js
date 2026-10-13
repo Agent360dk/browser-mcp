@@ -1428,18 +1428,32 @@ function redigerbarTekst(rod) {
     }
     return true;
   };
+  // R93 (Astra, maalt i model): et mellemrum mellem to <span> blev smidt vaek («helloworld»), og to mellemrum paa hver
+  // side af en elementgraense blev ikke foldet sammen. Et sammenfoldeligt mellemrum (white-space normal, nowrap,
+  // pre-line) markeres med \u0001 og foldes, som CSS goer det: en raekke bliver ét mellemrum, og intet i linjens start
+  // eller slutning. pre-line beholder sine linjeskift; pre og pre-wrap beholder alt.
+  const FOLD = '\u0001';
   const linjer = [''];
   let lukket = false;   // en blok er sluttet; det naeste indhold staar paa en ny linje
   const nyLinjeEfterBlok = () => { if (lukket) { linjer.push(''); lukket = false; } };
+  const tom = (l) => l.split(FOLD).join('') === '';
   const gaa = (n) => {
     for (const b of n.childNodes) {
       if (b.nodeType === 3) {
         const ws = stil(b.parentNode).whiteSpace;
+        const folder = ws === 'normal' || ws === 'nowrap' || ws === 'pre-line';
         let t = b.data;
-        if (ws === 'normal' || ws === 'nowrap') { if (!t.trim()) continue; t = t.replace(/[\t\n\r ]+/g, ' '); }
         if (!t) continue;
+        if (folder) {
+          t = ws === 'pre-line'
+            ? t.replace(/[ \t]*\r?\n[ \t]*/g, '\n').replace(/[ \t]+/g, FOLD)
+            : t.replace(/[\t\n\r ]+/g, FOLD);
+          if (lukket && t.split(FOLD).join('') === '') continue;   // mellemrum efter en blok, foer noget andet
+        }
         nyLinjeEfterBlok();
-        linjer[linjer.length - 1] += t;
+        const dele = t.split('\n');
+        linjer[linjer.length - 1] += dele[0];
+        for (const d of dele.slice(1)) linjer.push(d);
       } else if (b.nodeType === 1) {
         if (stil(b).display === 'none') continue;
         if (b.tagName === 'BR') {
@@ -1448,7 +1462,8 @@ function redigerbarTekst(rod) {
           linjer.push('');
         } else if (blok(b)) {
           if (lukket) nyLinjeEfterBlok();
-          else if (linjer[linjer.length - 1] !== '') linjer.push('');
+          else if (!tom(linjer[linjer.length - 1])) linjer.push('');
+          else linjer[linjer.length - 1] = '';
           gaa(b);
           lukket = true;
         } else {
@@ -1458,7 +1473,8 @@ function redigerbarTekst(rod) {
     }
   };
   gaa(rod);
-  return linjer.join('\n');
+  const fold = new RegExp(FOLD + '+', 'g'), kant = new RegExp('^' + FOLD + '|' + FOLD + '$', 'g'), rest = new RegExp(FOLD, 'g');
+  return linjer.map((l) => l.replace(fold, FOLD).replace(kant, '').replace(rest, ' ')).join('\n');
 }
 
 async function debuggerFill(tabId, selector, value) {
@@ -1706,11 +1722,19 @@ function laesFilSkiftISiden(noegle) {
 
 /** Tre-vejs dom paa en vedhaeftning, delt af upload_file og drop_file. `skift` er hvad feltet bar, da siden fik change. */
 function fildSvar(vedhaeftet, oenskede, ekstra, skift) {
+  // R93 (Astra, maalt i model): «modtaget» var mere end der var set. En side, der AFVISER filen (forkert type) og rydder
+  // feltet, ser ens ud. Svaret siger nu kun det maalte: filen sad i feltet, da siden fik change, og feltet er tomt nu -
+  // og at siden selv viser, om den beholdt filen. Antallet sammenlignes stadig.
   if (vedhaeftet && vedhaeftet.antal === 0 && skift && skift.antal > 0) {
-    return { ok: true, ...ekstra, attached: skift.navne, consumed_by_page: true,
-      note: 'The page received the file: its change handler saw it in the field, and the page cleared the field ' +
-            'afterwards, as X and Facebook do once they have read the file. Do not attach it again; check that the ' +
-            'page shows the attachment.' };
+    const svar = { ok: true, ...ekstra, seen_in_field: skift.navne, cleared_by_page: true,
+      note: 'The file was in the field when the page\'s change handler ran, and the page has since emptied the field. ' +
+            'X and Facebook do that after reading the file; a page that rejects a file can do the same. Check the page - ' +
+            'an attachment preview, or an error - before attaching the file again.' };
+    if (skift.antal !== oenskede.length) {
+      svar.differs = true;
+      svar.note += ` The field held ${skift.antal} of ${oenskede.length} files at that moment.`;
+    }
+    return svar;
   }
   if (!vedhaeftet) {
     return { ok: true, ...ekstra, unknown: true,
@@ -1718,9 +1742,12 @@ function fildSvar(vedhaeftet, oenskede, ekstra, skift) {
             'whether it is attached. Check the page before sending again.' };
   }
   if (vedhaeftet.antal === 0) {
+    // R93 (Astra): et tomt felt uden et set change er ikke et bevis paa, at siden aldrig fik filen - en lytter, siden
+    // satte foer vores, kan have laest og ryddet feltet foerst. Noten siger det, i stedet for «The file is NOT uploaded».
     return { ok: false, ...ekstra, error: 'file-not-attached',
-      note: 'Chrome acknowledged the file, but the field is empty. The path may not exist, the field\'s ' +
-            '`accept` rejects the file type, or the page cleared the field itself. The file is NOT uploaded.' };
+      note: 'Chrome acknowledged the file, but the field is empty, and the tool did not see the file in it. The path may not ' +
+            'exist, or the field\'s `accept` rejects the file type. A page can also read the file and clear the field ' +
+            'before the tool looks, so check the page before attaching again.' };
   }
   const svar = { ok: true, ...ekstra, attached: vedhaeftet.navne };
   if (vedhaeftet.antal !== oenskede.length) {
@@ -2282,9 +2309,9 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
         const c = toClickable(el);
         if (c && c.matches && c.matches(CLICKABLE) && (!kunSynlige || synlig(c))) return c;
       }
-      if (!kunSynlige) return toClickable(pool[0]);
-      for (const el of pool) { const c = toClickable(el); if (synlig(c)) return c; }
-      return null;
+      // R93 (Opus, maalt i Chrome): en synlig <h2>Settings</h2> slog en skjult <button>Settings</button>, og klikket gik til
+      // overskriften med ok:true. Foerste gennemgang tager derfor kun synlige KLIKBARE maal; ellers som foer.
+      return kunSynlige ? null : toClickable(pool[0]);
     }
     const eksakt = (t) => t === tekst;
     const delvis = (t) => t && t.includes(tekst);
@@ -4344,13 +4371,18 @@ async function dropFileOnTarget(tabId, selector, files) {
     const target = document.querySelector(${JSON.stringify(selector)});
     if (!target) return JSON.stringify({ found: false, error: 'target-not-found' });
 
+    const FIL = 'input[type="file"]';
     const candidates = [];
-    candidates.push(...target.querySelectorAll('input[type="file"]'));
-    if (candidates.length === 0 && target.parentElement) {
-      candidates.push(...target.parentElement.querySelectorAll('input[type="file"]'));
-    }
-    if (candidates.length === 0 && target.parentElement?.parentElement) {
-      candidates.push(...target.parentElement.parentElement.querySelectorAll('input[type="file"]'));
+    // R93 (Astra, maalt med sideudtrykket): et filfelt valgt direkte (#target) blev sprunget over, og soeskendet #other fik
+    // filen. Og to niveauer op kan vaere <body>, saa «i naerheden» blev hele siden. Nu: feltet selv, saa dets indhold, saa
+    // op til to niveauer - men kun et niveau med praecis ét filfelt, og aldrig <body> eller <html>.
+    if (target.matches && target.matches(FIL)) candidates.push(target);
+    if (candidates.length === 0) candidates.push(...target.querySelectorAll(FIL));
+    for (let op = target.parentElement, n = 0; candidates.length === 0 && op && n < 2; op = op.parentElement, n++) {
+      if (op === document.body || op === document.documentElement) break;
+      const her = op.querySelectorAll(FIL);
+      if (her.length === 1) candidates.push(her[0]);
+      if (her.length > 1) break;
     }
     // #67 (arasmileska, MAALT 13/10 i headless Chrome): her stod en sidste udvej - ethvert filfelt paa siden. Med en
     // «Add photo»-knap, der laver sit eget felt ved klik, fik et ANDET felt paa siden filen, og svaret var ok:true. Saa
@@ -4433,19 +4465,37 @@ async function dropFileOnTarget(tabId, selector, files) {
   return {
     ok: false,
     error: 'no-file-input-found',
-    hint: 'No <input type="file"> inside or near the target, and clicking the target opened no file chooser. The trigger element may not open a file dialog at all — check the selector.' +
-      (andre.length ? ' The page has other file inputs, listed in other_file_inputs. None of them got the file, because nothing ties them to this target; pass one as the selector if it is the right field.' : ''),
+    hint: 'No <input type="file"> at the target, and clicking the target opened no file chooser. The trigger element may not open a file dialog at all — check the selector.' +
+      (andre.length ? ' The page has other file inputs, listed in other_file_inputs. None of them got the file, because nothing ties them to this target. If one is the right field, pass its `selector` (an input without an id or name has none).' : ''),
     ...(andre.length ? { other_file_inputs: andre } : {}),
   };
 }
 
-// Et filfelt beskrevet, saa agenten kan se HVILKET felt der fik filen (#67) - og bruge det som selector. Selvstaendig.
+// Et filfelt beskrevet, saa agenten kan se HVILKET felt der fik filen (#67). `selector` er en gyldig CSS-selector, der
+// rammer netop dette felt (id, name, eller en sti af :nth-of-type fra naermeste forfader med id) - ellers null, fx for et
+// felt uden for dokumentet. `description` siger altid hvor det er. R93 (Astra og Opus, maalt): beskrivelsen blev sendt som
+// selector («Uncaught»), og de skjulte felter paa X og Facebook har typisk hverken id eller name. Selvstaendig.
 function filFeltNavn(i) {
-  if (i.id) return '#' + CSS.escape(i.id);
-  if (i.name) return 'input[type="file"][name="' + String(i.name).replace(/["\\]/g, '\\$&') + '"]';
   const alle = [...document.querySelectorAll('input[type="file"]')];
   const nr = alle.indexOf(i);
-  return nr >= 0 ? 'input[type="file"] (number ' + (nr + 1) + ' of ' + alle.length + ' on the page)' : 'an <input type="file"> outside the page\'s document';
+  const hvor = nr >= 0 ? 'file input ' + (nr + 1) + ' of ' + alle.length + ' on the page' : 'a file input outside the page\'s document';
+  const rammer = (sel) => { try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === i; } catch (e) { return false; } };
+  let selector = null;
+  if (nr >= 0) {
+    const kandidater = [];
+    if (i.id) kandidater.push('#' + CSS.escape(i.id));
+    if (i.name) kandidater.push('input[type="file"][name="' + CSS.escape(String(i.name)) + '"]');
+    const dele = [];
+    for (let n = i; n && n.nodeType === 1; n = n.parentElement) {
+      if (n !== i && n.id) { dele.unshift('#' + CSS.escape(n.id)); break; }
+      let k = 1;
+      for (let b = n.previousElementSibling; b; b = b.previousElementSibling) if (b.tagName === n.tagName) k++;
+      dele.unshift(n.tagName.toLowerCase() + ':nth-of-type(' + k + ')');
+    }
+    kandidater.push(dele.join(' > '));
+    selector = kandidater.find(rammer) || null;
+  }
+  return { selector, description: hvor + (i.id ? ', id "' + i.id + '"' : '') + (i.name ? ', name "' + i.name + '"' : '') };
 }
 
 // #69 (arasmileska; MAALT 13/10 i headless Chrome): en side med en beforeunload-lytter (et ugemt udkast) fik «Leave site?»
@@ -4456,30 +4506,52 @@ function filFeltNavn(i) {
 // Har agenten selv armeret handle_dialog paa fanen, er det dens svar, der gaelder. Svarer siden ikke inden for 3 s
 // (fx fordi en boks allerede staar aaben), navigeres der som foer, uden vagt.
 async function armerForladVagt(tabId, forlad) {
-  if (armeredeDialoger.has(tabId)) return null;
+  // R93 (Opus, maalt i Chrome): to veje var stadig tavse. (a) Med handle_dialog armeret (dismiss) svarede navigate efter 15 s
+  // med den gamle adresse og ingen fejl - vagten trak sig helt. Nu lytter den passivt: handle_dialog svarer, vagten noterer
+  // hvad, og navigate melder det. (b) Stod en boks allerede aaben, loeb Page.enable ud, og navigate koerte blindt videre i 26 s.
+  // Nu svarer navigate straks tab-not-responding.
+  try { await debuggerAttach(tabId); } catch { return null; }   // fx en chrome://-side: ingen vagt, som foer
+  let haenger = false;
   try {
-    await debuggerAttach(tabId);
     await Promise.race([
       cdpSend(tabId, 'Page.enable', {}),
-      new Promise((_, nej) => setTimeout(() => nej(new Error('Page.enable answered too slowly')), 3000)),
+      new Promise((_, nej) => setTimeout(() => { haenger = true; nej(new Error('Page.enable answered too slowly')); }, 3000)),
     ]);
-  } catch { return null; }
-  const tilstand = { set: false, forlod: false, besvaret: false };
+  } catch (e) {
+    if (haenger || erCdpFrist(e)) return { haenger: true, vedSvar() {}, af() { return null; } };
+    return null;
+  }
+  const tilstand = { set: false, forlod: false, faerdig: false, fejl: null, afHandleDialog: null };
   let vedSvar = null;
+  let slukket = false;
   const lytter = (source, method, ep) => {
     if (source.tabId !== tabId || method !== 'Page.javascriptDialogOpening' || ep?.type !== 'beforeunload') return;
-    if (armeredeDialoger.has(tabId)) return;
+    if (tilstand.set) return;
+    const armeret = armeredeDialoger.get(tabId);
+    if (armeret) {
+      // handle_dialog svarer selv; vagten svarer ikke oven i den, men noterer svaret.
+      tilstand.set = true;
+      tilstand.forlod = armeret.action === 'accept';
+      tilstand.afHandleDialog = armeret.action;
+      tilstand.faerdig = true;
+      if (!tilstand.forlod && vedSvar) vedSvar();
+      return;
+    }
     tilstand.set = true;
     tilstand.forlod = forlad;
+    // R93 (Astra, maalt i model): et svar, der ikke gik igennem, blev meldt som Stay med «the tab still works».
     cdpSend(tabId, 'Page.handleJavaScriptDialog', { accept: forlad })
-      .catch(() => {})
-      .then(() => { tilstand.besvaret = true; if (!forlad && vedSvar) vedSvar(); });
+      .catch((e) => { tilstand.fejl = e?.message || String(e); })
+      .then(() => { tilstand.faerdig = true; if ((!forlad || tilstand.fejl) && vedSvar) vedSvar(); });
   };
   chrome.debugger.onEvent.addListener(lytter);
+  const af = () => { if (!slukket) { slukket = true; clearTimeout(udloeb); chrome.debugger.onEvent.removeListener(lytter); } };
+  // Og vagten udloeber selv efter navigates eget loft (15 s) plus margin, saa ingen fejlvej kan efterlade den.
+  const udloeb = setTimeout(af, 20000);
   return {
-    // Bliver der svaret Stay, venter navigate ikke paa en side, der aldrig kommer.
-    vedSvar(f) { vedSvar = f; if (tilstand.besvaret && !tilstand.forlod) f(); },
-    af() { chrome.debugger.onEvent.removeListener(lytter); return tilstand.set ? { forlod: tilstand.forlod } : null; },
+    // Bliver der svaret Stay (eller gik svaret ikke igennem), venter navigate ikke paa en side, der aldrig kommer.
+    vedSvar(f) { vedSvar = f; if (tilstand.faerdig && (!tilstand.forlod || tilstand.fejl)) f(); },
+    af() { af(); return tilstand.set ? { forlod: tilstand.forlod && !tilstand.fejl, fejl: tilstand.fejl, afHandleDialog: tilstand.afHandleDialog } : null; },
   };
 }
 
@@ -4717,7 +4789,22 @@ async function dispatch(port, method, params) {
         };
         chrome.tabs.onUpdated.addListener(opfang);
         forladVagt = await armerForladVagt(tab.id, params.leave_page === true);
-        try { await chrome.tabs.update(tab.id, { url: params.url }); } finally { chrome.tabs.onUpdated.removeListener(opfang); }
+        if (forladVagt && forladVagt.haenger) {
+          chrome.tabs.onUpdated.removeListener(opfang);
+          return { ok: false, error: 'tab-not-responding', url: String(tab.url || ''), requested_url: params.url, tab_id: tab.id,
+            note: 'Chrome did not answer on this tab, so nothing was navigated. A common cause is a dialog that is already ' +
+                  'open - an alert, a confirm or a "Leave site?" prompt that appeared before anything was listening. Such a ' +
+                  'dialog cannot be answered from here: ask the user to answer it in Chrome, or close the tab with ' +
+                  'browser_close_tab, which skips the prompt but loses anything unsaved on the page.' };
+        }
+        try {
+          await chrome.tabs.update(tab.id, { url: params.url });
+        } catch (e) {
+          // R93 (Astra, maalt i model): en navigation, der fejlede her, efterlod vagten - og med leave_page svarede den
+          // Leave paa den NAESTE «Leave site?» paa fanen. Vagten tages af paa alle udgange.
+          if (forladVagt) forladVagt.af();
+          throw e;
+        } finally { chrome.tabs.onUpdated.removeListener(opfang); }
       }
 
       // Wait for load. A 'complete' can be the about:blank placeholder's OWN load
@@ -4771,6 +4858,18 @@ async function dispatch(port, method, params) {
       session.activeTabId = tab.id;
       persistSessions();
       const updated = await chrome.tabs.get(tab.id);
+      if (forladt && forladt.fejl) {
+        return { ok: false, error: 'beforeunload-unanswered', detail: forladt.fejl, url: updated.url, requested_url: params.url, tab_id: tab.id,
+          note: 'The page asked "Leave site?", and the tool\'s answer did not go through, so the prompt may still be open ' +
+                'and the tab may not respond. Ask the user to answer it in Chrome, or close the tab with browser_close_tab, ' +
+                'which skips the prompt but loses anything unsaved on the page.' };
+      }
+      if (forladt && !forladt.forlod && forladt.afHandleDialog) {
+        return { ok: false, error: 'beforeunload-blocked', url: updated.url, requested_url: params.url, tab_id: tab.id,
+          note: `The page asked "Leave site?", and your armed browser_handle_dialog answered it (${forladt.afHandleDialog}), so ` +
+                'nothing navigated and the page is as it was. To leave anyway and lose what is unsaved, call browser_navigate ' +
+                'again with leave_page: true and no armed dialog handling.' };
+      }
       if (forladt && !forladt.forlod) {
         return { ok: false, error: 'beforeunload-blocked', url: updated.url, requested_url: params.url, tab_id: tab.id,
           note: 'The page asked "Leave site?" - it has something unsaved, such as a draft. The tool answered Stay, so ' +
@@ -5744,7 +5843,10 @@ async function dispatch(port, method, params) {
       const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
       const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : key);
       const REDIGERING = { A: 'selectAll', C: 'copy', X: 'cut', V: 'paste', Z: 'undo', Y: 'redo' };
-      let kommando = (params.ctrl || params.meta) && !params.alt && bogstav ? REDIGERING[stort] : undefined;
+      // R93 (Astra, laest i Chromium): med Shift er det en anden genvej (Ctrl+Shift+V = indsaet uden formatering). Kun
+      // Shift+Z (redo) faar en kommando; andre Shift-kombinationer gaar til Chromes egen tastbinding (paa Windows/Linux).
+      let kommando = (params.ctrl || params.meta) && !params.alt && bogstav && (!params.shift || stort === 'Z')
+        ? REDIGERING[stort] : undefined;
       if (kommando === 'undo' && params.shift) kommando = 'redo';
 
       // MAALT 10/9 af Astra: keyDown og keyUp stod i samme try. Timede keyDown ud — og det

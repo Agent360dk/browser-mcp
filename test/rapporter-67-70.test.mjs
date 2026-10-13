@@ -61,6 +61,17 @@ test('#68: c, x, v, z, y og shift+z bliver copy, cut, paste, undo, redo og redo'
   }
 });
 
+test('#68: med Shift faar kun z en kommando (redo) - Ctrl+Shift+V er Chromes egen «indsaet uden formatering» (R93)', async () => {
+  const t1 = tastSele();
+  await t1.u.hent('dispatch')(9876, 'press_key', { key: 'v', ctrl: true, shift: true });
+  assert.equal(t1.ned()[0].commands, undefined, `ctrl+shift+v blev sendt som almindelig paste: ${JSON.stringify(t1.ned()[0])}`);
+  assert.equal(t1.ned()[0].text, '');
+  assert.equal(t1.ned()[0].windowsVirtualKeyCode, 86, 'uden tastkoden kan Chromes egen binding ikke finde genvejen');
+  const t2 = tastSele();
+  await t2.u.hent('dispatch')(9876, 'press_key', { key: 'a', meta: true, shift: true });
+  assert.equal(t2.ned()[0].commands, undefined);
+});
+
 test('#68 positiv kontrol: et almindeligt a skriver stadig «a», og alt+a er en genvej uden kommando', async () => {
   const { u, ned } = tastSele();
   await u.hent('dispatch')(9876, 'press_key', { key: 'a' });
@@ -109,6 +120,12 @@ test('#70: contenteditable laeses som linjer, ikke som textContent eller innerTe
   assert.equal(laes(['\n  ', ['P', {}, 'x'], '\n']), 'x', 'formaterings-mellemrum mellem blokke er ikke tekst');
   assert.equal(laes([['DIV', { ws: 'pre-wrap' }, 'a  b']]), 'a  b', 'pre-wrap beholder sine mellemrum');
   assert.equal(laes([['SPAN', { display: 'none' }, 'skjult'], 'vist']), 'vist');
+  // R93 (Astra, maalt i model): mellemrum foldes som i CSS - ogsaa mellem elementer.
+  assert.equal(laes([['SPAN', {}, 'hello'], ' ', ['SPAN', {}, 'world']]), 'hello world', 'mellemrummet mellem to span forsvandt');
+  assert.equal(laes([['SPAN', {}, 'hello '], ['SPAN', {}, ' world']]), 'hello world', 'to mellemrum over en elementgraense blev ikke foldet');
+  assert.equal(laes([['DIV', { ws: 'pre-line' }, 'a  b\nc']]), 'a b\nc', 'pre-line foldede ikke mellemrum eller mistede linjeskiftet');
+  assert.equal(laes([' a ', ['DIV', {}, ' b ']]), 'a\nb', 'mellemrum i linjens kanter er ikke tekst');
+  assert.equal(laes(['a\u00a0\u00a0b']), 'a\u00a0\u00a0b', 'haarde mellemrum foldes ikke');
 });
 
 test('#70: fill paa en contenteditable doemmer med linjerne', () => {
@@ -151,6 +168,13 @@ test('#70: text= vaelger den synlige knap, naar en skjult kopi staar foerst', ()
   assert.equal(el.id, 'synlig');
 });
 
+test('#70: en synlig IKKE-klikbar tekst slaar ikke en skjult knap - svaret bliver «not visible» som foer (R93)', () => {
+  const d = lavKlikDom();
+  d.el('h2', { id: 'overskrift', tekst: 'Settings', rect: [10, 10, 200, 30] });
+  d.el('button', { id: 'skjult', tekst: 'Settings', ingen: true });
+  assert.equal(d.koer(KLIK, null, 'Settings', null, false, true).svar.id, 'skjult', 'klikket gik til overskriften');
+});
+
 test('#70: ogsaa en skjult EKSAKT kopi taber til en synlig delvis', () => {
   const d = lavKlikDom();
   d.el('button', { id: 'skjult', tekst: 'Send', skjult: true, rect: [0, 0, 50, 20] });
@@ -165,14 +189,23 @@ test('#70 positiv kontrol: findes kun den skjulte, vaelges den stadig (og svaret
 });
 
 // ── #67 drop_file og upload_file ─────────────────────────────────────────────
-test('#67: siden laeste filen og ryddede feltet - svaret er modtaget, ikke file-not-attached', () => {
+test('#67: feltet sad med filen ved change og er tomt nu - svaret siger det, ikke file-not-attached og ikke «modtaget»', () => {
   const fyld = indlaesUdvidelse().hent('fildSvar');
   const svar = fyld({ antal: 0, navne: [] }, ['/x/a.png'], { method: 'hidden-input' }, { antal: 1, navne: ['a.png'] });
-  assert.equal(svar.ok, true, `en side der fik filen, blev meldt som fejl: ${JSON.stringify(svar)}`);
-  assert.equal(svar.consumed_by_page, true);
-  assert.deepEqual(svar.attached, ['a.png']);
+  assert.equal(svar.ok, true, `et felt siden saa filen i, blev meldt som fejl: ${JSON.stringify(svar)}`);
+  assert.equal(svar.cleared_by_page, true);
+  assert.deepEqual([...svar.seen_in_field], ['a.png']);
+  assert.equal(svar.attached, undefined, 'svaret paastaar en vedhaeftning, feltet ikke har');
+  // R93 (Astra): en side, der afviser filen og rydder feltet, ser ens ud - svaret maa ikke sige «modtaget» eller «attach ikke igen».
+  assert.doesNotMatch(svar.note, /received|do not attach/i, `svaret paastaar mere end det saa: ${svar.note}`);
+  assert.match(svar.note, /check the page/i);
+  // R93 (Astra): antallet sammenlignes stadig.
+  const delvis = fyld({ antal: 0, navne: [] }, ['/x/a.png', '/x/b.png'], {}, { antal: 1, navne: ['a.png'] });
+  assert.equal(delvis.differs, true, `1 af 2 filer blev ikke meldt: ${JSON.stringify(delvis)}`);
   // Positive kontroller: intet change, eller et change uden filer, er stadig et nej.
-  assert.equal(fyld({ antal: 0, navne: [] }, ['/x/a.png'], {}, null).error, 'file-not-attached');
+  const nej = fyld({ antal: 0, navne: [] }, ['/x/a.png'], {}, null);
+  assert.equal(nej.error, 'file-not-attached');
+  assert.doesNotMatch(nej.note, /NOT uploaded/, 'et tomt felt uden et set change beviser ikke, at siden aldrig fik filen (R93)');
   assert.equal(fyld({ antal: 0, navne: [] }, ['/x/a.png'], {}, { antal: 0, navne: [] }).error, 'file-not-attached');
 });
 
@@ -222,7 +255,40 @@ test('#67: intet filfelt ved maalet - et felt andetsteds paa siden faar IKKE fil
   const zone = { querySelectorAll: () => [eget], parentElement: null };
   const svar2 = JSON.parse(new Function('document', 'CSS', 'return ' + udtryk)({ querySelector: () => zone, querySelectorAll: () => [eget] }, { escape: (x) => x }));
   assert.equal(svar2.found, true);
-  assert.equal(svar2.input, '#f', 'svaret navngiver ikke feltet, der fik filen');
+  assert.equal(svar2.input.selector, '#f', 'svaret navngiver ikke feltet, der fik filen');
+  // R93 (Astra): et filfelt valgt direkte vinder over et soeskende.
+  const valgt = { ...eget, id: 'target', attrs: {}, matches: (q) => q === 'input[type="file"]', querySelectorAll: () => [] };
+  const soeskende = { ...eget, id: 'other', attrs: {} };
+  valgt.parentElement = { querySelectorAll: () => [soeskende, valgt], parentElement: null };
+  const svar3 = JSON.parse(new Function('document', 'CSS', 'return ' + udtryk)({ querySelector: () => valgt, querySelectorAll: (q) => (q === '#target' ? [valgt] : [soeskende, valgt]) }, { escape: (x) => x }));
+  assert.equal(svar3.input.selector, '#target', `et valgt filfelt tabte til sit soeskende: ${JSON.stringify(svar3)}`);
+  // R93 (Astra): et niveau op, der er <body>, eller som rummer flere filfelter, giver ikke filen til et af dem.
+  const body = { querySelectorAll: () => [andet], parentElement: null };
+  const knapIBody = { matches: () => false, querySelectorAll: () => [], parentElement: { querySelectorAll: () => [], parentElement: body } };
+  const svar4 = JSON.parse(new Function('document', 'CSS', 'return ' + udtryk)({ body, querySelector: () => knapIBody, querySelectorAll: () => [andet] }, { escape: (x) => x }));
+  assert.equal(svar4.found, false, `<body> blev soegt som «i naerheden»: ${JSON.stringify(svar4)}`);
+  const to = { querySelectorAll: () => [andet, eget], parentElement: null };
+  const svar5 = JSON.parse(new Function('document', 'CSS', 'return ' + udtryk)({ querySelector: () => ({ matches: () => false, querySelectorAll: () => [], parentElement: to }), querySelectorAll: () => [andet, eget] }, { escape: (x) => x }));
+  assert.equal(svar5.found, false, `et niveau med to filfelter gav filen til det foerste: ${JSON.stringify(svar5)}`);
+});
+
+test('#67: filFeltNavn giver en selector, der rammer netop feltet - ogsaa uden id og name (R93)', () => {
+  const kilde = indlaesUdvidelse().hent('filFeltNavn').toString();
+  const wrap = { nodeType: 1, tagName: 'DIV', id: 'wrap', parentElement: null, previousElementSibling: null };
+  const felt = (o) => ({ nodeType: 1, tagName: 'INPUT', id: '', name: '', parentElement: wrap, previousElementSibling: null, ...o });
+  const a = felt({}), b = felt({ id: 'up' }), c = felt({ name: 'pic' }), d = felt({ name: 'x' }), e = felt({ name: 'x' });
+  b.previousElementSibling = a; c.previousElementSibling = b; d.previousElementSibling = c; e.previousElementSibling = d;
+  const alle = [a, b, c, d, e];
+  const sider = { 'input[type="file"]': alle, '#up': [b], 'input[type="file"][name="pic"]': [c], 'input[type="file"][name="x"]': [d, e],
+    '#wrap > input:nth-of-type(1)': [a], '#wrap > input:nth-of-type(5)': [e] };
+  const document = { querySelectorAll: (q) => sider[q] || [] };
+  const navn = (f, doc = document) => new Function('document', 'CSS', 'return (' + kilde + ')')(doc, { escape: (x) => x })(f);
+  assert.equal(navn(a).selector, '#wrap > input:nth-of-type(1)', 'et felt uden id og name fik ingen brugbar selector');
+  assert.match(navn(a).description, /file input 1 of 5/);
+  assert.equal(navn(b).selector, '#up');
+  assert.equal(navn(c).selector, 'input[type="file"][name="pic"]');
+  assert.equal(navn(e).selector, '#wrap > input:nth-of-type(5)', 'et navn, to felter deler, blev brugt som selector');
+  assert.equal(navn(b, { querySelectorAll: () => [] }).selector, null, 'et felt uden for dokumentet kan ikke naas med en selector');
 });
 
 // ── #69 navigate og «Leave site?» ────────────────────────────────────────────
@@ -277,13 +343,26 @@ test('#69: med leave_page forlades siden, og navigate ender paa den nye adresse'
   assert.equal(svar.url, 'https://ny.example/');
 });
 
-test('#69: en armeret handle_dialog bestemmer selv - vagten svarer ikke oven i den', async () => {
+test('#69: en armeret handle_dialog (dismiss) bestemmer selv - og navigate melder det straks (R93)', async () => {
   const { u, svarDialog } = navSele({ forladt: false });
-  u.hent('armeredeDialoger').set(1, { listener: () => {}, timer: null, action: 'accept', opfyld: () => {} });
-  const p = u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
-  p.catch(() => {});
-  await new Promise((r) => setTimeout(r, 200));
+  u.hent('armeredeDialoger').set(1, { listener: () => {}, timer: null, action: 'dismiss', opfyld: () => {} });
+  const t0 = Date.now();
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
   assert.deepEqual(svarDialog, [], 'vagten svarede boksen, skoent agenten havde armeret handle_dialog');
+  assert.ok(Date.now() - t0 < 3000, `navigate ventede ${Date.now() - t0} ms`);
+  assert.equal(svar.error, 'beforeunload-blocked', `navigate meldte den gamle adresse uden fejl: ${JSON.stringify(svar)}`);
+  assert.match(svar.note, /handle_dialog/);
+});
+
+test('#69: svarer fanen ikke (en boks staar allerede aaben), navigerer navigate ikke blindt (R93)', async () => {
+  const { u } = navSele({ forladt: false });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
+  const t0 = Date.now();
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, 'tab-not-responding', JSON.stringify(svar));
+  assert.ok(Date.now() - t0 < 6000, `navigate ventede ${Date.now() - t0} ms`);
+  assert.equal(u.optager.til('tabs.update').length, 0, 'navigate sendte adressen til en fane, der ikke svarer');
 });
 
 test('#69: handle_dialog paa en fane med en aaben boks siger hvad der er galt, ikke Chromes noegne frist', async () => {
@@ -301,7 +380,18 @@ test('#69: handle_dialog paa en fane med en aaben boks siger hvad der er galt, i
 });
 
 // ── #67 ogsaa upload_file og filvaelger-vejen ────────────────────────────────
-test('#67: upload_file - siden laeste filen og ryddede feltet, svaret er modtaget', async () => {
+// R93 (Astra, maalt): stubbene leverede observationen, ogsaa naar ingen lytter var armeret - saa en fjernet armering var
+// groen. Nu ser «siden» kun filen, hvis armeringen kom FOER afleveringen.
+function filKaede() {
+  const k = { armeret: false, armeretVedSet: false };
+  k.armer = (x) => { if (x.includes('addEventListener')) k.armeret = true; };
+  k.set = () => { k.armeretVedSet = k.armeret; };
+  k.skift = () => (k.armeretVedSet ? JSON.stringify({ antal: 1, navne: ['a.png'] }) : null);
+  return k;
+}
+
+test('#67: upload_file - feltet sad med filen ved change og er tomt nu: cleared_by_page', async () => {
+  const k = filKaede();
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
@@ -311,9 +401,11 @@ test('#67: upload_file - siden laeste filen og ryddede feltet, svaret er modtage
       if (metode === 'Runtime.evaluate') {
         const x = String(p.expression);
         if (x.includes('found: true')) return { result: { value: JSON.stringify({ found: true, tag: 'INPUT', type: 'file', accept: '', multiple: false }) } };
-        if (x.includes('removeEventListener') || x.includes(':off')) return { result: { value: x.includes('lager[noegle + \':off\']()') && !x.includes('addEventListener') ? JSON.stringify({ antal: 1, navne: ['a.png'] }) : true } };
+        k.armer(x);
+        if (x.includes(':off') && !x.includes('addEventListener')) return { result: { value: k.skift() } };
         return { result: { value: true } };
       }
+      if (metode === 'DOM.setFileInputFiles') { k.set(); return {}; }
       if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };
       if (metode === 'DOM.querySelector') return { nodeId: 2 };
       return {};
@@ -322,11 +414,13 @@ test('#67: upload_file - siden laeste filen og ryddede feltet, svaret er modtage
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
   u.ctx.chrome.scripting.executeScript = async ({ func }) => (String(func).includes('.files') ? [{ result: { antal: 0, navne: [] } }] : [{ result: null }]);
   const svar = await u.hent('dispatch')(9876, 'upload_file', { selector: '#f', files: ['/x/a.png'] });
-  assert.equal(svar.ok, true, `upload_file meldte file-not-attached, skoent siden fik filen: ${JSON.stringify(svar)}`);
-  assert.equal(svar.consumed_by_page, true);
+  assert.equal(svar.ok, true, `upload_file meldte file-not-attached, skoent siden saa filen: ${JSON.stringify(svar)}`);
+  assert.equal(svar.cleared_by_page, true);
+  assert.ok(k.armeretVedSet, 'lytteren blev ikke armeret foer afleveringen');
 });
 
 function vaelgerSele(feltet) {
+  const k = filKaede();
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.detach': undefined,
@@ -335,9 +429,14 @@ function vaelgerSele(feltet) {
     'debugger.sendCommand': (_m, metode, p) => {
       if (metode === 'DOM.resolveNode') return { object: { objectId: 'obj-1' } };
       if (metode === 'Runtime.callFunctionOn') {
-        return String(p.functionDeclaration).includes('el.files ?') && String(p.functionDeclaration).includes('input:')
-          ? { result: { value: JSON.stringify(feltet) } } : { result: { value: true } };
+        const f = String(p.functionDeclaration);
+        if (f.includes('input:') && !f.includes('addEventListener')) {
+          return { result: { value: JSON.stringify({ ...feltet, skift: feltet.skift && k.armeretVedSet ? feltet.skift : null }) } };
+        }
+        k.armer(f);
+        return { result: { value: true } };
       }
+      if (metode === 'DOM.setFileInputFiles') { k.set(); return {}; }
       if (metode === 'Runtime.evaluate' || metode === 'DOM.getDocument' || metode === 'DOM.querySelector') return new Promise(() => {});
       return {};
     },
@@ -353,15 +452,15 @@ async function vaelg(u) {
 }
 
 test('#67: filvaelger-vejen svarer ud fra feltet - ikke ud fra Chromes kvittering', async () => {
-  const tomt = await vaelg(vaelgerSele({ antal: 0, navne: [], input: 'x', skift: null }));
+  const tomt = await vaelg(vaelgerSele({ antal: 0, navne: [], input: { selector: null, description: 'x' }, skift: null }));
   assert.equal(tomt.ok, false, `et tomt felt blev meldt som vedhaeftet: ${JSON.stringify(tomt)}`);
   assert.equal(tomt.error, 'file-not-attached');
-  const fyldt = await vaelg(vaelgerSele({ antal: 1, navne: ['a.png'], input: "an <input type=\"file\"> outside the page's document", skift: { antal: 1, navne: ['a.png'] } }));
+  const fyldt = await vaelg(vaelgerSele({ antal: 1, navne: ['a.png'], input: { selector: null, description: "a file input outside the page's document" }, skift: { antal: 1, navne: ['a.png'] } }));
   assert.equal(fyldt.ok, true, JSON.stringify(fyldt));
   assert.equal(fyldt.method, 'native-chooser-intercepted');
-  assert.match(String(fyldt.input), /outside the page/, 'svaret navngiver ikke feltet');
-  const ryddet = await vaelg(vaelgerSele({ antal: 0, navne: [], input: 'x', skift: { antal: 1, navne: ['a.png'] } }));
-  assert.equal(ryddet.consumed_by_page, true, JSON.stringify(ryddet));
+  assert.match(String(fyldt.input.description), /outside the page/, 'svaret navngiver ikke feltet');
+  const ryddet = await vaelg(vaelgerSele({ antal: 0, navne: [], input: { selector: null, description: 'x' }, skift: { antal: 1, navne: ['a.png'] } }));
+  assert.equal(ryddet.cleared_by_page, true, `lytteren blev ikke armeret foer afleveringen, eller svaret mistede den: ${JSON.stringify(ryddet)}`);
 });
 
 test('#69: en input-frist naevner ogsaa en aaben dialog, ikke kun en baggrundsfane', async () => {
@@ -372,17 +471,20 @@ test('#69: en input-frist naevner ogsaa en aaben dialog, ikke kun en baggrundsfa
 });
 
 // Mutant M12 (13/10) overlevede: drop_file's skjulte-felt-vej kunne miste sin change-laesning, uden at noget blev roedt.
-test('#67: drop_file (skjult felt) - siden laeste filen og ryddede feltet, svaret er modtaget og navngiver feltet', async () => {
+test('#67: drop_file (skjult felt) - feltet sad med filen ved change og er tomt nu: cleared_by_page, og feltet navngives', async () => {
+  const k = filKaede();
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
     'debugger.sendCommand': (_m, metode, p) => {
       if (metode === 'Runtime.evaluate') {
         const x = String(p.expression);
-        if (x.includes('candidates')) return { result: { value: JSON.stringify({ found: true, tag: 'T1', accept: '', multiple: false, input: '#f' }) } };
-        if (x.includes(':off') && !x.includes('addEventListener')) return { result: { value: JSON.stringify({ antal: 1, navne: ['a.png'] }) } };
+        if (x.includes('candidates')) return { result: { value: JSON.stringify({ found: true, tag: 'T1', accept: '', multiple: false, input: { selector: '#f', description: 'file input 1 of 1 on the page, id "f"' } }) } };
+        k.armer(x);
+        if (x.includes(':off') && !x.includes('addEventListener')) return { result: { value: k.skift() } };
         return { result: { value: true } };
       }
+      if (metode === 'DOM.setFileInputFiles') { k.set(); return {}; }
       if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };
       if (metode === 'DOM.querySelector') return { nodeId: 2 };
       return {};
@@ -390,8 +492,34 @@ test('#67: drop_file (skjult felt) - siden laeste filen og ryddede feltet, svare
   } });
   u.ctx.chrome.scripting.executeScript = async ({ func }) => (String(func).includes('.files') ? [{ result: { antal: 0, navne: [] } }] : [{ result: null }]);
   const svar = await u.hent('dropFileOnTarget')(1, '#f', ['/x/a.png']);
-  assert.equal(svar.ok, true, `drop_file meldte file-not-attached, skoent siden fik filen: ${JSON.stringify(svar)}`);
-  assert.equal(svar.consumed_by_page, true);
+  assert.equal(svar.ok, true, `drop_file meldte file-not-attached, skoent siden saa filen: ${JSON.stringify(svar)}`);
+  assert.equal(svar.cleared_by_page, true);
   assert.equal(svar.method, 'hidden-input');
-  assert.equal(svar.input, '#f');
+  assert.equal(svar.input.selector, '#f');
+  assert.ok(k.armeretVedSet, 'lytteren blev ikke armeret foer afleveringen');
+});
+
+// ── R93 (Astra): vagten paa alle udgange, og et svar der ikke gik igennem ─────────────────────
+test('#69: en navigation, der fejler, efterlader ingen vagt - en senere «Leave site?» besvares ikke', async () => {
+  const { u, svarDialog } = navSele({ forladt: false });
+  u.chrome.tabs.update = async () => { throw new Error('Invalid url'); };
+  await assert.rejects(u.hent('dispatch')(9876, 'navigate', { url: 'nonsense:', leave_page: true }));
+  assert.ok(u.optager.til('debugger.sendCommand').some((k) => k.args[1] === 'Page.enable'), 'vagten blev aldrig armeret - proeven maaler intet');
+  const foer = (u.lyttere.get('debugger.onEvent') || []).length;
+  assert.equal(foer, 0, `${foer} dialoglytter(e) blev haengende efter en fejlet navigation`);
+  await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(svarDialog, [], 'en senere boks blev besvaret af en vagt fra et afsluttet kald');
+});
+
+test('#69: gaar svaret paa «Leave site?» ikke igennem, siges det - ikke «Stay» og «the tab still works»', async () => {
+  const { u } = navSele({ forladt: false });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Page.handleJavaScriptDialog') throw new Error('CDP did not respond within 8000 ms: Page.handleJavaScriptDialog');
+    return send(m, metode, p);
+  };
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, 'beforeunload-unanswered', JSON.stringify(svar));
+  assert.doesNotMatch(String(svar.note), /still works/, 'svaret lover en fane, der virker');
 });

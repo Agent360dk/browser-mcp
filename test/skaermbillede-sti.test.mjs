@@ -157,3 +157,13 @@ test('#70 positiv kontrol: anden bogstavstoerrelse aabner ikke for en mappe uden
   assert.match(svar, /points outside/, `slap forbi vagten: ${svar.slice(0, 240)}`);
   assert.ok(!existsSync(join(udenfor, 'stor.png')), 'PNG-bytes blev skrevet uden for arbejdsmappen');
 });
+
+// R93 (Opus, maalt paa GitHubs Windows): arbejdsmappen hed C:\Users\RUNNER~1\..., stien c:\Users\runneradmin\... - samme mappe
+// gennem et 8.3-kortnavn. Paa macOS er /var et link til /private/var. En absolut sti stavet gennem et alias for SELVE
+// arbejdsmappen (ikke for noget udenfor) skal godtages; afgoerelsen tages paa de kanoniske stier.
+const alias = arbejd !== arbejdReel ? arbejd : null;   // mkdtemp's stavemaade, naar den ikke er den kanoniske
+test('#70: en absolut sti gennem et alias for arbejdsmappen (/var, 8.3-kortnavn) godtages', { timeout: 45000, skip: !alias && 'ingen alias-stavemaade paa denne maskine' }, async () => {
+  const svar = await skaermbillede(join(alias, 'inde', 'alias.png'), arbejdReel);
+  assert.match(svar, /successfully saved/, `afvist paa stavemaaden alene: ${svar.slice(0, 240)}`);
+  assert.ok(existsSync(join(arbejdReel, 'inde', 'alias.png')));
+});

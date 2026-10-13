@@ -201,10 +201,10 @@ test('fladerne naevner vores kort og prisen, og drop_file siger sin sidste udvej
   for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md']) {
     const r = raekke(f, '| `browser_drop_file`')[0];
     assert.doesNotMatch(r, /as a last resort the first file input/, `${f}: drop-raekken lover stadig den fjernede sidste udvej`);
-    assert.match(r, /A file input elsewhere on the page never gets the file/, `${f}: drop-raekken siger ikke, at et fremmed felt aldrig faar filen`);
+    assert.match(r, /Other file inputs on the page do not get the file/, `${f}: drop-raekken siger ikke, at andre filfelter ikke faar filen`);
   }
   const { TOOLS } = await import('../mcp-server/tools.js');
   const dropBeskr = TOOLS.find((t) => t.name === 'browser_drop_file').description;
   assert.doesNotMatch(dropBeskr, /last resort/, 'drop_file-beskrivelsen lover stadig den fjernede sidste udvej');
-  assert.match(dropBeskr, /A file input elsewhere on the page never gets the file/, 'drop_file-beskrivelsen siger ikke, at et fremmed felt aldrig faar filen');
+  assert.match(dropBeskr, /Other file inputs on the page do not get the file/, 'drop_file-beskrivelsen siger ikke, at andre filfelter ikke faar filen');
 });
