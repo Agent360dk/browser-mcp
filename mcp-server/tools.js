@@ -19,7 +19,7 @@ export const TOOLS = [
         vindue_hoejde: { type: 'number', description: 'With eget_vindue: window height in points.' },
         url: { type: 'string', description: 'URL to navigate to' },
         new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false). If the session\'s only tab is still an empty about:blank placeholder, that tab is used instead of opening another.' },
-        leave_page: { type: 'boolean', description: 'If the current page asks "Leave site?" because something is unsaved (a draft), leave anyway and lose it. Default: false - the tool answers Stay, nothing navigates, and the answer is error beforeunload-blocked. If you armed browser_handle_dialog first, its answer counts, and a dismiss also gives beforeunload-blocked. If the tab does not respond at all (a dialog is already open), nothing is navigated and the answer is tab-not-responding.' },
+        leave_page: { type: 'boolean', description: 'If the current page asks "Leave site?" because something is unsaved (a draft), leave anyway and lose it. Default: false - the tool answers Stay, nothing navigates, and the answer is error beforeunload-blocked. If you armed browser_handle_dialog first, its answer counts, and a dismiss also gives beforeunload-blocked. If the tab does not answer and the new address never starts loading (a page busy for a long time, or a dialog already open), the answer is tab-not-responding: the address was still sent and may load later, and a "Leave site?" in the next minute is answered as above.' },
       },
       required: ['url'],
     },

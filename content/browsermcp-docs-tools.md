@@ -19,7 +19,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. If the page asks "Leave site?" (something unsaved), it stays on the page and answers `beforeunload-blocked`; pass `leave_page=true` to leave anyway. A tab stuck behind a dialog that is already open answers `tab-not-responding`, and nothing is navigated. |
+| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. If the page asks "Leave site?" (something unsaved), it stays on the page and answers `beforeunload-blocked`; pass `leave_page=true` to leave anyway. When the tab does not answer and the new address never starts loading (a page busy for a long time, or a dialog already open), it answers `tab-not-responding`; the address was still sent and may load later. |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |

@@ -128,6 +128,9 @@ test('#70: contenteditable laeses som linjer, ikke som textContent eller innerTe
   assert.equal(laes(['a\u0001b']), 'a\u0001b', 'et tegn i sidens tekst blev forvekslet med markoeren for mellemrum');
   assert.equal(laes([['DIV', { ws: 'pre-wrap' }, 'a\u0001 b']]), 'a\u0001 b');
   // R95 (Astra, maalt i model): én stor tekstknude gav «Maximum call stack size exceeded» (push med 200.000 argumenter).
+  // R95 (Opus, maalt i Chrome): et tomt stykke efter en pre-teksts linjeskift lod mellemrummet staa i starten af linjen.
+  assert.equal(laes([['SPAN', { ws: 'pre' }, 'a\n'], ['SPAN', {}, ' b']]), 'a\nb');
+  assert.equal(laes(['x ', ['SPAN', { ws: 'pre' }, 'a\n'], ' b']), 'x a\nb');
   const stor = 'a '.repeat(100000) + 'z';
   assert.equal(laes([stor]), stor, 'en stor tekstknude kunne ikke laeses');
   assert.equal(laes([' a ', ['DIV', {}, ' b ']]), 'a\nb', 'mellemrum i linjens kanter er ikke tekst');
@@ -376,7 +379,9 @@ test('#69: svarer fanen ikke, og begynder navigationen aldrig (en boks staar aab
   u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
   assert.equal(svar.error, 'tab-not-responding', `navigate meldte den gamle adresse uden fejl: ${JSON.stringify(svar)}`);
-  assert.match(svar.note, /try browser_navigate again in a few seconds/, 'det billige raad (siden regner) mangler foerst');
+  // R95 (Opus): «try again» gav blot tab-not-responding igen; raadet er nu at se paa fanen, og det kommer foer «close the tab».
+  const kig = svar.note.indexOf('check the tab with browser_list_tabs'), luk = svar.note.indexOf('browser_close_tab');
+  assert.ok(kig >= 0 && kig < luk, `det billige raad (siden regner) mangler eller kommer ikke foerst: ${svar.note}`);
 });
 
 test('#69: en side der REGNER i over 3 s kan stadig forlades - navigate sender adressen og ender paa den (R94, Opus)', { timeout: 30000 }, async () => {
@@ -691,4 +696,53 @@ test('#69: en fastlaast fane og samme adresse som foer er ikke en navigation - t
   u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
   const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://kladde.example/' });
   assert.equal(svar.error, 'tab-not-responding', `samme adresse paa en fastlaast fane blev meldt som gennemfoert: ${JSON.stringify(svar)}`);
+});
+
+// ── R95 (Opus): efter tab-not-responding er adressen sendt - vagten bliver, og teksterne siger det ─────────
+function fastlaast() {
+  const { u, svarDialog } = navSele({ forladt: false, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = (m, metode, p) => (metode === 'Page.enable' ? new Promise(() => {}) : send(m, metode, p));
+  return { u, svarDialog };
+}
+
+test('#69: en «Leave site?», der kommer efter tab-not-responding (siden blev ledig), faar stadig vagtens Stay', { timeout: 30000 }, async () => {
+  const { u, svarDialog } = fastlaast();
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, 'tab-not-responding');
+  assert.match(svar.note, /address was sent/, 'svaret siger ikke, at adressen er sendt');
+  await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(svarDialog, [false], `den sene boks blev ikke besvaret - fanen ville vaere laast: ${JSON.stringify(svarDialog)}`);
+});
+
+test('#69: ingen tekst lover «nothing is navigated» ved tab-not-responding', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { TOOLS } = await import('../mcp-server/tools.js');
+  const nav = TOOLS.find((t) => t.name === 'browser_navigate');
+  const tekster = [JSON.stringify(nav), readFileSync(new URL('../content/browsermcp-docs-tools.md', import.meta.url), 'utf8'),
+    readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8').split('## 1.30.1')[0]];
+  for (const t of tekster) assert.doesNotMatch(t, /nothing is navigated|instead of navigating blind/);
+});
+
+// Opus' egne mutanter X1 og X2 (R95) overlevede: to betingelser i dommen over en fane, der ikke svarede, havde ingen vagt.
+test('#69: fastlaast fane, ingen navigation set, og en tredje adresse - stadig tab-not-responding (X1)', { timeout: 30000 }, async () => {
+  const { u } = fastlaast();
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => { u.chrome.tabs.get = async () => ({ id: 1, url: 'https://andet.example/', status: 'complete', windowId: 1, active: true }); return opdater(id, o); };
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, 'tab-not-responding', JSON.stringify(svar));
+});
+
+test('#69: en navigation, der begyndte UNDER tabs.update og blev omdirigeret, er gennemfoert - ogsaa naar fanen var langsom (X2)', { timeout: 30000 }, async () => {
+  const { u } = fastlaast();
+  u.chrome.tabs.update = async (id) => {
+    await u.fyr('tabs.onUpdated', 1, { status: 'loading' }, {});
+    u.chrome.tabs.get = async () => ({ id: 1, url: 'https://ny.example/login', status: 'complete', windowId: 1, active: true });
+    await u.fyr('tabs.onUpdated', 1, { status: 'complete' }, { url: 'https://ny.example/login' });
+    return { id };
+  };
+  const svar = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(svar.error, undefined, `en omdirigeret navigation blev meldt som en fane, der ikke svarer: ${JSON.stringify(svar)}`);
+  assert.equal(svar.url, 'https://ny.example/login');
 });

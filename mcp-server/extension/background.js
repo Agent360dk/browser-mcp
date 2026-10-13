@@ -1454,7 +1454,9 @@ function redigerbarTekst(rod) {
             .map((x) => (/^[\t\n\r ]+$/.test(x) ? FOLD : x)).filter((x) => x !== ''));
           if (lukket && stykker.every(tom)) continue;   // mellemrum efter en blok, foer noget andet
         } else {
-          stykker = t.split('\n').map((l) => [l]);
+          // R95 (Opus, maalt i Chrome): et tomt stykke ('' efter et afsluttende linjeskift) spaerrede for, at et sammenfoldeligt
+          // mellemrum i starten af naeste linje blev fjernet («a\n b» mod innerText «a\nb»).
+          stykker = t.split('\n').map((l) => (l ? [l] : []));
         }
         nyLinjeEfterBlok();
         // R95 (Astra, maalt i model): push(...stykker) gav «Maximum call stack size exceeded» ved 200.000 tegn.
@@ -4574,9 +4576,16 @@ async function armerForladVagt(tabId, forlad) {
   chrome.debugger.onEvent.addListener(lytter);
   const af = () => { if (!slukket) { slukket = true; clearTimeout(udloeb); chrome.debugger.onEvent.removeListener(lytter); } };
   // Og vagten udloeber selv efter navigates eget loft (15 s) plus margin, saa ingen fejlvej kan efterlade den.
-  const udloeb = setTimeout(af, 20000);
+  let udloeb = setTimeout(af, 20000);
   return {
     haenger,
+    // R95 (Opus, maalt i Chrome): paa en side, der regnede i 20 s, var adressen sendt, men vagten taget af - saa aabnede vores
+    // egen ventende navigation «Leave site?», da siden blev ledig, og ingen svarede. Paa den vej bliver vagten et minut mere.
+    bliv(ms) {
+      if (slukket) { slukket = false; chrome.debugger.onEvent.addListener(lytter); }
+      clearTimeout(udloeb);
+      udloeb = setTimeout(af, ms);
+    },
     // Bliver der svaret Stay (eller gik svaret ikke igennem), venter navigate ikke paa en side, der aldrig kommer.
     vedSvar(f) { vedSvar = f; if (tilstand.faerdig && (!tilstand.forlod || tilstand.fejl)) f(); },
     // R95 (Astra, maalt i model): sluttede navigate (15 s), foer svaret paa boksen var bekraeftet, blev standardvaerdierne
@@ -4891,12 +4900,15 @@ async function dispatch(port, method, params) {
       if (forladVagt && forladVagt.haenger && !forladt && !navBegyndt && !(tidligt && tidligt.loading)
           // R95 (Astra, maalt i model): samme adresse som foer er ikke et bevis paa en navigation - kun en anden end den gamle er.
           && (String(updated.url) !== String(params.url) || String(updated.url) === tidligt.gammelUrl)) {
+        forladVagt.bliv(60000);
         return { ok: false, error: 'tab-not-responding', url: updated.url, requested_url: params.url, tab_id: tab.id,
-          note: 'Chrome did not answer on this tab, and the page did not start loading the new address. Either the page is ' +
-                'busy running a long script - try browser_navigate again in a few seconds - or a dialog is already open ' +
-                '(an alert, a confirm or "Leave site?") that appeared before anything was listening. Such a dialog cannot be ' +
-                'answered from here: ask the user to answer it in Chrome, or close the tab with browser_close_tab, which ' +
-                'skips the prompt but loses anything unsaved on the page.' };
+          note: 'Chrome did not answer on this tab, and the page has not started loading the new address. The address was ' +
+                'sent, so the tab may still go there once the page frees up; a "Leave site?" prompt in the next minute is ' +
+                'answered ' + (params.leave_page === true ? 'Leave' : 'Stay') + '. Either the page is busy running a long ' +
+                'script - check the tab with browser_list_tabs in a few seconds before navigating again - or a dialog is ' +
+                'already open (an alert, a confirm or "Leave site?") that appeared before anything was listening. Such a ' +
+                'dialog cannot be answered from here: ask the user to answer it in Chrome, or close the tab with ' +
+                'browser_close_tab, which skips the prompt but loses anything unsaved on the page.' };
       }
       if (forladt && forladt.fejl) {
         return { ok: false, error: 'beforeunload-unanswered', detail: forladt.fejl, url: updated.url, requested_url: params.url, tab_id: tab.id,
