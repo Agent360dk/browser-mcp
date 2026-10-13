@@ -912,3 +912,38 @@ test('R97-hul: en boks under det nye kalds Page.enable besvares', { timeout: 600
   await p2;
   assert.ok(foer.length === 1, `boksen under det nye kalds Page.enable fik ${foer.length} svar: ${JSON.stringify(foer)}`);
 });
+
+// ── R98-forarbejde (maalt i Chrome): bokse fra et overhalet kald, og flere bokse i én vagts levetid ─────────
+test('#69: en boks, der kommer FOER dette kalds eget adresseskift, faar Stay og taeller ikke; kaldets egen boks faar dets svar', async () => {
+  const { u, svarDialog } = navSele({ forladt: true, forsinkelse: null });
+  const send = u.chrome.debugger.sendCommand;
+  u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Page.enable') {
+      // den forrige navigations boks kommer, mens dette kald saetter sin vagt op
+      await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return send(m, metode, p);
+  };
+  const opdater = u.chrome.tabs.update;
+  u.chrome.tabs.update = async (id, o) => {
+    setTimeout(() => u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' }), 5);
+    return opdater(id, o);
+  };
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/', leave_page: true });
+  assert.deepEqual(svarDialog, [false, true], `den gamle navigations boks skulle have Stay, kaldets egen Leave: ${JSON.stringify(svarDialog)}`);
+  assert.equal(s.error, undefined, JSON.stringify(s));
+  assert.equal(s.url, 'https://ny.example/');
+});
+
+test('#69: en vagt svarer paa hver «Leave site?» i sin levetid, ikke kun den foerste', { timeout: 30000 }, async () => {
+  // Efter tab-not-responding lytter vagten 60 s; siden kan spoerge mere end én gang i det vindue.
+  const { u, svarDialog } = fastlaast();
+  const s = await u.hent('dispatch')(9876, 'navigate', { url: 'https://ny.example/' });
+  assert.equal(s.error, 'tab-not-responding');
+  for (let k = 0; k < 2; k++) {
+    await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.deepEqual(svarDialog, [false, false], `kun den foerste boks blev besvaret: ${JSON.stringify(svarDialog)}`);
+});
