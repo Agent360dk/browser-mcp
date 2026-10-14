@@ -53,11 +53,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; when Chrome reports them in time, the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need.',
+    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; when Chrome reports them in time, the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need. Chrome stays where it is: if its window is covered by other windows, there is no picture and the answer is error "window-covered".',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path to save the screenshot to (e.g. /path/to/screenshot.png)' },
+        bring_to_front: { type: 'boolean', description: 'Raise Chrome in front of the user if its window is covered, and leave it there. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
     },
   },
@@ -136,7 +137,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_press_key',
-    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta).',
+    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -228,7 +229,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_drop_file',
-    description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file when browser_upload_file fails. Two strategies: (1) finds a hidden <input type="file"> in the target\'s subtree, then up to 2 ancestor levels, and as a last resort the first file input anywhere on the page, which can belong to a different upload field; (2) if there is no input at all, intercepts the NATIVE OS file-chooser - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Strategy 2 is for upload buttons that open the file chooser without any file input in the DOM. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
+    description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file when browser_upload_file fails. Two strategies: (1) uses the target itself when it is a file input, or a hidden <input type="file"> inside it; (2) if there is none, clicks the target and intercepts the NATIVE OS file-chooser it opens - pass the selector of the button that opens the dialog, and the file is supplied programmatically without the dialog ever appearing. Other file inputs on the page do not get the file: when neither strategy works, the error lists them in other_file_inputs, each with a `selector` to pass if it is the right field - a CSS selector that matched that input alone when the tool looked (built from its id, its name or its position on the page), or null when none did, for instance for an input inside a shadow root. The answer describes the input that got the file in `input`. If the field is empty afterwards although the page\'s change handler saw the file in it, the answer is ok with cleared_by_page: true and seen_in_field - X and Facebook empty the field after reading the file, and a page that rejects the file can do the same, so check the page before attaching again. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -254,7 +255,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Arm automatic handling of the next JavaScript alert/confirm/prompt on the active tab, then return immediately. Call this BEFORE the click that opens the dialog - a dialog freezes the tab, so nothing can be clicked once it is on screen. Pass wait=true only when the dialog is already opening.',
+    description: 'Arm automatic handling of the next JavaScript alert/confirm/prompt on the active tab, then return immediately. Call this BEFORE the click that opens the dialog - a dialog freezes the tab, so nothing can be clicked once it is on screen. Pass wait=true only when the dialog is already opening. A dialog that is already on screen cannot be answered from here: the answer is tab-not-responding, with what to do instead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -407,11 +408,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_switch_tab',
-    description: 'Switch to a specific browser tab by ID. Get tab IDs from browser_list_tabs or browser_get_new_tab.',
+    description: 'Switch to a specific browser tab by ID. Get tab IDs from browser_list_tabs or browser_get_new_tab. The other tools then act on that tab. Chrome is not brought in front of the user: the tab is made active in its window, and visibility says whether the page is hidden behind other windows.',
     inputSchema: {
       type: 'object',
       properties: {
-        tab_id: { type: 'number', description: 'Tab ID to activate' },
+        tab_id: { type: 'number', description: 'Tab ID to switch to' },
+        bring_to_front: { type: 'boolean', description: 'Also bring the Chrome window in front of the user. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
       required: ['tab_id'],
     },
@@ -429,7 +431,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_upload_file',
-    description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
+    description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. If the field is empty afterwards although the page\'s change handler saw the file in it, the answer is ok with cleared_by_page: true and seen_in_field - X and Facebook empty the field after reading the file, and a page that rejects the file can do the same, so check the page before attaching again. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
       type: 'object',
       properties: {

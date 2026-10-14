@@ -197,10 +197,14 @@ test('fladerne naevner vores kort og prisen, og drop_file siger sin sidste udvej
   tjek('kapabilitets-raekken', kap);
   assert.match(kap[0], /\*\*Needs a switch\*\*/, 'kapabilitets-raekken skal sige at upload kraever en kontakt');
   assert.match(laes('content/browsermcp-docs-capability-matrix.md'), /^\| \*\*Needs a switch\*\* \| /m, 'markeringen «Needs a switch» er ikke forklaret i oversigten');
-  for (const f of ['README.md', 'mcp-server/README.md']) {
-    assert.match(raekke(f, '| `browser_drop_file`')[0], /as a last resort the first file input on the page/, `${f}: drop-raekken mangler sidste udvej`);
+  // #67: sidste udvej (ethvert filfelt paa siden) er fjernet - hver flade skal sige, at et felt andetsteds aldrig faar filen.
+  for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md']) {
+    const r = raekke(f, '| `browser_drop_file`')[0];
+    assert.doesNotMatch(r, /as a last resort the first file input/, `${f}: drop-raekken lover stadig den fjernede sidste udvej`);
+    assert.match(r, /Other file inputs on the page do not get the file/, `${f}: drop-raekken siger ikke, at andre filfelter ikke faar filen`);
   }
-  assert.match(raekke('content/browsermcp-docs-tools.md', '| `browser_drop_file`')[0], /as a last resort the first file input on the page/, '/docs/tools: drop-raekken mangler sidste udvej');
   const { TOOLS } = await import('../mcp-server/tools.js');
-  assert.match(TOOLS.find((t) => t.name === 'browser_drop_file').description, /as a last resort the first file input anywhere on the page/, 'drop_file-beskrivelsen mangler sidste udvej');
+  const dropBeskr = TOOLS.find((t) => t.name === 'browser_drop_file').description;
+  assert.doesNotMatch(dropBeskr, /last resort/, 'drop_file-beskrivelsen lover stadig den fjernede sidste udvej');
+  assert.match(dropBeskr, /Other file inputs on the page do not get the file/, 'drop_file-beskrivelsen siger ikke, at andre filfelter ikke faar filen');
 });

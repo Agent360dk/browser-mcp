@@ -199,6 +199,8 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
   return {
     ctx, chrome, optager, lyttere,
     hent: (navn) => ctx[navn],
-    fyr: (sti, ...args) => Promise.all((lyttere.get(sti) || []).map((fn) => fn(...args))),
+    // MAALT 13/10: en lytter, der fjerner sig selv under haendelsen (handle_dialog's armering), fik den NAESTE lytter sprunget
+    // over, fordi listen blev gennemloebet levende. Chrome kalder alle lyttere, der var registreret, da haendelsen kom - en kopi.
+    fyr: (sti, ...args) => Promise.all([...(lyttere.get(sti) || [])].map((fn) => fn(...args))),
   };
 }

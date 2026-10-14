@@ -152,7 +152,7 @@ test('bedes der eksplicit om det, aktiveres den', async () => {
  * halvt bygget, og der blev draget forkerte konklusioner af dem - bl.a. at tre
  * GA4-ejendomme laa paa en utilgaengelig konto. De laa lige for.
  */
-test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
+test('switch_tab: goer kun vinduet forrest med bring_to_front, og siger om siden er skjult', () => {
   const i = kilde.indexOf("case 'switch_tab'");
   assert.ok(i > -1, "switch_tab findes");
   // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
@@ -160,10 +160,11 @@ test('switch_tab: goer vinduet forrest, ikke kun fanen aktiv', () => {
 
   assert.match(blok, /chrome\.tabs\.update\([^)]*active:\s*true/,
     'fanen skal stadig goeres aktiv');
-  assert.match(blok, /chrome\.windows\.update\(/,
-    'VINDUET skal ogsaa fokuseres - ellers forbliver siden hidden og renderer ikke');
-  assert.match(blok, /focused:\s*true/,
-    'vinduet skal fokuseres med focused:true');
+  // 14/10 (Gustav: «den bliver ved med at tage min computer»): vinduet tages kun frem paa opfordring. Den skjulte side
+  // fra 31/8 meldes nu i svaret (visibility), i stedet for at tage brugerens skaerm. Adfaerden proeves i ingen-fane-tyveri.
+  assert.match(blok, /if \(foran\) \{[\s\S]*?chrome\.windows\.update\(tab\.windowId, \{ focused: true \}\)/,
+    'vinduet maa kun fokuseres naar kalderen bad om bring_to_front');
+  assert.match(blok, /visibility: synlighed/, 'svaret skal sige om siden er skjult');
 });
 
 test('switch_tab: et vindue der ikke kan fokuseres vaelter ikke kaldet', () => {

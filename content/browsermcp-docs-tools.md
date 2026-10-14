@@ -21,7 +21,7 @@ The list below is what the client has to choose from.
 |---|---|
 | `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
-| `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
+| `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. A window covered by other windows answers `window-covered`; Chrome is raised only with `bring_to_front: true`. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
 | `browser_extract_list` | Read the rows of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. In the active tab it scrolls with real wheel events, also at the bottom, so feeds that load on wheel (Threads, X) load; a hidden page (a background tab) gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false. `reached_end` is true only when the list stood at its bottom with nothing new for several rounds. Rows with the same text come back once, so compare the count with what the page says. |
 
@@ -34,7 +34,7 @@ The list below is what the client has to choose from.
 | `browser_right_click` | Right-click an element to open its context menu. Answers `covered` when the mouse would not reach it. |
 | `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
 | `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. With a text selector, nothing is typed (`covered`) when the mouse would not reach the field. |
-| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. |
+| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. With ctrl or meta (no shift), a, c, x, v, z and y are sent as Chrome's own select all, copy, cut, paste, undo and redo commands, so they also work on macOS; z with shift is redo. |
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
 | `browser_wait` | Wait for an element matching a CSS or text selector to appear. |
 | `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. Answers `covered` when the mouse would not reach it. |
@@ -49,7 +49,7 @@ The list below is what the client has to choose from.
 | Tool | Description |
 |---|---|
 | `browser_list_tabs` | List the current session's own open tabs (URL + title) - each concurrent session has its own tab group and can't see another session's tabs. |
-| `browser_switch_tab` | Activate a specific tab by ID. |
+| `browser_switch_tab` | Activate a specific tab by ID, without bringing Chrome in front of you (only `bring_to_front: true` does). |
 | `browser_close_tab` | Close a tab by ID (session-owned tabs only). |
 | `browser_get_new_tab` | Return the most recently opened tab - useful after a link opens a new tab or an OAuth popup. |
 | `browser_list_frames` | List all iframes on the current page with URL and index. |
@@ -70,7 +70,7 @@ The list below is what the client has to choose from.
 | Tool | Description |
 |---|---|
 | `browser_upload_file` | Upload file(s) to an `<input type="file">` via the Chrome Debugger API - no OS file dialog needed. Files must be regular files inside the folder your agent's server runs in; anything else is refused. Chrome only hands a file to the page when "Allow access to file URLs" is on for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); the switch also lets the extension open any local file as a page, so turning it on is your call. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on. |
-| `browser_drop_file` | Upload into a drag-drop zone by locating a hidden file input in its subtree, then up to 2 parent levels, and as a last resort the first file input on the page (which can belong to a different upload field); with no input at all it intercepts the native file chooser. Use when `browser_upload_file` finds no input. Needs the same switch as `browser_upload_file`. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
+| `browser_drop_file` | Upload into a drag-drop zone by using the target itself if it is a file input, then a hidden file input inside it; with none it clicks the target and intercepts the native file chooser. Other file inputs on the page do not get the file - the error lists them instead, each with a selector when it has one. The answer describes the input used, and says `cleared_by_page` when the page emptied the field after its change handler saw the file - check the page before attaching again. Use when `browser_upload_file` finds no input. Needs the same switch as `browser_upload_file`. Files must be regular files inside the folder your agent's server runs in; anything else is refused. |
 
 ## Network - 3 tools
 

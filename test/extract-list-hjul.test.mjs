@@ -114,6 +114,8 @@ test('i en skjult baggrundsfane er reached_end falsk, og noten siger hvorfor', a
     assert.equal(svar.reached_end, false, `${hentPaa}: 10 af 40 blev kaldt enden`);
     assert.match(svar.note, /The page was hidden \(a background tab or a minimized window\), and a hidden page gets no scroll events, IntersectionObserver callbacks or animation frames/);
     assert.match(svar.note, /reached_end is false\. Call browser_switch_tab/);
+    // 14/10 (R101 Opus, maalt i model): switch_tab tager ikke vinduet frem mere - et tildaekket vindue skal have en udgang.
+    assert.match(svar.note, /visibility: hidden[\s\S]*browser_ask_user[\s\S]*bring_to_front: true/);
   }
 });
 

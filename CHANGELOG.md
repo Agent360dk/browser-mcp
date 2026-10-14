@@ -4,7 +4,7 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
-## 1.30.2 (2026-10-12)
+## 1.30.2 (2026-10-14)
 
 **Tool texts that match the code, clicks that say when they could not land, and the pull requests from
 John H.**
@@ -17,6 +17,12 @@ John H.**
 | `error: "field-is-readonly"`, `error: "field-is-disabled"` | `browser_fill` | A disabled field is named before typing; a read-only one only when the text did not land, because some fields are read-only until they get focus (#56) |
 | `action`: `tab_closed`, `replaced`, `navigated`, `removed_by_page` | `browser_ask_user` | How a question ended other than with an answer or a timeout (#62) |
 | `error: "file-access-off"`, `file_access` | `browser_upload_file`, `browser_drop_file` | Chrome answered "Not allowed" for the file, and the switch "Allow access to file URLs" is off (`file_access: false`) or Chrome could not tell (`file_access: null`, and the note calls the switch the usual cause). If Chrome says the switch is on, Chrome's own error is kept |
+| `cleared_by_page`, `seen_in_field`, `input` | `browser_upload_file`, `browser_drop_file` | The field is empty afterwards, but the page's change handler saw the file in it: X and Facebook empty the field after reading the file, and a page that rejects a file can too, so check the page before attaching again. `input` describes the field that got the file (#67) |
+| `other_file_inputs` | `browser_drop_file` | No file input at the target and no file chooser opened when it was clicked: the page's other file inputs, none of which got the file, each with a `selector` that matched that input alone (null when none did) (#67) |
+| `error: "tab-not-responding"` | `browser_handle_dialog` | Chrome did not answer on the tab, for instance because a dialog is already open, which cannot be answered from here; the note says what can be done (#69, in part) |
+| `error: "window-covered"` | `browser_screenshot` | Chrome produced no picture, usually because its window is covered by other windows. Chrome is not raised for it any more; with `bring_to_front: true` (only after asking the user) it is raised and stays in front |
+| `visibility`, `windowFocused: null` | `browser_switch_tab` | Chrome is not brought in front of the user any more (`windowFocused: null`); the tab is still made active in its window, and `visibility` says whether the page is hidden. `bring_to_front: true` also brings the window forward, and is only for after asking the user |
+| `shortcut` | `browser_press_key` | The editing command sent with a ctrl or meta key: `selectAll`, `copy`, `cut`, `paste`, `undo` or `redo`. `landed` says the page got the key, not what the command did (#68) |
 | `error: "no-rows"` | `browser_extract_list` | The selector matched no rows with text. Before, the answer was `count: 0` with `reached_end: true` |
 | `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why; in a hidden page, why `reached_end` is false (#11) |
 | `eget_vindue: false`, `advarsel` | `browser_navigate` with `eget_vindue` | The tab did not end up in its own window; `windowId` is the tab's real window |
@@ -100,6 +106,29 @@ a row.
 **`browser_fetch`** can reach HTTPS addresses (the extension's own content security policy blocked every
 outside address, also in 1.30.1). It sends no browser cookies and stores none from the answer, also not
 to 127.0.0.1, where 1.30.1 did: pass a token in headers.
+
+**From the reports in #67-#70.** `browser_drop_file` no longer hands the file to the first file input anywhere on the
+page when there is none at the target: it uses the target if it is a file input or a file input inside it, and otherwise
+clicks the target and fills the file chooser that opens, so an
+"Add photo" button that makes its own field gets the file, not a field that belongs to something else. The file chooser path is
+judged by the field afterwards, like the other paths, instead of answering yes on Chrome's receipt (#67).
+`browser_press_key` with ctrl, meta or alt types no character, sends the key code for letters and digits, and sends
+select all, copy, cut, paste, undo and redo as Chrome's own editing commands (with shift, only z: redo). Before, Ctrl+A typed "a" on Windows, did
+nothing on macOS, and answered `landed: true` (#68). `browser_handle_dialog` on a tab behind a dialog that is
+already open answers `tab-not-responding`, with what can be done, instead of a bare CDP timeout, and a mouse or key timeout
+also names an open dialog as a possible cause. `browser_navigate` itself still waits and reports the old address, without an error, when the page
+asks "Leave site?", and the prompt stays open, so the tab does not respond until the user answers it in Chrome;
+answering that prompt comes in a later version (#69, in part). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
+contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
+judges a path by the operating system's own canonical path, so a different letter case, a Windows short name such as
+`RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70). `browser_switch_tab` and `browser_screenshot` no longer pull
+Chrome in front of the user: `browser_switch_tab` brought the window forward on every call, and a screenshot of a covered window raised
+Chrome and left it there, so agents that switched tabs often kept taking the screen. Both now stay put unless the agent
+passes `bring_to_front: true`, which the tool texts say is only for after asking the user. Input that may need Chrome in front
+(key presses, hover, coordinate clicks) can then answer that it did not land, as before, and the switch_tab answer says to ask;
+`browser_extract_list` on a hidden page and the server's instructions to agents say the same, so an agent is not sent round
+in a loop. The
+server's instructions to agents also no longer say that `browser_drop_file` falls back to the first file input on the page.
 
 **Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer
 (also an error answer) and stderr say how many connections are open and that the server cannot tell which

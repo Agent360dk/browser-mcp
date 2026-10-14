@@ -711,7 +711,9 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
   same window, and yanking their tab away on every screenshot is worse than the alternative
 - The picture always comes from the debugger for YOUR tab. There is no fallback that photographs
   whichever tab happens to be visible, so if the debugger cannot produce a frame the call fails.
-  If the whole window is covered, it may be raised briefly as a last resort
+  If the whole window is covered, the answer is error "window-covered": Chrome is not pulled in
+  front of the user. Use browser_get_page_content, or ask the user before bring_to_front: true
+- browser_switch_tab does not bring Chrome forward either (bring_to_front: true does, with the user's consent)
 
 ## Text-based selectors (preferred for dynamic sites)
 - browser_click("text=Get started") - clicks any element containing "Get started"
@@ -749,16 +751,16 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 ## Hard inputs - use the specialised tools first
 - **Date inputs** → use browser_set_date (NOT browser_fill). Handles native date inputs, masked text inputs (MM/DD/YYYY etc.), AND calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). 3-path fallback with read-back verification.
 - **Autocomplete / combobox** (Languages on Meta Ads, country selects, async dropdowns) → use browser_set_combobox (NOT browser_select_option). Types partial query, waits for filtered listbox, clicks option. Supports multi-value chips.
-- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). It looks for a hidden input in the target, then up to 2 parent levels, and as a last resort takes the first file input on the page. If an upload answers file-access-off, follow its note.
+- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). It uses a file input that is the target or lies inside it; otherwise it clicks the target and fills the file chooser that opens. It never puts the file in some other input on the page; if nothing works, other_file_inputs lists them, each with a selector. If an upload answers file-access-off, follow its note.
 - **Annoying popups blocking the flow** (cookie banners, "Don't show again", Advantage+ tooltips, draft-confirm prompts) → call browser_dismiss_overlays before each major step. It only clicks safe close affordances by default; preserves forms with editable text fields.
 
 ## When things fail
 - Element not found → try text-based selector instead of CSS
 - Screenshot fails → debugger fallback is automatic
 - Click doesn't work on SPA → debugger mouse events are used automatically
-- A click, hover or key press answers "CDP did not respond within … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click)
+- A click, hover or key press answers "CDP did not respond within … ms" → the tab is in the background, and Chrome does not deliver mouse or key input to a tab that is not active. Call browser_switch_tab to that tab, then try again (browser_click on a CSS selector already falls back to a script click). If it still does not land, Chrome itself is probably not in front: browser_switch_tab no longer brings it forward, so ask the user (browser_ask_user) and only then call browser_switch_tab with bring_to_front: true
 - An answer with maybe_landed: true means the action was sent but its effect could not be confirmed. Check the page first (browser_get_page_content or browser_screenshot) and do not repeat it blindly: a second click can submit twice. landed: false means the page showed no visible reaction to the click. landed: null with unknown: true means something on the page changed when the mouse went down, but not from the click itself - it may be a ripple effect, and it may be a menu that opens on mousedown. Read the page before clicking again: a second click closes a menu that is already open. landed: null with unverified: true means the mouse button was sent but the page could not be read afterwards - same rule: read the page before repeating. browser_scroll uses unknown with its own meaning - there it means the scroll was sent but the movement could not be seen, and the answer carries ok:true, a note and the measured position
-- Since 1.29.2 the tools that send mouse, keyboard or file input measure whether the page actually received it. An error of key-not-delivered, hover-not-delivered, double-click-not-delivered, right-click-not-delivered, field-is-empty, search-text-not-delivered or file-not-attached is a measurement, not a guess: nothing reached the page. Almost always the tab is in the background - call browser_switch_tab to it and repeat the one action. browser_upload_file and browser_drop_file also report attached (the file names actually on the field) and differs: true when the field took fewer files than you sent.
+- Since 1.29.2 the tools that send mouse, keyboard or file input measure whether the page actually received it. An error of key-not-delivered, hover-not-delivered, double-click-not-delivered, right-click-not-delivered, field-is-empty, search-text-not-delivered or file-not-attached is a measurement, not a guess: nothing reached the page. Almost always the tab is in the background - call browser_switch_tab to it and repeat the one action. If it still fails, ask the user before browser_switch_tab with bring_to_front: true, which puts Chrome in front of them. browser_upload_file and browser_drop_file also report attached (the file names actually on the field) and differs: true when the field took fewer files than you sent.
 - browser_fill with differs: true means the field shows something other than what you typed; read actual. unchanged: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check actual before moving on
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
@@ -950,12 +952,11 @@ async function kaldVaerktoej(request) {
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
         const rod = resolve(process.cwd());
         const targetPath = resolve(rod, args.path);
-        if (targetPath !== rod && !targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep)) {   // "/" giver ikke "//" (R5 F10)
-          throw new Error(
-            `path must be inside the working directory (${rod}). ` +
-            `"${args.path}" points outside. Use a relative path without ../.`,
-          );
-        }
+        // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside»,
+        // fordi et tekst-tjek her afgjorde sagen. R93 (Opus, maalt paa GitHubs Windows): ogsaa et 8.3-kortnavn (RUNNER~1 mod
+        // runneradmin) er samme mappe stavet anderledes. Afgoerelsen tages derfor KUN paa operativsystemets kanoniske stier
+        // nedenfor (realpath af arbejdsmappen og af den dybeste del af stien, der findes); teksten vaelger kun fejlbeskeden.
+        const tekstInde = targetPath === rod || targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep);   // "/" giver ikke "//" (R5 F10)
         // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
         // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
         // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
@@ -972,7 +973,9 @@ async function kaldVaerktoej(request) {
         if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
           throw new Error(
             `path must be inside the working directory (${rod}). ` +
-            `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`,
+            (tekstInde
+              ? `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`
+              : `"${args.path}" points outside. Use a relative path without ../.`),
           );
         }
         mkdirSync(dirname(targetPath), { recursive: true });

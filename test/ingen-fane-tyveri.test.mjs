@@ -18,7 +18,8 @@
  * Denne proeve maaler i stedet HANDLINGEN: den koerer vaerktoejerne gennem selen og
  * ser paa hvad der faktisk blev sendt til Chrome.
  *
- * De to eneste vaerktoejer der MAA aktivere, staar nederst med deres begrundelse.
+ * De to eneste vaerktoejer der MAA aktivere, staar nederst med deres begrundelse. Vinduet tages kun frem
+ * med bring_to_front: true (14/10).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -133,16 +134,40 @@ test('kalibrering: opdageren ser ogsaa et vindue der tages i fokus', () => {
     'opdageren ser kun fane-skift, ikke at hele Chrome-vinduet rives frem');
 });
 
-test('switch_tab MAA aktivere - det er hele dens formaal', async () => {
-  // FUNDET 13/9 af Fable: her stod `assert.equal(typeof dispatch, 'function')`. Den proeve
-  // kunne ikke gaa roed uanset hvad koden gjorde. Nu er det en RIGTIG positiv kalibrering:
-  // switch_tab er agentens remedie naar en baggrundsfane ikke kan modtage mus og taster, saa
-  // den SKAL aktivere - og gaar den i stykker, skal denne fil sige fra.
+test('switch_tab aktiverer fanen i sit vindue - men tager ikke Chrome frem', async () => {
+  // FUNDET 13/9 af Fable: her stod `assert.equal(typeof dispatch, 'function')`, som ikke kunne gaa roed. switch_tab er
+  // agentens remedie naar en baggrundsfane ikke kan modtage mus og taster, saa den SKAL aktivere fanen i dens vindue.
+  // 14/10 (Gustav: «den bliver ved med at tage min computer»): men vinduet tages ikke frem - 125 kald paa 8 minutter
+  // hev Chrome foran ham hver gang.
   const u = sele();
-  await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 }).catch(() => {});
+  const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
   assert.deepEqual(faneTyverier(u.optager), ['tabs.update({active:true})'],
-    'switch_tab aktiverede ikke fanen. Saa har agenten ingen vej ud af en baggrundsfane, ' +
-    'og alle de aerlige "ikke leveret"-svar bliver blindgyder');
+    'switch_tab aktiverede ikke fanen - eller tog vinduet frem. Saa har agenten enten ingen vej ud af en baggrundsfane, ' +
+    'eller den tager brugerens skaerm');
+  assert.equal(svar.windowFocused, null);
+  // Uden den her saetning sender vaerktoejernes «call browser_switch_tab and try again» agenten i ring.
+  assert.match(svar.note, /key presses, hover/i);
+  assert.match(svar.note, /read landed/);
+  assert.match(svar.note, /browser_ask_user/);
+});
+
+test('switch_tab med bring_to_front: true tager fanen og vinduet frem', async () => {
+  const u = sele();
+  const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1, bring_to_front: true });
+  assert.deepEqual(faneTyverier(u.optager), ['tabs.update({active:true})', 'windows.update({focused:true})']);
+  assert.equal(svar.windowFocused, true);
+});
+
+test('switch_tab siger det, naar siden er skjult bag andre vinduer', async () => {
+  const u = sele();
+  u.ctx.chrome.scripting.executeScript = async () => [{ result: 'hidden' }];
+  const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
+  assert.equal(svar.visibility, 'hidden');
+  assert.match(svar.note, /browser_wait/);
+  // R102 Opus (mutant M1): bundet til SELVE liste-saetningen - en bred regex ramte browser_ask_user i naeste saetning.
+  assert.match(svar.note, /stops early in a hidden page; if the page has to be visible, ask the user \(browser_ask_user\)/,
+    'lister i en skjult side skal have en udgang, der gaar gennem brugeren (R101/R102 Opus)');
+  assert.match(svar.note, /bring_to_front: true/);
 });
 
 // FUNDET 13/9 af Fable: selen ovenfor lader hver haendelse LANDE. Den fristende genvej -

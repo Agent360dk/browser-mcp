@@ -148,7 +148,7 @@ The pattern: **many of the browser tasks you would do yourself, on sites you are
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.30.2 (2026-10-12) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.30.2 (2026-10-14) | Actively (Microsoft) | Last commit Apr 2025 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
 | **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 72 documented tools, none that can ask the person (checked 2026-09-19) | None |
@@ -185,16 +185,20 @@ In a tab you are not looking at, the agent can navigate, read, screenshot, run s
 and fill a field it finds by CSS selector. Chrome does not deliver mouse and keyboard events to a
 tab that is not the visible one in its window, so key presses, hover, double-click, right-click,
 coordinate clicks, combobox typing, and filling a field found by its *text* all fail with an error
-that says so. The agent will then call `browser_switch_tab`, which brings that tab and its window
-in front of you.
+that says so. The agent can then call `browser_switch_tab`, which makes that tab the active one in
+its window, but since 1.30.2 it does not bring Chrome in front of you. Input that needs Chrome in
+front can then still fail, and the
+agent asks you first: only with `bring_to_front: true` does Chrome come forward. A screenshot of a
+window covered by other windows likewise answers `window-covered` instead of raising Chrome.
 
 Those tools measure whether the page actually received the event rather than trusting Chrome's
 acknowledgement, so a background tab produces an honest failure instead of a silent one.
 (Introduced in 1.29.2 - see CHANGELOG.md for which release you are on.)
 
 Fully hands-off background input is not part of 1.30, and it is not something we can fix: Chrome
-delivers no mouse or keyboard input to a tab that is not the visible one in its window, and none to
-a window without the operating system's focus (both measured). Some of it cannot be solved at all: CSS
+delivers no mouse or keyboard input to a tab that is not the visible one in its window (measured).
+Whether it does to the active tab of a window without the operating system's focus is unmeasured in
+desktop Chrome, so the tools' `landed` answer decides. Some of it cannot be solved at all: CSS
 `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
 never `isTrusted`, `elementFromPoint` stops at a cross-origin iframe, and the text selection a
 real double-click makes is browser behaviour rather than an event.
@@ -232,7 +236,7 @@ All three are optional. None is needed for normal use.
 |------|-------------|
 | `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`) |
 | `browser_get_page_content` | Get page text or HTML |
-| `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
+| `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused; a covered window answers `window-covered`) |
 | `browser_execute_script` | Run JavaScript in page context |
 | `browser_extract_list` | Read the rows of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a hidden page (a background tab) a list that loads while scrolling stops early, and `reached_end` is false |
 
@@ -241,7 +245,7 @@ All three are optional. None is needed for normal use.
 |------|-------------|
 | `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
-| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers) |
+| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
@@ -259,7 +263,7 @@ All three are optional. None is needed for normal use.
 | Tool | Description |
 |------|-------------|
 | `browser_list_tabs` | List session's tabs only |
-| `browser_switch_tab` | Switch to tab by ID |
+| `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
 | `browser_close_tab` | Close tab (session-owned only) |
 | `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
 | `browser_list_frames` | List iframes on page |
@@ -291,7 +295,7 @@ All three are optional. None is needed for normal use.
 | `browser_set_local_storage` | Write localStorage values |
 | `browser_console_logs` | Capture console.log/warn/error messages from page |
 | `browser_upload_file` | Upload files to `<input type="file">` via Chrome Debugger API (no dialog). Needs "Allow access to file URLs" for the Agent360 Browser MCP extension, which is off by default for Chrome Web Store installs and also lets the extension open any local file as a page, so turning it on is your call; otherwise attach the file yourself. A "Not allowed" error from the handoff is reported as `file-access-off` unless Chrome confirms that file access is on |
-| `browser_drop_file` | Upload via drop-zones: finds a hidden `<input type="file">` in the target, then up to 2 parent levels, and as a last resort the first file input on the page; with no input at all it intercepts the native file chooser. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
+| `browser_drop_file` | Upload via drop-zones: uses the target if it is a file input, then a hidden `<input type="file">` inside it; with none it clicks the target and intercepts the native file chooser. Other file inputs on the page do not get the file. The answer describes the input used, and says `cleared_by_page` when the page emptied the field after its change handler saw the file. Use when `browser_upload_file` fails because the zone has no visible input. Needs the same switch |
 
 ### Diagnostics & feedback
 | Tool | Description |

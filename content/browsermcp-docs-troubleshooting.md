@@ -38,13 +38,24 @@ its window. In a tab you are not looking at, the agent can navigate, read, scree
 click, and fill a field it finds by CSS selector. Key presses, hover, double-click, right-click,
 coordinate clicks, combobox typing and filling a field found by its *text* all fail. Since 1.29.2
 those tools measure whether the page actually received the event instead of trusting Chrome's
-acknowledgement, so you get an honest failure rather than a silent one, and the agent then calls
-`browser_switch_tab`, which brings that tab forward.
+acknowledgement, so you get an honest failure rather than a silent one. Up to 1.30.1 the agent then
+called `browser_switch_tab`, which brought Chrome in front of you every time, and a screenshot of a
+covered window raised Chrome and left it there.
+
+**What changed in 1.30.2.** `browser_switch_tab` and `browser_screenshot` no longer bring Chrome in
+front of you unless the agent asks for it with `bring_to_front: true`, which the tools tell it to use
+only after asking you. (`browser_navigate` with `new_tab: true, eget_vindue: true, fokuser: true` can
+also ask for focus for a window of its own; that too is only when the agent passes it.) `browser_switch_tab`
+makes the agent's tab active in its window and says whether the page is hidden. If you work in the same
+Chrome window as the agent, its tab can still become the visible one there; `browser_navigate` with
+`new_tab: true` and `eget_vindue: true` gives the agent a window of its own (without a position it can
+still open on your screen, behind or beside what you are doing). A screenshot of a covered window answers `window-covered`.
 
 **What you can do today.** Reading, screenshots and scripts work in a background tab or window.
-Input - typing, hover, coordinate clicks - needs the tab to be the visible one in a window that has
-the operating system's focus (both measured). The agent brings the tab to the front when it needs
-to, and says so.
+Input - typing, hover, coordinate clicks - does not reach a tab that is not the visible one in its
+window (measured). Whether it reaches the active tab of a window without the operating system's focus is
+unmeasured in desktop Chrome, so the tools' `landed` answer decides. When input does not land, the agent
+has to ask you, and you decide.
 
 **Fix status: not fixed, and not fixable by us.** 1.30 did not deliver hands-off background input. Some of it cannot be solved at
 all - CSS `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event
