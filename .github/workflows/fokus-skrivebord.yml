@@ -50,3 +50,10 @@ jobs:
           CHROME=$(ls -d chrome/*/chrome-mac*/"Google Chrome for Testing.app"/Contents/MacOS/"Google Chrome for Testing" | head -1)
           test -x "$CHROME"
           node test/skrivebord/fokus.mjs "$CHROME" "$RUNNER_TEMP/gammel/extension" "$RUNNER_TEMP/ny/extension"
+
+      - name: «Leave site?» med Page slaaet til - kan mennesket se og besvare den (1.30.3-designet)
+        if: always()
+        shell: bash
+        run: |
+          CHROME=$(ls -d chrome/*/chrome-mac*/"Google Chrome for Testing.app"/Contents/MacOS/"Google Chrome for Testing" | head -1)
+          node test/skrivebord/dialog.mjs "$CHROME" "$RUNNER_TEMP/ny/extension"
