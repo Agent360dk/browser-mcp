@@ -13,9 +13,12 @@ watches the tab's dialogs and is the only part that answers them. When the page 
 sent, the answer is Stay, unless the call passed `leave_page: true` or a `browser_handle_dialog` arming is waiting for the
 next dialog on the tab; the result is read from Chrome's own report that the dialog closed, not from the reply to the
 command that answered it. In the current tab, `ok: true` now means Chrome took the address and the new page was proven
-loaded within 25 seconds (the whole call, including the CAPTCHA check, stays inside that limit); every other outcome
+loaded within 25 seconds. The limit covers the whole call, from looking up the session's tab to the CAPTCHA check; the
+wait for the page ends half a second before it, so the answer itself fits, and a page that finishes in that last half
+second is reported as `navigation-unconfirmed`. Every other outcome
 is an error with `sent` (whether the address reached Chrome) and a note on what the agent can do. New tabs and
-`eget_vindue` are unchanged.
+`eget_vindue` are unchanged, except that a session lookup that does not finish within the 25 seconds now answers
+`tab-not-responding` instead of waiting.
 
 **New answers an agent can see:**
 

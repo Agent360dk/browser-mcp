@@ -348,7 +348,7 @@ function persistSessions() {
 // Get the active tab for this session (last navigated), or create one.
 // activate=false (default): runs in background — no focus stealing.
 // activate=true: only for commands that NEED visible tab (screenshot, ask_user, navigate, execute_script).
-async function getSessionTab(port, activate = false, opretMed = null) {
+async function getSessionTab(port, activate = false, opretMed = null, opgivet = null) {
   const session = getSession(port);
   let target = null;
   // Remember our OWN about:blank placeholder so we reuse it instead of spawning another
@@ -398,8 +398,11 @@ async function getSessionTab(port, activate = false, opretMed = null) {
   // den saa til adressen - about:blank stod hver gang som det foerste. Kender kalderen adressen (navigate), oprettes fanen
   // direkte med den.
   if (!target) {
-    target = await chrome.tabs.create({ url: opretMed || 'about:blank', active: false });
-    if (opretMed) target.oprettetMedUrl = true;
+    // R110 (Astra): har navigate allerede svaret (loftet ramte, mens fanerne blev slaaet op), maa det fortsatte arbejde ikke
+    // sende adressen - saa bliver det en tom pladsholder.
+    const medUrl = opretMed && !(opgivet && opgivet.v) ? opretMed : null;
+    target = await chrome.tabs.create({ url: medUrl || 'about:blank', active: false });
+    if (medUrl) target.oprettetMedUrl = true;
     await addTabToSession(port, target.id);
     session.activeTabId = target.id;
     persistSessions();
@@ -939,7 +942,11 @@ const NAV_NOTER = {
   'tab-closed': 'The tab was closed while the navigation was in progress (Chrome no longer has a tab with this id).',
 };
 
-async function navigerIFanen(port, session, tab, params) {
+// Forbeholdet foer loftet: ventningen slutter saa meget foer, at de sidste opslag (fanens adresse i svaret, CAPTCHA-kontrollen)
+// ogsaa naar inden for det.
+function navForbehold() { return Math.min(500, Math.floor(NAV_FRISTER.loft / 10)); }
+
+async function navigerIFanen(port, session, tab, params, navSlut = null) {
   const url = String(params.url);
   const s = dialogFane(tab.id);
   const svar = (error, ekstra = {}) => ({ ok: false, error, tab_id: tab.id, requested_url: url, ...ekstra,
@@ -958,7 +965,7 @@ async function navigerIFanen(port, session, tab, params) {
   const ejer = { opId: 'nav-' + (++naesteNavOp), sent: false, url, leave: params.leave_page === true, vaek: null, bokse: [] };
   s.ejer = ejer;
   try {
-    return rens(await navigerSomEjer(port, session, tab, url, s, ejer, svar));
+    return rens(await navigerSomEjer(port, session, tab, url, s, ejer, svar, navSlut));
   } finally {
     if (s.ejer === ejer) s.ejer = null;
     ejer.vaek = null;
@@ -971,11 +978,11 @@ function rens(r) {
   return r;
 }
 
-async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
-  const slut = Date.now() + NAV_FRISTER.loft;
+async function navigerSomEjer(port, session, tab, url, s, ejer, svar, navSlut) {
+  const slut = navSlut ?? Date.now() + NAV_FRISTER.loft;
   // R109 (Astra 2): hvert ventepunkt er under samme frist. Ventningen slutter et forbehold foer loftet, saa de sidste opslag
   // (fanens adresse i svaret, CAPTCHA-kontrollen) ogsaa naar inden for det; succes afgoeres aldrig efter slutVent.
-  const slutVent = slut - Math.min(500, Math.floor(NAV_FRISTER.loft / 10));
+  const slutVent = slut - navForbehold();
   const tilbage = (ud = slutVent) => Math.max(0, ud - Date.now());
   // Fanen, som Chrome ser den nu: et objekt, null (fanen findes ikke) eller undefined (Chrome svarede ikke i tide).
   const fane = async (ud = slut) => {
@@ -992,7 +999,11 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   let medDebugger = true;
   let attachFejl = null;
   const tilknyttet = await venteMedFrist(debuggerAttach(tab.id).then(() => true, (e) => e), tilbage());
-  if (tilknyttet === FRIST_UDLOEB) return svar('tab-not-responding', { sent: false, detail: 'attaching the debugger did not finish in time' });
+  if (tilknyttet === FRIST_UDLOEB) {
+    // R110 (Astra 2): en boks, koordinatoren saa aabne imens, er forklaringen - som ved porten.
+    if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
+    return svar('tab-not-responding', { sent: false, detail: 'attaching the debugger did not finish in time' });
+  }
   if (tilknyttet !== true) { medDebugger = false; attachFejl = tilknyttet?.message || String(tilknyttet); }
   if (s.lukketFane) return svar('tab-closed', { sent: false });
   if (medDebugger) {
@@ -1016,7 +1027,10 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   // allerede var faerdig, da adressen blev sendt, eller adressen er den oenskede - ellers kan den vaere den gamle sides.
   // Haendelserne opfanges fra foer afsendelsen, saa en side fra cachen, samme adresse eller et fragment ikke venter.
   const foer = await fane(slutVent);
-  if (foer === undefined) return svar('tab-not-responding', { sent: false, detail: 'Chrome did not report the tab in time' });
+  if (foer === undefined) {
+    if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
+    return svar('tab-not-responding', { sent: false, detail: 'Chrome did not report the tab in time' });
+  }
   if (s.lukketFane || !foer) return svar('tab-closed', { sent: false });
   // Trin 5: en boks, der aabnede, mens porten ventede, eller lige efter - sidste tjek foer afsendelsen, i samme tur.
   if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
@@ -4995,7 +5009,19 @@ async function dispatch(port, method, params) {
       // R73 (Astra, maalt i model): med new_tab og eget_vindue oprettede getSessionTab() stadig en tom about:blank, foer vinduet
       // blev aabnet med adressen - to faner i sessionen. Et eget vindue bruger ikke sessionens fane, saa der hentes ingen.
       const egetVindue = !!(params.new_tab && params.eget_vindue);
-      let tab = egetVindue ? null : await getSessionTab(port, false, params.url);
+      // R110 (Astra): loftet for et navigate i den aktuelle fane starter HER, foer sessionsopslaget, og opslaget er under det.
+      const navSlut = Date.now() + NAV_FRISTER.loft;
+      let tab = null;
+      if (!egetVindue) {
+        const opgivet = { v: false };
+        const fundet = await venteMedFrist(getSessionTab(port, false, params.url, opgivet), navSlut - navForbehold() - Date.now());
+        if (fundet === FRIST_UDLOEB) {
+          opgivet.v = true;
+          return { ok: false, error: 'tab-not-responding', sent: false, requested_url: String(params.url),
+            detail: 'Chrome did not report the session\'s tabs in time', note: NAV_NOTER['tab-not-responding'] };
+        }
+        tab = fundet;
+      }
       // R73 (Astra, maalt i model): en ny fane, hvis adresse var faerdigindlaest, mens fanen blev lagt i sessionens gruppe, naaede
       // sin eneste 'complete' foer lytteren herunder fandtes, og navigate ventede de fulde 15 sekunder. For en fane uden en
       // tidligere side (ny eller pladsholder) proeves tilstanden derfor ogsaa, saa snart lytteren er sat.
@@ -5130,7 +5156,7 @@ async function dispatch(port, method, params) {
       } else {
         // #69 (1.30.3): en eksisterende fane gaar gennem dialog-koordinatoren - ejerskab, Page.enable-port, svar paa
         // «Leave site?» og dom fra Chromes Closed. R75/R76's regler for en 'complete' bor nu i navigerSomEjer.
-        return await navigerIFanen(port, session, tab, params);
+        return await navigerIFanen(port, session, tab, params, navSlut);
       }
 
       // Wait for load. A 'complete' can be the about:blank placeholder's OWN load

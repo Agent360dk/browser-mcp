@@ -71,7 +71,11 @@ function model(opt = {}) {
     'debugger.attach': () => { if (t.attachFejl) throw new Error(t.attachFejl); },
     'debugger.detach': () => { if (t.boks) { t.boks = null; } t.pageOn = false; },   // boksen lukkes uden Closed (R108 Astra 4)
     'debugger.getTargets': () => { const r = t.attachFejl ? [] : [{ tabId: 1, attached: true }]; return t.attachMs ? sov(t.attachMs).then(() => r) : r; },
-    'tabs.get': () => {
+    'tabs.get': (id) => {
+      // R110: foersteGetMs forsinker kun det allerfoerste opslag (sessionens); doedFane er en sessionsfane, der er vaek,
+      // og hvis opslag svarer langsomt.
+      if (t.doedFane && id === t.doedFane.id) return sov(t.doedFane.ms).then(() => { throw new Error('No tab with id: ' + id); });
+      if (t.foersteGetMs) { const ms = t.foersteGetMs; t.foersteGetMs = 0; return sov(ms).then(() => snap()); }
       if (t.fjernet) throw new Error('No tab with id: 1');
       const r = snap();
       // langsomEfterNy (R109): foerste opslag efter at den nye side er indlaest er hurtigt, de naeste er langsomme.
@@ -79,6 +83,8 @@ function model(opt = {}) {
       return t.getMs ? sov(t.getMs).then(() => r) : r;
     },
     'tabs.query': () => [snap()],
+    'tabs.create': ({ url }) => { log.push(['tabs.create', url]); return { id: 2, url: url || 'about:blank', status: 'loading', windowId: 1 }; },
+    'tabs.group': () => 7,
     'tabs.update': (_id, p) => {
       if (!p || !p.url) return snap();
       log.push(['tabs.update', p.url]);
@@ -887,6 +893,64 @@ test('R109-O-2e: reattach_debugger med en aaben, kendt boks advarer om, at den i
   const ren = model();
   const re2 = await ren.u.hent('dispatch')(9876, 'reattach_debugger', {});
   assert.equal(re2.warning, undefined, 'ingen boks, ingen advarsel');
+});
+
+// ── R110 (Astra): fristen starter foer sessionsopslaget; kendte bokse ved de nye timeout-returer ──────
+
+test('R110-1a: et langsomt foerste sessionsopslag ligger under loftet - intet svar efter fristen, intet sendt bagefter', async () => {
+  const m = model({ beskyt: false, foersteGetMs: FRISTER.loft + 300 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.ok(brugt < FRISTER.loft + 80, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
+  assert.notEqual(r.ok, true, vis(r));
+  assert.equal(r.sent, false, vis(r));
+  await sov(450);
+  assert.equal(m.adresser(), 0, 'det fortsatte arbejde maa ikke sende adressen efter svaret');
+});
+
+test('R110-1b: tid brugt paa sessionsopslaget traekkes fra loftet', async () => {
+  const m = model({ beskyt: false, haengNav: true, foersteGetMs: 300 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+  assert.ok(brugt < FRISTER.loft + 80, `loftet startede foerst efter sessionsopslaget: ${brugt} ms`);
+});
+
+test('R110-1c: en session, hvis fane er vaek og svarer langsomt, faar ikke en fane med adressen efter svaret', async () => {
+  const m = model({ beskyt: false, doedFane: { id: 5, ms: FRISTER.loft + 200 } });
+  m.u.hent('sessions').set(9876, { tabIds: new Set([5]), activeTabId: 5, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const r = await fang(m.nav());
+  assert.notEqual(r.ok, true, vis(r));
+  assert.equal(r.sent, false, vis(r));
+  await sov(400);
+  const medAdresse = m.log.filter((x) => x[0] === 'tabs.create' && x[1] === NY);
+  assert.equal(medAdresse.length, 0, `en fane med adressen blev oprettet efter svaret: ${vis(m.log.filter((x) => x[0] === 'tabs.create'))}`);
+});
+
+test('R110-2a: en boks, der bliver kendt under en tilknytning, der loeber ud, giver dialog-open - ikke tab-not-responding', async () => {
+  const m = model({ attachMs: FRISTER.loft + 300 });
+  await m.enable();
+  const p = fang(m.nav());
+  await sov(20);
+  m.sidenNavigerer('https://siden-selv.example/');
+  const r = await p;
+  assert.equal(r.error, 'dialog-open', vis(r));
+  assert.equal(r.dialog_type, 'beforeunload');
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0);
+});
+
+test('R110-2b: en boks, der bliver kendt under et faneopslag, der loeber ud, giver dialog-open', async () => {
+  const m = model({ getMsEfterEnable: FRISTER.loft + 300 });
+  const p = fang(m.nav());
+  await sov(40);
+  m.sidenNavigerer('https://siden-selv.example/');
+  const r = await p;
+  assert.equal(r.error, 'dialog-open', vis(r));
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0);
 });
 
 // ── Kildeproeven: kun koordinatoren sender Page.handleJavaScriptDialog ───────────
