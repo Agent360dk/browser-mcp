@@ -95,7 +95,15 @@ function model(opt = {}) {
       const id = ++t.naesteId;
       const ny = { id, url: url || 'about:blank', status: 'loading', windowId: 1, active: false };
       t.nyeFaner.set(id, ny);
-      if (url && !t.haengNav) setTimeout(() => { ny.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...ny }); }, 20);
+      // svar204: adressen svarer 204 (eller er en download) - Chrome melder fanen 'complete', men den staar tom (maalt 15/10
+      // i headless Chrome: url ''). omdirigerNy: siden omdirigeres til en anden adresse (med 'loading' undervejs).
+      if (url && !t.haengNav) {
+        setTimeout(() => {
+          if (t.svar204) { ny.url = ''; ny.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...ny }); return; }
+          if (t.omdirigerNy) { ny.url = t.omdirigerNy; ny.status = 'loading'; u.fyr('tabs.onUpdated', id, { status: 'loading', url: ny.url }, { ...ny }); }
+          setTimeout(() => { ny.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...ny }); }, 10);
+        }, 20);
+      }
       return t.createMs ? sov(t.createMs).then(() => ({ ...ny })) : { ...ny };
     },
     'tabs.group': () => (t.groupMs ? sov(t.groupMs).then(() => 7) : 7),
@@ -989,6 +997,25 @@ test('R111-A1: en ny sessions foerste navigate, hvis side indlaeses i tide, er o
   const r = await fang(m.nav());
   assert.equal(r.ok, true, vis(r));
   assert.equal(r.url, NY);
+});
+
+test('R112: en ny sessions foerste navigate til en adresse, der svarer 204, er ikke ok:true - fanen staar tom', async () => {
+  const m = model({ svar204: true });
+  tomSession(m);
+  const r = await fang(m.nav());
+  assert.notEqual(r.ok, true, `en tom fane meldt som indlaest: ${vis(r)}`);
+  assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+  assert.equal(r.sent, true);
+  assert.equal(r.may_complete_later, true);
+  assert.equal(r.pending_url, NY);
+});
+
+test('R112: en ny sessions foerste navigate, der omdirigeres (set begynde), er stadig ok:true paa den nye adresse', async () => {
+  const m = model({ omdirigerNy: 'https://ny.example/lang' });
+  tomSession(m);
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.url, 'https://ny.example/lang');
 });
 
 test('R111-A2: et langsomt sessionsopslag fjerner ikke bagefter det naeste kalds fane fra sessionen', async () => {
