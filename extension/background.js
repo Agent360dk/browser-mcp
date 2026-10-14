@@ -1093,8 +1093,8 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
         const nuUrl = String(nu.url || '');
         const indlaest = !awaitingRealUrl || (nu.status === 'complete' && !nuUrl.startsWith('about:blank'));
         const nyNok = obs.loading || obs.completeUrl === url || nuUrl === url || (obs.gammelKlar && nuUrl !== obs.gammelUrl);
-        // R109 (Astra 2): et bevis, der foerst ankommer efter fristen, er intet bevis.
-        if (indlaest && nyNok && Date.now() <= slutVent) { bevist = true; bevisFane = nu; }
+        // R109 (Astra 2): opslaget er bundet af fristen, og succes afgoeres kun foer den (se loftet nedenfor).
+        if (indlaest && nyNok) { bevist = true; bevisFane = nu; }
         continue;
       }
       // Trin 6: Chrome afviste adressen, foer nogen boks aabnede.

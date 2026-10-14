@@ -644,7 +644,9 @@ test('R108-A2b: handle_dialog paa en ny boks, mens et tidligere svar er undervej
 });
 
 test('R108-A3a: loftet er samlet - en boks lige foer loftet forlaenger ikke kaldet med hele dialogfristen', async () => {
-  const m = model({ lukkerAldrig: true, navMs: FRISTER.loft - 80 });
+  // Boksen kommer foer loftet, og dialogfristen (600 ms) raekker ud over det: kun loftet maa afgoere, hvornaar kaldet svarer.
+  const m = model({ lukkerAldrig: true, navMs: FRISTER.loft - 250 });
+  m.u.hent('NAV_FRISTER').luk = 600;
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
