@@ -71,7 +71,13 @@ function model(opt = {}) {
     'debugger.attach': () => { if (t.attachFejl) throw new Error(t.attachFejl); },
     'debugger.detach': () => { if (t.boks) { t.boks = null; } t.pageOn = false; },   // boksen lukkes uden Closed (R108 Astra 4)
     'debugger.getTargets': () => { const r = t.attachFejl ? [] : [{ tabId: 1, attached: true }]; return t.attachMs ? sov(t.attachMs).then(() => r) : r; },
-    'tabs.get': () => { if (t.fjernet) throw new Error('No tab with id: 1'); const r = snap(); return t.getMs ? sov(t.getMs).then(() => r) : r; },
+    'tabs.get': () => {
+      if (t.fjernet) throw new Error('No tab with id: 1');
+      const r = snap();
+      // langsomEfterNy (R109): foerste opslag efter at den nye side er indlaest er hurtigt, de naeste er langsomme.
+      if (t.langsomEfterNy && t.url === NY && t.status === 'complete') { if (t._nySet) return sov(t.langsomEfterNy).then(() => r); t._nySet = true; }
+      return t.getMs ? sov(t.getMs).then(() => r) : r;
+    },
     'tabs.query': () => [snap()],
     'tabs.update': (_id, p) => {
       if (!p || !p.url) return snap();
@@ -89,7 +95,8 @@ function model(opt = {}) {
       if (metode === 'Page.enable') {
         if (t.enableFejl) throw new Error(t.enableFejl);
         if (t.boks) return new Promise(() => {});                       // haenger bag en aaben boks (F4)
-        const r = () => { t.pageOn = true; return {}; };
+        // getMsEfterEnable (R109): faneopslag bliver langsomme, efter at porten har svaret.
+        const r = () => { t.pageOn = true; if (t.getMsEfterEnable) t.getMs = t.getMsEfterEnable; return {}; };
         const vent = Math.max(t.travlTil - Date.now(), t.enableForsinkelse);
         return vent > 0 ? sov(vent).then(r) : r();
       }
@@ -773,6 +780,109 @@ test('R108-O2: en boks, der aabner og lukker, mens loekken venter paa et opslag,
   const m = model({ lukMs: 5, gammelComplete: { efter: 1, getMs: 120 } });
   const r = await fang(m.nav());
   assert.equal(r.error, 'beforeunload-blocked', `Stay tabt under et await: ${vis(r)}`);
+});
+
+// ── R109 (Astra og Opus): modforsoegene som faste regressionsproever ──────────────
+
+test('R109-A1: et dialogsvar, der opstaar under navigationens klargoering, holder fanen - intet sendes', async () => {
+  const m = model({ enableForsinkelse: 100, svarMs: 200 });
+  await m.enable();
+  await m.dialog({ action: 'accept' });                        // armering: Accept paa naeste boks
+  const p = fang(m.nav());                                      // uden leave_page
+  await sov(20);
+  m.t.boksType = 'confirm';
+  m.sidenNavigerer('https://confirm.example/');                 // armeringen forbruges paa denne confirm (Accept, forsinket)
+  await sov(20);
+  m.menneskeLukker(false);                                      // mennesket trykker Annuller foerst
+  m.t.boksType = 'beforeunload';
+  const r = await p;
+  assert.equal(r.error, 'navigation-in-progress', `adressen blev sendt med et udestaaende Accept: ${vis(r)}`);
+  assert.equal(r.sent, false);
+  assert.equal(r.op_id, null);
+  assert.match(r.note, /earlier answer to a dialog/, 'noten skal sige, at det er et udestaaende dialogsvar - ikke en anden navigate');
+  assert.equal(m.adresser(), 0);
+  await sov(250);
+  assert.equal(m.t.url, GAMMEL, 'siden maa ikke vaere forladt');
+});
+
+test('R109-A2a: langsomme faneopslag efter porten - loftet holder, og succes afgoeres aldrig efter fristen', async () => {
+  const m = model({ beskyt: false, navMs: FRISTER.loft + 150, getMsEfterEnable: FRISTER.loft + 400 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.notEqual(r.ok, true, `succes efter fristen: ${vis(r)} efter ${brugt} ms`);
+  assert.ok(brugt < FRISTER.loft + 80, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms`);
+});
+
+test('R109-A2b: et langsomt bevisopslag, der svarer efter loftet, giver ikke ok:true', async () => {
+  const m = model({ beskyt: false, navMs: FRISTER.loft - 200, gammelComplete: { efter: 5, getMs: 500 } });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.ok(brugt < FRISTER.loft + 80, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
+  if (r.ok === true) assert.ok(brugt <= FRISTER.loft, 'succes skal vaere afgjort inden for loftet');
+});
+
+test('R109-A2c: en tilknytning, der ikke bliver faerdig, holdes inden for loftet - intet sendt', async () => {
+  const m = model({ attachMs: FRISTER.loft + 400 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.ok(brugt < FRISTER.loft + 80, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
+  assert.equal(r.error, 'tab-not-responding', vis(r));
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0);
+});
+
+test('R109-A2d: efter beviset bruges fanen, som beviset saa den - intet nyt, ubegraenset opslag', async () => {
+  const m = model({ beskyt: false, langsomEfterNy: FRISTER.loft + 400 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.url, NY);
+  assert.ok(Date.now() - t0 < FRISTER.loft, `svaret ventede paa et opslag efter beviset: ${Date.now() - t0} ms`);
+});
+
+test('R109-A3: et Stay fra FOER adressen blev sendt tilskrives ikke den nye navigation', async () => {
+  const m = model({ getMsEfterEnable: 120 });
+  const p = fang(m.nav({ leave_page: true }));
+  await sov(40);                                                // porten har svaret; faneopslaget foer afsendelsen venter
+  m.sidenNavigerer('https://siden-selv.example/');              // sidens egen navigation aabner «Leave site?»
+  await sov(15);
+  m.menneskeLukker(false);                                      // mennesket: Stay - foer vores adresse er sendt
+  m.t.getMs = 0;
+  const r = await p;
+  assert.notEqual(r.answered_by, null, `et Stay uden svarer blev tilskrevet navigationen: ${vis(r)}`);
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.url, NY);
+  assert.deepEqual(m.svar().map((x) => x[2]), [true], 'navigationens egen boks skal besvares med Leave');
+});
+
+test('R109-O-C: reattach_debugger med et udestaaende dialogsvar frigiver fanen', async () => {
+  const m = model({ svarMs: 2000 });
+  const a = fang(m.nav({ leave_page: true }));
+  await sov(30);
+  m.menneskeLukker(false);
+  assert.equal((await a).error, 'beforeunload-blocked');
+  assert.equal((await fang(m.nav({ url: 'https://b.example/' }))).error, 'navigation-in-progress', 'svaret er udestaaende');
+  await m.u.hent('dispatch')(9876, 'reattach_debugger', {});
+  m.t.beskyt = false;
+  const r = await fang(m.nav({ url: 'https://c.example/' }));
+  assert.equal(r.ok, true, `fanen er stadig laast efter reattach: ${vis(r)}`);
+});
+
+test('R109-O-2e: reattach_debugger med en aaben, kendt boks advarer om, at den ikke kan besvares bagefter', async () => {
+  const m = model();
+  await m.enable();
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const re = await m.u.hent('dispatch')(9876, 'reattach_debugger', {});
+  assert.equal(re.reattached, true);
+  assert.match(String(re.warning || ''), /dialog/i, `ingen advarsel: ${vis(re)}`);
+  assert.match(String(re.warning || ''), /browser_ask_user/);
+  const ren = model();
+  const re2 = await ren.u.hent('dispatch')(9876, 'reattach_debugger', {});
+  assert.equal(re2.warning, undefined, 'ingen boks, ingen advarsel');
 });
 
 // ── Kildeproeven: kun koordinatoren sender Page.handleJavaScriptDialog ───────────
