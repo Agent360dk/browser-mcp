@@ -38,6 +38,10 @@ const repoDir = dirname(__dirname); // parent of mcp-server/
 // En agent-session maatte altsaa ikke mutere brugerens git-trae uden samtykke.
 // `npx @agent360/browser-mcp@latest` opdaterer allerede serveren; blokken var overfloedig.
 let extensionUpdated = false;
+// #69 (1.30.3): fejlkoderne fra navigate i en eksisterende fane og fra handle_dialog. Udvidelsen svarer dem som ok:false;
+// her bliver de til isError, saa klienten ser dem som fejl.
+const NAV_DIALOG_FEJL = new Set(['navigation-in-progress', 'dialog-open', 'tab-not-responding', 'navigation-failed',
+  'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed']);
 
 // Spaendet kan flyttes med env - ellers ville en test af port-udsultning skulle
 // beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.
@@ -995,6 +999,9 @@ async function kaldVaerktoej(request) {
     const response = {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
     };
+    // #69 (1.30.3): navigate og handle_dialog svarer ok:false med en fejlkode, naar de ikke kan bevise udfaldet. De svar er
+    // fejl for klienten ogsaa (isError), saa en agent ikke laeser «ok:false, beforeunload-blocked» som et gennemfoert kald.
+    if (result && result.ok === false && NAV_DIALOG_FEJL.has(result.error)) response.isError = true;
 
     // Notify on first call if extension was updated
     if (extensionUpdated) {

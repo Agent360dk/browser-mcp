@@ -135,9 +135,11 @@ test('drop_file via opfanget filvaelger: «Not allowed» uden filadgang giver fi
   } });
   u.ctx.chrome.extension = { isAllowedFileSchemeAccess: async () => false };
   u.ctx.chrome.scripting.executeScript = () => new Promise(() => {}); // elementopslaget haenger, saa filvaelgeren naar foerst
+  // 1.30.3: udvidelsen har nu én fast debugger-lytter fra start (dialog-koordinatoren), saa der ventes paa en lytter MERE.
+  const foer = (u.lyttere.get('debugger.onEvent') || []).length;
   const svarP = u.hent('interceptFileChooser')(1, '#zone', ['/tmp/a.png']);
-  for (let i = 0; i < 400 && !(u.lyttere.get('debugger.onEvent') || []).length; i++) await new Promise((r) => setTimeout(r, 5));
-  assert.ok((u.lyttere.get('debugger.onEvent') || []).length, 'filvaelger-lytteren blev aldrig sat');
+  for (let i = 0; i < 400 && (u.lyttere.get('debugger.onEvent') || []).length <= foer; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.ok((u.lyttere.get('debugger.onEvent') || []).length > foer, 'filvaelger-lytteren blev aldrig sat');
   await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.fileChooserOpened', { backendNodeId: 5, mode: 'selectSingle' });
   const svar = await svarP;
   assert.equal(svar.ok, false);
