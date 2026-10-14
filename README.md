@@ -234,7 +234,7 @@ All three are optional. None is needed for normal use.
 ### Navigation & Content
 | Tool | Description |
 |------|-------------|
-| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). On "Leave site?" it answers Stay and says so (`beforeunload-blocked`); `leave_page=true` leaves |
+| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). On "Leave site?" it answers Stay and says so (`beforeunload-blocked`); `leave_page=true` leaves; an armed `browser_handle_dialog` answers instead of either |
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused; a covered window answers `window-covered`) |
 | `browser_execute_script` | Run JavaScript in page context |
@@ -253,7 +253,7 @@ All three are optional. None is needed for normal use.
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
-| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt/"Leave site?" dialogs: answers one already on screen, or arms for the next |
+| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt/"Leave site?" dialogs: answers one the extension saw open, or arms for the next (one that opened before anything listened cannot be answered from here) |
 | `browser_double_click` | True double-click (two trusted press/release pairs); answers `covered` when the mouse would not reach it |
 | `browser_right_click` | Right-click to open page-level context menus; answers `covered` when the mouse would not reach it |
 | `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
