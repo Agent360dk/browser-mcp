@@ -4,6 +4,37 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.30.3 (not released yet)
+
+**`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,
+`browser_navigate` in the current tab answered with the old address and no error when the page asked "Leave site?", and
+the prompt stayed open, so the tab did not respond until the user answered it in Chrome. Now one part of the extension
+watches the tab's dialogs and is the only part that answers them. When the page asks "Leave site?" after the address was
+sent, the answer is Stay, unless the call passed `leave_page: true` or a `browser_handle_dialog` arming is waiting for the
+next dialog on the tab; the result is read from Chrome's own report that the dialog closed, not from the reply to the
+command that answered it. In the current tab, `ok: true` now means the new page was proven loaded; every other outcome
+is an error with `sent` (whether the address reached Chrome) and a note on what the agent can do. New tabs and
+`eget_vindue` are unchanged.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `leave_page` (parameter) | `browser_navigate` | Answer "Leave site?" with Leave instead of Stay. The tool text says to ask the user first (`browser_ask_user`), because unsaved work on the page is lost |
+| `ok: true`, `answered_by`, `dialog_type` | `browser_navigate` in the current tab | The new page was proven loaded (the same rules as 1.30.2 for the same address, a fragment and a redirect); `answered_by` (`navigate` or `handle_dialog`) when a dialog was answered on the way |
+| `error: "beforeunload-blocked"`, `url`, `answered_by` | `browser_navigate` | The page asked "Leave site?" and the answer was Stay, so the tab is still on `url`. The note says to ask the user before calling again with `leave_page: true` |
+| `error: "dialog-open"`, `dialog_type`, `message`, `pending_url` | `browser_navigate` | A dialog is open on the tab. With `sent: false` nothing was sent; with `sent: true` the page opened a dialog that is not "Leave site?" after the address was sent, and it was not answered. `pending_url` is a navigation that may still happen when the dialog is answered |
+| `error: "navigation-in-progress"`, `op_id` | `browser_navigate` | Another navigate is still working in the tab, or Chrome has not yet taken an address sent before. Nothing was sent |
+| `error: "tab-not-responding"` | `browser_navigate` | Chrome did not answer on the tab before anything was sent: a busy page, or a dialog Chrome does not show the extension (one that opened before anything listened) |
+| `error: "navigation-failed"`, `detail` | `browser_navigate` | Chrome refused the navigation. Before, a refused address could come back as an answer with the old address |
+| `error: "dialog-unconfirmed"` | `browser_navigate`, `browser_handle_dialog` | A dialog was answered, but Chrome did not report it closed within 5 seconds, or the debugger left the tab. Nothing more is sent |
+| `error: "navigation-unconfirmed"`, `may_complete_later`, `pending_url` | `browser_navigate` | The address was sent, but no load was proven within 25 seconds; the navigation may still complete later. A dialog that opens after that is not answered by anyone: the next call answers `dialog-open` with `pending_url` |
+| `error: "tab-closed"` | `browser_navigate`, `browser_handle_dialog` | The tab was closed while the call was waiting |
+| `error: "dialog-being-answered"` | `browser_handle_dialog` | `browser_navigate` or an earlier `browser_handle_dialog` is answering the dialog on screen |
+| `action` from Chrome's report | `browser_handle_dialog` | A dialog the extension saw open and nobody is answering is answered at once, without waiting for an arming; `action` (`accept` or `dismiss`) is what Chrome reported when the dialog closed. An arming's answer, which a click waits for, now also comes from that report |
+
+These errors are also errors to the MCP client (`isError: true`), so an agent does not read `ok: false` as a call that went through.
+
 ## 1.30.2 (2026-10-14)
 
 **Tool texts that match the code, clicks that say when they could not land, and the pull requests from

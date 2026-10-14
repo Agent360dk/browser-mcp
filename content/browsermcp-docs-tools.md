@@ -19,7 +19,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. |
+| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. In the current tab, `ok: true` means the new page was proven loaded. If the page asks "Leave site?", the answer is Stay and the error `beforeunload-blocked` says so - the page may hold unsaved work, so the agent should ask you before calling again with `leave_page: true`. Other outcomes are errors that say whether the address was sent: `navigation-in-progress`, `dialog-open`, `tab-not-responding`, `navigation-failed`, `dialog-unconfirmed`, `navigation-unconfirmed` (may still complete later), `tab-closed`. |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. A window covered by other windows answers `window-covered`; Chrome is raised only with `bring_to_front: true`. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
@@ -42,7 +42,7 @@ The list below is what the client has to choose from.
 | `browser_set_combobox` | Drive an autocomplete/combobox: click, type filter query, wait for the listbox, click the option(s); supports multi-select chips. |
 | `browser_set_date` | Set a date input robustly - native value-set, masked-text typing, or calendar-picker navigation (MUI/AntD/react-datepicker/Lexical), with read-back verification. |
 | `browser_dismiss_overlays` | Bulk-dismiss popups, modals, tooltips, and banners via heuristics on close affordances (aria-label, "Skip"/"Ikke nu"/"Got it", × button). |
-| `browser_handle_dialog` | Accept or dismiss a native `alert()`/`confirm()`/`prompt()` dialog; call before the action that triggers it. |
+| `browser_handle_dialog` | Accept or dismiss a native `alert()`/`confirm()`/`prompt()` or "Leave site?" dialog. A dialog the extension saw open is answered at once, and the answer says what Chrome reported; otherwise it arms for the next dialog, so call it before the action that triggers it. A dialog that opened before anything listened cannot be answered from here (`tab-not-responding`). |
 
 ## Tabs & Frames - 6 tools
 
