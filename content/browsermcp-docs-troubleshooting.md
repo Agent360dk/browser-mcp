@@ -44,8 +44,9 @@ covered window raised Chrome and left it there.
 
 **What changed in 1.30.2.** Chrome is no longer brought in front of you unless the agent asks for it
 with `bring_to_front: true`, which the tools tell it to use only after asking you. `browser_switch_tab`
-makes the agent's tab active in its own window, but not in a window you are working in, and says
-whether the page is hidden. A screenshot of a covered window answers `window-covered`.
+makes the agent's tab active in its window and says whether the page is hidden. If you work in the same
+Chrome window as the agent, its tab can still become the visible one there; `browser_navigate` with
+`eget_vindue: true` gives the agent a window of its own. A screenshot of a covered window answers `window-covered`.
 
 **What you can do today.** Reading, screenshots and scripts work in a background tab or window.
 Input - typing, hover, coordinate clicks - needs the tab to be the visible one in a window that has

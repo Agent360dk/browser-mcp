@@ -313,3 +313,15 @@ test('tildaekket vindue uden bring_to_front: window-covered, og Chrome roeres ik
   assert.equal(u.optager.antal('windows.update'), 0, 'Chrome blev hevet frem uden at nogen bad om det');
   assert.ok(!u.optager.kald.some((k) => k.sti === 'tabs.update' && k.args?.[1]?.active === true), 'fanen blev skiftet');
 });
+
+test('en anden fejl end den tavse optagelse meldes som den er, ikke som window-covered', async () => {
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
+    if (metode === 'Page.captureScreenshot') throw new Error('Target closed');
+    return {};
+  } });
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 4000, haevMs: 1500 });
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.notEqual(svar.error, 'window-covered', JSON.stringify(svar).slice(0, 200));
+  assert.match(String(svar.fejl), /Target closed/);
+  assert.equal(u.optager.antal('windows.update'), 0);
+});

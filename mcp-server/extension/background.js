@@ -5128,6 +5128,9 @@ async function dispatch(port, method, params) {
         // 14/10 (Gustav: «den bliver ved med at tage min computer»): loeftningen nedenfor gav kun fokus tilbage til et
         // ANDET Chrome-vindue - sad han i VS Code, blev Chrome staaende foran ham. Den sker nu kun med bring_to_front: true.
         if (params.bring_to_front !== true) {
+          // Kun den tavse optagelse, som et tildaekket vindue giver (frist eller «image readback failed»), er window-covered.
+          // En anden fejl (fx CDP nede) meldes som den er - den ville en loeftning heller ikke hjaelpe paa.
+          if (!(erCdpFrist(firstErr) || /image readback failed/i.test(String(firstErr?.message || '')))) throw firstErr;
           return {
             ok: false, error: 'window-covered', detail: String(firstErr?.message || firstErr),
             note: 'Chrome produced no picture, which usually means its window is covered by other windows or minimized. ' +
@@ -6969,19 +6972,14 @@ async function dispatch(port, method, params) {
       }
       // 14/10 (Gustav: «den bliver ved med at tage min computer»): MAALT i transskripterne - to underagenter kaldte
       // switch_tab 125 gange paa 8 minutter, og hvert kald hev Chrome frem foran det program han arbejdede i. Vinduet
-      // tages derfor KUN frem med bring_to_front: true. Fanen goeres aktiv i sit vindue, saa den kan modtage mus og taster -
-      // men aldrig i det vindue brugeren selv sidder i: dér ville det skifte fanen under hans oejne.
+      // tages derfor KUN frem med bring_to_front: true. Fanen goeres stadig aktiv i sit vindue, saa den kan modtage mus og
+      // taster. (MAALT 14/10 i headless Chrome: en regel om ikke at skifte fane i brugerens eget vindue fik fire klik-tilfaelde
+      // til at fejle, fordi fanen saa aldrig blev aktiv. Agentens egen fane i sit eget vindue: navigate med eget_vindue.)
       // 31/8-laeren staar ved magt: et tildaekket vindue er 'hidden', og Chrome struber dets timere. Svaret siger det
       // derfor (visibility), i stedet for at tage skaermen for at undgaa det.
       const foran = params.bring_to_front === true;
       let tab = await chrome.tabs.get(params.tab_id);
-      const vindue = await chrome.windows.get(tab.windowId).catch(() => null);
-      const brugerensVindue = !!(vindue && vindue.focused);
-      let aktiv = tab.active === true;
-      if (!aktiv && (foran || !brugerensVindue)) {
-        tab = (await chrome.tabs.update(tab.id, { active: true })) || tab;
-        aktiv = true;
-      }
+      if (tab.active !== true) tab = (await chrome.tabs.update(tab.id, { active: true })) || tab;
       let vinduesFokus = null;   // null = ikke forsoegt
       if (foran) {
         try {
@@ -7000,14 +6998,11 @@ async function dispatch(port, method, params) {
         const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.visibilityState });
         synlighed = r?.result ?? null;
       } catch { /* en side scripts ikke maa naa (chrome://, butikken): synligheden er ukendt */ }
-      const svar = { id: tab.id, url: tab.url, title: tab.title, active: aktiv, windowFocused: vinduesFokus, visibility: synlighed };
+      const svar = { id: tab.id, url: tab.url, title: tab.title, windowFocused: vinduesFokus, visibility: synlighed };
       // Husets maaling (README «The agent keeps pulling a tab in front of me»): taster, hover, koordinatklik og udfyldning
       // af et felt fundet ved tekst lander kun, naar Chrome har styresystemets fokus. Uden den saetning sender vaerktoejernes
       // «call browser_switch_tab and try again» agenten i ring.
-      if (!aktiv) {
-        svar.note = 'The user is working in this Chrome window, so the tab was not brought forward there. The other tools ' +
-          'still act on it in the background. Only if the user agrees (ask with browser_ask_user), call again with bring_to_front: true.';
-      } else if (vinduesFokus !== true) {
+      if (vinduesFokus !== true) {
         svar.note = (synlighed === 'hidden'
           ? 'The page is hidden (its window is covered or minimized), and Chrome slows timers in hidden pages, so a page ' +
             'that is still building can be read half-done: wait for the content you need with browser_wait. '

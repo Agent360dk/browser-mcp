@@ -408,7 +408,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_switch_tab',
-    description: 'Switch to a specific browser tab by ID. Get tab IDs from browser_list_tabs or browser_get_new_tab. The other tools then act on that tab. Chrome is not brought in front of the user: the tab is made active in its own window (not in the window the user is working in, answer active: false), and visibility says whether the page is hidden behind other windows.',
+    description: 'Switch to a specific browser tab by ID. Get tab IDs from browser_list_tabs or browser_get_new_tab. The other tools then act on that tab. Chrome is not brought in front of the user: the tab is made active in its window, and visibility says whether the page is hidden behind other windows.',
     inputSchema: {
       type: 'object',
       properties: {

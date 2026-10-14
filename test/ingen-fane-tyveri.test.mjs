@@ -134,32 +134,20 @@ test('kalibrering: opdageren ser ogsaa et vindue der tages i fokus', () => {
     'opdageren ser kun fane-skift, ikke at hele Chrome-vinduet rives frem');
 });
 
-test('switch_tab aktiverer fanen i sit eget vindue, naar brugeren sidder et andet sted - men tager ikke Chrome frem', async () => {
+test('switch_tab aktiverer fanen i sit vindue - men tager ikke Chrome frem', async () => {
   // FUNDET 13/9 af Fable: her stod `assert.equal(typeof dispatch, 'function')`, som ikke kunne gaa roed. switch_tab er
   // agentens remedie naar en baggrundsfane ikke kan modtage mus og taster, saa den SKAL aktivere fanen i dens vindue.
   // 14/10 (Gustav: «den bliver ved med at tage min computer»): men vinduet tages ikke frem - 125 kald paa 8 minutter
   // hev Chrome foran ham hver gang.
   const u = sele();
-  u.chrome.windows.get = async () => ({ id: 1, state: 'normal', focused: false });   // brugeren er i et andet program
   const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
   assert.deepEqual(faneTyverier(u.optager), ['tabs.update({active:true})'],
     'switch_tab aktiverede ikke fanen - eller tog vinduet frem. Saa har agenten enten ingen vej ud af en baggrundsfane, ' +
     'eller den tager brugerens skaerm');
-  assert.equal(svar.active, true);
   assert.equal(svar.windowFocused, null);
   // Uden den her saetning sender vaerktoejernes «call browser_switch_tab and try again» agenten i ring.
   assert.match(svar.note, /key presses, hover/);
   assert.match(svar.note, /browser_ask_user/);
-});
-
-test('switch_tab skifter ikke fanen i det vindue brugeren selv sidder i', async () => {
-  const u = sele();   // windows.get svarer focused: true - brugeren arbejder i vinduet
-  const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
-  assert.deepEqual(faneTyverier(u.optager), [], 'fanen blev skiftet under brugerens oejne');
-  assert.equal(svar.active, false);
-  assert.match(svar.note, /bring_to_front: true/);
-  assert.match(svar.note, /browser_ask_user/);
-  assert.equal(u.hent('sessions').get(9876).activeTabId, 1, 'de andre vaerktoejer skal stadig arbejde paa fanen');
 });
 
 test('switch_tab med bring_to_front: true tager fanen og vinduet frem', async () => {
@@ -171,7 +159,6 @@ test('switch_tab med bring_to_front: true tager fanen og vinduet frem', async ()
 
 test('switch_tab siger det, naar siden er skjult bag andre vinduer', async () => {
   const u = sele();
-  u.chrome.windows.get = async () => ({ id: 1, state: 'normal', focused: false });
   u.ctx.chrome.scripting.executeScript = async () => [{ result: 'hidden' }];
   const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
   assert.equal(svar.visibility, 'hidden');
