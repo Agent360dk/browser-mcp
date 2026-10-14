@@ -32,7 +32,12 @@ function model(opt = {}) {
   const log = [];
   const t = { url: GAMMEL, title: 'kladde', status: 'complete', beskyt: true, pageOn: false, boks: null, travlTil: 0,
     lukMs: 30, enableFejl: null, enableForsinkelse: 0, attachFejl: null, updFejl: null, updForsinkelse: 0,
-    lukkerAldrig: false, boksType: 'beforeunload', haengNav: false, ...opt };
+    lukkerAldrig: false, boksType: 'beforeunload', haengNav: false,
+    // R108-knapper: getMs (tabs.get svarer langsomt), attachMs (tilknytningstjekket er langsomt), navMs (navigationen
+    // naar siden efter N ms), updAfvisMs (tabs.update afvises efter N ms), gammelComplete (den gamle side melder
+    // 'complete' igen, mens adressen er undervejs), svarMs (svaret rammer den boks, der staar der EFTER N ms - CDP har
+    // intet dialog-id), captchaMs (CAPTCHA-opslaget er langsomt), fjernet (fanen findes ikke).
+    getMs: 0, attachMs: 0, navMs: 3, updAfvisMs: 0, gammelComplete: null, svarMs: 0, captchaMs: 0, fjernet: false, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -52,7 +57,7 @@ function model(opt = {}) {
     if (t.boks) return new Promise((r) => t.boks.navs.push([url, r]));
     const kor = () => { if (t.boks) t.boks.navs.push(url); else if (t.beskyt) aabnBoks(url); else begaa(url); };
     const nu = Date.now();
-    setTimeout(kor, t.travlTil > nu ? t.travlTil - nu : 3);
+    setTimeout(kor, t.travlTil > nu ? t.travlTil - nu : t.navMs);
     return Promise.resolve({ ...snap(), pendingUrl: url });
   };
   const luk = (accept) => {
@@ -64,13 +69,17 @@ function model(opt = {}) {
   };
   u = indlaesUdvidelse({ svar: {
     'debugger.attach': () => { if (t.attachFejl) throw new Error(t.attachFejl); },
-    'debugger.getTargets': () => (t.attachFejl ? [] : [{ tabId: 1, attached: true }]),
-    'tabs.get': () => snap(),
+    'debugger.detach': () => { if (t.boks) { t.boks = null; } t.pageOn = false; },   // boksen lukkes uden Closed (R108 Astra 4)
+    'debugger.getTargets': () => { const r = t.attachFejl ? [] : [{ tabId: 1, attached: true }]; return t.attachMs ? sov(t.attachMs).then(() => r) : r; },
+    'tabs.get': () => { if (t.fjernet) throw new Error('No tab with id: 1'); const r = snap(); return t.getMs ? sov(t.getMs).then(() => r) : r; },
     'tabs.query': () => [snap()],
     'tabs.update': (_id, p) => {
       if (!p || !p.url) return snap();
       log.push(['tabs.update', p.url]);
       if (t.updFejl) throw new Error(t.updFejl);
+      if (t.gammelComplete) { const g = t.gammelComplete; setTimeout(() => { if (g.getMs) t.getMs = g.getMs;
+        u.fyr('tabs.onUpdated', 1, { status: 'complete' }, { ...snap(), url: g.url ?? t.url }); }, g.efter ?? 10); }
+      if (t.updAfvisMs) { if (!t.beskyt) t.haengNav = true; return sov(t.updAfvisMs).then(() => { throw new Error('Navigation was rejected'); }); }
       if (t.updForsinkelse) return sov(t.updForsinkelse).then(() => forlad(p.url));
       return forlad(p.url);
     },
@@ -87,12 +96,19 @@ function model(opt = {}) {
       if (metode === 'Page.handleJavaScriptDialog') {
         if (!t.boks || !t.boks.set) throw new Error('No dialog is showing');   // ogsaa for en uset boks (F7)
         if (t.lukkerAldrig) return {};
+        if (t.svarMs) {
+          return sov(t.svarMs).then(() => {
+            if (!t.boks || !t.boks.set) throw new Error('No dialog is showing');
+            luk(p.accept); return {};
+          });
+        }
         const b = t.boks;
         // kvitterFoerst: kvitteringen kommer foer lukningen (Chrome giver den 0-1 ms efter Closed, F2 - her omvendt, saa en
         // proeve kan se, hvilken af de to svaret bygger paa).
         if (t.kvitterFoerst) { setTimeout(() => { if (t.boks === b) luk(t.lukResultat ?? p.accept); }, t.lukMs); return {}; }
         return sov(t.lukMs).then(() => { if (t.boks === b) luk(p.accept); return {}; });
       }
+      if (metode === 'Runtime.evaluate' && t.captchaMs && !t.boks) return sov(t.captchaMs).then(() => ({ result: { value: { found: false, types: [] } } }));
       return t.boks ? new Promise(() => {}) : {};
     },
   } });
@@ -111,6 +127,7 @@ function model(opt = {}) {
     svar: () => log.filter((x) => x[0] === 'cdp' && x[1] === 'Page.handleJavaScriptDialog'),
     adresser: () => log.filter((x) => x[0] === 'tabs.update').length,
     enables: () => log.filter((x) => x[0] === 'cdp' && x[1] === 'Page.enable').length,
+    menneskeLukker: (accept) => luk(accept),
   };
 }
 // Et kald, der aldrig svarer (main's navigate ind i en aaben boks), bliver et roedt udfald i stedet for en haengende proeve.
@@ -522,8 +539,7 @@ test('handle_dialog: en boks, hvis svar aldrig blev meldt lukket, er ubekraeftet
 
 test('pending_url: en ventende adresse, fanen siden er kommet til, vises ikke som ventende', async () => {
   const m = model({ beskyt: false });
-  m.u.hent('dialogFaner').get(1) || m.u.hent('dialogFaner').set(1, { ejer: null, boks: null, pendingUrl: null, uafgjort: null, ukendt: false, lukketFane: false });
-  m.u.hent('dialogFaner').get(1).pendingUrl = GAMMEL;   // fanen staar allerede paa den
+  m.u.hent('dialogFane')(1).pendingUrl = GAMMEL;   // fanen staar allerede paa den
   await m.enable();
   m.t.beskyt = true;
   m.sidenNavigerer('https://siden-selv.example/');
@@ -565,6 +581,185 @@ test('klik-vejen: kvitteret, men aldrig meldt lukket - loeftet siger dialog-unco
   const svar = await fang(loefte);
   assert.equal(svar.ok, false, vis(svar));
   assert.equal(svar.error, 'dialog-unconfirmed', vis(svar));
+});
+
+// ── R108 (Astra og Opus): modforsoegene som faste regressionsproever ──────────────
+
+test('R108-A1a: et afvist tabs.update med en gammel sides \'complete\' undervejs er navigation-failed, ikke ok:true', async () => {
+  const m = model({ beskyt: false, updAfvisMs: 20, gammelComplete: { efter: 10, getMs: 40 } });
+  const r = await fang(m.nav());
+  assert.equal(r.ok, false, `afvist adresse meldt som succes: ${vis(r)}`);
+  assert.equal(r.error, 'navigation-failed', vis(r));
+  assert.equal(r.sent, false);
+});
+
+test('R108-A1b: den gamle sides \'complete\' med den gamle adresse er ikke bevis - ogsaa naar siden var faerdig foer', async () => {
+  const m = model({ beskyt: false, haengNav: true, gammelComplete: { efter: 10 } });
+  const r = await fang(m.nav());
+  assert.equal(r.ok, false, `gammel side meldt som den nye: ${vis(r)}`);
+  assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+});
+
+test('R108-A1c: succes kraever et tabs.update, Chrome ikke afviste - ogsaa naar adressen ser rigtig ud', async () => {
+  const m = model({ beskyt: false, updAfvisMs: 40, gammelComplete: { efter: 5, url: NY } });
+  const r = await fang(m.nav());
+  assert.equal(r.ok, false, vis(r));
+  assert.equal(r.error, 'navigation-failed', vis(r));
+});
+
+test('R108-A2: et udestaaende dialogsvar fra A kan ikke ramme B\'s boks - B venter (navigation-in-progress)', async () => {
+  const m = model({ svarMs: 150 });
+  const a = fang(m.nav({ leave_page: true }));
+  await sov(30);
+  m.menneskeLukker(false);                                   // mennesket trykker Stay, mens A's Leave stadig er undervejs
+  const ra = await a;
+  assert.equal(ra.error, 'beforeunload-blocked', vis(ra));
+  const rb = await fang(m.nav({ url: 'https://b.example/' }));
+  assert.equal(rb.error, 'navigation-in-progress', `B blev sendt, mens A's svar kunne lande paa B's boks: ${vis(rb)}`);
+  assert.equal(rb.sent, false);
+  await sov(200);
+  assert.equal(m.t.url, GAMMEL, 'A\'s forsinkede Leave maa ikke have forladt siden');
+  const rc = await fang(m.nav({ url: 'https://c.example/' }));
+  assert.equal(rc.error, 'beforeunload-blocked', `naar A's svar er afgjort, er fanen fri igen: ${vis(rc)}`);
+});
+
+test('R108-A2b: handle_dialog paa en ny boks, mens et tidligere svar er undervejs, svarer dialog-being-answered', async () => {
+  const m = model({ svarMs: 200 });
+  const a = fang(m.nav({ leave_page: true }));
+  await sov(30);
+  m.menneskeLukker(false);
+  await a;
+  m.sidenNavigerer('https://siden-selv.example/');            // en ny boks, mens A's Leave stadig er undervejs
+  await sov(20);
+  const h = await fang(m.dialog({ action: 'dismiss' }));
+  assert.equal(h.error, 'dialog-being-answered', `et nyt svar ville kaempe med det udestaaende: ${vis(h)}`);
+  assert.equal(m.svar().length, 1, 'intet andet svar sendes');
+});
+
+test('R108-A3a: loftet er samlet - en boks lige foer loftet forlaenger ikke kaldet med hele dialogfristen', async () => {
+  const m = model({ lukkerAldrig: true, navMs: FRISTER.loft - 80 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.equal(r.ok, false, vis(r));
+  assert.ok(brugt < FRISTER.loft + 60, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms (${vis(r)})`);
+});
+
+test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, siger svaret det', async () => {
+  const m = model({ beskyt: false, captchaMs: 3000 });
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  const brugt = Date.now() - t0;
+  assert.equal(r.ok, true, vis(r));
+  assert.ok(brugt < FRISTER.loft + 100, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
+  assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
+});
+
+test('R108-A4: reattach_debugger glemmer en boks, den ikke kan se laengere - naeste kald spoerger porten', async () => {
+  const m = model();
+  await m.enable();
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  assert.ok(m.u.hent('dialogFaner').get(1).boks, 'koordinatoren kender boksen');
+  const re = await m.u.hent('dispatch')(9876, 'reattach_debugger', {});
+  assert.equal(re.reattached, true);
+  m.t.beskyt = false;
+  const enables = m.enables();
+  const r = await fang(m.nav());
+  assert.notEqual(r.error, 'dialog-open', `forældet boks efter egen frakobling: ${vis(r)}`);
+  assert.ok(m.enables() > enables, 'porten skal spoerges');
+  assert.equal(r.ok, true, vis(r));
+});
+
+test('R108-A5a: handle_dialog ser en boks, der blev kendt under tilknytningen, og besvarer den', async () => {
+  const m = model({ attachMs: 40 });
+  await m.enable();
+  const p = fang(m.dialog({ action: 'dismiss' }));
+  await sov(10);
+  m.sidenNavigerer('https://siden-selv.example/');
+  const h = await p;
+  assert.equal(h.ok, true, `kendt boks oversprunget: ${vis(h)}`);
+  assert.equal(h.action, 'dismiss');
+  assert.equal(m.svar().length, 1);
+});
+
+test('R108-A5b: handle_dialog, hvis port loeber ud, mens en boks blev kendt, besvarer boksen', async () => {
+  const m = model({ enableForsinkelse: FRISTER.port + 200 });
+  m.t.pageOn = true;
+  const p = fang(m.dialog({ action: 'dismiss' }));
+  await sov(15);
+  m.sidenNavigerer('https://siden-selv.example/');
+  const h = await p;
+  assert.equal(h.ok, true, vis(h));
+  assert.equal(m.svar().length, 1);
+});
+
+test('R108-O5: navigate, hvis port loeber ud, mens en boks blev kendt, svarer dialog-open - intet sendt', async () => {
+  const m = model({ enableForsinkelse: FRISTER.port + 200 });
+  m.t.pageOn = true;
+  const p = fang(m.nav());
+  await sov(15);
+  m.sidenNavigerer('https://siden-selv.example/');
+  const r = await p;
+  assert.equal(r.error, 'dialog-open', vis(r));
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0);
+});
+
+test('R108-A6a: efter dialog-unconfirmed husker naeste kald den ventende adresse', async () => {
+  const m = model({ lukkerAldrig: true });
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'dialog-unconfirmed', vis(r));
+  const r2 = await fang(m.nav({ url: 'https://b.example/' }));
+  assert.equal(r2.error, 'dialog-open', vis(r2));
+  assert.equal(r2.pending_url, NY, vis(r2));
+});
+
+test('R108-A6b: efter dialog-open med sent:true (en alert) husker naeste kald den ventende adresse', async () => {
+  const m = model({ boksType: 'alert' });
+  const r = await fang(m.nav());
+  assert.equal(r.sent, true, vis(r));
+  const r2 = await fang(m.nav({ url: 'https://b.example/' }));
+  assert.equal(r2.error, 'dialog-open', vis(r2));
+  assert.equal(r2.pending_url, NY, vis(r2));
+});
+
+test('R108-O3: en alert, der lukker, annullerer ikke den ventende adresse - kun «Leave site?» goer', async () => {
+  const m = model({ boksType: 'alert' });
+  await fang(m.nav());
+  const h = await fang(m.dialog({ action: 'accept' }));
+  assert.equal(h.ok, true, vis(h));
+  m.t.boksType = 'beforeunload';
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const r2 = await fang(m.nav({ url: 'https://b.example/' }));
+  assert.equal(r2.error, 'dialog-open', vis(r2));
+  assert.equal(r2.pending_url, NY, vis(r2));
+});
+
+test('R108-O1: onDetach target_closed paa en fane, der lever (chrome://, Chrome-butikken), er ikke tab-closed', async () => {
+  const m = model({ beskyt: false, navMs: 20 });
+  const orig = m.u.ctx.chrome.tabs.update;
+  m.u.ctx.chrome.tabs.update = (id, p) => { setTimeout(() => m.u.fyr('debugger.onDetach', { tabId: 1 }, 'target_closed'), 2); return orig(id, p); };
+  const r = await fang(m.nav({ url: 'chrome://version/' }));
+  assert.notEqual(r.error, 'tab-closed', `fanen lever: ${vis(r)}`);
+  assert.equal(r.ok, true, vis(r));
+});
+
+test('R108-O1: onDetach target_closed paa en fane, der er vaek, er stadig tab-closed', async () => {
+  const m = model({ beskyt: false, haengNav: true });
+  const p = fang(m.nav());
+  await sov(40);
+  m.t.fjernet = true;
+  await m.u.fyr('debugger.onDetach', { tabId: 1 }, 'target_closed');
+  const r = await p;
+  assert.equal(r.error, 'tab-closed', vis(r));
+});
+
+test('R108-O2: en boks, der aabner og lukker, mens loekken venter paa et opslag, gaar ikke tabt', async () => {
+  const m = model({ lukMs: 5, gammelComplete: { efter: 1, getMs: 120 } });
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'beforeunload-blocked', `Stay tabt under et await: ${vis(r)}`);
 });
 
 // ── Kildeproeven: kun koordinatoren sender Page.handleJavaScriptDialog ───────────

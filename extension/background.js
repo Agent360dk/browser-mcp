@@ -515,7 +515,14 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   if (source.tabId) {
     debuggerAttached.delete(source.tabId);
     // #69 (1.30.3): en boks, koordinatoren kendte, er nu ukendt - ingen Closed kommer herfra.
-    dialogFaneMistet(source.tabId, reason === 'target_closed');
+    // R108 (Opus, maalt i Chrome): target_closed kommer OGSAA, naar fanen navigerer til chrome:// eller Chrome-butikken,
+    // og fanen lever. Chrome spoerges, foer fanen regnes som lukket.
+    const id = source.tabId;
+    if (reason === 'target_closed') {
+      Promise.resolve().then(() => chrome.tabs.get(id)).then((t) => dialogFaneMistet(id, !t), () => dialogFaneMistet(id, true));
+    } else {
+      dialogFaneMistet(id, false);
+    }
     if (reason && reason !== 'target_closed') {
       console.log(`[MCP] Debugger auto-detached from tab ${source.tabId} (reason: ${reason})`);
     }
@@ -766,14 +773,16 @@ function afvaebnDialog(tabId, grund) {
 // HAR sendt sin adresse (Stay, eller Leave med leave_page:true), ellers ingen. Dommen kommer KUN fra
 // Page.javascriptDialogClosed - aldrig fra svaret paa kommandoen (det var mutant M2's moenster, og mains handle_dialog).
 // Tilstand pr. fane: ejer (et navigate i gang), boks (en set, aaben boks), pendingUrl (en navigation, der kan
-// fuldfoere senere) og uafgjort (et tabs.update, Chrome endnu ikke har svaret paa, efter at loftet ramte).
+// fuldfoere senere), uafgjort (et tabs.update, Chrome endnu ikke har svaret paa, efter at loftet ramte) og udestaaende
+// (vores egne Page.handleJavaScriptDialog-kald, Chrome endnu ikke har svaret paa - CDP har intet dialog-id, saa et
+// forsinket svar rammer den boks, der staar der, naar det lander; R108 Astra 2).
 const NAV_FRISTER = { port: 8000, luk: 5000, loft: 25000 };
-const dialogFaner = new Map();   // tabId -> { ejer, boks, pendingUrl, uafgjort, ukendt, lukketFane }
+const dialogFaner = new Map();   // tabId -> { ejer, boks, pendingUrl, uafgjort, udestaaende, lukketFane }
 let naesteNavOp = 0;
 function dialogFane(tabId) {
   let s = dialogFaner.get(tabId);
   if (!s) {
-    s = { ejer: null, boks: null, pendingUrl: null, uafgjort: null, ukendt: false, lukketFane: false };
+    s = { ejer: null, boks: null, pendingUrl: null, uafgjort: null, udestaaende: new Set(), lukketFane: false };
     dialogFaner.set(tabId, s);
   }
   return s;
@@ -784,8 +793,15 @@ function dialogSvar(tabId, boks, accept, promptText, af) {
   boks.besvaretAf = af;
   boks.accept = accept;
   boks.svaretVed = Date.now();
-  cdpMedFrist(tabId, 'Page.handleJavaScriptDialog', { accept, promptText: promptText || '' })
-    .catch((e) => { boks.svarFejl = e?.message || String(e); });
+  // Kaldet holdes som udestaaende, til Chrome har svaret: indtil da kan det lande paa en ANDEN boks paa fanen (R108).
+  const s = dialogFane(tabId);
+  const svarId = {};
+  s.udestaaende.add(svarId);
+  let kald;
+  try { kald = Promise.resolve(chrome.debugger.sendCommand({ tabId }, 'Page.handleJavaScriptDialog', { accept, promptText: promptText || '' })); }
+  catch (e) { kald = Promise.reject(e); }
+  kald.catch((e) => { boks.svarFejl = e?.message || String(e); })
+    .finally(() => { s.udestaaende.delete(svarId); if (s.ejer && s.ejer.vaek) s.ejer.vaek(); });
 }
 
 function vaekDialogVentere(s, boks) {
@@ -801,7 +817,9 @@ function dialogKoordinator(source, method, p) {
     const boks = { type: String(p?.type || ''), message: String(p?.message ?? ''), url: p?.url ?? null,
       besvaretAf: null, ejer: s.ejer, armering: null, lukket: null };
     s.boks = boks;
-    s.ukendt = false;
+    // R108 (Opus): boksen registreres ogsaa paa ejeren, saa en boks, der aabner OG lukker, mens navigate venter paa et
+    // opslag, ikke gaar tabt.
+    if (s.ejer) s.ejer.bokse.push(boks);
     const a = armeredeDialoger.get(tabId);
     const gyldig = !!a && (a.udloeb == null || Date.now() < a.udloeb);
     if (gyldig) {
@@ -821,7 +839,8 @@ function dialogKoordinator(source, method, p) {
     const boks = s && s.boks;
     if (!boks) return;
     s.boks = null;
-    s.pendingUrl = null;
+    // Kun «Leave site?» afgoer en ventende navigation (Stay annullerer, Leave lader den fortsaette); en alert goer ikke.
+    if (boks.type === 'beforeunload') s.pendingUrl = null;
     boks.lukket = { result: p?.result === true };
     clearTimeout(boks.armUr);
     if (boks.armering && boks.armering.opfyld) {
@@ -840,7 +859,8 @@ function dialogFaneMistet(tabId, fanenLukket) {
   if (!s) return;
   const boks = s.boks;
   s.boks = null;
-  s.ukendt = true;
+  // Svar, der var undervejs, kan ikke lande laengere (debuggeren er vaek); porten afgoer naeste kald.
+  s.udestaaende.clear();
   if (fanenLukket) { s.lukketFane = true; dialogFaner.delete(tabId); }
   if (boks) {
     boks.mistet = fanenLukket ? 'tab-closed' : 'debugger-detached';
@@ -866,6 +886,12 @@ function venteMedFrist(loefte, ms) {
 
 // handle_dialog paa en set, aaben boks: svar nu gennem koordinatoren og vent paa Chromes Closed (5 s).
 async function besvarAabenBoks(tabId, boks, action, promptText) {
+  const sf = dialogFaner.get(tabId);
+  if (!boks.besvaretAf && sf && sf.udestaaende.size) {
+    return { ok: false, error: 'dialog-being-answered', ...dialogFelter(boks), answered_by: 'an earlier answer',
+      note: 'An earlier answer to a dialog on this tab has not been confirmed by Chrome yet, and it would land on this ' +
+        'dialog. Wait a moment, then look at the tab before you act again.' };
+  }
   // Et svar uden Closed efter fristen er ikke «under besvarelse» laengere - det er ubekraeftet, og intet sendes igen.
   if (boks.besvaretAf && Date.now() - boks.svaretVed >= NAV_FRISTER.luk) return dialogUbekraeftet(boks);
   if (boks.besvaretAf) {
@@ -905,7 +931,7 @@ const NAV_NOTER = {
     'browser_navigate again with leave_page: true.',
   'navigation-unconfirmed': 'The address was sent, but no load was proven in time. The navigation may still complete ' +
     'later (pending_url). Do not send it again blindly: read the tab first (browser_list_tabs or browser_get_page_content).',
-  'tab-closed': 'The tab was closed while the navigation was in progress.',
+  'tab-closed': 'The tab was closed while the navigation was in progress (Chrome no longer has a tab with this id).',
 };
 
 async function navigerIFanen(port, session, tab, params) {
@@ -918,8 +944,13 @@ async function navigerIFanen(port, session, tab, params) {
   if (s.uafgjort) {
     return rens(svar('navigation-in-progress', { sent: false, op_id: s.uafgjort.opId, pending_url: s.uafgjort.url, may_complete_later: true }));
   }
+  // R108 (Astra 2): et af vores egne dialogsvar er stadig undervejs - det kunne lande paa denne navigations boks.
+  if (s.udestaaende.size) {
+    return rens(svar('navigation-in-progress', { sent: false, op_id: null, pending_url: s.pendingUrl,
+      detail: 'an earlier answer to a dialog on this tab has not been confirmed by Chrome yet' }));
+  }
   // Trin 1: ejerskab tages synkront, foer foerste await.
-  const ejer = { opId: 'nav-' + (++naesteNavOp), sent: false, url, leave: params.leave_page === true, vaek: null };
+  const ejer = { opId: 'nav-' + (++naesteNavOp), sent: false, url, leave: params.leave_page === true, vaek: null, bokse: [] };
   s.ejer = ejer;
   try {
     return rens(await navigerSomEjer(port, session, tab, url, s, ejer, svar));
@@ -959,9 +990,10 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
     }
     if (s.lukketFane) return svar('tab-closed', { sent: false });
     if (r === FRIST_UDLOEB) {
+      // R108 (Opus): en boks, koordinatoren saa aabne, mens porten ventede, er forklaringen - sig det.
+      if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
       return svar('tab-not-responding', { sent: false, ...(s.pendingUrl ? { pending_url: s.pendingUrl } : {}) });
     }
-    s.ukendt = false;
   }
 
   // R75/R76 (Astra, maalt i model): en 'complete' taeller kun, naar navigationen er set begynde ('loading'), den gamle side
@@ -971,7 +1003,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   if (s.lukketFane || !foer) return svar('tab-closed', { sent: false });
   // Trin 5: en boks, der aabnede, mens porten ventede, eller lige efter - sidste tjek foer afsendelsen, i samme tur.
   if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
-  const obs = { loading: false, completes: 0, completeUrl: '', gammelKlar: foer.status === 'complete' };
+  const obs = { loading: false, completes: 0, completeUrl: '', gammelKlar: foer.status === 'complete', gammelUrl: String(foer.url || '') };
   const awaitingRealUrl = !url.startsWith('about:');
   let vaekker = null;
   const vaek = () => { const v = vaekker; vaekker = null; if (v) v(); };
@@ -982,6 +1014,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   });
   ejer.vaek = vaek;
   let minBoks = null;
+  let bevist = false;
   const opd = (tabId, info, t) => {
     if (tabId !== tab.id) return;
     if (info.status === 'loading') obs.loading = true;
@@ -1000,35 +1033,47 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
     let tjekket = 0;
     for (;;) {
       if (s.lukketFane) return svar('tab-closed', { sent: true });
-      // Trin 7-8: en boks, der aabnede, efter at adressen var sendt. Koordinatoren har allerede valgt svareren.
-      if (s.boks && s.boks.ejer === ejer) minBoks = s.boks;
+      // Trin 7-8: en boks, der aabnede, efter at adressen var sendt. Koordinatoren har allerede valgt svareren og lagt
+      // boksen paa ejeren - ogsaa en boks, der aabnede og lukkede, mens loekken ventede paa et opslag.
+      if (ejer.bokse.length) minBoks = ejer.bokse[ejer.bokse.length - 1];
+      const stay = ejer.bokse.find((b) => b.type === 'beforeunload' && b.lukket && b.lukket.result === false);
+      if (stay) {
+        const nu = await chrome.tabs.get(tab.id).catch(() => null);
+        return svar('beforeunload-blocked', { sent: true, url: nu?.url ?? null, answered_by: stay.besvaretAf });
+      }
       if (minBoks && !minBoks.lukket) {
-        if (minBoks.mistet) return dialogUbekraeftet(minBoks, { sent: true, tab_id: tab.id, requested_url: url, pending_url: url });
+        // R108 (Astra 6): den ventende adresse gemmes ved hver uafklaret afgang med sent:true.
+        if (minBoks.mistet) { s.pendingUrl = url; return dialogUbekraeftet(minBoks, { sent: true, tab_id: tab.id, requested_url: url, pending_url: url }); }
         if (!minBoks.besvaretAf) {
+          s.pendingUrl = url;
           return svar('dialog-open', { __note: 'dialog-open-sent', sent: true, ...dialogFelter(minBoks), pending_url: url,
             url: (await chrome.tabs.get(tab.id).catch(() => null))?.url ?? null });
         }
-        const rest = minBoks.svaretVed + NAV_FRISTER.luk - Date.now();
-        if (rest <= 0) return dialogUbekraeftet(minBoks, { sent: true, tab_id: tab.id, requested_url: url, pending_url: url });
+        // R108 (Astra 3): ventetiden paa Closed er ogsaa inden for det samlede loft.
+        const rest = Math.min(minBoks.svaretVed + NAV_FRISTER.luk, slut) - Date.now();
+        if (rest <= 0) {
+          s.pendingUrl = url;
+          return dialogUbekraeftet(minBoks, { sent: true, tab_id: tab.id, requested_url: url, pending_url: url,
+            ...(Date.now() >= slut ? { may_complete_later: true } : {}) });
+        }
         await sov(rest);
         continue;
       }
-      if (minBoks && minBoks.lukket && minBoks.lukket.result === false && minBoks.type === 'beforeunload') {
-        const nu = await chrome.tabs.get(tab.id).catch(() => null);
-        return svar('beforeunload-blocked', { sent: true, url: nu?.url ?? null, answered_by: minBoks.besvaretAf });
-      }
-      // Trin 9: bevist indlaesning.
+      // Trin 9: bevist indlaesning. R108 (Astra 1): den gamle sides 'complete' med den gamle adresse er intet bevis, og
+      // succes kraever et tabs.update, Chrome har taget imod (ikke afvist, ikke stadig ubesvaret).
       if (obs.completes > tjekket) {
         tjekket = obs.completes;
         const nu = await chrome.tabs.get(tab.id).catch(() => null);
         if (!nu) return svar('tab-closed', { sent: true });
-        const indlaest = !awaitingRealUrl || (nu.status === 'complete' && !String(nu.url || '').startsWith('about:blank'));
-        const nyNok = obs.loading || obs.gammelKlar || obs.completeUrl === url || String(nu.url || '') === url;
-        if (indlaest && nyNok) break;
+        const nuUrl = String(nu.url || '');
+        const indlaest = !awaitingRealUrl || (nu.status === 'complete' && !nuUrl.startsWith('about:blank'));
+        const nyNok = obs.loading || obs.completeUrl === url || nuUrl === url || (obs.gammelKlar && nuUrl !== obs.gammelUrl);
+        if (indlaest && nyNok) bevist = true;
         continue;
       }
       // Trin 6: Chrome afviste adressen, foer nogen boks aabnede.
       if (upd.status === 'afvist' && !minBoks) return svar('navigation-failed', { sent: false, detail: upd.fejl });
+      if (bevist && upd.status === 'ok') break;
       // Trin 10: loftet.
       const rest = slut - Date.now();
       if (rest <= 0) {
@@ -1054,8 +1099,11 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   session.activeTabId = tab.id;
   persistSessions();
   const updated = await chrome.tabs.get(tab.id);
-  const captcha = await detectCaptcha(tab.id);
+  // R108 (Astra 3): CAPTCHA-kontrollen ligger inden for loftet. Naar den ikke naar frem, siger svaret det - ellers ville
+  // en oversprunget kontrol ligne «ingen CAPTCHA».
+  const captcha = await venteMedFrist(detectCaptcha(tab.id), slut - Date.now());
   const result = { ok: true, title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
+  if (captcha === FRIST_UDLOEB) result.captcha_checked = false;
   if (minBoks) { result.answered_by = minBoks.besvaretAf; result.dialog_type = minBoks.type; }
   if (captcha && captcha.found) {
     result.captcha_detected = captcha.types.join(', ');
@@ -6403,6 +6451,9 @@ async function dispatch(port, method, params) {
       // Ghost-attach recovery without full extension reload: force detach + fresh attach.
       const tab = await getSessionTab(port);
       try { await chrome.debugger.detach({ tabId: tab.id }); } catch {}
+      // R108 (Astra 4): Chrome sender intet onDetach for vores egen frakobling, saa dialogtilstanden ugyldiggoeres her.
+      debuggerAttached.delete(tab.id);
+      dialogFaneMistet(tab.id, false);
       await new Promise(r => setTimeout(r, 150));
       await debuggerAttach(tab.id);
       return { ok: true, reattached: true, tab_id: tab.id };
@@ -6681,15 +6732,24 @@ async function dispatch(port, method, params) {
       if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
 
       await debuggerAttach(tab.id);
+      // R108 (Astra 5): en boks, koordinatoren saa aabne under tilknytningen, besvares nu - porten ville haenge bag den.
+      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
       // #69 (MAALT 13/10 i headless Chrome): staar en boks allerede aaben, svarer fanen ikke, og her kom Chromes noegne
       // «CDP did not respond within 8000 ms: Page.enable». En boks, der kom frem foer nogen lyttede, kan ikke besvares
       // gennem CDP - svaret siger det, og hvad der kan goeres.
+      let portFejl = null;
       try {
         // 1.30.3: samme port som navigate - Page.enable inden for NAV_FRISTER.port, ellers svarer fanen ikke.
         const r = await venteMedFrist(cdpSend(tab.id, 'Page.enable', {}), NAV_FRISTER.port);
         if (r === FRIST_UDLOEB) throw cdpFristFejl(`CDP did not respond within ${NAV_FRISTER.port} ms: Page.enable`);
       } catch (e) {
         if (!erCdpFrist(e)) throw e;
+        portFejl = e;
+      }
+      // R108 (Astra 5): ogsaa naar porten loeb ud - en boks, der blev kendt imens, er grunden, og den kan besvares.
+      if (portFejl && s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (portFejl) {
+        const e = portFejl;
         return { ok: false, error: 'tab-not-responding', detail: e.message,
           note: 'Chrome did not answer on this tab. A common cause is a dialog that is already open - an alert, a confirm or ' +
                 'a "Leave site?" prompt that appeared before anything was listening. Such a dialog cannot be answered from ' +
