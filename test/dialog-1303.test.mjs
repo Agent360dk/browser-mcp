@@ -674,13 +674,26 @@ test('R108-A4: reattach_debugger glemmer en boks, den ikke kan se laengere - nae
 test('R108-A5a: handle_dialog ser en boks, der blev kendt under tilknytningen, og besvarer den', async () => {
   const m = model({ attachMs: 40 });
   await m.enable();
+  const t0 = Date.now();
   const p = fang(m.dialog({ action: 'dismiss' }));
   await sov(10);
   m.sidenNavigerer('https://siden-selv.example/');
   const h = await p;
   assert.equal(h.ok, true, `kendt boks oversprunget: ${vis(h)}`);
+  assert.ok(Date.now() - t0 < FRISTER.port, 'boksen skal besvares straks efter tilknytningen, ikke efter portens frist');
   assert.equal(h.action, 'dismiss');
   assert.equal(m.svar().length, 1);
+});
+
+test('R108: en kendt boks besvares uden at vente paa debuggerens tilknytning (den kan tage ~1,5 s)', async () => {
+  const m = model({ attachMs: 400 });
+  await m.enable();
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const t0 = Date.now();
+  const h = await fang(m.dialog({ action: 'dismiss' }));
+  assert.equal(h.ok, true, vis(h));
+  assert.ok(Date.now() - t0 < 300, `ventede paa tilknytningen: ${Date.now() - t0} ms`);
 });
 
 test('R108-A5b: handle_dialog, hvis port loeber ud, mens en boks blev kendt, besvarer boksen', async () => {
