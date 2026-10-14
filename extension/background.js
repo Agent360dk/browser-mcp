@@ -866,6 +866,8 @@ function venteMedFrist(loefte, ms) {
 
 // handle_dialog paa en set, aaben boks: svar nu gennem koordinatoren og vent paa Chromes Closed (5 s).
 async function besvarAabenBoks(tabId, boks, action, promptText) {
+  // Et svar uden Closed efter fristen er ikke «under besvarelse» laengere - det er ubekraeftet, og intet sendes igen.
+  if (boks.besvaretAf && Date.now() - boks.svaretVed >= NAV_FRISTER.luk) return dialogUbekraeftet(boks);
   if (boks.besvaretAf) {
     return { ok: false, error: 'dialog-being-answered', ...dialogFelter(boks), answered_by: boks.besvaretAf,
       note: boks.besvaretAf === 'navigate'
@@ -935,6 +937,8 @@ function rens(r) {
 
 async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   const slut = Date.now() + NAV_FRISTER.loft;
+  // En ventende adresse, fanen allerede staar paa, venter ikke laengere.
+  if (s.pendingUrl && String(tab.url || '') === s.pendingUrl) s.pendingUrl = null;
   // Trin 2: lytteren kender en aaben boks.
   if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
 
@@ -958,8 +962,6 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
       return svar('tab-not-responding', { sent: false, ...(s.pendingUrl ? { pending_url: s.pendingUrl } : {}) });
     }
     s.ukendt = false;
-    // Trin 5: en boks, der aabnede, mens porten ventede.
-    if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
   }
 
   // R75/R76 (Astra, maalt i model): en 'complete' taeller kun, naar navigationen er set begynde ('loading'), den gamle side
@@ -967,6 +969,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar) {
   // Haendelserne opfanges fra foer afsendelsen, saa en side fra cachen, samme adresse eller et fragment ikke venter.
   const foer = await chrome.tabs.get(tab.id).catch(() => null);
   if (s.lukketFane || !foer) return svar('tab-closed', { sent: false });
+  // Trin 5: en boks, der aabnede, mens porten ventede, eller lige efter - sidste tjek foer afsendelsen, i samme tur.
   if (s.boks) return svar('dialog-open', { sent: false, ...dialogFelter(s.boks), pending_url: s.pendingUrl });
   const obs = { loading: false, completes: 0, completeUrl: '', gammelKlar: foer.status === 'complete' };
   const awaitingRealUrl = !url.startsWith('about:');

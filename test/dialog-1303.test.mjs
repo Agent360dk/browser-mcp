@@ -511,6 +511,28 @@ test('handle_dialog: en boks, navigate er ved at besvare, giver dialog-being-ans
   assert.equal(m.svar().length, 1);
 });
 
+test('handle_dialog: en boks, hvis svar aldrig blev meldt lukket, er ubekraeftet - ikke «under besvarelse» for evigt', async () => {
+  const m = model({ lukkerAldrig: true });
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'dialog-unconfirmed', vis(r));
+  const h = await fang(m.dialog({ action: 'accept' }));
+  assert.equal(h.error, 'dialog-unconfirmed', vis(h));
+  assert.equal(m.svar().length, 1, 'intet sendes igen');
+});
+
+test('pending_url: en ventende adresse, fanen siden er kommet til, vises ikke som ventende', async () => {
+  const m = model({ beskyt: false });
+  m.u.hent('dialogFaner').get(1) || m.u.hent('dialogFaner').set(1, { ejer: null, boks: null, pendingUrl: null, uafgjort: null, ukendt: false, lukketFane: false });
+  m.u.hent('dialogFaner').get(1).pendingUrl = GAMMEL;   // fanen staar allerede paa den
+  await m.enable();
+  m.t.beskyt = true;
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'dialog-open', vis(r));
+  assert.equal(r.pending_url, null, vis(r));
+});
+
 test('handle_dialog: dommen kommer fra Closed - kvitteret uden lukning er dialog-unconfirmed, ikke ok:true', async () => {
   const m = model({ lukkerAldrig: true });
   await m.enable();
