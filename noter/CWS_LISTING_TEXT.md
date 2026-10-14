@@ -230,7 +230,8 @@ keys, hover, double-click, right-click, click by coordinate, type into a
 combobox, or fill a field found by its visible text - Chrome does not deliver
 mouse and keyboard events to a tab that is not the visible one in its window.
 When one of those is needed, the tool says so instead of failing silently,
-and the agent can bring the tab in front of you with browser_switch_tab. This is a Chrome limitation, not a bug we
+and, after asking you, the agent can bring the tab and Chrome in front of you with browser_switch_tab
+(bring_to_front). Without that, Chrome stays where it is. This is a Chrome limitation, not a bug we
 are about to fix.
 
 MIT licensed, source at https://github.com/Agent360dk/browser-mcp

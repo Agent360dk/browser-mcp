@@ -150,3 +150,14 @@ test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkt
   assert.match(afsnit, /If it still does not land, Chrome itself is probably not in front: browser_switch_tab no longer brings it forward, so ask the user \(browser_ask_user\) and only then call browser_switch_tab with bring_to_front: true/);
   assert.match(afsnit, /If it still fails, ask the user before browser_switch_tab with bring_to_front: true/);
 });
+
+// R103 (Astra + Opus): README og fejlfindingssiden kaldte et fokuskrav «measured», mens tools.js siger at input til den aktive
+// fane i et ufokuseret vindue er umaalt. Ingen flade maa igen paastaa det som maalt.
+test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er umaalt', () => {
+  for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-troubleshooting.md']) {
+    const t = readFileSync(join(rod, f), 'utf8').replace(/\s+/g, ' ');
+    assert.doesNotMatch(t, /operating system's focus \(both measured/, `${f} kalder fokuskravet maalt`);
+    assert.doesNotMatch(t, /needs the tab to be the visible one in a window that has the operating system's focus/, `${f} gør OS-fokus til et krav`);
+    assert.match(t, /without the operating system's focus is unmeasured in desktop Chrome/, `${f} siger ikke at fokus-tilfaeldet er umaalt`);
+  }
+});
