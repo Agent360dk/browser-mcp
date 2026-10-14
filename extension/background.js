@@ -5125,10 +5125,21 @@ async function dispatch(port, method, params) {
         // Er budgettet brugt, er der ikke tid til en runde med haevet vindue foer serverens 30 s. (haevMs ovenfor er netop
         // den tid der blev holdt fri til den her runde.)
         if (budgetSlut - Date.now() <= 0) throw firstErr;
+        // 14/10 (Gustav: «den bliver ved med at tage min computer»): loeftningen nedenfor gav kun fokus tilbage til et
+        // ANDET Chrome-vindue - sad han i VS Code, blev Chrome staaende foran ham. Den sker nu kun med bring_to_front: true.
+        if (params.bring_to_front !== true) {
+          return {
+            ok: false, error: 'window-covered', detail: String(firstErr?.message || firstErr),
+            note: 'Chrome produced no picture, which usually means its window is covered by other windows or minimized. ' +
+              'The screenshot was not taken, so as not to pull Chrome in front of the user. Read the page with ' +
+              'browser_get_page_content instead. Only if the user agrees (ask with browser_ask_user), call again with ' +
+              'bring_to_front: true: Chrome is then raised for the picture and stays in front.',
+          };
+        }
         // Both methods failed → the window is genuinely OCCLUDED (covered by other windows),
         // so Chrome\'s compositor produced no frames. LAST RESORT ONLY: raise the window to
         // de-occlude it, capture, then RESTORE the user\'s previously-focused window. This
-        // focus-steal happens ONLY in the rare covered case — never on a normal screenshot.
+        // focus-steal happens ONLY in the covered case, and only when the caller asked for it (bring_to_front).
         const prev = await chrome.windows.getLastFocused().catch(() => null);
         try {
           await chrome.windows.update(tab.windowId, { focused: true, state: 'normal' });
@@ -6956,25 +6967,57 @@ async function dispatch(port, method, params) {
       if (!session.tabIds.has(params.tab_id)) {
         throw new Error(`Tab ${params.tab_id} does not belong to this session (${session.label})`);
       }
-      const tab = await chrome.tabs.update(params.tab_id, { active: true });
-      // Gør ogsaa VINDUET forrest. Uden det bliver fanen aktiv inde i sit vindue —
-      // document.hasFocus() bliver sand — men document.visibilityState forbliver
-      // 'hidden' fordi vinduet ligger bagved. Chrome struber timere i skjulte
-      // faner, saa Angular-apps (Google Ads, GA4, Search Console) renderer aldrig
-      // faerdigt: man laeser en halvt bygget side og drager forkerte konklusioner.
-      // Kostede to opgaver og en forkert konklusion 31/8-2026.
-      let vinduesFokus = null;
-      try {
-        await chrome.windows.update(tab.windowId, { focused: true });
-        vinduesFokus = true;
-      } catch (e) {
-        // Vinduet kan vaere lukket eller paa et andet Space. Fanen er stadig
-        // aktiv; vi siger bare aerligt at synligheden ikke kunne sikres.
-        vinduesFokus = false;
+      // 14/10 (Gustav: «den bliver ved med at tage min computer»): MAALT i transskripterne - to underagenter kaldte
+      // switch_tab 125 gange paa 8 minutter, og hvert kald hev Chrome frem foran det program han arbejdede i. Vinduet
+      // tages derfor KUN frem med bring_to_front: true. Fanen goeres aktiv i sit vindue, saa den kan modtage mus og taster -
+      // men aldrig i det vindue brugeren selv sidder i: dér ville det skifte fanen under hans oejne.
+      // 31/8-laeren staar ved magt: et tildaekket vindue er 'hidden', og Chrome struber dets timere. Svaret siger det
+      // derfor (visibility), i stedet for at tage skaermen for at undgaa det.
+      const foran = params.bring_to_front === true;
+      let tab = await chrome.tabs.get(params.tab_id);
+      const vindue = await chrome.windows.get(tab.windowId).catch(() => null);
+      const brugerensVindue = !!(vindue && vindue.focused);
+      let aktiv = tab.active === true;
+      if (!aktiv && (foran || !brugerensVindue)) {
+        tab = (await chrome.tabs.update(tab.id, { active: true })) || tab;
+        aktiv = true;
+      }
+      let vinduesFokus = null;   // null = ikke forsoegt
+      if (foran) {
+        try {
+          await chrome.windows.update(tab.windowId, { focused: true });
+          vinduesFokus = true;
+        } catch (e) {
+          // Vinduet kan vaere lukket eller paa et andet Space. Fanen er stadig aktiv;
+          // svaret siger aerligt at den ikke kunne bringes frem.
+          vinduesFokus = false;
+        }
       }
       session.activeTabId = tab.id;
       persistSessions();
-      return { id: tab.id, url: tab.url, title: tab.title, windowFocused: vinduesFokus };
+      let synlighed = null;
+      try {
+        const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.visibilityState });
+        synlighed = r?.result ?? null;
+      } catch { /* en side scripts ikke maa naa (chrome://, butikken): synligheden er ukendt */ }
+      const svar = { id: tab.id, url: tab.url, title: tab.title, active: aktiv, windowFocused: vinduesFokus, visibility: synlighed };
+      // Husets maaling (README «The agent keeps pulling a tab in front of me»): taster, hover, koordinatklik og udfyldning
+      // af et felt fundet ved tekst lander kun, naar Chrome har styresystemets fokus. Uden den saetning sender vaerktoejernes
+      // «call browser_switch_tab and try again» agenten i ring.
+      if (!aktiv) {
+        svar.note = 'The user is working in this Chrome window, so the tab was not brought forward there. The other tools ' +
+          'still act on it in the background. Only if the user agrees (ask with browser_ask_user), call again with bring_to_front: true.';
+      } else if (vinduesFokus !== true) {
+        svar.note = (synlighed === 'hidden'
+          ? 'The page is hidden (its window is covered or minimized), and Chrome slows timers in hidden pages, so a page ' +
+            'that is still building can be read half-done: wait for the content you need with browser_wait. '
+          : '') +
+          'Chrome was left where it is, not brought in front of the user. Navigating, reading, screenshots, scripts and ' +
+          'clicks by selector work like this; key presses, hover, coordinate clicks and fields found by text only land ' +
+          'while Chrome is in front. If one of those still answers that nothing landed, ask the user (browser_ask_user) ' +
+          'and only then call again with bring_to_front: true.';
+      }
+      return svar;
     }
 
     case 'close_tab': {

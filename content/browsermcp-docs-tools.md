@@ -21,7 +21,7 @@ The list below is what the client has to choose from.
 |---|---|
 | `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
-| `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. |
+| `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. A window covered by other windows answers `window-covered`; Chrome is raised only with `bring_to_front: true`. |
 | `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
 | `browser_extract_list` | Read the rows of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. In the active tab it scrolls with real wheel events, also at the bottom, so feeds that load on wheel (Threads, X) load; a hidden page (a background tab) gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false. `reached_end` is true only when the list stood at its bottom with nothing new for several rounds. Rows with the same text come back once, so compare the count with what the page says. |
 
@@ -49,7 +49,7 @@ The list below is what the client has to choose from.
 | Tool | Description |
 |---|---|
 | `browser_list_tabs` | List the current session's own open tabs (URL + title) - each concurrent session has its own tab group and can't see another session's tabs. |
-| `browser_switch_tab` | Activate a specific tab by ID. |
+| `browser_switch_tab` | Activate a specific tab by ID, without bringing Chrome in front of you (only `bring_to_front: true` does). |
 | `browser_close_tab` | Close a tab by ID (session-owned tabs only). |
 | `browser_get_new_tab` | Return the most recently opened tab - useful after a link opens a new tab or an OAuth popup. |
 | `browser_list_frames` | List all iframes on the current page with URL and index. |

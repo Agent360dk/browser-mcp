@@ -185,8 +185,11 @@ In a tab you are not looking at, the agent can navigate, read, screenshot, run s
 and fill a field it finds by CSS selector. Chrome does not deliver mouse and keyboard events to a
 tab that is not the visible one in its window, so key presses, hover, double-click, right-click,
 coordinate clicks, combobox typing, and filling a field found by its *text* all fail with an error
-that says so. The agent will then call `browser_switch_tab`, which brings that tab and its window
-in front of you.
+that says so. The agent can then call `browser_switch_tab`, which makes that tab the active one in
+its window, but since 1.30.2 it does not bring Chrome in front of you, and it does not switch the tab
+in a Chrome window you are working in. Input that needs Chrome in front then still fails, and the
+agent asks you first: only with `bring_to_front: true` does Chrome come forward. A screenshot of a
+window covered by other windows likewise answers `window-covered` instead of raising Chrome.
 
 Those tools measure whether the page actually received the event rather than trusting Chrome's
 acknowledgement, so a background tab produces an honest failure instead of a silent one.
@@ -232,7 +235,7 @@ All three are optional. None is needed for normal use.
 |------|-------------|
 | `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`) |
 | `browser_get_page_content` | Get page text or HTML |
-| `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused) |
+| `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused; a covered window answers `window-covered`) |
 | `browser_execute_script` | Run JavaScript in page context |
 | `browser_extract_list` | Read the rows of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a hidden page (a background tab) a list that loads while scrolling stops early, and `reached_end` is false |
 
@@ -259,7 +262,7 @@ All three are optional. None is needed for normal use.
 | Tool | Description |
 |------|-------------|
 | `browser_list_tabs` | List session's tabs only |
-| `browser_switch_tab` | Switch to tab by ID |
+| `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
 | `browser_close_tab` | Close tab (session-owned only) |
 | `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
 | `browser_list_frames` | List iframes on page |

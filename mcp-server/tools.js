@@ -53,11 +53,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; when Chrome reports them in time, the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need.',
+    description: 'Take a screenshot of the visible area of the current tab. Returns base64 PNG, or saves to disk if path is provided. The image is in device pixels; when Chrome reports them in time, the answer also gives the CSS viewport size and devicePixelRatio, which browser_click_xy coordinates need. Chrome stays where it is: if its window is covered by other windows, there is no picture and the answer is error "window-covered".',
     inputSchema: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path to save the screenshot to (e.g. /path/to/screenshot.png)' },
+        bring_to_front: { type: 'boolean', description: 'Raise Chrome in front of the user if its window is covered, and leave it there. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
     },
   },
@@ -407,11 +408,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_switch_tab',
-    description: 'Switch to a specific browser tab by ID. Get tab IDs from browser_list_tabs or browser_get_new_tab.',
+    description: 'Switch to a specific browser tab by ID. Get tab IDs from browser_list_tabs or browser_get_new_tab. The other tools then act on that tab. Chrome is not brought in front of the user: the tab is made active in its own window (not in the window the user is working in, answer active: false), and visibility says whether the page is hidden behind other windows.',
     inputSchema: {
       type: 'object',
       properties: {
-        tab_id: { type: 'number', description: 'Tab ID to activate' },
+        tab_id: { type: 'number', description: 'Tab ID to switch to' },
+        bring_to_front: { type: 'boolean', description: 'Also bring the Chrome window in front of the user. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
       required: ['tab_id'],
     },

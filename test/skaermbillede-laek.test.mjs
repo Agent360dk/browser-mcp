@@ -35,7 +35,9 @@ function sele({ agentFaneAktiv, cdp } = {}) {
 test('agentens fane er ikke synlig - der leveres INTET billede af en anden fane', async () => {
   const u = sele({ agentFaneAktiv: false });
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
-  assert.ok(svar.fejl, 'der skal kastes, ikke returneres et billede');
+  // 14/10: uden bring_to_front er svaret window-covered i stedet for en undtagelse - stadig intet billede.
+  assert.ok(svar.fejl || svar.error === 'window-covered', `intet fejlsvar: ${JSON.stringify(svar).slice(0, 160)}`);
+  assert.equal(svar.image, undefined, 'der maa ikke returneres et billede');
   assert.doesNotMatch(JSON.stringify(svar), /BRUGERENS_AKTIVE_FANE/, 'en anden fanes pixels maa aldrig naa kalderen');
   assert.equal(u.optager.antal('tabs.captureVisibleTab'), 0);
 });
@@ -47,6 +49,8 @@ test('heller ikke naar agentens fane ER den synlige - et skift imellem kan ikke 
     'captureVisibleTab maa ikke bruges: to tjek beviser ikke hvilken fane der var synlig ved optagelsen');
 });
 
+// 14/10: den haevede runde koeres kun med bring_to_front: true (Gustav: «den bliver ved med at tage min computer»).
+// Proeverne nedenfor maaler den runde og beder derfor om den; standarden uden proeves sidst i filen.
 // MAALT 11/9 af Fable (e2e-review): haenger BEGGE optagelser, haevede 1.29.0 vinduet og leverede et billede efter 16,7 s.
 // HEAD gav op efter 26 s uden at proeve, fordi en frist afskar den sidste udvej. Budgettet reserverer nu plads til én
 // haevet runde (haevMs), saa den kan naa at levere inden for serverens 30 s.
@@ -63,7 +67,7 @@ test('haenger begge optagelser: vinduet haeves som sidste udvej, og billedet naa
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 4000, haevMs: 1500 });
   const opdater = u.chrome.windows.update;
   u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /HAEVET/, `intet billede fra den haevede runde: ${JSON.stringify(svar).slice(0, 160)}`);
   assert.ok(u.optager.antal('windows.update') >= 1, 'vinduet blev aldrig haevet');
 });
@@ -90,7 +94,7 @@ test('den haevede runde: reserven faar den tid der er tilbage, ikke nul', async 
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 2500, haevMs: 1500 });
   const opdater = u.chrome.windows.update;
   u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /RESERVE-EFTER-HAEVNING/, `reserven i den haevede runde fik ingen tid: ${JSON.stringify(svar).slice(0, 200)} (${kald.join(', ')})`);
 });
 
@@ -105,7 +109,7 @@ test('den haevede runde: en gentilslutning der aldrig svarer, maa ikke haenge ka
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 3000, haevMs: 1000 });
   const opdater = u.chrome.windows.update;
   u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl, `vaerktoejet svarede ikke med en fejl: ${JSON.stringify(svar).slice(0, 160)}`);
 });
 
@@ -120,7 +124,7 @@ test('den haevede runde: en optagelse der allerede loeb, taeller stadig med', as
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 4000, haevMs: 1500 });
   const opdater = u.chrome.windows.update;
   u.chrome.windows.update = (...a) => { haevet = true; svarPaaFoerste.forEach((f) => f()); return opdater(...a); };
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /FOERSTE-(STANDARD|RESERVE)/, `billedet fra de igangvaerende optagelser blev smidt vaek: ${JSON.stringify(svar).slice(0, 200)}`);
 });
 
@@ -141,7 +145,7 @@ test('den haevede runde: et frisk billede slaar et gammelt, forsinket et', async
   const opdater = u.chrome.windows.update;
   // Haevningen aendrer hvad der staar paa skaermen - og lige dér svarer de gamle optagelser med det GAMLE indhold.
   u.chrome.windows.update = (...a) => { haevet = true; svarPaaFoerste.forEach((f) => f()); return opdater(...a); };
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /EFTER-HAEVNINGEN/,
     `et forældet billede fra foer haevningen blev leveret: ${JSON.stringify(svar).slice(0, 200)}`);
 });
@@ -157,7 +161,7 @@ test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - og hoejs
     }
     return {};
   } });
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl, `en frist er ingen succes: ${JSON.stringify(svar).slice(0, 120)}`);
   assert.deepEqual(kald.slice(0, 2), ['standard', 'reserve'], 'efter en frist skal fromSurface:false proeves');
   // 11/9 (Fable): den haevede runde er sidste udvej og gav i 1.29.0 et billede paa en tildaekket skaerm. Den maa koere
@@ -177,7 +181,7 @@ test('efter en frist koeres den haevede runde én gang - og ikke flere', async (
     if (p?.fromSurface === false) throw new Error('Unable to capture screenshot: image readback failed');
     throw new Error('CDP svarede ikke inden 10000 ms: Page.captureScreenshot');
   } });
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl, 'alle veje fejlede - der er intet billede');
   assert.deepEqual(kald, ['standard', 'reserve', 'standard', 'reserve'], `optagelserne var: ${kald.join(', ')}`);
   assert.ok(u.optager.antal('windows.update') <= 2, 'hoejst én haevning plus gendannelsen af brugerens vindue');
@@ -194,7 +198,7 @@ test('en langsom standardoptagelse kasseres ikke ved fristen, naar reserven fejl
   } });
   // Skaleret 1:100 - standardbilledet kommer efter 11 s, fristen er 10 s, budgettet 26 s.
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 100, samletMs: 260 });
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /STANDARD/, `standardbilledet blev kasseret: ${JSON.stringify(svar).slice(0, 160)}`);
 });
 
@@ -217,7 +221,7 @@ test('er budgettet naesten brugt, startes runden med haevet vindue ikke', async 
   // maskine, saa den ene side af paastanden kan ikke vendes. Og 300 ms ligger 700 ms fra
   // foerste frist, saa fejl-vejen tages, ikke frist-vejen.
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 1000, samletMs: 200, haevMs: 0 });
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.ok(svar.fejl);
   assert.equal(u.optager.antal('windows.update'), 0, 'vinduet blev haevet uden tid tilbage til en optagelse');
 });
@@ -235,7 +239,7 @@ test('haenger standardoptagelsen og kobler foerst fra sent, naar reserven frem f
   // Skaleret med rigelig margin: fristen (400) rammer laenge foer afkoblingen (1500), og budgettet (3000) er stort nok
   // til at kun raekkefoelgen afgoer udfaldet - ikke hvor travlt maskinen har.
   u.ctx.skaermbilledeFrister = () => ({ foersteMs: 400, samletMs: 3000, haevMs: 1000 });
-  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /RESERVE/, `intet billede fra reserven: ${JSON.stringify(svar).slice(0, 160)}`);
   assert.equal(u.optager.antal('windows.update'), 0, 'reserven svarede - der er ingen grund til at haeve vinduet');
 });
@@ -287,4 +291,25 @@ test('fristen rammer ikke kald der lovligt tager tid', async () => {
   assert.equal(u.hent('cdpFrist')('Input.dispatchMouseEvent'), 1500, 'input-kald er dem der blev maalt til at haenge');
   assert.ok(u.hent('cdpFrist')('Page.captureScreenshot') >= 5000, 'et skaermbillede paa en tung side skal have lov at tage tid');
   assert.ok(u.hent('cdpFrist')('Runtime.evaluate') >= 5000, 'dialog-ventetider bruger 3.000 ms og maa ikke skaeres over');
+});
+
+// ── 14/10: standarden tager ikke skaermen ──────────────────────────────────────────────────────────────────────────
+// Gustav 14/10: «den bliver ved med at tage min computer». Den haevede runde gav kun fokus tilbage til et ANDET
+// Chrome-vindue; sad han i VS Code, blev Chrome staaende foran ham. Uden bring_to_front haeves intet.
+test('tildaekket vindue uden bring_to_front: window-covered, og Chrome roeres ikke', async () => {
+  let haevet = false;
+  const u = sele({ agentFaneAktiv: true, cdp: (_m, metode) => {
+    if (metode !== 'Page.captureScreenshot') return {};
+    return haevet ? { data: 'HAEVET' } : new Promise(() => {});
+  } });
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 4000, haevMs: 1500 });
+  const opdater = u.chrome.windows.update;
+  u.chrome.windows.update = (...a) => { haevet = true; return opdater(...a); };
+  const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
+  assert.equal(svar.error, 'window-covered', JSON.stringify(svar).slice(0, 200));
+  assert.match(svar.note, /bring_to_front: true/);
+  assert.match(svar.note, /browser_get_page_content/);
+  assert.equal(svar.image, undefined);
+  assert.equal(u.optager.antal('windows.update'), 0, 'Chrome blev hevet frem uden at nogen bad om det');
+  assert.ok(!u.optager.kald.some((k) => k.sti === 'tabs.update' && k.args?.[1]?.active === true), 'fanen blev skiftet');
 });

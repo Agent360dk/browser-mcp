@@ -711,7 +711,9 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
   same window, and yanking their tab away on every screenshot is worse than the alternative
 - The picture always comes from the debugger for YOUR tab. There is no fallback that photographs
   whichever tab happens to be visible, so if the debugger cannot produce a frame the call fails.
-  If the whole window is covered, it may be raised briefly as a last resort
+  If the whole window is covered, the answer is error "window-covered": Chrome is not pulled in
+  front of the user. Use browser_get_page_content, or ask the user before bring_to_front: true
+- browser_switch_tab does not bring Chrome forward either (bring_to_front: true does, with the user's consent)
 
 ## Text-based selectors (preferred for dynamic sites)
 - browser_click("text=Get started") - clicks any element containing "Get started"
@@ -749,7 +751,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 ## Hard inputs - use the specialised tools first
 - **Date inputs** → use browser_set_date (NOT browser_fill). Handles native date inputs, masked text inputs (MM/DD/YYYY etc.), AND calendar pickers (MUI, react-datepicker, AntD, Lexical/Meta). 3-path fallback with read-back verification.
 - **Autocomplete / combobox** (Languages on Meta Ads, country selects, async dropdowns) → use browser_set_combobox (NOT browser_select_option). Types partial query, waits for filtered listbox, clicks option. Supports multi-value chips.
-- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). It looks for a hidden input in the target, then up to 2 parent levels, and as a last resort takes the first file input on the page. If an upload answers file-access-off, follow its note.
+- **Drag-drop file zones without visible file input** → use browser_drop_file (NOT browser_upload_file). It uses a file input that is the target or lies inside it; otherwise it clicks the target and fills the file chooser that opens. It never puts the file in some other input on the page; if nothing works, other_file_inputs lists them, each with a selector. If an upload answers file-access-off, follow its note.
 - **Annoying popups blocking the flow** (cookie banners, "Don't show again", Advantage+ tooltips, draft-confirm prompts) → call browser_dismiss_overlays before each major step. It only clicks safe close affordances by default; preserves forms with editable text fields.
 
 ## When things fail

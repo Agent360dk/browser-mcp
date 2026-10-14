@@ -20,6 +20,8 @@ John H.**
 | `cleared_by_page`, `seen_in_field`, `input` | `browser_upload_file`, `browser_drop_file` | The field is empty afterwards, but the page's change handler saw the file in it: X and Facebook empty the field after reading the file, and a page that rejects a file can too, so check the page before attaching again. `input` describes the field that got the file (#67) |
 | `other_file_inputs` | `browser_drop_file` | No file input at the target and no file chooser opened when it was clicked: the page's other file inputs, none of which got the file, each with a `selector` that matched that input alone (null when none did) (#67) |
 | `error: "tab-not-responding"` | `browser_handle_dialog` | Chrome did not answer on the tab, for instance because a dialog is already open, which cannot be answered from here; the note says what can be done (#69, in part) |
+| `error: "window-covered"` | `browser_screenshot` | Chrome produced no picture, usually because its window is covered by other windows. Chrome is not raised for it any more; with `bring_to_front: true` (only after asking the user) it is raised and stays in front |
+| `active`, `visibility`, `windowFocused: null` | `browser_switch_tab` | Chrome is not brought in front of the user any more, and the tab is not switched in a window the user is working in (`active: false`); `visibility` says whether the page is hidden. `bring_to_front: true` does both, and is only for after asking the user |
 | `shortcut` | `browser_press_key` | The editing command sent with a ctrl or meta key: `selectAll`, `copy`, `cut`, `paste`, `undo` or `redo`. `landed` says the page got the key, not what the command did (#68) |
 | `error: "no-rows"` | `browser_extract_list` | The selector matched no rows with text. Before, the answer was `count: 0` with `reached_end: true` |
 | `scroll_method`, `note` | `browser_extract_list` | Whether the list was scrolled with wheel events or a script, and why; in a hidden page, why `reached_end` is false (#11) |
@@ -119,7 +121,12 @@ asks "Leave site?", and the prompt stays open, so the tab does not respond until
 answering that prompt comes in a later version (#69, in part). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
 contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
 judges a path by the operating system's own canonical path, so a different letter case, a Windows short name such as
-`RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70).
+`RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70). Chrome is no longer pulled in front
+of the user: `browser_switch_tab` brought the window forward on every call, and a screenshot of a covered window raised
+Chrome and left it there, so agents that switched tabs often kept taking the screen. Both now stay put unless the agent
+passes `bring_to_front: true`, which the tool texts say is only for after asking the user. Input that needs Chrome in front
+(key presses, hover, coordinate clicks) then answers that it did not land, as before, and the answer says to ask. The
+server's instructions to agents also no longer say that `browser_drop_file` falls back to the first file input on the page.
 
 **Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer
 (also an error answer) and stderr say how many connections are open and that the server cannot tell which
