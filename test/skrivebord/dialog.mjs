@@ -52,6 +52,9 @@ const swEval = async (expr) => {
 const ud = { chrome_version: (await cdp('Browser.getVersion')).result?.product };
 const nav = await kald('navigate', { url: `${U}/forlad.html` });
 const tabId = nav.tab_id;
+// Som i headless-forsoeget (e69): fanen goeres aktiv i sit vindue foer klikket, ellers kommer boksen ikke (maalt 14/10, run 38580743219).
+ud.skift = (await kald('switch_tab', { tab_id: tabId })).windowFocused;
+await sov(300);
 ud.klik = (await kald('click', { selector: '#bu' })).ok;
 // Udvidelsen har Page slaaet til paa fanen og lytter - som 1.30.3-designet vil have det. Saa navigeres der, saa boksen kommer.
 ud.opsaetning = await swEval(`(async () => {
@@ -67,7 +70,17 @@ ud.haendelser_foer_menneske = await swEval('globalThis.__dlg');
 
 const PROC = 'Google Chrome for Testing';
 // 1) Kan et menneske SE boksen? Laes Chrome-vinduets tilgaengelighedstraeet for knapperne «Leave»/«Cancel».
-ud.ax_knapper = osa(`tell application "System Events" to tell process "${PROC}" to get name of every button of entire contents of front window`);
+ud.ax_knapper = osa(`tell application "System Events" to tell process "${PROC}"
+  set ud to ""
+  repeat with w in windows
+    repeat with e in (entire contents of w)
+      try
+        if role of e is "AXButton" then set ud to ud & (name of e) & "|"
+      end try
+    end repeat
+  end repeat
+  return ud
+end tell`);
 ud.ax_vinduer = osa(`tell application "System Events" to tell process "${PROC}" to get name of every window`);
 // 2) Mennesket svarer: Chrome forrest, Escape = bliv paa siden (Cancel).
 ud.forrest = osa(`tell application "System Events" to set frontmost of process "${PROC}" to true`);
