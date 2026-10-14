@@ -26,6 +26,9 @@ const GAMMEL = 'https://kladde.example/';
 const NY = 'https://ny.example/';
 // Korte frister i proeverne; forholdet mellem dem er designets (port < loft, luk < loft).
 const FRISTER = { port: 250, luk: 300, loft: 900 };
+// R110 (Opus, maalt under belastning ~3,9): tidsgraenserne i proeverne har 250 ms margen over loftet, og de forsinkelser,
+// en mutant ville vente paa, er sat langt nok ud over margenen til, at mutanten stadig bliver roed.
+const MARGEN = 250;
 
 // ── Chrome-modellen ─────────────────────────────────────────────────────────────
 function model(opt = {}) {
@@ -376,6 +379,8 @@ test('S15 + T6 (Astra A3): et afvist tabs.update afventes - navigation-failed, i
 
 test('T3: debuggeren kan ikke tilknyttes - mains vej, ok:true kun med bevist indlaesning', async () => {
   const m = model({ beskyt: false, attachFejl: 'Cannot attach to this target' });
+  // Tilknytningens tre forsoeg har faste pauser paa 750 ms i alt; med proevens loft paa 900 ms var margenen ~50 ms (R110 Opus).
+  m.u.hent('NAV_FRISTER').loft = 3000;
   const r = await fang(m.nav());
   assert.equal(r.ok, true, vis(r));
   assert.equal(r.url, NY);
@@ -654,12 +659,12 @@ test('R108-A2b: handle_dialog paa en ny boks, mens et tidligere svar er undervej
 test('R108-A3a: loftet er samlet - en boks lige foer loftet forlaenger ikke kaldet med hele dialogfristen', async () => {
   // Boksen kommer foer loftet, og dialogfristen (600 ms) raekker ud over det: kun loftet maa afgoere, hvornaar kaldet svarer.
   const m = model({ lukkerAldrig: true, navMs: FRISTER.loft - 250 });
-  m.u.hent('NAV_FRISTER').luk = 600;
+  m.u.hent('NAV_FRISTER').luk = 800;
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
   assert.equal(r.ok, false, vis(r));
-  assert.ok(brugt < FRISTER.loft + 60, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms (${vis(r)})`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms (${vis(r)})`);
 });
 
 test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, siger svaret det', async () => {
@@ -668,7 +673,7 @@ test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, s
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
   assert.equal(r.ok, true, vis(r));
-  assert.ok(brugt < FRISTER.loft + 100, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
   assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
 });
 
@@ -703,14 +708,14 @@ test('R108-A5a: handle_dialog ser en boks, der blev kendt under tilknytningen, o
 });
 
 test('R108: en kendt boks besvares uden at vente paa debuggerens tilknytning (den kan tage ~1,5 s)', async () => {
-  const m = model({ attachMs: 400 });
+  const m = model({ attachMs: 1200 });
   await m.enable();
   m.sidenNavigerer('https://siden-selv.example/');
   await sov(20);
   const t0 = Date.now();
   const h = await fang(m.dialog({ action: 'dismiss' }));
   assert.equal(h.ok, true, vis(h));
-  assert.ok(Date.now() - t0 < 300, `ventede paa tilknytningen: ${Date.now() - t0} ms`);
+  assert.ok(Date.now() - t0 < 600, `ventede paa tilknytningen: ${Date.now() - t0} ms`);
 });
 
 test('R108-A5b: handle_dialog, hvis port loeber ud, mens en boks blev kendt, besvarer boksen', async () => {
@@ -816,29 +821,29 @@ test('R109-A1: et dialogsvar, der opstaar under navigationens klargoering, holde
 });
 
 test('R109-A2a: langsomme faneopslag efter porten - loftet holder, og succes afgoeres aldrig efter fristen', async () => {
-  const m = model({ beskyt: false, navMs: FRISTER.loft + 150, getMsEfterEnable: FRISTER.loft + 400 });
+  const m = model({ beskyt: false, navMs: FRISTER.loft + 150, getMsEfterEnable: FRISTER.loft + 800 });
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
   assert.notEqual(r.ok, true, `succes efter fristen: ${vis(r)} efter ${brugt} ms`);
-  assert.ok(brugt < FRISTER.loft + 80, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms`);
 });
 
 test('R109-A2b: et langsomt bevisopslag, der svarer efter loftet, giver ikke ok:true', async () => {
-  const m = model({ beskyt: false, navMs: FRISTER.loft - 200, gammelComplete: { efter: 5, getMs: 500 } });
+  const m = model({ beskyt: false, navMs: FRISTER.loft - 200, gammelComplete: { efter: 5, getMs: 900 } });
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
-  assert.ok(brugt < FRISTER.loft + 80, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
   if (r.ok === true) assert.ok(brugt <= FRISTER.loft, 'succes skal vaere afgjort inden for loftet');
 });
 
 test('R109-A2c: en tilknytning, der ikke bliver faerdig, holdes inden for loftet - intet sendt', async () => {
-  const m = model({ attachMs: FRISTER.loft + 400 });
+  const m = model({ attachMs: FRISTER.loft + 800 });
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
-  assert.ok(brugt < FRISTER.loft + 80, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
   assert.equal(r.error, 'tab-not-responding', vis(r));
   assert.equal(r.sent, false);
   assert.equal(m.adresser(), 0);
@@ -898,24 +903,24 @@ test('R109-O-2e: reattach_debugger med en aaben, kendt boks advarer om, at den i
 // ── R110 (Astra): fristen starter foer sessionsopslaget; kendte bokse ved de nye timeout-returer ──────
 
 test('R110-1a: et langsomt foerste sessionsopslag ligger under loftet - intet svar efter fristen, intet sendt bagefter', async () => {
-  const m = model({ beskyt: false, foersteGetMs: FRISTER.loft + 300 });
+  const m = model({ beskyt: false, foersteGetMs: FRISTER.loft + 800 });
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
-  assert.ok(brugt < FRISTER.loft + 80, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
   assert.notEqual(r.ok, true, vis(r));
   assert.equal(r.sent, false, vis(r));
-  await sov(450);
+  await sov(950);
   assert.equal(m.adresser(), 0, 'det fortsatte arbejde maa ikke sende adressen efter svaret');
 });
 
 test('R110-1b: tid brugt paa sessionsopslaget traekkes fra loftet', async () => {
-  const m = model({ beskyt: false, haengNav: true, foersteGetMs: 300 });
+  const m = model({ beskyt: false, haengNav: true, foersteGetMs: 500 });
   const t0 = Date.now();
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
   assert.equal(r.error, 'navigation-unconfirmed', vis(r));
-  assert.ok(brugt < FRISTER.loft + 80, `loftet startede foerst efter sessionsopslaget: ${brugt} ms`);
+  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet startede foerst efter sessionsopslaget: ${brugt} ms`);
 });
 
 test('R110-1c: en session, hvis fane er vaek og svarer langsomt, faar ikke en fane med adressen efter svaret', async () => {
