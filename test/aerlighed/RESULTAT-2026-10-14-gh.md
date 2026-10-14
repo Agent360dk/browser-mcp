@@ -2,8 +2,8 @@
 
 Kørt som håndkørsel af `spaerre.yml` med `aerlighed=true` (run 38491381739, macos-latest, Chrome for Testing, headless, egen
 profil) på grenen `fix/1.30.2-issues-67-70` (PR #72). Den målte commit er grenens hoved, ceebdef: rettelserne af #67, #68 og #70,
-`browser_handle_dialog`-delen af #69 uden navigate-vagten, og at Chrome ikke længere tages frem foran brugeren. Efter målingen er kun denne fil lagt til, så
-`extension/background.js`, `extension/offscreen.js`, `mcp-server/tools.js` og `mcp-server/index.js` er byte-identiske i den
+`browser_handle_dialog`-delen af #69 uden navigate-vagten, og at Chrome ikke længere tages frem foran brugeren. Efter målingen er kun denne fil, en rettet sætning i begge
+README'er og to skarpere prøver lagt til, så `extension/background.js`, `extension/offscreen.js`, `mcp-server/tools.js` og `mcp-server/index.js` er byte-identiske i den
 målte commit og i den der flettes.
 
 Målingens egne linjer, ordret fra loggen - udgivelsens port 2c læser dem:

@@ -164,7 +164,9 @@ test('switch_tab siger det, naar siden er skjult bag andre vinduer', async () =>
   const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
   assert.equal(svar.visibility, 'hidden');
   assert.match(svar.note, /browser_wait/);
-  assert.match(svar.note, /browser_extract_list[\s\S]*browser_ask_user/, 'lister i en skjult side skal ogsaa have en udgang (R101 Opus)');
+  // R102 Opus (mutant M1): bundet til SELVE liste-saetningen - en bred regex ramte browser_ask_user i naeste saetning.
+  assert.match(svar.note, /stops early in a hidden page; if the page has to be visible, ask the user \(browser_ask_user\)/,
+    'lister i en skjult side skal have en udgang, der gaar gennem brugeren (R101/R102 Opus)');
   assert.match(svar.note, /bring_to_front: true/);
 });
 

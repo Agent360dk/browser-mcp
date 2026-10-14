@@ -141,3 +141,12 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   assert.match(linje, /If you also have|if you also have/,
     'henvisningen er ikke betinget af at agenten faktisk HAR skrivebords-vaerktoejer');
 });
+
+// R102 Opus (mutant M2): serverens «When things fail» skal give udgangen gennem brugeren, nu hvor browser_switch_tab ikke
+// laengere tager Chrome frem (14/10, Gustav: «den bliver ved med at tage min computer»).
+test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkter', () => {
+  const start = kilde.indexOf('## When things fail');
+  const afsnit = kilde.slice(start, kilde.indexOf('\n## ', start + 5));
+  assert.match(afsnit, /If it still does not land, Chrome itself is probably not in front: browser_switch_tab no longer brings it forward, so ask the user \(browser_ask_user\) and only then call browser_switch_tab with bring_to_front: true/);
+  assert.match(afsnit, /If it still fails, ask the user before browser_switch_tab with bring_to_front: true/);
+});
