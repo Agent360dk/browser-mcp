@@ -1,0 +1,52 @@
+# Skrivebordsmaaling af fokus (14/10-2026): tager Browser MCP Chrome frem foran et andet program?
+# En synlig Chrome paa GitHubs Mac med TextEdit forrest - butikkens 1.30.1 (kontrol) mod den commit der koeres.
+# Koerer kun paa maalegrenen, aldrig paa main eller en PR. Gratis: repoet er offentligt.
+name: fokus-skrivebord
+
+on:
+  push:
+    branches: [maal/fokus-skrivebord]
+
+permissions:
+  contents: read
+
+jobs:
+  fokus:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: installer serveren (ws til den falske MCP-server)
+        run: npm install --prefix mcp-server --no-audit --no-fund
+
+      - name: hent Chrome for Testing
+        run: npx --yes @puppeteer/browsers install chrome@stable
+
+      - name: to udvidelser - 1.30.1 og den testede commit - med portspaendet flyttet til 19873
+        shell: bash
+        run: |
+          git fetch -q --tags origin
+          for x in gammel:v1.30.1 ny:HEAD; do
+            navn=${x%%:*}; ref=${x#*:}
+            mkdir -p "$RUNNER_TEMP/$navn"
+            git archive "$ref" extension | tar -x -C "$RUNNER_TEMP/$navn"
+            f="$RUNNER_TEMP/$navn/extension/offscreen.js"
+            grep -q 'return \[9876, 9895\];' "$f"
+            sed -i '' 's/return \[9876, 9895\];/return [19873, 19873];/' "$f"
+            grep -q 'return \[19873, 19873\];' "$f"
+          done
+          echo "maalt commit: $(git rev-parse HEAD)"
+
+      - name: maal hvem der er forrest efter hvert kald
+        shell: bash
+        run: |
+          CHROME=$(ls -d chrome/*/chrome-mac*/"Google Chrome for Testing.app"/Contents/MacOS/"Google Chrome for Testing" | head -1)
+          test -x "$CHROME"
+          node test/skrivebord/fokus.mjs "$CHROME" "$RUNNER_TEMP/gammel/extension" "$RUNNER_TEMP/ny/extension"
