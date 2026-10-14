@@ -52,10 +52,10 @@ Chrome window as the agent, its tab can still become the visible one there; `bro
 still open on your screen, behind or beside what you are doing). A screenshot of a covered window answers `window-covered`.
 
 **What you can do today.** Reading, screenshots and scripts work in a background tab or window.
-Input - typing, hover, coordinate clicks - needs the tab to be the visible one in a window that has
-the operating system's focus (both measured in a background tab; for a window of the agent's own it is
-unmeasured, so the tools' `landed` answer decides). When input does not land, the agent has to ask you,
-and you decide.
+Input - typing, hover, coordinate clicks - does not reach a tab that is not the visible one in its
+window (measured). Whether it reaches the active tab of a window without the operating system's focus is
+unmeasured in desktop Chrome, so the tools' `landed` answer decides. When input does not land, the agent
+has to ask you, and you decide.
 
 **Fix status: not fixed, and not fixable by us.** 1.30 did not deliver hands-off background input. Some of it cannot be solved at
 all - CSS `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event
