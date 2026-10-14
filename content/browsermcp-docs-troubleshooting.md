@@ -42,15 +42,19 @@ acknowledgement, so you get an honest failure rather than a silent one. Up to 1.
 called `browser_switch_tab`, which brought Chrome in front of you every time, and a screenshot of a
 covered window raised Chrome and left it there.
 
-**What changed in 1.30.2.** Chrome is no longer brought in front of you unless the agent asks for it
-with `bring_to_front: true`, which the tools tell it to use only after asking you. `browser_switch_tab`
+**What changed in 1.30.2.** `browser_switch_tab` and `browser_screenshot` no longer bring Chrome in
+front of you unless the agent asks for it with `bring_to_front: true`, which the tools tell it to use
+only after asking you. (`browser_navigate` with `new_tab: true, eget_vindue: true, fokuser: true` can
+also ask for focus for a window of its own; that too is only when the agent passes it.) `browser_switch_tab`
 makes the agent's tab active in its window and says whether the page is hidden. If you work in the same
 Chrome window as the agent, its tab can still become the visible one there; `browser_navigate` with
-`eget_vindue: true` gives the agent a window of its own. A screenshot of a covered window answers `window-covered`.
+`new_tab: true` and `eget_vindue: true` gives the agent a window of its own. A screenshot of a covered window answers `window-covered`.
 
 **What you can do today.** Reading, screenshots and scripts work in a background tab or window.
 Input - typing, hover, coordinate clicks - needs the tab to be the visible one in a window that has
-the operating system's focus (both measured). For that the agent has to ask you, and you decide.
+the operating system's focus (both measured in a background tab; for a window of the agent's own it is
+unmeasured, so the tools' `landed` answer decides). When input does not land, the agent has to ask you,
+and you decide.
 
 **Fix status: not fixed, and not fixable by us.** 1.30 did not deliver hands-off background input. Some of it cannot be solved at
 all - CSS `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event

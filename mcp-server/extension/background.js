@@ -7008,9 +7008,9 @@ async function dispatch(port, method, params) {
             'that is still building can be read half-done: wait for the content you need with browser_wait. '
           : '') +
           'Chrome was left where it is, not brought in front of the user. Navigating, reading, screenshots, scripts and ' +
-          'clicks by selector work like this; key presses, hover, coordinate clicks and fields found by text only land ' +
-          'while Chrome is in front. If one of those still answers that nothing landed, ask the user (browser_ask_user) ' +
-          'and only then call again with bring_to_front: true.';
+          'clicks by selector work like this. Key presses, hover, coordinate clicks and fields found by text may not land ' +
+          'while Chrome is not in front: read landed in their answers. If one of them answers that nothing landed, ask the ' +
+          'user (browser_ask_user) and only then call again with bring_to_front: true.';
       }
       return svar;
     }

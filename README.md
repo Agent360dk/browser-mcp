@@ -187,7 +187,7 @@ tab that is not the visible one in its window, so key presses, hover, double-cli
 coordinate clicks, combobox typing, and filling a field found by its *text* all fail with an error
 that says so. The agent can then call `browser_switch_tab`, which makes that tab the active one in
 its window, but since 1.30.2 it does not bring Chrome in front of you. Input that needs Chrome in
-front then still fails, and the
+front can then still fail, and the
 agent asks you first: only with `bring_to_front: true` does Chrome come forward. A screenshot of a
 window covered by other windows likewise answers `window-covered` instead of raising Chrome.
 

@@ -121,11 +121,11 @@ asks "Leave site?", and the prompt stays open, so the tab does not respond until
 answering that prompt comes in a later version (#69, in part). A text selector prefers a visible clickable match to a hidden copy; `browser_fill` reads a
 contenteditable as lines, so multi-line text that landed is no longer reported as `differs`; and `browser_screenshot`
 judges a path by the operating system's own canonical path, so a different letter case, a Windows short name such as
-`RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70). Chrome is no longer pulled in front
-of the user: `browser_switch_tab` brought the window forward on every call, and a screenshot of a covered window raised
+`RUNNER~1`, or macOS's `/var` for `/private/var` no longer counts as outside the working directory (#70). `browser_switch_tab` and `browser_screenshot` no longer pull
+Chrome in front of the user: `browser_switch_tab` brought the window forward on every call, and a screenshot of a covered window raised
 Chrome and left it there, so agents that switched tabs often kept taking the screen. Both now stay put unless the agent
-passes `bring_to_front: true`, which the tool texts say is only for after asking the user. Input that needs Chrome in front
-(key presses, hover, coordinate clicks) then answers that it did not land, as before, and the answer says to ask. The
+passes `bring_to_front: true`, which the tool texts say is only for after asking the user. Input that may need Chrome in front
+(key presses, hover, coordinate clicks) can then answer that it did not land, as before, and the switch_tab answer says to ask. The
 server's instructions to agents also no longer say that `browser_drop_file` falls back to the first file input on the page.
 
 **Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer

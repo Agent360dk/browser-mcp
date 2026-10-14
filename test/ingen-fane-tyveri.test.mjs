@@ -146,7 +146,8 @@ test('switch_tab aktiverer fanen i sit vindue - men tager ikke Chrome frem', asy
     'eller den tager brugerens skaerm');
   assert.equal(svar.windowFocused, null);
   // Uden den her saetning sender vaerktoejernes «call browser_switch_tab and try again» agenten i ring.
-  assert.match(svar.note, /key presses, hover/);
+  assert.match(svar.note, /key presses, hover/i);
+  assert.match(svar.note, /read landed/);
   assert.match(svar.note, /browser_ask_user/);
 });
 
