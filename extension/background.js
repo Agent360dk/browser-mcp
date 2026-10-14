@@ -348,7 +348,7 @@ function persistSessions() {
 // Get the active tab for this session (last navigated), or create one.
 // activate=false (default): runs in background — no focus stealing.
 // activate=true: only for commands that NEED visible tab (screenshot, ask_user, navigate, execute_script).
-async function getSessionTab(port, activate = false, opretMed = null, opgivet = null) {
+async function getSessionTab(port, activate = false, opretMed = null) {
   const session = getSession(port);
   let target = null;
   // Remember our OWN about:blank placeholder so we reuse it instead of spawning another
@@ -398,11 +398,9 @@ async function getSessionTab(port, activate = false, opretMed = null, opgivet = 
   // den saa til adressen - about:blank stod hver gang som det foerste. Kender kalderen adressen (navigate), oprettes fanen
   // direkte med den.
   if (!target) {
-    // R110 (Astra): har navigate allerede svaret (loftet ramte, mens fanerne blev slaaet op), maa det fortsatte arbejde ikke
-    // sende adressen - saa bliver det en tom pladsholder.
-    const medUrl = opretMed && !(opgivet && opgivet.v) ? opretMed : null;
-    target = await chrome.tabs.create({ url: medUrl || 'about:blank', active: false });
-    if (medUrl) target.oprettetMedUrl = true;
+    target = await chrome.tabs.create({ url: opretMed || 'about:blank', active: false });
+    // R111: feltet fortaeller navigate, at adressen ER sendt (fanen blev oprettet med den).
+    if (opretMed) target.oprettetMedUrl = true;
     await addTabToSession(port, target.id);
     session.activeTabId = target.id;
     persistSessions();
@@ -934,6 +932,8 @@ const NAV_NOTER = {
     'show us (one that opened before anything listened). Nothing was sent. Try again in a moment; if it keeps happening, ' +
     'ask the user (browser_ask_user) to look at the tab, or open the address in a new tab with new_tab: true.',
   'navigation-failed': 'Chrome refused the navigation (detail), and the tab is where it was.',
+  'session-langsom': 'Chrome took longer than the time limit to report this session\'s tabs, and nothing was sent. Try ' +
+    'again in a moment; if it keeps happening, ask the user (browser_ask_user) to look at Chrome.',
   'beforeunload-blocked': 'The page asked "Leave site?" and the answer was Stay (answered_by), so the tab is still on url. ' +
     'The page may hold unsaved work: ask the user with browser_ask_user whether to leave it. If they say yes, call ' +
     'browser_navigate again with leave_page: true.',
@@ -5009,18 +5009,20 @@ async function dispatch(port, method, params) {
       // R73 (Astra, maalt i model): med new_tab og eget_vindue oprettede getSessionTab() stadig en tom about:blank, foer vinduet
       // blev aabnet med adressen - to faner i sessionen. Et eget vindue bruger ikke sessionens fane, saa der hentes ingen.
       const egetVindue = !!(params.new_tab && params.eget_vindue);
-      // R110 (Astra): loftet for et navigate i den aktuelle fane starter HER, foer sessionsopslaget, og opslaget er under det.
+      // R110/R111: loftet starter HER, foer sessionsopslaget. Opslaget afventes til ende: det kan ikke afbrydes uden at
+      // efterlade arbejde, der kan sende adressen (en fane oprettes med den) eller aendre sessionen bagefter (R111 Astra 1-2,
+      // Opus N1). Haenger det helt, er serverens egen frist paa 30 s graensen. Succes svares aldrig efter loftet.
       const navSlut = Date.now() + NAV_FRISTER.loft;
-      let tab = null;
-      if (!egetVindue) {
-        const opgivet = { v: false };
-        const fundet = await venteMedFrist(getSessionTab(port, false, params.url, opgivet), navSlut - navForbehold() - Date.now());
-        if (fundet === FRIST_UDLOEB) {
-          opgivet.v = true;
-          return { ok: false, error: 'tab-not-responding', sent: false, requested_url: String(params.url),
-            detail: 'Chrome did not report the session\'s tabs in time', note: NAV_NOTER['tab-not-responding'] };
+      let tab = egetVindue ? null : await getSessionTab(port, false, params.url);
+      // R111 (b): brugte opslaget fristen, og er intet sendt endnu, svares der nu - med en kendt boks, hvis der er en.
+      if (tab && !tab.oprettetMedUrl && Date.now() >= navSlut - navForbehold()) {
+        const kendt = !params.new_tab && dialogFaner.get(tab.id)?.boks;
+        if (kendt) {
+          return { ok: false, error: 'dialog-open', sent: false, tab_id: tab.id, requested_url: String(params.url),
+            ...dialogFelter(kendt), pending_url: dialogFaner.get(tab.id)?.pendingUrl ?? null, note: NAV_NOTER['dialog-open'] };
         }
-        tab = fundet;
+        return { ok: false, error: 'tab-not-responding', sent: false, requested_url: String(params.url),
+          detail: 'Chrome did not report the session\'s tabs within the time limit', note: NAV_NOTER['session-langsom'] };
       }
       // R73 (Astra, maalt i model): en ny fane, hvis adresse var faerdigindlaest, mens fanen blev lagt i sessionens gruppe, naaede
       // sin eneste 'complete' foer lytteren herunder fandtes, og navigate ventede de fulde 15 sekunder. For en fane uden en
@@ -5165,42 +5167,53 @@ async function dispatch(port, method, params) {
       // checking the url in the event's tab snapshot was not enough against real Chrome. So
       // each 'complete' is confirmed against the tab as it is NOW.
       const awaitingRealUrl = !String(params.url).startsWith('about:');
+      // R111 (a): en fane, getSessionTab() oprettede MED adressen, er sendt - den bevises inden for loftet, ellers er svaret
+      // navigation-unconfirmed. Andre nye faner (new_tab) venter som foer.
+      const somSendt = !!(tab && tab.oprettetMedUrl);
       const loadedNow = async () => {
         if (!awaitingRealUrl) return true;
         const now = await chrome.tabs.get(tab.id).catch(() => null);
-        if (!now) return true;   // tab gone - nothing left to wait for
+        if (!now) return !somSendt;   // tab gone - nothing left to wait for (but nothing proven either)
         return now.status === 'complete' && !String(now.url || '').startsWith('about:blank');
       };
-      await new Promise(resolve => {
+      const bevist = await new Promise(resolve => {
         let done = false;
-        const finish = () => {
+        const finish = (ok) => {
           if (done) return;
           done = true;
           chrome.tabs.onUpdated.removeListener(listener);
           clearTimeout(timer);
-          resolve();
+          resolve(ok);
         };
         // (R76's regel for en eksisterende fane bor nu i navigerSomEjer; her er fanen ny eller en pladsholder.)
         const listener = (tabId, info) => {
           if (tabId !== tab.id) return;
           if (info.status !== 'complete') return;
-          loadedNow().then((ok) => { if (ok) finish(); });
+          loadedNow().then((ok) => { if (ok) finish(true); });
         };
         chrome.tabs.onUpdated.addListener(listener);
-        const timer = setTimeout(finish, 15000);
+        const timer = setTimeout(() => finish(false), somSendt ? Math.max(0, navSlut - navForbehold() - Date.now()) : 15000);
         // R74 (Astra, maalt i model): ogsaa en about:-adresse (der er intet at vente paa) proeves straks; foer ventede den paa
         // en 'complete', der kunne vaere kommet, foer lytteren fandtes.
-        if (nyFane) loadedNow().then((ok) => { if (ok) finish(); });
+        if (nyFane) loadedNow().then((ok) => { if (ok) finish(true); });
       });
 
       // Set as active tab for this session
       session.activeTabId = tab.id;
       persistSessions();
+      if (somSendt && !bevist) {
+        dialogFane(tab.id).pendingUrl = String(params.url);
+        const nu = await venteMedFrist(chrome.tabs.get(tab.id).catch(() => null), Math.max(0, navSlut - Date.now()));
+        return { ok: false, error: 'navigation-unconfirmed', sent: true, may_complete_later: true, tab_id: tab.id,
+          requested_url: String(params.url), pending_url: String(params.url),
+          url: nu && nu !== FRIST_UDLOEB ? nu.url ?? null : null, note: NAV_NOTER['navigation-unconfirmed'] };
+      }
       const updated = await chrome.tabs.get(tab.id);
 
-      // Check for CAPTCHA after navigation
-      const captcha = await detectCaptcha(tab.id);
-      const result = { title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
+      // Check for CAPTCHA after navigation (for a tab created with the address: inside the limit, like the current tab)
+      const captcha = somSendt ? await venteMedFrist(detectCaptcha(tab.id), Math.max(0, navSlut - Date.now())) : await detectCaptcha(tab.id);
+      const result = { ...(somSendt ? { ok: true } : {}), title: updated.title, url: updated.url, tab_id: tab.id, session: session.label };
+      if (captcha === FRIST_UDLOEB) result.captcha_checked = false;
       if (captcha && captcha.found) {
         result.captcha_detected = captcha.types.join(', ');
         result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;

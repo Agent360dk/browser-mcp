@@ -13,12 +13,16 @@ watches the tab's dialogs and is the only part that answers them. When the page 
 sent, the answer is Stay, unless the call passed `leave_page: true` or a `browser_handle_dialog` arming is waiting for the
 next dialog on the tab; the result is read from Chrome's own report that the dialog closed, not from the reply to the
 command that answered it. In the current tab, `ok: true` now means Chrome took the address and the new page was proven
-loaded within about 25 seconds. The limit covers the whole call, from looking up the session's tab to the CAPTCHA check; the
-wait for the page ends half a second before it, so the answer itself fits, and a page that finishes in that last half
-second is reported as `navigation-unconfirmed`. Every other outcome
-is an error with `sent` (whether the address reached Chrome) and a note on what the agent can do. New tabs and
-`eget_vindue` are unchanged, except that a session lookup that does not finish within the 25 seconds now answers
-`tab-not-responding` instead of waiting.
+loaded within about 25 seconds. The limit starts before the session's tab is looked up, and every wait after that lookup
+(the page, a dialog, the CAPTCHA check) runs under it; the wait for the page ends half a second before the limit, so the
+answer itself fits, and a page that finishes in that last half second is reported as `navigation-unconfirmed`. The lookup
+itself is waited for to the end, because stopping it halfway could leave Chrome creating a tab with the address afterwards:
+if Chrome stalls there, nothing is answered until it is done (`tab-not-responding`, or `dialog-open` for a dialog the
+extension saw, when nothing was sent), and if it never finishes, the server's own 30-second limit ends the call. Success is
+never answered after the limit. Every other outcome is an error with `sent` (whether the address reached Chrome) and a note
+on what the agent can do. A new session's first navigate, whose tab is created with the address, is held to the same rule:
+`ok: true` only with a proven load, otherwise `navigation-unconfirmed` with `sent: true`. Other new tabs (`new_tab`) and
+`eget_vindue` are unchanged.
 
 **New answers an agent can see:**
 

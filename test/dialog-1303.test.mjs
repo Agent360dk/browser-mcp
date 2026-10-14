@@ -40,7 +40,8 @@ function model(opt = {}) {
     // naar siden efter N ms), updAfvisMs (tabs.update afvises efter N ms), gammelComplete (den gamle side melder
     // 'complete' igen, mens adressen er undervejs), svarMs (svaret rammer den boks, der staar der EFTER N ms - CDP har
     // intet dialog-id), captchaMs (CAPTCHA-opslaget er langsomt), fjernet (fanen findes ikke).
-    getMs: 0, attachMs: 0, navMs: 3, updAfvisMs: 0, gammelComplete: null, svarMs: 0, captchaMs: 0, fjernet: false, ...opt };
+    getMs: 0, attachMs: 0, navMs: 3, updAfvisMs: 0, gammelComplete: null, svarMs: 0, captchaMs: 0, fjernet: false,
+    naesteId: 9, nyeFaner: new Map(), createMs: 0, groupMs: 0, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -75,6 +76,7 @@ function model(opt = {}) {
     'debugger.detach': () => { if (t.boks) { t.boks = null; } t.pageOn = false; },   // boksen lukkes uden Closed (R108 Astra 4)
     'debugger.getTargets': () => { const r = t.attachFejl ? [] : [{ tabId: 1, attached: true }]; return t.attachMs ? sov(t.attachMs).then(() => r) : r; },
     'tabs.get': (id) => {
+      if (t.nyeFaner.has(id)) return { ...t.nyeFaner.get(id) };
       // R110: foersteGetMs forsinker kun det allerfoerste opslag (sessionens); doedFane er en sessionsfane, der er vaek,
       // og hvis opslag svarer langsomt.
       if (t.doedFane && id === t.doedFane.id) return sov(t.doedFane.ms).then(() => { throw new Error('No tab with id: ' + id); });
@@ -86,8 +88,17 @@ function model(opt = {}) {
       return t.getMs ? sov(t.getMs).then(() => r) : r;
     },
     'tabs.query': () => [snap()],
-    'tabs.create': ({ url }) => { log.push(['tabs.create', url]); return { id: 2, url: url || 'about:blank', status: 'loading', windowId: 1 }; },
-    'tabs.group': () => 7,
+    // R111: en oprettet fane faar sit eget id og indlaeses (createMs: Chrome svarer langsomt paa oprettelsen; groupMs:
+    // grupperingen er langsom).
+    'tabs.create': ({ url }) => {
+      log.push(['tabs.create', url]);
+      const id = ++t.naesteId;
+      const ny = { id, url: url || 'about:blank', status: 'loading', windowId: 1, active: false };
+      t.nyeFaner.set(id, ny);
+      if (url && !t.haengNav) setTimeout(() => { ny.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...ny }); }, 20);
+      return t.createMs ? sov(t.createMs).then(() => ({ ...ny })) : { ...ny };
+    },
+    'tabs.group': () => (t.groupMs ? sov(t.groupMs).then(() => 7) : 7),
     'tabs.update': (_id, p) => {
       if (!p || !p.url) return snap();
       log.push(['tabs.update', p.url]);
@@ -902,13 +913,14 @@ test('R109-O-2e: reattach_debugger med en aaben, kendt boks advarer om, at den i
 
 // ── R110 (Astra): fristen starter foer sessionsopslaget; kendte bokse ved de nye timeout-returer ──────
 
-test('R110-1a: et langsomt foerste sessionsopslag ligger under loftet - intet svar efter fristen, intet sendt bagefter', async () => {
+// R111 (koordinatorens beslutning): sessionsopslaget afventes til ende - det kan ikke afbrydes uden at efterlade arbejde,
+// der kan sende adressen eller aendre sessionen (R111 Astra 1-2, Opus N1). Uret starter foer det, saa et langsomt opslag
+// aldrig giver succes efter loftet; haenger det helt, er serverens egen frist paa 30 s graensen.
+test('R110-1a: et langsomt foerste sessionsopslag giver aldrig succes efter loftet, og intet sendes', async () => {
   const m = model({ beskyt: false, foersteGetMs: FRISTER.loft + 800 });
-  const t0 = Date.now();
   const r = await fang(m.nav());
-  const brugt = Date.now() - t0;
-  assert.ok(brugt < FRISTER.loft + MARGEN, `loftet holdt ikke: ${brugt} ms (${vis(r)})`);
   assert.notEqual(r.ok, true, vis(r));
+  assert.equal(r.error, 'tab-not-responding', vis(r));
   assert.equal(r.sent, false, vis(r));
   await sov(950);
   assert.equal(m.adresser(), 0, 'det fortsatte arbejde maa ikke sende adressen efter svaret');
@@ -921,17 +933,6 @@ test('R110-1b: tid brugt paa sessionsopslaget traekkes fra loftet', async () => 
   const brugt = Date.now() - t0;
   assert.equal(r.error, 'navigation-unconfirmed', vis(r));
   assert.ok(brugt < FRISTER.loft + MARGEN, `loftet startede foerst efter sessionsopslaget: ${brugt} ms`);
-});
-
-test('R110-1c: en session, hvis fane er vaek og svarer langsomt, faar ikke en fane med adressen efter svaret', async () => {
-  const m = model({ beskyt: false, doedFane: { id: 5, ms: FRISTER.loft + 200 } });
-  m.u.hent('sessions').set(9876, { tabIds: new Set([5]), activeTabId: 5, groupId: 1, label: 'Claude 1', color: 'blue' });
-  const r = await fang(m.nav());
-  assert.notEqual(r.ok, true, vis(r));
-  assert.equal(r.sent, false, vis(r));
-  await sov(400);
-  const medAdresse = m.log.filter((x) => x[0] === 'tabs.create' && x[1] === NY);
-  assert.equal(medAdresse.length, 0, `en fane med adressen blev oprettet efter svaret: ${vis(m.log.filter((x) => x[0] === 'tabs.create'))}`);
 });
 
 test('R110-2a: en boks, der bliver kendt under en tilknytning, der loeber ud, giver dialog-open - ikke tab-not-responding', async () => {
@@ -956,6 +957,73 @@ test('R110-2b: en boks, der bliver kendt under et faneopslag, der loeber ud, giv
   assert.equal(r.error, 'dialog-open', vis(r));
   assert.equal(r.sent, false);
   assert.equal(m.adresser(), 0);
+});
+
+// ── R111 (Astra og Opus): sessionsopslaget afventes; en fane oprettet med adressen er sendt ────────────────
+
+function tomSession(m, ekstra = {}) {
+  m.u.hent('sessions').set(9876, { tabIds: new Set(), activeTabId: null, groupId: null, label: 'Claude 1', color: 'blue', ...ekstra });
+}
+
+for (const [navn, opt, ekstra] of [
+  ['O1a: grupperingen er langsom', { groupMs: FRISTER.loft + 300 }, {}],
+  ['O1b: oprettelsen er langsom', { createMs: FRISTER.loft + 300 }, {}],
+  ['O1c: gruppen findes, og grupperingen er langsom', { groupMs: FRISTER.loft + 300 }, { groupId: 7 }],
+]) {
+  test(`R111-A1/${navn} - fanen fik adressen, saa svaret siger sent:true, ikke «Nothing was sent»`, async () => {
+    const m = model({ haengNav: true, ...opt });
+    tomSession(m, ekstra);
+    const r = await fang(m.nav());
+    assert.notEqual(r.ok, true, vis(r));
+    assert.equal(r.sent, true, `adressen var givet til Chrome: ${vis(r)}`);
+    assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+    assert.equal(r.may_complete_later, true);
+    assert.equal(r.pending_url, NY);
+    assert.equal(m.log.filter((x) => x[0] === 'tabs.create' && x[1] === NY).length, 1, 'adressen sendes én gang');
+  });
+}
+
+test('R111-A1: en ny sessions foerste navigate, hvis side indlaeses i tide, er ok:true med bevist indlaesning', async () => {
+  const m = model();
+  tomSession(m);
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.url, NY);
+});
+
+test('R111-A2: et langsomt sessionsopslag fjerner ikke bagefter det naeste kalds fane fra sessionen', async () => {
+  const m = model({ beskyt: false, doedFane: { id: 5, ms: FRISTER.loft + 200 } });
+  m.u.hent('sessions').set(9876, { tabIds: new Set([5]), activeTabId: 5, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const a = await fang(m.nav());                               // A svarer foerst, naar dets opslag er faerdigt
+  assert.notEqual(a.sent, false, `A sendte adressen (fanen blev oprettet med den): ${vis(a)}`);
+  const b = await fang(m.nav({ url: 'https://b.example/' }));
+  await sov(FRISTER.loft + 300);                               // laenge nok til at et opgivet opslag fra A ville vaere faerdigt
+  const sess = m.u.hent('sessions').get(9876);
+  assert.ok(sess.tabIds.has(b.tab_id), `B's fane ${b.tab_id} er fjernet fra sessionen: ${vis([...sess.tabIds])}`);
+  assert.equal(sess.activeTabId, b.tab_id, 'B\'s fane skal vaere den aktive');
+});
+
+for (const [navn, foer] of [['kendt ved kaldets start', true], ['aabner under opslaget', false]]) {
+  test(`R111-A3/N2: en kendt boks, naar sessionsopslaget har brugt fristen (${navn}), giver dialog-open`, async () => {
+    const m = model();
+    await m.enable();
+    if (foer) { m.sidenNavigerer('https://siden-selv.example/'); await sov(20); }
+    m.t.foersteGetMs = FRISTER.loft + 300;
+    const p = fang(m.nav());
+    if (!foer) { await sov(20); m.sidenNavigerer('https://siden-selv.example/'); }
+    const r = await p;
+    assert.equal(r.error, 'dialog-open', vis(r));
+    assert.equal(r.dialog_type, 'beforeunload');
+    assert.equal(r.sent, false);
+    assert.equal(m.adresser(), 0);
+  });
+}
+
+test('R111-N3: svaret efter et langsomt sessionsopslag foreslaar ikke new_tab, naar kaldet allerede havde new_tab', async () => {
+  const m = model({ beskyt: false, foersteGetMs: FRISTER.loft + 300 });
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(r.error, 'tab-not-responding', vis(r));
+  assert.doesNotMatch(String(r.note), /new_tab/, r.note);
 });
 
 // ── Kildeproeven: kun koordinatoren sender Page.handleJavaScriptDialog ───────────
