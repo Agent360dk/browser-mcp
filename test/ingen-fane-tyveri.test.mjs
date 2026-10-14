@@ -164,6 +164,7 @@ test('switch_tab siger det, naar siden er skjult bag andre vinduer', async () =>
   const svar = await u.hent('dispatch')(9876, 'switch_tab', { tab_id: 1 });
   assert.equal(svar.visibility, 'hidden');
   assert.match(svar.note, /browser_wait/);
+  assert.match(svar.note, /browser_extract_list[\s\S]*browser_ask_user/, 'lister i en skjult side skal ogsaa have en udgang (R101 Opus)');
   assert.match(svar.note, /bring_to_front: true/);
 });
 

@@ -125,7 +125,9 @@ judges a path by the operating system's own canonical path, so a different lette
 Chrome in front of the user: `browser_switch_tab` brought the window forward on every call, and a screenshot of a covered window raised
 Chrome and left it there, so agents that switched tabs often kept taking the screen. Both now stay put unless the agent
 passes `bring_to_front: true`, which the tool texts say is only for after asking the user. Input that may need Chrome in front
-(key presses, hover, coordinate clicks) can then answer that it did not land, as before, and the switch_tab answer says to ask. The
+(key presses, hover, coordinate clicks) can then answer that it did not land, as before, and the switch_tab answer says to ask;
+`browser_extract_list` on a hidden page and the server's instructions to agents say the same, so an agent is not sent round
+in a loop. The
 server's instructions to agents also no longer say that `browser_drop_file` falls back to the first file input on the page.
 
 **Several Chrome profiles.** With the extension enabled in more than one profile, the next tool answer

@@ -48,7 +48,8 @@ only after asking you. (`browser_navigate` with `new_tab: true, eget_vindue: tru
 also ask for focus for a window of its own; that too is only when the agent passes it.) `browser_switch_tab`
 makes the agent's tab active in its window and says whether the page is hidden. If you work in the same
 Chrome window as the agent, its tab can still become the visible one there; `browser_navigate` with
-`new_tab: true` and `eget_vindue: true` gives the agent a window of its own. A screenshot of a covered window answers `window-covered`.
+`new_tab: true` and `eget_vindue: true` gives the agent a window of its own (without a position it can
+still open on your screen, behind or beside what you are doing). A screenshot of a covered window answers `window-covered`.
 
 **What you can do today.** Reading, screenshots and scripts work in a background tab or window.
 Input - typing, hover, coordinate clicks - needs the tab to be the visible one in a window that has

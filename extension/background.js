@@ -4886,7 +4886,9 @@ async function dispatch(port, method, params) {
       // af 300 raekker med reached_end:true. Var siden skjult i en runde, kan enden ikke vaere naaet.
       const SKJULT = 'The page was hidden (a background tab or a minimized window), and a hidden page gets no scroll events, IntersectionObserver ' +
         'callbacks or animation frames. Lists that load or render rows while you scroll stop at what is already there, so ' +
-        'reached_end is false. Call browser_switch_tab and run again.';
+        'reached_end is false. Call browser_switch_tab and run again. If its answer still says visibility: hidden, the ' +
+        'window is covered or minimized and switching tabs cannot fix it: ask the user (browser_ask_user), and only then ' +
+        'call browser_switch_tab with bring_to_front: true.';
       let varSkjult = false;
       const seen = new Set();
       let stable = 0, rounds = 0, atEnd = false, bundRunder = 0, stilleHjul = 0;
@@ -7005,7 +7007,9 @@ async function dispatch(port, method, params) {
       if (vinduesFokus !== true) {
         svar.note = (synlighed === 'hidden'
           ? 'The page is hidden (its window is covered or minimized), and Chrome slows timers in hidden pages, so a page ' +
-            'that is still building can be read half-done: wait for the content you need with browser_wait. '
+            'that is still building can be read half-done: wait for the content you need with browser_wait. A list that ' +
+            'loads while scrolling (browser_extract_list) stops early in a hidden page; if the page has to be visible, ask ' +
+            'the user (browser_ask_user) and only then call again with bring_to_front: true. '
           : '') +
           'Chrome was left where it is, not brought in front of the user. Navigating, reading, screenshots, scripts and ' +
           'clicks by selector work like this. Key presses, hover, coordinate clicks and fields found by text may not land ' +

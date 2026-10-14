@@ -308,6 +308,7 @@ test('tildaekket vindue uden bring_to_front: window-covered, og Chrome roeres ik
   const svar = await u.hent('dispatch')(9876, 'screenshot', {}).catch((e) => ({ fejl: e.message }));
   assert.equal(svar.error, 'window-covered', JSON.stringify(svar).slice(0, 200));
   assert.match(svar.note, /bring_to_front: true/);
+  assert.match(svar.note, /browser_ask_user/, 'noten skal kraeve at brugeren spoerges foer Chrome tages frem (R101 Opus)');
   assert.match(svar.note, /browser_get_page_content/);
   assert.equal(svar.image, undefined);
   assert.equal(u.optager.antal('windows.update'), 0, 'Chrome blev hevet frem uden at nogen bad om det');
