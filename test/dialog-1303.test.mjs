@@ -621,9 +621,11 @@ test('R108-A2: et udestaaende dialogsvar fra A kan ikke ramme B\'s boks - B vent
   m.menneskeLukker(false);                                   // mennesket trykker Stay, mens A's Leave stadig er undervejs
   const ra = await a;
   assert.equal(ra.error, 'beforeunload-blocked', vis(ra));
+  const enables = m.enables();
   const rb = await fang(m.nav({ url: 'https://b.example/' }));
   assert.equal(rb.error, 'navigation-in-progress', `B blev sendt, mens A's svar kunne lande paa B's boks: ${vis(rb)}`);
   assert.equal(rb.sent, false);
+  assert.equal(m.enables(), enables, 'B skal svare ved indgangen, uden at spoerge porten (den kan tage 8 s)');
   await sov(200);
   assert.equal(m.t.url, GAMMEL, 'A\'s forsinkede Leave maa ikke have forladt siden');
   const rc = await fang(m.nav({ url: 'https://c.example/' }));
