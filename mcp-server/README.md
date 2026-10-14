@@ -196,8 +196,9 @@ acknowledgement, so a background tab produces an honest failure instead of a sil
 (Introduced in 1.29.2 - see CHANGELOG.md for which release you are on.)
 
 Fully hands-off background input is not part of 1.30, and it is not something we can fix: Chrome
-delivers no mouse or keyboard input to a tab that is not the visible one in its window, and none to
-a window without the operating system's focus (both measured). Some of it cannot be solved at all: CSS
+delivers no mouse or keyboard input to a tab that is not the visible one in its window (measured).
+Whether it does to the active tab of a window without the operating system's focus is unmeasured in
+desktop Chrome, so the tools' `landed` answer decides. Some of it cannot be solved at all: CSS
 `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
 never `isTrusted`, `elementFromPoint` stops at a cross-origin iframe, and the text selection a
 real double-click makes is browser behaviour rather than an event.
