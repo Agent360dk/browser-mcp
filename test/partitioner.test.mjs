@@ -20,17 +20,22 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { broModel, falskUdvidelse, vent, venteTil } from './hjaelp/bro-model.mjs';
+import { broModel, falskUdvidelse, vent, venteTil as venteTilKort, sporProces } from './hjaelp/bro-model.mjs';
 import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
+
+// R121 (MAALT 15/10 ved load 100-290): model-proever med indre frister paa 3-5 s blev roede uden mutant. Synkroniseringen her
+// venter derfor op til 15 s (alle ventetider i filen venter paa, at noget SKER - en groen proeve venter ikke laengere end
+// det tager), kaldene har en svarfrist paa 15 s, og broens genforsoeg er 300 ms (5 + 5 forsoeg: ~3 s til at forbinde).
+const venteTil = (f, ms = 15000, trin) => venteTilKort(f, ms, trin);
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const ID = 'a'.repeat(32);
 const I1 = '1111111111111111', I2 = '2222222222222222';
 
-async function bro(env = {}, { bredde = 6 } = {}) {
+async function bro(env = {}, { bredde = 6, genforsoegMs = 300 } = {}) {
   const base = await ledigtSpaend(bredde);
   return broModel({ BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + bredde - 1), ...env },
-    { genforsoegMs: 100, foersteValgMs: 0 });
+    { genforsoegMs, foersteValgMs: 0 });
 }
 
 /**
@@ -81,7 +86,7 @@ function kald(m, udtryk) {
 const ny = (m, a = {}) => kald(m, `nyPartition(${JSON.stringify(a)})`);
 const luk = (m, id) => kald(m, `lukPartition(${JSON.stringify(id)})`);
 const paa = (m, partition, metode = 'get_page_content') =>
-  kald(m, `sendToExtension(${JSON.stringify(metode)}, {}, 5000, baneForKald(${JSON.stringify(partition)}))`);
+  kald(m, `sendToExtension(${JSON.stringify(metode)}, {}, 15000, baneForKald(${JSON.stringify(partition)}))`);
 
 // ── oprettelse, id'er, loft ──────────────────────────────────────────────────
 
@@ -227,7 +232,9 @@ test('fremmede svar begge veje: standardbanens sokkel kan ikke besvare et partit
   const m = await bro();
   const a = installation(m, 'A');
   try {
-    const p1 = (await ny(m)).ok;
+    const r1 = await ny(m);
+    const p1 = r1.ok;
+    assert.ok(p1, JSON.stringify(r1));
     assert.deepEqual((await paa(m, undefined)).ok?.fra, 'A');
     a.stum = true;
     const fraP = paa(m, 'p1'), fraS = paa(m, undefined);
@@ -442,6 +449,162 @@ test('mens close lukker fanerne, faar et nyt kald paa partitionen partition-clos
   } finally { a.luk(); m.luk(); }
 });
 
+// R121 (Astra, MAALT i model): close stoppede ikke et kald, der ventede paa forbindelse. Kaldet genbandt den lukkede partitions
+// port, da installationen kom tilbage, og sendte sin kommando - efter at close havde svaret port_released: true. Den rigtige
+// udvidelse skanner hele spaendet (offscreen.js), saa den finder porten igen, ogsaa naar banen ikke laengere er i `baner`;
+// `tilbage` goer det samme for én port.
+function tilbage(port, { instance = I1, profile = 'arbejde' } = {}) {
+  const t = { kom: [], forbundet: null, stop: false };
+  let i_gang = false;
+  const skan = setInterval(async () => {
+    if (t.stop || t.forbundet || i_gang) return;
+    i_gang = true;
+    try {
+      const e = await falskUdvidelse(port, { id: ID, hello: { type: 'hello', extensionId: ID, version: '1.32.0', name: null, instance, profile } });
+      t.forbundet = e;
+      e.ws.on('close', () => { if (t.forbundet === e) t.forbundet = null; });
+      e.ws.on('message', (d) => {
+        const msg = JSON.parse(String(d));
+        if (!msg.method) return;
+        t.kom.push(msg);
+        e.svar(msg.id, msg.method === 'list_tabs' ? { tabs: [] } : { ok: true });
+      });
+    } catch {} finally { i_gang = false; }
+  }, 50);
+  skan.unref();
+  t.luk = () => { t.stop = true; clearInterval(skan); t.forbundet?.luk(); };
+  return t;
+}
+const lytter = (port) => new Promise((ok) => {
+  const s = createServer(); s.once('error', () => ok(true)); s.listen(port, '127.0.0.1', () => s.close(() => ok(false)));
+});
+
+test('close mens et kald venter paa forbindelse: kaldet faar partition-closed straks, binder ikke porten igen og sender intet (R121)', async () => {
+  // Genforsoegsventen er her 30 s (serveren: 1,5 s): et svar kort efter close kan kun komme af, at lukningen afbroed den.
+  const m = await bro();
+  const a = installation(m, 'A');
+  let t = null;
+  try {
+    const p1 = (await ny(m)).ok;
+    assert.equal(p1?.partition, 'p1', JSON.stringify(p1));
+    m.saetGenforsoeg(30000);
+    a.stop = true; a.luk();   // installationen forsvinder: partitionen er laast til den, saa kaldet venter paa, at den kommer igen
+    assert.ok(await venteTil(() => m.k(`liveConnections(partitioner.get('p1').bane).length`) === 0, 15000));
+    const kaldet = paa(m, 'p1', 'navigate');
+    // Kun synkronisering (intet assert): kaldet er i genforsoegsventen. Uden rettelsen findes feltet ikke, og proeven bliver
+    // roed paa det, kaldet GOER - ikke paa feltet.
+    await venteTil(() => m.k('partitioner.get("p1").bane.vaekkere?.size') === 1, 15000);
+    const t0 = Date.now();
+    const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${p1.port}`)).length;
+    const foer = bindinger();
+    const r = await luk(m, 'p1');
+    assert.equal(r.ok?.port_released, true, JSON.stringify(r));
+    t = tilbage(p1.port);                             // installationen kommer tilbage og skanner porten
+    // Hoejst 15 s: uden afbrydelse sover kaldet sine 30 s ud (og en mutant maa ikke goere proeven til en tidsudloeber).
+    let frist;
+    const v = await Promise.race([kaldet, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 15000); })]);
+    clearTimeout(frist);
+    assert.ok(!v.venter, `kaldet ventede videre i ${Date.now() - t0} ms efter close - lukningen afbroed ikke genforsoegsventen`);
+    assert.equal(v.svar?.error, 'partition-closed', `kaldet fortsatte efter close: ${JSON.stringify(v)}`);
+    await vent(300);
+    assert.equal(bindinger(), foer, 'kaldet bandt den lukkede partitions port igen');
+    assert.deepEqual(t.kom.map((k) => k.method), [], 'en kommando blev sendt efter close');
+    assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'den lukkede partition har en port igen');
+    assert.equal(await lytter(p1.port), false, 'der lytter noget paa den lukkede partitions port');
+  } finally { t?.luk(); m.luk(); }
+});
+
+test('close mens new venter paa forbindelse: new svarer partition-closed og efterlader ingen port (R121)', async () => {
+  const m = await bro();
+  let t = null;
+  try {
+    const nyt = ny(m);                                // ingen installation endnu: new's list_tabs venter
+    assert.ok(await venteTil(() => m.k('partitioner.get("p1")?.bane.activePort ?? null') !== null, 15000));
+    const port = m.k('partitioner.get("p1").bane.activePort');
+    await vent(150);
+    const r = await luk(m, 'p1');
+    assert.equal(r.ok?.port_released, true, JSON.stringify(r));
+    t = tilbage(port);
+    const v = await nyt;
+    assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
+    await vent(300);
+    assert.deepEqual(t.kom.map((k) => k.method), [], 'new sendte sit list_tabs efter close');
+    assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'den lukkede partition har en port igen');
+    assert.equal(await lytter(port), false, 'der lytter noget paa den lukkede partitions port');
+    assert.deepEqual(JSON.parse(JSON.stringify(m.k('partitionsListe()').map((x) => [x.partition, x.state, x.port]))), [['p1', 'closed', null]]);
+  } finally { t?.luk(); m.luk(); }
+});
+
+// Kald og lukning i samme oejeblik: kaldet er forbi indgangen og venter kun paa sin port, da close begynder.
+const kaldOgLuk = (m, metode = 'navigate') => kald(m, `Promise.allSettled([sendToExtension(${JSON.stringify(metode)}, {}, 15000, ` +
+  `baneForKald("p1")), lukPartition("p1")]).then((rs) => rs.map((r) => r.status === "fulfilled" ? { ok: r.value } : ` +
+  `{ fejl: r.reason.message, svar: r.reason.svar || null }))`);
+
+test('et kald, der begyndte i samme oejeblik som close, sendes ikke - heller ikke mens close lukker fanerne (R121)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A');
+  try {
+    const p1 = (await ny(m)).ok;
+    assert.ok((await paa(m, 'p1')).ok);               // brugt: close lukker fanerne gennem forbindelsen
+    const foer = a.kommandoer('navigate').length;
+    const [kaldet, lukket] = (await kaldOgLuk(m)).ok;
+    assert.equal(kaldet.svar?.error, 'partition-closed', JSON.stringify(kaldet));
+    assert.equal(lukket.ok?.tabs_closed, true, JSON.stringify(lukket));
+    assert.equal(a.kommandoer('navigate').length, foer, 'kaldet blev sendt til en partition, der var ved at lukke');
+    void p1;
+  } finally { a.luk(); m.luk(); }
+});
+
+test('close, mens et kald binder partitionens port igen: porten slippes, naar bindingen bliver faerdig (R121)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A');
+  try {
+    const p1 = (await ny(m)).ok;
+    assert.ok((await paa(m, 'p1')).ok);
+    a.stop = true;
+    a.forbindelser.get(p1.port).send({ type: 'terminate' });   // sidste fane lukket: porten slippes
+    assert.ok(await venteTil(() => m.k('partitioner.get("p1").bane.activePort') === null, 15000));
+    a.luk();
+    const [kaldet, lukket] = (await kaldOgLuk(m)).ok;   // kaldet begynder at binde; close kan ikke slippe en port, der ikke er aaben endnu
+    assert.equal(kaldet.svar?.error, 'partition-closed', JSON.stringify(kaldet));
+    assert.equal(lukket.ok?.port_released, false, JSON.stringify(lukket));
+    assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'bindingen, kaldet startede, efterlod en port');
+    const bundne = m.log.filter((l) => /listening on ws/.test(l)).map((l) => Number(/:(\d+)/.exec(l)[1]));
+    for (const port of new Set(bundne)) assert.equal(await lytter(port), false, `port ${port} lytter stadig`);
+  } finally { a.luk(); m.luk(); }
+});
+
+test('close i ventetiden foer foerste valg: kaldet afbrydes og sendes ikke, selvom en installation er forbundet (R121)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A', { instance: I1, profile: 'arbejde' });
+  let b = null;
+  try {
+    const p1 = (await ny(m)).ok;
+    assert.ok((await paa(m, 'p1')).ok);
+    a.stop = true; a.luk();                           // den laaste installation forsvinder ...
+    assert.ok(await venteTil(() => m.k(`liveConnections(partitioner.get('p1').bane).length`) === 0, 15000));
+    const r1 = await paa(m, 'p1');
+    assert.equal(r1.svar?.error, 'profile-disconnected', JSON.stringify(r1));   // ... og laasen slippes
+    // Naeste kald venter paa foerste valg (serveren: 2,5 s). Ogsaa lukningens eget list_tabs venter den ud, saa den er kort.
+    m.k('FOERSTE_VALG_MS = 5000');
+    b = installation(m, 'B', { instance: I2, profile: 'hjem' });
+    b.stum = true;                                    // close's list_tabs venter, saa kaldet ville naa at blive sendt
+    assert.ok(await venteTil(() => b.forbindelser.get(p1.port), 15000));
+    const kaldet = paa(m, 'p1', 'navigate');
+    await venteTil(() => m.k('partitioner.get("p1").bane.vaekkere?.size') === 1, 15000);   // kun synkronisering (se ovenfor)
+    const lukning = luk(m, 'p1');
+    const v = await kaldet;
+    assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
+    assert.equal(b.kommandoer('navigate').length, 0, 'kaldet blev sendt, mens partitionen lukkede');
+    // Lukningens eget list_tabs kommer efter ventetiden; det besvares, og close bliver faerdig.
+    assert.ok(await venteTil(() => b.kommandoer('list_tabs').length >= 1, 15000), 'lukningen spurgte ikke udvidelsen');
+    b.forbindelser.get(p1.port).svar(b.kommandoer('list_tabs').at(-1).id, { tabs: [] });
+    b.stum = false;
+    assert.ok((await lukning).ok);
+    assert.equal(b.kommandoer('navigate').length, 0, 'kaldet blev sendt, efter at partitionen var lukket');
+  } finally { b?.luk(); m.luk(); }
+});
+
 test('browser_about-listen: aabne og lukkede partitioner med id, label, tilstand, port og installation', async () => {
   const m = await bro();
   const a = installation(m, 'A');
@@ -460,11 +623,13 @@ test('browser_about-listen: aabne og lukkede partitioner med id, label, tilstand
 async function aegteServer(env = {}) {
   const base = await ledigtSpaend(6);
   const hjem = mkdtempSync(join(tmpdir(), 'bmcp-s5-'));
-  const srv = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+  // R121 (Astra): registreret straks ved oprettelsen (1.31's sporProces), saa filens after() draeber serveren, ogsaa naar en
+  // proeve afbrydes af sin frist, foer dens egen finally naar at koere.
+  const srv = sporProces(spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
     env: { ...process.env, BROWSER_MCP_TOKEN: '', BROWSER_MCP_EXTENSION_ID: '', BROWSER_MCP_PROFILE: '', HOME: hjem, USERPROFILE: hjem,
       ...env, BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 5) },
     stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  }));
   let fejl = ''; const ud = []; let rest = '';
   srv.stderr.on('data', (d) => { fejl += d; });
   srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });

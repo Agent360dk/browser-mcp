@@ -99,6 +99,10 @@ function lavBane(navn, medPid = true) {
     sidsteVisteForbindelsesAdvarsel: '',
     sidsteKonfliktNoegle: '',
     sidsteProfilAdvarsel: '',
+    // 1.32 (R121): en partitions bane lukkes for altid (lukPartition). `vaekkere` er de kald, der venter paa banen (genforsoeg,
+    // ventetiden foer foerste valg); lukningen vaekker dem, saa de faar partition-closed straks og ikke binder porten igen.
+    lukket: false,
+    vaekkere: new Set(),
   };
 }
 const standardBane = lavBane('default');
@@ -873,7 +877,28 @@ function sendToExtension(method, params = {}, timeoutMs = 30000, bane = standard
 // til porten har vaeret aaben i ét skanningsinterval plus en margen. (`let`: model-proeverne korter den.)
 let FOERSTE_VALG_MS = 2500;
 
-async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null, _gen = null) {
+// R121 (Astra, MAALT i model): close stoppede ikke et kald, der ventede paa forbindelse. Naar installationen kom tilbage, bandt
+// kaldet den lukkede partitions port igen og sendte sin kommando - efter at close havde svaret port_released: true. Et kald paa
+// en lukket bane stoppes derfor ved indgangen (foer porten bindes) og efter hver ventetid (foer det sendes). Var lukningen
+// allerede faerdig, da en binding, kaldet startede, blev faerdig, slippes porten her: lukPartition kunne ikke slippe en port,
+// der endnu ikke var aaben. Lukningens egne kald (fanerne lukkes gennem partitionens forbindelse) er undtaget.
+function stopHvisLukket(bane, lukning) {
+  if (!bane.lukket || lukning) return;
+  if (!baner.has(bane)) frigivPort(bane, `partition ${bane.navn} is closed`);
+  throw partitionFejl('partition-closed', { partition: bane.navn },
+    `Partition ${bane.navn} was closed while this call was waiting. Nothing was sent; ids are never reused.`);
+}
+
+// En ventetid, lukningen kan afbryde (se stopHvisLukket).
+function ventPaaBane(bane, ms) {
+  return new Promise((ok) => {
+    const faerdig = () => { clearTimeout(t); bane.vaekkere.delete(faerdig); ok(); };
+    const t = setTimeout(faerdig, ms);
+    bane.vaekkere.add(faerdig);
+  });
+}
+
+async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null, _gen = null, _lukning = false) {
   // R115 (Astra 1) / R117 (Astra 1): kaldets generation registreres SYNKRONT ved indgangen - foer foerste await. Stod den efter
   // `await sikrePort`, kunne et samtidigt kald naa at erklaere laasen mistet imens, og saa registrerede dette kald den NYE
   // generation og valgte en anden installation (maalt med en laast udvidelse fra foer 1.31).
@@ -884,9 +909,11 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
         '1-32 characters). Nothing was sent: without a valid name the server would drive whichever Chrome profile it ' +
         'found. Fix or remove it in the MCP client configuration, then restart the client.' });
   }
+  stopHvisLukket(bane, _lukning);   // R121: en lukket partition binder ikke sin port igen
   // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
   // Fik vi ingen (hele spaendet optaget), proever naeste kald igen - derfor ingen kast her.
   await sikrePort(bane);
+  stopHvisLukket(bane, _lukning);   // R121: lukket, mens porten blev bundet (eller i samme oejeblik)
   // Spoergsmaalet er om doeren var NYAABNET da kaldet begyndte - ikke om den stadig er
   // "ny" efter at vi selv har brugt femten sekunder paa at proeve igen. Derfor maales det
   // ved indgangen og baeres med gennem gentagelserne.
@@ -899,7 +926,8 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
   // R115 (Opus 1): foerste valg venter, til alle profiler har kunnet naa at forbinde til den nye port.
   if (!bane.laas && bane.portBundetTid) {
     const rest = bane.portBundetTid + FOERSTE_VALG_MS - Date.now();
-    if (rest > 0) await new Promise((r) => setTimeout(r, rest));
+    if (rest > 0) await ventPaaBane(bane, rest);
+    stopHvisLukket(bane, _lukning);   // R121: lukket i ventetiden
     if (gen !== bane.laasGen && bane.sidsteMistet) throw new ProfilFejl(bane.sidsteMistet);
   }
   // Retry if extension is temporarily disconnected (reconnects every 2s)
@@ -917,8 +945,8 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
   if (valg && valg.straks) throw valg.straks;
   if (!conn) {
     if (_retries > 0) {
-      await new Promise(r => setTimeout(r, 1500));
-      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu, gen);
+      await ventPaaBane(bane, 1500);   // R121: lukningen afbryder ventetiden; indgangen stopper saa kaldet
+      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu, gen, _lukning);
     }
     // ── Har vi lige aabnet doeren selv? (MAALT 8/9, #16) ─────────────────────
     //
@@ -932,7 +960,7 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
     // ekstra budget, og siger sandheden hvis den stadig er tom.
     if (doerAabnetNu && !_ekstraRunde) {
-      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu, gen);
+      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu, gen, _lukning);
     }
     // Budgettet er brugt. Den laaste installation kom ikke tilbage: profile-disconnected - ikke en anden installation.
     if (valg.mistet && !bane.bindFejl && !bane.alleePorteOptaget) throw mistetFejl(bane);
@@ -1143,6 +1171,9 @@ async function lukPartition(id) {
   if (p.lukket) throw partitionFejl('partition-closed', { partition: p.id }, `Partition ${p.id} is already closed.`);
   p.lukket = true;   // fra nu: partition-closed for hvert nyt kald
   const bane = p.bane;
+  // R121: ogsaa for kald, der allerede er paa vej - de vaekkes nu og faar partition-closed (stopHvisLukket).
+  bane.lukket = true;
+  for (const v of [...bane.vaekkere]) v();
   // Fanerne lukkes gennem partitionens egen forbindelse, og kun det, udvidelsen bekraefter, giver tabs_closed: true. Kan det
   // ikke bekraeftes (forbindelsen er vaek, et kald fejler), er svaret "unknown": naar porten slippes nedenfor, lukker
   // udvidelsen den afbrudte sessions faner selv (som naar en chat forsvinder), men det kan serveren ikke se.
@@ -1152,9 +1183,10 @@ async function lukPartition(id) {
     tabsLukket = true;
   } else if (activeConnection(bane)) {
     try {
-      const { tabs = [] } = (await sendTilBane(bane, 'list_tabs', {}, 5000)) || {};
-      for (const t of tabs) await sendTilBane(bane, 'close_tab', { tab_id: t.id }, 5000);
-      const efter = (await sendTilBane(bane, 'list_tabs', {}, 5000)) || {};
+      const lukning = (method, params) => sendTilBane(bane, method, params, 5000, 5, false, null, null, true);
+      const { tabs = [] } = (await lukning('list_tabs', {})) || {};
+      for (const t of tabs) await lukning('close_tab', { tab_id: t.id });
+      const efter = (await lukning('list_tabs', {})) || {};
       if (Array.isArray(efter.tabs) && efter.tabs.length === 0) tabsLukket = true;
     } catch {}
   }

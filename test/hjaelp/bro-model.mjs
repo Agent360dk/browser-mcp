@@ -74,7 +74,9 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
     klienter.clear();
     modeller.delete(model);
   };
-  const model = { ctx, k, log, luk };
+  // R121: genforsoeget kan aendres undervejs (en proeve kan oprette en partition hurtigt og saa goere ventetiden lang).
+  const saetGenforsoeg = (ms) => { genforsoegMs = ms; };
+  const model = { ctx, k, log, luk, saetGenforsoeg };
   modeller.add(model);
   return model;
 }
