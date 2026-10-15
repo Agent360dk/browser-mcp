@@ -82,6 +82,20 @@ const MIN_INSTANS = fraAdressen('i', /^[0-9a-f]{16}$/);
 let minProfil = fraAdressen('p', PROFIL_MOENSTER);
 const connections = new Map(); // port → WebSocket
 
+// 1.32 (S4): hver forbindelse faar en GENERATION. Sessionerne i background.js er noeglet paa porten, og Astra MAALTE (R107), at
+// en forsinket frigivelse fra en lukket forbindelse lukkede fanen i en NY session paa samme port. Med generationen paa hver
+// kommando og hver frigivelse (session_disconnect, terminate_mcp_session) gaelder en frigivelse kun den forbindelse, den blev
+// bestilt for. Dokumentets tilfaeldige del goer, at et genskabt offscreen-dokument ikke genbruger et gammelt dokuments numre.
+const DOKUMENT_GEN = (() => {
+  try {
+    const b = new Uint8Array(4);
+    crypto.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  } catch { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+})();
+let forbindelsesNr = 0;
+const genAf = new WeakMap();   // WebSocket -> generation
+
 // ── Hvorfor porte foerst PROBES med fetch, og ikke bare aabnes (MAALT 22/8) ──────
 //
 // Chrome bremser nye WebSocket-haandtryk. Formlen staar i Chromiums egen kilde
@@ -217,6 +231,8 @@ function tryConnect(port) {
   // blev forældreloes: aldrig lukket, aldrig i kortet, men fuldt aaben.
   // Registrering med det samme lukker vinduet.
   connections.set(port, ws);
+  const gen = `${DOKUMENT_GEN}-${++forbindelsesNr}`;
+  genAf.set(ws, gen);
 
   // 8000, ikke 2000: Chromes bremse kan lovligt holde et haandtryk i op til 5000 ms,
   // og at lukke ned foer det taeller som en fejl der goer bremsen haardere. Se blokken
@@ -293,6 +309,7 @@ function tryConnect(port) {
         type: 'mcp_command',
         port,
         pid,
+        gen,
         method,
         params: params || {},
       });
@@ -314,7 +331,7 @@ function tryConnect(port) {
       console.log(`[Offscreen] Disconnected from port ${port} (${connections.size} remaining)`);
       updateStatus();
       // Notify background to release tabs for this session
-      chrome.runtime.sendMessage({ type: 'session_disconnect', port }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'session_disconnect', port, gen }).catch(() => {});
     }
   };
 
@@ -354,6 +371,9 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'terminate_mcp_session' || typeof msg.port !== 'number') return;
   const ws = connections.get(msg.port);
   if (!ws) return;
+  // 1.32 (S4): bestilt for en anden forbindelse (den, der havde porten, da sessionen blev tom)? Saa lukkes ikke den forbindelse,
+  // der har porten nu. Uden generation (en baggrund fra foer 1.32) som foer.
+  if (typeof msg.gen === 'string' && msg.gen !== genAf.get(ws)) return;
   try {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'terminate' }));

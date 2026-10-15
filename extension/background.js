@@ -55,6 +55,7 @@ function restoreSessions() {
           color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
           label: `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
+          ...generationFraLager(data),
         });
       }
     }
@@ -62,7 +63,20 @@ function restoreSessions() {
   return restorePromise;
 }
 
-function getSession(port, pid) {
+// ── 1.32 (S4): sessionsgeneration ─────────────────────────────────────────────
+// Astra MAALTE (R107): efter at en ny session var oprettet paa samme port med fane 99, lukkede et forsinket
+// releaseSession(port) - bestilt af den GAMLE forbindelses lukning - fane 99 og slettede sessionen. Kortet er noeglet paa
+// porten, og portnummeret siger ikke, hvilken forbindelse der ejer sessionen. Med partitioner (#20) genbruges porte oftere.
+// Derfor: broen (offscreen.js) giver hver forbindelse en generation, som foelger med hver kommando og hver frigivelse.
+// Sessionen husker den generation, der ejer den nu (`gen`), og hver fane den generation, der aabnede den (`faneGen`).
+// En frigivelse for en anden generation end sessionens roerer kun sin egen generations faner (se releaseSession).
+function generationFraLager(d) {
+  const faneGen = new Map();
+  for (const [t, g] of Object.entries(d?.faneGen || {})) if (typeof g === 'string') faneGen.set(Number(t), g);
+  return { gen: typeof d?.gen === 'string' ? d.gen : null, faneGen };
+}
+
+function getSession(port, pid, gen = null) {
   if (!sessions.has(port)) {
     // ── Hvorfor det laveste LEDIGE nummer, og ikke sessions.size + 1 (MAALT 22/8) ──
     // Med `size + 1` genbruges et nummer der allerede er i brug, saa snart en chat
@@ -97,11 +111,18 @@ function getSession(port, pid) {
       color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
       label: `Claude ${nummer}`,
       pid: typeof pid === 'number' ? pid : null,
+      gen: typeof gen === 'string' ? gen : null,
+      faneGen: new Map(),
     });
   }
   const s = sessions.get(port);
   // Foerste kald fra en genstartet server kan baere pid'en foer sessionen har den.
   if (s.pid == null && typeof pid === 'number') { s.pid = pid; husketPlads(pid, s.nummer); }
+  // 1.32 (S4): en kommando fra en ny forbindelse paa porten overtager sessionen (samme chat efter et genskabt offscreen-
+  // dokument, eller efter at den slap og fik porten igen). Fanerne beholder den generation, der aabnede dem, saa en sen
+  // frigivelse fra den gamle forbindelse stadig kan rydde netop dem - og kun dem.
+  if (typeof gen === 'string' && s.gen !== gen) s.gen = gen;
+  if (!s.faneGen) s.faneGen = new Map();
   return s;
 }
 
@@ -219,6 +240,7 @@ async function evictOldestTabs(session, justAddedTabId) {
 async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   const session = getSession(port);
   session.tabIds.add(tabId);
+  if (session.gen) session.faneGen.set(tabId, session.gen);   // 1.32 (S4): fanen hoerer til den forbindelse, der aabnede den
   // Sessionen lever igen — aflys en eventuel port-frigivelse (se tabs.onRemoved).
   chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
 
@@ -263,9 +285,31 @@ async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   persistSessions();
 }
 
-async function releaseSession(port) {
+async function releaseSession(port, gen = null) {
   const session = sessions.get(port);
   if (!session) return;
+  // 1.32 (S4): frigivelsen er bestilt for forbindelsen `gen`. Ejer en NYERE forbindelse sessionen nu, gaelder den kun de
+  // faner, den gamle forbindelse aabnede - aldrig sessionen, dens frist eller den nye forbindelses faner (Astra, MAALT).
+  // Uden generation (en bro fra foer 1.32) som foer.
+  const bestiltFor = typeof gen === 'string' ? gen : null;
+  if (bestiltFor && session.gen && session.gen !== bestiltFor) {
+    if (frivilligtFrigivet.get(port) === bestiltFor) { frivilligtFrigivet.delete(port); return; }
+    for (const tabId of [...session.tabIds]) {
+      if (session.faneGen.get(tabId) !== bestiltFor) continue;
+      debuggerForceDetach(tabId);
+      try { await chrome.tabs.remove(tabId); } catch {
+        try { await chrome.tabs.get(tabId); continue; } catch {}   // findes den stadig, beholdes den (#13)
+      }
+      session.tabIds.delete(tabId);
+      session.faneGen.delete(tabId);
+      if (session.activeTabId === tabId) session.activeTabId = null;
+    }
+    persistSessions();
+    return;
+  }
+  // Frigivelsen gaelder sessionen. En frivillig bestilling taeller kun, hvis den blev bestilt for netop denne forbindelse.
+  const frivillig = frivilligtFrigivet.has(port)
+    && (!bestiltFor || frivilligtFrigivet.get(port) === null || frivilligtFrigivet.get(port) === bestiltFor);
 
   // ── Bad vi selv om frigivelsen? (FUNDET AF REVIEW 7/9) ────────────────────
   //
@@ -281,7 +325,8 @@ async function releaseSession(port) {
   // #12: sessionen forsvinder her — dens frist skal med, uanset hvilken vej vi gaar ud.
   chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
 
-  if (frivilligtFrigivet.delete(port)) {
+  if (frivillig) {
+    frivilligtFrigivet.delete(port);
     if (session.tabIds.size) {
       // Sessionen arbejder igen. Behold den, saa naeste binding kan adoptere den
       // (adoptOrphanedSession finder donorer med samme pid OG faner).
@@ -299,6 +344,11 @@ async function releaseSession(port) {
   // ikke KUNNE lukkes blev dermed foraeldreloes: stadig aaben, stadig i en farvet gruppe,
   // men uden for enhver session — usynlig for list_tabs og aldrig ryddet op. Praeeksisterende,
   // men v1.29 slipper porte langt oftere, saa stien koeres langt hyppigere end foer.
+  frivilligtFrigivet.delete(port);   // en bestilling for en anden forbindelse maa ikke overleve til den naeste
+  // 1.32 (S4): sessionen tages ud af kortet FOER foerste await. En kommando fra en ny forbindelse paa porten, der kommer imens
+  // fanerne lukkes, faar en frisk session i stedet for den, der ryddes - og som ellers blev slettet bagefter med den nye
+  // forbindelses fane i.
+  sessions.delete(port);
   const stadigAabne = new Set();
   for (const tabId of [...session.tabIds]) {
     debuggerForceDetach(tabId);
@@ -319,13 +369,16 @@ async function releaseSession(port) {
   }
 
   if (stadigAabne.size) {
-    console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
     session.tabIds = stadigAabne;
-    persistSessions();
-    return;
+    // 1.32 (S4): tog en ny forbindelse porten imens, ejer den pladsen; de faner, der ikke kunne lukkes, beholder vi ikke
+    // under dens session (den nye forbindelse maa ikke arve en doed forbindelses faner).
+    if (!sessions.has(port)) {
+      console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
+      sessions.set(port, session);
+    } else {
+      console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— og porten har allerede en ny session; fanerne er ikke laengere i en session');
+    }
   }
-
-  sessions.delete(port);
   persistSessions();
 }
 
@@ -340,6 +393,9 @@ function persistSessions() {
       label: session.label,
       nummer: session.nummer ?? null,   // uden denne mister en gendannet session sin plads og kan kollidere
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
+      // 1.32 (S4): uden disse kan en frigivelse fra en gammel forbindelse efter en genstart ikke kende sine egne faner
+      gen: session.gen ?? null,
+      faneGen: Object.fromEntries(session.faneGen || []),
     };
   }
   chrome.storage.local.set({ sessions: data });
@@ -738,7 +794,8 @@ const agentLukkedeFaner = new Set();
 // Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
-const frivilligtFrigivet = new Set();
+// 1.32 (S4): port -> den generation (forbindelse), frigivelsen blev bestilt for (null for en session uden generation).
+const frivilligtFrigivet = new Map();
 // Hvilken plads en chat sidst havde, husket paa dens pid — ikke paa porten.
 //
 // MAALT 8/9 (#17): siden porten slippes naar en session er faerdig, slettes sessionen.
@@ -1209,6 +1266,7 @@ async function hydrerSessionerRaat() {
       label: d.label,
       nummer: d.nummer ?? null,
       pid: d.pid ?? null,
+      ...generationFraLager(d),
     });
   }
 }
@@ -1231,8 +1289,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
-      frivilligtFrigivet.add(port);
-      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      frivilligtFrigivet.set(port, session.gen ?? null);
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port, gen: session.gen ?? null }).catch(() => {});
     } else if (session.tabIds.size === 0) {
       // ── Agenten lukkede selv sin sidste fane (MAALT 7/9-2026) ────────────────
       // Her stod der intet, og det var med vilje: en agent der lukker en fane midt i
@@ -3564,7 +3622,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(() => {
         // Stempl pid'en ÉT sted, foer dispatch. De fem nedstroems getSession(port)-kald
         // arver den derfra, saa ingen af dem behoever at kende til pid-begrebet.
-        getSession(port, msg.pid);
+        getSession(port, msg.pid, msg.gen);
         dispatch(port, msg.method, msg.params)
           .then(result => sendResponse(result))
           .catch(err => sendResponse({ __error: err.message || String(err) }));
@@ -3574,7 +3632,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'session_disconnect') {
-    releaseSession(msg.port);
+    releaseSession(msg.port, msg.gen);
     return;
   }
 
@@ -7987,16 +8045,20 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // kaldere vil ikke arve faner der ikke findes). Derfor rettes det HER.
     (async () => {
       const iHukommelsen = sessions.get(port);
+      let gen = null;
       if (iHukommelsen) {
         if (iHukommelsen.tabIds.size > 0) return;   // den arbejder igen — lad den vaere
+        gen = iHukommelsen.gen ?? null;
       } else {
         const { sessions: gemte } = await chrome.storage.local.get({ sessions: {} });
         const gemt = gemte[String(port)];
         if (!gemt) return;                          // sessionen er reelt vaek
         if ((gemt.tabIds || []).length > 0) return; // den arbejder igen
+        gen = typeof gemt.gen === 'string' ? gemt.gen : null;
       }
-      frivilligtFrigivet.add(port);
-      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      // 1.32 (S4): bestillingen gaelder den forbindelse, der ejede sessionen - ikke den, der har porten, naar beskeden naar frem.
+      frivilligtFrigivet.set(port, gen);
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port, gen }).catch(() => {});
     })().catch(() => {});
   }
 });
