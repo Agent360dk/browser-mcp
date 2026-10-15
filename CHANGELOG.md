@@ -12,7 +12,7 @@ here on the lanes 1.31 laid down, and #20 is superseded with credit. Agents that
 subagents) also share its tab group and active tab, so they took over each other's tabs. `browser_partition` with
 `action: "new"` gives an agent its own partition: one more port in the same range, which the extension connects to like
 any other, so the partition gets its own tab group and active tab. It chooses its Chrome profile right away by the 1.31
-rules (`profile` in the call, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused. Every
+rules (`profile` in the call, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused while the server runs (after a restart, numbering starts at `p1` again). Every
 tool that reaches the browser takes `partition`, `browser_extract_token` too; calls without it go to the default partition
 as before, and a call with an unknown or closed id is never sent there instead. `action: "close"` closes the partition's
 tabs through its own connection and releases its port. A partition's commands carry no process id, so the extension never
@@ -35,10 +35,10 @@ that arrives while a session is being cleaned up gets a fresh session.
 | `error: "partition-limit"` | `browser_partition` `new` | 4 partitions are already open on this server |
 | `error: "port-capacity-exhausted"` | `browser_partition` `new` | Every port in the range is taken; no partition was created |
 | `error: "profile-*"`, `partition_created: false` | `browser_partition` `new` | The partition's profile choice failed; no partition was created and its port was released |
-| `error: "partition-not-found"` | every browser tool, `close` | No partition with that id. Nothing was sent |
-| `error: "partition-closed"` | every browser tool, `close` | The partition was closed. Nothing was sent |
+| `error: "partition-not-found"` | every browser tool, `close` | No partition with that id, or `new` is still creating it (every browser tool). Nothing was sent |
+| `error: "partition-closed"` | every browser tool, `close`, `new` | The partition was closed (from `new`: while it was being created). Nothing was sent; a command that was already running when close came answers `sent: true` |
 | `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
-| `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state`, `port`, `profile`, `installation` |
+| `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
 
 ## 1.31.0 (not released yet)
 

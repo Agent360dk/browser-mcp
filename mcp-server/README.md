@@ -368,11 +368,11 @@ active tab. It answers an id like `p1`, and that agent passes `partition: "p1"` 
 
 | Situation | What the agent gets |
 |---|---|
-| `new` | The partition chooses its Chrome profile right away, by the rules above: `profile` in the call, otherwise `BROWSER_MCP_PROFILE`. It takes a few seconds (the extension scans for new ports every 2 seconds). If the profile is not connected, the answer is the `profile-*` error, no partition is created and its port is released |
+| `new` | The partition chooses its Chrome profile right away, by the rules above: `profile` in the call, otherwise `BROWSER_MCP_PROFILE`. It takes a few seconds (the extension scans for new ports every 2 seconds). If the profile is not connected, the answer is the `profile-*` error, no partition is created and its port is released. If the partition is closed while `new` is still creating it, `new` answers `partition-closed` |
 | A fifth open partition | `partition-limit`: at most 4 per server, because the ports are shared by every chat on the machine |
 | Every port in the range taken | `port-capacity-exhausted`, and no partition |
-| `close` | Its tabs are closed through its own connection and its port is released. `port_released`, and `tabs_closed: true` only when the extension confirmed it, or when no tool call ever used the partition (it then has no tabs, and the extension is not asked); otherwise `"unknown"` (the extension still closes them when the connection ends, but the server cannot see it) |
-| A call with an unknown or closed id | `partition-not-found` or `partition-closed`, `sent: false`. The call never goes to the default partition instead, and ids are never reused |
+| `close` | Its tabs are closed through its own connection and its port is released. `port_released`, and `tabs_closed: true` only when the extension confirmed it, or when no tool call ever used the partition (it then has no tabs, and the extension is not asked); otherwise `"unknown"` (the extension still closes them when the connection ends, but the server cannot see it). A command still running on the partition answers `partition-closed` with `sent: true` |
+| A call with an unknown or closed id | `partition-not-found` or `partition-closed`, `sent: false`; also `partition-not-found` for the id of a partition `new` is still creating. The call never goes to the default partition instead, and ids are never reused while the server runs (after a restart, numbering starts at `p1` again) |
 
 A partition's commands carry no process id, so the extension never hands one partition's tabs to another. `browser_about`
 lists the partitions. The extension keeps each partition's tabs apart from a new connection on the same port: a late clean-up
