@@ -4,6 +4,57 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.30.3 (not released yet)
+
+**`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,
+`browser_navigate` in the current tab answered with the old address and no error when the page asked "Leave site?", and
+the prompt stayed open, so the tab did not respond until the user answered it in Chrome. Now one part of the extension
+watches the tab's dialogs and is the only part that answers them. When the page asks "Leave site?" after the address was
+sent, the answer is Stay, unless the call passed `leave_page: true` or a `browser_handle_dialog` arming is waiting for the
+next dialog on the tab; the result is read from Chrome's own report that the dialog closed, not from the reply to the
+command that answered it. In the current tab, `ok: true` now means Chrome took the address and the new page was proven
+loaded within about 25 seconds. The limit starts before the session's tab is looked up, and every wait after that lookup
+(the page, a dialog, the CAPTCHA check) runs under it; the wait for the page ends half a second before the limit, so the
+answer itself fits, and a page that finishes in that last half second is reported as `navigation-unconfirmed`. The lookup
+itself is waited for to the end, because stopping it halfway could leave Chrome creating a tab with the address afterwards:
+if Chrome stalls there, nothing is answered until it is done (`tab-not-responding`, or `dialog-open` for a dialog the
+extension saw, when nothing was sent), and if it never finishes, the server's own 30-second limit ends the call. Success is
+never answered after the limit. Every other outcome is an error with `sent` (whether the address reached Chrome) and a note
+on what the agent can do. A new session's first navigate, whose tab is created with the address, is held to the same rule:
+`ok: true` only with a proven load, otherwise `navigation-unconfirmed` with `sent: true`. Other new tabs (`new_tab`) and
+`eget_vindue` are unchanged.
+
+**Session guard.** Looking up the session's tab can wait on Chrome for a long time, also past the server's 30-second limit,
+which does not stop the work in the extension. Each call therefore notes the session's active tab when it starts and checks
+it again before acting: after every lookup of a session tab (also one that succeeds), in the search for another usable
+session tab, and before creating a tab. If another call changed the active tab meanwhile (it switched to, opened or closed
+a tab - closing the dead active tab counts too), the call stops before sending anything to a tab or creating or activating
+one: `browser_navigate` answers `session-changed` with `sent: false`, and other tools fail with that message. Tab ids found
+dead on the way may already have been dropped from the session. A call that gets past these checks before the change can
+still finish its action in Chrome after the server has given up on it, as in 1.30.2.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `leave_page` (parameter) | `browser_navigate` | Answer "Leave site?" with Leave instead of Stay. The tool text says to ask the user first (`browser_ask_user`), because unsaved work on the page is lost |
+| `ok: true`, `answered_by`, `dialog_type` | `browser_navigate` in the current tab | The new page was proven loaded. A page-load report counts only when Chrome took the address and the navigation was seen starting, the tab shows the requested address, or the tab has left its old address; the old page reporting "loaded" again is not proof any more (1.30.2 took it). The same address, a fragment and a redirect are proven as in 1.30.2; a redirect back to the exact old address counts only when Chrome reports the navigation starting, which it did when measured; `answered_by` (`navigate` or `handle_dialog`) when a dialog was answered on the way |
+| `error: "beforeunload-blocked"`, `url`, `answered_by` | `browser_navigate` | The page asked "Leave site?" and the answer was Stay, so the tab is still on `url`. The note says to ask the user before calling again with `leave_page: true` |
+| `error: "dialog-open"`, `dialog_type`, `message`, `pending_url` | `browser_navigate` | A dialog is open on the tab. With `sent: false` nothing was sent; with `sent: true` the page opened a dialog that is not "Leave site?" after the address was sent, and it was not answered. `pending_url` is a navigation that may still happen when the dialog is answered |
+| `error: "navigation-in-progress"`, `op_id` | `browser_navigate` | Another navigate is still working in the tab, Chrome has not yet taken an address sent before, or an earlier answer to a dialog on the tab has not been confirmed (it could land on this call's dialog; then `op_id` is null and the note says so). Nothing was sent. The hold on an unconfirmed answer lasts until Chrome answers, the debugger detaches or the tab closes; `browser_reattach_debugger` releases it |
+| `error: "tab-not-responding"` | `browser_navigate` | Chrome did not answer on the tab before anything was sent: a busy page, or a dialog Chrome does not show the extension (one that opened before anything listened). A dialog the extension saw open meanwhile gives `dialog-open` instead |
+| `error: "navigation-failed"`, `detail` | `browser_navigate` | Chrome refused the navigation. Before, a refused address could come back as an answer with the old address |
+| `error: "dialog-unconfirmed"` | `browser_navigate`, `browser_handle_dialog` | A dialog was answered, but Chrome did not report it closed within 5 seconds, or the debugger left the tab. Nothing more is sent |
+| `error: "navigation-unconfirmed"`, `may_complete_later`, `pending_url` | `browser_navigate` | The address was sent, but no load was proven in time (about 25 seconds: the wait ends half a second before the limit, so the answer fits inside it); the navigation may still complete later. A download or an address that answers 204 never loads a page and ends here too; `pending_url` then stays until a later navigate is proven or a "Leave site?" closes, so it is not proof that Chrome still has a navigation waiting. A dialog that opens after that is answered only by a `browser_handle_dialog` arming that is still valid; otherwise nobody answers it: the next call answers `dialog-open` with `pending_url` |
+| `error: "tab-closed"` | `browser_navigate`, `browser_handle_dialog` | Chrome no longer has the tab: it was closed while the call was waiting. A tab that moves to a page the debugger cannot stay on (`chrome://`, the Chrome Web Store) is still there and is not reported as closed |
+| `warning` | `browser_reattach_debugger` | A dialog the extension saw open was on the tab. After reattaching, the tools cannot answer it, so the user has to |
+| `error: "session-changed"` | `browser_navigate` | Another call changed the session's active tab while this one waited for Chrome; nothing was sent. Other tools fail with the same message |
+| `captcha_checked: false` | `browser_navigate` | The page loaded, but the CAPTCHA check did not finish inside the 25 seconds, so it was skipped; this is not "no CAPTCHA" |
+| `error: "dialog-being-answered"` | `browser_handle_dialog` | `browser_navigate` or an earlier `browser_handle_dialog` is answering the dialog on screen, or an earlier answer on the tab has not been confirmed by Chrome |
+| `action` from Chrome's report | `browser_handle_dialog` | A dialog the extension saw open and nobody is answering is answered at once, without waiting for an arming; `action` (`accept` or `dismiss`) is what Chrome reported when the dialog closed. An arming's answer, which a click waits for, now also comes from that report |
+
+These errors are also errors to the MCP client (`isError: true`), so an agent does not read `ok: false` as a call that went through.
+
 ## 1.30.2 (2026-10-14)
 
 **Tool texts that match the code, clicks that say when they could not land, and the pull requests from

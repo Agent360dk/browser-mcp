@@ -7,7 +7,7 @@
 export const TOOLS = [
   {
     name: 'browser_navigate',
-    description: 'Navigate the active browser tab to a URL. Reuses the current tab by default (no tab spam). Pass new_tab=true only when you need to keep the current page open.',
+    description: 'Navigate the active browser tab to a URL. Reuses the current tab by default (no tab spam). Pass new_tab=true only when you need to keep the current page open. In the current tab the answer is ok:true only when Chrome took the address and the new page is proven loaded within about 25 s (the wait ends half a second before that limit). If the page asks "Leave site?", the default answer is Stay (an armed browser_handle_dialog answers instead) and the reply is error beforeunload-blocked with the tab\'s actual url: the page may hold unsaved work, so ask the user (browser_ask_user) before you call again with leave_page:true. Other errors, each with sent (was the address sent to Chrome?) and a note on what to do: navigation-in-progress (another navigate is working in this tab, or - with op_id null - an earlier answer to a dialog on the tab is not confirmed yet; wait a moment), dialog-open (a dialog is on screen - answer it with browser_handle_dialog), tab-not-responding (busy page, or a dialog Chrome does not show us), navigation-failed, dialog-unconfirmed, navigation-unconfirmed (no load proven in time; may_complete_later and pending_url say it can still happen - read the tab before sending it again; a download or a 204 answer never loads a page and ends here too), tab-closed (Chrome no longer has the tab), session-changed (another call changed the session\'s active tab while this one waited; nothing was sent).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -19,6 +19,7 @@ export const TOOLS = [
         vindue_hoejde: { type: 'number', description: 'With eget_vindue: window height in points.' },
         url: { type: 'string', description: 'URL to navigate to' },
         new_tab: { type: 'boolean', description: 'Open in new tab instead of reusing current (default: false). If the session\'s only tab is still an empty about:blank placeholder, that tab is used instead of opening another.' },
+        leave_page: { type: 'boolean', description: 'Answer "Leave site?" with Leave instead of Stay (default: false), so unsaved changes on the current page are lost. Only after the user has agreed (browser_ask_user). An armed browser_handle_dialog on the tab takes precedence over this.' },
       },
       required: ['url'],
     },
@@ -255,7 +256,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Arm automatic handling of the next JavaScript alert/confirm/prompt on the active tab, then return immediately. Call this BEFORE the click that opens the dialog - a dialog freezes the tab, so nothing can be clicked once it is on screen. Pass wait=true only when the dialog is already opening. A dialog that is already on screen cannot be answered from here: the answer is tab-not-responding, with what to do instead.',
+    description: 'Answer a JavaScript alert/confirm/prompt or "Leave site?" on the active tab. If a dialog this extension saw open is on screen and nobody is answering it, it is answered now, and the reply says what Chrome reports happened (action accept or dismiss). Otherwise this arms automatic handling of the next dialog on the tab and returns immediately - call it BEFORE the click that opens the dialog, because a dialog freezes the tab. Pass wait=true only when the dialog is already opening. Errors: dialog-being-answered (browser_navigate or an earlier call is answering it - wait), dialog-unconfirmed (answered, but Chrome did not confirm it closed), tab-not-responding (a dialog that opened before anything listened, or a busy page; the note says what to do).',
     inputSchema: {
       type: 'object',
       properties: {

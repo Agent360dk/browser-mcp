@@ -406,8 +406,10 @@ function vaelgerSele(feltet) {
   return u;
 }
 async function vaelg(u) {
+  // 1.30.3: udvidelsen har nu én fast debugger-lytter fra start (dialog-koordinatoren), saa der ventes paa en lytter MERE.
+  const foer = (u.lyttere.get('debugger.onEvent') || []).length;
   const p = u.hent('interceptFileChooser')(1, '#add', ['/x/a.png']);
-  for (let i = 0; i < 400 && !(u.lyttere.get('debugger.onEvent') || []).length; i++) await new Promise((r) => setTimeout(r, 5));
+  for (let i = 0; i < 400 && (u.lyttere.get('debugger.onEvent') || []).length <= foer; i++) await new Promise((r) => setTimeout(r, 5));
   await u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.fileChooserOpened', { backendNodeId: 5, mode: 'selectSingle' });
   return p;
 }
