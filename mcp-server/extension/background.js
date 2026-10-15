@@ -5170,17 +5170,16 @@ async function dispatch(port, method, params) {
       // R111 (a): en fane, getSessionTab() oprettede MED adressen, er sendt - den bevises inden for loftet, ellers er svaret
       // navigation-unconfirmed. Andre nye faner (new_tab) venter som foer.
       const somSendt = !!(tab && tab.oprettetMedUrl);
-      let saaLoading = false;
       const loadedNow = async () => {
         if (!awaitingRealUrl) return true;
         const now = await chrome.tabs.get(tab.id).catch(() => null);
         if (!now) return !somSendt;   // tab gone - nothing left to wait for (but nothing proven either)
         const nuUrl = String(now.url || '');
         if (now.status !== 'complete' || nuUrl.startsWith('about:blank')) return false;
-        // R112 (maalt i Chrome 15/10): en adresse, der svarer 204 (eller en download), efterlader den oprettede fane TOM og
-        // 'complete' - det er intet bevis. Som i den aktuelle fane: fanen staar paa den oenskede adresse, eller paa en anden
-        // rigtig adresse, efter at navigationen er set begynde (en omdirigering).
-        if (somSendt) return nuUrl === String(params.url) || (saaLoading && nuUrl !== '');
+        // R112 (maalt i Chrome 15/10): en adresse, der svarer 204 (eller en download), efterlader den oprettede fane TOM ('')
+        // og 'complete' - det er intet bevis. En omdirigering er: i den oprettede fane ses intet 'loading', foer lytteren
+        // sidder, saa fanen bevises af, at den staar 'complete' paa en rigtig adresse (hverken '' eller about:blank).
+        if (somSendt) return nuUrl !== '';
         return true;
       };
       const bevist = await new Promise(resolve => {
@@ -5195,7 +5194,6 @@ async function dispatch(port, method, params) {
         // (R76's regel for en eksisterende fane bor nu i navigerSomEjer; her er fanen ny eller en pladsholder.)
         const listener = (tabId, info) => {
           if (tabId !== tab.id) return;
-          if (info.status === 'loading') saaLoading = true;
           if (info.status !== 'complete') return;
           loadedNow().then((ok) => { if (ok) finish(true); });
         };

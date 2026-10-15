@@ -96,11 +96,12 @@ function model(opt = {}) {
       const ny = { id, url: url || 'about:blank', status: 'loading', windowId: 1, active: false };
       t.nyeFaner.set(id, ny);
       // svar204: adressen svarer 204 (eller er en download) - Chrome melder fanen 'complete', men den staar tom (maalt 15/10
-      // i headless Chrome: url ''). omdirigerNy: siden omdirigeres til en anden adresse (med 'loading' undervejs).
+      // i headless Chrome: url ''). omdirigerNy: serveren omdirigerer (302) til en anden adresse; som i aegte Chrome (maalt
+      // 15/10 paa 9ded780) ses intet 'loading' i den oprettede fane, foer lytteren sidder - kun at den ender 'complete' paa maalet.
       if (url && !t.haengNav) {
         setTimeout(() => {
           if (t.svar204) { ny.url = ''; ny.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...ny }); return; }
-          if (t.omdirigerNy) { ny.url = t.omdirigerNy; ny.status = 'loading'; u.fyr('tabs.onUpdated', id, { status: 'loading', url: ny.url }, { ...ny }); }
+          if (t.omdirigerNy) ny.url = t.omdirigerNy;
           setTimeout(() => { ny.status = 'complete'; u.fyr('tabs.onUpdated', id, { status: 'complete' }, { ...ny }); }, 10);
         }, 20);
       }
@@ -1010,7 +1011,7 @@ test('R112: en ny sessions foerste navigate til en adresse, der svarer 204, er i
   assert.equal(r.pending_url, NY);
 });
 
-test('R112: en ny sessions foerste navigate, der omdirigeres (set begynde), er stadig ok:true paa den nye adresse', async () => {
+test('R112: en ny sessions foerste navigate, der omdirigeres (302, intet loading set), er ok:true paa maalet', async () => {
   const m = model({ omdirigerNy: 'https://ny.example/lang' });
   tomSession(m);
   const r = await fang(m.nav());
