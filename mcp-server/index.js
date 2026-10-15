@@ -978,6 +978,164 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
   });
 }
 
+// ── 1.32 (S5, #20): partitioner ─────────────────────────────────────────────
+// Idéen er ugbodagadave's (PR #20): en ekstra lytter pr. partition, saa udvidelsen giver hver partition sin egen fanegruppe og
+// sin egen aktive fane, og en `partition`-parameter paa hvert browservaerktoej. PR'ens egen lytter manglede de vaern, main fik
+// efter dens base (R106 MAALTE fem fejl, test/baner.test.mjs), saa en partition er her en BANE: samme createWSS, samme
+// svar-tjek, samme profilvalg og laas (1.31) - med pid null, saa udvidelsen aldrig adopterer en anden banes faner.
+// Id'erne er p1, p2, ... og genbruges aldrig i serverens levetid: et id fra en lukket partition svarer partition-closed, ikke
+// en ny partitions faner. Hoejst MAKS_PARTITIONER aabne pr. server - portene er faelles for alle chats paa maskinen.
+const MAKS_PARTITIONER = 4;
+let partitionNr = 0;
+const partitioner = new Map();   // 'p1' -> { id, label, profil, bane, lukket, brugt }
+
+function partitionFejl(error, felter, note) {
+  return new ProfilFejl({ ok: false, error, sent: false, ...felter, note });
+}
+
+// Banen et browserkald skal til. Uden `partition` (eller "default"): standardbanen. Et ukendt eller lukket id faar en fejl og
+// ALDRIG standardbanen i stedet: et kald ment for en partition maa ikke lande i en anden agents faner.
+function baneForKald(partition) {
+  if (partition === undefined || partition === null || partition === '' || partition === 'default') return standardBane;
+  const p = typeof partition === 'string' ? partitioner.get(partition) : undefined;
+  if (!p) {
+    throw partitionFejl('partition-not-found', { partition: String(partition).slice(0, 40) },
+      'This server has no partition with that id. Partition ids look like "p1" and come from browser_partition with ' +
+      'action "new"; browser_about lists them. Nothing was sent, and the call did not go to the default partition instead.');
+  }
+  if (p.lukket) {
+    throw partitionFejl('partition-closed', { partition: p.id },
+      `Partition ${p.id} was closed. Ids are never reused, so nothing was sent. Create a new one with browser_partition ` +
+      '(action "new"), or leave out partition to use the default one.');
+  }
+  p.brugt = true;   // et vaerktoejskald er rettet hertil: partitionen kan have faner (se lukPartition)
+  return p.bane;
+}
+
+function partitionsListe() {
+  return [...partitioner.values()].map((p) => ({
+    partition: p.id,
+    label: p.label,
+    state: p.lukket ? 'closed' : 'open',
+    port: p.lukket ? null : p.bane.activePort,
+    profile: p.profil,
+    installation: p.bane.laas ? { profile: p.bane.laas.conn?.profile ?? null, instance: p.bane.laas.instans } : null,
+  }));
+}
+
+async function nyPartition({ profile, label } = {}) {
+  const aabne = [...partitioner.values()].filter((p) => !p.lukket).length;
+  if (aabne >= MAKS_PARTITIONER) {
+    throw partitionFejl('partition-limit', { limit: MAKS_PARTITIONER, open: aabne },
+      `This server already has ${aabne} open partitions, the most it allows: the ports are shared by every chat on this ` +
+      'machine. Close one with browser_partition (action "close") first.');
+  }
+  // `profile` er BROWSER_MCP_PROFILE for netop denne bane. Uden den arver partitionen klientens BROWSER_MCP_PROFILE.
+  let vaelger = standardBane.vaelger, ugyldig = standardBane.vaelgerUgyldig;
+  if (profile !== undefined && profile !== null && profile !== '') {
+    vaelger = gyldigProfil(profile);
+    if (!vaelger) {
+      throw new ProfilFejl({ ok: false, error: 'profile-invalid', sent: false, partition_created: false,
+        note: 'profile is not a valid profile name (letters, digits, dot, dash and underscore, 1-32 characters). No ' +
+          'partition was created.' });
+    }
+    ugyldig = false;
+  }
+  const navn = label === undefined || label === null ? null
+    : (String(label).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 64) || null);
+  const id = 'p' + (++partitionNr);
+  const bane = lavBane(id, false);
+  bane.vaelger = vaelger;
+  bane.vaelgerUgyldig = ugyldig;
+  const p = { id, label: navn, profil: vaelger, bane, lukket: false, brugt: false };
+  partitioner.set(id, p);
+  baner.add(bane);
+  // Blev partitionen ikke til, forsvinder den helt: dens port slippes, og id'et bliver aldrig udleveret (eller genbrugt).
+  const opgiv = () => { frigivPort(bane, `partition ${id} was not created`); baner.delete(bane); partitioner.delete(id); };
+  const lukketUndervejs = () => partitionFejl('partition-closed', { partition: id },
+    `Partition ${id} was closed while it was being created. Ids are never reused.`);
+  const fik = await sikrePort(bane);
+  // Lukket, mens porten blev bundet: lukPartition kunne ikke slippe en port, der endnu ikke var aaben - det goeres her.
+  if (p.lukket) { frigivPort(bane, `partition ${id} was closed while it was created`); throw lukketUndervejs(); }
+  if (!fik) {
+    const optaget = bane.alleePorteOptaget, bindFejl = bane.bindFejl;
+    opgiv();
+    if (optaget) {
+      throw partitionFejl('port-capacity-exhausted', { ports: `${BASE_PORT}-${MAX_PORT}`, partition_created: false },
+        `Every port in ${BASE_PORT}-${MAX_PORT} is taken, by this and other chats' servers and partitions, so no partition ` +
+        'was created. Close a partition you no longer need, or wait until another chat is done with the browser.');
+    }
+    throw new Error(`The server could not open a port for the partition on 127.0.0.1: ${bindFejl}. No partition was created.`);
+  }
+  // Valget af installation sker med det samme, efter 1.31-reglerne for netop denne bane: det foerste kald laaser banen til
+  // en installation. Et harmloest list_tabs (kun partitionens egen session; den er tom) er det kald - saa en profil, der ikke
+  // er forbundet, siges nu og ikke ved agentens foerste rigtige kald.
+  try {
+    await sendTilBane(bane, 'list_tabs', {}, 5000);
+  } catch (e) {
+    if (p.lukket) throw lukketUndervejs();
+    opgiv();
+    if (e && e.svar) {
+      throw new ProfilFejl({ ...e.svar, partition_created: false,
+        note: `${e.svar.note} No partition was created, and its port was released.` });
+    }
+    throw new Error(`${e?.message || e}\nNo partition was created, and its port was released.`);
+  }
+  if (p.lukket) throw lukketUndervejs();
+  const inst = bane.laas?.conn;
+  return {
+    ok: true,
+    partition: id,
+    label: navn,
+    port: bane.activePort,
+    profile: vaelger,
+    installation: inst ? { profile: inst.profile ?? null, instance: inst.instance ?? null } : null,
+    note: `Pass partition: "${id}" to every browser tool this agent calls; calls without it go to the default partition. ` +
+      `The partition has its own tab group and its own active tab. Close it with browser_partition (action "close") when ` +
+      'the agent is done: that closes its tabs and gives its port back.',
+  };
+}
+
+async function lukPartition(id) {
+  const p = typeof id === 'string' ? partitioner.get(id) : undefined;
+  if (!p) {
+    throw partitionFejl('partition-not-found', { partition: String(id ?? '').slice(0, 40) },
+      'This server has no partition with that id. browser_about lists the partitions; the default partition cannot be closed.');
+  }
+  if (p.lukket) throw partitionFejl('partition-closed', { partition: p.id }, `Partition ${p.id} is already closed.`);
+  p.lukket = true;   // fra nu: partition-closed for hvert nyt kald
+  const bane = p.bane;
+  // Fanerne lukkes gennem partitionens egen forbindelse, og kun det, udvidelsen bekraefter, giver tabs_closed: true. Kan det
+  // ikke bekraeftes (forbindelsen er vaek, et kald fejler), er svaret "unknown": naar porten slippes nedenfor, lukker
+  // udvidelsen den afbrudte sessions faner selv (som naar en chat forsvinder), men det kan serveren ikke se.
+  let tabsLukket = 'unknown';
+  if (!p.brugt) {
+    // Intet vaerktoejskald er rettet til partitionen (new's eget list_tabs aabner ingen fane): den har ingen faner.
+    tabsLukket = true;
+  } else if (activeConnection(bane)) {
+    try {
+      const { tabs = [] } = (await sendTilBane(bane, 'list_tabs', {}, 5000)) || {};
+      for (const t of tabs) await sendTilBane(bane, 'close_tab', { tab_id: t.id }, 5000);
+      const efter = (await sendTilBane(bane, 'list_tabs', {}, 5000)) || {};
+      if (Array.isArray(efter.tabs) && efter.tabs.length === 0) tabsLukket = true;
+    } catch {}
+  }
+  const havdePort = bane.activePort;
+  frigivPort(bane, `partition ${p.id} closed`);
+  baner.delete(bane);
+  return {
+    ok: true,
+    partition: p.id,
+    port_released: havdePort !== null,
+    tabs_closed: tabsLukket,
+    note: tabsLukket === true
+      ? `Partition ${p.id} is closed: its tabs are closed and its port is free. The id is not reused.`
+      : `Partition ${p.id} is closed and its port is free, but the extension did not confirm that its tabs were closed ` +
+        '(the connection was gone, or a call failed). The extension closes them by itself when the connection ends, ' +
+        'but the server cannot see that happen; look in Chrome if it matters. The id is not reused.',
+  };
+}
+
 // ── MCP Server ──────────────────────────────────────────────────────────────
 
 const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP server. Each session gets its own color-coded Chrome Tab Group.
@@ -1065,6 +1223,10 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 - **If the thing being asked for is not in a web page at all** - a desktop application, an OS-level dialog, the native file picker, a menu bar - then no browser tool can reach it, and neither can this one. Say so plainly. If you also have desktop-level tools available in this session (for example an OS automation MCP server such as computer-mcp), that is the right tool for that step; hand it over instead of retrying here. Do not claim this applies to an ordinary page problem: a background tab, a React-controlled field or a CAPTCHA are all solved by the tools above
 
+## Parallel agents (partitions)
+- Agents that share this chat also share its tab group and its active tab, so they take over each other's tabs. Give each parallel agent its own partition: browser_partition with action "new" answers an id like "p1", and that agent passes partition: "p1" to every browser tool it calls. Close it with action "close" when the agent is done; that closes its tabs and frees its port
+- partition-not-found or partition-closed means nothing was sent; the call never falls back to the default partition. browser_about lists the partitions
+
 ## Extension updates
 The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.
 If browser_provide_feedback reports that the extension is older than this server, or that more than one Browser MCP extension is connected, ask the user:
@@ -1100,10 +1262,15 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 // R63 (Astra, maalt): #58-advarslen manglede paa de tidlige svar (en afvist upload, et ukendt vaerktoej, browser_about), fordi
 // hver svarvej selv skulle huske den. Nu gaar ALLE svar gennem én indpakning.
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => medForbindelsesNote(await kaldVaerktoej(request)));
+// 1.32 (S5): et kald paa en partition faar partitionens noter (dens bane), ikke standardbanens - kaldVaerktoej siger hvilken.
+mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const kald = { bane: standardBane };
+  return medForbindelsesNote(await kaldVaerktoej(request, kald), kald.bane);
+});
 
-async function kaldVaerktoej(request) {
-  const { name, arguments: args } = request.params;
+async function kaldVaerktoej(request, kald = { bane: standardBane }) {
+  const { name } = request.params;
+  let args = request.params.arguments;
   lastActivity = Date.now();
 
   try {
@@ -1155,8 +1322,21 @@ async function kaldVaerktoej(request) {
       return await handleProvideFeedback(args);
     }
 
+    if (name === 'browser_partition') {
+      return await handlePartition(args);
+    }
+
+    // 1.32 (S5, #20): `partition` vaelger banen og sendes ikke videre til udvidelsen. Et ukendt eller lukket id kaster
+    // partition-not-found / partition-closed (sent:false) - kaldet gaar aldrig til standardbanen i stedet.
+    const bane = baneForKald(args?.partition);
+    kald.bane = bane;
+    if (args && Object.hasOwn(args, 'partition')) {
+      args = { ...args };
+      delete args.partition;
+    }
+
     if (name === 'browser_extract_token') {
-      return await handleExtractToken(args);
+      return await handleExtractToken(args, bane);
     }
 
     // Kun methodMap's egne noegler (samme fejlklasse som extract_token, R53-Opus): «constructor» fandtes paa prototypen.
@@ -1226,7 +1406,7 @@ async function kaldVaerktoej(request) {
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
                     method === 'solve_captcha' ? 60000 :
                     method === 'extract_list' ? 180000 : 30000;
-    const result = await sendToExtension(method, args || {}, timeout);
+    const result = await sendToExtension(method, args || {}, timeout, bane);
 
     if (name === 'browser_screenshot' && result?.image) {
       const isJpeg = result.image.startsWith('data:image/jpeg');
@@ -1420,6 +1600,8 @@ function handleAbout(args) {
         instruction,
         installations: installationer(),
         installations_note: installationsNote(),
+        // 1.32 (S5): partitionerne i denne chat (aabne og lukkede - id'erne genbruges aldrig).
+        partitions: partitionsListe(),
       }, null, 2),
     }],
   };
@@ -1723,7 +1905,21 @@ async function handleProvideFeedback(args) {
   };
 }
 
-async function handleExtractToken(args) {
+// 1.32 (S5, #20): browser_partition({action:'new', profile?, label?} | {action:'close', partition}). Logikken bor i broen
+// (nyPartition/lukPartition), saa model-proeverne koerer den samme kode; her er kun svaret.
+async function handlePartition(args) {
+  const action = args?.action;
+  let svar;
+  if (action === 'new') svar = await nyPartition({ profile: args.profile, label: args.label });
+  else if (action === 'close') svar = await lukPartition(args.partition);
+  else {
+    return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'action-invalid', sent: false,
+      note: 'action must be "new" or "close". browser_about lists the partitions.' }, null, 2) }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(svar, null, 2) }] };
+}
+
+async function handleExtractToken(args, bane) {   // bane: den bane kaldet er rettet til (undefined = standardbanen)
   const { provider } = args;
   // R52 (Astra, MAALT): «constructor», «toString» og «__proto__» findes paa objektets prototype og gik uden om
   // «Unknown provider» - handleren navigerede til url undefined. Kun udbyderens egne noegler taeller.
@@ -1738,7 +1934,7 @@ async function handleExtractToken(args) {
     };
   }
 
-  const nav = await sendToExtension('navigate', { url: info.url });
+  const nav = await sendToExtension('navigate', { url: info.url }, 30000, bane);
   return {
     content: [
       { type: 'text', text: `Navigated to ${info.url} (${nav.title})\n\nInstructions: ${info.instructions}\n\nUse browser_get_page_content or browser_screenshot to find the token, then use browser_execute_script to extract it.` },

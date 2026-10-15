@@ -531,7 +531,33 @@ export const TOOLS = [
       required: ['what_happened'],
     },
   },
+  // 1.32 (#20, idéen er ugbodagadave's): én partition pr. parallel agent - sin egen fanegruppe og sin egen aktive fane.
+  {
+    name: 'browser_partition',
+    description: 'Give a parallel agent its own part of the browser. action "new" opens a partition: its own listener port, so the extension gives it its own tab group and its own active tab, and agents that share this chat no longer take over each other\'s tabs. It answers an id like "p1"; pass partition: "p1" to every browser tool that agent calls (calls without partition go to the default partition). Ids are never reused. "new" chooses the Chrome profile right away by the same rules as BROWSER_MCP_PROFILE: pass profile to choose by the name in the extension popup, otherwise the partition uses BROWSER_MCP_PROFILE (or, without it, the first installation that connects). It takes a few seconds, because the extension scans for new ports every 2 seconds. Errors: partition-limit (4 open partitions per server), port-capacity-exhausted (every port in the range is taken), and the profile-* answers (profile-not-connected and the others; no partition is created and its port is released). action "close" closes the partition\'s tabs through its own connection and releases its port: port_released, and tabs_closed true only when the extension confirmed it, otherwise "unknown". Calls with a closed id answer partition-closed; an unknown id answers partition-not-found. Nothing is sent to the default partition instead. browser_about lists the partitions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['new', 'close'], description: '"new" opens a partition, "close" closes one.' },
+        profile: { type: 'string', description: 'With new: the name of the Chrome profile in the extension popup ("This Chrome profile") the partition drives. Default: BROWSER_MCP_PROFILE.' },
+        label: { type: 'string', description: 'With new: an optional label for your own overview, shown in browser_about (up to 64 characters).' },
+        partition: { type: 'string', description: 'With close: the id of the partition to close, e.g. "p1". The default partition cannot be closed.' },
+      },
+      required: ['action'],
+    },
+  },
 ];
+
+// 1.32 (#20): `partition` paa hvert vaerktoej, der naar browseren - ogsaa browser_extract_token, som selv navigerer. De
+// server-lokale (about, provide_feedback) og partitionsvaerktoejet selv har den ikke.
+const PARTITION_PARAM = {
+  type: 'string',
+  description: 'Run this call in a partition from browser_partition (an id like "p1"). Leave it out for the default partition. An unknown or closed id is an error; the call is never sent to the default partition instead.',
+};
+for (const t of TOOLS) {
+  if (['browser_about', 'browser_provide_feedback', 'browser_partition'].includes(t.name)) continue;
+  t.inputSchema.properties.partition = PARTITION_PARAM;
+}
 
 // Known provider token pages for browser_extract_token
 export const PROVIDER_PAGES = {

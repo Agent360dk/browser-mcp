@@ -475,7 +475,8 @@ test('agenten faar advarslen i vaerktoejssvaret én gang pr. aendring', () => {
 
 test('alle tre svarveje i vaerktoejskaldet gaar gennem medForbindelsesNote, og stderr faar den ogsaa', () => {
   // R63 (Astra): alle svar - ogsaa de tidlige (afvist upload, ukendt vaerktoej, browser_about) - gaar gennem én indpakning.
-  assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => medForbindelsesNote\(await kaldVaerktoej\(request\)\)\);/);
+  // 1.32 (S5): indpakningen faar den bane kaldet gik til (en partition har sine egne noter); den er stadig den eneste vej ud.
+  assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => \{\n  const kald = \{ bane: standardBane \};\n  return medForbindelsesNote\(await kaldVaerktoej\(request, kald\), kald\.bane\);\n\}\);/);
   assert.equal((kilde.match(/setRequestHandler\(CallToolRequestSchema/g) || []).length, 1);
   assert.equal((kilde.match(/medForbindelsesNote\(/g) || []).length, 2, 'kun definitionen og indpakningen - ingen svarvej skal huske den selv');
   assert.match(udtraek('advarOmKonflikt'), /const profiler = [^;]*forbindelsesAdvarsel\(bane\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
