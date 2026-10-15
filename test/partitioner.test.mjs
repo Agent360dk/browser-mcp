@@ -118,6 +118,8 @@ test('id genbruges aldrig: p1 lukkes, naeste er p2, og p1 svarer partition-close
     const r = await paa(m, 'p1');
     assert.equal(r.svar?.error, 'partition-closed', JSON.stringify(r));
     assert.equal(r.svar.sent, false);
+    // Et lukket id afvises ved doeren (baneForKald), med raadet om at lave en ny - ikke foerst som et kald, der ventede.
+    assert.match(r.svar.note, /Create a new one with browser_partition/, r.svar.note);
   } finally { a.luk(); m.luk(); }
 });
 
@@ -480,14 +482,14 @@ const lytter = (port) => new Promise((ok) => {
 });
 
 test('close mens et kald venter paa forbindelse: kaldet faar partition-closed straks, binder ikke porten igen og sender intet (R121)', async () => {
-  // Genforsoegsventen er her 30 s (serveren: 1,5 s): et svar kort efter close kan kun komme af, at lukningen afbroed den.
+  // Genforsoegsventen er her 60 s (serveren: 1,5 s): et svar kort efter close kan kun komme af, at lukningen afbroed den.
   const m = await bro();
   const a = installation(m, 'A');
   let t = null;
   try {
     const p1 = (await ny(m)).ok;
     assert.equal(p1?.partition, 'p1', JSON.stringify(p1));
-    m.saetGenforsoeg(30000);
+    m.saetGenforsoeg(60000);
     a.stop = true; a.luk();   // installationen forsvinder: partitionen er laast til den, saa kaldet venter paa, at den kommer igen
     assert.ok(await venteTil(() => m.k(`liveConnections(partitioner.get('p1').bane).length`) === 0, 15000));
     const kaldet = paa(m, 'p1', 'navigate');
@@ -500,9 +502,9 @@ test('close mens et kald venter paa forbindelse: kaldet faar partition-closed st
     const r = await luk(m, 'p1');
     assert.equal(r.ok?.port_released, true, JSON.stringify(r));
     t = tilbage(p1.port);                             // installationen kommer tilbage og skanner porten
-    // Hoejst 15 s: uden afbrydelse sover kaldet sine 30 s ud (og en mutant maa ikke goere proeven til en tidsudloeber).
+    // Hoejst 10 s: uden afbrydelse sover kaldet sine 60 s ud (og en mutant maa ikke goere proeven til en tidsudloeber).
     let frist;
-    const v = await Promise.race([kaldet, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 15000); })]);
+    const v = await Promise.race([kaldet, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 10000); })]);
     clearTimeout(frist);
     assert.ok(!v.venter, `kaldet ventede videre i ${Date.now() - t0} ms efter close - lukningen afbroed ikke genforsoegsventen`);
     assert.equal(v.svar?.error, 'partition-closed', `kaldet fortsatte efter close: ${JSON.stringify(v)}`);
