@@ -10,9 +10,8 @@
  *   T5  en forbindelse, der doede midt i et kald, gav foerst svar efter ~30 s, med teksten «timed out»
  * Her er de faste proever mod den AEGTE bro (test/hjaelp/bro-model.mjs), med to baner i én proces. De skal vaere groenne.
  */
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { broModel, falskUdvidelse, vent, venteTil } from './hjaelp/bro-model.mjs';
+import { broModel, falskUdvidelse, vent, venteTil, proeve as test, sporProces } from './hjaelp/bro-model.mjs';
 import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
 
 // To baner: standardbanen og en ekstra (som en partition: uden pid). Begge binder i samme frie spaend.
@@ -205,4 +204,18 @@ test('kald paa en bane uden pid sender pid null; standardbanen sender processens
     ea.svar(ea.kom[0].id, {}); eb.svar(eb.kom[0].id, {});
     ea.luk(); eb.luk();
   } finally { m.luk(); }
+});
+
+// R119: selen maa aldrig vente uden frist (mutantkoerslen 3f8d1cd: P21/P22 hang i over 2 timer). En port, der tager imod
+// TCP-forbindelsen men aldrig svarer paa WebSocket-haandtrykket, skal give en fejl - ikke et loefte, der aldrig afgoeres.
+test('selen: en falsk udvidelse mod en port, der aldrig svarer, fejler inden for fristen i stedet for at haenge', async () => {
+  const { createServer } = await import('node:net');
+  const sokler = [];
+  const stum = createServer((s) => { sokler.push(s); });
+  await new Promise((ok) => stum.listen(0, '127.0.0.1', ok));
+  try {
+    const t0 = Date.now();
+    await assert.rejects(falskUdvidelse(stum.address().port), /aabnede ikke inden for 5 s/);
+    assert.ok(Date.now() - t0 < 7000);
+  } finally { for (const s of sokler) s.destroy(); stum.close(); }
 });

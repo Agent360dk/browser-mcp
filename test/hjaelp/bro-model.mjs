@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { test as nodeTest, after } from 'node:test';
 
 const rod = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const krav = createRequire(join(rod, 'mcp-server', 'index.js'));
@@ -66,9 +67,31 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
     for (const t of timere) clearInterval(t);
     for (const u of klienter) u.luk();
     klienter.clear();
+    modeller.delete(model);
   };
-  return { ctx, k, log, luk };
+  const model = { ctx, k, log, luk };
+  modeller.add(model);
+  return model;
 }
+
+// R119 (mutant P21/P22 hang i over 2 timer under mutantkoerslen 3f8d1cd): en proeve maa aldrig vente uden frist. Tre vaern:
+//  1. proeve()  - hver proeve faar en frist (standard 90 s); fejler den, bliver den roed i stedet for at haenge.
+//  2. falskUdvidelse - forbindelsen skal aabne inden for 5 s, ellers kastes der.
+//  3. after()   - naar filen er faerdig, ryddes ALT, der kan holde processen i live: broernes porte og timere, de falske
+//                 udvidelser og de aegte servere startet med sporProces() - ogsaa naar en proeve blev afbrudt af sin frist,
+//                 og dens egen finally aldrig naaede at rydde op.
+const modeller = new Set();
+const processer = new Set();
+export function proeve(navn, fn, frist = 90000) { return nodeTest(navn, { timeout: frist }, fn); }
+export function sporProces(p) { processer.add(p); p.once('exit', () => processer.delete(p)); return p; }
+after(() => {
+  for (const m of modeller) { try { m.luk(); } catch {} }
+  modeller.clear();
+  for (const u of klienter) u.luk();
+  klienter.clear();
+  for (const p of processer) { try { p.kill('SIGKILL'); } catch {} }
+  processer.clear();
+});
 
 const klienter = new Set();
 
@@ -93,7 +116,11 @@ export async function falskUdvidelse(port, { id = 'a'.repeat(32), hello = undefi
   const kom = [];
   ws.on('message', (d) => { try { const m = JSON.parse(String(d)); if (m && m.method) kom.push(m); } catch {} });
   ws.on('error', () => {});
-  await new Promise((ok, fejl) => { ws.once('open', ok); ws.once('error', fejl); });
+  await new Promise((ok, fejl) => {
+    const t = setTimeout(() => { try { ws.terminate(); } catch {} fejl(new Error(`falsk udvidelse: port ${port} aabnede ikke inden for 5 s`)); }, 5000);
+    ws.once('open', () => { clearTimeout(t); ok(); });
+    ws.once('error', (e) => { clearTimeout(t); fejl(e); });
+  });
   const u = {
     ws, kom,
     svar: (cmdId, result) => ws.send(JSON.stringify({ id: cmdId, result })),

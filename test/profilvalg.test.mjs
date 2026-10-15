@@ -11,14 +11,13 @@
  * Proeverne koerer den AEGTE bro (test/hjaelp/bro-model.mjs) med falske udvidelser paa rigtige porte; genforsoeget er kortet
  * fra 1500 til 100 ms, saa et udtoemt budget tager ~1 s.
  */
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { broModel, falskUdvidelse, vent, venteTil } from './hjaelp/bro-model.mjs';
+import { broModel, falskUdvidelse, vent, venteTil, proeve as test, sporProces } from './hjaelp/bro-model.mjs';
 import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -380,11 +379,11 @@ test('den aegte server svarer valgets fejl som JSON med isError (profile-invalid
     [{ BROWSER_MCP_PROFILE: 'arbejde' }, 'profile-ambiguous', 2],
   ]) {
     const base = await ledigtSpaend(5);
-    const srv = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+    const srv = sporProces(spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
       env: { ...process.env, BROWSER_MCP_TOKEN: '', BROWSER_MCP_EXTENSION_ID: '', ...env,
         BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4) },
       stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    }));
     try {
       let fejl = ''; const ud = []; let rest = '';
       srv.stderr.on('data', (d) => { fejl += d; });
@@ -536,11 +535,11 @@ test('R115 Opus 2: ingen falsk «samme udvidelse flere gange» i stderr foer hil
 // Mod den aegte server: den rigtige ventetid (2,5 s) og browser_provide_feedback.
 async function aegteServer(env) {
   const base = await ledigtSpaend(5);
-  const srv = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+  const srv = sporProces(spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
     env: { ...process.env, BROWSER_MCP_TOKEN: '', BROWSER_MCP_EXTENSION_ID: '', BROWSER_MCP_PROFILE: '', ...env,
       BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4) },
     stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  }));
   let fejl = ''; const ud = []; let rest = '';
   srv.stderr.on('data', (d) => { fejl += d; });
   srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
