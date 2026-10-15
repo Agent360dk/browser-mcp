@@ -41,7 +41,8 @@ let extensionUpdated = false;
 // #69 (1.30.3): fejlkoderne fra navigate i en eksisterende fane og fra handle_dialog. Udvidelsen svarer dem som ok:false;
 // her bliver de til isError, saa klienten ser dem som fejl.
 const NAV_DIALOG_FEJL = new Set(['navigation-in-progress', 'dialog-open', 'tab-not-responding', 'navigation-failed',
-  'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed']);
+  'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed',
+  'session-changed']);
 
 // Spaendet kan flyttes med env - ellers ville en test af port-udsultning skulle
 // beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.

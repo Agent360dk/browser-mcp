@@ -361,15 +361,17 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     return true;
   };
 
-  // R112 (Astra 2, Opus N-c): et opslag kan haenge laenge (ogsaa ud over serverens 30 s, der ikke stopper arbejdet her). Har
-  // et andet kald imens givet sessionen en ny aktiv fane, maa dette kald ikke aendre sessionen bagefter - hverken slette en
-  // fane fra den eller oprette/aktivere en anden. Den aktive fane, kaldet startede med, holdes derfor, og den sammenlignes
-  // efter hvert opslag, foer noget aendres.
+  // R112/R113 (Astra 2, Opus N-c): et opslag kan haenge laenge (ogsaa ud over serverens 30 s, der ikke stopper arbejdet her).
+  // Har et andet kald imens aendret sessionens aktive fane (skiftet til, oprettet eller lukket en fane), stopper dette kald,
+  // foer det handler: efter hvert opslag - ogsaa et, der LYKKES - i reserve-loekken og foer en fane oprettes.
   let forventetAktiv = session.activeTabId;
   const sessionUroert = () => {
     if (session.activeTabId !== forventetAktiv) {
-      throw new Error('The session\'s active tab changed while this call was waiting for Chrome, so nothing was changed or ' +
-        'sent. Call again.');
+      const e = new Error('The session\'s active tab changed while this call was waiting for Chrome (another call switched ' +
+        'to, opened or closed a tab), so this call stopped before acting on a tab: nothing was sent, and no tab was created ' +
+        'or made active. Call again.');
+      e.sessionSkiftet = true;
+      throw e;
     }
   };
 
@@ -378,8 +380,11 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     const aktiv = session.activeTabId;   // FIX-17 / R112: det id, der faktisk slaas op - laest FOER opslaget
     try {
       const tab = await chrome.tabs.get(aktiv);
+      // R113: ogsaa et vellykket, men sent opslag - ellers sendte et gammelt kald sin adresse eller sit script til den gamle fane.
+      sessionUroert();
       if (consider(tab)) target = tab;
-    } catch {
+    } catch (e) {
+      if (e && e.sessionSkiftet) throw e;
       sessionUroert();
       session.activeTabId = null;
       forventetAktiv = null;
@@ -395,7 +400,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
         sessionUroert();
         if (consider(tab)) { session.activeTabId = tabId; forventetAktiv = tabId; target = tab; break; }
       } catch (e) {
-        if (e && /active tab changed/.test(e.message || '')) throw e;
+        if (e && e.sessionSkiftet) throw e;
         sessionUroert();
         session.tabIds.delete(tabId);
       }
@@ -951,6 +956,8 @@ const NAV_NOTER = {
     'show us (one that opened before anything listened). Nothing was sent. Try again in a moment; if it keeps happening, ' +
     'ask the user (browser_ask_user) to look at the tab, or open the address in a new tab with new_tab: true.',
   'navigation-failed': 'Chrome refused the navigation (detail), and the tab is where it was.',
+  'session-changed': 'Another call changed this session\'s active tab while this one waited for Chrome (it switched to, ' +
+    'opened or closed a tab), so nothing was sent. Check the tabs with browser_list_tabs, then call again if you still need to.',
   'session-langsom': 'Chrome took longer than the time limit to report this session\'s tabs, and nothing was sent. Try ' +
     'again in a moment; if it keeps happening, ask the user (browser_ask_user) to look at Chrome.',
   'beforeunload-blocked': 'The page asked "Leave site?" and the answer was Stay (answered_by), so the tab is still on url. ' +
@@ -5032,7 +5039,19 @@ async function dispatch(port, method, params) {
       // efterlade arbejde, der kan sende adressen (en fane oprettes med den) eller aendre sessionen bagefter (R111 Astra 1-2,
       // Opus N1). Haenger det helt, er serverens egen frist paa 30 s graensen. Succes svares aldrig efter loftet.
       const navSlut = Date.now() + NAV_FRISTER.loft;
-      let tab = egetVindue ? null : await getSessionTab(port, false, params.url);
+      let tab = null;
+      if (!egetVindue) {
+        try {
+          tab = await getSessionTab(port, false, params.url);
+        } catch (e) {
+          // R113: et struktureret svar - intet er sendt, og agenten skal vide, at sessionen skiftede.
+          if (e && e.sessionSkiftet) {
+            return { ok: false, error: 'session-changed', sent: false, requested_url: String(params.url), detail: e.message,
+              note: NAV_NOTER['session-changed'] };
+          }
+          throw e;
+        }
+      }
       // R111 (b): brugte opslaget fristen, og er intet sendt endnu, svares der nu - med en kendt boks, hvis der er en.
       if (tab && !tab.oprettetMedUrl && Date.now() >= navSlut - navForbehold()) {
         const kendt = !params.new_tab && dialogFaner.get(tab.id)?.boks;

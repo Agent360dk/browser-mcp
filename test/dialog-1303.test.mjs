@@ -1113,7 +1113,9 @@ test('R112-A2/N-c: et gammelt, haengende sessionsopslag aendrer ikke sessionen, 
   assert.equal(m.log.filter((x) => x[0] === 'tabs.create' && x[1] === 'https://a.example/').length, 0, 'en fane med A\'s gamle adresse blev oprettet');
   assert.equal(m.log.filter((x) => x[0] === 'tabs.update' && x[1] === 'https://a.example/').length, 0,
     'A\'s gamle adresse blev sendt til B\'s fane');
-  assert.match(String(a.kastet || ''), /session's active tab changed/, `A skal sige, at sessionen skiftede: ${vis(a)}`);
+  // R113: navigate svarer struktureret (session-changed, sent:false) i stedet for at kaste.
+  assert.equal(a.error, 'session-changed', `A skal sige, at sessionen skiftede: ${vis(a)}`);
+  assert.equal(a.sent, false);
 });
 
 test('R111-A2: et langsomt sessionsopslag fjerner ikke bagefter det naeste kalds fane fra sessionen', async () => {
@@ -1149,6 +1151,44 @@ test('R111-N3: svaret efter et langsomt sessionsopslag foreslaar ikke new_tab, n
   const r = await fang(m.nav({ new_tab: true }));
   assert.equal(r.error, 'tab-not-responding', vis(r));
   assert.doesNotMatch(String(r.note), /new_tab/, r.note);
+});
+
+// ── R113 (Astra og Opus): et gammelt opslag, der LYKKES efter at sessionen har faaet en ny aktiv fane ─────────
+
+// Et andet kald giver sessionen en ny aktiv fane (50), mens det foerste opslag af fane 1 haenger.
+function nyAktivFaneImens(m) {
+  setTimeout(() => { const sess = m.u.hent('sessions').get(9876); sess.tabIds.add(50); sess.activeTabId = 50; }, 40);
+}
+
+test('R113-Q1b: navigate, hvis opslag af den gamle fane lykkes sent, sender intet og svarer session-changed', async () => {
+  const m = model({ beskyt: false, foersteGetMs: 300 });
+  nyAktivFaneImens(m);
+  const r = await fang(m.nav({ url: 'https://a.example/' }));
+  assert.equal(r.ok, false, vis(r));
+  assert.equal(r.error, 'session-changed', vis(r));
+  assert.equal(r.sent, false);
+  assert.match(String(r.note), /Call again|call again/i);
+  assert.equal(m.adresser(), 0, 'den gamle adresse blev sendt til den gamle fane');
+  assert.equal(m.u.hent('sessions').get(9876).activeTabId, 50, 'sessionens aktive fane blev sat tilbage');
+});
+
+test('R113-Q2: execute_script, hvis opslag lykkes efter at sessionen skiftede, koerer ikke scriptet', async () => {
+  const m = model({ foersteGetMs: FRISTER.loft + 300 });
+  nyAktivFaneImens(m);
+  const r = await fang(m.u.hent('dispatch')(9876, 'execute_script', { code: 'window.__taeller = (window.__taeller || 0) + 1' }));
+  assert.match(String(r.kastet || r.error || ''), /active tab changed/, `scriptet blev ikke stoppet: ${vis(r)}`);
+  const koersler = m.u.optager.til('scripting.executeScript').length
+    + m.log.filter((x) => x[0] === 'cdp' && x[1] === 'Runtime.evaluate').length;
+  assert.equal(koersler, 0, 'scriptet blev sendt til den gamle fane');
+});
+
+test('R113-Q3: navigate ud over loftet, mens sessionen skiftede, siger session-changed - ikke tab-not-responding', async () => {
+  const m = model({ beskyt: false, foersteGetMs: FRISTER.loft + 300 });
+  nyAktivFaneImens(m);
+  const r = await fang(m.nav({ url: 'https://a.example/' }));
+  assert.equal(r.error, 'session-changed', vis(r));
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0);
 });
 
 // ── Kildeproeven: kun koordinatoren sender Page.handleJavaScriptDialog ───────────
@@ -1236,6 +1276,8 @@ test('serveren: navigate- og dialogfejl er isError:true, et bevist ok:true er de
   assert.match(blokeret.content[0].text, /beforeunload-blocked/);
   const igang = await kald('browser_handle_dialog', { ok: false, error: 'dialog-being-answered', answered_by: 'navigate' });
   assert.equal(igang.isError, true, vis(igang));
+  const skiftet = await kald('browser_navigate', { ok: false, error: 'session-changed', sent: false });
+  assert.equal(skiftet.isError, true, `session-changed er en fejl for klienten (R113): ${vis(skiftet)}`);
   const ok = await kald('browser_navigate', { ok: true, url: NY, tab_id: 1 });
   assert.notEqual(ok.isError, true, vis(ok));
 });

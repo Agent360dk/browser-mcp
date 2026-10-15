@@ -22,9 +22,16 @@ extension saw, when nothing was sent), and if it never finishes, the server's ow
 never answered after the limit. Every other outcome is an error with `sent` (whether the address reached Chrome) and a note
 on what the agent can do. A new session's first navigate, whose tab is created with the address, is held to the same rule:
 `ok: true` only with a proven load, otherwise `navigation-unconfirmed` with `sent: true`. Other new tabs (`new_tab`) and
-`eget_vindue` are unchanged. A call whose lookup of the session's tab is still waiting on Chrome when another call has
-given the session a new active tab (for instance after the server's 30-second limit) changes nothing in the session and
-sends nothing; it fails and says the session changed. This could happen in 1.30.2 too.
+`eget_vindue` are unchanged.
+
+**Session guard.** Looking up the session's tab can wait on Chrome for a long time, also past the server's 30-second limit,
+which does not stop the work in the extension. Each call therefore notes the session's active tab when it starts and checks
+it again before acting: after every lookup of a session tab (also one that succeeds), in the search for another usable
+session tab, and before creating a tab. If another call changed the active tab meanwhile (it switched to, opened or closed
+a tab - closing the dead active tab counts too), the call stops before sending anything to a tab or creating or activating
+one: `browser_navigate` answers `session-changed` with `sent: false`, and other tools fail with that message. Tab ids found
+dead on the way may already have been dropped from the session. A call that gets past these checks before the change can
+still finish its action in Chrome after the server has given up on it, as in 1.30.2.
 
 **New answers an agent can see:**
 
@@ -41,6 +48,7 @@ sends nothing; it fails and says the session changed. This could happen in 1.30.
 | `error: "navigation-unconfirmed"`, `may_complete_later`, `pending_url` | `browser_navigate` | The address was sent, but no load was proven in time (about 25 seconds: the wait ends half a second before the limit, so the answer fits inside it); the navigation may still complete later. A download or an address that answers 204 never loads a page and ends here too; `pending_url` then stays until a later navigate is proven or a "Leave site?" closes, so it is not proof that Chrome still has a navigation waiting. A dialog that opens after that is answered only by a `browser_handle_dialog` arming that is still valid; otherwise nobody answers it: the next call answers `dialog-open` with `pending_url` |
 | `error: "tab-closed"` | `browser_navigate`, `browser_handle_dialog` | Chrome no longer has the tab: it was closed while the call was waiting. A tab that moves to a page the debugger cannot stay on (`chrome://`, the Chrome Web Store) is still there and is not reported as closed |
 | `warning` | `browser_reattach_debugger` | A dialog the extension saw open was on the tab. After reattaching, the tools cannot answer it, so the user has to |
+| `error: "session-changed"` | `browser_navigate` | Another call changed the session's active tab while this one waited for Chrome; nothing was sent. Other tools fail with the same message |
 | `captcha_checked: false` | `browser_navigate` | The page loaded, but the CAPTCHA check did not finish inside the 25 seconds, so it was skipped; this is not "no CAPTCHA" |
 | `error: "dialog-being-answered"` | `browser_handle_dialog` | `browser_navigate` or an earlier `browser_handle_dialog` is answering the dialog on screen, or an earlier answer on the tab has not been confirmed by Chrome |
 | `action` from Chrome's report | `browser_handle_dialog` | A dialog the extension saw open and nobody is answering is answered at once, without waiting for an arming; `action` (`accept` or `dismiss`) is what Chrome reported when the dialog closed. An arming's answer, which a click waits for, now also comes from that report |
