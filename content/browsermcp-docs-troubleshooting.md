@@ -125,7 +125,7 @@ Nothing listed means no server, which means nothing for the extension to find. (
 
 - `profile-not-connected`: no connected profile has that name. Check that Chrome is open in that profile and that the name in the extension popup ("This Chrome profile") is exactly the same. `connected` in the answer lists what the server can see.
 - `profile-routing-unsupported`: every connected extension is older than 1.31 and reports no name. Update the extension (from the Chrome Web Store it can take 1-3 days after a release), or remove `BROWSER_MCP_PROFILE`.
-- `profile-ambiguous`: two profiles carry the same name - give each its own name - or one profile is connected twice (a copied Chrome profile). A copy keeps the same installation id, so renaming it does not help: close the copy, or reinstall the extension in it. The answer's note says which of the two it is.
+- `profile-ambiguous`: two profiles carry the same name - give each its own name - or one profile is connected twice (a copied Chrome profile). A copy keeps the same installation id, so renaming it does not help: close the copy, or reinstall the extension in it. When a copy and another profile both carry the name, the answer gives both pieces of advice: close or reinstall the copy, and give the profiles their own names. The answer's note says which case it is, and `browser_provide_feedback` says the same.
 - `profile-disconnected`: the profile the chat was driving closed, or its extension reloaded. The server does not move to another profile on its own. Call again: that call picks a profile anew.
 - `profile-invalid`: `BROWSER_MCP_PROFILE` is not a valid name (letters, digits, dot, dash and underscore, up to 32). Fix it and restart the client.
 

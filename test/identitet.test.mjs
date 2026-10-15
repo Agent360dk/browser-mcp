@@ -10,7 +10,6 @@
  *  - serveren tager kun gyldige vaerdier, opdaterer KUN betegnelsen ved en ny hilsen, og ignorerer (og logger) et
  *    instans-skift paa en sokkel. browser_about viser de forbundne installationer.
  */
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -18,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
-import { broModel, falskUdvidelse, vent, venteTil } from './hjaelp/bro-model.mjs';
+import { broModel, falskUdvidelse, vent, venteTil, proeve as test, sporProces } from './hjaelp/bro-model.mjs';
 import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -263,11 +262,11 @@ test('en ny hilsen paa samme sokkel opdaterer KUN betegnelsen; et instans-skift 
 // browser_about ligger uden for broen, saa den proeves mod den aegte server over stdio.
 async function startServer() {
   const base = await ledigtSpaend(5);
-  const p = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+  const p = sporProces(spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
     env: { ...process.env, BROWSER_MCP_TOKEN: '', BROWSER_MCP_PROFILE: '', BROWSER_MCP_EXTENSION_ID: '',
       BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4) },
     stdio: ['pipe', 'pipe', 'pipe'],
-  });
+  }));
   let fejl = ''; const ud = []; let rest = '';
   p.stderr.on('data', (d) => { fejl += d; });
   p.stdout.on('data', (d) => {
