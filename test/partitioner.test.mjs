@@ -376,6 +376,10 @@ test('close mens et kald venter paa partitionen: kaldet afvises straks, ikke eft
     assert.equal(r.ok.port_released, true);
     const v = await ventende;
     assert.ok(v.fejl && Date.now() - t0 < 15000, `det ventende kald blev ikke afvist: ${JSON.stringify(v)}`);
+    // R122 (Opus): svaret er partition-closed - ikke «forbindelsen forsvandt ... start Chrome igen», der sender agenten efter
+    // en forkert aarsag. Kommandoen VAR sendt (sent: true), saa den kan vaere udfoert.
+    assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
+    assert.equal(v.svar.sent, true, JSON.stringify(v));
   } finally { a.luk(); m.luk(); }
 });
 
@@ -587,8 +591,10 @@ test('close i ventetiden foer foerste valg: kaldet afbrydes og sendes ikke, selv
     assert.ok(await venteTil(() => m.k(`liveConnections(partitioner.get('p1').bane).length`) === 0, 15000));
     const r1 = await paa(m, 'p1');
     assert.equal(r1.svar?.error, 'profile-disconnected', JSON.stringify(r1));   // ... og laasen slippes
-    // Naeste kald venter paa foerste valg (serveren: 2,5 s). Ogsaa lukningens eget list_tabs venter den ud, saa den er kort.
-    m.k('FOERSTE_VALG_MS = 5000');
+    // Naeste kald venter paa foerste valg (serveren: 2,5 s): 5 s regnet fra NU - ventetiden maales fra portens binding, og
+    // under belastning kan der vaere gaaet over 5 s siden (saa ventede kaldet slet ikke). Ogsaa lukningens eget list_tabs
+    // venter den ud, saa den er kort.
+    m.k('FOERSTE_VALG_MS = Date.now() - partitioner.get("p1").bane.portBundetTid + 5000');
     b = installation(m, 'B', { instance: I2, profile: 'hjem' });
     b.stum = true;                                    // close's list_tabs venter, saa kaldet ville naa at blive sendt
     assert.ok(await venteTil(() => b.forbindelser.get(p1.port), 15000));
@@ -626,6 +632,38 @@ test('new uden profil: ved samme version og samme since vaelges den senest forbu
     assert.equal(vinder.kommandoer('list_tabs').length, 1, 'list_tabs gik ikke til den senest forbundne');
     assert.equal(taber.kommandoer('list_tabs').length, 0, 'list_tabs gik til den foerst forbundne');
   } finally { a.luk(); b.luk(); m.luk(); }
+});
+
+// R122 (Opus, MAALT i ægte Chrome): et kald til et id, som new stadig opretter (id'erne kan forudsiges), fik banen. Fejlede
+// new, slap den porten og fjernede banen - men kaldet ventede videre, bandt porten igen og sendte, da profilen kom tilbage.
+test('et kald til en partition, som new stadig opretter: partition-not-found - og fejler new, binder intet porten igen (R122)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A', { instance: I1, profile: 'arbejde' });   // beta er ikke forbundet
+  let t = null;
+  try {
+    const nyt = ny(m, { profile: 'beta' });
+    assert.ok(await venteTil(() => m.k('partitioner.get("p1")?.bane.activePort ?? null') !== null));
+    const port = m.k('partitioner.get("p1").bane.activePort');
+    const listeUnderOprettelse = JSON.parse(JSON.stringify(m.k('partitionsListe()').map((x) => [x.partition, x.state])));
+    await vent(1500);                                 // som Opus' maaling: kaldet kommer midt i new's ventetid (~3 s her)
+    const kaldet = paa(m, 'p1', 'navigate');
+    const r = await nyt;
+    assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
+    const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${port}`)).length;
+    const foer = bindinger();
+    t = tilbage(port, { instance: I2, profile: 'beta' });   // beta kommer tilbage og skanner porten
+    let frist;
+    const v = await Promise.race([kaldet, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 10000); })]);
+    clearTimeout(frist);
+    await vent(500);
+    assert.equal(bindinger(), foer, 'porten blev bundet igen, efter at new havde opgivet');
+    assert.deepEqual(t.kom.map((k) => k.method), [], 'en kommando blev sendt til den opgivne partition');
+    assert.equal(await lytter(port), false, 'der lytter noget paa den opgivne partitions port');
+    assert.equal(v.svar?.error, 'partition-not-found', `kaldet til partitionen under oprettelse: ${JSON.stringify(v)}`);
+    assert.match(v.svar.note, /still being created/);
+    assert.equal(a.kom.filter((k) => k.method === 'navigate').length, 0);
+    assert.deepEqual(listeUnderOprettelse, [['p1', 'creating']], 'browser_about viste en partition under oprettelse som aaben');
+  } finally { t?.luk(); a.luk(); m.luk(); }
 });
 
 test('browser_about-listen: aabne og lukkede partitioner med id, label, tilstand, port og installation', async () => {

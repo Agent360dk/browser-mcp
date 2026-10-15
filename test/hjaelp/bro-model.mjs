@@ -35,10 +35,14 @@ export function broKilde() {
 export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = {}) {
   const log = [];
   const timere = new Set();
+  // R122: hver lytter broen opretter, ogsaa én paa en bane, der ikke laengere findes i `baner` eller `partitioner` (fx en
+  // port, et kald bandt igen efter at banen var opgivet, under en mutant eller paa en kilde foer rettelsen). luk() lukker dem.
+  const lyttere = new Set();
+  const WSS = krav('ws').WebSocketServer;
   const engang = new Set();
   const ctx = {
     process: { env: { ...env }, ppid: 4242, stderr: { write: (t) => { log.push(String(t)); return true; } } },
-    WebSocketServer: krav('ws').WebSocketServer,
+    WebSocketServer: class extends WSS { constructor(...a) { super(...a); lyttere.add(this); } },
     setTimeout: (f, ms, ...a) => { const t = setTimeout((...x) => { engang.delete(t); f(...x); }, genforsoegMs && ms === 1500 ? genforsoegMs : ms, ...a); engang.add(t); return t; },
     clearTimeout: (t) => { engang.delete(t); clearTimeout(t); },
     // Broens egne intervaller (tomgangsvagten, hjerteslaget) maa ikke holde proeveprocessen i live.
@@ -68,6 +72,8 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
       // En kilde uden baner (fx 07f01ef, naar en proeve skal ses roed foer rettelsen): den gamle frigivPort(grund).
       try { k('frigivPort("proeven er slut")'); } catch {}
     }
+    for (const s of lyttere) { try { s.close(); } catch {} }
+    lyttere.clear();
     for (const t of timere) clearInterval(t);
     for (const t of engang) clearTimeout(t);
     for (const u of klienter) u.luk();

@@ -744,6 +744,13 @@ function createWSS(bane, port = BASE_PORT) {
       for (const [id, p] of mine) {
         clearTimeout(p.timer);
         pending.delete(id);
+        // R122 (Opus): blev forbindelsen lukket, fordi partitionen blev lukket, er det svaret - ikke «start Chrome igen».
+        if (p.bane && p.bane.lukket) {
+          p.reject(new ProfilFejl({ ok: false, error: 'partition-closed', sent: true, partition: p.bane.navn,
+            note: `Partition ${p.bane.navn} was closed while this command was running. The command was sent and may have ` +
+              'been carried out before the partition\'s tabs were closed; its tabs are closed now. Ids are never reused.' }));
+          continue;
+        }
         p.reject(new Error(
           `The connection to the Chrome extension disappeared while the command was running (${grund}). ` +
           'The command may have been carried out in the browser - check the state before you ' +
@@ -1074,6 +1081,14 @@ function baneForKald(partition) {
       `Partition ${p.id} was closed. Ids are never reused, so nothing was sent. Create a new one with browser_partition ` +
       '(action "new"), or leave out partition to use the default one.');
   }
+  // R122 (Opus, MAALT i ægte Chrome): id'erne kan forudsiges, og et kald til en partition, som new stadig opretter, fik
+  // banen. Opgav new, ventede kaldet videre, bandt porten igen og sendte, da profilen kom tilbage. Banen er derfor new's
+  // alene, til new har svaret: saa kan intet kald binde eller sende paa en partition, der aldrig blev til.
+  if (!p.klar) {
+    throw partitionFejl('partition-not-found', { partition: p.id },
+      `Partition ${p.id} is still being created: its id can be used once browser_partition (action "new") has answered ` +
+      'with it. Nothing was sent, and the call did not go to the default partition instead.');
+  }
   p.brugt = true;   // et vaerktoejskald er rettet hertil: partitionen kan have faner (se lukPartition)
   return p.bane;
 }
@@ -1082,7 +1097,7 @@ function partitionsListe() {
   return [...partitioner.values()].map((p) => ({
     partition: p.id,
     label: p.label,
-    state: p.lukket ? 'closed' : 'open',
+    state: p.lukket ? 'closed' : (p.klar ? 'open' : 'creating'),
     port: p.lukket ? null : p.bane.activePort,
     profile: p.profil,
     installation: p.bane.laas ? { profile: p.bane.laas.conn?.profile ?? null, instance: p.bane.laas.instans } : null,
@@ -1113,7 +1128,7 @@ async function nyPartition({ profile, label } = {}) {
   const bane = lavBane(id, false);
   bane.vaelger = vaelger;
   bane.vaelgerUgyldig = ugyldig;
-  const p = { id, label: navn, profil: vaelger, bane, lukket: false, brugt: false };
+  const p = { id, label: navn, profil: vaelger, bane, lukket: false, brugt: false, klar: false };
   partitioner.set(id, p);
   baner.add(bane);
   // Blev partitionen ikke til, forsvinder den helt: dens port slippes, og id'et bliver aldrig udleveret (eller genbrugt).
@@ -1152,6 +1167,7 @@ async function nyPartition({ profile, label } = {}) {
   // Var der flere installationer at vaelge imellem, siges valget her - i svaret paa new - og ikke foerst ved naeste kald.
   const valgt = bane.valgNote;
   bane.valgNote = '';
+  p.klar = true;   // R122: foerst nu kan vaerktoejskald bruge id'et (se baneForKald)
   return {
     ok: true,
     partition: id,
