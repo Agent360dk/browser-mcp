@@ -59,6 +59,9 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
     // mutant B10). Bindingen slaas fra foerst.
     try { k('sikrePort = async () => false;'); } catch {}
     try { k('for (const p of pending.values()) clearTimeout(p.timer); pending.clear()'); } catch {}
+    // 1.32: ogsaa partitionernes baner - en bane, der er taget ud af `baner` (lukket), men alligevel har bundet en port (fx
+    // under en mutant), maa ikke holde proeveprocessen i live (maalt: mutant P2 gav TIDSUDLOEB).
+    try { k('if (typeof partitioner !== "undefined") for (const p of partitioner.values()) frigivPort(p.bane, "proeven er slut")'); } catch {}
     try { k('for (const b of baner) frigivPort(b, "proeven er slut")'); } catch {
       // En kilde uden baner (fx 07f01ef, naar en proeve skal ses roed foer rettelsen): den gamle frigivPort(grund).
       try { k('frigivPort("proeven er slut")'); } catch {}

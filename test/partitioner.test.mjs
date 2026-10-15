@@ -182,6 +182,20 @@ test('profile-not-connected i new: banen lukkes - porten slippes, ingen partitio
   } finally { a.luk(); m.luk(); }
 });
 
+test('close mens new binder porten: partitionen er lukket, og porten den naaede at binde, slippes', async () => {
+  const m = await bro();
+  const a = installation(m, 'A');
+  try {
+    // Begge startes i samme tur: new naar at tage id'et og starte bindingen, close lukker, foer porten lytter.
+    const [r, l] = await Promise.all([ny(m), luk(m, 'p1')]);
+    assert.ok(l.ok, `close fandt ikke partitionen under oprettelsen: ${JSON.stringify(l)}`);
+    assert.equal(r.svar?.error, 'partition-closed', JSON.stringify(r));
+    await vent(100);
+    assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'porten, new naaede at binde, blev aldrig sluppet');
+    assert.equal(m.k('baner.size'), 1);
+  } finally { a.luk(); m.luk(); }
+});
+
 test('profile-invalid i new: intet oprettes', async () => {
   const m = await bro();
   try {
