@@ -55,7 +55,7 @@ be made instead of "No Chrome extension is connected": two profiles with the sam
 `conflict`, and for a copy the advice is to close it or reinstall the extension in it (renaming a copy does not help, it
 keeps the same installation id).
 
-## 1.30.3 (not released yet)
+## 1.30.3 (2026-10-15)
 
 **`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,
 `browser_navigate` in the current tab answered with the old address and no error when the page asked "Leave site?", and
