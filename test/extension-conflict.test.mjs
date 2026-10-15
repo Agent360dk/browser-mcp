@@ -488,11 +488,16 @@ test('teksterne siger det samme som koden: antallet, ikke profilen, og id-pinnin
   for (const f of ['README.md', 'mcp-server/README.md']) {
     const t = laes(f);
     assert.match(t, /detects \*\*more than one Browser MCP extension connected at once\*\*, also the same extension connected more than once \(for instance from several Chrome profiles or browsers\)/, f);
-    assert.match(t, /It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile/, f);
+    assert.match(t, /It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile\. `BROWSER_MCP_PROFILE` does that\./, f);
+    // 1.31 (S3): betegnelsen er et valg, ikke en noegle - det skal staa der, fordi hilsenen er usigneret.
+    assert.match(t, /The name is a choice, not a key: the extension's greeting\s+is not signed/, f);
+    assert.match(t, /are labels for choosing a Chrome profile, not credentials/, f);
   }
   assert.match(laes('content/browsermcp-docs-tools.md'), /also the same extension connected more than once \(for instance from several Chrome profiles or browsers\)/);
   const m = laes('content/browsermcp-docs-capability-matrix.md');
-  assert.match(m, /\| A second Chrome profile \| Not supported today: with the extension enabled in more than one profile, every command goes to one of them, and the server cannot tell which\. Since 1\.30\.2 it says so in the next tool answer and in `browser_provide_feedback`\./);
+  assert.match(m, /\| A second Chrome profile \| \*\*From 1\.31, by name\.\*\*/);
+  assert.match(m, /Extensions before 1\.31 report no name: with one of those in more than one profile, every command goes to one of them, and the server cannot tell which\./);
+  assert.doesNotMatch(m, /A second Chrome profile \| Not supported today/, 'matrixen siger stadig at en anden profil ikke understoettes');
   assert.doesNotMatch(m, /tracked as issue #10/, '#10 er lukket; #58 er det aabne');
 });
 

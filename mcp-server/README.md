@@ -221,12 +221,13 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 
 ### Environment variables
 
-All three are optional. None is needed for normal use.
+All four are optional. None is needed for normal use.
 
 | Variable | Effect |
 |---|---|
 | `BROWSER_MCP_CHECK_NPM=1` | Makes `browser_provide_feedback` also compare this server against the latest version published on npm. Off by default, so the call stays fast and works offline. |
-| `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile. |
+| `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile. `BROWSER_MCP_PROFILE` does that. |
+| `BROWSER_MCP_PROFILE=<name>` | From 1.31: drive the Chrome profile whose extension popup carries this name ("This Chrome profile"). Letters, digits, dot, dash and underscore, up to 32. Works together with `BROWSER_MCP_EXTENSION_ID` (both must match). An invalid value is not ignored: every browser call answers `profile-invalid`. See [Several Chrome profiles](#several-chrome-profiles). |
 | `BROWSER_MCP_TOKEN` | **Withdrawn in 1.30.1 and ignored** - the server says so when it starts. Pairing shipped in 1.30.0 but kept nobody out, so it was taken back rather than left as false protection. It will return redesigned. |
 
 ## 40 Tools
@@ -301,7 +302,7 @@ All three are optional. None is needed for normal use.
 | Tool | Description |
 |------|-------------|
 | `browser_provide_feedback` | Self-check + report in one call. Compares the connected extension against this server and detects **more than one Browser MCP extension connected at once**, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected` / `idle` / `unknown`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
-| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
+| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the popup, the installation id and the version |
 
 ## Multi-Session Support
 
@@ -326,6 +327,26 @@ Claude Session 3 ←(stdio)→ MCP :9878 ←(WS)→
 - **Ports are taken on demand** - a server binds its port on the first browser call, not
   at startup, and releases it 5 minutes after its last tab closes. A chat that never
   touches the browser never occupies a slot.
+
+### Several Chrome profiles
+
+The Chrome Web Store extension has the same id in every Chrome profile, so before 1.31 the server could not tell your
+profiles apart: with the extension enabled in two of them, commands went to one, and which one could change. From 1.31
+each installation (one per Chrome profile) reports an installation id, and you can give it a name in the extension popup
+under "This Chrome profile". Set `BROWSER_MCP_PROFILE=<name>` in a client's MCP config, and that client drives that profile.
+
+| Situation | What the agent gets |
+|---|---|
+| One connected installation has the name | Commands go to it, and the chat stays with that installation from the first command |
+| None has the name yet | The call waits as long as it waits for the extension today (about 8-15 seconds), then `profile-not-connected` with the installations it can see; `profile-routing-unsupported` when every connected extension is older than 1.31 |
+| Two or more have the name, or one installation is connected twice | `profile-ambiguous` at once |
+| The installation the chat was driving goes away | Calls in flight fail at once, as before. The next call answers `profile-disconnected`; only the call after that picks again. If the same installation comes back in time, the chat simply continues |
+| No `BROWSER_MCP_PROFILE` | The first choice is made as before (the newest extension); with several installations the next answer says which one it took, and the chat stays with it |
+
+In all of these error answers nothing was sent to Chrome (`sent: false`), and the server never moves to another profile on
+its own. `browser_about` lists what is connected. Renaming in the popup does not drop any connection or running call; a
+chat that is already driving the installation keeps driving it. The name is a choice, not a key: the extension's greeting
+is not signed, and another program on your machine can claim any name (see Security below).
 
 ### Running the agent on another machine
 
@@ -512,6 +533,12 @@ account and no server of ours between you and the page.
   you can turn on with `BROWSER_MCP_CHECK_NPM=1`. That bridge is **local and unauthenticated**:
   another program running as you on the same machine can connect to it. Browser
   MCP does not protect you from software you already run.
+- The profile name you set in the extension popup (1.31) and the installation id
+  are labels for choosing a Chrome profile, not credentials. The extension sends
+  them unsigned to every Browser MCP server on the port range, and another
+  program on the machine can claim the same name. The id is random, created once
+  per Chrome profile and kept in the extension's local storage; it leaves the
+  machine only if you paste it somewhere.
 
 Full policy: https://browsermcp.dev/privacy
 

@@ -4,6 +4,45 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.31.0 (not released yet)
+
+**Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so
+the server could not tell profiles apart: with the extension enabled in two of them, commands went to one of them, and which
+one could change when the other reconnected. 1.30.2 only warned, and the warning that commands had moved to another
+connection came after a command had already run there. Now each installation of the extension (one per Chrome profile)
+creates a random installation id once, keeps it in the extension's local storage, and sends it with its greeting, together
+with a name you can give the profile in the popup ("This Chrome profile"). `BROWSER_MCP_PROFILE=<name>` in a client's MCP
+config makes that client drive that profile; it works together with `BROWSER_MCP_EXTENSION_ID`. A chat is locked to the
+installation from its first command, also without `BROWSER_MCP_PROFILE`, and the server never moves it to another profile
+on its own: when that profile goes away, the next call says so and sends nothing, and only the call after that picks again.
+If the same installation comes back in time (the extension reconnects), the chat continues without an error. A port released
+after the chat's last tab closed keeps the lock; for an extension before 1.31, which reports no installation, it is released
+as in 1.30.2. Renaming in the popup greets every connected server again with the new name; no connection or running call is
+dropped, and a chat that already drives the installation keeps driving it. The name and the id are labels to choose by, not
+credentials: the greeting is not signed, and another program on the machine can claim any name (README, Security).
+
+**Groundwork for partitions (#20, ugbodagadave).** The server's bridge now has lanes: one listener code per lane, one map of
+pending calls where each call is bound to the connection it was sent to, `terminate` taken only from the lane's own active
+connection, and one guard against messages that are not objects. There is still one lane (the default one) and no new tool;
+the partition tool from PR #20 comes on top of this in a later version, with credit. The five faults measured in PR #20's own
+listener (a reply from another lane's socket accepted in both directions, `null` stopping the server, a later connection
+taking over a lane, a dead connection answering only after 30 seconds) are fixed tests against these lanes.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `error: "profile-invalid"` | every browser tool | `BROWSER_MCP_PROFILE` is set but is not a valid name (letters, digits, dot, dash, underscore, 1-32). Nothing was sent; the server does not fall back to some profile. The value is not repeated in the answer |
+| `error: "profile-not-connected"`, `profile`, `connected` | every browser tool | No connected installation has the name. The call first waited as long as it waits for the extension today (about 8-15 seconds); `connected` lists what the server can see (at most 10) |
+| `error: "profile-routing-unsupported"` | every browser tool | `BROWSER_MCP_PROFILE` is set, but every connected extension is older than 1.31 and reports no name |
+| `error: "profile-ambiguous"`, `candidates` | every browser tool | Two or more connections carry the name, or the installation the chat drives is connected twice (a copied profile). Answered at once; nothing was sent |
+| `error: "profile-disconnected"`, `lost`, `connected` | every browser tool | The installation the chat was driving is gone (after waiting the same time for it to come back; at once for an extension before 1.31, which cannot be recognised). Nothing was sent; the next call picks again |
+| a note in the answer | the first command | Without `BROWSER_MCP_PROFILE` and with several installations connected: which one the chat now drives, and that it stays with it |
+| `installations`, `installations_note` | `browser_about` | The installations connected to the chat: `profile`, `instance`, `version`, `driven` (at most 10) |
+
+All of these errors have `sent: false` and `isError: true`. The 1.30.2 note "commands now go to another one" is gone, and the
+warning about the same extension connected more than once now only appears for connections that report no installation.
+
 ## 1.30.3 (not released yet)
 
 **`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,

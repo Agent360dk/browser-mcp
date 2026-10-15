@@ -117,6 +117,20 @@ Nothing listed means no server, which means nothing for the extension to find. (
 2. If calls still fail: open `chrome://extensions` and hit the reload icon on Browser MCP - this restarts the extension's service worker and its reconnect loop
 3. Retry the tool call
 
+## `profile-not-connected`, `profile-ambiguous` or `profile-disconnected` (1.31)
+
+**Symptom:** a tool call answers one of these, with `sent: false`.
+
+**Cause:** the client has `BROWSER_MCP_PROFILE` set, or the chat was already driving one Chrome profile. Nothing was sent to Chrome:
+
+- `profile-not-connected`: no connected profile has that name. Check that Chrome is open in that profile and that the name in the extension popup ("This Chrome profile") is exactly the same. `connected` in the answer lists what the server can see.
+- `profile-routing-unsupported`: every connected extension is older than 1.31 and reports no name. Update the extension (from the Chrome Web Store it can take 1-3 days after a release), or remove `BROWSER_MCP_PROFILE`.
+- `profile-ambiguous`: two profiles carry the same name, or one profile is connected twice (a copied Chrome profile). Give each its own name.
+- `profile-disconnected`: the profile the chat was driving closed, or its extension reloaded. The server does not move to another profile on its own. Call again: that call picks a profile anew.
+- `profile-invalid`: `BROWSER_MCP_PROFILE` is not a valid name (letters, digits, dot, dash and underscore, up to 32). Fix it and restart the client.
+
+`browser_about` lists the connected installations.
+
 ## The debugger detaches after 2-3 actions on one tab
 
 **Symptom:** a sequence of clicks/fills on the same tab works, then actions silently stop landing; `browser_navigate` and `browser_screenshot` keep working.
