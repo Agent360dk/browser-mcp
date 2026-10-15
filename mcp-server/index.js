@@ -1083,6 +1083,9 @@ async function nyPartition({ profile, label } = {}) {
   }
   if (p.lukket) throw lukketUndervejs();
   const inst = bane.laas?.conn;
+  // Var der flere installationer at vaelge imellem, siges valget her - i svaret paa new - og ikke foerst ved naeste kald.
+  const valgt = bane.valgNote;
+  bane.valgNote = '';
   return {
     ok: true,
     partition: id,
@@ -1092,7 +1095,7 @@ async function nyPartition({ profile, label } = {}) {
     installation: inst ? { profile: inst.profile ?? null, instance: inst.instance ?? null } : null,
     note: `Pass partition: "${id}" to every browser tool this agent calls; calls without it go to the default partition. ` +
       `The partition has its own tab group and its own active tab. Close it with browser_partition (action "close") when ` +
-      'the agent is done: that closes its tabs and gives its port back.',
+      'the agent is done: that closes its tabs and gives its port back.' + (valgt ? ` ${valgt}` : ''),
   };
 }
 

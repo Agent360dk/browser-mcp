@@ -394,6 +394,38 @@ test('en partition, der er brugt, men hvis forbindelse er vaek, kan ikke melde t
   } finally { a.luk(); m.luk(); }
 });
 
+test('new uden profil med to installationer: svaret siger hvilken partitionen nu styrer (ikke foerst ved naeste kald)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A', { instance: I1, profile: 'arbejde' });
+  const b = installation(m, 'B', { instance: I2, profile: 'hjem' });
+  try {
+    const r = await ny(m);
+    assert.match(r.ok?.note || '', /2 Browser MCP installations are connected to this chat/, JSON.stringify(r));
+    assert.equal(m.k('partitioner.get("p1").bane.valgNote'), '', 'noten blev staaende til naeste kald ogsaa');
+  } finally { a.luk(); b.luk(); m.luk(); }
+});
+
+test('mens close lukker fanerne, faar et nyt kald paa partitionen partition-closed - intet sendes', async () => {
+  const m = await bro();
+  const a = installation(m, 'A');
+  try {
+    const p1 = (await ny(m)).ok;
+    assert.ok((await paa(m, 'p1')).ok);
+    a.stum = true;                                   // udvidelsen er langsom: lukningens list_tabs venter
+    const lukning = luk(m, 'p1');
+    assert.ok(await venteTil(() => a.kom.filter((k) => k.port === p1.port && k.method === 'list_tabs').length === 2));
+    const foer = a.kom.length;
+    const r = await paa(m, 'p1');
+    assert.equal(r.svar?.error, 'partition-closed', `et kald midt i lukningen blev ikke afvist: ${JSON.stringify(r)}`);
+    assert.equal(a.kom.length, foer, 'kaldet blev sendt til en partition, der var ved at lukke');
+    const anden = await luk(m, 'p1');
+    assert.equal(anden.svar?.error, 'partition-closed', 'en anden lukning midt i den foerste blev ikke afvist');
+    a.stum = false;
+    a.forbindelser.get(p1.port).svar(a.kom.filter((k) => k.method === 'list_tabs').at(-1).id, { tabs: [] });
+    assert.ok((await lukning).ok);
+  } finally { a.luk(); m.luk(); }
+});
+
 test('browser_about-listen: aabne og lukkede partitioner med id, label, tilstand, port og installation', async () => {
   const m = await bro();
   const a = installation(m, 'A');
@@ -505,5 +537,22 @@ test('aegte server: new -> kald med partition gaar til partitionens port; extrac
     assert.equal(json(ukendt).error, 'partition-not-found');
     const fejlAction = await s.tekst(s.send('browser_partition', { action: 'list' }));
     assert.equal(fejlAction.isError, true);
+  } finally { s.luk(); }
+});
+
+test('aegte server: et kald paa en partition faar partitionens egen forbindelsesadvarsel (ikke standardbanens)', async () => {
+  const s = await aegteServer();
+  try {
+    const ny1 = json(await s.tekst(s.send('browser_partition', { action: 'new' })));
+    assert.equal(ny1.partition, 'p1', JSON.stringify(ny1));
+    // En gammel kopi af udvidelsen (uden installation) forbinder ogsaa til partitionens port.
+    const gammel = await falskUdvidelse(ny1.port, { id: ID, hello: { type: 'hello', extensionId: ID, version: '1.30.2', name: null } });
+    try {
+      await vent(300);
+      const r = await s.tekst(s.send('browser_list_tabs', { partition: 'p1' }));
+      const alt = r.content.map((c) => c.text).join('\n');
+      assert.match(alt, /2 Browser MCP extension connections are open to this server/, `partitionens advarsel kom ikke med: ${alt.slice(0, 300)}`);
+      assert.equal(gammel.kom.length, 0, 'kaldet gik til den gamle kopi i stedet for partitionens installation');
+    } finally { gammel.luk(); }
   } finally { s.luk(); }
 });
