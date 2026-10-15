@@ -38,7 +38,7 @@ function udtraek(navn) {
 function byg() {
   const src = ['lavBane', 'cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions', 'forbindelsesAdvarsel', 'medForbindelsesNote', 'profilKandidater']
     .map(udtraek).join('\n\n');
-  // 1.31 (S1a): laasen, flaget harSendtKommando og forbindelserne bor paa BANEN. Standardbanen bygges her med kildens
+  // 1.31 (S1a): laasen og forbindelserne bor paa BANEN. Standardbanen bygges her med kildens
   // EGEN lavBane, saa den udtrukne kildekode muterer PRAECIS de felter produktionen har - ikke en kopi.
   const fabrik = new Function(`
     // PARRINGSNOEGLE er ogsaa en modul-konstant i index.js, og liveConnections laeser den.
@@ -53,11 +53,10 @@ function byg() {
       cmpVersion, liveConnections, activeConnection, distinctExtensions, forbindelsesAdvarsel, medForbindelsesNote,
       // Som sendTilBane: flaget, og (1.31) laasen til den installation kommandoen gik til.
       sendKommando: () => {
-        standardBane.harSendtKommando = true;
         const c = activeConnection();
         if (c && !standardBane.laas) standardBane.laas = { instans: c.instance || null, conn: c };
       },
-      nyForbindelse: () => { if (!standardBane.harSendtKommando) standardBane.laastForbindelse = null; },
+      nyForbindelse: () => { if (!standardBane.laas) standardBane.laastForbindelse = null; },
     };`);
   return fabrik();
 }
@@ -306,9 +305,9 @@ test('laasen findes i kilden og er ikke bare en kommentar', () => {
   assert.match(blok, /if \(bane\.laastForbindelse && bane\.laastForbindelse\.ws\.readyState === 1\) return bane\.laastForbindelse;/,
     'laasen tjekkes ikke foerst i activeConnection');
   assert.match(blok, /bane\.laastForbindelse = best;/, 'valget gemmes ikke');
-  // 1.31 (S3): mellem flaget og afsendelsen saettes laasen til installationen.
-  assert.match(kilde, /harSendtKommando = true;[\s\S]{0,400}?if \(!bane\.laas\) \{[\s\S]{0,900}?conn\.ws\.send/,
-    'flaget saettes ikke naar en kommando faktisk sendes');
+  // 1.31 (S3, R115): mellem bindingen af kaldet og afsendelsen saettes laasen til installationen (flaget er vaek).
+  assert.match(kilde, /pending\.set\(id, \{ id, bane, conn, timer, resolve, reject \}\);[\s\S]{0,700}?if \(!bane\.laas\) \{[\s\S]{0,900}?conn\.ws\.send/,
+    'laasen saettes ikke naar en kommando faktisk sendes');
 });
 
 
@@ -479,7 +478,7 @@ test('alle tre svarveje i vaerktoejskaldet gaar gennem medForbindelsesNote, og s
   assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => medForbindelsesNote\(await kaldVaerktoej\(request\)\)\);/);
   assert.equal((kilde.match(/setRequestHandler\(CallToolRequestSchema/g) || []).length, 1);
   assert.equal((kilde.match(/medForbindelsesNote\(/g) || []).length, 2, 'kun definitionen og indpakningen - ingen svarvej skal huske den selv');
-  assert.match(udtraek('advarOmKonflikt'), /const profiler = forbindelsesAdvarsel\(bane\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
+  assert.match(udtraek('advarOmKonflikt'), /const profiler = [^;]*forbindelsesAdvarsel\(bane\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
 });
 
 test('teksterne siger det samme som koden: antallet, ikke profilen, og id-pinningen skelner ikke profiler', async () => {

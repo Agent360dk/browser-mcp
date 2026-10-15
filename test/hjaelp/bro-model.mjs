@@ -27,10 +27,11 @@ export function broKilde() {
 
 /**
  * Starter broen med det givne env. k(kode) koerer kode i broens scope.
+ * `foersteValgMs` saetter ventetiden foer foerste valg (standard 0 i proeverne; serveren bruger 2500).
  * `genforsoegMs` korter broens genforsoeg (5 x 1500 ms, plus 5 til hvis porten lige er aabnet) ned, saa en proeve af et
  * udtoemt budget ikke tager 15 s. Kun de 1500 ms aendres; alle andre frister er broens egne.
  */
-export function broModel(env = {}, { genforsoegMs = null } = {}) {
+export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = {}) {
   const log = [];
   const timere = new Set();
   const ctx = {
@@ -47,6 +48,9 @@ export function broModel(env = {}, { genforsoegMs = null } = {}) {
   vm.createContext(ctx);
   vm.runInContext(broKilde(), ctx, { filename: 'index.js (broen)' });
   const k = (kode) => vm.runInContext(kode, ctx);
+  // R115: foerste valg venter, til porten har vaeret aaben i ~2,5 s (FOERSTE_VALG_MS). Proeverne starter med 0, saa hvert
+  // foerste kald ikke koster 2,5 s; proeverne af ventetiden saetter den selv.
+  k(`FOERSTE_VALG_MS = ${Number(foersteValgMs)}`);
   // Ryddes ogsaa naar en proeve fejler (fx under en mutant): ellers holder aabne sokler og ventende frister proeveprocessen
   // i live, og koerslen haenger i stedet for at blive roed.
   const luk = () => {

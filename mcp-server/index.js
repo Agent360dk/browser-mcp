@@ -85,7 +85,6 @@ function lavBane(navn, medPid = true) {
     portResolver: null,
     bindLoefte: null,
     laastForbindelse: null,        // se activeConnection
-    harSendtKommando: false,
     // 1.31 (S3, #58): banens valg af installation. `vaelger` er en betegnelse (BROWSER_MCP_PROFILE for standardbanen);
     // `laas` er den installation banen er laast til efter foerste kommando: { instans, conn } - instans er null for en
     // udvidelse fra foer 1.31, og saa ER forbindelsen identiteten. `valgNote` siges én gang i naeste svar.
@@ -93,6 +92,10 @@ function lavBane(navn, medPid = true) {
     vaelgerUgyldig: false,
     laas: null,
     valgNote: '',
+    // R115 (Astra 1): hver gang en laast installation erklaeres mistet, taelles generationen op. Et kald, der allerede
+    // ventede, da det skete, faar samme fejl - det maa ikke vaelge en ny installation, foer klienten har set fejlen.
+    laasGen: 0,
+    sidsteMistet: null,
     sidsteVisteForbindelsesAdvarsel: '',
     sidsteKonfliktNoegle: '',
     sidsteProfilAdvarsel: '',
@@ -169,7 +172,9 @@ function medForbindelsesNote(svar, bane = standardBane) {
 }
 
 function advarOmKonflikt(conn, bane = standardBane) {
-  const profiler = forbindelsesAdvarsel(bane);
+  // R115 (Opus 2): ved selve opkoblingen har forbindelsen ikke hilst endnu og har derfor ingen instans - profiladvarslen
+  // ventede ikke paa hilsenen og kom falsk i stderr. Den vurderes foerst, naar hilsenen er kommet (kaldet fra 'hello').
+  const profiler = conn && !conn.harHilst ? bane.sidsteProfilAdvarsel || null : forbindelsesAdvarsel(bane);
   if (profiler && profiler !== bane.sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
   bane.sidsteProfilAdvarsel = profiler || '';
   const alle = distinctExtensions(bane);
@@ -222,7 +227,8 @@ function liveConnections(bane = standardBane) {
 // Faner hoerer til den udvidelse der aabnede dem. Skifter man udvidelse, strander de.
 // Derfor: vaelg én gang, og bliv ved den saa laenge dens forbindelse lever. Doer den,
 // vaelges der forfra - det er en aegte genopretning, ikke et vilkaarligt skift.
-// (Laasen og flaget `harSendtKommando` bor paa banen - se lavBane.)
+// (Laasen bor paa banen - se lavBane. R115: flaget `harSendtKommando` er erstattet af banens installationslaas, `bane.laas`,
+// som saettes ved praecis samme lejlighed - foerste kommando - og ogsaa overlever en sluppet port.)
 const PINNET_UDVIDELSE = (process.env.BROWSER_MCP_EXTENSION_ID || '').trim() || null;
 
 // ⛔ 26/9: PARRINGEN ER TRUKKET TILBAGE I 1.30.1 (issue #10 genaabnes til et redesign).
@@ -294,8 +300,9 @@ function installationer(bane = standardBane) {
     profile: c.profile ?? null,
     instance: c.instance ?? null,
     version: c.version ?? null,
-    // Laesning uden bivirkning: den forbindelse banen allerede styrer (activeConnection() ville vaelge én).
-    driven: c === bane.laastForbindelse,
+    // Laesning uden bivirkning: den forbindelse banen allerede styrer (activeConnection() ville vaelge én). Efter foerste
+    // kommando er det laasens forbindelse - ikke en midlertidig forbindelseslaas, som en ny forbindelse kan nulstille.
+    driven: bane.laas ? c === bane.laas.conn : c === bane.laastForbindelse,
   }));
 }
 
@@ -325,15 +332,47 @@ function profilFejl(bane, error, felter, note) {
 
 // Hvad kaldet skal goere, naar activeConnection(bane) ikke gav en forbindelse. `straks` = fejl uden at vente (flere
 // kandidater, eller en laast udvidelse fra foer 1.31, der aldrig kan komme tilbage); ellers kan der ventes inden for budgettet.
+// R115 (Astra 4): hvad browser_provide_feedback skal sige, naar der ER forbindelser, men ingen kan bruges. Uden
+// bivirkninger: laasen roeres ikke (mistetFejl ville slippe den).
+function profilDiagnose(bane) {
+  const live = liveConnections(bane);
+  if (bane.laas) {
+    const samme = bane.laas.instans ? live.filter((c) => c.instance === bane.laas.instans) : [];
+    if (samme.length > 1) {
+      return { error: 'profile-ambiguous', finding: `The installation this chat drives (instance ${bane.laas.instans}) is connected ${samme.length} times at once - probably a copied Chrome profile.`,
+        fix: 'Close the copied Chrome profile, or reinstall the extension in it so it gets its own installation id.' };
+    }
+    return { error: 'profile-disconnected', finding: `The installation this chat was driving (${beskrivInstallation(bane.laas.instans ? bane.laas.conn : null)}) is not connected; ${live.length} other connection(s) are open, and the server does not move to them on its own.`,
+      fix: 'Reopen that Chrome profile, or call a browser tool again: after one profile-disconnected answer the next call picks an installation anew.' };
+  }
+  if (bane.vaelger) {
+    const k = profilKandidater(bane);
+    if (k.length > 1) {
+      return { error: 'profile-ambiguous', finding: `${k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE).`,
+        fix: 'Give each Chrome profile its own name in the extension popup ("This Chrome profile").' };
+    }
+    if (live.every((c) => !c.instance)) {
+      return { error: 'profile-routing-unsupported', finding: `BROWSER_MCP_PROFILE is set, but all ${live.length} connected extension(s) are older than 1.31 and report no profile name.`,
+        fix: 'Update the extension (from the Chrome Web Store it can take 1-3 days after a release), or remove BROWSER_MCP_PROFILE.' };
+    }
+    return { error: 'profile-not-connected', finding: `${live.length} extension connection(s) are open, but none has the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE).`,
+      fix: 'Open Chrome in that profile, and check that the name in the extension popup ("This Chrome profile") is exactly the same.' };
+  }
+  return null;
+}
+
+// Samme installation paa flere forbindelser paa én gang: en kopieret Chrome-profil (samme lager, samme instans).
+function kopiFejl(bane, instans, samme, hvem) {
+  return profilFejl(bane, 'profile-ambiguous', { candidates: samme.map((c) => ({ instance: c.instance, profile: c.profile ?? null, version: c.version ?? null })).slice(0, 10) },
+    `${hvem} (instance ${instans}) is connected ${samme.length} times at once - ` +
+    'probably a copied Chrome profile. Nothing was sent: the server does not guess between them. Close the copy, or ' +
+    'reinstall the extension in it so it gets its own instance.');
+}
+
 function valgUdenForbindelse(bane) {
   if (bane.laas) {
     const samme = bane.laas.instans ? liveConnections(bane).filter((c) => c.instance === bane.laas.instans) : [];
-    if (samme.length > 1) {
-      return { straks: profilFejl(bane, 'profile-ambiguous', { candidates: samme.map((c) => ({ instance: c.instance, profile: c.profile ?? null, version: c.version ?? null })).slice(0, 10) },
-        `The installation this chat is driving (instance ${bane.laas.instans}) is connected ${samme.length} times at once - ` +
-        'probably a copied Chrome profile. Nothing was sent: the server does not guess between them. Close the copy, or ' +
-        'reinstall the extension in it so it gets its own instance.') };
-    }
+    if (samme.length > 1) return { straks: kopiFejl(bane, bane.laas.instans, samme, 'The installation this chat is driving') };
     return { mistet: true, straks: bane.laas.instans === null ? mistetFejl(bane) : null };
   }
   if (bane.vaelger) {
@@ -354,14 +393,17 @@ function mistetFejl(bane) {
   const laas = bane.laas;
   bane.laas = null;
   bane.laastForbindelse = null;
+  bane.laasGen++;
   const tabt = laas.conn && laas.conn.instance === laas.instans ? laas.conn : { instance: laas.instans, profile: null };
-  return profilFejl(bane, 'profile-disconnected', { lost: { profile: tabt.profile ?? null, instance: laas.instans } },
+  const fejl = profilFejl(bane, 'profile-disconnected', { lost: { profile: tabt.profile ?? null, instance: laas.instans } },
     `The Browser MCP installation this chat was driving (${beskrivInstallation(laas.instans ? tabt : null)}) is no longer ` +
     'connected: its Chrome profile or Chrome may have closed, or the extension reloaded. Nothing was sent, and the server ' +
     'did not move to another installation on its own. ' +
     (laas.instans === null ? 'An extension from before 1.31 cannot be recognised when it reconnects. ' : '') +
     'Calling again picks an installation anew' + (bane.vaelger ? ` by BROWSER_MCP_PROFILE ("${bane.vaelger}")` : '') +
     '; tabs opened before are not in another installation. connected lists what is connected now.');
+  bane.sidsteMistet = fejl.svar;
+  return fejl;
 }
 
 function ingenProfilFejl(bane) {
@@ -505,9 +547,10 @@ function createWSS(bane, port = BASE_PORT) {
     const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
       harHilst: false, helloId: null, since: Date.now(), instance: null, profile: null };
     bane.connections.add(conn);
-    // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
-    // nytilkommen udvidelse maa gerne komme i betragtning igen.
-    if (!bane.harSendtKommando) bane.laastForbindelse = null;
+    // En nytilkommen udvidelse maa gerne komme i betragtning igen, saa laenge ingen kommando er sendt. Er der sendt én, er
+    // banen laast til installationen (bane.laas), og den afgoer valget i activeConnection - saa nulstillingen er altid sikker.
+    // (R115: her stod `if (!harSendtKommando)`; flaget var en kopi af laasen og er fjernet.)
+    bane.laastForbindelse = null;
     process.stderr.write(`[MCP] Chrome extension connected on port ${port}${fraOrigin ? ` (${fraOrigin})` : ''}\n`);
     advarOmKonflikt(conn, bane);
 
@@ -560,6 +603,10 @@ function createWSS(bane, port = BASE_PORT) {
         conn.kode = typeof msg.kode === 'string' ? msg.kode : null;
         conn.instance = gyldigInstans(msg.instance);
         conn.profile = gyldigProfil(msg.profile);
+        // R115 (Astra 2): blev forbindelsen valgt og laast, foer dens foerste hilsen kom, blev laasen sat uden instans
+        // (som for en udvidelse fra foer 1.31). Den foerste hilsen fra NETOP den forbindelse faerdiggoer bindingen; senere
+        // hilsner kan ikke skifte den (se grenen for conn.harHilst ovenfor).
+        if (bane.laas && bane.laas.conn === conn && bane.laas.instans === null && conn.instance) bane.laas.instans = conn.instance;
         advarOmKonflikt(conn, bane);
         return;
       }
@@ -731,8 +778,7 @@ function frigivPort(bane, grund) {
   const gammel = bane.wss;
   bane.wss = null;
   bane.activePort = null;
-  bane.laastForbindelse = null;
-  bane.harSendtKommando = false;          // naeste binding vaelger udvidelse forfra
+  bane.laastForbindelse = null;           // naeste binding vaelger forbindelse forfra
   // 1.31 (S3): men en laas til en INSTALLATION overlever: chatten er den samme, og naeste binding venter paa samme
   // installation i stedet for at tage en anden profil. En udvidelse fra foer 1.31 kan ikke genkendes, saa dens laas slippes
   // (som i 1.30.2) - porten blev sluppet, fordi dens sidste fane lukkede, ikke fordi forbindelsen forsvandt.
@@ -770,7 +816,13 @@ function sendToExtension(method, params = {}, timeoutMs = 30000, bane = standard
   return sendTilBane(bane, method, params, timeoutMs);
 }
 
-async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
+// R115 (Opus 1, MAALT i Chrome 7/20): porten bindes foerst ved chattens foerste kald, og udvidelserne skanner hver for sig
+// hvert 2. sekund. Blev der laast til den foerste kandidat, der var forbundet, naaede en anden profil med samme betegnelse
+// (eller en kopi) ikke at blive set - og chatten koerte stille i den profil, der forbandt foerst. Foerste valg venter derfor,
+// til porten har vaeret aaben i ét skanningsinterval plus en margen. (`let`: model-proeverne korter den.)
+let FOERSTE_VALG_MS = 2500;
+
+async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null, _gen = null) {
   if (bane.vaelgerUgyldig) {
     throw new ProfilFejl({ ok: false, error: 'profile-invalid', sent: false,
       note: 'BROWSER_MCP_PROFILE is set, but it is not a valid profile name (letters, digits, dot, dash and underscore, ' +
@@ -786,15 +838,30 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
   const doerAabnetNu = _doerAabnetNu !== null
     ? _doerAabnetNu
     : Boolean(bane.portBundetTid && (Date.now() - bane.portBundetTid) < 10000);
+  // R115 (Astra 1): kaldets generation. Er en laast installation erklaeret mistet, siden kaldet begyndte, faar det samme
+  // fejl - ogsaa selv om et andet kalds fejlsvar allerede har sluppet laasen.
+  const gen = _gen === null ? bane.laasGen : _gen;
+  if (gen !== bane.laasGen && bane.sidsteMistet) throw new ProfilFejl(bane.sidsteMistet);
+  // R115 (Opus 1): foerste valg venter, til alle profiler har kunnet naa at forbinde til den nye port.
+  if (!bane.laas && bane.portBundetTid) {
+    const rest = bane.portBundetTid + FOERSTE_VALG_MS - Date.now();
+    if (rest > 0) await new Promise((r) => setTimeout(r, rest));
+    if (gen !== bane.laasGen && bane.sidsteMistet) throw new ProfilFejl(bane.sidsteMistet);
+  }
   // Retry if extension is temporarily disconnected (reconnects every 2s)
   const conn = activeConnection(bane);
+  // R115 (Astra 3): ogsaa foer foerste laas - den valgte installation maa ikke vaere forbundet mere end én gang.
+  if (conn && !bane.laas && conn.instance) {
+    const samme = liveConnections(bane).filter((c) => c.instance === conn.instance);
+    if (samme.length > 1) throw kopiFejl(bane, conn.instance, samme, 'The installation this chat would drive');
+  }
   // 1.31 (S3): uden forbindelse kan valget selv vaere svaret - flere kandidater, eller en laast installation der er vaek.
   const valg = conn ? null : valgUdenForbindelse(bane);
   if (valg && valg.straks) throw valg.straks;
   if (!conn) {
     if (_retries > 0) {
       await new Promise(r => setTimeout(r, 1500));
-      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu);
+      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu, gen);
     }
     // ── Har vi lige aabnet doeren selv? (MAALT 8/9, #16) ─────────────────────
     //
@@ -808,7 +875,7 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
     // ekstra budget, og siger sandheden hvis den stadig er tom.
     if (doerAabnetNu && !_ekstraRunde) {
-      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu);
+      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu, gen);
     }
     // Budgettet er brugt. Den laaste installation kom ikke tilbage: profile-disconnected - ikke en anden installation.
     if (valg.mistet && !bane.bindFejl && !bane.alleePorteOptaget) throw mistetFejl(bane);
@@ -875,7 +942,6 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     pending.set(id, { id, bane, conn, timer, resolve, reject });
     // pid = Claude Code-processen der ejer denne server. Udvidelsen bruger den til at
     // skelne 'samme chat, ny forbindelse' fra 'en anden chat' naar den adopterer sessioner.
-    bane.harSendtKommando = true;
     // 1.31 (S3): foerste kommando laaser banen til INSTALLATIONEN (ikke betegnelsen, ikke forbindelsen). Var der flere at
     // vaelge imellem uden en vaelger, siger naeste svar hvilken - og at den bliver ved den.
     if (!bane.laas) {
@@ -1490,7 +1556,13 @@ async function handleProvideFeedback(args) {
       'The user has to do it - chrome:// cannot be driven from here.',
     );
   }
-  if (!active && standardBane.activePort === null) {
+  // R115 (Astra 4): er der forbindelser, men ingen kan bruges, er det VALGET af installation, ikke forbindelsen, der
+  // mangler. Diagnosen siger det samme som kaldets fejlsvar ville sige - ikke «No Chrome extension is connected».
+  const valgProblem = !active && liveConnections().length ? profilDiagnose(standardBane) : null;
+  if (valgProblem) {
+    findings.push(valgProblem.finding);
+    fix_steps.push(valgProblem.fix);
+  } else if (!active && standardBane.activePort === null) {
     // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
     // i stykker, og et fix-skridt her ville vaere en falsk alarm - se verdict 'idle'.
     findings.push('The browser has not been used in this chat yet, so there is no connection to measure. That is not an error.');
@@ -1544,7 +1616,7 @@ async function handleProvideFeedback(args) {
   // tilstand for at kunne maale den) - det er at sige praecis hvad der er tilfaeldet.
   const ingenPortEndnu = standardBane.activePort === null;
   const verdict =
-    (exts.length > 1 || profilAdvarsel) ? 'conflict'
+    (exts.length > 1 || profilAdvarsel || valgProblem?.error === 'profile-ambiguous') ? 'conflict'
     : (serverOutdated || extOutdated) ? 'outdated'
     : (!active && ingenPortEndnu) ? 'idle'
     : !active ? 'disconnected'

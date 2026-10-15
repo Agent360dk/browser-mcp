@@ -66,11 +66,16 @@ test('terminate er gated paa den aktive forbindelse', () => {
 //    saa laenge intet arbejde er i gang - ellers kan en fejlagtig foerste-forbindelse
 //    spaerre for den rigtige udvidelse resten af sessionen.
 test('forbindelses-laasen gives fri saa laenge ingen kommando er sendt', () => {
-  assert.match(srv, /harSendtKommando: false,/, 'flaget skal findes (paa banen, lavBane)');
-  assert.match(srv, /if \(!bane\.harSendtKommando\) bane\.laastForbindelse = null;/,
+  // R115: flaget harSendtKommando er erstattet af banens installationslaas (bane.laas), som saettes ved foerste kommando.
+  // Flaget var blevet en kopi af laasen (Astra/Opus R115): to tilstande for én kendsgerning kan kun komme ud af trit.
+  assert.match(srv, /laas: null,/, 'laasen skal findes (paa banen, lavBane)');
+  const tilslut = srv.slice(srv.indexOf('bane.connections.add(conn);'), srv.indexOf('bane.connections.add(conn);') + 700);
+  assert.match(tilslut, /\n    bane\.laastForbindelse = null;/,
     'uden den her linje kan en tilfaeldig foerste forbindelse spaerre for den rigtige');
-  assert.match(srv, /harSendtKommando = true/,
-    'flaget skal saettes naar der faktisk sendes en kommando');
+  assert.match(srv, /bane\.laas = \{ instans: conn\.instance \|\| null, conn \};/,
+    'laasen skal saettes naar der faktisk sendes en kommando');
+  const kode = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.doesNotMatch(kode, /harSendtKommando/, 'flaget er tilbage ved siden af laasen');
 });
 
 // ── Naar udvidelsen er ny og serveren er gammel - eller omvendt i butikkens

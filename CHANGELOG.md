@@ -15,11 +15,17 @@ with a name you can give the profile in the popup ("This Chrome profile"). `BROW
 config makes that client drive that profile; it works together with `BROWSER_MCP_EXTENSION_ID`. A chat is locked to the
 installation from its first command, also without `BROWSER_MCP_PROFILE`, and the server never moves it to another profile
 on its own: when that profile goes away, the next call says so and sends nothing, and only the call after that picks again.
-If the same installation comes back in time (the extension reconnects), the chat continues without an error. A port released
+If the same installation comes back in time (the extension reconnects), the chat continues without an error. A call that
+was already waiting when the installation went away gets `profile-disconnected` too; it cannot reach another installation
+before the agent has seen the error. A chat's first call waits until the port has been open for about 2.5 seconds before it
+chooses: the extension scans every 2 seconds in each profile, and without the wait a second profile with the same name, or a
+copied profile, could connect just after the choice and never be seen (measured in Chrome: 7 of 20 first calls). A port released
 after the chat's last tab closed keeps the lock; for an extension before 1.31, which reports no installation, it is released
 as in 1.30.2. Renaming in the popup greets every connected server again with the new name; no connection or running call is
 dropped, and a chat that already drives the installation keeps driving it. The name and the id are labels to choose by, not
-credentials: the greeting is not signed, and another program on the machine can claim any name (README, Security).
+credentials: the greeting is not signed, and another program on the machine can claim any name. Both appear in
+`browser_about` and in the `profile-*` answers, so they reach the agent and its model provider like any tool answer (README,
+Security).
 
 **Groundwork for partitions (#20, ugbodagadave).** The server's bridge now has lanes: one listener code per lane, one map of
 pending calls where each call is bound to the connection it was sent to, `terminate` taken only from the lane's own active
@@ -35,13 +41,15 @@ taking over a lane, a dead connection answering only after 30 seconds) are fixed
 | `error: "profile-invalid"` | every browser tool | `BROWSER_MCP_PROFILE` is set but is not a valid name (letters, digits, dot, dash, underscore, 1-32). Nothing was sent; the server does not fall back to some profile. The value is not repeated in the answer |
 | `error: "profile-not-connected"`, `profile`, `connected` | every browser tool | No connected installation has the name. The call first waited as long as it waits for the extension today (about 8-15 seconds); `connected` lists what the server can see (at most 10) |
 | `error: "profile-routing-unsupported"` | every browser tool | `BROWSER_MCP_PROFILE` is set, but every connected extension is older than 1.31 and reports no name |
-| `error: "profile-ambiguous"`, `candidates` | every browser tool | Two or more connections carry the name, or the installation the chat drives is connected twice (a copied profile). Answered at once; nothing was sent |
-| `error: "profile-disconnected"`, `lost`, `connected` | every browser tool | The installation the chat was driving is gone (after waiting the same time for it to come back; at once for an extension before 1.31, which cannot be recognised). Nothing was sent; the next call picks again |
+| `error: "profile-ambiguous"`, `candidates` | every browser tool | Two or more connections carry the name, or the installation the chat drives or is about to drive is connected twice (a copied profile, also without `BROWSER_MCP_PROFILE`). Answered without waiting further; nothing was sent |
+| `error: "profile-disconnected"`, `lost`, `connected` | every browser tool | The installation the chat was driving is gone (after waiting the same time for it to come back; at once for an extension before 1.31, which cannot be recognised). Nothing was sent. Calls that were already waiting get the same answer; the next call picks again |
 | a note in the answer | the first command | Without `BROWSER_MCP_PROFILE` and with several installations connected: which one the chat now drives, and that it stays with it |
 | `installations`, `installations_note` | `browser_about` | The installations connected to the chat: `profile`, `instance`, `version`, `driven` (at most 10) |
 
-All of these errors have `sent: false` and `isError: true`. The 1.30.2 note "commands now go to another one" is gone, and the
-warning about the same extension connected more than once now only appears for connections that report no installation.
+All of these errors have `sent: false` and `isError: true`. The 1.30.2 note "commands now go to another one" is gone. The
+warning about the same extension connected more than once now only appears for connections that report no installation;
+in the server's log it waits for the connection's greeting. `browser_provide_feedback` reports a profile choice that cannot
+be made (for example two profiles with the same name: verdict `conflict`) instead of "No Chrome extension is connected".
 
 ## 1.30.3 (not released yet)
 

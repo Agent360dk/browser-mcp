@@ -14,6 +14,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { broModel, falskUdvidelse, vent, venteTil } from './hjaelp/bro-model.mjs';
@@ -23,9 +25,9 @@ const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const ID = 'a'.repeat(32);
 const I1 = '1111111111111111', I2 = '2222222222222222', I3 = '3333333333333333';
 
-async function bro(env = {}) {
+async function bro(env = {}, { foersteValgMs = 0 } = {}) {
   const base = await ledigtSpaend(5);
-  const m = broModel({ BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4), ...env }, { genforsoegMs: 100 });
+  const m = broModel({ BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4), ...env }, { genforsoegMs: 100, foersteValgMs });
   return m;
 }
 async function port(m) {
@@ -409,4 +411,196 @@ test('den aegte server svarer valgets fejl som JSON med isError (profile-invalid
       else assert.match(fejl, /BROWSER_MCP_PROFILE is not a valid profile name/);
     } finally { srv.kill(); }
   }
+});
+
+// ── R115: modforloeb fra Astra og Opus (5cfc6f6 IKKE GODKENDT) ───────────────
+
+test('R115 Opus 1: en anden profil med samme navn, der forbinder lidt efter porten aabnede, giver profile-ambiguous - ikke et stille valg', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' }, { foersteValgMs: 600 });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    const svar = kald(m);
+    await vent(350);                          // B skanner senere end A, men inden for ét skanningsinterval
+    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+    const r = await svar;
+    assert.equal(r.svar?.error, 'profile-ambiguous', `kaldet laaste sig stille til den foerste profil: ${JSON.stringify(r)}`);
+    assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
+  } finally { m.luk(); }
+});
+
+test('R115 Opus 1: uden vaelger ses en sen anden installation ogsaa - noten om flere kommer med', async () => {
+  const m = await bro({}, { foersteValgMs: 600 });
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde', version: '1.31.0' });
+    const svar = kald(m);
+    await vent(350);
+    await installation(p, 'B', { instance: I2, profile: 'hjem', version: '1.31.0' });
+    const r = await svar;
+    assert.ok(r.ok, JSON.stringify(r));
+    assert.match(m.k('medForbindelsesNote({ content: [] })').content.map((c) => c.text).join(''), /2 Browser MCP installations are connected/);
+  } finally { m.luk(); }
+});
+
+test('R115 Astra 1: to kald, der venter samtidig, da den laaste installation forsvandt, faar begge profile-disconnected', async () => {
+  for (const env of [{}, { BROWSER_MCP_PROFILE: 'arbejde' }]) {
+    const m = await bro(env);
+    try {
+      const p = await port(m);
+      const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+      assert.ok(await hilst(m, 1));
+      assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+      a.luk();
+      const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+      assert.ok(await hilst(m, 1));
+      const [r1, r2] = await Promise.all([kald(m), kald(m)]);
+      assert.equal(r1.svar?.error, 'profile-disconnected', `${JSON.stringify(env)} ${JSON.stringify(r1)}`);
+      assert.equal(r2.svar?.error, 'profile-disconnected', `${JSON.stringify(env)}: et allerede ventende kald skiftede installation: ${JSON.stringify(r2)}`);
+      assert.equal(b.kom.length, 0, 'en kommando gik til en anden installation, foer klienten havde set fejlen');
+      assert.deepEqual((await kald(m)).ok, { fra: 'B' }, 'kaldet efter fejlen valgte ikke paa ny');
+    } finally { m.luk(); }
+  }
+});
+
+test('R115 Astra 2: valgt foer sin hilsen - den foerste hilsen faerdiggoer laasen til installationen', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    a.ws.removeAllListeners('message');                         // ingen automatik: hilsen og svar styres her
+    const tidlig = await falskUdvidelse(p, { hello: null });     // forbinder, men har ikke hilst endnu
+    a.luk();
+    assert.ok(await venteTil(() => m.k('liveConnections(standardBane).length') === 1));
+    const svar = kald(m);
+    assert.ok(await venteTil(() => tidlig.kom.length === 1), 'kaldet gik ikke til forbindelsen uden hilsen');
+    tidlig.send({ type: 'hello', extensionId: ID, version: '1.31.0', name: null, instance: I3, profile: 'arbejde' });
+    await vent(50);
+    tidlig.svar(tidlig.kom[0].id, { fra: 'tidlig' });
+    assert.deepEqual((await svar).ok, { fra: 'tidlig' });
+    assert.equal(m.k('standardBane.laas.instans'), I3, 'laasen blev staaende uden instans efter hilsenen');
+    tidlig.luk();
+    assert.ok(await hilst(m, 0));
+    const igen = kald(m);
+    await vent(250);
+    await installation(p, 'samme-igen', { instance: I3, profile: 'arbejde' });
+    const r = await igen;
+    assert.deepEqual(r.ok, { fra: 'samme-igen' }, `samme installation blev ikke genkendt: ${JSON.stringify(r)}`);
+  } finally { m.luk(); }
+});
+
+test('R115 Astra 3: samme instans to gange FOER foerste kommando og uden vaelger -> profile-ambiguous, intet sendt', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    const a2 = await installation(p, 'A2', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 2));
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+    assert.match(r.svar.note, /copied Chrome profile/);
+    assert.deepEqual([a.kom.length, a2.kom.length], [0, 0]);
+  } finally { m.luk(); }
+});
+
+test('R115 Astra 4: browser_about markerer den styrede installation, ogsaa naar en ny profil forbinder bagefter', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 2));
+    const vist = JSON.parse(JSON.stringify(m.k('installationer(standardBane)')));
+    assert.deepEqual(vist.map((x) => [x.instance, x.driven]), [[I1, true], [I2, false]]);
+  } finally { m.luk(); }
+});
+
+test('R115 Opus 2: ingen falsk «samme udvidelse flere gange» i stderr foer hilsenen; en udvidelse uden installation advares stadig', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 2));
+    await vent(50);
+    assert.doesNotMatch(m.log.join(''), /same extension is connected more than once/, 'falsk advarsel foer hilsenen');
+    await installation(p, 'G', { instance: undefined, profile: undefined, version: '1.30.2' });
+    assert.ok(await hilst(m, 3));
+    await vent(50);
+    assert.match(m.log.join(''), /WARNING: .*same extension is connected more than once/);
+  } finally { m.luk(); }
+});
+
+// Mod den aegte server: den rigtige ventetid (2,5 s) og browser_provide_feedback.
+async function aegteServer(env) {
+  const base = await ledigtSpaend(5);
+  const srv = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+    env: { ...process.env, BROWSER_MCP_TOKEN: '', BROWSER_MCP_EXTENSION_ID: '', BROWSER_MCP_PROFILE: '', ...env,
+      BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4) },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let fejl = ''; const ud = []; let rest = '';
+  srv.stderr.on('data', (d) => { fejl += d; });
+  srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
+  const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
+  skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'p', version: '0' } } });
+  assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 5000));
+  skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  let n = 10;
+  const send = (name, args = {}) => { const id = ++n; skriv({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }); return id; };
+  const svar = (id, ms = 25000) => venteTil(() => ud.find((x) => x.id === id), ms);
+  const lytter = async () => Number((await venteTil(() => /listening on ws:\/\/127\.0\.0\.1:(\d+)/.exec(fejl), 5000))[1]);
+  return { srv, send, svar, lytter, fejl: () => fejl };
+}
+
+test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,8 s efter listening -> profile-ambiguous', async () => {
+  const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const id = s.send('browser_list_tabs');
+    const p = await s.lytter();
+    const t0 = Date.now();
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    await vent(Math.max(0, 1800 - (Date.now() - t0)));
+    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+    const r = await s.svar(id);
+    assert.ok(r, 'intet svar');
+    const j = JSON.parse(r.result.content[0].text);
+    assert.equal(j.error, 'profile-ambiguous', `foerste kald laaste sig stille: ${r.result.content[0].text.slice(0, 200)}`);
+    assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
+  } finally { s.srv.kill(); }
+});
+
+test('R115 Astra 4 (aegte server): browser_provide_feedback kalder to profiler med samme navn en konflikt - ikke «no extension connected»', async () => {
+  // Logbogen (~/.browser-mcp/feedback.jsonl) skrives i en midlertidig HOME, ikke i brugerens (Opus R115 punkt 5).
+  const hjem = mkdtempSync(join(tmpdir(), 'bmcp-r115-'));
+  const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde', HOME: hjem, USERPROFILE: hjem });
+  try {
+    const id = s.send('browser_list_tabs');
+    const p = await s.lytter();
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+    await s.svar(id);
+    const fb = await s.svar(s.send('browser_provide_feedback', { what_happened: 'proeve' }));
+    const j = JSON.parse(fb.result.content[0].text);
+    assert.equal(j.verdict, 'conflict', JSON.stringify(j.findings));
+    assert.ok(j.findings.some((f) => /carry the profile name "arbejde"/.test(f)), JSON.stringify(j.findings));
+    assert.ok(!j.findings.some((f) => /No Chrome extension is connected/.test(f)), 'diagnosen siger stadig at ingen udvidelse er forbundet');
+    assert.equal(j.environment.extension_connections, 2);
+  } finally { s.srv.kill(); rmSync(hjem, { recursive: true, force: true }); }
+});
+
+test('R115: foer foerste kommando kommer en nyere udvidelse, der forbinder bagefter, i betragtning (den foreloebige laas nulstilles)', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde', version: '1.31.0' });
+    assert.ok(await hilst(m, 1));
+    assert.equal(m.k('activeConnection(standardBane).instance'), I1);   // fx et diagnoseopslag, foer noget er sendt
+    await installation(p, 'B', { instance: I2, profile: 'hjem', version: '1.31.1' });
+    assert.ok(await hilst(m, 2));
+    assert.deepEqual((await kald(m)).ok, { fra: 'B' }, 'den foreloebige laas fra foer foerste kommando holdt den nyere ude');
+    assert.equal(a.kom.length, 0);
+  } finally { m.luk(); }
 });
