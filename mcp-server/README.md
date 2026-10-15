@@ -346,7 +346,7 @@ under "This Chrome profile". Set `BROWSER_MCP_PROFILE=<name>` in a client's MCP 
 | None has the name yet | The call first waits for it: about 7.5 seconds, and up to about 17.5 seconds when the port opened in the last 10 seconds (a chat's first browser call: the 2.5 seconds below plus a doubled wait), then `profile-not-connected` with the installations it can see; `profile-routing-unsupported` when every connected extension is older than 1.31 |
 | Two or more have the name, or one installation is connected twice | `profile-ambiguous`, without waiting further. Also without `BROWSER_MCP_PROFILE`, an installation connected twice is refused |
 | The installation the chat was driving goes away | Calls in flight fail at once, as before. The next call answers `profile-disconnected`; only the call after that picks again. If the same installation comes back in time, the chat simply continues |
-| No `BROWSER_MCP_PROFILE` | The first choice is made as before (the newest extension); with several installations the next answer says which one it took, and the chat stays with it |
+| No `BROWSER_MCP_PROFILE` | The first choice is made as before (the newest extension version; on a tie, the one that connected last); with several installations the next answer says which one it took, and the chat stays with it |
 
 A chat's first browser call waits until the port has been open for about 2.5 seconds before it chooses, so every Chrome
 profile has had one scan (every 2 seconds) to connect; without that, the profile that happened to connect first could be

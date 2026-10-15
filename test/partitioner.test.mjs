@@ -607,6 +607,27 @@ test('close i ventetiden foer foerste valg: kaldet afbrydes og sendes ikke, selv
   } finally { b?.luk(); m.luk(); }
 });
 
+// R122 (Astra, MAALT i model): ved samme version lover beskrivelsen den senest forbundne installation. Valget brugte
+// `since` (millisekunder), og to forbindelser i samme millisekund gav den FOERSTE. Forbindelsestaelleren `seq` afgoer det nu.
+test('new uden profil: ved samme version og samme since vaelges den senest forbundne (hoejeste seq) (R122)', async () => {
+  const m = await bro();
+  m.k('FOERSTE_VALG_MS = 3000');                    // begge naar at forbinde, foer valget
+  const a = installation(m, 'A', { instance: I1, profile: 'arbejde' });
+  const b = installation(m, 'B', { instance: I2, profile: 'hjem' });
+  try {
+    const nyt = ny(m);
+    assert.ok(await venteTil(() => m.k('partitioner.get("p1") ? liveConnections(partitioner.get("p1").bane).filter((c) => c.harHilst).length : 0') === 2));
+    // Samme millisekund for begge (som Astra maalte: 1792076839029).
+    m.k('for (const c of partitioner.get("p1").bane.connections) c.since = 1792076839029');
+    const senest = m.k('[...partitioner.get("p1").bane.connections].reduce((x, y) => (y.seq > x.seq ? y : x)).instance');
+    const r = await nyt;
+    assert.equal(r.ok?.installation?.instance, senest, `new valgte ikke den senest forbundne: ${JSON.stringify(r)}`);
+    const vinder = senest === I1 ? a : b, taber = senest === I1 ? b : a;
+    assert.equal(vinder.kommandoer('list_tabs').length, 1, 'list_tabs gik ikke til den senest forbundne');
+    assert.equal(taber.kommandoer('list_tabs').length, 0, 'list_tabs gik til den foerst forbundne');
+  } finally { a.luk(); b.luk(); m.luk(); }
+});
+
 test('browser_about-listen: aabne og lukkede partitioner med id, label, tilstand, port og installation', async () => {
   const m = await bro();
   const a = installation(m, 'A');

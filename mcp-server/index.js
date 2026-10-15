@@ -277,11 +277,13 @@ function activeConnection(bane = standardBane) {
   // Nyeste udvidelse vinder. Ved uafgjort: den der forbandt sidst. En udvidelse fra
   // foer haandtrykket har ingen version og taber til en der har én - haandtrykket kom
   // med den nyere udgave.
+  // R122 (Astra, MAALT): «forbandt sidst» afgoeres af forbindelsestaelleren `seq`, ikke af `since` - to forbindelser i samme
+  // millisekund gav ellers den foerste. `since` saettes kun ved forbindelsen, saa `seq` er samme raekkefoelge, uden uafgjort.
   let best = null;
   for (const c of liveConnections(bane)) {
     if (!best) { best = c; continue; }
     const d = cmpVersion(c.version, best.version);
-    if (d > 0 || (d === 0 && c.since > best.since)) best = c;
+    if (d > 0 || (d === 0 && c.seq > best.seq)) best = c;
   }
   bane.laastForbindelse = best;
   return best;
