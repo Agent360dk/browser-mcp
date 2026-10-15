@@ -1101,16 +1101,19 @@ test('R112: en ny sessions foerste navigate til about:blank er stadig ok:true (i
 test('R112-A2/N-c: et gammelt, haengende sessionsopslag aendrer ikke sessionen, efter at et nyt kald har faaet en fane', async () => {
   const m = model({ doedFane: { id: 5, ms: 600, kunFoerste: true } });
   m.u.hent('sessions').set(9876, { tabIds: new Set([5]), activeTabId: 5, groupId: 1, label: 'Claude 1', color: 'blue' });
-  const a = fang(m.nav({ url: 'https://a.example/' }));         // A's opslag af fane 5 haenger (klienten faar timeout)
+  const aP = fang(m.nav({ url: 'https://a.example/' }));        // A's opslag af fane 5 haenger (klienten faar timeout)
   await sov(50);
   const b = await fang(m.nav({ url: 'https://b.example/' }));    // B's opslag svarer straks: fane 5 er vaek
   assert.equal(b.ok, true, vis(b));
-  await a;                                                       // A's gamle opslag bliver faerdigt
+  const a = await aP;                                            // A's gamle opslag bliver faerdigt
   await sov(50);
   const sess = m.u.hent('sessions').get(9876);
   assert.equal(sess.activeTabId, b.tab_id, `B's fane er ikke laengere den aktive: ${sess.activeTabId}`);
   assert.ok(sess.tabIds.has(b.tab_id), 'B\'s fane er fjernet fra sessionen');
   assert.equal(m.log.filter((x) => x[0] === 'tabs.create' && x[1] === 'https://a.example/').length, 0, 'en fane med A\'s gamle adresse blev oprettet');
+  assert.equal(m.log.filter((x) => x[0] === 'tabs.update' && x[1] === 'https://a.example/').length, 0,
+    'A\'s gamle adresse blev sendt til B\'s fane');
+  assert.match(String(a.kastet || ''), /session's active tab changed/, `A skal sige, at sessionen skiftede: ${vis(a)}`);
 });
 
 test('R111-A2: et langsomt sessionsopslag fjerner ikke bagefter det naeste kalds fane fra sessionen', async () => {
