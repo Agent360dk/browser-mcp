@@ -555,14 +555,16 @@ async function aegteServer(env) {
   return { srv, send, svar, lytter, fejl: () => fejl };
 }
 
-test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,8 s efter listening -> profile-ambiguous', async () => {
+test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,5 s efter listening -> profile-ambiguous', async () => {
   const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
   try {
     const id = s.send('browser_list_tabs');
     const p = await s.lytter();
     const t0 = Date.now();
     const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
-    await vent(Math.max(0, 1800 - (Date.now() - t0)));
+    // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
+    // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
+    await vent(Math.max(0, 1500 - (Date.now() - t0)));
     const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
     const r = await s.svar(id);
     assert.ok(r, 'intet svar');
