@@ -666,6 +666,91 @@ test('et kald til en partition, som new stadig opretter: partition-not-found - o
   } finally { t?.luk(); a.luk(); m.luk(); }
 });
 
+// R123 (Astra, MAALT i model med normale ventetider): auto-reload (BROWSER_MCP_EXTENSION_UPDATED=1, sat af CLI'ens
+// udvidelsesopdatering) sendte reload_extension paa den bane, hvis forbindelse kom foerst - uden om baneForKald. Var det en
+// partition under oprettelse, og opgav new (profile-ambiguous), bandt reload-kaldet porten igen og sendte, da én alpha kom
+// tilbage. opgiv() markerer nu banen lukket, og auto-reload bruger kun en bane, der kan bruges (standard, eller en aaben
+// partition, som new har svaret paa).
+test('auto-reload: en partition under oprettelse, som new opgiver, faar intet reload, og porten bindes ikke igen (R123)', async () => {
+  const m = await bro({ BROWSER_MCP_EXTENSION_UPDATED: '1' });
+  const a1 = installation(m, 'A1', { instance: I1, profile: 'alpha' });
+  const a2 = installation(m, 'A2', { instance: I2, profile: 'alpha' });   // to hedder alpha: new svarer profile-ambiguous
+  let t = null, s = null;
+  try {
+    const nyt = ny(m, { profile: 'alpha' });
+    assert.ok(await venteTil(() => m.k('partitioner.get("p1")?.bane.activePort ?? null') !== null));
+    const port = m.k('partitioner.get("p1").bane.activePort');
+    const r = await nyt;
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+    assert.equal(m.k('process.env.BROWSER_MCP_EXTENSION_UPDATED'), '1', 'opdateringen blev brugt paa en partition under oprettelse');
+    a1.stop = true; a2.stop = true; a1.luk(); a2.luk();
+    const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${port}`)).length;
+    const foer = bindinger();
+    t = tilbage(port, { instance: I1, profile: 'alpha' });   // kun én alpha kommer tilbage
+    await vent(3500);                                        // auto-reload venter 1 s; genforsoeget ~3 s
+    assert.equal(bindinger(), foer, 'porten blev bundet igen, efter at new havde opgivet');
+    assert.deepEqual(t.kom.map((k) => k.method), [], 'reload_extension (eller andet) blev sendt til den opgivne partition');
+    assert.equal(await lytter(port), false, 'der lytter noget paa den opgivne partitions port');
+    assert.deepEqual([...a1.kommandoer('reload_extension'), ...a2.kommandoer('reload_extension')], [],
+      'reload_extension blev sendt paa en partition under oprettelse');
+    // Opdateringen er ikke tabt: den foerste forbindelse paa en bane, der kan bruges, faar den. (Standardbanen kan faa samme
+    // portnummer, saa den tilbagevendte skanner stoppes foerst.)
+    t.luk(); t = null;
+    s = installation(m, 'S', { instance: I1, profile: 'alpha' });
+    const std = await paa(m, undefined);
+    assert.equal(std.ok?.fra, 'S', JSON.stringify(std));
+    assert.ok(await venteTil(() => s.kommandoer('reload_extension').length === 1), 'standardbanen fik ikke auto-reload');
+  } finally { t?.luk(); s?.luk(); a1.luk(); a2.luk(); m.luk(); }
+});
+
+// Astras kontrol (R123): en intern afsender, der gaar uden om baneForKald, mens new opretter partitionen. Opgiver new, er banen
+// lukket: afsenderen hverken binder porten igen eller sender.
+test('en intern afsender paa en partition under oprettelse stoppes, naar new opgiver: ingen ny binding, intet sendt (R123)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A', { instance: I1, profile: 'arbejde' });   // beta er ikke forbundet
+  let t = null;
+  try {
+    const nyt = ny(m, { profile: 'beta' });
+    assert.ok(await venteTil(() => m.k('partitioner.get("p1")?.bane.activePort ?? null') !== null));
+    const port = m.k('partitioner.get("p1").bane.activePort');
+    await vent(1500);
+    const intern = kald(m, 'sendToExtension("reload_extension", {}, 15000, partitioner.get("p1").bane)');
+    const r = await nyt;
+    assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
+    const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${port}`)).length;
+    const foer = bindinger();
+    t = tilbage(port, { instance: I2, profile: 'beta' });
+    let frist;
+    const v = await Promise.race([intern, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 10000); })]);
+    clearTimeout(frist);
+    await vent(500);
+    assert.equal(bindinger(), foer, 'den interne afsender bandt porten igen, efter at new havde opgivet');
+    assert.deepEqual(t.kom.map((k) => k.method), [], 'den interne afsender sendte til den opgivne partition');
+    assert.equal(await lytter(port), false);
+    assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
+  } finally { t?.luk(); a.luk(); m.luk(); }
+});
+
+test('auto-reload paa en aaben partition, der lukkes inden for sekundet: opdateringen gaar ikke tabt (R123)', async () => {
+  const m = await bro();
+  const a = installation(m, 'A', { instance: I1, profile: 'arbejde' });
+  let s = null;
+  try {
+    const p1 = (await ny(m)).ok;
+    assert.equal(p1?.partition, 'p1');
+    m.k('process.env.BROWSER_MCP_EXTENSION_UPDATED = "1"');   // CLI'ens opdatering, og en ny forbindelse paa den aabne partition
+    a.forbindelser.get(p1.port).luk();
+    assert.ok(await venteTil(() => m.k('process.env.BROWSER_MCP_EXTENSION_UPDATED') === ''), 'den aabne partitions nye forbindelse brugte ikke opdateringen');
+    assert.ok((await luk(m, 'p1')).ok);                       // lukket, foer reload-sekundet er gaaet
+    a.stop = true; a.luk();
+    await vent(1500);
+    assert.equal(m.k('process.env.BROWSER_MCP_EXTENSION_UPDATED'), '1', 'opdateringen gik tabt med den lukkede partition');
+    s = installation(m, 'S', { instance: I2, profile: 'hjem' });
+    assert.equal((await paa(m, undefined)).ok?.fra, 'S');
+    assert.ok(await venteTil(() => s.kommandoer('reload_extension').length === 1), 'standardbanen fik ikke auto-reload');
+  } finally { s?.luk(); a.luk(); m.luk(); }
+});
+
 test('browser_about-listen: aabne og lukkede partitioner med id, label, tilstand, port og installation', async () => {
   const m = await bro();
   const a = installation(m, 'A');

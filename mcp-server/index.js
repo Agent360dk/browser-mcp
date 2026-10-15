@@ -612,10 +612,14 @@ function createWSS(bane, port = BASE_PORT) {
     advarOmKonflikt(conn, bane);
 
     // If extension was auto-updated, trigger reload
-    if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1') {
+    // R123 (Astra, MAALT): kun paa en bane, der kan bruges. Kom foerste forbindelse til en partition under oprettelse, gik
+    // reload-kaldet uden om baneForKald; opgav new, bandt det den opgivne partitions port igen og sendte. Opdateringen
+    // gemmes saa til naeste forbindelse paa en bane, der kan bruges - ogsaa hvis banen er lukket, foer sekundet er gaaet.
+    if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1' && baneKanBruges(bane)) {
       process.env.BROWSER_MCP_EXTENSION_UPDATED = '';
       process.stderr.write('[MCP] Extension files updated - triggering auto-reload\n');
       setTimeout(() => {
+        if (!baneKanBruges(bane)) { process.env.BROWSER_MCP_EXTENSION_UPDATED = '1'; return; }
         sendToExtension('reload_extension', {}, 5000, bane).catch(() => {});
       }, 1000);
     }
@@ -748,7 +752,8 @@ function createWSS(bane, port = BASE_PORT) {
         if (p.bane && p.bane.lukket) {
           p.reject(new ProfilFejl({ ok: false, error: 'partition-closed', sent: true, partition: p.bane.navn,
             note: `Partition ${p.bane.navn} was closed while this command was running. The command was sent and may have ` +
-              'been carried out before the partition\'s tabs were closed; its tabs are closed now. Ids are never reused.' }));
+              'been carried out. Whether the partition\'s tabs were closed is in close\'s answer (tabs_closed). Ids are not reused ' +
+              'while this server runs.' }));
           continue;
         }
         p.reject(new Error(
@@ -896,7 +901,7 @@ function stopHvisLukket(bane, lukning) {
   if (!bane.lukket || lukning) return;
   if (!baner.has(bane)) frigivPort(bane, `partition ${bane.navn} is closed`);
   throw partitionFejl('partition-closed', { partition: bane.navn },
-    `Partition ${bane.navn} was closed while this call was waiting. Nothing was sent; ids are never reused.`);
+    `Partition ${bane.navn} was closed while this call was waiting. Nothing was sent; ids are not reused while this server runs.`);
 }
 
 // En ventetid, lukningen kan afbryde (se stopHvisLukket).
@@ -1078,7 +1083,7 @@ function baneForKald(partition) {
   }
   if (p.lukket) {
     throw partitionFejl('partition-closed', { partition: p.id },
-      `Partition ${p.id} was closed. Ids are never reused, so nothing was sent. Create a new one with browser_partition ` +
+      `Partition ${p.id} was closed. Ids are not reused while this server runs, so nothing was sent. Create a new one with browser_partition ` +
       '(action "new"), or leave out partition to use the default one.');
   }
   // R122 (Opus, MAALT i ægte Chrome): id'erne kan forudsiges, og et kald til en partition, som new stadig opretter, fik
@@ -1091,6 +1096,14 @@ function baneForKald(partition) {
   }
   p.brugt = true;   // et vaerktoejskald er rettet hertil: partitionen kan have faner (se lukPartition)
   return p.bane;
+}
+
+// R123: en bane, som en intern afsender (auto-reload) maa bruge: standardbanen, eller en aaben partition, som new har svaret
+// paa. Vaerktoejskald faar samme graense gennem baneForKald.
+function baneKanBruges(bane) {
+  if (bane === standardBane) return true;
+  const p = partitioner.get(bane.navn);
+  return Boolean(p && p.bane === bane && p.klar && !p.lukket && !bane.lukket);
 }
 
 function partitionsListe() {
@@ -1132,9 +1145,15 @@ async function nyPartition({ profile, label } = {}) {
   partitioner.set(id, p);
   baner.add(bane);
   // Blev partitionen ikke til, forsvinder den helt: dens port slippes, og id'et bliver aldrig udleveret (eller genbrugt).
-  const opgiv = () => { frigivPort(bane, `partition ${id} was not created`); baner.delete(bane); partitioner.delete(id); };
+  // R123 (Astra): banen markeres lukket, og de kald, der venter paa den, vaekkes: intet kald - heller ikke en intern afsender
+  // uden om baneForKald - kan binde dens port igen eller sende, efter at new har opgivet (stopHvisLukket).
+  const opgiv = () => {
+    bane.lukket = true;
+    for (const v of [...bane.vaekkere]) v();
+    frigivPort(bane, `partition ${id} was not created`); baner.delete(bane); partitioner.delete(id);
+  };
   const lukketUndervejs = () => partitionFejl('partition-closed', { partition: id },
-    `Partition ${id} was closed while it was being created. Ids are never reused.`);
+    `Partition ${id} was closed while it was being created. Ids are not reused while this server runs.`);
   const fik = await sikrePort(bane);
   // Lukket, mens porten blev bundet: lukPartition kunne ikke slippe en port, der endnu ikke var aaben - det goeres her.
   if (p.lukket) { frigivPort(bane, `partition ${id} was closed while it was created`); throw lukketUndervejs(); }
@@ -1314,7 +1333,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 
 ## Parallel agents (partitions)
 - Agents that share this chat also share its tab group and its active tab, so they take over each other's tabs. Give each parallel agent its own partition: browser_partition with action "new" answers an id like "p1", and that agent passes partition: "p1" to every browser tool it calls. Close it with action "close" when the agent is done; that closes its tabs and frees its port
-- partition-not-found or partition-closed means nothing was sent; the call never falls back to the default partition. browser_about lists the partitions
+- partition-not-found, or partition-closed with sent: false, means nothing was sent; the call never falls back to the default partition. partition-closed with sent: true means the command was sent and was still waiting for its answer when the partition was closed: it may have been carried out. browser_about lists the partitions
 
 ## Extension updates
 The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.
