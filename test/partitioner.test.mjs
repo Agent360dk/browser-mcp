@@ -380,6 +380,10 @@ test('close mens et kald venter paa partitionen: kaldet afvises straks, ikke eft
     // en forkert aarsag. Kommandoen VAR sendt (sent: true), saa den kan vaere udfoert.
     assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
     assert.equal(v.svar.sent, true, JSON.stringify(v));
+    // R123 (Astra/Opus): svaret lover ikke en fanelukning, ingen har bekraeftet - det henviser til close's tabs_closed (her
+    // "unknown", fordi udvidelsen ikke svarede).
+    assert.doesNotMatch(v.svar.note, /tabs are closed now/i, v.svar.note);
+    assert.match(v.svar.note, /tabs_closed/, v.svar.note);
   } finally { a.luk(); m.luk(); }
 });
 
