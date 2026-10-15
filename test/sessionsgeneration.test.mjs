@@ -10,7 +10,9 @@
  * kommandoer og `session_disconnect` baerer den; sessionen og hver af dens faner husker den generation, der ejer dem; en
  * frigivelse for en anden generation end sessionens roerer kun sin egen generations faner.
  */
-import { test } from 'node:test';
+import { test as nodeTest } from 'node:test';
+// En proeve, der haenger (fx under en mutant), skal fejle inden for en frist - ikke holde koerslen i live.
+const test = (navn, fn) => nodeTest(navn, { timeout: 60000 }, fn);
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

@@ -10,7 +10,9 @@
  * omdoebning, fejl-én-gang ved afbrydelse. Broen er den AEGTE (test/hjaelp/bro-model.mjs); vaerktoejslaget proeves mod den
  * aegte server over stdio, med en falsk udvidelse der - som den rigtige - forbinder til hver port, der lytter.
  */
-import { test } from 'node:test';
+import { test as nodeTest } from 'node:test';
+// En proeve, der haenger (fx under en mutant), skal fejle inden for en frist - ikke holde koerslen i live.
+const test = (navn, fn) => nodeTest(navn, { timeout: 60000 }, fn);
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
