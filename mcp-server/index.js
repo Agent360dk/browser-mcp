@@ -175,9 +175,9 @@ function medForbindelsesNote(svar, bane = standardBane) {
 }
 
 function advarOmKonflikt(conn, bane = standardBane) {
-  // R115 (Opus 2): ved selve opkoblingen har forbindelsen ikke hilst endnu og har derfor ingen instans - profiladvarslen
-  // ventede ikke paa hilsenen og kom falsk i stderr. Den vurderes foerst, naar hilsenen er kommet (kaldet fra 'hello').
-  const profiler = conn && !conn.harHilst ? bane.sidsteProfilAdvarsel || null : forbindelsesAdvarsel(bane);
+  // R115 (Opus 2) / R117: en forbindelse, der lige er aabnet og ikke har hilst, taeller ikke som «uden installation» i
+  // forbindelsesAdvarsel (se udenInstallation) - saa profiladvarslen kommer ikke falsk, foer hilsenen er naaet frem.
+  const profiler = forbindelsesAdvarsel(bane);
   if (profiler && profiler !== bane.sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
   bane.sidsteProfilAdvarsel = profiler || '';
   const alle = distinctExtensions(bane);
