@@ -22,7 +22,7 @@ One difference is left, and it is the only one we will defend: **their 72 tools 
 | Logged-in state | A dedicated profile by default (persistent, or in-memory with `--isolated`), so not your logins; your own session in extension mode | Inherited (cookies, 2FA, extensions) |
 | CI / headless | Yes - core use case | No |
 | Parallel instances | Yes, and several clients share one browser in extension mode (one tab group each) | One browser, 20 concurrent sessions, one tab group each |
-| Tools | 72 documented, none of which can stop and ask you for anything | 40, including `browser_ask_user` for a 2FA code or a CAPTCHA mid-run |
+| Tools | 72 documented, none of which can stop and ask you for anything | 41, including `browser_ask_user` for a 2FA code or a CAPTCHA mid-run |
 | Install | `npx @playwright/mcp` | Chrome extension + `claude mcp add` (two parts) |
 | Scale signal | 5,968,258 npm dl/week (2026-09-19) | 1,456 npm dl/week (2026-09-19) |
 | Maintenance | Last push 2026-09-17 · v0.0.81 (2026-09-14) | Last push 2026-09-18 · v1.29.1 (2026-09-13) |

@@ -3,7 +3,7 @@
 *Suggested meta description: "Four steps. Claude drives the Chrome you are already signed in to, so it can read and act on pages behind your logins."*
 
 
-**Give Claude Code control of your real, already-logged-in Chrome - four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give Claude Code control of your real, already-logged-in Chrome - four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 **You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version) and the `claude` command (Claude Code itself).
 
@@ -81,7 +81,7 @@ Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-m
 
 ### Step 3 - Restart Claude Code
 
-Restart Claude Code so it picks up the new MCP server. The extension stays quiet until your agent first uses the browser; then a green badge with the number of connected agents appears on its icon. 40 browser tools are now available in any Claude Code conversation.
+Restart Claude Code so it picks up the new MCP server. The extension stays quiet until your agent first uses the browser; then a green badge with the number of connected agents appears on its icon. 41 browser tools are now available in any Claude Code conversation.
 
 ### Verify it's working
 
@@ -171,7 +171,7 @@ This is the reason people install Browser MCP: Claude Code hits a login wall, ne
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 40 tools
+### 41 tools
 
 | Category | Tools |
 |---|---|
@@ -182,6 +182,7 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox, click reCAPTCHA grid cells it chooses, or ask you to solve it with `browser_ask_user`, one step per call. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - a card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
+| **Parallel agents** | `browser_partition` - from 1.32, gives a parallel agent its own tab group and active tab; every tool then takes `partition` |
 
 Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/browser-mcp).
 
@@ -217,7 +218,7 @@ Each conversation gets its own MCP server, which takes its own port (9876-9895) 
 Run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`. That is Claude Code's built-in command for registering an MCP server, so no manual JSON is required. Restart Claude Code afterward so it picks up the new server.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives Claude Code - or any MCP client that can run local stdio servers, including Cursor and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
+An MCP (Model Context Protocol) server that gives Claude Code - or any MCP client that can run local stdio servers, including Cursor and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 41 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.

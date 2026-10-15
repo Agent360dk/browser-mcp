@@ -4,6 +4,42 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.32.0 (not released yet)
+
+**Partitions for parallel agents (#20).** Thanks to [@ugbodagadave](https://github.com/ugbodagadave), whose PR #20 had the
+idea and the first version: an extra listener per partition, and a `partition` parameter on the browser tools. It is built
+here on the lanes 1.31 laid down, and #20 is superseded with credit. Agents that share one chat (a coordinator and its
+subagents) also share its tab group and active tab, so they took over each other's tabs. `browser_partition` with
+`action: "new"` gives an agent its own partition: one more port in the same range, which the extension connects to like
+any other, so the partition gets its own tab group and active tab. It chooses its Chrome profile right away by the 1.31
+rules (`profile` in the call, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused. Every
+tool that reaches the browser takes `partition`, `browser_extract_token` too; calls without it go to the default partition
+as before, and a call with an unknown or closed id is never sent there instead. `action: "close"` closes the partition's
+tabs through its own connection and releases its port. A partition's commands carry no process id, so the extension never
+hands its tabs to another partition. At most 4 partitions are open per server, because the ports are shared by every chat
+on the machine.
+
+**A late clean-up no longer closes a new connection's tab.** The extension keys a chat's session on the port. Measured in
+review: after a new session was created on the same port with a tab, a clean-up still on its way from the connection that
+had closed closed that tab and deleted the session. With partitions, ports are reused more often. Now every connection
+between the extension and a server has its own generation, and a clean-up applies only to the connection it was ordered
+for: a session taken over by a new connection keeps its new tabs, and only the old connection's tabs are closed. A command
+that arrives while a session is being cleaned up gets a fresh session.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `partition`, `port`, `profile`, `installation` | `browser_partition` `new` | The partition is open and drives that installation |
+| `port_released`, `tabs_closed: true` or `"unknown"` | `browser_partition` `close` | `true` only when the extension confirmed the tabs were closed (or no call ever used the partition) |
+| `error: "partition-limit"` | `browser_partition` `new` | 4 partitions are already open on this server |
+| `error: "port-capacity-exhausted"` | `browser_partition` `new` | Every port in the range is taken; no partition was created |
+| `error: "profile-*"`, `partition_created: false` | `browser_partition` `new` | The partition's profile choice failed; no partition was created and its port was released |
+| `error: "partition-not-found"` | every browser tool, `close` | No partition with that id. Nothing was sent |
+| `error: "partition-closed"` | every browser tool, `close` | The partition was closed. Nothing was sent |
+| `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
+| `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state`, `port`, `profile`, `installation` |
+
 ## 1.31.0 (not released yet)
 
 **Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so

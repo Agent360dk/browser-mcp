@@ -1,6 +1,6 @@
 # Tools
 
-Browser MCP exposes **40 tools** to the connected agent. Page and tab tools act on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. `browser_fetch` sends its request from the extension in the background, without a tab, and `browser_about` and `browser_provide_feedback` are answered by the local server. The browser work runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
+Browser MCP exposes **41 tools** to the connected agent. Page and tab tools act on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. `browser_fetch` sends its request from the extension in the background, without a tab, and `browser_about` and `browser_provide_feedback` are answered by the local server. From 1.32 every tool that reaches the browser also takes `partition`, the id of a partition from `browser_partition`, so parallel agents in one chat each work in their own tab group. The browser work runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
 
 ---
 
@@ -95,7 +95,7 @@ The list below is what the client has to choose from.
 ## Frequently asked questions
 
 **How many tools are there?**
-40. A check on every release counts the tool definitions in the server and compares them with every "N tools" claim on the site and in the README.
+41. A check on every release counts the tool definitions in the server and compares them with every "N tools" claim on the site and in the README.
 
 **What does it mean when a tool answers "unverified"?**
 That the action was sent and the effect could not be read back. It is not a failure and not a success. Repeating the action blindly is the one thing you should not do - read the page instead. Nine tools were changed in 1.29.2 to be able to give this answer rather than a false yes.
@@ -111,9 +111,15 @@ Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a CAPT
 | Tool | Description |
 |---|---|
 | `browser_provide_feedback` | Self-check plus report in one call. Compares the connected extension against this server and detects more than one Browser MCP extension connected at once, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict, concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. The agent calls it on its own whenever a tool blocks it. |
-| `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the extension popup, the installation id and the version. |
+| `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the extension popup, the installation id and the version. From 1.32 it also lists the chat's partitions. |
 | `browser_reattach_debugger` | Force-detach and re-attach the Chrome debugger on the current tab. Use when click/fill/press_key start timing out or report a ghost attach while `browser_list_tabs` still works - faster than reloading the extension. |
 
 ---
 
-**Total: 40 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3), verified against `mcp-server/tools.js` line-by-line - no invented tools.
+## Parallel agents - 1 tool
+
+| Tool | Description |
+|---|---|
+| `browser_partition` | From 1.32 (idea and first version: [@ugbodagadave](https://github.com/ugbodagadave), [#20](https://github.com/Agent360dk/browser-mcp/pull/20)). `action: "new"` opens a partition with its own port, tab group and active tab, chooses its Chrome profile right away (`profile`, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused. Pass `partition: "p1"` to every tool that agent calls. `action: "close"` closes its tabs through its own connection and frees its port: `port_released`, and `tabs_closed` is `true` only when the extension confirmed it, otherwise `"unknown"`. Errors: `partition-limit` (4 open per server), `port-capacity-exhausted`, the `profile-*` answers (no partition is created), and `partition-not-found` / `partition-closed` on a call with an unknown or closed id - such a call is never sent to the default partition instead. |
+
+**Total: 41 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3 + 1), verified against `mcp-server/tools.js` line-by-line - no invented tools.
