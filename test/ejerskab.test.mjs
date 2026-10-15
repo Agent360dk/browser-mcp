@@ -255,7 +255,7 @@ test('upload-stien er indesluttet i arbejdsmappen - samme vagt som skaermbillede
   const i = srv.indexOf("if (method === 'upload_file' || method === 'drop_file')");
   assert.ok(i > -1, 'vagten mod stier uden for arbejdsmappen er vaek fra upload');
   // Astra 10/9: ordenen blev sammenlignet med methodMap, ikke med afsendelsen. Nu med afsendelsen.
-  const slut = srv.indexOf('await sendToExtension(method, args || {}, timeout)');
+  const slut = srv.indexOf('await sendToExtension(method, args || {}, timeout, bane)');   // 1.32: kaldet baerer sin bane
   assert.ok(slut > i, 'vagten skal ligge FOER kaldet sendes til udvidelsen');
   const blok = srv.slice(i, slut);
   assert.match(blok, /resolve\(process\.cwd\(\)\)/, 'roden skal vaere arbejdsmappen');
