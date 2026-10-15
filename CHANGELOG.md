@@ -49,11 +49,14 @@ taking over a lane, a dead connection answering only after 30 seconds) are fixed
 | `installations`, `installations_note` | `browser_about` | The installations connected to the chat: `profile`, `instance`, `version`, `driven` (at most 10) |
 
 All of these errors have `sent: false` and `isError: true`. The 1.30.2 note "commands now go to another one" is gone. The
-warning about the same extension connected more than once now only appears for connections that report no installation;
-in the server's log it waits for the connection's greeting. `browser_provide_feedback` reports a profile choice that cannot
-be made instead of "No Chrome extension is connected": two profiles with the same name or a copied profile give verdict
-`conflict`, and for a copy the advice is to close it or reinstall the extension in it (renaming a copy does not help, it
-keeps the same installation id).
+warning about the same extension connected more than once now only appears for connections that report no installation:
+one that greeted without an installation, or one that still has not greeted 3 seconds after connecting (an extension before
+1.28 never greets). A connection that has just opened and not greeted yet does not count, neither in the server's log nor in
+the next tool answer. `browser_provide_feedback` reports a profile choice that cannot be made instead of "No Chrome extension
+is connected": two profiles with the same name or a copied profile give verdict `conflict`, and for a copy the advice is to
+close it or reinstall the extension in it (renaming a copy does not help, it keeps the same installation id). When a copy and
+another installation both carry the name, the tool's answer and the diagnosis both give both pieces of advice, whatever
+order the connections came in.
 
 ## 1.30.3 (2026-10-15)
 

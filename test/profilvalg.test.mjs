@@ -672,7 +672,9 @@ test('R117 Astra 3: et koldt kald uden profilmatch tager ca. 17,5 s (2,5 s + dob
     const r = await svar;
     const ms = Date.now() - t0;
     assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
-    assert.ok(ms > 16500 && ms < 19000, `ventetiden var ${ms} ms`);
+    // R119: nedre graense 17.000 ms fanger en ventetid paa 2,0 s eller mindre (2,0 s giver ca. 17,0 s); belastning kan kun
+    // goere det laengere. Den oevre graense (20.000 ms) fanger en fordoblet ventetid (5 s giver ca. 20 s).
+    assert.ok(ms > 17000 && ms < 20000, `ventetiden var ${ms} ms`);
     for (const f of ['README.md', 'CHANGELOG.md']) {
       assert.match(readFileSync(join(rod, f), 'utf8'), /up to about 17\.5 seconds/, `${f} siger ikke den maalte ventetid`);
     }
@@ -714,4 +716,73 @@ test('R118 Opus rest D: med vaelger og en kopi, der baerer navnet, giver vaerkto
     assert.doesNotMatch(r.svar.note, /its own name/, 'vaerktoejet raader til at omdoebe en kopi - det hjaelper ikke');
     assert.deepEqual([a.kom.length, a2.kom.length], [0, 0]);
   } finally { m.luk(); }
+});
+
+// ── R119: rest E (blandet kopi + anden installation) og ventetidens graense ──
+
+// Blandingen: kopien (I1 to gange) plus en anden installation (I2), alle med navnet. Begge raad skal staa i BAADE vaerktoejets
+// svar og diagnosen - og uafhaengigt af, hvilken raekkefoelge forbindelserne kom i (Opus maalte 3/8 kopiraad, 5/8 navneraad).
+for (const [navn, raekke] of [['kopien foerst', ['A', 'A2', 'B']], ['den anden foerst', ['B', 'A', 'A2']]]) {
+  test(`R119 rest E (${navn}): kopi + anden installation med samme navn - vaerktoej og diagnose giver begge raad`, async () => {
+    const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+    try {
+      const p = await port(m);
+      const inst = { A: I1, A2: I1, B: I2 };
+      const e = [];
+      for (const x of raekke) e.push(await installation(p, x, { instance: inst[x], profile: 'arbejde' }));
+      assert.ok(await hilst(m, 3));
+      const r = await kald(m);
+      assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+      assert.match(r.svar.note, /copied Chrome profile/, `vaerktoejet naevner ikke kopien: ${r.svar.note}`);
+      assert.match(r.svar.note, /its own name/, `vaerktoejet naevner ikke navnene: ${r.svar.note}`);
+      assert.match(r.svar.note, new RegExp(I1), 'vaerktoejet siger ikke, hvilken installation der er kopieret');
+      const d = JSON.parse(JSON.stringify(m.k('profilDiagnose(standardBane, activeConnection(standardBane))')));
+      assert.equal(d?.error, 'profile-ambiguous', JSON.stringify(d));
+      assert.match(d.finding, /copied Chrome profile/, `diagnosen naevner ikke kopien: ${d.finding}`);
+      assert.match(d.fix, /Close the copied Chrome profile/, `diagnosen giver ikke kopiraadet: ${d.fix}`);
+      assert.match(d.fix, /its own name/, `diagnosen giver ikke navneraadet: ${d.fix}`);
+      assert.deepEqual(e.map((x) => x.kom.length), [0, 0, 0]);
+    } finally { m.luk(); }
+  });
+}
+
+test('R119: ventetiden foer foerste valg er serverens egne ~2,5 s - hverken kortere (1,2/1,7 s) eller laengere', async () => {
+  const base = await ledigtSpaend(5);
+  // Kildens FOERSTE_VALG_MS (null = ikke kortet); genforsoeget er kortet, saa kun ventetiden maales.
+  const m = broModel({ BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4) }, { genforsoegMs: 100, foersteValgMs: null });
+  try {
+    const svar = kald(m);
+    const p = await venteTil(() => m.k('standardBane.activePort'), 3000);
+    const bundet = m.k('standardBane.portBundetTid');
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    let ankom = 0;
+    assert.ok(await venteTil(() => { if (a.kom.length && !ankom) ankom = Date.now(); return a.kom.length; }, 8000, 5));
+    await svar;
+    const ms = ankom - bundet;
+    // Nedre graense kan belastning ikke bryde (ventetiden er mindst resten af vinduet); oevre graense har god margen.
+    assert.ok(ms >= 2450, `foerste kommando efter ${ms} ms - ventetiden er kortere end 2,5 s`);
+    assert.ok(ms < 3600, `foerste kommando efter ${ms} ms - ventetiden er laengere end 2,5 s`);
+  } finally { m.luk(); }
+});
+
+test('R119 rest E (aegte server): browser_list_tabs og browser_provide_feedback giver samme to raad i begge raekkefoelger', async () => {
+  for (const raekke of [['A', 'A2', 'B'], ['B', 'A', 'A2']]) {
+    const hjem = mkdtempSync(join(tmpdir(), 'bmcp-r119-'));
+    const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde', HOME: hjem, USERPROFILE: hjem });
+    try {
+      const id = s.send('browser_list_tabs');
+      const p = await s.lytter();
+      const inst = { A: I1, A2: I1, B: I2 };
+      for (const x of raekke) await installation(p, x, { instance: inst[x], profile: 'arbejde' });
+      const r = JSON.parse((await s.svar(id)).result.content[0].text);
+      const fb = JSON.parse((await s.svar(s.send('browser_provide_feedback', { what_happened: 'proeve' }))).result.content[0].text);
+      const hvor = raekke.join(',');
+      assert.equal(r.error, 'profile-ambiguous', hvor);
+      for (const [tekst, flade] of [[r.note, 'vaerktoejet'], [fb.fix_steps.join(' '), 'diagnosen']]) {
+        assert.match(tekst, /Close the copied Chrome profile/, `${hvor}: ${flade} giver ikke kopiraadet`);
+        assert.match(tekst, /its own name/, `${hvor}: ${flade} giver ikke navneraadet`);
+      }
+      assert.equal(fb.verdict, 'conflict', hvor);
+    } finally { s.srv.kill(); rmSync(hjem, { recursive: true, force: true }); }
+  }
 });

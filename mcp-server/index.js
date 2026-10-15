@@ -343,13 +343,21 @@ function profilDiagnose(bane, aktiv = null) {
   const live = liveConnections(bane);
   // R117 (Astra 2, Opus A): en kopieret profil (samme installation paa flere forbindelser) for den installation, chatten
   // styrer eller ville vaelge. Raadet er at lukke kopien - en ny betegnelse hjaelper ikke, kopien har samme id (Opus maalte).
-  const valgt = bane.laas ? bane.laas.instans
-    : aktiv ? aktiv.instance
-    : bane.vaelger ? (profilKandidater(bane)[0]?.instance ?? null) : null;
+  // R119 (rest E): uden laas og aktiv forbindelse men med en vaelger afgoer vaelgerFlertydighed - den samme opgoerelse som
+  // vaerktoejets fejlsvar - hvilket raad der gives. Her stod den foerste kandidats instans, saa raadet afhang af raekkefoelgen.
+  const f = !bane.laas && !aktiv && bane.vaelger ? vaelgerFlertydighed(bane) : null;
+  if (f && f.art !== 'navn') {
+    return { error: 'profile-ambiguous',
+      finding: f.art === 'kopi'
+        ? `The installation with the profile name "${bane.vaelger}" (instance ${f.kopier[0]}) is connected ${f.k.length} times at once - probably a copied Chrome profile. Browser calls answer profile-ambiguous and send nothing.`
+        : `${f.k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE), from ${f.installationer} installations, and instance ${f.kopier.join(', ')} is connected more than once - probably a copied Chrome profile. Browser calls answer profile-ambiguous and send nothing.`,
+      fix: f.art === 'kopi' ? RAAD_KOPI : `${RAAD_KOPI} ${RAAD_NAVN}` };
+  }
+  const valgt = bane.laas ? bane.laas.instans : aktiv ? aktiv.instance : null;
   const kopier = valgt ? live.filter((c) => c.instance === valgt) : [];
   if (kopier.length > 1) {
     return { error: 'profile-ambiguous', finding: `The installation this chat ${bane.laas ? 'drives' : 'would drive'} (instance ${valgt}) is connected ${kopier.length} times at once - probably a copied Chrome profile. Browser calls answer profile-ambiguous and send nothing.`,
-      fix: 'Close the copied Chrome profile, or reinstall the extension in it so it gets its own installation id. Renaming it does not help: the copy keeps the same id.' };
+      fix: RAAD_KOPI };
   }
   if (aktiv) return null;
   if (bane.laas) {
@@ -360,7 +368,7 @@ function profilDiagnose(bane, aktiv = null) {
     const k = profilKandidater(bane);
     if (k.length > 1) {
       return { error: 'profile-ambiguous', finding: `${k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE).`,
-        fix: 'Give each Chrome profile its own name in the extension popup ("This Chrome profile").' };
+        fix: RAAD_NAVN };
     }
     if (live.every((c) => !c.instance)) {
       return { error: 'profile-routing-unsupported', finding: `BROWSER_MCP_PROFILE is set, but all ${live.length} connected extension(s) are older than 1.31 and report no profile name.`,
@@ -371,6 +379,23 @@ function profilDiagnose(bane, aktiv = null) {
   }
   return null;
 }
+
+// R119 (Opus rest E): flere kandidater til BROWSER_MCP_PROFILE - hvilken slags flertydighed? Én opgoerelse, som baade
+// vaerktoejets fejlsvar og browser_provide_feedback bruger, saa de altid siger det samme, uanset forbindelsernes raekkefoelge.
+//   kopi:    én installation, forbundet flere gange (en kopieret profil) - raadet er at lukke/geninstallere kopien
+//   navn:    flere installationer, ingen forbundet to gange - raadet er et navn til hver
+//   blandet: flere installationer, og mindst én af dem forbundet flere gange - begge raad
+function vaelgerFlertydighed(bane) {
+  const k = profilKandidater(bane);
+  if (k.length < 2) return null;
+  const tal = new Map();
+  for (const c of k) tal.set(c.instance, (tal.get(c.instance) || 0) + 1);
+  const kopier = [...tal].filter(([, n]) => n > 1).map(([i]) => i).sort();
+  const art = tal.size === 1 ? 'kopi' : kopier.length ? 'blandet' : 'navn';
+  return { k, art, installationer: tal.size, kopier };
+}
+const RAAD_KOPI = 'Close the copied Chrome profile, or reinstall the extension in it so it gets its own installation id. Renaming it does not help: the copy keeps the same id.';
+const RAAD_NAVN = 'Give each Chrome profile its own name in the extension popup ("This Chrome profile").';
 
 // Samme installation paa flere forbindelser paa én gang: en kopieret Chrome-profil (samme lager, samme instans).
 function kopiFejl(bane, instans, samme, hvem) {
@@ -387,12 +412,22 @@ function valgUdenForbindelse(bane) {
     return { mistet: true, straks: bane.laas.instans === null ? mistetFejl(bane) : null };
   }
   if (bane.vaelger) {
-    const k = profilKandidater(bane);
     // R118 (Opus rest D): bærer alle kandidaterne samme instans, er det én installation forbundet flere gange - en kopieret
     // profil. Saa er raadet kopiens (luk den eller geninstallér), ikke et nyt navn: kopien beholder samme id.
-    if (k.length > 1 && k.every((c) => c.instance === k[0].instance)) {
-      return { straks: kopiFejl(bane, k[0].instance, k, `The installation with the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE)`) };
+    // R119 (rest E): er der baade en kopi og en anden installation med navnet, gives begge raad (se vaelgerFlertydighed).
+    const f = vaelgerFlertydighed(bane);
+    if (f && f.art === 'kopi') {
+      return { straks: kopiFejl(bane, f.k[0].instance, f.k, `The installation with the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE)`) };
     }
+    if (f && f.art === 'blandet') {
+      return { straks: profilFejl(bane, 'profile-ambiguous',
+        { profile: bane.vaelger, candidates: f.k.map((c) => ({ instance: c.instance, version: c.version ?? null })).slice(0, 10) },
+        `${f.k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE), from ${f.installationer} ` +
+        `installations, and ${f.kopier.length === 1 ? 'one of them' : 'some of them'} (instance ${f.kopier.join(', ')}) is ` +
+        'connected more than once - probably a copied Chrome profile. Nothing was sent: the server does not guess between ' +
+        `them. ${RAAD_KOPI} ${RAAD_NAVN}`) };
+    }
+    const k = profilKandidater(bane);
     if (k.length > 1) {
       return { straks: profilFejl(bane, 'profile-ambiguous',
         { profile: bane.vaelger, candidates: k.map((c) => ({ instance: c.instance, version: c.version ?? null })).slice(0, 10) },
