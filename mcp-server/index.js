@@ -1145,11 +1145,12 @@ async function nyPartition({ profile, label } = {}) {
   partitioner.set(id, p);
   baner.add(bane);
   // Blev partitionen ikke til, forsvinder den helt: dens port slippes, og id'et bliver aldrig udleveret (eller genbrugt).
-  // R123 (Astra): banen markeres lukket, og de kald, der venter paa den, vaekkes: intet kald - heller ikke en intern afsender
-  // uden om baneForKald - kan binde dens port igen eller sende, efter at new har opgivet (stopHvisLukket).
+  // R123 (Astra): banen markeres lukket: intet kald - heller ikke en intern afsender uden om baneForKald - kan binde dens port
+  // igen eller sende, efter at new har opgivet (stopHvisLukket ved hver indgang og efter hver ventetid). De ventende vaekkes
+  // ikke: et kald, der venter, stoppes ved sin naeste kontrol (hoejst ét genforsoeg senere), og foer den binder og sender det
+  // intet. Opgiv sker kun, naar new's eget kald er afgjort, og ingen vaerktoejskald kan naa banen (baneForKald).
   const opgiv = () => {
     bane.lukket = true;
-    for (const v of [...bane.vaekkere]) v();
     frigivPort(bane, `partition ${id} was not created`); baner.delete(bane); partitioner.delete(id);
   };
   const lukketUndervejs = () => partitionFejl('partition-closed', { partition: id },
