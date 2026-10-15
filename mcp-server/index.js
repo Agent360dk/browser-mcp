@@ -94,6 +94,14 @@ function lavBane(navn, medPid = true) {
 }
 const standardBane = lavBane('default');
 const baner = new Set([standardBane]);
+
+// 1.31 (S2, #58): installationens identitet i hilsenen - `instance` (16 hex, lavet én gang pr. installation, altsaa pr.
+// Chrome-profil) og `profile` (brugerens betegnelse fra popuppen). Kun gyldige vaerdier tages; alt andet bliver null.
+// Betegnelsen er fri tekst, som serveren gentager i vaerktoejssvar, saa moenstret er ogsaa vaernet mod at et lokalt program
+// laegger instruktioner i agentens kontekst (R106). Hilsenen er usigneret: betegnelsen er et VALG, ikke adgang (README).
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+const gyldigInstans = (v) => (typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) ? v : null);
+const gyldigProfil = (v) => (typeof v === 'string' && PROFIL_MOENSTER.test(v) ? v : null);
 let connSeq = 0;
 
 function cmpVersion(a, b) {
@@ -363,7 +371,7 @@ function createWSS(bane, port = BASE_PORT) {
     }
 
     const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
-      harHilst: false, helloId: null, since: Date.now() };
+      harHilst: false, helloId: null, since: Date.now(), instance: null, profile: null };
     bane.connections.add(conn);
     // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
     // nytilkommen udvidelse maa gerne komme i betragtning igen.
@@ -389,6 +397,16 @@ function createWSS(bane, port = BASE_PORT) {
 
       // Identitets-haandtryk fra offscreen-dokumentet (v1.28+).
       if (msg.type === 'hello') {
+        // 1.31 (S2): en ny hilsen paa en sokkel, der allerede har hilst, er en OMDOEBNING (popuppen). Kun betegnelsen
+        // opdateres; et andet installations-id paa samme sokkel ignoreres og logges - id'et er sat for soklens levetid.
+        if (conn.harHilst) {
+          const nyInstans = gyldigInstans(msg.instance);
+          if (nyInstans !== conn.instance) {
+            process.stderr.write(`[MCP] Ignored a change of installation id on an open connection (${conn.instance || 'none'} -> ${nyInstans || 'none'})\n`);
+          }
+          conn.profile = gyldigProfil(msg.profile);
+          return;
+        }
         // MAALT 23/8: her stod `conn.extensionId = msg.extensionId` - altsaa lod
         // haandtrykket afsenderen OVERSKRIVE sin egen identitet med hvad som helst.
         // Origin-headeren er den eneste kilde Chrome selv saetter og som afsenderen
@@ -408,6 +426,8 @@ function createWSS(bane, port = BASE_PORT) {
         // koerer. Udgivelsens flowtest sammenligner det med repoets fil, saa en gammel kopi med samme nummer ikke kan
         // passere som kandidaten.
         conn.kode = typeof msg.kode === 'string' ? msg.kode : null;
+        conn.instance = gyldigInstans(msg.instance);
+        conn.profile = gyldigProfil(msg.profile);
         advarOmKonflikt(conn, bane);
         return;
       }
@@ -1107,6 +1127,32 @@ function forklarSkaevhed(besked) {
 const REPO_URL = 'https://github.com/Agent360dk/browser-mcp';
 const ISSUE_TEMPLATES = { wish: 'wish.yml', use_case: 'use-case.yml', bug: 'bug.yml' };
 
+// 1.31 (S2, #58): de Browser MCP-installationer, der er forbundet til denne chat, som browser_about viser. Én post pr.
+// forbindelse, der har hilst; en udvidelse fra foer 1.31 har hverken id eller betegnelse. Listen er kort (hoejst 10): en
+// betegnelse er fri tekst fra en lokal sokkel, og selv efter moenstret skal den ikke gentages i det uendelige.
+const MAKS_VISTE_INSTALLATIONER = 10;
+function installationer(bane = standardBane) {
+  const live = liveConnections(bane).filter((c) => c.harHilst);
+  return live.slice(0, MAKS_VISTE_INSTALLATIONER).map((c) => ({
+    profile: c.profile ?? null,
+    instance: c.instance ?? null,
+    version: c.version ?? null,
+    // Laesning uden bivirkning: den forbindelse banen allerede styrer (activeConnection() ville vaelge én).
+    driven: c === bane.laastForbindelse,
+  }));
+}
+
+function installationsNote(bane = standardBane) {
+  if (bane.activePort === null) {
+    return 'The browser has not been used in this chat yet, so no extension is connected to it. Any browser tool connects it.';
+  }
+  const n = liveConnections(bane).filter((c) => c.harHilst).length;
+  return `${n} Browser MCP extension connection${n === 1 ? '' : 's'} on port ${bane.activePort}` +
+    (n > MAKS_VISTE_INSTALLATIONER ? ` (the first ${MAKS_VISTE_INSTALLATIONER} are listed)` : '') + '. ' +
+    'profile is the name given in the extension popup (null when none is set, or before 1.31), instance identifies the ' +
+    'installation (one per Chrome profile). The name is a label the server can choose by, not a password.';
+}
+
 function handleAbout(args) {
   const intent = args?.intent || 'info';
   const title = args?.title || '';
@@ -1138,6 +1184,8 @@ function handleAbout(args) {
         use_cases: `${REPO_URL}/blob/main/USE_CASES.md`,
         submit_url,
         instruction,
+        installations: installationer(),
+        installations_note: installationsNote(),
       }, null, 2),
     }],
   };

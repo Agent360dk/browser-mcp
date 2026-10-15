@@ -168,6 +168,8 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
       return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(''), json: () => Promise.resolve({}) });
     },
     URL, TextEncoder, TextDecoder, atob, btoa, structuredClone,
+    // 1.31: installationens id laves med crypto.getRandomValues, som en service worker har.
+    crypto: globalThis.crypto,
     // background.js laeser navigator.userAgent ved indlaesning (linje 14) for at
     // afgoere om "vaelg alt" er Cmd eller Ctrl. Uden den kaster hele filen.
     navigator: { userAgent: svar['navigator.userAgent'] ?? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },

@@ -3381,6 +3381,56 @@ function genbygOffscreen() {
   });
 }
 
+// ── Installationens identitet (1.31, #58) ─────────────────────────────────────
+// Chrome Web Store-udvidelsen har samme id i alle profiler, saa serveren kunne ikke se HVILKEN profil en forbindelse kom
+// fra. Hver installation (én pr. Chrome-profil) faar derfor:
+//   instance - 16 tilfaeldige hex-tegn, lavet ÉN gang og gemt i chrome.storage.local (ikke sync: hver profil sin egen).
+//              Den laves her, FOER offscreen-dokumentet, og foelger med i dokumentets adresse (&i=): et offscreen-dokument
+//              har kun chrome.runtime og kan ikke selv laese lageret (R106 - samme fejl som 1.30.0's parring maalte).
+//   profile  - brugerens betegnelse fra popuppen, ^[A-Za-z0-9._-]{1,32}$ eller null (&p=). Den er et VALG, ikke en noegle:
+//              hilsenen er usigneret, og et andet program paa maskinen kan paastaa samme betegnelse (README).
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+const INSTANS_MOENSTER = /^[0-9a-f]{16}$/;
+
+function rensProfil(v) {
+  const t = typeof v === 'string' ? v.trim() : '';
+  return PROFIL_MOENSTER.test(t) ? t : null;
+}
+
+// Samtidige kald deler ét opslag, saa to kaldere aldrig laver hver sit id.
+let identitetIGang = null;
+function installationsIdentitet() {
+  if (!identitetIGang) {
+    identitetIGang = (async () => {
+      const { bmcpInstans = null, bmcpProfil = null } = await chrome.storage.local.get({ bmcpInstans: null, bmcpProfil: null });
+      let instans = INSTANS_MOENSTER.test(String(bmcpInstans ?? '')) ? bmcpInstans : null;
+      if (!instans) {
+        const b = new Uint8Array(8);
+        crypto.getRandomValues(b);
+        instans = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+        await chrome.storage.local.set({ bmcpInstans: instans });
+      }
+      return { instans, profil: rensProfil(bmcpProfil) };
+    })().finally(() => { identitetIGang = null; });
+  }
+  return identitetIGang;
+}
+
+// Omdoebning fra popuppen: gem betegnelsen, og send den til offscreen-dokumentet, som sender en ny hilsen paa alle aabne
+// forbindelser. Dokumentet genskabes IKKE - det ville afbryde alle chats' igangvaerende kald (R107). Er en opbygning af
+// broen i gang, ventes den ud foerst (ensureOffscreen slutter sig til den), saa beskeden ikke kommer foer dokumentet lytter;
+// et dokument, der bygges bagefter, laeser den nye betegnelse fra lageret.
+async function saetProfil(raa) {
+  const t = typeof raa === 'string' ? raa.trim() : '';
+  if (t && !PROFIL_MOENSTER.test(t)) return { ok: false, error: 'profile-invalid' };
+  const profil = t || null;
+  await chrome.storage.local.set({ bmcpProfil: profil });
+  try { await ensureOffscreen(); } catch (e) { console.warn('[BG] broen kunne ikke bygges efter omdoebning:', e?.message || e); }
+  try { await chrome.runtime.sendMessage({ type: 'bmcp_profil', profile: profil }); } catch { /* intet dokument lytter */ }
+  const { instans } = await installationsIdentitet();
+  return { ok: true, profile: profil, instance: instans };
+}
+
 async function ensureOffscreenIndre() {
   const findes = await chrome.offscreen.hasDocument();
 
@@ -3444,9 +3494,15 @@ async function ensureOffscreenIndre() {
   // er repoets filer byte-identiske, og udgivelsens kode-aftryk er uroert. (Mit foerste forslag, at flytte portene
   // til manifestet, ville have fjernet dem fra aftrykket - Astra maalte at de ligger i offscreen.js, som hashes.)
   const porteParam = await portOmraadeFraLager();
+  // 1.31 (#58): installationens id og betegnelse (se installationsIdentitet). Kan lageret ikke laeses, sendes ingen - saa
+  // hilser broen som en udvidelse fra foer 1.31, i stedet for at broen ikke bygges.
+  let ident = null;
+  try { ident = await installationsIdentitet(); } catch (e) { console.warn('[BG] installationens id kunne ikke laeses:', e?.message || e); }
+  const identParam = (ident ? '&i=' + ident.instans : '') + (ident && ident.profil ? '&p=' + encodeURIComponent(ident.profil) : '');
+  const forespoergsel = [minVersion ? 'v=' + encodeURIComponent(minVersion) : '', porteParam ? 'porte=' + porteParam : '']
+    .filter(Boolean).join('&') + identParam;
   await chrome.offscreen.createDocument({
-    url: 'offscreen.html' + (minVersion ? '?v=' + encodeURIComponent(minVersion) : '')
-         + (porteParam ? (minVersion ? '&' : '?') + 'porte=' + porteParam : ''),
+    url: 'offscreen.html' + (forespoergsel ? '?' + forespoergsel.replace(/^&/, '') : ''),
     reasons: ['WORKERS'],
     justification: 'Maintain persistent WebSocket connection to local MCP server',
   });
@@ -3520,6 +3576,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'session_disconnect') {
     releaseSession(msg.port);
     return;
+  }
+
+  // 1.31 (#58): popuppen viser installationens id og betegnelse og kan omdoebe den.
+  if (msg.type === 'bmcp_identitet') {
+    installationsIdentitet()
+      .then(({ instans, profil }) => sendResponse({ ok: true, instance: instans, profile: profil }))
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
+  }
+  if (msg.type === 'bmcp_saet_profil') {
+    saetProfil(msg.profile)
+      .then(sendResponse)
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
   }
 
   if (msg.type === 'reconnect') {

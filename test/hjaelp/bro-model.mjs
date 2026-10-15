@@ -49,7 +49,10 @@ export function broModel(env = {}) {
     // mutant B10). Bindingen slaas fra foerst.
     try { k('sikrePort = async () => false;'); } catch {}
     try { k('for (const p of pending.values()) clearTimeout(p.timer); pending.clear()'); } catch {}
-    try { k('for (const b of baner) frigivPort(b, "proeven er slut")'); } catch {}
+    try { k('for (const b of baner) frigivPort(b, "proeven er slut")'); } catch {
+      // En kilde uden baner (fx 07f01ef, naar en proeve skal ses roed foer rettelsen): den gamle frigivPort(grund).
+      try { k('frigivPort("proeven er slut")'); } catch {}
+    }
     for (const t of timere) clearInterval(t);
     for (const u of klienter) u.luk();
     klienter.clear();
