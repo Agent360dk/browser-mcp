@@ -62,12 +62,39 @@ const MAX_PORT = Number(process.env.BROWSER_MCP_MAX_PORT) || 9895; // 20 ports i
 // Nu holdes alle forbindelser med deres identitet, kommandoer sendes kun til den
 // nyeste udgave, og konflikten kan ses (browser_provide_feedback) i stedet for at
 // vise sig som faner der "forsvinder".
-const connections = new Set(); // { ws, seq, extensionId, version, name, since }
+//
+// ── Baner (1.31, #58 og #20) ──────────────────────────────────────────────────
+// En BANE er én lytterport med sine egne forbindelser og sit eget valg af forbindelse. Standardbanen er den dovne port
+// nedenfor (sikrePort). Ekstra baner (partitioner, #20) skal bruge SAMME kode - createWSS, svar-tjekket, null-vaernet,
+// afvisVentende - og ikke en kopi: PR #20's egen lytter manglede de vaern, main fik efter dens base, og R106 MAALTE
+// fem fejl i den (T1-T5, test/baner.test.mjs). Alle ventende kald ligger i ét kort (`pending`), og hvert er bundet til den
+// forbindelse, det blev sendt til - saa et svar fra en anden banes sokkel afvises ligesom et fra en anden udvidelse.
+function lavBane(navn, medPid = true) {
+  return {
+    navn,
+    // Standardbanen sender Claude Code-processens pid; en partition skal sende null (R106/R107, MAALT: med samme pid
+    // adopterede en partitions port standardbanens efterladte faner).
+    medPid,
+    connections: new Set(),        // { ws, seq, extensionId, version, name, since }
+    wss: null,
+    activePort: null,
+    heartbeat: null,
+    alleePorteOptaget: false,      // hele spaendet i brug - se createWSS
+    bindFejl: null,                // bind fejlede af en ANDEN grund end optaget port
+    portBundetTid: 0,              // hvornaar porten sidst blev aaben - se sendToExtension
+    portResolver: null,
+    bindLoefte: null,
+    laastForbindelse: null,        // se activeConnection
+    harSendtKommando: false,
+    forbindelseSkiftet: false,
+    sidsteVisteForbindelsesAdvarsel: '',
+    sidsteKonfliktNoegle: '',
+    sidsteProfilAdvarsel: '',
+  };
+}
+const standardBane = lavBane('default');
+const baner = new Set([standardBane]);
 let connSeq = 0;
-let activePort = null;
-let alleePorteOptaget = false;   // hele spaendet i brug - se createWSS
-let bindFejl = null;             // bind fejlede af en ANDEN grund end optaget port
-let portBundetTid = 0;           // hvornaar porten sidst blev aaben - se sendToExtension
 
 function cmpVersion(a, b) {
   const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
@@ -83,8 +110,8 @@ function cmpVersion(a, b) {
 // saa tre profiler talte som én, og ingen advarsel kom - mens kommandoerne gik til én af dem, og hvilken profil det var,
 // skiftede naar de andre genindlaeste. Serveren kan ikke se hvilken profil en forbindelse kommer fra, kun hvor mange der er
 // aabne, saa det er det advarslen siger.
-function forbindelsesAdvarsel() {
-  const live = liveConnections();
+function forbindelsesAdvarsel(bane = standardBane) {
+  const live = liveConnections(bane);
   if (live.length < 2) return null;
   const prId = new Map();
   for (const c of live) if (c.extensionId) prId.set(c.extensionId, (prId.get(c.extensionId) || 0) + 1);
@@ -98,35 +125,31 @@ function forbindelsesAdvarsel() {
 }
 
 // Det agenten ser: stderr naar ingen agent. Advarslen lægges i det naeste vaerktoejssvar, én gang pr. aendring.
-let sidsteVisteForbindelsesAdvarsel = '';
-let forbindelseSkiftet = false;
-function medForbindelsesNote(svar) {
-  if (forbindelseSkiftet && liveConnections().length) {
-    forbindelseSkiftet = false;
+function medForbindelsesNote(svar, bane = standardBane) {
+  if (bane.forbindelseSkiftet && liveConnections(bane).length) {
+    bane.forbindelseSkiftet = false;
     svar.content.push({ type: 'text', text: '\n⚠️ The extension connection this server was driving has closed, and commands now ' +
       'go to another one - possibly another Chrome profile or browser. Tabs opened before are not in it.' });
   }
-  const a = forbindelsesAdvarsel();
-  if (!a) { sidsteVisteForbindelsesAdvarsel = ''; return svar; }
-  if (a === sidsteVisteForbindelsesAdvarsel) return svar;
-  sidsteVisteForbindelsesAdvarsel = a;
+  const a = forbindelsesAdvarsel(bane);
+  if (!a) { bane.sidsteVisteForbindelsesAdvarsel = ''; return svar; }
+  if (a === bane.sidsteVisteForbindelsesAdvarsel) return svar;
+  bane.sidsteVisteForbindelsesAdvarsel = a;
   svar.content.push({ type: 'text', text: '\n⚠️ ' + a });
   return svar;
 }
 
-let sidsteKonfliktNoegle = '';
-let sidsteProfilAdvarsel = '';
-function advarOmKonflikt(conn) {
-  const profiler = forbindelsesAdvarsel();
-  if (profiler && profiler !== sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
-  sidsteProfilAdvarsel = profiler || '';
-  const alle = distinctExtensions();
+function advarOmKonflikt(conn, bane = standardBane) {
+  const profiler = forbindelsesAdvarsel(bane);
+  if (profiler && profiler !== bane.sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
+  bane.sidsteProfilAdvarsel = profiler || '';
+  const alle = distinctExtensions(bane);
   if (alle.length < 2) return;
   // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
   const noegle = alle.map(c => `${c.extensionId || 'unknown'}@${c.version || '?'}`).sort().join('|');
-  if (noegle === sidsteKonfliktNoegle) return;
-  sidsteKonfliktNoegle = noegle;
-  const aktiv = activeConnection();
+  if (noegle === bane.sidsteKonfliktNoegle) return;
+  bane.sidsteKonfliktNoegle = noegle;
+  const aktiv = activeConnection(bane);
   // Oplyser INGEN af dem en version (alle udgivne udgaver er fra foer haandtrykket),
   // er der intet grundlag for at vaelge. Det skal staa der - ellers laeser man
   // "kommandoer sendes kun til X" som om X var det rigtige valg.
@@ -154,8 +177,8 @@ function advarOmKonflikt(conn) {
 //
 // ⛔ 26/9: parringen er trukket tilbage i 1.30.1 (se PARRING_TRUKKET_TILBAGE nedenfor), og med
 // den filtret paa `parret`. Broen er igen lokal og uautentificeret for alle - det staar i README.
-function liveConnections() {
-  return [...connections].filter(c => c.ws.readyState === 1);
+function liveConnections(bane = standardBane) {
+  return [...bane.connections].filter(c => c.ws.readyState === 1);
 }
 
 // Valget LAASES for serverens levetid.
@@ -170,8 +193,7 @@ function liveConnections() {
 // Faner hoerer til den udvidelse der aabnede dem. Skifter man udvidelse, strander de.
 // Derfor: vaelg én gang, og bliv ved den saa laenge dens forbindelse lever. Doer den,
 // vaelges der forfra - det er en aegte genopretning, ikke et vilkaarligt skift.
-let laastForbindelse = null;
-let harSendtKommando = false;
+// (Laasen og flaget `harSendtKommando` bor paa banen - se lavBane.)
 const PINNET_UDVIDELSE = (process.env.BROWSER_MCP_EXTENSION_ID || '').trim() || null;
 
 // ⛔ 26/9: PARRINGEN ER TRUKKET TILBAGE I 1.30.1 (issue #10 genaabnes til et redesign).
@@ -190,39 +212,40 @@ if (PARRING_TRUKKET_TILBAGE) {
   );
 }
 
-function activeConnection() {
-  if (laastForbindelse && laastForbindelse.ws.readyState === 1) return laastForbindelse;
+function activeConnection(bane = standardBane) {
+  if (bane.laastForbindelse && bane.laastForbindelse.ws.readyState === 1) return bane.laastForbindelse;
 
   // Nyeste udvidelse vinder. Ved uafgjort: den der forbandt sidst. En udvidelse fra
   // foer haandtrykket har ingen version og taber til en der har én - haandtrykket kom
   // med den nyere udgave.
   let best = null;
-  for (const c of liveConnections()) {
+  for (const c of liveConnections(bane)) {
     if (!best) { best = c; continue; }
     const d = cmpVersion(c.version, best.version);
     if (d > 0 || (d === 0 && c.since > best.since)) best = c;
   }
-  laastForbindelse = best;
+  bane.laastForbindelse = best;
   return best;
 }
 
 // Én post pr. udvidelse. En udvidelse uden identitet taelles for sig selv (dens
 // socket er noeglen), saa to gamle kopier stadig ses som to.
-function distinctExtensions() {
+function distinctExtensions(bane = standardBane) {
   const byKey = new Map();
-  for (const c of liveConnections()) {
+  for (const c of liveConnections(bane)) {
     const key = c.extensionId || `legacy:${c.seq}`;
     if (!byKey.has(key)) byKey.set(key, c);
   }
   return [...byKey.values()];
 }
-let wss = null; // Track WSS for graceful shutdown
 let cmdId = 0;
 let lastActivity = Date.now();
+// Ét kort for ALLE baner: id -> { id, bane, conn, timer, resolve, reject }. Id'erne er faelles, saa et id aldrig peger paa
+// to kald, og svaret tjekkes mod `conn` - den forbindelse kaldet blev sendt til (se 'message' i createWSS).
 const pending = new Map();
 
 // Timers hoisted to module scope so gracefulShutdown can clear them deterministically.
-let heartbeat = null;
+// (Hjerteslaget bor paa banen - bane.heartbeat.)
 let parentCheck = null;
 let tomgangsvagt = null;
 
@@ -243,7 +266,7 @@ tomgangsvagt = setInterval(() => {
 
 // ── WebSocket Server ───────────────────────────────────────────────────────
 
-function createWSS(port = BASE_PORT) {
+function createWSS(bane, port = BASE_PORT) {
   const server = new WebSocketServer({
     host: '127.0.0.1',
     port,
@@ -264,13 +287,13 @@ function createWSS(port = BASE_PORT) {
       godkend(false, 401, 'only chrome extensions may connect');
     },
   });
-  wss = server;
+  bane.wss = server;
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (port < MAX_PORT) {
         process.stderr.write(`[MCP] Port ${port} in use, trying ${port + 1}...\n`);
-        createWSS(port + 1);
+        createWSS(bane, port + 1);
       } else {
           // MAALT 22/8: her stod KUN denne stderr-linje. Ingen laeser stderr fra en
           // MCP-server, saa udtoemte porte var en helt tavs fejl. Hvert vaerktoejskald
@@ -278,9 +301,9 @@ function createWSS(port = BASE_PORT) {
           // siger at serveren koerer og sender brugeren til Chrome Web Store. Begge dele
           // er forkerte naar sandheden er at vi aldrig fik en port. Flaget laeses i
           // sendToExtension, saa agenten kan give brugeren den rigtige forklaring.
-          alleePorteOptaget = true;
+          bane.alleePorteOptaget = true;
         process.stderr.write(`[MCP] All ports ${BASE_PORT}-${MAX_PORT} in use. Cannot start.\n`);
-        loesPortLoefte(false);
+        loesPortLoefte(bane, false);
       }
     } else {
       // FUNDET AF REVIEW 7/9. Her stod KUN stderr-linjen. Foer porten blev doven, var
@@ -290,9 +313,9 @@ function createWSS(port = BASE_PORT) {
       // (EACCES paa en privilegeret port, EADDRNOTAVAIL, en restriktiv firewall)
       // ville derfor faa hvert eneste browser-kald til at haenge tavst for evigt.
       // At haenge uden besked er vaerre end den fejl vi rettede.
-      bindFejl = err.message;
+      bane.bindFejl = err.message;
       process.stderr.write(`[MCP] WebSocket error: ${err.message}\n`);
-      loesPortLoefte(false);
+      loesPortLoefte(bane, false);
     }
   });
 
@@ -341,19 +364,19 @@ function createWSS(port = BASE_PORT) {
 
     const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
       harHilst: false, helloId: null, since: Date.now() };
-    connections.add(conn);
+    bane.connections.add(conn);
     // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
     // nytilkommen udvidelse maa gerne komme i betragtning igen.
-    if (!harSendtKommando) laastForbindelse = null;
+    if (!bane.harSendtKommando) bane.laastForbindelse = null;
     process.stderr.write(`[MCP] Chrome extension connected on port ${port}${fraOrigin ? ` (${fraOrigin})` : ''}\n`);
-    advarOmKonflikt(conn);
+    advarOmKonflikt(conn, bane);
 
     // If extension was auto-updated, trigger reload
     if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1') {
       process.env.BROWSER_MCP_EXTENSION_UPDATED = '';
       process.stderr.write('[MCP] Extension files updated - triggering auto-reload\n');
       setTimeout(() => {
-        sendToExtension('reload_extension', {}, 5000).catch(() => {});
+        sendToExtension('reload_extension', {}, 5000, bane).catch(() => {});
       }, 1000);
     }
 
@@ -385,7 +408,7 @@ function createWSS(port = BASE_PORT) {
         // koerer. Udgivelsens flowtest sammenligner det med repoets fil, saa en gammel kopi med samme nummer ikke kan
         // passere som kandidaten.
         conn.kode = typeof msg.kode === 'string' ? msg.kode : null;
-        advarOmKonflikt(conn);
+        advarOmKonflikt(conn, bane);
         return;
       }
 
@@ -419,7 +442,7 @@ function createWSS(port = BASE_PORT) {
           process.stderr.write('[MCP] terminate ignored - no valid handshake\n');
           return;
           }
-        if (activeConnection() !== conn) {
+        if (activeConnection(bane) !== conn) {
           process.stderr.write('[MCP] terminate ignoreret - kom fra en inaktiv udvidelses-forbindelse\n');
           return;
         }
@@ -427,7 +450,7 @@ function createWSS(port = BASE_PORT) {
         // mistede altsaa browseren HELT - og porten blev alligevel hverken frigivet hurtigt
         // nok til andre (processen doede foerst efter oprydning) eller genvundet af chatten
         // selv. Nu slippes kun porten; naeste browser-kald tager en ny (se sikrePort).
-        frigivPort('udvidelsen meldte: sidste fane lukket');
+        frigivPort(bane, 'udvidelsen meldte: sidste fane lukket');
         return;
       }
 
@@ -436,7 +459,9 @@ function createWSS(port = BASE_PORT) {
       if (!p) return;
       // ⛔ Kun den forbindelse kommandoen blev sendt til maa besvare den. Uden dette kunne
       // enhver sokkel paa broen gaette et id og forfalske svaret - ogsaa en uparret.
-      if (p.conn && p.conn !== conn) {
+      // 1.31 (S1a): tjekket er STRENGT - uden `p.conn &&`. Et kald uden en bundet forbindelse kan ingen besvare, saa en
+      // fremtidig vej, der glemmer at binde, fejler lukket i stedet for at tage imod svar fra enhver sokkel (R106).
+      if (p.conn !== conn) {
         process.stderr.write(
           `[MCP] Ignored a reply to command ${id} from a connection it was not sent to.\n`);
         return;
@@ -482,29 +507,29 @@ function createWSS(port = BASE_PORT) {
     });
 
     ws.on('close', () => {
-      connections.delete(conn);
+      bane.connections.delete(conn);
       afvisVentende('the extension disconnected');
-      process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
+      process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections(bane).length} tilbage)\n`);
       // R62 (Opus, maalt mod den aegte server): efter en lukning og en ny forbindelse tav stderr, fordi den samme tekst var
       // skrevet foer. Og lukkede den forbindelse serveren STYREDE, gik kommandoerne stille videre til en anden profil.
-      if (!forbindelsesAdvarsel()) sidsteProfilAdvarsel = '';
-      if (conn === laastForbindelse && harSendtKommando) forbindelseSkiftet = true;
+      if (!forbindelsesAdvarsel(bane)) bane.sidsteProfilAdvarsel = '';
+      if (conn === bane.laastForbindelse && bane.harSendtKommando) bane.forbindelseSkiftet = true;
     });
   });
 
   server.on('listening', () => {
-    activePort = port;
-    portBundetTid = Date.now();
+    bane.activePort = port;
+    bane.portBundetTid = Date.now();
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
-    loesPortLoefte(true);
+    loesPortLoefte(bane, true);
   });
 
   // Heartbeat + idle timeout (4 hours) - hoisted to module scope so gracefulShutdown can clear it
   // Ryddes foerst: porten kan bindes flere gange i samme proces (se sikrePort), og uden
   // det her ville hver ny binding efterlade en ekstra timer der aldrig blev stoppet.
-  if (heartbeat) clearInterval(heartbeat);
-  heartbeat = setInterval(() => {
-    for (const c of liveConnections()) c.ws.ping();
+  if (bane.heartbeat) clearInterval(bane.heartbeat);
+  bane.heartbeat = setInterval(() => {
+    for (const c of liveConnections(bane)) c.ws.ping();
   }, 20000);
 }
 
@@ -527,14 +552,12 @@ function createWSS(port = BASE_PORT) {
 // Bemaerk hvorfor det ikke er en 5-minutters timer der draeber processen: en chat der
 // foerst skal bruge browseren efter en halv time ville saa staa uden. Processen lever
 // videre - det er kun PORTEN der ikke holdes reserveret til noget der ikke sker.
-let portResolver = null;
-let bindLoefte = null;
-
-function loesPortLoefte(fik) {
-  if (!portResolver) return;
-  const r = portResolver;
-  portResolver = null;
-  bindLoefte = null;
+// (Loeftet og dets resolver bor paa banen - bane.portResolver, bane.bindLoefte.)
+function loesPortLoefte(bane, fik) {
+  if (!bane.portResolver) return;
+  const r = bane.portResolver;
+  bane.portResolver = null;
+  bane.bindLoefte = null;
   r(fik);
 }
 
@@ -550,60 +573,64 @@ function loesPortLoefte(fik) {
 // Klienten genstarter altsaa. Argumentet for at blive i live staar stadig - en genstart
 // koster tid og en ny session - men det maa hvile paa det, ikke paa en paastand ingen
 // havde maalt.
-function frigivPort(grund) {
-  if (activePort === null) return;
-  process.stderr.write(`[MCP] frigiver port ${activePort} - ${grund}\n`);
-  if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
-  const gammel = wss;
-  wss = null;
-  activePort = null;
-  laastForbindelse = null;
-  harSendtKommando = false;          // naeste binding vaelger udvidelse forfra
-  for (const c of connections) { try { c.ws.close(); } catch {} }
-  connections.clear();
+function frigivPort(bane, grund) {
+  if (bane.activePort === null) return;
+  process.stderr.write(`[MCP] frigiver port ${bane.activePort} - ${grund}\n`);
+  if (bane.heartbeat) { clearInterval(bane.heartbeat); bane.heartbeat = null; }
+  const gammel = bane.wss;
+  bane.wss = null;
+  bane.activePort = null;
+  bane.laastForbindelse = null;
+  bane.harSendtKommando = false;          // naeste binding vaelger udvidelse forfra
+  for (const c of bane.connections) { try { c.ws.close(); } catch {} }
+  bane.connections.clear();
   try { gammel?.close(); } catch {}
 }
 
-function sikrePort() {
-  if (activePort !== null) return Promise.resolve(true);
-  if (bindLoefte) return bindLoefte;              // en binding er allerede i gang
-  alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
-  bindFejl = null;
-  portBundetTid = 0;   // nulstilles her; saettes naar 'listening' faktisk kommer
-  bindLoefte = new Promise((res) => { portResolver = res; });
+function sikrePort(bane = standardBane) {
+  if (bane.activePort !== null) return Promise.resolve(true);
+  if (bane.bindLoefte) return bane.bindLoefte;              // en binding er allerede i gang
+  bane.alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
+  bane.bindFejl = null;
+  bane.portBundetTid = 0;   // nulstilles her; saettes naar 'listening' faktisk kommer
+  const bindLoefte = bane.bindLoefte = new Promise((res) => { bane.portResolver = res; });
   // Vagthund. F8 var ét konkret hul hvor loeftet aldrig blev indfriet; det her lukker
   // KLASSEN. Emitter en fremtidig fejlsti hverken 'listening' eller 'error', svarer
   // kaldet nu med en fejl i stedet for at haenge tavst for evigt. 10 s er rigeligt:
   // en loopback-binding tager millisekunder, og hele spaendet naas paa under ét.
   const vagthund = setTimeout(() => {
-    if (!portResolver) return;
-    bindFejl = bindFejl || 'the bind did not answer within 10 seconds';
+    if (!bane.portResolver) return;
+    bane.bindFejl = bane.bindFejl || 'the bind did not answer within 10 seconds';
     process.stderr.write('[MCP] port-bindingen svarede aldrig - opgiver dette forsoeg\n');
-    loesPortLoefte(false);
+    loesPortLoefte(bane, false);
   }, 10000);
   bindLoefte.finally(() => clearTimeout(vagthund));
-  createWSS();
+  createWSS(bane);
   return bindLoefte;
 }
 
 // ── Send command to extension ───────────────────────────────────────────────
 
-async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
+function sendToExtension(method, params = {}, timeoutMs = 30000, bane = standardBane) {
+  return sendTilBane(bane, method, params, timeoutMs);
+}
+
+async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
   // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
   // Fik vi ingen (hele spaendet optaget), proever naeste kald igen - derfor ingen kast her.
-  await sikrePort();
+  await sikrePort(bane);
   // Spoergsmaalet er om doeren var NYAABNET da kaldet begyndte - ikke om den stadig er
   // "ny" efter at vi selv har brugt femten sekunder paa at proeve igen. Derfor maales det
   // ved indgangen og baeres med gennem gentagelserne.
   const doerAabnetNu = _doerAabnetNu !== null
     ? _doerAabnetNu
-    : Boolean(portBundetTid && (Date.now() - portBundetTid) < 10000);
+    : Boolean(bane.portBundetTid && (Date.now() - bane.portBundetTid) < 10000);
   // Retry if extension is temporarily disconnected (reconnects every 2s)
-  const conn = activeConnection();
+  const conn = activeConnection(bane);
   if (!conn) {
     if (_retries > 0) {
       await new Promise(r => setTimeout(r, 1500));
-      return sendToExtension(method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu);
+      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu);
     }
     // ── Har vi lige aabnet doeren selv? (MAALT 8/9, #16) ─────────────────────
     //
@@ -617,11 +644,11 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
     // ekstra budget, og siger sandheden hvis den stadig er tom.
     if (doerAabnetNu && !_ekstraRunde) {
-      return sendToExtension(method, params, timeoutMs, 5, true, doerAabnetNu);
+      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu);
     }
     if (doerAabnetNu) {
       throw new Error(
-        `Port ${activePort} was opened ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
+        `Port ${bane.activePort} was opened ${Math.round((Date.now() - bane.portBundetTid) / 1000)} ` +
         'seconds ago, and the extension has not connected yet. It scans every ' +
         '2 seconds, so it normally takes under five.\n' +
         'This is probably NOT a missing installation - try the command again in a ' +
@@ -632,15 +659,15 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // This is the other half of the two-part setup: the server is clearly running (it is
     // throwing this), so what is missing is the extension, Chrome itself, or the connection
     // between them. Say which, and where to get it - the agent relays this text to the user.
-    if (bindFejl) {
+    if (bane.bindFejl) {
       throw new Error(
-        `The server could not open a port on 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bindFejl}\n` +
+        `The server could not open a port on 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bane.bindFejl}\n` +
         'This is NOT Chrome or the extension - it is the operating system or a firewall ' +
         'refusing the bind. Check whether something is blocking loopback ports.\n' +
         'Tell the user exactly that. Do NOT say the extension is missing.',
       );
     }
-    if (alleePorteOptaget) {
+    if (bane.alleePorteOptaget) {
       throw new Error(
         `All ports ${BASE_PORT}-${MAX_PORT} are taken right now, so this call got no port. ` +
         'This is NOT a problem with Chrome or the extension - they are working fine.\n' +
@@ -677,11 +704,11 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // browseren. Jeg meldte selv «gaten daekker alle veje paa én gang» - det gjorde den ikke.
     //
     // Kommandoen bindes til den forbindelse den blev sendt til, og svaret tjekkes mod den.
-    pending.set(id, { resolve, reject, timer, conn });
+    pending.set(id, { id, bane, conn, timer, resolve, reject });
     // pid = Claude Code-processen der ejer denne server. Udvidelsen bruger den til at
     // skelne 'samme chat, ny forbindelse' fra 'en anden chat' naar den adopterer sessioner.
-    harSendtKommando = true;
-    conn.ws.send(JSON.stringify({ id, method, params, pid: process.ppid }));
+    bane.harSendtKommando = true;
+    conn.ws.send(JSON.stringify({ id, method, params, pid: bane.medPid ? process.ppid : null }));
   });
 }
 
@@ -1269,7 +1296,7 @@ async function handleProvideFeedback(args) {
       'The user has to do it - chrome:// cannot be driven from here.',
     );
   }
-  if (!active && activePort === null) {
+  if (!active && standardBane.activePort === null) {
     // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
     // i stykker, og et fix-skridt her ville vaere en falsk alarm - se verdict 'idle'.
     findings.push('The browser has not been used in this chat yet, so there is no connection to measure. That is not an error.');
@@ -1321,7 +1348,7 @@ async function handleProvideFeedback(args) {
   //
   // Loesningen er ikke at binde en port her (et diagnose-vaerktoej skal ikke aendre
   // tilstand for at kunne maale den) - det er at sige praecis hvad der er tilfaeldet.
-  const ingenPortEndnu = activePort === null;
+  const ingenPortEndnu = standardBane.activePort === null;
   const verdict =
     (exts.length > 1 || profilAdvarsel) ? 'conflict'
     : (serverOutdated || extOutdated) ? 'outdated'
@@ -1344,7 +1371,7 @@ async function handleProvideFeedback(args) {
     extension_up_to_date: extOutdated === null ? null : !extOutdated,
     // #58: aabne forbindelser, ikke udvidelser - samme udvidelse i flere profiler giver flere forbindelser.
     extension_connections: liveConnections().length,
-    ws_port: activePort,
+    ws_port: standardBane.activePort,
     node: process.version,
     platform: `${process.platform} ${process.arch}`,
   };
@@ -1444,14 +1471,16 @@ function gracefulShutdown(reason, code = 0) {
 
   // Stop timers so they can't re-enter gracefulShutdown
   if (parentCheck) clearInterval(parentCheck);
-  if (heartbeat) clearInterval(heartbeat);
   if (tomgangsvagt) clearInterval(tomgangsvagt);
 
   // Close WS with explicit close-frame so extension's onclose handler fires
-  for (const c of liveConnections()) {
-    try { c.ws.close(1000, 'mcp-shutdown'); } catch {}
+  for (const bane of baner) {
+    if (bane.heartbeat) clearInterval(bane.heartbeat);
+    for (const c of liveConnections(bane)) {
+      try { c.ws.close(1000, 'mcp-shutdown'); } catch {}
+    }
+    if (bane.wss) try { bane.wss.close(); } catch {}
   }
-  if (wss) try { wss.close(); } catch {}
 
   // 300ms grace for FIN-flush + extension session_disconnect cleanup
   setTimeout(() => process.exit(code), 300);
@@ -1461,8 +1490,10 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('exit', () => {
   // Safety net for direct process.exit calls that bypass gracefulShutdown
-  if (wss) try { wss.close(); } catch {}
-  for (const c of connections) try { c.ws.close(); } catch {}
+  for (const bane of baner) {
+    if (bane.wss) try { bane.wss.close(); } catch {}
+    for (const c of bane.connections) try { c.ws.close(); } catch {}
+  }
 });
 
 // ── Naar lukker serveren sin port? (MAALT 22/8) ──────────────────────────────

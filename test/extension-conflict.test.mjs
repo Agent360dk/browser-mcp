@@ -36,28 +36,25 @@ function udtraek(navn) {
 }
 
 function byg() {
-  const connections = new Set();
-  const src = ['cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions', 'forbindelsesAdvarsel', 'medForbindelsesNote']
+  const src = ['lavBane', 'cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions', 'forbindelsesAdvarsel', 'medForbindelsesNote']
     .map(udtraek).join('\n\n');
-  // laastForbindelse og harSendtKommando er modul-variable i index.js. De erklaeres
-  // her i den omsluttende scope, saa den udtrukne kildekode muterer PRAECIS de samme
-  // variable som i produktionen - ikke en kopi.
-  const fabrik = new Function('connections', `
-    let laastForbindelse = null, harSendtKommando = false;
+  // 1.31 (S1a): laasen, flaget harSendtKommando og forbindelserne bor paa BANEN. Standardbanen bygges her med kildens
+  // EGEN lavBane, saa den udtrukne kildekode muterer PRAECIS de felter produktionen har - ikke en kopi.
+  const fabrik = new Function(`
     // PARRINGSNOEGLE er ogsaa en modul-konstant i index.js, og liveConnections laeser den.
     // Den skal erklaeres her, ellers koerer den udtrukne kilde i en scope der ikke findes
     // i produktionen. null = ingen noegle, som er standarden.
     const PARRINGSNOEGLE = null;
-    let sidsteVisteForbindelsesAdvarsel = '';
-    let forbindelseSkiftet = false;
     ${src}
+    const standardBane = lavBane('default');
     return {
-      skiftet: () => { forbindelseSkiftet = true; },
+      connections: standardBane.connections,
+      skiftet: () => { standardBane.forbindelseSkiftet = true; },
       cmpVersion, liveConnections, activeConnection, distinctExtensions, forbindelsesAdvarsel, medForbindelsesNote,
-      sendKommando: () => { harSendtKommando = true; },
-      nyForbindelse: () => { if (!harSendtKommando) laastForbindelse = null; },
+      sendKommando: () => { standardBane.harSendtKommando = true; },
+      nyForbindelse: () => { if (!standardBane.harSendtKommando) standardBane.laastForbindelse = null; },
     };`);
-  return { connections, ...fabrik(connections) };
+  return fabrik();
 }
 
 const AABEN = 1, LUKKET = 3;
@@ -183,15 +180,15 @@ test('doede forbindelser taeller ikke med i konflikten', () => {
 test('serveren holder ikke laengere én enkelt socket-variabel', () => {
   assert.ok(!/^let extensionSocket = null;$/m.test(kilde),
     'extensionSocket er tilbage - hver ny forbindelse overskriver den igen');
-  assert.match(kilde, /const connections = new Set\(\)/, 'forbindelses-registret mangler');
+  assert.match(kilde, /connections: new Set\(\)/, 'forbindelses-registret mangler (paa banen, lavBane)');
 });
 
 test('terminate fra en inaktiv forbindelse lukker ikke serveren', () => {
   const blok = blokFor(kilde, 'terminate');
   assert.ok(blok, 'terminate-haandteringen findes');
-  assert.match(blok, /activeConnection\(\) !== conn/,
+  assert.match(blok, /activeConnection\(bane\) !== conn/,
     'uden denne gate kan en sidelaebende gammel udvidelse rive serveren ned');
-  const gateIdx = blok.indexOf('activeConnection() !== conn');
+  const gateIdx = blok.indexOf('activeConnection(bane) !== conn');
   const shutIdx = blok.indexOf('gracefulShutdown');
   assert.ok(gateIdx < shutIdx, 'gaten skal ligge FOER nedlukningen');
 });
@@ -216,7 +213,7 @@ test('serveren laeser haandtrykket og tjekker for konflikt bagefter', () => {
   // slutter hvor den NAESTE beskedtype begynder - ikke ved det foerste `return`, for
   // parringsgaten har sit eget.
   const blok = kilde.slice(i, kilde.indexOf("msg.type === '", i + 10));
-  assert.match(blok, /advarOmKonflikt\(conn\)/, 'konflikten tjekkes ikke naar versionen bliver kendt');
+  assert.match(blok, /advarOmKonflikt\(conn, bane\)/, 'konflikten tjekkes ikke naar versionen bliver kendt');
 });
 
 test('konflikten opdages allerede ved opkoblingen - uden haandtryk', () => {
@@ -235,7 +232,7 @@ test('konflikten opdages allerede ved opkoblingen - uden haandtryk', () => {
   const blok = kilde.slice(i, slut);
   assert.match(blok, /req\?\.headers\?\.origin/, 'Origin laeses ikke ved opkobling');
   assert.match(blok, /chrome-extension/, 'Origin-moenstret mangler');
-  assert.match(blok, /advarOmKonflikt\(conn\)/, 'der advares ikke ved opkobling');
+  assert.match(blok, /advarOmKonflikt\(conn, bane\)/, 'der advares ikke ved opkobling');
 });
 
 test('Origin-moenstret accepterer et aegte udvidelses-id og afviser skrald', () => {
@@ -297,12 +294,12 @@ test('doer den laaste forbindelse, vaelges der forfra', () => {
 });
 
 test('laasen findes i kilden og er ikke bare en kommentar', () => {
-  assert.match(kilde, /let laastForbindelse = null;/, 'laas-variablen mangler');
+  assert.match(kilde, /laastForbindelse: null,/, 'laas-feltet mangler paa banen');
   const i = kilde.indexOf('function activeConnection(');
   const blok = kilde.slice(i, i + 900);
-  assert.match(blok, /if \(laastForbindelse && laastForbindelse\.ws\.readyState === 1\) return laastForbindelse;/,
+  assert.match(blok, /if \(bane\.laastForbindelse && bane\.laastForbindelse\.ws\.readyState === 1\) return bane\.laastForbindelse;/,
     'laasen tjekkes ikke foerst i activeConnection');
-  assert.match(blok, /laastForbindelse = best;/, 'valget gemmes ikke');
+  assert.match(blok, /bane\.laastForbindelse = best;/, 'valget gemmes ikke');
   assert.match(kilde, /harSendtKommando = true;[\s\S]{0,120}conn\.ws\.send/,
     'flaget saettes ikke naar en kommando faktisk sendes');
 });
@@ -475,7 +472,7 @@ test('alle tre svarveje i vaerktoejskaldet gaar gennem medForbindelsesNote, og s
   assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => medForbindelsesNote\(await kaldVaerktoej\(request\)\)\);/);
   assert.equal((kilde.match(/setRequestHandler\(CallToolRequestSchema/g) || []).length, 1);
   assert.equal((kilde.match(/medForbindelsesNote\(/g) || []).length, 2, 'kun definitionen og indpakningen - ingen svarvej skal huske den selv');
-  assert.match(udtraek('advarOmKonflikt'), /const profiler = forbindelsesAdvarsel\(\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
+  assert.match(udtraek('advarOmKonflikt'), /const profiler = forbindelsesAdvarsel\(bane\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);
 });
 
 test('teksterne siger det samme som koden: antallet, ikke profilen, og id-pinningen skelner ikke profiler', async () => {
@@ -505,6 +502,6 @@ test('skifter serveren forbindelse, siger naeste svar det - én gang', () => {
 
 test('lukningen markerer skiftet, og stderr-advarslen nulstilles, naar der ikke laengere er dubletter', () => {
   const luk = kilde.slice(kilde.indexOf("afvisVentende('the extension disconnected');"), kilde.indexOf("afvisVentende('the extension disconnected');") + 700);
-  assert.match(luk, /if \(!forbindelsesAdvarsel\(\)\) sidsteProfilAdvarsel = '';/);
-  assert.match(luk, /if \(conn === laastForbindelse && harSendtKommando\) forbindelseSkiftet = true;/);
+  assert.match(luk, /if \(!forbindelsesAdvarsel\(bane\)\) bane\.sidsteProfilAdvarsel = '';/);
+  assert.match(luk, /if \(conn === bane\.laastForbindelse && bane\.harSendtKommando\) bane\.forbindelseSkiftet = true;/);
 });

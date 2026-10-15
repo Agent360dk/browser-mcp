@@ -57,7 +57,11 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
   const fabrik = new Function(
     'connections', 'PKG_VERSION', 'activePort', 'REPO_URL', 'ISSUE_TEMPLATES', 'npmLatestVersion', 'process',
     'appendFileSync', 'mkdirSync', 'dirname', 'join', 'homedir', 'Date',
-    `let laastForbindelse = null, harSendtKommando = false;
+    `// 1.31 (S1a): forbindelserne, laasen og porten bor paa standardbanen, bygget med kildens egen lavBane.
+    ${udtraek('lavBane')}
+    const standardBane = lavBane('default');
+    standardBane.activePort = activePort;
+    for (const c of connections) standardBane.connections.add(c);
     // PARRINGSNOEGLE er ogsaa en modul-konstant i index.js, og liveConnections laeser den.
     // Den skal erklaeres her, ellers koerer den udtrukne kilde i en scope der ikke findes
     // i produktionen. null = ingen noegle, som er standarden.

@@ -57,8 +57,8 @@ test('select_option melder sandt paa BEGGE grene', () => {
 test('terminate er gated paa den aktive forbindelse', () => {
   const blok = blokFor(srv, 'terminate');
   assert.ok(blok, 'terminate-haandteringen findes');
-  assert.match(blok, /activeConnection\(\)/,
-    'terminate skal sammenholdes med den aktive forbindelse, ikke tages fra hvem som helst');
+  assert.match(blok, /activeConnection\(bane\)/,
+    'terminate skal sammenholdes med den aktive forbindelse paa sin egen bane, ikke tages fra hvem som helst');
 });
 
 // ── Laasen findes for at 21 af 43 vaerktoejer ikke faldt paa at to udvidelser
@@ -66,8 +66,8 @@ test('terminate er gated paa den aktive forbindelse', () => {
 //    saa laenge intet arbejde er i gang - ellers kan en fejlagtig foerste-forbindelse
 //    spaerre for den rigtige udvidelse resten af sessionen.
 test('forbindelses-laasen gives fri saa laenge ingen kommando er sendt', () => {
-  assert.match(srv, /let harSendtKommando = false;/, 'flaget skal findes');
-  assert.match(srv, /if \(!harSendtKommando\) laastForbindelse = null;/,
+  assert.match(srv, /harSendtKommando: false,/, 'flaget skal findes (paa banen, lavBane)');
+  assert.match(srv, /if \(!bane\.harSendtKommando\) bane\.laastForbindelse = null;/,
     'uden den her linje kan en tilfaeldig foerste forbindelse spaerre for den rigtige');
   assert.match(srv, /harSendtKommando = true/,
     'flaget skal saettes naar der faktisk sendes en kommando');
