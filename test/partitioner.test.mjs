@@ -470,7 +470,13 @@ async function aegteServer(env = {}) {
   srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
   const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
   skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'p', version: '0' } } });
-  assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 5000));
+  // Svarer serveren ikke, draebes den, foer proeven fejler: proeven har endnu intet `luk` at kalde, og en levende server
+  // holder proeveprocessen i live efter sidste proeve (maalt 15/10, belastning ~140: initialize kom ikke paa 5 s, tre
+  // servere overlevede, og koerslen afsluttede aldrig). 20 s rummer en langsom start inden for proevens 60 s.
+  if (!(await venteTil(() => ud.find((x) => x.id === 1), 20000))) {
+    srv.kill(); rmSync(hjem, { recursive: true, force: true });
+    assert.fail(`serveren svarede ikke paa initialize: ${fejl.slice(-300)}`);
+  }
   skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
   let nr = 10;
   const raa = (method, params) => { const id = ++nr; skriv({ jsonrpc: '2.0', id, method, params }); return id; };
