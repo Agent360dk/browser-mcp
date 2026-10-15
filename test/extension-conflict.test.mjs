@@ -36,7 +36,7 @@ function udtraek(navn) {
 }
 
 function byg() {
-  const src = ['lavBane', 'cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions', 'forbindelsesAdvarsel', 'medForbindelsesNote']
+  const src = ['lavBane', 'cmpVersion', 'liveConnections', 'activeConnection', 'distinctExtensions', 'forbindelsesAdvarsel', 'medForbindelsesNote', 'profilKandidater']
     .map(udtraek).join('\n\n');
   // 1.31 (S1a): laasen, flaget harSendtKommando og forbindelserne bor paa BANEN. Standardbanen bygges her med kildens
   // EGEN lavBane, saa den udtrukne kildekode muterer PRAECIS de felter produktionen har - ikke en kopi.
@@ -49,9 +49,14 @@ function byg() {
     const standardBane = lavBane('default');
     return {
       connections: standardBane.connections,
-      skiftet: () => { standardBane.forbindelseSkiftet = true; },
+      valgNote: (t) => { standardBane.valgNote = t; },
       cmpVersion, liveConnections, activeConnection, distinctExtensions, forbindelsesAdvarsel, medForbindelsesNote,
-      sendKommando: () => { standardBane.harSendtKommando = true; },
+      // Som sendTilBane: flaget, og (1.31) laasen til den installation kommandoen gik til.
+      sendKommando: () => {
+        standardBane.harSendtKommando = true;
+        const c = activeConnection();
+        if (c && !standardBane.laas) standardBane.laas = { instans: c.instance || null, conn: c };
+      },
       nyForbindelse: () => { if (!standardBane.harSendtKommando) standardBane.laastForbindelse = null; },
     };`);
   return fabrik();
@@ -284,23 +289,25 @@ test('foer foerste kommando maa en bedre udvidelse godt komme til', () => {
   assert.equal(b.activeConnection(), bedre, 'ingen faner i spil endnu - den bedre skal vinde');
 });
 
-test('doer den laaste forbindelse, vaelges der forfra', () => {
+// 1.31 (S3, #58): her stod «doer den laaste forbindelse, vaelges der forfra» - og kommandoen gik stille til en anden profil.
+// Nu er banen laast til installationen: activeConnection svarer null, og kaldet faar profile-disconnected (test/profilvalg).
+test('doer den laaste forbindelse, vaelges der IKKE stille en anden', () => {
   const b = byg();
   const foerste = forbind(b.connections, { version: null, id: 'A' });
   b.activeConnection(); b.sendKommando();
   foerste.ws.readyState = LUKKET;                     // udvidelsen forsvandt
-  const ny = forbind(b.connections, { version: '1.28.0', id: 'B' });
-  assert.equal(b.activeConnection(), ny, 'en doed laas maa ikke blokere genopretning');
+  forbind(b.connections, { version: '1.28.0', id: 'B' });
+  assert.equal(b.activeConnection(), null, 'en anden forbindelse overtog stille efter den laaste');
 });
 
 test('laasen findes i kilden og er ikke bare en kommentar', () => {
   assert.match(kilde, /laastForbindelse: null,/, 'laas-feltet mangler paa banen');
-  const i = kilde.indexOf('function activeConnection(');
-  const blok = kilde.slice(i, i + 900);
+  const blok = udtraek('activeConnection');
   assert.match(blok, /if \(bane\.laastForbindelse && bane\.laastForbindelse\.ws\.readyState === 1\) return bane\.laastForbindelse;/,
     'laasen tjekkes ikke foerst i activeConnection');
   assert.match(blok, /bane\.laastForbindelse = best;/, 'valget gemmes ikke');
-  assert.match(kilde, /harSendtKommando = true;[\s\S]{0,120}conn\.ws\.send/,
+  // 1.31 (S3): mellem flaget og afsendelsen saettes laasen til installationen.
+  assert.match(kilde, /harSendtKommando = true;[\s\S]{0,400}?if \(!bane\.laas\) \{[\s\S]{0,900}?conn\.ws\.send/,
     'flaget saettes ikke naar en kommando faktisk sendes');
 });
 
@@ -491,17 +498,19 @@ test('teksterne siger det samme som koden: antallet, ikke profilen, og id-pinnin
 
 // R62 (Opus, maalt mod den aegte server): lukkede den forbindelse serveren styrede, gik kommandoerne stille videre til en
 // anden profil, og fanelisten var tom. Og stderr tav ved en ny forbindelse efter en lukning.
-test('skifter serveren forbindelse, siger naeste svar det - én gang', () => {
-  const { connections, medForbindelsesNote, skiftet } = byg();
+// 1.31 (S3): noten om et skift, der allerede var sket, er vaek - banen skifter ikke stille (test/profilvalg.test.mjs).
+// Noten om valget ved foerste kommando siges én gang.
+test('valget ved foerste kommando siges i naeste svar - én gang', () => {
+  const { connections, medForbindelsesNote, valgNote } = byg();
   forbind(connections, { id: 'a' });
-  skiftet();
+  valgNote('2 Browser MCP installations are connected to this chat');
   const tekst = () => medForbindelsesNote({ content: [{ type: 'text', text: '{}' }] }).content.map((c) => c.text).join('\n');
-  assert.match(tekst(), /The extension connection this server was driving has closed, and commands now go to another one - possibly another Chrome profile or browser\. Tabs opened before are not in it\./);
-  assert.doesNotMatch(tekst(), /was driving has closed/, 'beskeden gentages');
+  assert.match(tekst(), /2 Browser MCP installations are connected to this chat/);
+  assert.doesNotMatch(tekst(), /installations are connected/, 'noten gentages');
+  assert.doesNotMatch(kilde, /commands now ' \+\s*'go to another one/, 'den gamle efter-skiftet-note er tilbage');
 });
 
-test('lukningen markerer skiftet, og stderr-advarslen nulstilles, naar der ikke laengere er dubletter', () => {
+test('stderr-advarslen nulstilles ved en lukning, naar der ikke laengere er dubletter', () => {
   const luk = kilde.slice(kilde.indexOf("afvisVentende('the extension disconnected');"), kilde.indexOf("afvisVentende('the extension disconnected');") + 700);
   assert.match(luk, /if \(!forbindelsesAdvarsel\(bane\)\) bane\.sidsteProfilAdvarsel = '';/);
-  assert.match(luk, /if \(conn === bane\.laastForbindelse && bane\.harSendtKommando\) bane\.forbindelseSkiftet = true;/);
 });

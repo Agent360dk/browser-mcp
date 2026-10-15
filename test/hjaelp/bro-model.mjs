@@ -25,14 +25,19 @@ export function broKilde() {
   return kilde.slice(fra, til);
 }
 
-/** Starter broen med det givne env. k(kode) koerer kode i broens scope. */
-export function broModel(env = {}) {
+/**
+ * Starter broen med det givne env. k(kode) koerer kode i broens scope.
+ * `genforsoegMs` korter broens genforsoeg (5 x 1500 ms, plus 5 til hvis porten lige er aabnet) ned, saa en proeve af et
+ * udtoemt budget ikke tager 15 s. Kun de 1500 ms aendres; alle andre frister er broens egne.
+ */
+export function broModel(env = {}, { genforsoegMs = null } = {}) {
   const log = [];
   const timere = new Set();
   const ctx = {
     process: { env: { ...env }, ppid: 4242, stderr: { write: (t) => { log.push(String(t)); return true; } } },
     WebSocketServer: krav('ws').WebSocketServer,
-    setTimeout, clearTimeout,
+    setTimeout: (f, ms, ...a) => setTimeout(f, genforsoegMs && ms === 1500 ? genforsoegMs : ms, ...a),
+    clearTimeout,
     // Broens egne intervaller (tomgangsvagten, hjerteslaget) maa ikke holde proeveprocessen i live.
     setInterval: (f, ms) => { const t = setInterval(f, ms); t.unref?.(); timere.add(t); return t; },
     clearInterval: (t) => { timere.delete(t); clearInterval(t); },

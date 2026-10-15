@@ -1,0 +1,412 @@
+/**
+ * 1.31 skive S3 (#58): BROWSER_MCP_PROFILE, valget af installation og laasen til den.
+ *
+ * Reglerne (DESIGN-1.30.3-og-1.31-SAMLET.md, «1.31», godkendt af begge bedoemmere i R107):
+ *  - BROWSER_MCP_PROFILE ugyldig -> profile-invalid, intet sendt.
+ *  - Med vaelger: 0 match -> vent inden for genforsoegsbudgettet -> profile-not-connected (profile-routing-unsupported hvis
+ *    kun udvidelser fra foer 1.31 er forbundet); 1 -> laas til INSTANSEN; 2+ -> profile-ambiguous, intet sendt.
+ *  - Uden vaelger: dagens foerste valg, en note ved flere installationer, derefter laas til instansen.
+ *  - Laast instans afbryder -> igangvaerende afvises straks; naeste kald profile-disconnected, sent:false; foerst kaldet
+ *    derefter vaelger paa ny; kommer samme instans tilbage, fortsaettes uden fejl. Aldrig et stille skift.
+ * Proeverne koerer den AEGTE bro (test/hjaelp/bro-model.mjs) med falske udvidelser paa rigtige porte; genforsoeget er kortet
+ * fra 1500 til 100 ms, saa et udtoemt budget tager ~1 s.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { broModel, falskUdvidelse, vent, venteTil } from './hjaelp/bro-model.mjs';
+import { ledigtSpaend } from './hjaelp/ledigt-spaend.mjs';
+
+const rod = dirname(dirname(fileURLToPath(import.meta.url)));
+const ID = 'a'.repeat(32);
+const I1 = '1111111111111111', I2 = '2222222222222222', I3 = '3333333333333333';
+
+async function bro(env = {}) {
+  const base = await ledigtSpaend(5);
+  const m = broModel({ BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4), ...env }, { genforsoegMs: 100 });
+  return m;
+}
+async function port(m) {
+  assert.equal(await m.k('sikrePort(standardBane)'), true);
+  return m.k('standardBane.activePort');
+}
+
+let n = 0;
+/** Et vaerktoejskald paa standardbanen, som det gaar gennem sendToExtension. Svaret er { ok } eller { fejl, svar }. */
+function kald(m) {
+  const id = '__k' + (++n);
+  return new Promise((ok) => {
+    m.ctx[id] = (r) => ok(JSON.parse(JSON.stringify(r)));
+    m.k(`sendToExtension('list_tabs', {}, 5000).then((r) => ${id}({ ok: r }), (e) => ${id}({ fejl: e.message, svar: e.svar || null }))`);
+  });
+}
+
+/** En 1.31-udvidelse, der svarer paa hver kommando med sit eget navn. */
+async function installation(p, navn, { instance = null, profile = null, version = '1.31.0', id = ID } = {}) {
+  const hello = { type: 'hello', extensionId: id, version, name: null };
+  if (instance !== undefined) hello.instance = instance;
+  if (profile !== undefined) hello.profile = profile;
+  const e = await falskUdvidelse(p, { id, hello });
+  e.navn = navn;
+  e.ws.on('message', (d) => { const msg = JSON.parse(String(d)); if (msg.method && !e.stum) e.svar(msg.id, { fra: navn }); });
+  return e;
+}
+const hilst = (m, antal) => venteTil(() => m.k('liveConnections(standardBane).filter((c) => c.harHilst).length') === antal);
+
+test('BROWSER_MCP_PROFILE ugyldig: profile-invalid, sent:false - intet sendes, heller ikke til en forbundet udvidelse', async () => {
+  for (const vaerdi of ['har mellemrum', 'x'.repeat(33), 'æøå', 'a/b']) {
+    const m = await bro({ BROWSER_MCP_PROFILE: vaerdi });
+    try {
+      const p = await port(m);
+      const e = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+      assert.ok(await hilst(m, 1));
+      const r = await kald(m);
+      assert.equal(r.svar?.error, 'profile-invalid', `${vaerdi}: ${JSON.stringify(r)}`);
+      assert.equal(r.svar.sent, false);
+      assert.equal(e.kom.length, 0, 'kommandoen blev sendt trods en ugyldig vaelger');
+      assert.doesNotMatch(JSON.stringify(r.svar), new RegExp(vaerdi.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')), 'den ugyldige vaerdi gentages i svaret');
+    } finally { m.luk(); }
+  }
+});
+
+test('vaelger med ét match: kommandoen gaar til den installation - ikke til den nyeste eller den sidst forbundne', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde', version: '1.31.0' });
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem', version: '9.9.9' });
+    const c = await installation(p, 'C', { instance: null, profile: null, version: '1.30.2' });
+    assert.ok(await hilst(m, 3));
+    const r = await kald(m);
+    assert.deepEqual(r.ok, { fra: 'A' }, JSON.stringify(r));
+    assert.deepEqual([b.kom.length, c.kom.length], [0, 0]);
+    assert.equal(m.k('standardBane.laas.instans'), I1, 'banen blev ikke laast til instansen');
+    a.luk(); b.luk(); c.luk();
+  } finally { m.luk(); }
+});
+
+test('vaelger uden match: der ventes inden for budgettet, saa profile-not-connected med de forbundne - intet sendt', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 1));
+    const t0 = Date.now();
+    const r = await kald(m);
+    assert.ok(Date.now() - t0 >= 400, 'svarede uden at vente paa at profilen forbandt');
+    assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
+    assert.equal(r.svar.sent, false);
+    assert.equal(r.svar.profile, 'arbejde');
+    assert.deepEqual(r.svar.connected.map((x) => [x.profile, x.instance]), [['hjem', I2]]);
+    assert.equal(b.kom.length, 0, 'kommandoen gik til en anden profil');
+  } finally { m.luk(); }
+});
+
+test('vaelger: profilen, der forbinder mens kaldet venter, faar kommandoen', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    const svar = kald(m);
+    await vent(300);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    const r = await svar;
+    assert.deepEqual(r.ok, { fra: 'A' }, JSON.stringify(r));
+    assert.equal(b.kom.length, 0);
+  } finally { m.luk(); }
+});
+
+test('vaelger: kun udvidelser fra foer 1.31 forbundet -> profile-routing-unsupported', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const g = await installation(p, 'G', { instance: undefined, profile: undefined, version: '1.30.2' });
+    assert.ok(await hilst(m, 1));
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-routing-unsupported', JSON.stringify(r));
+    assert.equal(r.svar.sent, false);
+    assert.equal(g.kom.length, 0);
+  } finally { m.luk(); }
+});
+
+test('vaelger: en forbindelse med betegnelsen men et ugyldigt installations-id kan ikke vaelges', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const x = await installation(p, 'X', { instance: 'IKKE-HEX', profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-routing-unsupported', JSON.stringify(r));
+    assert.equal(x.kom.length, 0, 'en forbindelse uden gyldig identitet blev valgt ud fra betegnelsen alene');
+  } finally { m.luk(); }
+});
+
+test('laast: den laaste installation forbundet to gange paa én gang -> profile-ambiguous, intet sendt', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    const a2 = await installation(p, 'A2', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 2));
+    m.k('standardBane.laastForbindelse = null');   // som efter en genforbindelse: valget udregnes forfra
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+    assert.deepEqual([a.kom.length, a2.kom.length], [1, 0]);
+  } finally { m.luk(); }
+});
+
+test('vaelger: to installationer med samme betegnelse -> profile-ambiguous straks, intet sendt til nogen', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+    assert.ok(await hilst(m, 2));
+    const t0 = Date.now();
+    const r = await kald(m);
+    assert.ok(Date.now() - t0 < 400, 'ventede foer profile-ambiguous - der er intet at vente paa');
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+    assert.equal(r.svar.sent, false);
+    assert.deepEqual(r.svar.candidates.map((c) => c.instance).sort(), [I1, I2]);
+    assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
+  } finally { m.luk(); }
+});
+
+test('vaelger: en betegnelse, der kommer til foer foerste kommando (omdoebning), giver profile-ambiguous', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 2));
+    m.k('activeConnection(standardBane)');               // et opslag uden kommando (fx browser_provide_feedback)
+    b.send({ type: 'hello', extensionId: ID, version: '1.31.0', name: null, instance: I2, profile: 'arbejde' });
+    assert.ok(await venteTil(() => m.k('profilKandidater(standardBane).length') === 2));
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+    assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
+  } finally { m.luk(); }
+});
+
+test('samme instans paa to forbindelser (kopieret profil) -> profile-ambiguous', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    await installation(p, 'A2', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 2));
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+  } finally { m.luk(); }
+});
+
+test('laast: en ny installation med samme betegnelse efter foerste kommando tager ikke over - og giver ingen fejl', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde', version: '9.9.9' });
+    assert.ok(await hilst(m, 2));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' }, 'banen skiftede installation');
+    // Omdoebes den laaste installation, flytter laasen heller ikke.
+    a.send({ type: 'hello', extensionId: ID, version: '1.31.0', name: null, instance: I1, profile: 'andet' });
+    await vent(100);
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' }, 'en omdoebning flyttede laasen');
+    assert.equal(b.kom.length, 0);
+  } finally { m.luk(); }
+});
+
+test('laast instans afbryder: igangvaerende afvises straks; naeste kald profile-disconnected uden at sende; kaldet derefter vaelger paa ny', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    // A svarer ikke paa det naeste kald og forsvinder midt i det.
+    a.stum = true;
+    const igang = kald(m);
+    assert.ok(await venteTil(() => a.kom.length === 2), 'det andet kald naaede ikke frem til A');
+    const t0 = Date.now();
+    a.luk();
+    const r0 = await igang;
+    assert.ok(Date.now() - t0 < 1000);
+    assert.match(r0.fejl, /disappeared while the command was running/);
+    // En anden installation med samme betegnelse er forbundet nu.
+    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    const r1 = await kald(m);
+    assert.equal(r1.svar?.error, 'profile-disconnected', JSON.stringify(r1));
+    assert.equal(r1.svar.sent, false);
+    assert.deepEqual(r1.svar.lost, { profile: 'arbejde', instance: I1 });
+    assert.deepEqual(r1.svar.connected.map((x) => x.instance), [I2]);
+    assert.equal(b.kom.length, 0, 'kommandoen gik stille til en anden installation');
+    const r2 = await kald(m);
+    assert.deepEqual(r2.ok, { fra: 'B' }, 'kaldet efter fejlen valgte ikke paa ny');
+    // Fejlen kommer én gang: naeste kald fortsaetter med B.
+    assert.deepEqual((await kald(m)).ok, { fra: 'B' });
+  } finally { m.luk(); }
+});
+
+test('samme instans tilbage paa en ny forbindelse: kaldet fortsaetter uden fejl', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    a.luk();
+    assert.ok(await hilst(m, 0));
+    const svar = kald(m);
+    await vent(250);
+    await installation(p, 'A-igen', { instance: I1, profile: 'arbejde' });
+    const r = await svar;
+    assert.deepEqual(r.ok, { fra: 'A-igen' }, JSON.stringify(r));
+  } finally { m.luk(); }
+});
+
+test('uden vaelger: dagens foerste valg, én note ved flere installationer, og laasen holder ved afbrydelse', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde', version: '1.31.0' });
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem', version: '1.31.1' });
+    assert.ok(await hilst(m, 2));
+    assert.deepEqual((await kald(m)).ok, { fra: 'B' }, 'dagens regel (nyeste version) skal gaelde foerste valg');
+    const note = () => m.k("medForbindelsesNote({ content: [] })").content.map((c) => c.text).join('');
+    assert.match(note(), /2 Browser MCP installations are connected to this chat .* It now drives profile "hjem" \(instance 2222222222222222\) and stays with it/);
+    assert.equal(note(), '', 'noten gentages');
+    b.luk();
+    assert.ok(await hilst(m, 1));
+    const r1 = await kald(m);
+    assert.equal(r1.svar?.error, 'profile-disconnected', JSON.stringify(r1));
+    assert.equal(a.kom.length, 0, 'uden vaelger gik kommandoen stille til den anden profil');
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+  } finally { m.luk(); }
+});
+
+test('uden vaelger og kun én installation: ingen note', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    assert.equal(m.k("medForbindelsesNote({ content: [] })").content.length, 0);
+  } finally { m.luk(); }
+});
+
+test('en laast udvidelse fra foer 1.31 kan ikke genkendes: naeste kald profile-disconnected straks, saa vaelges der paa ny', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const g = await installation(p, 'G', { instance: undefined, profile: undefined, version: '1.30.2' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'G' });
+    g.luk();
+    const h = await installation(p, 'H', { instance: undefined, profile: undefined, version: '1.30.2' });
+    assert.ok(await hilst(m, 1));
+    const t0 = Date.now();
+    const r1 = await kald(m);
+    assert.ok(Date.now() - t0 < 400, 'ventede paa en forbindelse, der aldrig kan komme tilbage');
+    assert.equal(r1.svar?.error, 'profile-disconnected', JSON.stringify(r1));
+    assert.match(r1.svar.note, /before 1\.31 cannot be recognised/);
+    assert.equal(h.kom.length, 0);
+    assert.deepEqual((await kald(m)).ok, { fra: 'H' });
+  } finally { m.luk(); }
+});
+
+test('naar porten slippes (sidste fane lukket), holder laasen til installationen - en udvidelse fra foer 1.31 vaelges forfra', async () => {
+  const m = await bro({});
+  try {
+    let p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde', version: '1.31.0' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    m.k("frigivPort(standardBane, 'proeve: sidste fane lukket')");
+    a.luk();
+    p = await port(m);
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem', version: '9.9.9' });
+    await installation(p, 'A-igen', { instance: I1, profile: 'arbejde', version: '1.31.0' });
+    assert.ok(await hilst(m, 2));
+    assert.deepEqual((await kald(m)).ok, { fra: 'A-igen' }, 'efter en ny port tog banen en anden profil');
+    assert.equal(b.kom.length, 0);
+    // Foer 1.31: laasen slippes, som i 1.30.2.
+    m.k('standardBane.laas = { instans: null, conn: standardBane.laastForbindelse }');
+    m.k("frigivPort(standardBane, 'proeve')");
+    assert.equal(m.k('standardBane.laas'), null);
+  } finally { m.luk(); }
+});
+
+test('advarslen om samme udvidelse flere gange gaelder kun forbindelser, der ikke melder en installation', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 2));
+    assert.equal(m.k('forbindelsesAdvarsel(standardBane)'), null, '1.31-installationer kan skelnes - ingen grund til at advare');
+    await installation(p, 'G', { instance: undefined, profile: undefined, version: '1.30.2' });
+    assert.ok(await hilst(m, 3));
+    assert.match(m.k('forbindelsesAdvarsel(standardBane)'), /cannot tell which profile/);
+  } finally { m.luk(); }
+});
+
+test('BROWSER_MCP_EXTENSION_ID og BROWSER_MCP_PROFILE gaelder sammen: en anden udvidelse med samme betegnelse kommer ikke i betragtning', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde', BROWSER_MCP_EXTENSION_ID: ID });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    try { await installation(p, 'X', { instance: I3, profile: 'arbejde', id: 'b'.repeat(32) }); } catch { /* afvist ved opkobling */ }
+    assert.ok(await hilst(m, 1));
+    await vent(100);
+    assert.deepEqual((await kald(m)).ok, { fra: 'A' });
+    assert.equal(a.kom.length, 1);
+  } finally { m.luk(); }
+});
+
+// Fejlsvaret naar agenten som JSON med isError - mod den aegte server over stdio.
+test('den aegte server svarer valgets fejl som JSON med isError (profile-invalid og profile-ambiguous)', async () => {
+  for (const [env, forventet, udvidelser] of [
+    [{ BROWSER_MCP_PROFILE: 'ikke gyldig' }, 'profile-invalid', 0],
+    [{ BROWSER_MCP_PROFILE: 'arbejde' }, 'profile-ambiguous', 2],
+  ]) {
+    const base = await ledigtSpaend(5);
+    const srv = spawn(process.execPath, [join(rod, 'mcp-server', 'index.js')], {
+      env: { ...process.env, BROWSER_MCP_TOKEN: '', BROWSER_MCP_EXTENSION_ID: '', ...env,
+        BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4) },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    try {
+      let fejl = ''; const ud = []; let rest = '';
+      srv.stderr.on('data', (d) => { fejl += d; });
+      srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
+      const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
+      skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'p', version: '0' } } });
+      assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 5000));
+      skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
+      // Kaldet binder porten og venter inden for budgettet; de to installationer forbinder imens, og saa er svaret
+      // profile-ambiguous straks.
+      skriv({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'browser_list_tabs', arguments: {} } });
+      if (udvidelser) {
+        const p = Number((await venteTil(() => /listening on ws:\/\/127\.0\.0\.1:(\d+)/.exec(fejl), 5000))[1]);
+        await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+        await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+      }
+      const r = await venteTil(() => ud.find((x) => x.id === 2), 20000);
+      assert.ok(r, 'intet svar');
+      assert.equal(r.result.isError, true, JSON.stringify(r));
+      const j = JSON.parse(r.result.content[0].text);
+      assert.equal(j.error, forventet);
+      assert.equal(j.sent, false);
+      if (udvidelser) assert.match(fejl, /listening/);
+      else assert.match(fejl, /BROWSER_MCP_PROFILE is not a valid profile name/);
+    } finally { srv.kill(); }
+  }
+});
