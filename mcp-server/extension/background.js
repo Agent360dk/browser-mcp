@@ -240,7 +240,6 @@ async function evictOldestTabs(session, justAddedTabId) {
 async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   const session = getSession(port);
   session.tabIds.add(tabId);
-  if (session.gen) session.faneGen.set(tabId, session.gen);   // 1.32 (S4): fanen hoerer til den forbindelse, der aabnede den
   // Sessionen lever igen — aflys en eventuel port-frigivelse (se tabs.onRemoved).
   chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
 
@@ -248,6 +247,8 @@ async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   if (session.tabIds.size > MAX_TABS_PER_SESSION) {
     await evictOldestTabs(session, tabId);
   }
+  // 1.32 (S4): fanen hoerer til den forbindelse (generation), der aabnede den - se releaseSession.
+  if (session.gen && session.tabIds.has(tabId)) session.faneGen.set(tabId, session.gen);
 
   // R57 (Opus, maalt i Chrome): chrome.tabs.group flytter fanen ind i gruppens vindue. For en fane i sit eget vindue
   // (navigate eget_vindue) betoed det, at fanen blev flyttet tilbage til sessionens foerste vindue, og det nye vindue
@@ -395,7 +396,7 @@ function persistSessions() {
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
       // 1.32 (S4): uden disse kan en frigivelse fra en gammel forbindelse efter en genstart ikke kende sine egne faner
       gen: session.gen ?? null,
-      faneGen: Object.fromEntries(session.faneGen || []),
+      faneGen: Object.fromEntries([...(session.faneGen || [])].filter(([t]) => session.tabIds.has(t))),
     };
   }
   chrome.storage.local.set({ sessions: data });
