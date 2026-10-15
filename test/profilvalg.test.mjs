@@ -671,9 +671,11 @@ test('R117 Astra 3: et koldt kald uden profilmatch tager ca. 17,5 s (2,5 s + dob
     const r = await svar;
     const ms = Date.now() - t0;
     assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
-    // R119: nedre graense 17.000 ms fanger en ventetid paa 2,0 s eller mindre (2,0 s giver ca. 17,0 s); belastning kan kun
-    // goere det laengere. Den oevre graense (20.000 ms) fanger en fordoblet ventetid (5 s giver ca. 20 s).
-    assert.ok(ms > 17000 && ms < 20000, `ventetiden var ${ms} ms`);
+    // R120 (maalt): nedre graense 17.000 ms fanger kun en tydeligt kortere ventetid - 1,8 og 2,0 s bestod under belastning
+    // (17.016 og 17.300 ms). Den oevre graense fanger en haengning eller et fordoblet budget; 20.000 ms blev overskredet af
+    // den korrekte 2,5 s under haard belastning (20.311 ms), saa den er 25.000. Selve graensen ved 2,5 s - ogsaa en fordoblet
+    // ventetid (T7) - vogtes af R119-graenseproeven (>= 2450 og < 3600 ms).
+    assert.ok(ms > 17000 && ms < 25000, `ventetiden var ${ms} ms`);
     for (const f of ['README.md', 'CHANGELOG.md']) {
       assert.match(readFileSync(join(rod, f), 'utf8'), /up to about 17\.5 seconds/, `${f} siger ikke den maalte ventetid`);
     }

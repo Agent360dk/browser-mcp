@@ -18,6 +18,8 @@ on:
 jobs:
   static:
     runs-on: ubuntu-latest
+    # R120: en proeve der haenger, skal ikke holde jobbet i GitHubs standard paa 6 timer. Suiten tager ca. 5 min.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +43,7 @@ jobs:
   # symlinks og hardlinks. Naar jobbet er groent, flyttes det ind i matrixen ovenfor.
   andre-platforme:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     continue-on-error: true
     strategy:
       fail-fast: false

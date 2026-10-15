@@ -35,11 +35,12 @@ export function broKilde() {
 export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = {}) {
   const log = [];
   const timere = new Set();
+  const engang = new Set();
   const ctx = {
     process: { env: { ...env }, ppid: 4242, stderr: { write: (t) => { log.push(String(t)); return true; } } },
     WebSocketServer: krav('ws').WebSocketServer,
-    setTimeout: (f, ms, ...a) => setTimeout(f, genforsoegMs && ms === 1500 ? genforsoegMs : ms, ...a),
-    clearTimeout,
+    setTimeout: (f, ms, ...a) => { const t = setTimeout((...x) => { engang.delete(t); f(...x); }, genforsoegMs && ms === 1500 ? genforsoegMs : ms, ...a); engang.add(t); return t; },
+    clearTimeout: (t) => { engang.delete(t); clearTimeout(t); },
     // Broens egne intervaller (tomgangsvagten, hjerteslaget) maa ikke holde proeveprocessen i live.
     setInterval: (f, ms) => { const t = setInterval(f, ms); t.unref?.(); timere.add(t); return t; },
     clearInterval: (t) => { timere.delete(t); clearInterval(t); },
@@ -65,6 +66,7 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
       try { k('frigivPort("proeven er slut")'); } catch {}
     }
     for (const t of timere) clearInterval(t);
+    for (const t of engang) clearTimeout(t);
     for (const u of klienter) u.luk();
     klienter.clear();
     modeller.delete(model);
@@ -77,9 +79,10 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
 // R119 (mutant P21/P22 hang i over 2 timer under mutantkoerslen 3f8d1cd): en proeve maa aldrig vente uden frist. Tre vaern:
 //  1. proeve()  - hver proeve faar en frist (standard 90 s); fejler den, bliver den roed i stedet for at haenge.
 //  2. falskUdvidelse - forbindelsen skal aabne inden for 5 s, ellers kastes der.
-//  3. after()   - naar filen er faerdig, ryddes ALT, der kan holde processen i live: broernes porte og timere, de falske
-//                 udvidelser og de aegte servere startet med sporProces() - ogsaa naar en proeve blev afbrudt af sin frist,
-//                 og dens egen finally aldrig naaede at rydde op.
+//  3. after()   - naar filen er faerdig, ryddes det proeverne selv har startet: broernes porte, intervaller og engangstimere
+//                 (luk(); R120: ogsaa setTimeout, ellers levede processen op til ventetidens laengde efter en afbrudt proeve),
+//                 de falske udvidelser og de aegte servere startet med sporProces() - ogsaa naar en proeve blev afbrudt af sin
+//                 frist, og dens egen finally aldrig naaede at rydde op. Timere en proeve selv saetter uden om broen, ryddes ikke.
 const modeller = new Set();
 const processer = new Set();
 export function proeve(navn, fn, frist = 90000) { return nodeTest(navn, { timeout: frist }, fn); }
