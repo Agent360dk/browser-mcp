@@ -463,11 +463,13 @@ test('mens close lukker fanerne, faar et nyt kald paa partitionen partition-clos
 // port, da installationen kom tilbage, og sendte sin kommando - efter at close havde svaret port_released: true. Den rigtige
 // udvidelse skanner hele spaendet (offscreen.js), saa den finder porten igen, ogsaa naar banen ikke laengere er i `baner`;
 // `tilbage` goer det samme for én port.
-function tilbage(port, { instance = I1, profile = 'arbejde' } = {}) {
+// R123: kun naar broen i denne proces lytter paa porten - suiten koerer filerne parallelt, og en sluppet port kan vaere taget
+// af en anden proeveprocess (maalt: en tredje forbindelse dukkede op i profilvalg.test.mjs).
+function tilbage(m, port, { instance = I1, profile = 'arbejde' } = {}) {
   const t = { kom: [], forbundet: null, stop: false };
   let i_gang = false;
   const skan = setInterval(async () => {
-    if (t.stop || t.forbundet || i_gang) return;
+    if (t.stop || t.forbundet || i_gang || !m.lytterPaa(port)) return;
     i_gang = true;
     try {
       const e = await falskUdvidelse(port, { id: ID, hello: { type: 'hello', extensionId: ID, version: '1.32.0', name: null, instance, profile } });
@@ -485,9 +487,6 @@ function tilbage(port, { instance = I1, profile = 'arbejde' } = {}) {
   t.luk = () => { t.stop = true; clearInterval(skan); t.forbundet?.luk(); };
   return t;
 }
-const lytter = (port) => new Promise((ok) => {
-  const s = createServer(); s.once('error', () => ok(true)); s.listen(port, '127.0.0.1', () => s.close(() => ok(false)));
-});
 
 test('close mens et kald venter paa forbindelse: kaldet faar partition-closed straks, binder ikke porten igen og sender intet (R121)', async () => {
   // Genforsoegsventen er her 60 s (serveren: 1,5 s): et svar kort efter close kan kun komme af, at lukningen afbroed den.
@@ -509,7 +508,7 @@ test('close mens et kald venter paa forbindelse: kaldet faar partition-closed st
     const foer = bindinger();
     const r = await luk(m, 'p1');
     assert.equal(r.ok?.port_released, true, JSON.stringify(r));
-    t = tilbage(p1.port);                             // installationen kommer tilbage og skanner porten
+    t = tilbage(m, p1.port);                             // installationen kommer tilbage og skanner porten
     // Hoejst 10 s: uden afbrydelse sover kaldet sine 60 s ud (og en mutant maa ikke goere proeven til en tidsudloeber).
     let frist;
     const v = await Promise.race([kaldet, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 10000); })]);
@@ -520,7 +519,7 @@ test('close mens et kald venter paa forbindelse: kaldet faar partition-closed st
     assert.equal(bindinger(), foer, 'kaldet bandt den lukkede partitions port igen');
     assert.deepEqual(t.kom.map((k) => k.method), [], 'en kommando blev sendt efter close');
     assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'den lukkede partition har en port igen');
-    assert.equal(await lytter(p1.port), false, 'der lytter noget paa den lukkede partitions port');
+    assert.equal(m.lytterPaa(p1.port), false, 'der lytter noget paa den lukkede partitions port');
   } finally { t?.luk(); m.luk(); }
 });
 
@@ -534,13 +533,13 @@ test('close mens new venter paa forbindelse: new svarer partition-closed og efte
     await vent(150);
     const r = await luk(m, 'p1');
     assert.equal(r.ok?.port_released, true, JSON.stringify(r));
-    t = tilbage(port);
+    t = tilbage(m, port);
     const v = await nyt;
     assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
     await vent(300);
     assert.deepEqual(t.kom.map((k) => k.method), [], 'new sendte sit list_tabs efter close');
     assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'den lukkede partition har en port igen');
-    assert.equal(await lytter(port), false, 'der lytter noget paa den lukkede partitions port');
+    assert.equal(m.lytterPaa(port), false, 'der lytter noget paa den lukkede partitions port');
     assert.deepEqual(JSON.parse(JSON.stringify(m.k('partitionsListe()').map((x) => [x.partition, x.state, x.port]))), [['p1', 'closed', null]]);
   } finally { t?.luk(); m.luk(); }
 });
@@ -580,7 +579,7 @@ test('close, mens et kald binder partitionens port igen: porten slippes, naar bi
     assert.equal(lukket.ok?.port_released, false, JSON.stringify(lukket));
     assert.equal(m.k('partitioner.get("p1").bane.activePort'), null, 'bindingen, kaldet startede, efterlod en port');
     const bundne = m.log.filter((l) => /listening on ws/.test(l)).map((l) => Number(/:(\d+)/.exec(l)[1]));
-    for (const port of new Set(bundne)) assert.equal(await lytter(port), false, `port ${port} lytter stadig`);
+    for (const port of new Set(bundne)) assert.equal(m.lytterPaa(port), false, `port ${port} lytter stadig`);
   } finally { a.luk(); m.luk(); }
 });
 
@@ -655,14 +654,14 @@ test('et kald til en partition, som new stadig opretter: partition-not-found - o
     assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
     const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${port}`)).length;
     const foer = bindinger();
-    t = tilbage(port, { instance: I2, profile: 'beta' });   // beta kommer tilbage og skanner porten
+    t = tilbage(m, port, { instance: I2, profile: 'beta' });   // beta kommer tilbage og skanner porten
     let frist;
     const v = await Promise.race([kaldet, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 10000); })]);
     clearTimeout(frist);
     await vent(500);
     assert.equal(bindinger(), foer, 'porten blev bundet igen, efter at new havde opgivet');
     assert.deepEqual(t.kom.map((k) => k.method), [], 'en kommando blev sendt til den opgivne partition');
-    assert.equal(await lytter(port), false, 'der lytter noget paa den opgivne partitions port');
+    assert.equal(m.lytterPaa(port), false, 'der lytter noget paa den opgivne partitions port');
     assert.equal(v.svar?.error, 'partition-not-found', `kaldet til partitionen under oprettelse: ${JSON.stringify(v)}`);
     assert.match(v.svar.note, /still being created/);
     assert.equal(a.kom.filter((k) => k.method === 'navigate').length, 0);
@@ -690,11 +689,11 @@ test('auto-reload: en partition under oprettelse, som new opgiver, faar intet re
     a1.stop = true; a2.stop = true; a1.luk(); a2.luk();
     const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${port}`)).length;
     const foer = bindinger();
-    t = tilbage(port, { instance: I1, profile: 'alpha' });   // kun én alpha kommer tilbage
+    t = tilbage(m, port, { instance: I1, profile: 'alpha' });   // kun én alpha kommer tilbage
     await vent(3500);                                        // auto-reload venter 1 s; genforsoeget ~3 s
     assert.equal(bindinger(), foer, 'porten blev bundet igen, efter at new havde opgivet');
     assert.deepEqual(t.kom.map((k) => k.method), [], 'reload_extension (eller andet) blev sendt til den opgivne partition');
-    assert.equal(await lytter(port), false, 'der lytter noget paa den opgivne partitions port');
+    assert.equal(m.lytterPaa(port), false, 'der lytter noget paa den opgivne partitions port');
     assert.deepEqual([...a1.kommandoer('reload_extension'), ...a2.kommandoer('reload_extension')], [],
       'reload_extension blev sendt paa en partition under oprettelse');
     // Opdateringen er ikke tabt: den foerste forbindelse paa en bane, der kan bruges, faar den. (Standardbanen kan faa samme
@@ -723,14 +722,14 @@ test('en intern afsender paa en partition under oprettelse stoppes, naar new opg
     assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
     const bindinger = () => m.log.filter((l) => l.includes(`listening on ws://127.0.0.1:${port}`)).length;
     const foer = bindinger();
-    t = tilbage(port, { instance: I2, profile: 'beta' });
+    t = tilbage(m, port, { instance: I2, profile: 'beta' });
     let frist;
     const v = await Promise.race([intern, new Promise((ok) => { frist = setTimeout(() => ok({ venter: true }), 10000); })]);
     clearTimeout(frist);
     await vent(500);
     assert.equal(bindinger(), foer, 'den interne afsender bandt porten igen, efter at new havde opgivet');
     assert.deepEqual(t.kom.map((k) => k.method), [], 'den interne afsender sendte til den opgivne partition');
-    assert.equal(await lytter(port), false);
+    assert.equal(m.lytterPaa(port), false);
     assert.equal(v.svar?.error, 'partition-closed', JSON.stringify(v));
   } finally { t?.luk(); a.luk(); m.luk(); }
 });
