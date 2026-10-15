@@ -36,7 +36,7 @@ that arrives while a session is being cleaned up gets a fresh session.
 | `error: "port-capacity-exhausted"` | `browser_partition` `new` | Every port in the range is taken; no partition was created |
 | `error: "profile-*"`, `partition_created: false` | `browser_partition` `new` | The partition's profile choice failed; no partition was created and its port was released |
 | `error: "partition-not-found"` | every browser tool, `close` | No partition with that id, or `new` is still creating it (every browser tool). Nothing was sent |
-| `error: "partition-closed"` | every browser tool, `close`, `new` | The partition was closed (from `new`: while it was being created). Nothing was sent; a command that was already running when close came answers `sent: true` |
+| `error: "partition-closed"` | every browser tool, `close`, `new` | The partition was closed (from `new`: while it was being created). With `sent: false` nothing was sent. With `sent: true` the command was sent and was still waiting for its answer when close released the port, so it may have been carried out; a command the extension answers before that gets its normal answer |
 | `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
 | `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
 
