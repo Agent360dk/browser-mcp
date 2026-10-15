@@ -1238,10 +1238,10 @@ async function lukPartition(id) {
     port_released: havdePort !== null,
     tabs_closed: tabsLukket,
     note: tabsLukket === true
-      ? `Partition ${p.id} is closed: its tabs are closed and its port is free. The id is not reused.`
+      ? `Partition ${p.id} is closed: its tabs are closed and its port is free. The id is not reused while this server runs.`
       : `Partition ${p.id} is closed and its port is free, but the extension did not confirm that its tabs were closed ` +
         '(the connection was gone, or a call failed). The extension closes them by itself when the connection ends, ' +
-        'but the server cannot see that happen; look in Chrome if it matters. The id is not reused.',
+        'but the server cannot see that happen; look in Chrome if it matters. The id is not reused while this server runs.',
   };
 }
 
@@ -1337,7 +1337,7 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - partition-not-found, or partition-closed with sent: false, means nothing was sent; the call never falls back to the default partition. partition-closed with sent: true means the command was sent and was still waiting for its answer when the partition was closed: it may have been carried out. browser_about lists the partitions
 
 ## Extension updates
-The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.
+The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the extension to reload itself on its next connection to the default partition or to an open partition (never while a partition is still being created). Chrome Web Store installs update through the store.
 If browser_provide_feedback reports that the extension is older than this server, or that more than one Browser MCP extension is connected, ask the user:
 "Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄). If two Browser MCP extensions are listed, turn one of them off."
 You cannot navigate to chrome:// pages - the user must do this manually.
