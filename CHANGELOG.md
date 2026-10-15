@@ -22,7 +22,9 @@ extension saw, when nothing was sent), and if it never finishes, the server's ow
 never answered after the limit. Every other outcome is an error with `sent` (whether the address reached Chrome) and a note
 on what the agent can do. A new session's first navigate, whose tab is created with the address, is held to the same rule:
 `ok: true` only with a proven load, otherwise `navigation-unconfirmed` with `sent: true`. Other new tabs (`new_tab`) and
-`eget_vindue` are unchanged.
+`eget_vindue` are unchanged. A call whose lookup of the session's tab is still waiting on Chrome when another call has
+given the session a new active tab (for instance after the server's 30-second limit) changes nothing in the session and
+sends nothing; it fails and says the session changed. This could happen in 1.30.2 too.
 
 **New answers an agent can see:**
 

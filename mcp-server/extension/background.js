@@ -361,25 +361,42 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     return true;
   };
 
+  // R112 (Astra 2, Opus N-c): et opslag kan haenge laenge (ogsaa ud over serverens 30 s, der ikke stopper arbejdet her). Har
+  // et andet kald imens givet sessionen en ny aktiv fane, maa dette kald ikke aendre sessionen bagefter - hverken slette en
+  // fane fra den eller oprette/aktivere en anden. Den aktive fane, kaldet startede med, holdes derfor, og den sammenlignes
+  // efter hvert opslag, foer noget aendres.
+  let forventetAktiv = session.activeTabId;
+  const sessionUroert = () => {
+    if (session.activeTabId !== forventetAktiv) {
+      throw new Error('The session\'s active tab changed while this call was waiting for Chrome, so nothing was changed or ' +
+        'sent. Call again.');
+    }
+  };
+
   // Prefer the active (last navigated) tab
   if (session.activeTabId) {
+    const aktiv = session.activeTabId;   // FIX-17 / R112: det id, der faktisk slaas op - laest FOER opslaget
     try {
-      const tab = await chrome.tabs.get(session.activeTabId);
+      const tab = await chrome.tabs.get(aktiv);
       if (consider(tab)) target = tab;
     } catch {
-      const dead = session.activeTabId;   // FIX-17: capture id BEFORE nulling (was deleting null)
+      sessionUroert();
       session.activeTabId = null;
-      session.tabIds.delete(dead);
+      forventetAktiv = null;
+      session.tabIds.delete(aktiv);
     }
   }
 
   // Fallback: any usable session tab
   if (!target) {
-    for (const tabId of session.tabIds) {
+    for (const tabId of [...session.tabIds]) {
       try {
         const tab = await chrome.tabs.get(tabId);
-        if (consider(tab)) { session.activeTabId = tabId; target = tab; break; }
-      } catch {
+        sessionUroert();
+        if (consider(tab)) { session.activeTabId = tabId; forventetAktiv = tabId; target = tab; break; }
+      } catch (e) {
+        if (e && /active tab changed/.test(e.message || '')) throw e;
+        sessionUroert();
         session.tabIds.delete(tabId);
       }
     }
@@ -387,6 +404,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
 
   // Reuse our own blank placeholder rather than spawning yet another one (FIX-4).
   if (!target && blankFallback) {
+    sessionUroert();
     target = blankFallback;
     session.activeTabId = target.id;
     persistSessions();
@@ -398,6 +416,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
   // den saa til adressen - about:blank stod hver gang som det foerste. Kender kalderen adressen (navigate), oprettes fanen
   // direkte med den.
   if (!target) {
+    sessionUroert();
     target = await chrome.tabs.create({ url: opretMed || 'about:blank', active: false });
     // R111: feltet fortaeller navigate, at adressen ER sendt (fanen blev oprettet med den).
     if (opretMed) target.oprettetMedUrl = true;
@@ -5170,16 +5189,19 @@ async function dispatch(port, method, params) {
       // R111 (a): en fane, getSessionTab() oprettede MED adressen, er sendt - den bevises inden for loftet, ellers er svaret
       // navigation-unconfirmed. Andre nye faner (new_tab) venter som foer.
       const somSendt = !!(tab && tab.oprettetMedUrl);
+      let bevisFane = null;   // fanen, som beviset saa den - successvaret bygger paa den, ikke paa et nyt opslag (R112)
       const loadedNow = async () => {
-        if (!awaitingRealUrl) return true;
         const now = await chrome.tabs.get(tab.id).catch(() => null);
+        // En about:-adresse: der er intet at vente paa (R74) - men fanen skal findes, og dens tilstand bruges i svaret.
+        if (!awaitingRealUrl) { if (now) bevisFane = now; return somSendt ? !!now : true; }
         if (!now) return !somSendt;   // tab gone - nothing left to wait for (but nothing proven either)
         const nuUrl = String(now.url || '');
         if (now.status !== 'complete' || nuUrl.startsWith('about:blank')) return false;
-        // R112 (maalt i Chrome 15/10): en adresse, der svarer 204 (eller en download), efterlader den oprettede fane TOM ('')
-        // og 'complete' - det er intet bevis. En omdirigering er: i den oprettede fane ses intet 'loading', foer lytteren
-        // sidder, saa fanen bevises af, at den staar 'complete' paa en rigtig adresse (hverken '' eller about:blank).
-        if (somSendt) return nuUrl !== '';
+        // R112 (maalt i Chrome 15/10): en adresse, der svarer 204, efterlader den oprettede fane TOM ('') og 'complete' - det
+        // er intet bevis. (En download lukker fanen i headless Chrome.) En omdirigering er: i den oprettede fane ses intet
+        // 'loading', foer lytteren sidder, saa fanen bevises af, at den staar 'complete' paa en rigtig adresse.
+        if (somSendt && nuUrl === '') return false;
+        bevisFane = now;
         return true;
       };
       const bevist = await new Promise(resolve => {
@@ -5207,14 +5229,17 @@ async function dispatch(port, method, params) {
       // Set as active tab for this session
       session.activeTabId = tab.id;
       persistSessions();
-      if (somSendt && !bevist) {
-        dialogFane(tab.id).pendingUrl = String(params.url);
+      // R112 (Astra 1, Opus N-a): et EKSPLICIT tjek af fristen foer succes - et bevis, der vandt over en udloebet timer (fordi
+      // sessionsarbejdet brugte fristen), er stadig efter loftet.
+      if (somSendt && (!bevist || Date.now() >= navSlut - navForbehold())) {
         const nu = await venteMedFrist(chrome.tabs.get(tab.id).catch(() => null), Math.max(0, navSlut - Date.now()));
+        // R112 (Opus OP3): ingen dialogtilstand for en fane, der allerede er lukket.
+        if (nu !== null) dialogFane(tab.id).pendingUrl = String(params.url);
         return { ok: false, error: 'navigation-unconfirmed', sent: true, may_complete_later: true, tab_id: tab.id,
           requested_url: String(params.url), pending_url: String(params.url),
           url: nu && nu !== FRIST_UDLOEB ? nu.url ?? null : null, note: NAV_NOTER['navigation-unconfirmed'] };
       }
-      const updated = await chrome.tabs.get(tab.id);
+      const updated = somSendt ? bevisFane : await chrome.tabs.get(tab.id);
 
       // Check for CAPTCHA after navigation (for a tab created with the address: inside the limit, like the current tab)
       const captcha = somSendt ? await venteMedFrist(detectCaptcha(tab.id), Math.max(0, navSlut - Date.now())) : await detectCaptcha(tab.id);

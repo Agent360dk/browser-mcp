@@ -41,7 +41,9 @@ function model(opt = {}) {
     // 'complete' igen, mens adressen er undervejs), svarMs (svaret rammer den boks, der staar der EFTER N ms - CDP har
     // intet dialog-id), captchaMs (CAPTCHA-opslaget er langsomt), fjernet (fanen findes ikke).
     getMs: 0, attachMs: 0, navMs: 3, updAfvisMs: 0, gammelComplete: null, svarMs: 0, captchaMs: 0, fjernet: false,
-    naesteId: 9, nyeFaner: new Map(), createMs: 0, groupMs: 0, ...opt };
+    naesteId: 9, nyeFaner: new Map(), createMs: 0, groupMs: 0,
+    // R112: fjernedeFaner (fanen er lukket), nyGetMs (opslag af en oprettet, indlaest fane er langsomme efter det foerste).
+    fjernedeFaner: new Set(), nyGetMs: 0, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -74,12 +76,25 @@ function model(opt = {}) {
   u = indlaesUdvidelse({ svar: {
     'debugger.attach': () => { if (t.attachFejl) throw new Error(t.attachFejl); },
     'debugger.detach': () => { if (t.boks) { t.boks = null; } t.pageOn = false; },   // boksen lukkes uden Closed (R108 Astra 4)
-    'debugger.getTargets': () => { const r = t.attachFejl ? [] : [{ tabId: 1, attached: true }]; return t.attachMs ? sov(t.attachMs).then(() => r) : r; },
+    'debugger.getTargets': () => {
+      const r = t.attachFejl ? [] : [{ tabId: 1, attached: true }, ...[...t.nyeFaner.keys()].map((id) => ({ tabId: id, attached: true }))];
+      return t.attachMs ? sov(t.attachMs).then(() => r) : r;
+    },
     'tabs.get': (id) => {
-      if (t.nyeFaner.has(id)) return { ...t.nyeFaner.get(id) };
+      if (t.fjernedeFaner.has(id)) throw new Error('No tab with id: ' + id);
+      if (t.nyeFaner.has(id)) {
+        const f = t.nyeFaner.get(id);
+        if (t.nyGetMs && f.status === 'complete') { if (f._set) return sov(t.nyGetMs).then(() => ({ ...f })); f._set = true; }
+        return { ...f };
+      }
       // R110: foersteGetMs forsinker kun det allerfoerste opslag (sessionens); doedFane er en sessionsfane, der er vaek,
       // og hvis opslag svarer langsomt.
-      if (t.doedFane && id === t.doedFane.id) return sov(t.doedFane.ms).then(() => { throw new Error('No tab with id: ' + id); });
+      if (t.doedFane && id === t.doedFane.id) {
+        // kunFoerste: kun det foerste opslag haenger; de naeste svarer straks (fanen er vaek).
+        const ms = t.doedFane.kunFoerste && t.doedFane.brugt ? 0 : t.doedFane.ms;
+        t.doedFane.brugt = true;
+        return sov(ms).then(() => { throw new Error('No tab with id: ' + id); });
+      }
       if (t.foersteGetMs) { const ms = t.foersteGetMs; t.foersteGetMs = 0; return sov(ms).then(() => snap()); }
       if (t.fjernet) throw new Error('No tab with id: 1');
       const r = snap();
@@ -1017,6 +1032,85 @@ test('R112: en ny sessions foerste navigate, der omdirigeres (302, intet loading
   const r = await fang(m.nav());
   assert.equal(r.ok, true, vis(r));
   assert.equal(r.url, 'https://ny.example/lang');
+});
+
+// ── R112 (Astra 1-2, Opus N-a..N-d) ───────────────────────────────────────────────────────────────
+
+test('R112-OP1: en ny sessions foerste navigate, hvis gruppering bruger fristen, svarer ikke ok:true efter loftet', async () => {
+  const m = model({ groupMs: FRISTER.loft + 300 });              // siden indlaeses hurtigt; grupperingen er langsom
+  tomSession(m);
+  const r = await fang(m.nav());
+  assert.notEqual(r.ok, true, `succes efter loftet: ${vis(r)}`);
+  assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+  assert.equal(r.sent, true);
+});
+
+test('R112-OP2: efter beviset bruges den oprettede fane, som beviset saa den - intet langsomt opslag efter fristen', async () => {
+  const m = model({ nyGetMs: FRISTER.loft + 800 });
+  tomSession(m);
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.url, NY);
+  assert.ok(Date.now() - t0 < FRISTER.loft, `svaret ventede paa et opslag efter beviset: ${Date.now() - t0} ms`);
+});
+
+test('R112-M7: en oprettet fane, der aldrig indlaeses, svarer ved loftet', async () => {
+  const m = model({ haengNav: true });
+  tomSession(m);
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+  assert.ok(Date.now() - t0 < FRISTER.loft + MARGEN, `ventede ud over loftet: ${Date.now() - t0} ms`);
+});
+
+test('R112-M4/OP3: en oprettet fane, der forsvinder under indlaesningen - unconfirmed, sent:true, ingen undtagelse, ingen rest', async () => {
+  const m = model({ haengNav: true });
+  tomSession(m);
+  const p = fang(m.nav());
+  await sov(40);
+  const id = [...m.t.nyeFaner.keys()][0];
+  m.t.nyeFaner.delete(id); m.t.fjernedeFaner.add(id);
+  await m.u.fyr('tabs.onRemoved', id);
+  await m.u.fyr('tabs.onUpdated', id, { status: 'complete' }, { id, url: '', status: 'complete' });
+  const r = await p;
+  assert.equal(r.kastet, undefined, `undtagelse: ${vis(r)}`);
+  assert.equal(r.error, 'navigation-unconfirmed', vis(r));
+  assert.equal(r.sent, true);
+  assert.equal(m.u.hent('dialogFaner').has(id), false, 'ingen dialogtilstand for en lukket fane');
+});
+
+test('R112-M8: CAPTCHA-kontrollen for en oprettet fane ligger inden for loftet', async () => {
+  const m = model({ captchaMs: 3000 });
+  tomSession(m);
+  const t0 = Date.now();
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.captcha_checked, false, vis(r));
+  assert.ok(Date.now() - t0 < FRISTER.loft + MARGEN, `CAPTCHA-kontrollen gik ud over loftet: ${Date.now() - t0} ms`);
+});
+
+test('R112: en ny sessions foerste navigate til about:blank er stadig ok:true (intet at vente paa)', async () => {
+  const m = model();
+  tomSession(m);
+  const r = await fang(m.nav({ url: 'about:blank' }));
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.url, 'about:blank');
+});
+
+test('R112-A2/N-c: et gammelt, haengende sessionsopslag aendrer ikke sessionen, efter at et nyt kald har faaet en fane', async () => {
+  const m = model({ doedFane: { id: 5, ms: 600, kunFoerste: true } });
+  m.u.hent('sessions').set(9876, { tabIds: new Set([5]), activeTabId: 5, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const a = fang(m.nav({ url: 'https://a.example/' }));         // A's opslag af fane 5 haenger (klienten faar timeout)
+  await sov(50);
+  const b = await fang(m.nav({ url: 'https://b.example/' }));    // B's opslag svarer straks: fane 5 er vaek
+  assert.equal(b.ok, true, vis(b));
+  await a;                                                       // A's gamle opslag bliver faerdigt
+  await sov(50);
+  const sess = m.u.hent('sessions').get(9876);
+  assert.equal(sess.activeTabId, b.tab_id, `B's fane er ikke laengere den aktive: ${sess.activeTabId}`);
+  assert.ok(sess.tabIds.has(b.tab_id), 'B\'s fane er fjernet fra sessionen');
+  assert.equal(m.log.filter((x) => x[0] === 'tabs.create' && x[1] === 'https://a.example/').length, 0, 'en fane med A\'s gamle adresse blev oprettet');
 });
 
 test('R111-A2: et langsomt sessionsopslag fjerner ikke bagefter det naeste kalds fane fra sessionen', async () => {
