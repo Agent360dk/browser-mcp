@@ -698,3 +698,18 @@ test('R117 Astra 2 / Opus A (aegte server): browser_provide_feedback ved en kopi
     } finally { s.srv.kill(); rmSync(hjem, { recursive: true, force: true }); }
   }
 });
+
+test('R118 Opus rest D: med vaelger og en kopi, der baerer navnet, giver vaerktoejet kopi-raadet - ikke «giv profilen et eget navn»', async () => {
+  const m = await bro({ BROWSER_MCP_PROFILE: 'arbejde' });
+  try {
+    const p = await port(m);
+    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    const a2 = await installation(p, 'A2', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 2));
+    const r = await kald(m);
+    assert.equal(r.svar?.error, 'profile-ambiguous', JSON.stringify(r));
+    assert.match(r.svar.note, /copied Chrome profile/);
+    assert.doesNotMatch(r.svar.note, /its own name/, 'vaerktoejet raader til at omdoebe en kopi - det hjaelper ikke');
+    assert.deepEqual([a.kom.length, a2.kom.length], [0, 0]);
+  } finally { m.luk(); }
+});

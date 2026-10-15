@@ -388,6 +388,11 @@ function valgUdenForbindelse(bane) {
   }
   if (bane.vaelger) {
     const k = profilKandidater(bane);
+    // R118 (Opus rest D): bærer alle kandidaterne samme instans, er det én installation forbundet flere gange - en kopieret
+    // profil. Saa er raadet kopiens (luk den eller geninstallér), ikke et nyt navn: kopien beholder samme id.
+    if (k.length > 1 && k.every((c) => c.instance === k[0].instance)) {
+      return { straks: kopiFejl(bane, k[0].instance, k, `The installation with the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE)`) };
+    }
     if (k.length > 1) {
       return { straks: profilFejl(bane, 'profile-ambiguous',
         { profile: bane.vaelger, candidates: k.map((c) => ({ instance: c.instance, version: c.version ?? null })).slice(0, 10) },
