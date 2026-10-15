@@ -881,7 +881,8 @@ let FOERSTE_VALG_MS = 2500;
 // kaldet den lukkede partitions port igen og sendte sin kommando - efter at close havde svaret port_released: true. Et kald paa
 // en lukket bane stoppes derfor ved indgangen (foer porten bindes) og efter hver ventetid (foer det sendes). Var lukningen
 // allerede faerdig, da en binding, kaldet startede, blev faerdig, slippes porten her: lukPartition kunne ikke slippe en port,
-// der endnu ikke var aaben. Lukningens egne kald (fanerne lukkes gennem partitionens forbindelse) er undtaget.
+// der endnu ikke var aaben. Lukningens egne kald (fanerne lukkes gennem partitionens forbindelse) er undtaget - men kun i
+// deres foerste forsoeg: forsvinder forbindelsen midt i lukningen, venter lukningen ikke paa den, og svaret er "unknown".
 function stopHvisLukket(bane, lukning) {
   if (!bane.lukket || lukning) return;
   if (!baner.has(bane)) frigivPort(bane, `partition ${bane.navn} is closed`);
@@ -946,7 +947,7 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
   if (!conn) {
     if (_retries > 0) {
       await ventPaaBane(bane, 1500);   // R121: lukningen afbryder ventetiden; indgangen stopper saa kaldet
-      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu, gen, _lukning);
+      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu, gen);
     }
     // ── Har vi lige aabnet doeren selv? (MAALT 8/9, #16) ─────────────────────
     //
@@ -960,7 +961,7 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
     // ekstra budget, og siger sandheden hvis den stadig er tom.
     if (doerAabnetNu && !_ekstraRunde) {
-      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu, gen, _lukning);
+      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu, gen);
     }
     // Budgettet er brugt. Den laaste installation kom ikke tilbage: profile-disconnected - ikke en anden installation.
     if (valg.mistet && !bane.bindFejl && !bane.alleePorteOptaget) throw mistetFejl(bane);
