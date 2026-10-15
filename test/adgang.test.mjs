@@ -83,7 +83,7 @@ test('terminate kraever baade haandtryk OG at afsenderen er den aktive', () => {
     'vundet rollen som aktiv slukke browser-adgangen med én besked');
   assert.match(blok, /conn\.helloId !== conn\.extensionId/,
     'haandtrykkets id skal stemme med Origin - ellers er identiteten selvoplyst');
-  assert.match(blok, /activeConnection\(\) !== conn/, 'og afsenderen skal vaere den aktive');
+  assert.match(blok, /activeConnection\(bane\) !== conn/, 'og afsenderen skal vaere den aktive (paa sin egen bane)');
 });
 
 // ── Mutations-verificeret: `conn.extensionId = msg.extensionId` genindfoert gav roed.

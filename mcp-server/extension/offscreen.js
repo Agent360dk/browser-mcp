@@ -67,6 +67,19 @@ function portOmraade() {
   return [9876, 9895];
 }
 const [BASE_PORT, MAX_PORT] = portOmraade();
+
+// 1.31 (#58): installationens id (&i=) og betegnelse (&p=) kommer ogsaa fra adressen, sat af background.js, som har lageret
+// (et offscreen-dokument har kun chrome.runtime). Id'et aendres aldrig i dokumentets levetid; betegnelsen kan omdoebes med
+// en runtime-besked (se bmcp_profil nederst), og saa faar serveren en ny hilsen. En ugyldig vaerdi sendes som null.
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+function fraAdressen(navn, moenster) {
+  try {
+    const v = new URLSearchParams(location.search).get(navn);
+    return v && moenster.test(v) ? v : null;
+  } catch { return null; }
+}
+const MIN_INSTANS = fraAdressen('i', /^[0-9a-f]{16}$/);
+let minProfil = fraAdressen('p', PROFIL_MOENSTER);
 const connections = new Map(); // port → WebSocket
 
 // ── Hvorfor porte foerst PROBES med fetch, og ikke bare aabnes (MAALT 22/8) ──────
@@ -238,9 +251,10 @@ function tryConnect(port) {
     // og udgivelsens gate afviste sin EGEN kandidat - et langsomt svar er ikke et forkert svar. Hilsenen sendes derfor
     // med det aftryk der allerede ER beregnet (som regel intet ved foerste forbindelse), og aftrykket EFTERSENDES.
     const kode = kodeAftrykCache;
-    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode, instance: MIN_INSTANS, profile: minProfil };
     try {
-      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode,
+        instance: MIN_INSTANS, profile: minProfil };
     } catch (e) {
       console.warn('[Offscreen] could not build the handshake:', e?.message || e);
     }
@@ -347,6 +361,23 @@ chrome.runtime.onMessage.addListener((msg) => {
   } catch {}
   try { ws.close(); } catch {}
   // ws.onclose handler removes from connections + notifies background
+});
+
+// 1.31 (#58): omdoebning fra popuppen. Den nye betegnelse sendes som en ny hilsen paa ALLE aabne forbindelser - med samme
+// instans - og serveren opdaterer kun betegnelsen. Forbindelserne roeres ikke, saa ingen chats igangvaerende kald afbrydes.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== 'bmcp_profil') return;
+  const ny = typeof msg.profile === 'string' && PROFIL_MOENSTER.test(msg.profile) ? msg.profile : null;
+  if (ny === minProfil) return;
+  minProfil = ny;
+  let id = null;
+  try { id = chrome.runtime.id; } catch {}
+  const hilsen = JSON.stringify({ type: 'hello', extensionId: id, version: minVersion(), name: null, kode: kodeAftrykCache,
+    instance: MIN_INSTANS, profile: minProfil });
+  for (const ws of connections.values()) {
+    if (ws.readyState !== WebSocket.OPEN) continue;
+    try { ws.send(hilsen); } catch (e) { console.warn('[Offscreen] kunne ikke sende den nye hilsen:', e?.message || e); }
+  }
 });
 
 // Initial scan + frequent rescan for new servers
