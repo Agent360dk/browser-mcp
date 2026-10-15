@@ -14,7 +14,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -603,4 +603,98 @@ test('R115: foer foerste kommando kommer en nyere udvidelse, der forbinder bagef
     assert.deepEqual((await kald(m)).ok, { fra: 'B' }, 'den foreloebige laas fra foer foerste kommando holdt den nyere ude');
     assert.equal(a.kom.length, 0);
   } finally { m.luk(); }
+});
+
+// ── R117: Astras tre og Opus A-C (bc8c6d6) ───────────────────────────────────
+
+test('R117 Astra 1: laast udvidelse fra foer 1.31 forsvinder, to samtidige kald - begge profile-disconnected, intet til den nye', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const g = await installation(p, 'G', { instance: undefined, profile: undefined, version: '1.30.2' });
+    assert.ok(await hilst(m, 1));
+    assert.deepEqual((await kald(m)).ok, { fra: 'G' });
+    g.luk();
+    const b = await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 1));
+    const [r1, r2] = await Promise.all([kald(m), kald(m)]);
+    assert.equal(r1.svar?.error, 'profile-disconnected', JSON.stringify(r1));
+    assert.equal(r2.svar?.error, 'profile-disconnected', `det andet ventende kald valgte en ny installation: ${JSON.stringify(r2)}`);
+    assert.equal(b.kom.length, 0, 'en kommando naaede den nye installation, foer klienten havde set fejlen');
+    assert.deepEqual((await kald(m)).ok, { fra: 'B' });
+  } finally { m.luk(); }
+});
+
+test('R117 Opus B: en afvist kopi vises ikke som styret i browser_about', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+    await installation(p, 'A2', { instance: I1, profile: 'arbejde' });
+    assert.ok(await hilst(m, 2));
+    assert.equal((await kald(m)).svar?.error, 'profile-ambiguous');
+    assert.equal(m.k('standardBane.laastForbindelse'), null, 'den afviste kopi blev staaende som valgt');
+    m.k('activeConnection(standardBane)');   // fx et diagnoseopslag: vaelger en foreloebig kandidat
+    const vist = JSON.parse(JSON.stringify(m.k('installationer(standardBane)')));
+    assert.deepEqual(vist.map((x) => x.driven), [false, false], 'en kopi blev vist som styret, selv om intet er valgt');
+  } finally { m.luk(); }
+});
+
+test('R117 Astra: ingen falsk advarsel, naar to 1.31-forbindelser forbinder foer nogen af dem har hilst', async () => {
+  const m = await bro({});
+  try {
+    const p = await port(m);
+    const a = await falskUdvidelse(p, { hello: null });
+    const b = await falskUdvidelse(p, { hello: null });
+    assert.ok(await venteTil(() => m.k('liveConnections(standardBane).length') === 2));
+    a.send({ type: 'hello', extensionId: ID, version: '1.31.0', name: null, instance: I1, profile: 'arbejde' });
+    await vent(50);
+    b.send({ type: 'hello', extensionId: ID, version: '1.31.0', name: null, instance: I2, profile: 'hjem' });
+    assert.ok(await hilst(m, 2));
+    await vent(50);
+    assert.doesNotMatch(m.log.join(''), /same extension is connected more than once/);
+    assert.equal(m.k('forbindelsesAdvarsel(standardBane)'), null);
+  } finally { m.luk(); }
+});
+
+test('R117 Astra 3: et koldt kald uden profilmatch tager ca. 17,5 s (2,5 s + dobbelt budget) - det tal, fladerne siger', async () => {
+  const base = await ledigtSpaend(5);
+  // Serverens egne tider: hverken genforsoeget eller ventetiden foer foerste valg er kortet.
+  const m = broModel({ BROWSER_MCP_BASE_PORT: String(base), BROWSER_MCP_MAX_PORT: String(base + 4), BROWSER_MCP_PROFILE: 'arbejde' },
+    { foersteValgMs: null });
+  try {
+    const t0 = Date.now();
+    const svar = kald(m);
+    const p = await venteTil(() => m.k('standardBane.activePort'), 3000);
+    await installation(p, 'B', { instance: I2, profile: 'hjem' });
+    const r = await svar;
+    const ms = Date.now() - t0;
+    assert.equal(r.svar?.error, 'profile-not-connected', JSON.stringify(r));
+    assert.ok(ms > 16500 && ms < 19000, `ventetiden var ${ms} ms`);
+    for (const f of ['README.md', 'CHANGELOG.md']) {
+      assert.match(readFileSync(join(rod, f), 'utf8'), /up to about 17\.5 seconds/, `${f} siger ikke den maalte ventetid`);
+    }
+  } finally { m.luk(); }
+});
+
+test('R117 Astra 2 / Opus A (aegte server): browser_provide_feedback ved en kopieret profil - konflikt og kopi-raadet, med og uden vaelger', async () => {
+  for (const env of [{}, { BROWSER_MCP_PROFILE: 'arbejde' }]) {
+    const hjem = mkdtempSync(join(tmpdir(), 'bmcp-r117-'));
+    const s = await aegteServer({ ...env, HOME: hjem, USERPROFILE: hjem });
+    try {
+      const id = s.send('browser_list_tabs');
+      const p = await s.lytter();
+      await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+      await installation(p, 'A2', { instance: I1, profile: 'arbejde' });
+      const r = await s.svar(id);
+      assert.equal(JSON.parse(r.result.content[0].text).error, 'profile-ambiguous');
+      const fb = await s.svar(s.send('browser_provide_feedback', { what_happened: 'proeve' }));
+      const j = JSON.parse(fb.result.content[0].text);
+      const hvor = JSON.stringify(env);
+      assert.equal(j.verdict, 'conflict', `${hvor}: ${j.verdict} ${JSON.stringify(j.findings)}`);
+      assert.ok(j.findings.some((f) => /copied Chrome profile/.test(f)), `${hvor}: ${JSON.stringify(j.findings)}`);
+      assert.ok(j.fix_steps.some((f) => /Close the copied Chrome profile/.test(f)), `${hvor}: ${JSON.stringify(j.fix_steps)}`);
+      assert.ok(!j.fix_steps.some((f) => /its own name/.test(f)), `${hvor}: raadet om at omdoebe hjaelper ikke en kopi`);
+    } finally { s.srv.kill(); rmSync(hjem, { recursive: true, force: true }); }
+  }
 });

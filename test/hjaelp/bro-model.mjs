@@ -50,7 +50,8 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
   const k = (kode) => vm.runInContext(kode, ctx);
   // R115: foerste valg venter, til porten har vaeret aaben i ~2,5 s (FOERSTE_VALG_MS). Proeverne starter med 0, saa hvert
   // foerste kald ikke koster 2,5 s; proeverne af ventetiden saetter den selv.
-  k(`FOERSTE_VALG_MS = ${Number(foersteValgMs)}`);
+  // foersteValgMs: null beholder kildens egen vaerdi (proeven af den maalte ventetid skal maale serverens tal).
+  if (foersteValgMs !== null) k(`FOERSTE_VALG_MS = ${Number(foersteValgMs)}`);
   // Ryddes ogsaa naar en proeve fejler (fx under en mutant): ellers holder aabne sokler og ventende frister proeveprocessen
   // i live, og koerslen haenger i stedet for at blive roed.
   const luk = () => {

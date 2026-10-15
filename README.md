@@ -338,14 +338,16 @@ under "This Chrome profile". Set `BROWSER_MCP_PROFILE=<name>` in a client's MCP 
 | Situation | What the agent gets |
 |---|---|
 | One connected installation has the name | Commands go to it, and the chat stays with that installation from the first command |
-| None has the name yet | The call waits as long as it waits for the extension today (about 8-15 seconds), then `profile-not-connected` with the installations it can see; `profile-routing-unsupported` when every connected extension is older than 1.31 |
+| None has the name yet | The call first waits for it: about 7.5 seconds, and up to about 17.5 seconds when the port opened in the last 10 seconds (a chat's first browser call: the 2.5 seconds below plus a doubled wait), then `profile-not-connected` with the installations it can see; `profile-routing-unsupported` when every connected extension is older than 1.31 |
 | Two or more have the name, or one installation is connected twice | `profile-ambiguous`, without waiting further. Also without `BROWSER_MCP_PROFILE`, an installation connected twice is refused |
 | The installation the chat was driving goes away | Calls in flight fail at once, as before. The next call answers `profile-disconnected`; only the call after that picks again. If the same installation comes back in time, the chat simply continues |
 | No `BROWSER_MCP_PROFILE` | The first choice is made as before (the newest extension); with several installations the next answer says which one it took, and the chat stays with it |
 
 A chat's first browser call waits until the port has been open for about 2.5 seconds before it chooses, so every Chrome
-profile has had one scan to connect; without that, the profile that happened to connect first could be chosen without a
-word. In all of these error answers nothing was sent to Chrome (`sent: false`), and the server never moves to another
+profile has had one scan (every 2 seconds) to connect; without that, the profile that happened to connect first could be
+chosen without a word. The margin is about half a second on an idle machine: a profile whose scan comes later than that,
+for instance on a heavily loaded machine, can still be missed by the first choice, and the chat then stays with the
+profile that did connect. In all of these error answers nothing was sent to Chrome (`sent: false`), and the server never moves to another
 profile on its own: a call that was already waiting when the chat's installation went away gets `profile-disconnected` too. `browser_about` lists what is connected. Renaming in the popup does not drop any connection or running call; a
 chat that is already driving the installation keeps driving it. The name is a choice, not a key: the extension's greeting
 is not signed, and another program on your machine can claim any name (see Security below).
