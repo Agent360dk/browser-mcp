@@ -32,9 +32,21 @@ punctuation got key code 0 and a `code` Chrome does not know (`","`). Tag and ch
 keypress or by `keyCode === 188`, never made the tag. Now Enter carries its line break (keydown, keypress and keyup 13, not
 with ctrl, meta or alt), punctuation is sent as the key it sits on in the US layout (`,` 188 `Comma`, `.` 190 `Period` and
 so on), and a shifted character such as `<` or `@` is that key with Shift held, as on a real keyboard. An explicit `code`
-still wins; a character that is not on a US keyboard gets no `code` instead of itself.
+still wins (it changes only the `code`, not the key code); a character that is not on a US keyboard, an emoji too, gets no
+`code` instead of itself. A capital letter is still sent without Shift, and `shift: true` does not change the character.
+The most noticeable change: Enter now acts like the real key. In a text field it submits the form, on a focused button it
+presses it, and in a textarea it adds a line break - before, it did none of these, so an agent that pressed Enter without
+effect can now submit a form. `browser_press_key("Space")` is now the space bar (key `" "`): the page got `e.key ""`
+before, and the answer said `key-not-delivered` although the key had landed.
 `browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
 the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
+A line break or tab in the value is still typed as text, not as the Enter or Tab key, and no longer carries the `code`
+`"Enter"`/`"Tab"`. When the keys reached the page and the field is empty afterwards - a tag input made the text a tag -
+`browser_fill` answers `ok: true`, `differs: true`, `keys_delivered: true` and says to check the page; it advises typing
+again only when no key reached the page.
+`browser_set_date`'s masked path now clears a prefilled field on macOS too (Chrome's select-all command, as in #68), so the
+field holds exactly the new date; and when every path fails after a path wrote to the field, the answer says so
+(`value_before`, `field_changed`) instead of ending as a bare error.
 
 **New answers an agent can see:**
 
