@@ -195,6 +195,9 @@ test('R125: et tegn uden for US-tabellen faar aldrig sig selv som code - heller 
   // Flere kodepunkter ("👍🏽" er to) er heller ikke et navn: ingen code.
   const flere = await tryk({ key: '👍🏽' });
   assert.equal(flere.ned.code, '', `code blev selve teksten: ${JSON.stringify(flere.ned)}`);
+  // Et linjeskift som tast er heller ikke Enter-tasten: ingen code "Enter" (R125/R126).
+  const nl = await tryk({ key: '\n' });
+  assert.equal(nl.ned.code, '', `"\\n" fik code ${JSON.stringify(nl.ned.code)}`);
   const navn = await tryk({ key: 'F5' });
   assert.equal(navn.ned.code, 'F5', 'en navngiven tast er stadig sin egen code');
 });
