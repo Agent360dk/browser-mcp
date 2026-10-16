@@ -1376,8 +1376,11 @@ function tastkodeFelter(vk) { return vk ? { windowsVirtualKeyCode: vk, nativeVir
 // Types text as individual key events. Assumes the debugger is already attached —
 // debuggerType() is the public wrapper that manages attach/detach.
 async function typeCharsAttached(tabId, text) {
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
+  // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
+  // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
+  const tegn = [...String(text)];
+  for (let i = 0; i < tegn.length; i++) {
+    const char = tegn[i];
     // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
     const { code, vk, shift } = fysiskTast(char);
     const mods = shift ? { modifiers: 8 } : {};

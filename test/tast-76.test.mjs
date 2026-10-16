@@ -175,3 +175,16 @@ test('R125: et tegn uden for US-tabellen faar aldrig sig selv som code - heller 
   const navn = await tryk({ key: 'F5' });
   assert.equal(navn.ned.code, 'F5', 'en navngiven tast er stadig sin egen code');
 });
+
+// MAALT i aegte headless Chrome (aktiv fane, 4044388): browser_fill skrev "hej 😀 👍🏽 é" som "hej �� ���� é" og "👩‍💻" som
+// "��‍��" - tegn-for-tegn-vejen sendte hver UTF-16-halvdel som sit eget tegn. Hvert tastetryk er nu ét kodepunkt.
+test('fill tegn for tegn: emoji, hudtone og ZWJ sendes som hele kodepunkter - ingen halve tegn, og teksten er praecis vaerdien', async () => {
+  for (const vaerdi of ['hej 😀 👍🏽 é', '👩‍💻', 'æøå']) {
+    const { ned } = await skriv(vaerdi);
+    const tekster = ned.map((n) => n.text);
+    assert.equal(tekster.join(''), vaerdi);
+    for (const t of tekster) assert.doesNotMatch(t, /^[\uD800-\uDFFF]$/, `et halvt tegn blev sendt for ${JSON.stringify(vaerdi)}: ${JSON.stringify(tekster)}`);
+    assert.deepEqual(tekster, [...vaerdi], JSON.stringify(tekster));
+    for (const n of ned) if (!/^[\x20-\x7e]$/.test(n.text)) assert.equal(n.code, undefined, `code for ${JSON.stringify(n.text)}`);
+  }
+});
