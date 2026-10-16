@@ -1342,15 +1342,43 @@ function cdpCodeForChar(ch) {
   return CDP_CHAR_CODES[ch] || '';
 }
 
+// #76 (arasmileska): den fysiske tast for en tast eller et tegn - code, tastkode (keyCode) og om Shift holdes nede. Brugt
+// af ALLE steder, der sender et tastetryk over CDP (press_key, fill's tegn-for-tegn-skrivning, rydning, Tab, PageUp/Down),
+// saa siden ser det samme som fra et rigtigt US-tastatur. Uden tastkode faar keydown keyCode 0, og et tag-felt, der lytter
+// paa keyCode 188, faar aldrig sit komma. Et skiftet tegn ("<", "@") er samme tast med Shift holdt nede. Store bogstaver
+// faar IKKE Shift her (det har press_key aldrig givet dem). "\n" og "\t" faar ingen tastkode: skrevet som tekst er de
+// ikke en Enter- eller Tab-tast, der kan sende en formular eller flytte fokus.
+const NAVNGIVNE_TASTKODER = {
+  Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18, Escape: 27, Space: 32,
+  PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46,
+};
+const TEGN_TASTKODER = { Space: 32, Comma: 188, Period: 190, Minus: 189, Equal: 187, Semicolon: 186, Quote: 222,
+  Slash: 191, Backslash: 220, BracketLeft: 219, BracketRight: 221, Backquote: 192 };
+const SKIFTEDE_TEGN = '<>?:"{}|_+~!@#$%^&*()';
+function fysiskTast(key) {
+  if (typeof key !== 'string' || key.length !== 1) {
+    return { code: typeof key === 'string' ? key : '', vk: NAVNGIVNE_TASTKODER[key], shift: false };
+  }
+  const code = cdpCodeForChar(key);
+  const vk = /^Key[A-Z]$/.test(code) ? code.charCodeAt(3)
+    : /^Digit\d$/.test(code) ? code.charCodeAt(5)
+    : TEGN_TASTKODER[code];
+  return { code, vk, shift: SKIFTEDE_TEGN.includes(key) };
+}
+// CDP-felterne for tastkoden (tomt, naar tasten ingen har).
+function tastkodeFelter(vk) { return vk ? { windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk } : {}; }
+
 // Types text as individual key events. Assumes the debugger is already attached —
 // debuggerType() is the public wrapper that manages attach/detach.
 async function typeCharsAttached(tabId, text) {
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-    const code = cdpCodeForChar(char);
+    // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
+    const { code, vk, shift } = fysiskTast(char);
+    const mods = shift ? { modifiers: 8 } : {};
     await tastParAttached(tabId,
-      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char },
-      { key: char, ...(code ? { code } : {}) });
+      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char, ...tastkodeFelter(vk), ...mods },
+      { key: char, ...(code ? { code } : {}), ...tastkodeFelter(vk), ...mods });
     // Human-like typing: random 30-120ms, occasional longer pause
     const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
       ? 150 + Math.random() * 200  // thinking pause every ~10 chars
@@ -1813,8 +1841,10 @@ async function tastParAttached(tabId, ned, op) {
 
 // Select-all + Backspace. Assumes the debugger is already attached.
 async function clearFieldAttached(tabId) {
-  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS }, { key: 'a', code: 'KeyA' });
-  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
+  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS, ...tastkodeFelter(65) },
+    { key: 'a', code: 'KeyA', ...tastkodeFelter(65) });
+  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) },
+    { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) });
 }
 
 // Clear only when the focused field has something in it. Backspace in an EMPTY
@@ -4256,7 +4286,7 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   try {
     await clearFieldAttached(tabId);
     await cdpSend(tabId, 'Input.insertText', { text: formatted });
-    await tastParAttached(tabId, { key: 'Tab', code: 'Tab' }, { key: 'Tab', code: 'Tab' });
+    await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
   } finally {
     await debuggerDetach(tabId);
   }
@@ -4424,7 +4454,7 @@ async function setDatePicker(tabId, selector, iso) {
       await debuggerAttach(tabId);
       try {
         const key = delta > 0 ? 'PageDown' : 'PageUp';
-        await tastParAttached(tabId, { key, code: key }, { key, code: key });
+        await tastParAttached(tabId, { key, code: key, ...tastkodeFelter(fysiskTast(key).vk) }, { key, code: key, ...tastkodeFelter(fysiskTast(key).vk) });
       } finally {
         await debuggerDetach(tabId);
       }
@@ -6350,15 +6380,8 @@ async function dispatch(port, method, params) {
       const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
       let modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
 
-      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger
-      // scroll/form-submit behavior. Without these, key-event is dispatched but page doesn't react.
-      const VK_CODES = {
-        'Backspace': 8, 'Tab': 9, 'Enter': 13, 'Shift': 16, 'Control': 17, 'Alt': 18,
-        'Escape': 27, 'Space': 32, ' ': 32,
-        'PageUp': 33, 'PageDown': 34, 'End': 35, 'Home': 36,
-        'ArrowLeft': 37, 'ArrowUp': 38, 'ArrowRight': 39, 'ArrowDown': 40,
-        'Delete': 46,
-      };
+      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger scroll/form-submit behavior.
+      // #76: tastkode, code og Shift kommer fra den faelles fysiskTast (samme regel som fill's tegn-for-tegn-skrivning).
       // #68 (arasmileska, MAALT 13/10 i headless Chrome paa macOS): ctrl/meta+a sendte `text: 'a'` og ingen tastkode. Paa
       // Windows indsatte Chrome et «a»; paa macOS skete intet - og svaret var landed:true begge steder. En genvej har ingen
       // tekst, bogstaver og cifre faar deres tastkode, og de fem redigeringsgenveje sendes som Chromes egen kommando:
@@ -6369,20 +6392,12 @@ async function dispatch(port, method, params) {
       const bogstav = etTegn && stort >= 'A' && stort <= 'Z';
       const ciffer = etTegn && key >= '0' && key <= '9';
       // #76 (arasmileska, MAALT i aegte headless Chrome): tegnsaetning fik ingen tastkode (keyCode 0) og code = selve tegnet,
-      // som Chrome ikke kender - et tag-felt, der lytter paa keyCode 188, fik aldrig sit komma. code kommer nu fra samme
-      // US-layout-tabel som browser_type (cdpCodeForChar: tegnet -> den fysiske tast, "@" er Digit2; et ukendt tegn faar
-      // ingen code), og tastkoden fra den fysiske tast. Et skiftet tegn ("<", "!") er samme tast med Shift holdt nede, som
-      // paa et rigtigt tastatur: samme tastkode og code, og Shift i modifiers (shiftKey er sand). En eksplicit code vinder.
-      const TASTKODE = { Space: 32, Comma: 188, Period: 190, Minus: 189, Equal: 187, Semicolon: 186, Quote: 222, Slash: 191,
-        Backslash: 220, BracketLeft: 219, BracketRight: 221, Backquote: 192 };
-      const SKIFTET = '<>?:"{}|_+~!@#$%^&*()';
-      const tegnKode = etTegn && !bogstav && !ciffer ? cdpCodeForChar(key) : '';
-      const tegnVk = TASTKODE[tegnKode] || (/^Digit\d$/.test(tegnKode) ? tegnKode.charCodeAt(5) : undefined);
-      const tegn = tegnVk ? [tegnVk, tegnKode, SKIFTET.includes(key)] : null;
-      const vkCode = VK_CODES[key] || (bogstav || ciffer ? stort.charCodeAt(0) : tegn ? tegn[0] : undefined);
-      const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
-      const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : etTegn ? tegnKode : key);
-      if (tegn && tegn[2]) modifiers |= 8;   // #76: det skiftede tegn holder Shift nede
+      // som Chrome ikke kender - et tag-felt, der lytter paa keyCode 188, fik aldrig sit komma. Se fysiskTast. En eksplicit
+      // code vinder; et tegn uden for US-layoutet faar ingen code.
+      const fysisk = fysiskTast(key);
+      const vkParams = tastkodeFelter(fysisk.vk);
+      const kode = params.code || fysisk.code;
+      if (fysisk.shift) modifiers |= 8;   // #76: det skiftede tegn holder Shift nede
       // #76: Chromes egen Enter baerer text "\r" - uden den kommer intet keypress (13). En genvej faar stadig ingen tekst (#68).
       const tekst = genvej ? '' : key === 'Enter' ? '\r' : etTegn ? key : '';
       const REDIGERING = { A: 'selectAll', C: 'copy', X: 'cut', V: 'paste', Z: 'undo', Y: 'redo' };

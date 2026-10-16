@@ -98,3 +98,46 @@ test('#76: et tegn uden for tabellen faar ingen code (Chrome kender ikke "é" so
   const c = await tryk({ key: 'a', ctrl: true });
   assert.deepEqual([c.ned.text, c.ned.windowsVirtualKeyCode, [...(c.ned.commands || [])]], ['', 65, ['selectAll']], '#68: ctrl+a aendret');
 });
+
+// ── Samme fejlklasse i browser_fill's tegn-for-tegn-skrivning (typeCharsAttached) ─────────────────────────────────────────
+// browser_fill skriver tegn for tegn, naar vaerdien ikke kan saettes direkte (text=-vaelgere, felter der ikke hoerer
+// setteren). Den sendte code, men ingen tastkode: et tag-felt, der lytter paa keyCode 188, fik heller ikke her sit komma.
+// Teksten, der skrives ind, maa ikke aendre sig: hvert tegn sendes stadig med sig selv som text.
+async function skriv(tekst) {
+  const s = tastSele();
+  await s.u.hent('typeCharsAttached')(1, tekst);
+  return { ned: s.ned(), op: s.op() };
+}
+
+test('#76 i browser_fill: tegn-for-tegn-skrivningen giver tegnsaetning sin tastkode og de skiftede tegn Shift - teksten er den samme', async () => {
+  const { ned, op } = await skriv('a,<b');
+  assert.deepEqual(ned.map((n) => n.text), ['a', ',', '<', 'b'], 'teksten, der skrives ind, aendrede sig');
+  assert.deepEqual(ned.map((n) => [n.key, n.windowsVirtualKeyCode, n.code, (n.modifiers || 0) & 8]),
+    [['a', 65, 'KeyA', 0], [',', 188, 'Comma', 0], ['<', 188, 'Comma', 8], ['b', 66, 'KeyB', 0]], JSON.stringify(ned));
+  assert.deepEqual(op.map((n) => [n.windowsVirtualKeyCode, n.code, (n.modifiers || 0) & 8]),
+    [[65, 'KeyA', 0], [188, 'Comma', 0], [188, 'Comma', 8], [66, 'KeyB', 0]], JSON.stringify(op));
+});
+
+test('#76 i browser_fill: linjeskift og tabulator skrives som foer (ingen Enter- eller Tab-tast, der kan sende en formular eller flytte fokus)', async () => {
+  const { ned } = await skriv('x\ny\tz');
+  assert.deepEqual(ned.map((n) => [n.text, n.key, n.windowsVirtualKeyCode]),
+    [['x', 'x', 88], ['\n', '\n', undefined], ['y', 'y', 89], ['\t', '\t', undefined], ['z', 'z', 90]], JSON.stringify(ned));
+});
+
+test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme regel som press_key', async () => {
+  const s = tastSele();
+  await s.u.hent('clearFieldAttached')(1);
+  assert.deepEqual(s.ned().map((n) => [n.key, n.code, n.windowsVirtualKeyCode]), [['a', 'KeyA', 65], ['Backspace', 'Backspace', 8]], JSON.stringify(s.ned()));
+  assert.deepEqual(s.op().map((n) => n.windowsVirtualKeyCode), [65, 8]);
+});
+
+test('#76 moenstret: hvert tastetryk over CDP baerer sin tastkode - intet kald til tastParAttached eller Input.dispatchKeyEvent uden', async () => {
+  const { readFileSync } = await import('node:fs');
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const kald = [...kilde.matchAll(/await tastParAttached\(tabId,/g)].map((m) => kilde.slice(m.index, kilde.indexOf(');', m.index)));
+  assert.ok(kald.length >= 5, `fandt kun ${kald.length} kald til tastParAttached`);
+  for (const k of kald) assert.match(k, /tastkodeFelter\(/, `et tastetryk uden tastkode: ${k}`);
+  // De raa Input.dispatchKeyEvent-kald: kun i tastParAttached og i press_key (med vkParams).
+  const raa = [...kilde.matchAll(/'Input\.dispatchKeyEvent', \{/g)].map((m) => kilde.slice(m.index, kilde.indexOf('});', m.index)));
+  for (const r of raa) assert.match(r, /\.\.\.ned|\.\.\.op|\.\.\.vkParams/, `et raat tastetryk uden tastkode: ${r.slice(0, 120)}`);
+});
