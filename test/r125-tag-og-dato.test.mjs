@@ -31,6 +31,7 @@ function tagSide({ leveret = true, bevis = 'ja' } = {}) {
         if (x.includes('window.__bmcpVagt = v')) return svar({ armet: true });
         if (x.includes('getBoundingClientRect')) return svar({ x: 10, y: 10, tag: 'INPUT', found: true });
         if (x.includes('isContentEditable')) return svar(false);
+        if (x.includes('_valueTracker')) return svar({ v: s.value, ramme: null });
         if (x.includes('readOnly')) return svar(null);
         if (x.includes('activeElement')) return svar(s.value);
         return svar(null);
@@ -80,6 +81,15 @@ test('R125: kan leveringen ikke laeses, raades der ikke direkte til at gentage -
   assert.equal(r.error, 'field-is-empty', JSON.stringify(r));
   assert.doesNotMatch(String(r.note), /switch_tab and try again/i, r.note);
   assert.match(String(r.note), /check the page/i, r.note);
+});
+
+test('R125: css-vejen i et tag-felt (setteren tages ikke, saa der skrives tegn for tegn) - heller ikke her et gentagelsesraad', async () => {
+  const { u, s } = tagSide();
+  const r = await u.hent('dispatch')(9876, 'fill', { selector: '#tags', value: 'tag,' });
+  assert.deepEqual([s.tags, s.value], [['tag'], ''], `modellen: ${JSON.stringify(s)}`);
+  assert.notEqual(r.error, 'field-is-empty', JSON.stringify(r));
+  assert.equal(r.keys_delivered, true, JSON.stringify(r));
+  assert.doesNotMatch(String(r.note), RAAD_OM_GENTAGELSE, r.note);
 });
 
 test('R125: css-vejens svar (fyldSvar) - tomt felt efter leverede taster er ikke field-is-empty med gentagelsesraad', () => {
