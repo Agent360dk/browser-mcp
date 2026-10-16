@@ -138,12 +138,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_press_key',
-    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
+    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). Enter acts like the real key (the page gets keydown, keypress and keyup 13): in a text field it submits the form, on a focused button it presses it, and in a textarea it adds a line break - from 1.32; before, it did none of these, so press Enter only when that is what you want. "Space" is the space bar: in a field it types a space. Key codes follow the US layout: punctuation is sent as the key it sits on ("," is keyCode 188, code "Comma"), and a shifted character such as "<" or "@" is that key with Shift held; a capital letter is sent without Shift. shift does not change the character ("," with shift is still a comma). While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
     inputSchema: {
       type: 'object',
       properties: {
         key: { type: 'string', description: 'Key to press: "Enter", "Tab", "Escape", "ArrowDown", "ArrowUp", "Backspace", "a", "1", etc.' },
-        code: { type: 'string', description: 'Key code (optional, defaults to key name). E.g. "KeyA" for "a"' },
+        code: { type: 'string', description: 'Physical key code (optional). Without it, the key it sits on in the US layout: "KeyA" for "a", "Comma" for ",", "Digit2" for "@"; a character not on a US keyboard gets none. Setting it changes only the code, not the key code' },
         ctrl: { type: 'boolean', description: 'Hold Ctrl/Cmd key' },
         alt: { type: 'boolean', description: 'Hold Alt key' },
         shift: { type: 'boolean', description: 'Hold Shift key' },
@@ -476,7 +476,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_about',
-    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped - this tool is how the user contributes back.',
+    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped - this tool is how the user contributes back. It also lists the Browser MCP installations connected to this chat (installations: the profile name set in the extension popup, the installation id, the version), so you can see which names BROWSER_MCP_PROFILE can choose; it lists nothing before the browser has been used in the chat.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -531,7 +531,33 @@ export const TOOLS = [
       required: ['what_happened'],
     },
   },
+  // 1.32 (#20, idéen er ugbodagadave's): én partition pr. parallel agent - sin egen fanegruppe og sin egen aktive fane.
+  {
+    name: 'browser_partition',
+    description: 'Give a parallel agent its own part of the browser. action "new" opens a partition: its own listener port, so the extension gives it its own tab group and its own active tab, and agents that share this chat no longer take over each other\'s tabs. It answers an id like "p1"; pass partition: "p1" to every browser tool that agent calls (calls without partition go to the default partition). Ids are never reused while the server runs (when the MCP client restarts the server, numbering starts at p1 again). "new" chooses the Chrome profile right away by the same rules as BROWSER_MCP_PROFILE: pass profile to choose by the name in the extension popup, otherwise the partition uses BROWSER_MCP_PROFILE (or, without it, the same choice as the default partition: it waits about 2.5 seconds for the installations to connect, then takes the newest extension version, on a tie the one that connected last, and the answer says which one it took). It takes a few seconds, because the extension scans for new ports every 2 seconds. Errors: partition-limit (4 open partitions per server), port-capacity-exhausted (every port in the range is taken), the profile-* answers (profile-not-connected and the others; no partition is created and its port is released), and partition-closed when the partition is closed while "new" is still creating it. action "close" closes the partition\'s tabs through its own connection and releases its port: port_released, and tabs_closed true only when the extension confirmed it or when no tool call ever used the partition (it then has no tabs, and the extension is not asked), otherwise "unknown". Calls with a closed id answer partition-closed with sent: false. A command that is still waiting for the extension\'s answer when close releases the port answers partition-closed with sent: true (it may have been carried out); one answered before that gets its normal answer. An unknown id, or the id of a partition "new" is still creating, answers partition-not-found. Nothing is sent to the default partition instead. browser_about lists the partitions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['new', 'close'], description: '"new" opens a partition, "close" closes one.' },
+        profile: { type: 'string', description: 'With new: the name of the Chrome profile in the extension popup ("This Chrome profile") the partition drives. Default: BROWSER_MCP_PROFILE.' },
+        label: { type: 'string', description: 'With new: an optional label for your own overview, shown in browser_about (up to 64 characters).' },
+        partition: { type: 'string', description: 'With close: the id of the partition to close, e.g. "p1". The default partition cannot be closed.' },
+      },
+      required: ['action'],
+    },
+  },
 ];
+
+// 1.32 (#20): `partition` paa hvert vaerktoej, der naar browseren - ogsaa browser_extract_token, som selv navigerer. De
+// server-lokale (about, provide_feedback) og partitionsvaerktoejet selv har den ikke.
+const PARTITION_PARAM = {
+  type: 'string',
+  description: 'Run this call in a partition from browser_partition (an id like "p1"). Leave it out for the default partition. An unknown or closed id is an error; the call is never sent to the default partition instead.',
+};
+for (const t of TOOLS) {
+  if (['browser_about', 'browser_provide_feedback', 'browser_partition'].includes(t.name)) continue;
+  t.inputSchema.properties.partition = PARTITION_PARAM;
+}
 
 // Known provider token pages for browser_extract_token
 export const PROVIDER_PAGES = {

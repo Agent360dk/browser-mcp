@@ -5,7 +5,7 @@ make: it asks on your own screen, then carries on in the same signed-in Chrome.
 
 It drives the Chrome you are already signed into: no login step to fail, no API key to wire
 up, no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
-in its own colour-coded tab group. 40 tools, MIT, runs on your machine.
+in its own colour-coded tab group. 41 tools, MIT, runs on your machine.
 
 → **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** - every
 wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones we have not fixed.
@@ -30,7 +30,7 @@ Browser MCP gives Claude Code (and MCP clients that run local servers, such as C
 
 The killer move: it hits a login wall, opens your Gmail, reads the verification code, and continues the sign-in. There is no email API to set up. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
 
-40 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and it runs on your machine - no account, no telemetry, nothing sent to us.**
+41 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and it runs on your machine - no account, no telemetry, nothing sent to us.**
 
 ## The whole thing, in four steps
 
@@ -93,7 +93,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 40 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 41 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
@@ -166,7 +166,7 @@ there is nothing to slip past: it is your Chrome, your session, your consent. Wh
 is the hard part - pages that fight *any* automation because of how they are built.
 
 Every release is gated on a flow test against a real Chrome that has to survive exactly
-those: all 40 tools are exercised, and the gate also checks that the extension Chrome is
+those: all 41 tools are exercised, and the gate also checks that the extension Chrome is
 running is the one being released - not another copy with the same version number. The
 failures that do show up are honest ones: mouse events are not delivered to a tab that is
 not in front, and the tools say so instead of reporting success. What the test covers
@@ -221,15 +221,16 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 
 ### Environment variables
 
-All three are optional. None is needed for normal use.
+All four are optional. None is needed for normal use.
 
 | Variable | Effect |
 |---|---|
 | `BROWSER_MCP_CHECK_NPM=1` | Makes `browser_provide_feedback` also compare this server against the latest version published on npm. Off by default, so the call stays fast and works offline. |
-| `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile. |
+| `BROWSER_MCP_EXTENSION_ID=<32-char id>` | Pins the server to one specific Chrome extension. Use it when more than one copy of Browser MCP is loaded and you want a given session to always talk to the same one. It cannot tell Chrome profiles apart: the Chrome Web Store extension has the same id in every profile. `BROWSER_MCP_PROFILE` does that. |
+| `BROWSER_MCP_PROFILE=<name>` | From 1.31: drive the Chrome profile whose extension popup carries this name ("This Chrome profile"). Letters, digits, dot, dash and underscore, up to 32. Works together with `BROWSER_MCP_EXTENSION_ID` (both must match). An invalid value is not ignored: every browser call answers `profile-invalid`. See [Several Chrome profiles](#several-chrome-profiles). |
 | `BROWSER_MCP_TOKEN` | **Withdrawn in 1.30.1 and ignored** - the server says so when it starts. Pairing shipped in 1.30.0 but kept nobody out, so it was taken back rather than left as false protection. It will return redesigned. |
 
-## 40 Tools
+## 41 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -245,7 +246,7 @@ All three are optional. None is needed for normal use.
 |------|-------------|
 | `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
-| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
+| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). From 1.32 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea (before, it did none of these). Key codes follow the US layout ("," is 188 `Comma`); shifted characters such as `<` are sent with Shift, capital letters without. With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
@@ -301,7 +302,12 @@ All three are optional. None is needed for normal use.
 | Tool | Description |
 |------|-------------|
 | `browser_provide_feedback` | Self-check + report in one call. Compares the connected extension against this server and detects **more than one Browser MCP extension connected at once**, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected` / `idle` / `unknown`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
-| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug |
+| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the popup, the installation id and the version. From 1.32 it also lists the chat's partitions |
+
+### Parallel agents
+| Tool | Description |
+|------|-------------|
+| `browser_partition` | From 1.32: `action: "new"` gives a parallel agent its own partition (own port, tab group and active tab) and answers an id like `p1`; `action: "close"` closes its tabs and frees its port. Every tool that reaches the browser takes `partition` - see [Parallel agents in one chat](#parallel-agents-in-one-chat) |
 
 ## Multi-Session Support
 
@@ -326,6 +332,51 @@ Claude Session 3 ←(stdio)→ MCP :9878 ←(WS)→
 - **Ports are taken on demand** - a server binds its port on the first browser call, not
   at startup, and releases it 5 minutes after its last tab closes. A chat that never
   touches the browser never occupies a slot.
+
+### Several Chrome profiles
+
+The Chrome Web Store extension has the same id in every Chrome profile, so before 1.31 the server could not tell your
+profiles apart: with the extension enabled in two of them, commands went to one, and which one could change. From 1.31
+each installation (one per Chrome profile) reports an installation id, and you can give it a name in the extension popup
+under "This Chrome profile". Set `BROWSER_MCP_PROFILE=<name>` in a client's MCP config, and that client drives that profile.
+
+| Situation | What the agent gets |
+|---|---|
+| One connected installation has the name | Commands go to it, and the chat stays with that installation from the first command |
+| None has the name yet | The call first waits for it: about 7.5 seconds, and up to about 17.5 seconds when the port opened in the last 10 seconds (a chat's first browser call: the 2.5 seconds below plus a doubled wait), then `profile-not-connected` with the installations it can see; `profile-routing-unsupported` when every connected extension is older than 1.31 |
+| Two or more have the name, or one installation is connected twice | `profile-ambiguous`, without waiting further. Also without `BROWSER_MCP_PROFILE`, an installation connected twice is refused |
+| The installation the chat was driving goes away | Calls in flight fail at once, as before. The next call answers `profile-disconnected`; only the call after that picks again. If the same installation comes back in time, the chat simply continues |
+| No `BROWSER_MCP_PROFILE` | The first choice is made as before (the newest extension version; on a tie, the one that connected last); with several installations the next answer says which one it took, and the chat stays with it |
+
+A chat's first browser call waits until the port has been open for about 2.5 seconds before it chooses, so every Chrome
+profile has had one scan (every 2 seconds) to connect; without that, the profile that happened to connect first could be
+chosen without a word. The margin is about half a second on an idle machine: a profile whose scan comes later than that,
+for instance on a heavily loaded machine, can still be missed by the first choice, and the chat then stays with the
+profile that did connect. In all of these error answers nothing was sent to Chrome (`sent: false`), and the server never moves to another
+profile on its own: a call that was already waiting when the chat's installation went away gets `profile-disconnected` too. `browser_about` lists what is connected. Renaming in the popup does not drop any connection or running call; a
+chat that is already driving the installation keeps driving it. The name is a choice, not a key: the extension's greeting
+is not signed, and another program on your machine can claim any name (see Security below).
+
+### Parallel agents in one chat
+
+From 1.32 (the idea and the first version are [@ugbodagadave](https://github.com/ugbodagadave)'s, [#20](https://github.com/Agent360dk/browser-mcp/pull/20)).
+Agents that share one chat - a coordinator and its subagents - also share that chat's tab group and active tab, so they take
+over each other's tabs. `browser_partition` with `action: "new"` gives each of them its own partition: the server opens one
+more port in the same range, the extension connects to it like to any other, and the partition gets its own tab group and
+active tab. It answers an id like `p1`, and that agent passes `partition: "p1"` to every browser tool it calls, including
+`browser_extract_token`. Calls without `partition` go to the default partition, as before.
+
+| Situation | What the agent gets |
+|---|---|
+| `new` | The partition chooses its Chrome profile right away, by the rules above: `profile` in the call, otherwise `BROWSER_MCP_PROFILE`. It takes a few seconds (the extension scans for new ports every 2 seconds). If the profile is not connected, the answer is the `profile-*` error, no partition is created and its port is released. If the partition is closed while `new` is still creating it, `new` answers `partition-closed` |
+| A fifth open partition | `partition-limit`: at most 4 per server, because the ports are shared by every chat on the machine |
+| Every port in the range taken | `port-capacity-exhausted`, and no partition |
+| `close` | Its tabs are closed through its own connection and its port is released. `port_released`, and `tabs_closed: true` only when the extension confirmed it, or when no tool call ever used the partition (it then has no tabs, and the extension is not asked); otherwise `"unknown"` (the extension still closes them when the connection ends, but the server cannot see it). A command on the partition that is still waiting for the extension's answer when close releases the port answers `partition-closed` with `sent: true` (it may have been carried out); one the extension answers before that, while close is still closing the tabs, gets its normal answer |
+| A call with an unknown or closed id | `partition-not-found` or `partition-closed`, `sent: false`; also `partition-not-found` for the id of a partition `new` is still creating. The call never goes to the default partition instead, and ids are never reused while the server runs (after a restart, numbering starts at `p1` again) |
+
+A partition's commands carry no process id, so the extension never hands one partition's tabs to another. `browser_about`
+lists the partitions. The extension keeps each partition's tabs apart from a new connection on the same port: a late clean-up
+for a connection that has gone closes only that connection's tabs (1.32).
 
 ### Running the agent on another machine
 
@@ -392,7 +443,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 40 tool definitions
+  tools.js            # 41 tool definitions
   bin/cli.js          # Install CLI
 ```
 
@@ -512,6 +563,14 @@ account and no server of ours between you and the page.
   you can turn on with `BROWSER_MCP_CHECK_NPM=1`. That bridge is **local and unauthenticated**:
   another program running as you on the same machine can connect to it. Browser
   MCP does not protect you from software you already run.
+- The profile name you set in the extension popup (1.31) and the installation id
+  are labels for choosing a Chrome profile, not credentials. The extension sends
+  them unsigned to every Browser MCP server on the port range, and another
+  program on the machine can claim the same name. The id is random, created once
+  per Chrome profile and kept in the extension's local storage. Both appear in
+  `browser_about` and in the `profile-*` error answers, so they go to your agent
+  like any other tool answer - and from there to the model provider your agent
+  uses.
 
 Full policy: https://browsermcp.dev/privacy
 

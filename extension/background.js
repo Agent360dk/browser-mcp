@@ -55,6 +55,7 @@ function restoreSessions() {
           color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
           label: `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
+          ...generationFraLager(data),
         });
       }
     }
@@ -62,7 +63,20 @@ function restoreSessions() {
   return restorePromise;
 }
 
-function getSession(port, pid) {
+// ── 1.32 (S4): sessionsgeneration ─────────────────────────────────────────────
+// Astra MAALTE (R107): efter at en ny session var oprettet paa samme port med fane 99, lukkede et forsinket
+// releaseSession(port) - bestilt af den GAMLE forbindelses lukning - fane 99 og slettede sessionen. Kortet er noeglet paa
+// porten, og portnummeret siger ikke, hvilken forbindelse der ejer sessionen. Med partitioner (#20) genbruges porte oftere.
+// Derfor: broen (offscreen.js) giver hver forbindelse en generation, som foelger med hver kommando og hver frigivelse.
+// Sessionen husker den generation, der ejer den nu (`gen`), og hver fane den generation, der aabnede den (`faneGen`).
+// En frigivelse for en anden generation end sessionens roerer kun sin egen generations faner (se releaseSession).
+function generationFraLager(d) {
+  const faneGen = new Map();
+  for (const [t, g] of Object.entries(d?.faneGen || {})) if (typeof g === 'string') faneGen.set(Number(t), g);
+  return { gen: typeof d?.gen === 'string' ? d.gen : null, faneGen };
+}
+
+function getSession(port, pid, gen = null) {
   if (!sessions.has(port)) {
     // ── Hvorfor det laveste LEDIGE nummer, og ikke sessions.size + 1 (MAALT 22/8) ──
     // Med `size + 1` genbruges et nummer der allerede er i brug, saa snart en chat
@@ -97,11 +111,18 @@ function getSession(port, pid) {
       color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
       label: `Claude ${nummer}`,
       pid: typeof pid === 'number' ? pid : null,
+      gen: typeof gen === 'string' ? gen : null,
+      faneGen: new Map(),
     });
   }
   const s = sessions.get(port);
   // Foerste kald fra en genstartet server kan baere pid'en foer sessionen har den.
   if (s.pid == null && typeof pid === 'number') { s.pid = pid; husketPlads(pid, s.nummer); }
+  // 1.32 (S4): en kommando fra en ny forbindelse paa porten overtager sessionen (samme chat efter et genskabt offscreen-
+  // dokument, eller efter at den slap og fik porten igen). Fanerne beholder den generation, der aabnede dem, saa en sen
+  // frigivelse fra den gamle forbindelse stadig kan rydde netop dem - og kun dem.
+  if (typeof gen === 'string' && s.gen !== gen) s.gen = gen;
+  if (!s.faneGen) s.faneGen = new Map();
   return s;
 }
 
@@ -226,6 +247,8 @@ async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   if (session.tabIds.size > MAX_TABS_PER_SESSION) {
     await evictOldestTabs(session, tabId);
   }
+  // 1.32 (S4): fanen hoerer til den forbindelse (generation), der aabnede den - se releaseSession.
+  if (session.gen && session.tabIds.has(tabId)) session.faneGen.set(tabId, session.gen);
 
   // R57 (Opus, maalt i Chrome): chrome.tabs.group flytter fanen ind i gruppens vindue. For en fane i sit eget vindue
   // (navigate eget_vindue) betoed det, at fanen blev flyttet tilbage til sessionens foerste vindue, og det nye vindue
@@ -263,9 +286,31 @@ async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   persistSessions();
 }
 
-async function releaseSession(port) {
+async function releaseSession(port, gen = null) {
   const session = sessions.get(port);
   if (!session) return;
+  // 1.32 (S4): frigivelsen er bestilt for forbindelsen `gen`. Ejer en NYERE forbindelse sessionen nu, gaelder den kun de
+  // faner, den gamle forbindelse aabnede - aldrig sessionen, dens frist eller den nye forbindelses faner (Astra, MAALT).
+  // Uden generation (en bro fra foer 1.32) som foer.
+  const bestiltFor = typeof gen === 'string' ? gen : null;
+  if (bestiltFor && session.gen && session.gen !== bestiltFor) {
+    if (frivilligtFrigivet.get(port) === bestiltFor) { frivilligtFrigivet.delete(port); return; }
+    for (const tabId of [...session.tabIds]) {
+      if (session.faneGen.get(tabId) !== bestiltFor) continue;
+      debuggerForceDetach(tabId);
+      try { await chrome.tabs.remove(tabId); } catch {
+        try { await chrome.tabs.get(tabId); continue; } catch {}   // findes den stadig, beholdes den (#13)
+      }
+      session.tabIds.delete(tabId);
+      session.faneGen.delete(tabId);
+      if (session.activeTabId === tabId) session.activeTabId = null;
+    }
+    persistSessions();
+    return;
+  }
+  // Frigivelsen gaelder sessionen. En frivillig bestilling taeller kun, hvis den blev bestilt for netop denne forbindelse.
+  const frivillig = frivilligtFrigivet.has(port)
+    && (!bestiltFor || frivilligtFrigivet.get(port) === null || frivilligtFrigivet.get(port) === bestiltFor);
 
   // ── Bad vi selv om frigivelsen? (FUNDET AF REVIEW 7/9) ────────────────────
   //
@@ -281,7 +326,8 @@ async function releaseSession(port) {
   // #12: sessionen forsvinder her — dens frist skal med, uanset hvilken vej vi gaar ud.
   chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
 
-  if (frivilligtFrigivet.delete(port)) {
+  if (frivillig) {
+    frivilligtFrigivet.delete(port);
     if (session.tabIds.size) {
       // Sessionen arbejder igen. Behold den, saa naeste binding kan adoptere den
       // (adoptOrphanedSession finder donorer med samme pid OG faner).
@@ -299,6 +345,11 @@ async function releaseSession(port) {
   // ikke KUNNE lukkes blev dermed foraeldreloes: stadig aaben, stadig i en farvet gruppe,
   // men uden for enhver session — usynlig for list_tabs og aldrig ryddet op. Praeeksisterende,
   // men v1.29 slipper porte langt oftere, saa stien koeres langt hyppigere end foer.
+  frivilligtFrigivet.delete(port);   // en bestilling for en anden forbindelse maa ikke overleve til den naeste
+  // 1.32 (S4): sessionen tages ud af kortet FOER foerste await. En kommando fra en ny forbindelse paa porten, der kommer imens
+  // fanerne lukkes, faar en frisk session i stedet for den, der ryddes - og som ellers blev slettet bagefter med den nye
+  // forbindelses fane i.
+  sessions.delete(port);
   const stadigAabne = new Set();
   for (const tabId of [...session.tabIds]) {
     debuggerForceDetach(tabId);
@@ -319,13 +370,16 @@ async function releaseSession(port) {
   }
 
   if (stadigAabne.size) {
-    console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
     session.tabIds = stadigAabne;
-    persistSessions();
-    return;
+    // 1.32 (S4): tog en ny forbindelse porten imens, ejer den pladsen; de faner, der ikke kunne lukkes, beholder vi ikke
+    // under dens session (den nye forbindelse maa ikke arve en doed forbindelses faner).
+    if (!sessions.has(port)) {
+      console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
+      sessions.set(port, session);
+    } else {
+      console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— og porten har allerede en ny session; fanerne er ikke laengere i en session');
+    }
   }
-
-  sessions.delete(port);
   persistSessions();
 }
 
@@ -340,6 +394,9 @@ function persistSessions() {
       label: session.label,
       nummer: session.nummer ?? null,   // uden denne mister en gendannet session sin plads og kan kollidere
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
+      // 1.32 (S4): uden disse kan en frigivelse fra en gammel forbindelse efter en genstart ikke kende sine egne faner
+      gen: session.gen ?? null,
+      faneGen: Object.fromEntries([...(session.faneGen || [])].filter(([t]) => session.tabIds.has(t))),
     };
   }
   chrome.storage.local.set({ sessions: data });
@@ -738,7 +795,8 @@ const agentLukkedeFaner = new Set();
 // Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
-const frivilligtFrigivet = new Set();
+// 1.32 (S4): port -> den generation (forbindelse), frigivelsen blev bestilt for (null for en session uden generation).
+const frivilligtFrigivet = new Map();
 // Hvilken plads en chat sidst havde, husket paa dens pid — ikke paa porten.
 //
 // MAALT 8/9 (#17): siden porten slippes naar en session er faerdig, slettes sessionen.
@@ -1209,6 +1267,7 @@ async function hydrerSessionerRaat() {
       label: d.label,
       nummer: d.nummer ?? null,
       pid: d.pid ?? null,
+      ...generationFraLager(d),
     });
   }
 }
@@ -1231,8 +1290,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
-      frivilligtFrigivet.add(port);
-      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      frivilligtFrigivet.set(port, session.gen ?? null);
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port, gen: session.gen ?? null }).catch(() => {});
     } else if (session.tabIds.size === 0) {
       // ── Agenten lukkede selv sin sidste fane (MAALT 7/9-2026) ────────────────
       // Her stod der intet, og det var med vilje: en agent der lukker en fane midt i
@@ -1264,7 +1323,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // code and drop the keystroke, so typing an email or URL misbehaved on strict SPAs.
 // Shifted symbols report the code of the physical key they sit on ("@" is Digit2).
 const CDP_CHAR_CODES = {
-  ' ': 'Space', '\n': 'Enter', '\t': 'Tab',
+  // R125 (Astra/Opus): "\n" og "\t" har ingen code. Skrevet som tekst er de ikke Enter- eller Tab-tasten (se fysiskTast),
+  // og en side, der lytter paa e.code === 'Enter', maa ikke udloeses af et linjeskift i en vaerdi.
+  ' ': 'Space',
   '-': 'Minus', '_': 'Minus', '=': 'Equal', '+': 'Equal',
   '[': 'BracketLeft', '{': 'BracketLeft', ']': 'BracketRight', '}': 'BracketRight',
   '\\': 'Backslash', '|': 'Backslash', ';': 'Semicolon', ':': 'Semicolon',
@@ -1283,15 +1344,49 @@ function cdpCodeForChar(ch) {
   return CDP_CHAR_CODES[ch] || '';
 }
 
+// #76 (arasmileska): den fysiske tast for en tast eller et tegn - code, tastkode (keyCode) og om Shift holdes nede. Brugt
+// af ALLE steder, der sender et tastetryk over CDP (press_key, fill's tegn-for-tegn-skrivning, rydning, Tab, PageUp/Down),
+// saa siden ser det samme som fra et rigtigt US-tastatur. Uden tastkode faar keydown keyCode 0, og et tag-felt, der lytter
+// paa keyCode 188, faar aldrig sit komma. Et skiftet tegn ("<", "@") er samme tast med Shift holdt nede. Store bogstaver
+// faar IKKE Shift her (det har press_key aldrig givet dem). "\n" og "\t" faar ingen tastkode: skrevet som tekst er de
+// ikke en Enter- eller Tab-tast, der kan sende en formular eller flytte fokus.
+const NAVNGIVNE_TASTKODER = {
+  Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18, Escape: 27, Space: 32,
+  PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46,
+};
+const TEGN_TASTKODER = { Space: 32, Comma: 188, Period: 190, Minus: 189, Equal: 187, Semicolon: 186, Quote: 222,
+  Slash: 191, Backslash: 220, BracketLeft: 219, BracketRight: 221, Backquote: 192 };
+const SKIFTEDE_TEGN = '<>?:"{}|_+~!@#$%^&*()';
+function fysiskTast(key) {
+  // R125 (Astra): et tegn er ét kodepunkt - ogsaa et uden for BMP ("😀" er to UTF-16-enheder). Kun et navn som "Enter",
+  // "ArrowDown" eller "F5" er sin egen code; alt andet uden for US-tabellen faar ingen code, aldrig sig selv.
+  if (typeof key !== 'string' || [...key].length !== 1) {
+    const navn = typeof key === 'string' && /^[A-Za-z][A-Za-z0-9]*$/.test(key);
+    return { code: navn ? key : '', vk: navn ? NAVNGIVNE_TASTKODER[key] : undefined, shift: false };
+  }
+  const code = cdpCodeForChar(key);
+  const vk = /^Key[A-Z]$/.test(code) ? code.charCodeAt(3)
+    : /^Digit\d$/.test(code) ? code.charCodeAt(5)
+    : TEGN_TASTKODER[code];
+  return { code, vk, shift: SKIFTEDE_TEGN.includes(key) };
+}
+// CDP-felterne for tastkoden (tomt, naar tasten ingen har).
+function tastkodeFelter(vk) { return vk ? { windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk } : {}; }
+
 // Types text as individual key events. Assumes the debugger is already attached —
 // debuggerType() is the public wrapper that manages attach/detach.
 async function typeCharsAttached(tabId, text) {
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const code = cdpCodeForChar(char);
+  // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
+  // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
+  const tegn = [...String(text)];
+  for (let i = 0; i < tegn.length; i++) {
+    const char = tegn[i];
+    // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
+    const { code, vk, shift } = fysiskTast(char);
+    const mods = shift ? { modifiers: 8 } : {};
     await tastParAttached(tabId,
-      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char },
-      { key: char, ...(code ? { code } : {}) });
+      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char, ...tastkodeFelter(vk), ...mods },
+      { key: char, ...(code ? { code } : {}), ...tastkodeFelter(vk), ...mods });
     // Human-like typing: random 30-120ms, occasional longer pause
     const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
       ? 150 + Math.random() * 200  // thinking pause every ~10 chars
@@ -1300,13 +1395,41 @@ async function typeCharsAttached(tabId, text) {
   }
 }
 
+// R125 (Astra, MAALT i model; Opus i Chrome): skrives der tegn for tegn, maales ogsaa om tasterne NAAEDE siden (samme
+// lytter som press_key, i udvidelsens egen verden). Et tomt felt bagefter er ikke bevis for at intet kom frem: et tag-felt
+// goer teksten til et tag og tommer feltet. Uden beviset raadede svaret agenten til at proeve igen - og saa kom tagget to gange.
+async function skrivTegnMedBevis(tabId, text) {
+  const forventet = [...String(text)].find((c) => c >= ' ');
+  const bevis = forventet ? await armerTastBevis(tabId, forventet).catch(() => null) : null;
+  await typeCharsAttached(tabId, text);
+  return bevis ? await laesTastBevis(tabId, bevis) : { landed: null };
+}
+
 async function debuggerType(tabId, text) {
   await debuggerAttach(tabId);
   try {
-    await typeCharsAttached(tabId, text);
+    return await skrivTegnMedBevis(tabId, text);
   } finally {
     await debuggerDetach(tabId);
   }
+}
+
+// Svaret naar feltet er tomt efter en skrivning. `landed`: naaede tasterne siden (true), ikke (false), uvist (null).
+// Raadet om at proeve igen gives KUN, naar intet naaede frem.
+function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
+  if (landed === true) {
+    return { ok: true, ...ekstra, differs: true, keys_delivered: true, value: '', actual: '',
+      note: 'The keys reached the page, but the field is empty afterwards: the page has handled the text - a tag or chip ' +
+            'input, for example, turns it into a tag and clears the field. Check the page before typing it again: ' +
+            'repeating it may add it twice.' };
+  }
+  if (landed === null) {
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: null,
+      note: 'The field was empty after the write, and whether the keys reached the page could not be read. Check the ' +
+            'page first: it may have handled the text (a tag or chip input turns it into a tag and clears the field). ' +
+            'Only if nothing happened there: the tab may be in the background - call browser_switch_tab, then type it again.' };
+  }
+  return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: false, note: ikkeLeveretNote };
 }
 
 // ── Naar en dialog kan aabne midt i klikket (MAALT 24/8) ─────────────────────
@@ -1754,8 +1877,12 @@ async function tastParAttached(tabId, ned, op) {
 
 // Select-all + Backspace. Assumes the debugger is already attached.
 async function clearFieldAttached(tabId) {
-  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS }, { key: 'a', code: 'KeyA' });
-  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
+  // R125 (Opus, MAALT i Chrome paa macOS): cmd+a markerede ikke alt, og set_date's maskerede vej skrev datoen bag den
+  // gamle ("16/10/202601/01/2000"). #68's laere: kun Chromes egen kommando markerer paa macOS.
+  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS, ...tastkodeFelter(65), commands: ['selectAll'] },
+    { key: 'a', code: 'KeyA', ...tastkodeFelter(65) });
+  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) },
+    { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) });
 }
 
 // Clear only when the focused field has something in it. Backspace in an EMPTY
@@ -1787,17 +1914,19 @@ async function clearFieldIfFilledAttached(tabId) {
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
 // API-overflade nogen kan laese i dag.
-function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
+function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded) {
   if (laest === undefined || laest === null) {
     return { ok: true, ...ekstra, unknown: true,
       note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
             'it landed. Read the field with browser_execute_script if it matters.' };
   }
+  const ikkeLeveret = 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
+    'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
+    'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.';
   if (laest === '') {
-    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest,
-      note: 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
-            'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
-            'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+    // R125: blev der skrevet tegn for tegn, afgoer leveringen raadet (tomtFeltSvar); ellers som foer.
+    if (tasterLanded !== undefined) return tomtFeltSvar(ekstra, tasterLanded, ikkeLeveret);
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest, note: ikkeLeveret };
   }
   if (laest === String(oensket)) {
     // FUNDET 19/9 (issue #19): her stoppede vi. DOM-vaerdien var rigtig, saa vi svarede ja -
@@ -2046,13 +2175,14 @@ async function debuggerFill(tabId, selector, value) {
     `);
     let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
     let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
+    let tasterLanded;   // R125: kun sat, naar der blev skrevet tegn for tegn (se skrivTegnMedBevis)
     if (landed !== String(value)) {
       const nu = await evalAttached(tabId, fieldBlockedExpression(null)).catch(() => null);
       if (nu === 'readonly' || nu === 'disabled') return { value: null, blocked: nu };
     }
     if (!landed) {
       await clearFieldIfFilledAttached(tabId);
-      await typeCharsAttached(tabId, value);
+      tasterLanded = (await skrivTegnMedBevis(tabId, value)).landed;
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
@@ -2072,7 +2202,7 @@ async function debuggerFill(tabId, selector, value) {
       landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
       rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     }
-    return { value: landed, rammeHoerte: rammeHoerte };
+    return { value: landed, rammeHoerte: rammeHoerte, tasterLanded };
   } finally {
     await debuggerDetach(tabId);
   }
@@ -3381,6 +3511,56 @@ function genbygOffscreen() {
   });
 }
 
+// ── Installationens identitet (1.31, #58) ─────────────────────────────────────
+// Chrome Web Store-udvidelsen har samme id i alle profiler, saa serveren kunne ikke se HVILKEN profil en forbindelse kom
+// fra. Hver installation (én pr. Chrome-profil) faar derfor:
+//   instance - 16 tilfaeldige hex-tegn, lavet ÉN gang og gemt i chrome.storage.local (ikke sync: hver profil sin egen).
+//              Den laves her, FOER offscreen-dokumentet, og foelger med i dokumentets adresse (&i=): et offscreen-dokument
+//              har kun chrome.runtime og kan ikke selv laese lageret (R106 - samme fejl som 1.30.0's parring maalte).
+//   profile  - brugerens betegnelse fra popuppen, ^[A-Za-z0-9._-]{1,32}$ eller null (&p=). Den er et VALG, ikke en noegle:
+//              hilsenen er usigneret, og et andet program paa maskinen kan paastaa samme betegnelse (README).
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+const INSTANS_MOENSTER = /^[0-9a-f]{16}$/;
+
+function rensProfil(v) {
+  const t = typeof v === 'string' ? v.trim() : '';
+  return PROFIL_MOENSTER.test(t) ? t : null;
+}
+
+// Samtidige kald deler ét opslag, saa to kaldere aldrig laver hver sit id.
+let identitetIGang = null;
+function installationsIdentitet() {
+  if (!identitetIGang) {
+    identitetIGang = (async () => {
+      const { bmcpInstans = null, bmcpProfil = null } = await chrome.storage.local.get({ bmcpInstans: null, bmcpProfil: null });
+      let instans = INSTANS_MOENSTER.test(String(bmcpInstans ?? '')) ? bmcpInstans : null;
+      if (!instans) {
+        const b = new Uint8Array(8);
+        crypto.getRandomValues(b);
+        instans = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+        await chrome.storage.local.set({ bmcpInstans: instans });
+      }
+      return { instans, profil: rensProfil(bmcpProfil) };
+    })().finally(() => { identitetIGang = null; });
+  }
+  return identitetIGang;
+}
+
+// Omdoebning fra popuppen: gem betegnelsen, og send den til offscreen-dokumentet, som sender en ny hilsen paa alle aabne
+// forbindelser. Dokumentet genskabes IKKE - det ville afbryde alle chats' igangvaerende kald (R107). Er en opbygning af
+// broen i gang, ventes den ud foerst (ensureOffscreen slutter sig til den), saa beskeden ikke kommer foer dokumentet lytter;
+// et dokument, der bygges bagefter, laeser den nye betegnelse fra lageret.
+async function saetProfil(raa) {
+  const t = typeof raa === 'string' ? raa.trim() : '';
+  if (t && !PROFIL_MOENSTER.test(t)) return { ok: false, error: 'profile-invalid' };
+  const profil = t || null;
+  await chrome.storage.local.set({ bmcpProfil: profil });
+  try { await ensureOffscreen(); } catch (e) { console.warn('[BG] broen kunne ikke bygges efter omdoebning:', e?.message || e); }
+  try { await chrome.runtime.sendMessage({ type: 'bmcp_profil', profile: profil }); } catch { /* intet dokument lytter */ }
+  const { instans } = await installationsIdentitet();
+  return { ok: true, profile: profil, instance: instans };
+}
+
 async function ensureOffscreenIndre() {
   const findes = await chrome.offscreen.hasDocument();
 
@@ -3444,9 +3624,15 @@ async function ensureOffscreenIndre() {
   // er repoets filer byte-identiske, og udgivelsens kode-aftryk er uroert. (Mit foerste forslag, at flytte portene
   // til manifestet, ville have fjernet dem fra aftrykket - Astra maalte at de ligger i offscreen.js, som hashes.)
   const porteParam = await portOmraadeFraLager();
+  // 1.31 (#58): installationens id og betegnelse (se installationsIdentitet). Kan lageret ikke laeses, sendes ingen - saa
+  // hilser broen som en udvidelse fra foer 1.31, i stedet for at broen ikke bygges.
+  let ident = null;
+  try { ident = await installationsIdentitet(); } catch (e) { console.warn('[BG] installationens id kunne ikke laeses:', e?.message || e); }
+  const identParam = (ident ? '&i=' + ident.instans : '') + (ident && ident.profil ? '&p=' + encodeURIComponent(ident.profil) : '');
+  const forespoergsel = [minVersion ? 'v=' + encodeURIComponent(minVersion) : '', porteParam ? 'porte=' + porteParam : '']
+    .filter(Boolean).join('&') + identParam;
   await chrome.offscreen.createDocument({
-    url: 'offscreen.html' + (minVersion ? '?v=' + encodeURIComponent(minVersion) : '')
-         + (porteParam ? (minVersion ? '&' : '?') + 'porte=' + porteParam : ''),
+    url: 'offscreen.html' + (forespoergsel ? '?' + forespoergsel.replace(/^&/, '') : ''),
     reasons: ['WORKERS'],
     justification: 'Maintain persistent WebSocket connection to local MCP server',
   });
@@ -3508,7 +3694,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .then(() => {
         // Stempl pid'en ÉT sted, foer dispatch. De fem nedstroems getSession(port)-kald
         // arver den derfra, saa ingen af dem behoever at kende til pid-begrebet.
-        getSession(port, msg.pid);
+        getSession(port, msg.pid, msg.gen);
         dispatch(port, msg.method, msg.params)
           .then(result => sendResponse(result))
           .catch(err => sendResponse({ __error: err.message || String(err) }));
@@ -3518,8 +3704,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'session_disconnect') {
-    releaseSession(msg.port);
+    releaseSession(msg.port, msg.gen);
     return;
+  }
+
+  // 1.31 (#58): popuppen viser installationens id og betegnelse og kan omdoebe den.
+  if (msg.type === 'bmcp_identitet') {
+    installationsIdentitet()
+      .then(({ instans, profil }) => sendResponse({ ok: true, instance: instans, profile: profil }))
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
+  }
+  if (msg.type === 'bmcp_saet_profil') {
+    saetProfil(msg.profile)
+      .then(sendResponse)
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
   }
 
   if (msg.type === 'reconnect') {
@@ -4127,7 +4327,7 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   try {
     await clearFieldAttached(tabId);
     await cdpSend(tabId, 'Input.insertText', { text: formatted });
-    await tastParAttached(tabId, { key: 'Tab', code: 'Tab' }, { key: 'Tab', code: 'Tab' });
+    await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
   } finally {
     await debuggerDetach(tabId);
   }
@@ -4295,7 +4495,7 @@ async function setDatePicker(tabId, selector, iso) {
       await debuggerAttach(tabId);
       try {
         const key = delta > 0 ? 'PageDown' : 'PageUp';
-        await tastParAttached(tabId, { key, code: key }, { key, code: key });
+        await tastParAttached(tabId, { key, code: key, ...tastkodeFelter(fysiskTast(key).vk) }, { key, code: key, ...tastkodeFelter(fysiskTast(key).vk) });
       } finally {
         await debuggerDetach(tabId);
       }
@@ -5934,7 +6134,7 @@ async function dispatch(port, method, params) {
         await new Promise(r => setTimeout(r, 100));
         // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
         if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
-        await debuggerType(tab.id, params.value);
+        const levering = await debuggerType(tab.id, params.value);
         // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
         // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
         // formateret; tekst-grenen gjorde ikke. Et klik der landede paa noget andet end et
@@ -5951,9 +6151,9 @@ async function dispatch(port, method, params) {
         const spaerret = await fieldBlocked(tab.id, null);
         if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
         if (efterTekst === '') {
-          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst, actual: efterTekst,
-            note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+          return tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
+            'The field was empty after the write, and no key reached the page. The click may not have hit a field, or the ' +
+            'tab is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.');
         }
         return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
@@ -5965,7 +6165,7 @@ async function dispatch(port, method, params) {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
         if (efterFyld?.blocked) return fieldBlockedAnswer(efterFyld.blocked, 'debugger');
         return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
-                        efterFyld?.rammeHoerte);
+                        efterFyld?.rammeHoerte, efterFyld?.tasterLanded);
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
         // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra
@@ -6125,20 +6325,29 @@ async function dispatch(port, method, params) {
       if (!params.skip_picker) {
         // Fjerde runde (Astra): kalender-grenen glemte feltets format, saa 01/12/2026 blev godkendt som 12. januar.
         const kendtFormat = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
-        const r = await setDatePicker(tab.id, params.selector, iso);
+        // R125 (Opus, MAALT i Chrome): kalenderens klik kunne kaste (frist paa en skjult fane), og kaldet endte som en raa
+        // fejl - mens den maskerede vej allerede havde skrevet i feltet. Fejlen er nu et svar, der siger hvad feltet indeholder.
+        let r;
+        try { r = await setDatePicker(tab.id, params.selector, iso); } catch (e) { r = { ok: false, error: e.message }; }
         await new Promise(r2 => setTimeout(r2, 200));
-        const v = await readBackValue(tab.id, params.selector);
+        const v = await readBackValue(tab.id, params.selector).catch(() => null);
         tried.push({ path: 'picker', ...r, value: v });
         if (r.ok && valueLooksLikeIso(v, iso, kendtFormat)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
       }
 
-      const visibleErrors = await collectVisibleErrors(tab.id, params.selector);
-      const finalValue = await readBackValue(tab.id, params.selector);
+      const visibleErrors = await collectVisibleErrors(tab.id, params.selector).catch(() => []);
+      const finalValue = await readBackValue(tab.id, params.selector).catch(() => null);
+      // R125: et fejlsvar maa ikke efterlade en halvt skrevet vaerdi uden at sige det.
+      const aendret = finalValue !== null && finalValue !== info.value;
       return {
         ok: false,
         error: 'all-paths-failed',
         tried,
         current_value: finalValue,
+        value_before: info.value,
+        ...(aendret ? { field_changed: true,
+          note: `No path set the date, but the field no longer holds what it did before (before: ${JSON.stringify(info.value)}, ` +
+                `now: ${JSON.stringify(finalValue)}): a path wrote part of a value. Correct the field before trying again.` } : {}),
         visible_errors: visibleErrors,
         input_info: info,
       };
@@ -6218,30 +6427,32 @@ async function dispatch(port, method, params) {
       // sender tastetrykket til den aktive fane — det maales nu i stedet for at antages.
       const tab = await getSessionTab(port, false);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
-      const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
+      // R125 (Opus, MAALT i Chrome): "Space" er ikke en DOM-key - siden fik e.key "", leveringsbeviset ventede paa "Space", og
+      // svaret var key-not-delivered, selv om keydown 32 landede. Mellemrumstasten er " " (code "Space"), som paa et tastatur:
+      // i et felt skriver den et mellemrum.
+      const key = params.key === 'Space' ? ' ' : params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
+      let modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
 
-      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger
-      // scroll/form-submit behavior. Without these, key-event is dispatched but page doesn't react.
-      const VK_CODES = {
-        'Backspace': 8, 'Tab': 9, 'Enter': 13, 'Shift': 16, 'Control': 17, 'Alt': 18,
-        'Escape': 27, 'Space': 32, ' ': 32,
-        'PageUp': 33, 'PageDown': 34, 'End': 35, 'Home': 36,
-        'ArrowLeft': 37, 'ArrowUp': 38, 'ArrowRight': 39, 'ArrowDown': 40,
-        'Delete': 46,
-      };
+      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger scroll/form-submit behavior.
+      // #76: tastkode, code og Shift kommer fra den faelles fysiskTast (samme regel som fill's tegn-for-tegn-skrivning).
       // #68 (arasmileska, MAALT 13/10 i headless Chrome paa macOS): ctrl/meta+a sendte `text: 'a'` og ingen tastkode. Paa
       // Windows indsatte Chrome et «a»; paa macOS skete intet - og svaret var landed:true begge steder. En genvej har ingen
       // tekst, bogstaver og cifre faar deres tastkode, og de fem redigeringsgenveje sendes som Chromes egen kommando:
       // kun `commands` udloeste markeringen paa macOS (uden: markering 3-3, med: 0-3, baade med Cmd og Ctrl).
       const genvej = !!(params.ctrl || params.meta || params.alt);
-      const etTegn = typeof key === 'string' && key.length === 1;
+      const etTegn = typeof key === 'string' && [...key].length === 1;   // R125: ét kodepunkt - ogsaa "😀"
       const stort = etTegn ? key.toUpperCase() : '';
       const bogstav = etTegn && stort >= 'A' && stort <= 'Z';
       const ciffer = etTegn && key >= '0' && key <= '9';
-      const vkCode = VK_CODES[key] || (bogstav || ciffer ? stort.charCodeAt(0) : undefined);
-      const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
-      const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : key);
+      // #76 (arasmileska, MAALT i aegte headless Chrome): tegnsaetning fik ingen tastkode (keyCode 0) og code = selve tegnet,
+      // som Chrome ikke kender - et tag-felt, der lytter paa keyCode 188, fik aldrig sit komma. Se fysiskTast. En eksplicit
+      // code vinder; et tegn uden for US-layoutet faar ingen code.
+      const fysisk = fysiskTast(key);
+      const vkParams = tastkodeFelter(fysisk.vk);
+      const kode = params.code || fysisk.code;
+      if (fysisk.shift) modifiers |= 8;   // #76: det skiftede tegn holder Shift nede
+      // #76: Chromes egen Enter baerer text "\r" - uden den kommer intet keypress (13). En genvej faar stadig ingen tekst (#68).
+      const tekst = genvej ? '' : key === 'Enter' ? '\r' : etTegn ? key : '';
       const REDIGERING = { A: 'selectAll', C: 'copy', X: 'cut', V: 'paste', Z: 'undo', Y: 'redo' };
       // R93 (Astra, laest i Chromium): med Shift er det en anden genvej (Ctrl+Shift+V = indsaet uden formatering). Kun
       // Shift+Z (redo) faar en kommando; andre Shift-kombinationer gaar til Chromes egen tastbinding (paa Windows/Linux).
@@ -6264,7 +6475,8 @@ async function dispatch(port, method, params) {
             key,
             code: kode,
             modifiers,
-            text: etTegn && !genvej ? key : '',
+            text: tekst,
+            ...(key === 'Enter' && tekst ? { unmodifiedText: tekst } : {}),
             ...vkParams,
             ...(kommando ? { commands: [kommando] } : {}),
           });
@@ -7917,16 +8129,20 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // kaldere vil ikke arve faner der ikke findes). Derfor rettes det HER.
     (async () => {
       const iHukommelsen = sessions.get(port);
+      let gen = null;
       if (iHukommelsen) {
         if (iHukommelsen.tabIds.size > 0) return;   // den arbejder igen — lad den vaere
+        gen = iHukommelsen.gen ?? null;
       } else {
         const { sessions: gemte } = await chrome.storage.local.get({ sessions: {} });
         const gemt = gemte[String(port)];
         if (!gemt) return;                          // sessionen er reelt vaek
         if ((gemt.tabIds || []).length > 0) return; // den arbejder igen
+        gen = typeof gemt.gen === 'string' ? gemt.gen : null;
       }
-      frivilligtFrigivet.add(port);
-      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      // 1.32 (S4): bestillingen gaelder den forbindelse, der ejede sessionen - ikke den, der har porten, naar beskeden naar frem.
+      frivilligtFrigivet.set(port, gen);
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port, gen }).catch(() => {});
     })().catch(() => {});
   }
 });

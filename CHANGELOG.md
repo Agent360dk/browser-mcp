@@ -4,6 +4,118 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.32.0 (not released yet)
+
+**Partitions for parallel agents (#20).** Thanks to [@ugbodagadave](https://github.com/ugbodagadave), whose PR #20 had the
+idea and the first version: an extra listener per partition, and a `partition` parameter on the browser tools. It is built
+here on the lanes 1.31 laid down, and #20 is superseded with credit. Agents that share one chat (a coordinator and its
+subagents) also share its tab group and active tab, so they took over each other's tabs. `browser_partition` with
+`action: "new"` gives an agent its own partition: one more port in the same range, which the extension connects to like
+any other, so the partition gets its own tab group and active tab. It chooses its Chrome profile right away by the 1.31
+rules (`profile` in the call, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused while the server runs (after a restart, numbering starts at `p1` again). Every
+tool that reaches the browser takes `partition`, `browser_extract_token` too; calls without it go to the default partition
+as before, and a call with an unknown or closed id is never sent there instead. `action: "close"` closes the partition's
+tabs through its own connection and releases its port. A partition's commands carry no process id, so the extension never
+hands its tabs to another partition. At most 4 partitions are open per server, because the ports are shared by every chat
+on the machine.
+
+**A late clean-up no longer closes a new connection's tab.** The extension keys a chat's session on the port. Measured in
+review: after a new session was created on the same port with a tab, a clean-up still on its way from the connection that
+had closed closed that tab and deleted the session. With partitions, ports are reused more often. Now every connection
+between the extension and a server has its own generation, and a clean-up applies only to the connection it was ordered
+for: a session taken over by a new connection keeps its new tabs, and only the old connection's tabs are closed. A command
+that arrives while a session is being cleaned up gets a fresh session.
+
+**`browser_press_key`: Enter and punctuation as on a real keyboard (#76).** Thanks to [@arasmileska](https://github.com/arasmileska),
+who measured it and named the cause. Enter was sent without text, so the page got keydown and keyup 13 but no keypress, and
+punctuation got key code 0 and a `code` Chrome does not know (`","`). Tag and chip inputs that commit on Enter or comma, by
+keypress or by `keyCode === 188`, never made the tag. Now Enter carries its line break (keydown, keypress and keyup 13, not
+with ctrl, meta or alt), punctuation is sent as the key it sits on in the US layout (`,` 188 `Comma`, `.` 190 `Period` and
+so on), and a shifted character such as `<` or `@` is that key with Shift held, as on a real keyboard. An explicit `code`
+still wins (it changes only the `code`, not the key code); a character that is not on a US keyboard, an emoji too, gets no
+`code` instead of itself. A capital letter is still sent without Shift, and `shift: true` does not change the character.
+The most noticeable change: Enter now acts like the real key. In a text field it submits the form, on a focused button it
+presses it, and in a textarea it adds a line break - before, it did none of these, so an agent that pressed Enter without
+effect can now submit a form. `browser_press_key("Space")` is now the space bar (key `" "`): the page got `e.key ""`
+before, and the answer said `key-not-delivered` although the key had landed.
+`browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
+the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
+A line break or tab in the value is still typed as text, not as the Enter or Tab key, and no longer carries the `code`
+`"Enter"`/`"Tab"`. When the keys reached the page and the field is empty afterwards - a tag input made the text a tag -
+`browser_fill` answers `ok: true`, `differs: true`, `keys_delivered: true` and says to check the page; it advises typing
+again only when no key reached the page.
+`browser_set_date`'s masked path now clears a prefilled field on macOS too (Chrome's select-all command, as in #68), so the
+field holds exactly the new date; and when every path fails after a path wrote to the field, the answer says so
+(`value_before`, `field_changed`) instead of ending as a bare error.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `partition`, `port`, `profile`, `installation` | `browser_partition` `new` | The partition is open and drives that installation |
+| `port_released`, `tabs_closed: true` or `"unknown"` | `browser_partition` `close` | `true` only when the extension confirmed the tabs were closed (or no call ever used the partition) |
+| `error: "partition-limit"` | `browser_partition` `new` | 4 partitions are already open on this server |
+| `error: "port-capacity-exhausted"` | `browser_partition` `new` | Every port in the range is taken; no partition was created |
+| `error: "profile-*"`, `partition_created: false` | `browser_partition` `new` | The partition's profile choice failed; no partition was created and its port was released |
+| `error: "partition-not-found"` | every browser tool, `close` | No partition with that id, or `new` is still creating it (every browser tool). Nothing was sent |
+| `error: "partition-closed"` | every browser tool, `close`, `new` | The partition was closed (from `new`: while it was being created). With `sent: false` nothing was sent. With `sent: true` the command was sent and was still waiting for its answer when close released the port, so it may have been carried out; a command the extension answers before that gets its normal answer |
+| `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
+| `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
+
+## 1.31.0 (not released yet)
+
+**Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so
+the server could not tell profiles apart: with the extension enabled in two of them, commands went to one of them, and which
+one could change when the other reconnected. 1.30.2 only warned, and the warning that commands had moved to another
+connection came after a command had already run there. Now each installation of the extension (one per Chrome profile)
+creates a random installation id once, keeps it in the extension's local storage, and sends it with its greeting, together
+with a name you can give the profile in the popup ("This Chrome profile"). `BROWSER_MCP_PROFILE=<name>` in a client's MCP
+config makes that client drive that profile; it works together with `BROWSER_MCP_EXTENSION_ID`. A chat is locked to the
+installation from its first command, also without `BROWSER_MCP_PROFILE`, and the server never moves it to another profile
+on its own: when that profile goes away, the next call says so and sends nothing, and only the call after that picks again.
+If the same installation comes back in time (the extension reconnects), the chat continues without an error. A call that
+was already waiting when the installation went away gets `profile-disconnected` too; it cannot reach another installation
+before the agent has seen the error. A chat's first call waits until the port has been open for about 2.5 seconds before it
+chooses: the extension scans every 2 seconds in each profile, and without the wait a second profile with the same name, or a
+copied profile, could connect just after the choice and never be seen (measured in Chrome: 7 of 20 first calls). The margin is about half a
+second on an idle machine; a profile whose scan comes later (for instance under heavy load) can still be missed by the first
+choice, and the chat then stays with the profile that did connect. A port released
+after the chat's last tab closed keeps the lock; for an extension before 1.31, which reports no installation, it is released
+as in 1.30.2. Renaming in the popup greets every connected server again with the new name; no connection or running call is
+dropped, and a chat that already drives the installation keeps driving it. The name and the id are labels to choose by, not
+credentials: the greeting is not signed, and another program on the machine can claim any name. Both appear in
+`browser_about` and in the `profile-*` answers, so they reach the agent and its model provider like any tool answer (README,
+Security).
+
+**Groundwork for partitions (#20, ugbodagadave).** The server's bridge now has lanes: one listener code per lane, one map of
+pending calls where each call is bound to the connection it was sent to, `terminate` taken only from the lane's own active
+connection, and one guard against messages that are not objects. There is still one lane (the default one) and no new tool;
+the partition tool from PR #20 comes on top of this in a later version, with credit. The five faults measured in PR #20's own
+listener (a reply from another lane's socket accepted in both directions, `null` stopping the server, a later connection
+taking over a lane, a dead connection answering only after 30 seconds) are fixed tests against these lanes.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `error: "profile-invalid"` | every browser tool | `BROWSER_MCP_PROFILE` is set but is not a valid name (letters, digits, dot, dash, underscore, 1-32). Nothing was sent; the server does not fall back to some profile. The value is not repeated in the answer |
+| `error: "profile-not-connected"`, `profile`, `connected` | every browser tool | No connected installation has the name. The call first waited for it: about 7.5 seconds, and up to about 17.5 seconds when the port opened in the last 10 seconds, as on a chat's first browser call (2.5 seconds before the first choice plus a doubled wait); `connected` lists what the server can see (at most 10) |
+| `error: "profile-routing-unsupported"` | every browser tool | `BROWSER_MCP_PROFILE` is set, but every connected extension is older than 1.31 and reports no name |
+| `error: "profile-ambiguous"`, `candidates` | every browser tool | Two or more connections carry the name, or the installation the chat drives or is about to drive is connected twice (a copied profile, also without `BROWSER_MCP_PROFILE`). Answered without waiting further; nothing was sent |
+| `error: "profile-disconnected"`, `lost`, `connected` | every browser tool | The installation the chat was driving is gone (after waiting the same time for it to come back; at once for an extension before 1.31, which cannot be recognised). Nothing was sent. Calls that were already waiting get the same answer; the next call picks again |
+| a note in the answer | the first command | Without `BROWSER_MCP_PROFILE` and with several installations connected: which one the chat now drives, and that it stays with it |
+| `installations`, `installations_note` | `browser_about` | The installations connected to the chat: `profile`, `instance`, `version`, `driven` (at most 10) |
+
+All of these errors have `sent: false` and `isError: true`. The 1.30.2 note "commands now go to another one" is gone. The
+warning about the same extension connected more than once now only appears for connections that report no installation:
+one that greeted without an installation, or one that still has not greeted 3 seconds after connecting (an extension before
+1.28 never greets). A connection that has just opened and not greeted yet does not count, neither in the server's log nor in
+the next tool answer. `browser_provide_feedback` reports a profile choice that cannot be made instead of "No Chrome extension
+is connected": two profiles with the same name or a copied profile give verdict `conflict`, and for a copy the advice is to
+close it or reinstall the extension in it (renaming a copy does not help, it keeps the same installation id). When a copy and
+another installation both carry the name, the tool's answer and the diagnosis both give both pieces of advice, whatever
+order the connections came in.
+
 ## 1.30.3 (2026-10-15)
 
 **`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,

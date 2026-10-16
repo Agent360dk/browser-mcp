@@ -37,7 +37,8 @@ const readme = laes('README.md');
 //   browser_about             - rene links + metadata, ingen browser involveret
 //   browser_provide_feedback  - selv-diagnose af installationen, spoerger npm, ikke Chrome
 //   browser_extract_token     - sammensat: kalder selv 'navigate' og returnerer vejledning
-const SERVER_LOKALE = new Set(['browser_about', 'browser_provide_feedback', 'browser_extract_token']);
+//   browser_partition         - 1.32: opretter og lukker serverens baner (list_tabs/close_tab gaar via sendTilBane)
+const SERVER_LOKALE = new Set(['browser_about', 'browser_provide_feedback', 'browser_extract_token', 'browser_partition']);
 
 const navne = TOOLS.map(t => t.name);
 
