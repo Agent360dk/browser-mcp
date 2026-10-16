@@ -26,6 +26,14 @@ between the extension and a server has its own generation, and a clean-up applie
 for: a session taken over by a new connection keeps its new tabs, and only the old connection's tabs are closed. A command
 that arrives while a session is being cleaned up gets a fresh session.
 
+**`browser_press_key`: Enter and punctuation as on a real keyboard (#76).** Thanks to [@arasmileska](https://github.com/arasmileska),
+who measured it and named the cause. Enter was sent without text, so the page got keydown and keyup 13 but no keypress, and
+punctuation got key code 0 and a `code` Chrome does not know (`","`). Tag and chip inputs that commit on Enter or comma, by
+keypress or by `keyCode === 188`, never made the tag. Now Enter carries its line break (keydown, keypress and keyup 13, not
+with ctrl, meta or alt), punctuation is sent as the key it sits on in the US layout (`,` 188 `Comma`, `.` 190 `Period` and
+so on), and a shifted character such as `<` or `@` is that key with Shift held, as on a real keyboard. An explicit `code`
+still wins; a character that is not on a US keyboard gets no `code` instead of itself.
+
 **New answers an agent can see:**
 
 | Answer | Where | Means |

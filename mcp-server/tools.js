@@ -138,12 +138,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_press_key',
-    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
+    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). Keys arrive as on a real US keyboard: Enter types a line break (the page gets keydown, keypress and keyup 13), punctuation is sent as the key it sits on ("," is keyCode 188, code "Comma"), and a shifted character such as "<" or "@" is that key with Shift held. While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
     inputSchema: {
       type: 'object',
       properties: {
         key: { type: 'string', description: 'Key to press: "Enter", "Tab", "Escape", "ArrowDown", "ArrowUp", "Backspace", "a", "1", etc.' },
-        code: { type: 'string', description: 'Key code (optional, defaults to key name). E.g. "KeyA" for "a"' },
+        code: { type: 'string', description: 'Physical key code (optional). Without it, the key it sits on in the US layout: "KeyA" for "a", "Comma" for ",", "Digit2" for "@"; a character not on a US keyboard gets none' },
         ctrl: { type: 'boolean', description: 'Hold Ctrl/Cmd key' },
         alt: { type: 'boolean', description: 'Hold Alt key' },
         shift: { type: 'boolean', description: 'Hold Shift key' },

@@ -34,7 +34,7 @@ The list below is what the client has to choose from.
 | `browser_right_click` | Right-click an element to open its context menu. Answers `covered` when the mouse would not reach it. |
 | `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
 | `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. With a text selector, nothing is typed (`covered`) when the mouse would not reach the field. |
-| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. With ctrl or meta (no shift), a, c, x, v, z and y are sent as Chrome's own select all, copy, cut, paste, undo and redo commands, so they also work on macOS; z with shift is redo. |
+| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. Keys arrive as on a real US keyboard: Enter gives keypress 13, punctuation has its key code (`,` is 188, code `Comma`), and shifted characters such as `<` or `@` are sent with Shift. With ctrl or meta (no shift), a, c, x, v, z and y are sent as Chrome's own select all, copy, cut, paste, undo and redo commands, so they also work on macOS; z with shift is redo. |
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
 | `browser_wait` | Wait for an element matching a CSS or text selector to appear. |
 | `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. Answers `covered` when the mouse would not reach it. |
