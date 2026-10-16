@@ -246,7 +246,7 @@ All four are optional. None is needed for normal use.
 |------|-------------|
 | `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
-| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). From 1.32 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea (before, it did none of these). Key codes follow the US layout ("," is 188 `Comma`); shifted characters such as `<` are sent with Shift, capital letters without. With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
+| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). From 1.32 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea; Space types a space, presses a focused button and ticks a checkbox (before, neither key did any of these). Key codes follow the US layout ("," is 188 `Comma`); shifted characters such as `<` are sent with Shift, capital letters without. With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for element to appear |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |

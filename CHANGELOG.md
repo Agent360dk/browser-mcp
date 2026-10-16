@@ -36,17 +36,26 @@ still wins (it changes only the `code`, not the key code); a character that is n
 `code` instead of itself. A capital letter is still sent without Shift, and `shift: true` does not change the character.
 The most noticeable change: Enter now acts like the real key. In a text field it submits the form, on a focused button it
 presses it, and in a textarea it adds a line break - before, it did none of these, so an agent that pressed Enter without
-effect can now submit a form. `browser_press_key("Space")` is now the space bar (key `" "`): the page got `e.key ""`
-before, and the answer said `key-not-delivered` although the key had landed.
+effect can now submit a form. `browser_press_key("Space")` is now the space bar (key `" "`): in a field it types a space,
+on a focused button it presses it, and on a checkbox it ticks it - before, it did none of these; the page got `e.key ""`,
+and the answer said `key-not-delivered` although the key had landed.
 `browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
 the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
-A line break or tab in the value is still typed as text, not as the Enter or Tab key, and no longer carries the `code`
-`"Enter"`/`"Tab"`. When the keys reached the page and the field is empty afterwards - a tag input made the text a tag -
-`browser_fill` answers `ok: true`, `differs: true`, `keys_delivered: true` and says to check the page; it advises typing
-again only when no key reached the page.
+A line break, carriage return or tab in the value is now inserted as text, not sent as a key: before, `"\t"` moved focus
+(and the answer read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. An emoji is typed whole,
+one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
+says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
+a tag, or rejected the keys), `false` (it saw no key arrive) or `null` (it could not tell, or the page navigated). In every
+case it says to check the page before typing again; the advice to switch tabs and try again is given only when the tool saw
+no key arrive. It counts only the browser's own key events, so a key the page fires itself does not count, and an editor
+that stops every key event before the tool's listener can make it see no key although the keys arrived.
 `browser_set_date`'s masked path now clears a prefilled field on macOS too (Chrome's select-all command, as in #68), so the
-field holds exactly the new date; and when every path fails after a path wrote to the field, the answer says so
-(`value_before`, `field_changed`) instead of ending as a bare error.
+field holds exactly the new date. It clears and types only while focus is on the field: when the page moves focus elsewhere
+as the field gets it, nothing is cleared or typed, and the answer is `focus-moved`. When every path fails after a path
+wrote to the field, the answer says so (`value_before`, `field_changed`) instead of ending as a bare error.
+
+**`browser_screenshot`: an older picture says so.** When the raised round's own capture does not arrive in time and an
+earlier capture is delivered instead, the answer now carries `stale: true` and a note: the page may have changed since.
 
 **New answers an agent can see:**
 
@@ -61,6 +70,10 @@ field holds exactly the new date; and when every path fails after a path wrote t
 | `error: "partition-closed"` | every browser tool, `close`, `new` | The partition was closed (from `new`: while it was being created). With `sent: false` nothing was sent. With `sent: true` the command was sent and was still waiting for its answer when close released the port, so it may have been carried out; a command the extension answers before that gets its normal answer |
 | `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
 | `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
+| `keys_delivered: true`, `false` or `null` | `browser_fill` (empty field after typing) | The tool saw keys arrive / saw none / could not tell. Not proof of what the page did with them: check the page before typing again |
+| `error: "focus-moved"`, `focused` | `browser_set_date` | The page moved focus away from the field when it got focus; nothing was cleared or typed |
+| `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
+| `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
 
 ## 1.31.0 (not released yet)
 
