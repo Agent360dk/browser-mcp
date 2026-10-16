@@ -95,6 +95,9 @@ test('#76: et tegn uden for tabellen faar ingen code (Chrome kender ikke "é" so
   assert.equal(e.ned.text, 'é');
   const a = await tryk({ key: 'a' });
   assert.deepEqual([a.ned.windowsVirtualKeyCode, a.ned.code, a.ned.text, a.ned.modifiers], [65, 'KeyA', 'a', 0]);
+  // Et stort bogstav faar IKKE Shift (press_key har aldrig givet det; valgt for ikke at aendre adfaerd ud over #76).
+  const A = await tryk({ key: 'A' });
+  assert.deepEqual([A.ned.windowsVirtualKeyCode, A.ned.code, A.ned.text, A.ned.modifiers], [65, 'KeyA', 'A', 0], JSON.stringify(A.ned));
   const c = await tryk({ key: 'a', ctrl: true });
   assert.deepEqual([c.ned.text, c.ned.windowsVirtualKeyCode, [...(c.ned.commands || [])]], ['', 65, ['selectAll']], '#68: ctrl+a aendret');
 });
@@ -136,7 +139,8 @@ test('#76 moenstret: hvert tastetryk over CDP baerer sin tastkode - intet kald t
   const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
   const kald = [...kilde.matchAll(/await tastParAttached\(tabId,/g)].map((m) => kilde.slice(m.index, kilde.indexOf(');', m.index)));
   assert.ok(kald.length >= 5, `fandt kun ${kald.length} kald til tastParAttached`);
-  for (const k of kald) assert.match(k, /tastkodeFelter\(/, `et tastetryk uden tastkode: ${k}`);
+  // Begge halvdele - ned og op - baerer tastkoden.
+  for (const k of kald) assert.ok((k.match(/tastkodeFelter\(/g) || []).length >= 2, `et tastetryk uden tastkode paa ned eller op: ${k}`);
   // De raa Input.dispatchKeyEvent-kald: kun i tastParAttached og i press_key (med vkParams).
   const raa = [...kilde.matchAll(/'Input\.dispatchKeyEvent', \{/g)].map((m) => kilde.slice(m.index, kilde.indexOf('});', m.index)));
   for (const r of raa) assert.match(r, /\.\.\.ned|\.\.\.op|\.\.\.vkParams/, `et raat tastetryk uden tastkode: ${r.slice(0, 120)}`);
