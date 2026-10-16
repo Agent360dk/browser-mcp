@@ -33,6 +33,8 @@ keypress or by `keyCode === 188`, never made the tag. Now Enter carries its line
 with ctrl, meta or alt), punctuation is sent as the key it sits on in the US layout (`,` 188 `Comma`, `.` 190 `Period` and
 so on), and a shifted character such as `<` or `@` is that key with Shift held, as on a real keyboard. An explicit `code`
 still wins; a character that is not on a US keyboard gets no `code` instead of itself.
+`browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
+the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
 
 **New answers an agent can see:**
 
