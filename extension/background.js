@@ -6348,7 +6348,7 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port, false);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
-      const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
+      let modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
 
       // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger
       // scroll/form-submit behavior. Without these, key-event is dispatched but page doesn't react.
@@ -6368,9 +6368,23 @@ async function dispatch(port, method, params) {
       const stort = etTegn ? key.toUpperCase() : '';
       const bogstav = etTegn && stort >= 'A' && stort <= 'Z';
       const ciffer = etTegn && key >= '0' && key <= '9';
-      const vkCode = VK_CODES[key] || (bogstav || ciffer ? stort.charCodeAt(0) : undefined);
+      // #76 (arasmileska, MAALT i aegte headless Chrome): tegnsaetning fik ingen tastkode (keyCode 0) og code = selve tegnet,
+      // som Chrome ikke kender - et tag-felt, der lytter paa keyCode 188, fik aldrig sit komma. code kommer nu fra samme
+      // US-layout-tabel som browser_type (cdpCodeForChar: tegnet -> den fysiske tast, "@" er Digit2; et ukendt tegn faar
+      // ingen code), og tastkoden fra den fysiske tast. Et skiftet tegn ("<", "!") er samme tast med Shift holdt nede, som
+      // paa et rigtigt tastatur: samme tastkode og code, og Shift i modifiers (shiftKey er sand). En eksplicit code vinder.
+      const TASTKODE = { Space: 32, Comma: 188, Period: 190, Minus: 189, Equal: 187, Semicolon: 186, Quote: 222, Slash: 191,
+        Backslash: 220, BracketLeft: 219, BracketRight: 221, Backquote: 192 };
+      const SKIFTET = '<>?:"{}|_+~!@#$%^&*()';
+      const tegnKode = etTegn && !bogstav && !ciffer ? cdpCodeForChar(key) : '';
+      const tegnVk = TASTKODE[tegnKode] || (/^Digit\d$/.test(tegnKode) ? tegnKode.charCodeAt(5) : undefined);
+      const tegn = tegnVk ? [tegnVk, tegnKode, SKIFTET.includes(key)] : null;
+      const vkCode = VK_CODES[key] || (bogstav || ciffer ? stort.charCodeAt(0) : tegn ? tegn[0] : undefined);
       const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
-      const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : key);
+      const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : etTegn ? tegnKode : key);
+      if (tegn && tegn[2]) modifiers |= 8;   // #76: det skiftede tegn holder Shift nede
+      // #76: Chromes egen Enter baerer text "\r" - uden den kommer intet keypress (13). En genvej faar stadig ingen tekst (#68).
+      const tekst = genvej ? '' : key === 'Enter' ? '\r' : etTegn ? key : '';
       const REDIGERING = { A: 'selectAll', C: 'copy', X: 'cut', V: 'paste', Z: 'undo', Y: 'redo' };
       // R93 (Astra, laest i Chromium): med Shift er det en anden genvej (Ctrl+Shift+V = indsaet uden formatering). Kun
       // Shift+Z (redo) faar en kommando; andre Shift-kombinationer gaar til Chromes egen tastbinding (paa Windows/Linux).
@@ -6393,7 +6407,8 @@ async function dispatch(port, method, params) {
             key,
             code: kode,
             modifiers,
-            text: etTegn && !genvej ? key : '',
+            text: tekst,
+            ...(key === 'Enter' && tekst ? { unmodifiedText: tekst } : {}),
             ...vkParams,
             ...(kommando ? { commands: [kommando] } : {}),
           });
