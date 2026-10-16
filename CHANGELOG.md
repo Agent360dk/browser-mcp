@@ -42,7 +42,9 @@ and the answer said `key-not-delivered` although the key had landed.
 `browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
 the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
 A line break, carriage return or tab in the value is now inserted as text, not sent as a key: before, `"\t"` moved focus
-(and the answer read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. An emoji is typed whole,
+(and the answer read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. `"\r\n"` and `"\r"`
+are one line break. In a single-line input, whose value cannot hold a line break, it is left out - inserted there, it too
+submitted the form. An emoji is typed whole,
 one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
 says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
 a tag, or rejected the keys), `false` (it saw no key arrive) or `null` (it could not tell, or the page navigated). In every

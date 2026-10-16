@@ -1380,11 +1380,26 @@ async function typeCharsAttached(tabId, text) {
   // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
   // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
   const tegn = [...String(text)];
+  let enkeltlinje;   // R126: fokus i et enkeltlinjet <input>? Laeses foerste gang et linjeskift skal skrives
   for (let i = 0; i < tegn.length; i++) {
     const char = tegn[i];
     // R126 (Opus, MAALT i Chrome): "\t" kom frem som Tab og flyttede fokus, "\r" sendte formularen, og "\n" forsvandt i en
     // textarea. Et kontroltegn er tekst i vaerdien, ikke en tast: det indsaettes som tekst og kan hverken sende eller flytte.
     if (char < ' ') {
+      if (char === '\r' || char === '\n') {
+        // MAALT i Chrome (R126): et ENKELT "\n" eller "\r" indsat i et <input> sender formularen (som Enter), og "\r" + "\n"
+        // hver for sig giver to linjeskift i en textarea. Et linjeskift er ét: "\r\n" og "\r" bliver "\n". I et enkeltlinjet
+        // <input> kan en vaerdi ikke rumme et linjeskift (browseren fjerner det ogsaa fra el.value), saa det springes over.
+        if (char === '\r' && tegn[i + 1] === '\n') continue;
+        if (enkeltlinje === undefined) {
+          enkeltlinje = await evalAttached(tabId, `(() => { let a = document.activeElement;
+            while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+            return !!a && a.tagName === 'INPUT'; })()`).catch(() => true);
+        }
+        if (enkeltlinje !== false) continue;
+        await cdpSend(tabId, 'Input.insertText', { text: '\n' });
+        continue;
+      }
       await cdpSend(tabId, 'Input.insertText', { text: char });
       continue;
     }

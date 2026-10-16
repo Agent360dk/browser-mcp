@@ -113,8 +113,17 @@ test('#76: et tegn uden for tabellen faar ingen code (Chrome kender ikke "é" so
 // browser_fill skriver tegn for tegn, naar vaerdien ikke kan saettes direkte (text=-vaelgere, felter der ikke hoerer
 // setteren). Den sendte code, men ingen tastkode: et tag-felt, der lytter paa keyCode 188, fik heller ikke her sit komma.
 // Teksten, der skrives ind, maa ikke aendre sig: hvert tegn sendes stadig med sig selv som text.
-async function skriv(tekst) {
+async function skriv(tekst, { enkeltlinje = false } = {}) {
   const s = tastSele();
+  // Fokus: et enkeltlinjet <input> (true) eller en textarea (false) - laeses af typeCharsAttached ved foerste linjeskift.
+  const foer = s.u.chrome.debugger.sendCommand;
+  s.u.chrome.debugger.sendCommand = async (m, metode, p) => {
+    if (metode === 'Runtime.evaluate' && String(p?.expression || '').includes("a.tagName === 'INPUT'")) {
+      await foer(m, metode, p);
+      return { result: { value: enkeltlinje } };
+    }
+    return foer(m, metode, p);
+  };
   await s.u.hent('typeCharsAttached')(1, tekst);
   const indsat = s.u.optager.til('debugger.sendCommand').filter((k) => k.args[1] === 'Input.insertText').map((k) => k.args[2].text);
   return { ned: s.ned(), op: s.op(), indsat };
@@ -133,10 +142,17 @@ test('#76 i browser_fill: tegn-for-tegn-skrivningen giver tegnsaetning sin tastk
 // felt), "\r" og "\r\n" sendte formularen, og "\n" forsvandt i en textarea. Kontroltegnene sendes nu som indsat tekst
 // (Input.insertText), aldrig som et tastetryk - saa kan de hverken sende en formular eller flytte fokus.
 test('fill: linjeskift, vognretur og tabulator skrives som indsat tekst - intet tastetryk for dem', async () => {
-  const { ned, indsat } = await skriv('x\ny\tz\r\nw');
-  assert.deepEqual(ned.map((n) => n.text), ['x', 'y', 'z', 'w'], `et kontroltegn blev sendt som tast: ${JSON.stringify(ned.map((n) => n.text))}`);
-  assert.deepEqual(indsat, ['\n', '\t', '\r', '\n'], JSON.stringify(indsat));
-  assert.deepEqual(ned.map((n) => n.windowsVirtualKeyCode), [88, 89, 90, 87]);
+  // I en textarea: "\r\n" og "\r" er ét linjeskift (MAALT: hver for sig gav de to), indsat som tekst.
+  const { ned, indsat } = await skriv('x\ny\tz\r\nw\rv');
+  assert.deepEqual(ned.map((n) => n.text), ['x', 'y', 'z', 'w', 'v'], `et kontroltegn blev sendt som tast: ${JSON.stringify(ned.map((n) => n.text))}`);
+  assert.deepEqual(indsat, ['\n', '\t', '\n', '\n'], JSON.stringify(indsat));
+  assert.deepEqual(ned.map((n) => n.windowsVirtualKeyCode), [88, 89, 90, 87, 86]);
+});
+
+test('fill: i et enkeltlinjet <input> springes linjeskift over - et indsat "\\n" dér sender formularen (MAALT i Chrome)', async () => {
+  const { ned, indsat } = await skriv('a\r\nb\nc\td', { enkeltlinje: true });
+  assert.deepEqual(ned.map((n) => n.text), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(indsat, ['\t'], `et linjeskift blev indsat i et enkeltlinjet felt: ${JSON.stringify(indsat)}`);
 });
 
 test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme regel som press_key', async () => {
