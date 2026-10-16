@@ -1323,8 +1323,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // code and drop the keystroke, so typing an email or URL misbehaved on strict SPAs.
 // Shifted symbols report the code of the physical key they sit on ("@" is Digit2).
 const CDP_CHAR_CODES = {
-  // R125 (Astra/Opus): "\n" og "\t" har ingen code. Skrevet som tekst er de ikke Enter- eller Tab-tasten (se fysiskTast),
-  // og en side, der lytter paa e.code === 'Enter', maa ikke udloeses af et linjeskift i en vaerdi.
+  // R125 (Astra/Opus): "\n" og "\t" har ingen code - de er ikke Enter- eller Tab-tasten (se fysiskTast og typeCharsAttached,
+  // der indsaetter kontroltegn som tekst), og en side, der lytter paa e.code === 'Enter', maa ikke udloeses af en vaerdi.
   ' ': 'Space',
   '-': 'Minus', '_': 'Minus', '=': 'Equal', '+': 'Equal',
   '[': 'BracketLeft', '{': 'BracketLeft', ']': 'BracketRight', '}': 'BracketRight',
@@ -1348,8 +1348,9 @@ function cdpCodeForChar(ch) {
 // af ALLE steder, der sender et tastetryk over CDP (press_key, fill's tegn-for-tegn-skrivning, rydning, Tab, PageUp/Down),
 // saa siden ser det samme som fra et rigtigt US-tastatur. Uden tastkode faar keydown keyCode 0, og et tag-felt, der lytter
 // paa keyCode 188, faar aldrig sit komma. Et skiftet tegn ("<", "@") er samme tast med Shift holdt nede. Store bogstaver
-// faar IKKE Shift her (det har press_key aldrig givet dem). "\n" og "\t" faar ingen tastkode: skrevet som tekst er de
-// ikke en Enter- eller Tab-tast, der kan sende en formular eller flytte fokus.
+// faar IKKE Shift her (det har press_key aldrig givet dem). "\n", "\r" og "\t" faar ingen tastkode og ingen code - og fill
+// sender dem slet ikke som taster, men som indsat tekst (typeCharsAttached, R126): som taster sendte "\r" formularen, "\t"
+// flyttede fokus, og "\n" forsvandt (MAALT i Chrome).
 const NAVNGIVNE_TASTKODER = {
   Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18, Escape: 27, Space: 32,
   PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46,
@@ -1381,6 +1382,12 @@ async function typeCharsAttached(tabId, text) {
   const tegn = [...String(text)];
   for (let i = 0; i < tegn.length; i++) {
     const char = tegn[i];
+    // R126 (Opus, MAALT i Chrome): "\t" kom frem som Tab og flyttede fokus, "\r" sendte formularen, og "\n" forsvandt i en
+    // textarea. Et kontroltegn er tekst i vaerdien, ikke en tast: det indsaettes som tekst og kan hverken sende eller flytte.
+    if (char < ' ') {
+      await cdpSend(tabId, 'Input.insertText', { text: char });
+      continue;
+    }
     // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
     const { code, vk, shift } = fysiskTast(char);
     const mods = shift ? { modifiers: 8 } : {};
@@ -1402,7 +1409,7 @@ async function skrivTegnMedBevis(tabId, text) {
   const forventet = [...String(text)].find((c) => c >= ' ');
   const bevis = forventet ? await armerTastBevis(tabId, forventet).catch(() => null) : null;
   await typeCharsAttached(tabId, text);
-  return bevis ? await laesTastBevis(tabId, bevis) : { landed: null };
+  return bevis ? await laesTastBevis(tabId, bevis, { enhverTast: true }) : { landed: null };
 }
 
 async function debuggerType(tabId, text) {
@@ -1419,15 +1426,17 @@ async function debuggerType(tabId, text) {
 function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
   if (landed === true) {
     return { ok: true, ...ekstra, differs: true, keys_delivered: true, value: '', actual: '',
-      note: 'The keys reached the page, but the field is empty afterwards: the page has handled the text - a tag or chip ' +
-            'input, for example, turns it into a tag and clears the field. Check the page before typing it again: ' +
-            'repeating it may add it twice.' };
+      note: 'The tool saw keys arrive, but the field is empty afterwards. Either the page turned the text into something ' +
+            'else - a tag or chip input makes it a tag and clears the field - or it rejected the keys (a field that blocks ' +
+            'typing, a length limit, a field that takes only digits). Check the page before typing it again: repeating it ' +
+            'may add it twice.' };
   }
   if (landed === null) {
     return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: null,
-      note: 'The field was empty after the write, and whether the keys reached the page could not be read. Check the ' +
-            'page first: it may have handled the text (a tag or chip input turns it into a tag and clears the field). ' +
-            'Only if nothing happened there: the tab may be in the background - call browser_switch_tab, then type it again.' };
+      note: 'The field was empty after the write, and whether the keys arrived could not be measured (the page may also ' +
+            'have navigated). Check the page first: it may have handled the text (a tag or chip input turns it into a tag ' +
+            'and clears the field) or rejected it. Only if nothing happened there: the tab may be in the background - call ' +
+            'browser_switch_tab, then type it again.' };
   }
   return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: false, note: ikkeLeveretNote };
 }
@@ -1925,7 +1934,11 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded) {
     'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.';
   if (laest === '') {
     // R125: blev der skrevet tegn for tegn, afgoer leveringen raadet (tomtFeltSvar); ellers som foer.
-    if (tasterLanded !== undefined) return tomtFeltSvar(ekstra, tasterLanded, ikkeLeveret);
+    if (tasterLanded !== undefined) {
+      return tomtFeltSvar(ekstra, tasterLanded, 'The field was empty after the write, and the tool saw no key arrive. ' +
+        'The tab is probably in the background, where Chrome does not deliver keystrokes. Check the page before typing ' +
+        'again (an editor can hide keys from the tool); if nothing happened there, call browser_switch_tab and try again.');
+    }
     return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest, note: ikkeLeveret };
   }
   if (laest === String(oensket)) {
@@ -2628,7 +2641,8 @@ async function armerTastBevis(tabId, forventet) {
       const p = (window.__bmcpTast ||= {});
       if (p.fn) window.removeEventListener('keydown', p.fn, true);
       p.id = nyId; p.antal = 0; p.traf = false;
-      p.fn = (e) => { p.antal++; if (e.key === vent) p.traf = true; };
+      // R126 (Astra): kun browserens egne haendelser taeller - et keydown, siden selv udsender (isTrusted: false), er intet bevis.
+      p.fn = (e) => { if (!e.isTrusted) return; p.antal++; if (e.key === vent) p.traf = true; };
       window.addEventListener('keydown', p.fn, true);
     },
     args: [id, forventet],
@@ -2636,7 +2650,10 @@ async function armerTastBevis(tabId, forventet) {
   return { id, rammer: armet.length };
 }
 
-async function laesTastBevis(tabId, bevis) {
+// `enhverTast` (fill, R126): leveret = NOGEN ægte tast set, ikke kun den forventede, og en udskiftet hovedramme er uvist -
+// en navigation beviser ikke, at tasterne kom frem. press_key beholder sin dom (den ventede tast; en navigation paa tasten
+// er dens virkning).
+async function laesTastBevis(tabId, bevis, { enhverTast = false } = {}) {
   const { id, rammer } = bevis;
   let svar;
   try {
@@ -2655,6 +2672,10 @@ async function laesTastBevis(tabId, bevis) {
     });
   } catch { return { landed: null }; }     // kunne ikke laeses: unknown, ikke nej
   const r = svar.filter((x) => x && x.result).map((x) => ({ frameId: x.frameId, ...x.result }));
+  if (enhverTast) {
+    if (r.some((x) => x.antal > 0)) return { landed: true };
+    if (r.some((x) => x.udskiftet && x.frameId === 0)) return { landed: null, navigeret: true };
+  }
   if (r.some((x) => x.antal > 0 && x.traf)) return { landed: true };
   // Samme regel som for musen: kun hovedrammens udskiftning er en navigation.
   if (r.some((x) => x.udskiftet && x.frameId === 0)) return { landed: true, navigeret: true };
@@ -4325,6 +4346,18 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
+    // R126 (Astra i model, Opus i Chrome): et datofelt, hvis focus-handler flytter fokus til et andet felt, fik det andet
+    // felts tekst slettet af selectAll + Backspace og erstattet af datoen. Rydning og skrivning sker kun, naar fokus staar
+    // paa feltet selv (ogsaa gennem en shadow root); ellers roeres intet, og kalderen faar at vide hvorfor.
+    const fokus = await evalAttached(tabId, `(() => { /* bmcpFokusPaaMaal */
+      const el = document.querySelector(${JSON.stringify(selector)});
+      let a = document.activeElement;
+      while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+      return { paaMaal: !!el && a === el, tag: a ? a.tagName : null, id: a && a.id ? a.id : null };
+    })()`).catch(() => null);
+    if (!fokus || fokus.paaMaal !== true) {
+      return { ok: false, focusMoved: true, focused: fokus ? { tag: fokus.tag, id: fokus.id } : null };
+    }
     await clearFieldAttached(tabId);
     await cdpSend(tabId, 'Input.insertText', { text: formatted });
     await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
@@ -5757,6 +5790,7 @@ async function dispatch(port, method, params) {
             // foer haevningen kunne svare foerst og vinde - selv om siden havde aendret sig imens. Rundens EGNE optagelser
             // afgoer nu svaret; de aeldre taeller stadig med, men kun hvis rundens egne ikke naar frem.
             let shot;
+            let aeldreBillede = false;
             try {
               shot = await medFrist(Promise.any(denneRunde), budgetSlut - reserveret - Date.now());
             } catch (rundeFejl) {
@@ -5764,8 +5798,13 @@ async function dispatch(port, method, params) {
               if (!aeldre.length) throw rundeFejl;
               // Et aeldre billede der ALLEREDE er kommet, svarer i samme oejeblik - ogsaa naar budgettet er brugt op.
               shot = await medFrist(Promise.any(aeldre), budgetSlut - Date.now());
+              aeldreBillede = true;   // kun den haevede runde har aeldre optagelser at falde tilbage paa
             }
-            return { image: 'data:image/png;base64,' + shot.data };
+            // R126 (Opus): reserven leverede det aeldre billede uden at sige det. Det kan vise siden, som den var foer
+            // vinduet blev haevet - agenten skal vide det, foer den handler paa det.
+            return { image: 'data:image/png;base64,' + shot.data,
+              ...(aeldreBillede ? { stale: true, note: 'This picture was taken before the window was raised, because a new ' +
+                'one did not arrive in time. The page may have changed since; take another screenshot if it matters.' } : {}) };
           } catch (andenFejl) {
             const fejl = andenFejl instanceof AggregateError ? andenFejl.errors[andenFejl.errors.length - 1] : andenFejl;
             if (foersteFejl?.ingenNyRunde && fejl && typeof fejl === 'object') fejl.ingenNyRunde = true;
@@ -6152,8 +6191,9 @@ async function dispatch(port, method, params) {
         if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
         if (efterTekst === '') {
           return tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
-            'The field was empty after the write, and no key reached the page. The click may not have hit a field, or the ' +
-            'tab is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.');
+            'The field was empty after the write, and the tool saw no key arrive. The click may not have hit a field, or the ' +
+            'tab is in the background, where Chrome does not deliver keystrokes. Check the page before typing again (an ' +
+            'editor can hide keys from the tool); if nothing happened there, call browser_switch_tab and try again.');
         }
         return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
@@ -6289,7 +6329,16 @@ async function dispatch(port, method, params) {
         const fmt = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
         if (fmt) {
           try {
-            await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
+            const maskeret = await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
+            if (maskeret && maskeret.focusMoved) {
+              const v0 = await readBackValue(tab.id, params.selector).catch(() => null);
+              return { ok: false, error: 'focus-moved', current_value: v0, value_before: info.value,
+                focused: maskeret.focused,
+                note: 'When the field got focus, the page moved focus to another element' +
+                      (maskeret.focused ? ` (${maskeret.focused.tag}${maskeret.focused.id ? '#' + maskeret.focused.id : ''})` : '') +
+                      ', so nothing was cleared or typed: select-all and the typing would have hit that element. Check how ' +
+                      'the page wants the date entered (a date picker, perhaps), and use browser_click or browser_fill on that.' };
+            }
             await new Promise(r => setTimeout(r, 250));
             const v = await readBackValue(tab.id, params.selector);
             tried.push({ path: 'masked', format: fmt.order.join(fmt.sep), value: v });

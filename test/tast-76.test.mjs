@@ -116,7 +116,8 @@ test('#76: et tegn uden for tabellen faar ingen code (Chrome kender ikke "é" so
 async function skriv(tekst) {
   const s = tastSele();
   await s.u.hent('typeCharsAttached')(1, tekst);
-  return { ned: s.ned(), op: s.op() };
+  const indsat = s.u.optager.til('debugger.sendCommand').filter((k) => k.args[1] === 'Input.insertText').map((k) => k.args[2].text);
+  return { ned: s.ned(), op: s.op(), indsat };
 }
 
 test('#76 i browser_fill: tegn-for-tegn-skrivningen giver tegnsaetning sin tastkode og de skiftede tegn Shift - teksten er den samme', async () => {
@@ -128,12 +129,14 @@ test('#76 i browser_fill: tegn-for-tegn-skrivningen giver tegnsaetning sin tastk
     [[65, 'KeyA', 0], [188, 'Comma', 0], [188, 'Comma', 8], [66, 'KeyB', 0]], JSON.stringify(op));
 });
 
-test('#76 i browser_fill: linjeskift og tabulator skrives som foer (ingen Enter- eller Tab-tast, der kan sende en formular eller flytte fokus)', async () => {
-  const { ned } = await skriv('x\ny\tz');
-  assert.deepEqual(ned.map((n) => [n.text, n.key, n.windowsVirtualKeyCode]),
-    [['x', 'x', 88], ['\n', '\n', undefined], ['y', 'y', 89], ['\t', '\t', undefined], ['z', 'z', 90]], JSON.stringify(ned));
-  // R125 (Astra/Opus): heller ikke code "Enter"/"Tab" - en side, der lytter paa e.code === 'Enter', maa ikke udloeses.
-  assert.deepEqual([ned[1].code, ned[3].code], [undefined, undefined], JSON.stringify(ned));
+// R126 (Opus, MAALT i Chrome i baade 52afb28 og a2691a0): "\t" kom frem som Tab og flyttede fokus (og svaret laeste et ANDET
+// felt), "\r" og "\r\n" sendte formularen, og "\n" forsvandt i en textarea. Kontroltegnene sendes nu som indsat tekst
+// (Input.insertText), aldrig som et tastetryk - saa kan de hverken sende en formular eller flytte fokus.
+test('fill: linjeskift, vognretur og tabulator skrives som indsat tekst - intet tastetryk for dem', async () => {
+  const { ned, indsat } = await skriv('x\ny\tz\r\nw');
+  assert.deepEqual(ned.map((n) => n.text), ['x', 'y', 'z', 'w'], `et kontroltegn blev sendt som tast: ${JSON.stringify(ned.map((n) => n.text))}`);
+  assert.deepEqual(indsat, ['\n', '\t', '\r', '\n'], JSON.stringify(indsat));
+  assert.deepEqual(ned.map((n) => n.windowsVirtualKeyCode), [88, 89, 90, 87]);
 });
 
 test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme regel som press_key', async () => {
