@@ -1323,7 +1323,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // code and drop the keystroke, so typing an email or URL misbehaved on strict SPAs.
 // Shifted symbols report the code of the physical key they sit on ("@" is Digit2).
 const CDP_CHAR_CODES = {
-  ' ': 'Space', '\n': 'Enter', '\t': 'Tab',
+  // R125 (Astra/Opus): "\n" og "\t" har ingen code. Skrevet som tekst er de ikke Enter- eller Tab-tasten (se fysiskTast),
+  // og en side, der lytter paa e.code === 'Enter', maa ikke udloeses af et linjeskift i en vaerdi.
+  ' ': 'Space',
   '-': 'Minus', '_': 'Minus', '=': 'Equal', '+': 'Equal',
   '[': 'BracketLeft', '{': 'BracketLeft', ']': 'BracketRight', '}': 'BracketRight',
   '\\': 'Backslash', '|': 'Backslash', ';': 'Semicolon', ':': 'Semicolon',
@@ -1356,8 +1358,11 @@ const TEGN_TASTKODER = { Space: 32, Comma: 188, Period: 190, Minus: 189, Equal: 
   Slash: 191, Backslash: 220, BracketLeft: 219, BracketRight: 221, Backquote: 192 };
 const SKIFTEDE_TEGN = '<>?:"{}|_+~!@#$%^&*()';
 function fysiskTast(key) {
-  if (typeof key !== 'string' || key.length !== 1) {
-    return { code: typeof key === 'string' ? key : '', vk: NAVNGIVNE_TASTKODER[key], shift: false };
+  // R125 (Astra): et tegn er ét kodepunkt - ogsaa et uden for BMP ("😀" er to UTF-16-enheder). Kun et navn som "Enter",
+  // "ArrowDown" eller "F5" er sin egen code; alt andet uden for US-tabellen faar ingen code, aldrig sig selv.
+  if (typeof key !== 'string' || [...key].length !== 1) {
+    const navn = typeof key === 'string' && /^[A-Za-z][A-Za-z0-9]*$/.test(key);
+    return { code: navn ? key : '', vk: navn ? NAVNGIVNE_TASTKODER[key] : undefined, shift: false };
   }
   const code = cdpCodeForChar(key);
   const vk = /^Key[A-Z]$/.test(code) ? code.charCodeAt(3)
@@ -1387,13 +1392,41 @@ async function typeCharsAttached(tabId, text) {
   }
 }
 
+// R125 (Astra, MAALT i model; Opus i Chrome): skrives der tegn for tegn, maales ogsaa om tasterne NAAEDE siden (samme
+// lytter som press_key, i udvidelsens egen verden). Et tomt felt bagefter er ikke bevis for at intet kom frem: et tag-felt
+// goer teksten til et tag og tommer feltet. Uden beviset raadede svaret agenten til at proeve igen - og saa kom tagget to gange.
+async function skrivTegnMedBevis(tabId, text) {
+  const forventet = [...String(text)].find((c) => c >= ' ');
+  const bevis = forventet ? await armerTastBevis(tabId, forventet).catch(() => null) : null;
+  await typeCharsAttached(tabId, text);
+  return bevis ? await laesTastBevis(tabId, bevis) : { landed: null };
+}
+
 async function debuggerType(tabId, text) {
   await debuggerAttach(tabId);
   try {
-    await typeCharsAttached(tabId, text);
+    return await skrivTegnMedBevis(tabId, text);
   } finally {
     await debuggerDetach(tabId);
   }
+}
+
+// Svaret naar feltet er tomt efter en skrivning. `landed`: naaede tasterne siden (true), ikke (false), uvist (null).
+// Raadet om at proeve igen gives KUN, naar intet naaede frem.
+function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
+  if (landed === true) {
+    return { ok: true, ...ekstra, differs: true, keys_delivered: true, value: '', actual: '',
+      note: 'The keys reached the page, but the field is empty afterwards: the page has handled the text - a tag or chip ' +
+            'input, for example, turns it into a tag and clears the field. Check the page before typing it again: ' +
+            'repeating it may add it twice.' };
+  }
+  if (landed === null) {
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: null,
+      note: 'The field was empty after the write, and whether the keys reached the page could not be read. Check the ' +
+            'page first: it may have handled the text (a tag or chip input turns it into a tag and clears the field). ' +
+            'Only if nothing happened there: the tab may be in the background - call browser_switch_tab, then type it again.' };
+  }
+  return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: false, note: ikkeLeveretNote };
 }
 
 // ── Naar en dialog kan aabne midt i klikket (MAALT 24/8) ─────────────────────
@@ -1841,7 +1874,9 @@ async function tastParAttached(tabId, ned, op) {
 
 // Select-all + Backspace. Assumes the debugger is already attached.
 async function clearFieldAttached(tabId) {
-  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS, ...tastkodeFelter(65) },
+  // R125 (Opus, MAALT i Chrome paa macOS): cmd+a markerede ikke alt, og set_date's maskerede vej skrev datoen bag den
+  // gamle ("16/10/202601/01/2000"). #68's laere: kun Chromes egen kommando markerer paa macOS.
+  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS, ...tastkodeFelter(65), commands: ['selectAll'] },
     { key: 'a', code: 'KeyA', ...tastkodeFelter(65) });
   await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) },
     { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) });
@@ -1876,17 +1911,19 @@ async function clearFieldIfFilledAttached(tabId) {
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
 // API-overflade nogen kan laese i dag.
-function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
+function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded) {
   if (laest === undefined || laest === null) {
     return { ok: true, ...ekstra, unknown: true,
       note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
             'it landed. Read the field with browser_execute_script if it matters.' };
   }
+  const ikkeLeveret = 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
+    'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
+    'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.';
   if (laest === '') {
-    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest,
-      note: 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
-            'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
-            'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+    // R125: blev der skrevet tegn for tegn, afgoer leveringen raadet (tomtFeltSvar); ellers som foer.
+    if (tasterLanded !== undefined) return tomtFeltSvar(ekstra, tasterLanded, ikkeLeveret);
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest, note: ikkeLeveret };
   }
   if (laest === String(oensket)) {
     // FUNDET 19/9 (issue #19): her stoppede vi. DOM-vaerdien var rigtig, saa vi svarede ja -
@@ -2135,13 +2172,14 @@ async function debuggerFill(tabId, selector, value) {
     `);
     let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
     let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
+    let tasterLanded;   // R125: kun sat, naar der blev skrevet tegn for tegn (se skrivTegnMedBevis)
     if (landed !== String(value)) {
       const nu = await evalAttached(tabId, fieldBlockedExpression(null)).catch(() => null);
       if (nu === 'readonly' || nu === 'disabled') return { value: null, blocked: nu };
     }
     if (!landed) {
       await clearFieldIfFilledAttached(tabId);
-      await typeCharsAttached(tabId, value);
+      tasterLanded = (await skrivTegnMedBevis(tabId, value)).landed;
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
@@ -2161,7 +2199,7 @@ async function debuggerFill(tabId, selector, value) {
       landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
       rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     }
-    return { value: landed, rammeHoerte: rammeHoerte };
+    return { value: landed, rammeHoerte: rammeHoerte, tasterLanded };
   } finally {
     await debuggerDetach(tabId);
   }
@@ -6093,7 +6131,7 @@ async function dispatch(port, method, params) {
         await new Promise(r => setTimeout(r, 100));
         // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
         if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
-        await debuggerType(tab.id, params.value);
+        const levering = await debuggerType(tab.id, params.value);
         // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
         // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
         // formateret; tekst-grenen gjorde ikke. Et klik der landede paa noget andet end et
@@ -6110,9 +6148,9 @@ async function dispatch(port, method, params) {
         const spaerret = await fieldBlocked(tab.id, null);
         if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
         if (efterTekst === '') {
-          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst, actual: efterTekst,
-            note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+          return tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
+            'The field was empty after the write, and no key reached the page. The click may not have hit a field, or the ' +
+            'tab is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.');
         }
         return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
@@ -6124,7 +6162,7 @@ async function dispatch(port, method, params) {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
         if (efterFyld?.blocked) return fieldBlockedAnswer(efterFyld.blocked, 'debugger');
         return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
-                        efterFyld?.rammeHoerte);
+                        efterFyld?.rammeHoerte, efterFyld?.tasterLanded);
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
         // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra
@@ -6284,20 +6322,29 @@ async function dispatch(port, method, params) {
       if (!params.skip_picker) {
         // Fjerde runde (Astra): kalender-grenen glemte feltets format, saa 01/12/2026 blev godkendt som 12. januar.
         const kendtFormat = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
-        const r = await setDatePicker(tab.id, params.selector, iso);
+        // R125 (Opus, MAALT i Chrome): kalenderens klik kunne kaste (frist paa en skjult fane), og kaldet endte som en raa
+        // fejl - mens den maskerede vej allerede havde skrevet i feltet. Fejlen er nu et svar, der siger hvad feltet indeholder.
+        let r;
+        try { r = await setDatePicker(tab.id, params.selector, iso); } catch (e) { r = { ok: false, error: e.message }; }
         await new Promise(r2 => setTimeout(r2, 200));
-        const v = await readBackValue(tab.id, params.selector);
+        const v = await readBackValue(tab.id, params.selector).catch(() => null);
         tried.push({ path: 'picker', ...r, value: v });
         if (r.ok && valueLooksLikeIso(v, iso, kendtFormat)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
       }
 
-      const visibleErrors = await collectVisibleErrors(tab.id, params.selector);
-      const finalValue = await readBackValue(tab.id, params.selector);
+      const visibleErrors = await collectVisibleErrors(tab.id, params.selector).catch(() => []);
+      const finalValue = await readBackValue(tab.id, params.selector).catch(() => null);
+      // R125: et fejlsvar maa ikke efterlade en halvt skrevet vaerdi uden at sige det.
+      const aendret = finalValue !== null && finalValue !== info.value;
       return {
         ok: false,
         error: 'all-paths-failed',
         tried,
         current_value: finalValue,
+        value_before: info.value,
+        ...(aendret ? { field_changed: true,
+          note: `No path set the date, but the field no longer holds what it did before (before: ${JSON.stringify(info.value)}, ` +
+                `now: ${JSON.stringify(finalValue)}): a path wrote part of a value. Correct the field before trying again.` } : {}),
         visible_errors: visibleErrors,
         input_info: info,
       };
@@ -6377,7 +6424,10 @@ async function dispatch(port, method, params) {
       // sender tastetrykket til den aktive fane — det maales nu i stedet for at antages.
       const tab = await getSessionTab(port, false);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
+      // R125 (Opus, MAALT i Chrome): "Space" er ikke en DOM-key - siden fik e.key "", leveringsbeviset ventede paa "Space", og
+      // svaret var key-not-delivered, selv om keydown 32 landede. Mellemrumstasten er " " (code "Space"), som paa et tastatur:
+      // i et felt skriver den et mellemrum.
+      const key = params.key === 'Space' ? ' ' : params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
       let modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
 
       // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger scroll/form-submit behavior.
@@ -6387,7 +6437,7 @@ async function dispatch(port, method, params) {
       // tekst, bogstaver og cifre faar deres tastkode, og de fem redigeringsgenveje sendes som Chromes egen kommando:
       // kun `commands` udloeste markeringen paa macOS (uden: markering 3-3, med: 0-3, baade med Cmd og Ctrl).
       const genvej = !!(params.ctrl || params.meta || params.alt);
-      const etTegn = typeof key === 'string' && key.length === 1;
+      const etTegn = typeof key === 'string' && [...key].length === 1;   // R125: ét kodepunkt - ogsaa "😀"
       const stort = etTegn ? key.toUpperCase() : '';
       const bogstav = etTegn && stort >= 'A' && stort <= 'Z';
       const ciffer = etTegn && key >= '0' && key <= '9';

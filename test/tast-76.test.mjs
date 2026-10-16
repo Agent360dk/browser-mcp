@@ -30,12 +30,19 @@ function tastSele() {
     return [{ result: null }];
   };
   const tast = (type) => u.optager.til('debugger.sendCommand').map((k) => k.args[2]).filter((p) => p && p.type === type);
-  return { u, ned: () => tast('keyDown'), op: () => tast('keyUp') };
+  // Leveringsbeviset: hvilken tast ventede lytteren paa (R125: "Space" ventede paa en key, siden aldrig ser)?
+  const ventet = [];
+  const foer = u.ctx.chrome.scripting.executeScript;
+  u.ctx.chrome.scripting.executeScript = async (a) => {
+    if (String(a.func).includes('addEventListener') && a.args) ventet.push(a.args[1]);
+    return foer(a);
+  };
+  return { u, ned: () => tast('keyDown'), op: () => tast('keyUp'), ventet };
 }
 async function tryk(p) {
   const s = tastSele();
-  await s.u.hent('dispatch')(9876, 'press_key', p);
-  return { ned: s.ned()[0], op: s.op()[0] };
+  const svar = await s.u.hent('dispatch')(9876, 'press_key', p);
+  return { ned: s.ned()[0], op: s.op()[0], ventet: s.ventet, svar };
 }
 
 test('#76: Enter sender text "\\r" (og unmodifiedText) ved keyDown, saa siden faar keypress 13 - som et rigtigt tastatur', async () => {
@@ -125,6 +132,8 @@ test('#76 i browser_fill: linjeskift og tabulator skrives som foer (ingen Enter-
   const { ned } = await skriv('x\ny\tz');
   assert.deepEqual(ned.map((n) => [n.text, n.key, n.windowsVirtualKeyCode]),
     [['x', 'x', 88], ['\n', '\n', undefined], ['y', 'y', 89], ['\t', '\t', undefined], ['z', 'z', 90]], JSON.stringify(ned));
+  // R125 (Astra/Opus): heller ikke code "Enter"/"Tab" - en side, der lytter paa e.code === 'Enter', maa ikke udloeses.
+  assert.deepEqual([ned[1].code, ned[3].code], [undefined, undefined], JSON.stringify(ned));
 });
 
 test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme regel som press_key', async () => {
@@ -132,6 +141,8 @@ test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme 
   await s.u.hent('clearFieldAttached')(1);
   assert.deepEqual(s.ned().map((n) => [n.key, n.code, n.windowsVirtualKeyCode]), [['a', 'KeyA', 65], ['Backspace', 'Backspace', 8]], JSON.stringify(s.ned()));
   assert.deepEqual(s.op().map((n) => n.windowsVirtualKeyCode), [65, 8]);
+  // R125 (Opus, MAALT paa macOS): kun Chromes kommando markerer alt - ellers skrev set_date datoen bag den gamle.
+  assert.deepEqual([...(s.ned()[0].commands || [])], ['selectAll'], JSON.stringify(s.ned()[0]));
 });
 
 test('#76 moenstret: hvert tastetryk over CDP baerer sin tastkode - intet kald til tastParAttached eller Input.dispatchKeyEvent uden', async () => {
@@ -144,4 +155,20 @@ test('#76 moenstret: hvert tastetryk over CDP baerer sin tastkode - intet kald t
   // De raa Input.dispatchKeyEvent-kald: kun i tastParAttached og i press_key (med vkParams).
   const raa = [...kilde.matchAll(/'Input\.dispatchKeyEvent', \{/g)].map((m) => kilde.slice(m.index, kilde.indexOf('});', m.index)));
   for (const r of raa) assert.match(r, /\.\.\.ned|\.\.\.op|\.\.\.vkParams/, `et raat tastetryk uden tastkode: ${r.slice(0, 120)}`);
+});
+
+test('R125: press_key("Space") er mellemrumstasten - key " ", code "Space", 32, et mellemrum som tekst, og beviset venter paa " "', async () => {
+  const { ned, ventet } = await tryk({ key: 'Space' });
+  assert.deepEqual([ned.key, ned.code, ned.windowsVirtualKeyCode, ned.text], [' ', 'Space', 32, ' '], JSON.stringify(ned));
+  assert.deepEqual(ventet, [' '], `leveringsbeviset ventede paa ${JSON.stringify(ventet)} - siden ser aldrig e.key "Space" (falsk nej)`);
+  const g = await tryk({ key: 'Space', ctrl: true });
+  assert.equal(g.ned.text, '', 'ctrl+Space skrev et mellemrum');
+});
+
+test('R125: et tegn uden for US-tabellen faar aldrig sig selv som code - heller ikke "😀" (to UTF-16-enheder)', async () => {
+  const { ned } = await tryk({ key: '😀' });
+  assert.equal(ned.code, '', `code blev selve tegnet: ${JSON.stringify(ned)}`);
+  assert.equal(ned.text, '😀');
+  const navn = await tryk({ key: 'F5' });
+  assert.equal(navn.ned.code, 'F5', 'en navngiven tast er stadig sin egen code');
 });
