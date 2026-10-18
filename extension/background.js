@@ -614,8 +614,10 @@ const CDP_FRIST_TUNG_MS = 20000;   // under serverens 30 s, men over alt lovligt
 
 function cdpFrist(method, params) {
   const m = String(method);
-  // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte".
-  if (m === 'Runtime.evaluate' && params && params.awaitPromise) return CDP_FRIST_TUNG_MS;
+  // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte". R131 (Opus, maalt i Chrome): 20 s skar et
+  // loefte paa 21 s over, som 1.30.3 besvarede (MAIN-vejen havde ingen frist under serverens). Fristen foelger derfor
+  // serverens egen frist minus hjemrejsen - samme udledning som skaermbilledets budget. Kun koerAgentKode bruger awaitPromise.
+  if (m === 'Runtime.evaluate' && params && params.awaitPromise) return SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS;
   if (m === 'Page.captureScreenshot' || m === 'Network.getResponseBody') return CDP_FRIST_TUNG_MS;
   return m.startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
 }
@@ -5159,19 +5161,119 @@ async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null }
     '). It MAY already have run. It is not repeated automatically - call again only if it is safe to run twice.');
 }
 
-// En knude i debuggerens frametrae: CDP's frame-id, adressen som webNavigation skriver den (med #fragment), og sessionen.
+// En knude i debuggerens frametrae: CDP's frame-id, adressen og sessionen (adressen bruges kun i fejlbeskeder).
 function frameKnude(t, sid) {
   return { id: t.frame.id, url: t.frame.url + (t.frame.urlFragment || ''), sid, boern: (t.childFrames || []).map((c) => frameKnude(c, sid)) };
 }
 
-// Udvidelsens frame (webNavigation) blandt debuggerens boern af samme forælder. De to id'er har intet til faelles, saa de
-// parres paa adressen; har flere soeskende samme adresse, i oprettelsesraekkefoelge (webNavigation's frameId stiger, og
-// debuggerens boern staar i den raekkefoelge de blev oprettet - maalt 19/10). Passer antallet ikke, gaettes der ikke.
-function vaelgFrameBarn(forfaeldreKnude, w, frames) {
-  const cdp = forfaeldreKnude.boern.filter((b) => b.url === w.url);
-  const web = frames.filter((f) => f.parentFrameId === w.parentFrameId && f.url === w.url).sort((a, b) => a.frameId - b.frameId);
-  if (cdp.length !== web.length) return null;
-  return cdp[web.indexOf(w)] || null;
+// ── Hvilken debugger-frame ER udvidelsens frame? (R131, Astra og Opus) ──────────────────────────────────────────────────
+// 866c49a parrede paa adresse og position. Det gik galt to steder: to OOPIF-soeskende med samme adresse blev forvekslet,
+// fordi Chromium melder dem i en udokumenteret raekkefoelge (flat_set; maalt 19/10: t2 foer t1), og en about:blank skrevet
+// med document.write har i debuggeren forælderens adresse, saa ingen about:blank-soeskende kunne parres.
+// Nu bevises identiteten uden adresse og uden raekkefoelge, fra begge sider med SAMME pakkede funktion:
+//   udvidelsen koerer den i udvidelsens ISOLATED-verden INDE i netop den frame (chrome.scripting, frameIds) og maaler sin
+//   egen plads blandt forælderens frames (parent.frames - tilladt ogsaa paa tvaers af domaener);
+//   debuggeren koerer den i en isoleret verden i forælderen med this = ejer-elementet (DOM.getFrameOwner) og maaler
+//   ejerens contentWindow paa samme liste. Siden kan ikke pille ved isolerede verdener.
+// En frame i en shadow root staar ikke i window.frames (maalt 19/10); dér bruges ejer-elementets plads blandt forælderens
+// iframe/frame-elementer (ogsaa i aabne shadow roots), naar framen kan se sit ejer-element (samme domaene). chrome.runtime.
+// getFrameId findes IKKE i et content script (maalt 19/10, Chrome 155), saa den kan ikke bruges.
+// Antallene skal ogsaa passe, og kun ét match er et bevis; ellers koeres intet.
+// rolle 0: inde i framen (udvidelsen). rolle 1: this er ejer-elementet i forælderen (debuggeren).
+function frameIdentitet(rolle) {
+  const ejerPlads = (el) => {
+    if (!el) return [-1, -1];
+    const ejere = [];
+    const gaa = (rod) => {
+      for (const x of rod.querySelectorAll('*')) {
+        if (x.tagName === 'IFRAME' || x.tagName === 'FRAME') ejere.push(x);
+        if (x.shadowRoot) gaa(x.shadowRoot);
+      }
+    };
+    gaa(el.ownerDocument);
+    return [ejere.indexOf(el), ejere.length];
+  };
+  const plads = (far, w) => {
+    const n = far.frames.length;
+    for (let i = 0; i < n; i++) if (far.frames[i] === w) return [i, n];
+    return [-1, n];
+  };
+  if (rolle === 1) return [...plads(window, this.contentWindow), ...ejerPlads(this)];
+  let ejer = null;
+  try { ejer = window.frameElement; } catch (e) { ejer = null; }
+  return [...plads(window.parent, window), ...ejerPlads(ejer)];
+}
+
+// Samme frame set fra begge sider? Plads i window.frames, eller - for en frame uden plads dér - ejer-elementets plads.
+function sammeFrame(inde, ejer) {
+  if (!Array.isArray(inde) || !Array.isArray(ejer)) return false;
+  if (inde[0] >= 0) return inde[0] === ejer[0] && inde[1] === ejer[1];
+  return ejer[0] === -1 && inde[2] >= 0 && inde[2] === ejer[2] && inde[3] === ejer[3];
+}
+
+// Fejl ved framevalget. varig = et nyt forsoeg giver samme svar (agenten skal ikke gaa i ring); ellers kan det hjaelpe.
+function frameFejl(besked, varig) {
+  const e = new Error(besked);
+  e.varig = varig;
+  return e;
+}
+
+// Udvidelsens side: framens identitet, maalt inde i netop den frame (webNavigation-frameId) via chrome.scripting.
+async function identitetIUdvidelsen(tabId, frameId) {
+  let r;
+  try {
+    [r] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, world: 'ISOLATED', func: frameIdentitet, args: [0] });
+  } catch (e) {
+    const m = String(e?.message || e);
+    throw frameFejl(`the extension could not read the frame (${m})`, !/removed|no frame|navigat|closed|not exist/i.test(m));
+  }
+  const v = r && r.result;
+  if (!Array.isArray(v) || (v[0] < 0 && v[2] < 0)) {
+    throw frameFejl('the frame cannot see its place in its parent (it may sit in a shadow root of a page from another site)', true);
+  }
+  return v;
+}
+
+// Debuggerens side: identiteten for en kandidat, maalt fra dens ejer-element i forælderen. null = kunne ikke laeses.
+async function identitetIDebuggeren(tabId, far, barn, verdener) {
+  try {
+    if (!verdener.has(far.id)) {
+      const w = await cdpSend(tabId, 'Page.createIsolatedWorld', { frameId: far.id, worldName: 'bmcp-frameidentitet' }, far.sid);
+      verdener.set(far.id, w.executionContextId);
+    }
+    const ejer = await cdpSend(tabId, 'DOM.getFrameOwner', { frameId: barn.id }, far.sid);
+    const node = await cdpSend(tabId, 'DOM.resolveNode', { backendNodeId: ejer.backendNodeId, executionContextId: verdener.get(far.id) }, far.sid);
+    const r = await cdpSend(tabId, 'Runtime.callFunctionOn', { objectId: node.object.objectId, functionDeclaration: frameIdentitet.toString(),
+      arguments: [{ value: 1 }], returnByValue: true }, far.sid);
+    const v = r && r.result && r.result.value;
+    return Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// Barnet af den beviste forælder, som ER udvidelsens frame w - eller en fejl. Frames fra andre domaener tilknyttes kun,
+// naar ingen af forælderens egne boern passer.
+async function bevisFrameBarn(tabId, top, far, w, tilstand) {
+  const inde = await identitetIUdvidelsen(tabId, w.frameId);
+  const proevet = new Set();
+  const match = [];
+  const proev = async () => {
+    for (const b of far.boern) {
+      if (proevet.has(b.id)) continue;
+      proevet.add(b.id);
+      if (sammeFrame(inde, await identitetIDebuggeren(tabId, far, b, tilstand.verdener))) match.push(b);
+    }
+  };
+  await proev();
+  if (!match.length && !tilstand.tilknyttet) {
+    tilstand.tilknyttet = true;
+    await tilknytFremmedeFrames(tabId, top);
+    await proev();
+  }
+  if (match.length > 1) throw frameFejl(`${match.length} frames in the debugger claim the same element (frame ${w.frameId})`, true);
+  if (!match.length) throw frameFejl(`frame ${w.frameId} (${w.url}) was not found in the debugger (it may be loading)`, false);
+  return match[0];
 }
 
 // Frames fra andre domaener (OOPIF) staar IKKE i fanens Page.getFrameTree (maalt 19/10, Chrome 155): de er egne maal i
@@ -5236,32 +5338,26 @@ async function standardKontekst(tabId, sid, frameId) {
 }
 
 // Udvidelsens frame (webNavigation) -> { kontekst: { sessionId, contextId }, ryd }. Hovedsiden (frameId 0) er fanens egen
-// standardkontekst. ryd() slaar auto-attach fra igen, naar den blev slaaet til (det kobler frame-sessionerne af).
+// standardkontekst. Hvert led fra hovedsiden og ned bevises med bevisFrameBarn. ryd() slaar auto-attach fra igen, naar den
+// blev slaaet til (det kobler frame-sessionerne af).
 async function findFrameKontekst(tabId, frames, valgt) {
   if (valgt.frameId === 0) return { kontekst: {}, ryd: async () => {} };
   const efterId = new Map(frames.map((f) => [f.frameId, f]));
   const kaede = [];
   for (let f = valgt; f && f.frameId !== 0 && kaede.length <= 50; f = efterId.get(f.parentFrameId)) kaede.unshift(f);
-  if (!kaede.length || kaede[0].parentFrameId !== 0) throw new Error(`the frame's parent chain could not be read (frame ${valgt.frameId})`);
-  await debuggerAttach(tabId);
+  if (!kaede.length || kaede[0].parentFrameId !== 0) throw frameFejl(`the frame's parent chain could not be read (frame ${valgt.frameId})`, false);
+  try { await debuggerAttach(tabId); } catch (e) { throw frameFejl(String(e?.message || e), false); }
   const top = frameKnude((await cdpSend(tabId, 'Page.getFrameTree', {})).frameTree, null);
-  let tilknyttet = false;
+  const tilstand = { tilknyttet: false, verdener: new Map() };
   const ryd = async () => {
-    if (tilknyttet) await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+    if (tilstand.tilknyttet) await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
   };
   try {
     let knude = top;
-    for (const w of kaede) {
-      let b = vaelgFrameBarn(knude, w, frames);
-      if (!b && !tilknyttet) {
-        tilknyttet = true;
-        await tilknytFremmedeFrames(tabId, top);
-        b = vaelgFrameBarn(knude, w, frames);
-      }
-      if (!b) throw new Error(`frame ${w.frameId} (${w.url}) was not found in the debugger's frame tree`);
-      knude = b;
-    }
-    return { kontekst: { sessionId: knude.sid, contextId: await standardKontekst(tabId, knude.sid, knude.id) }, ryd };
+    for (const w of kaede) knude = await bevisFrameBarn(tabId, top, knude, w, tilstand);
+    let contextId;
+    try { contextId = await standardKontekst(tabId, knude.sid, knude.id); } catch (e) { throw frameFejl(e.message, false); }
+    return { kontekst: { sessionId: knude.sid, contextId }, ryd };
   } catch (e) {
     await ryd();
     throw e;
@@ -7494,9 +7590,16 @@ async function dispatch(port, method, params) {
       try {
         maal = await findFrameKontekst(tab.id, frames, valgt);
       } catch (e) {
-        return { ok: false, error: 'frame-not-reachable', sent: false, frame_url: valgt.url, detail: String(e?.message || e),
-          note: 'Nothing was run. The frame could not be found through the Chrome debugger (it may have navigated or closed). ' +
-                'Call browser_list_frames and try again.' };
+        // Er framen vaek i mellemtiden, er fejlen forbigaaende, uanset hvad opslaget sagde.
+        const findes = await Promise.resolve().then(() => chrome.webNavigation.getFrame({ tabId: tab.id, frameId: valgt.frameId })).catch(() => null);
+        const varig = !!(e && e.varig) && !!findes;
+        return { ok: false, error: 'frame-not-reachable', sent: false, retry: !varig, frame_url: valgt.url, detail: String(e?.message || e),
+          note: varig
+            ? 'Nothing was run. This frame cannot be identified safely through the Chrome debugger, and calling again will give the ' +
+              'same answer. Work with it from the page instead (browser_execute_script, or tools such as browser_click and ' +
+              'browser_get_page_content).'
+            : 'Nothing was run. The frame was not found (it may still be loading, or it navigated or closed). Call ' +
+              'browser_list_frames and try once more.' };
       }
       try {
         return { ...(await koerAgentKode(tab.id, code, maal.kontekst)), frame_url: valgt.url };

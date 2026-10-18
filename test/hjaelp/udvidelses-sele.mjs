@@ -138,7 +138,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       get: (navn, cb) => { optager.kald.push({ sti: 'alarms.get', args: [navn] }); if (cb) cb(svar['alarms.get']); },
       onAlarm: haendelse('alarms.onAlarm'),
     },
-    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
+    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), getFrame: kald('webNavigation.getFrame'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
     notifications: { create: kald('notifications.create'), clear: kald('notifications.clear') },
     cookies: { getAll: kald('cookies.getAll'), set: kald('cookies.set'), getAllCookieStores: kald('cookies.getAllCookieStores') },
     permissions: { contains: kald('permissions.contains'), request: kald('permissions.request') },

@@ -78,7 +78,9 @@ debugging the browser is not new. What changes for an agent:
 | Code that throws: `ok: false` with the note "not run again through the debugger" | the same fields; the note says it is not run again |
 | `browser_select_frame` on a frame with a strict CSP: `ok: false` (`unsafe-eval`) | runs |
 | `browser_select_frame` with a promise: `{}` | the promise is awaited |
-| `browser_select_frame` answer: `result`, `frame_url` | also `method: "debugger"`; `ok: false`, `error: "frame-not-reachable"`, `sent: false` when the frame cannot be found through the debugger (nothing is run) |
+| `browser_select_frame` answer: `result`, `frame_url` | also `method: "debugger"`; `ok: false`, `error: "frame-not-reachable"`, `sent: false` and `retry` when the frame cannot be identified through the debugger (nothing is run; `retry: false` means calling again gives the same answer) |
+| `browser_select_frame` picks the frame Chrome's scripting API names | the debugger's frame is matched to it by the frame's element in the parent page (`chrome.runtime.getFrameId` on one side, `DOM.getFrameOwner` on the other), not by address or order, so two frames with the same address and an `about:blank` frame written with `document.write` are each reached |
+| A promise on a page with a strict CSP (debugger path) waited at most 20 seconds | the agent's code waits up to 29.5 seconds on every page, just under the server's 30-second limit, as the main-world path did before |
 | Chrome refuses the debugger (enterprise policy, cancelled notice) and the page allows `eval` | the call fails and says the code was not run; there is no fallback through script injection |
 | The popup's action log highlights `execute_script` but not `select_frame` | both are highlighted, since both run the agent's JavaScript (with `get_cookies`, `get_local_storage`, `extract_token`) |
 
