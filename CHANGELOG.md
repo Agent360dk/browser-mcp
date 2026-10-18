@@ -44,10 +44,11 @@ the value directly): the keys now carry the same key codes and Shift, and the te
 A line break, carriage return or tab in the value is no longer sent as a key: before, `"\t"` moved focus (and the answer
 read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. A tab is inserted as text. Line breaks
 follow one rule on every path `browser_fill` writes by (inserting the value at once, and typing it character by character),
-checked in the field that has focus at each line break: `"\r\n"` and `"\r"` are one line break, written only in a textarea
-or a contenteditable field. In a single-line input, in a frame, or when the field cannot be read, it is left out - inserted
-into an input it submits the form - and the answer shows it with `differs` and `actual`; a value of only line breaks there
-gives an empty field and `ok: true`, `differs: true` with a note saying so. An emoji is typed whole,
+checked in the field that has focus at each line break: `"\r\n"` and `"\r"` are one line break, written as a line break only
+in a textarea or a contenteditable field (also on an XHTML page). In a single-line input, in a frame, or when the field
+cannot be read, it is typed as one space instead - a line break inserted into an input submits the form, and leaving it out
+glued the words together - and the answer says so (`line_breaks_as_spaces`, `differs`, `actual`). When a value of only line
+breaks leaves the field empty, the answer says how they were sent and that the field did not take them. An emoji is typed whole,
 one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
 says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
 a tag, or rejected the keys), `false` (it saw no key arrive) or `null` (it could not tell, or the page navigated). In every
@@ -57,7 +58,8 @@ that stops every key event before the tool's listener can make it see no key alt
 `browser_set_date`'s masked path now clears a prefilled field on macOS too (Chrome's select-all command, as in #68), so the
 field holds exactly the new date. Before each step that writes (select all, delete, typing) it checks that focus is still on
 the field, and stops at once when it is not: `focus-moved` names where focus went, `focus-unknown` says it could not be read,
-and the answer lists what had been changed by then and where (`value_before`, `field_changed`, `changed`). The field is
+and the answer lists what had been changed by then and where (`value_before`, `field_changed`, `changed` - each field compared
+with itself, so a page that reorders its fields does not show up as a change). The field is
 found in the main document; a field inside a shadow root or a frame is not reached by this path. When every path fails
 after a path wrote to the field, the answer says so (`value_before`, `field_changed`) instead of ending as a bare error.
 
@@ -79,6 +81,7 @@ saved to a file): the page may have changed since.
 | `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
 | `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
 | `keys_delivered: true`, `false` or `null` | `browser_fill` (empty field after typing) | The tool saw keys arrive / saw none / could not tell. Not proof of what the page did with them: check the page before typing again |
+| `line_breaks_as_spaces` | `browser_fill` | That many line breaks were typed as spaces, because the field takes none (a single-line input, a frame, or a field that could not be read) |
 | `error: "focus-moved"` or `"focus-unknown"`, `step`, `focused`, `changed` | `browser_set_date` | Before a writing step focus was no longer on the field (or could not be read); the tool stopped there, and `changed` lists what had been changed by then |
 | `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
