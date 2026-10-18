@@ -17,8 +17,8 @@ const svar = (v) => ({ result: { value: v } });
 // ── 1. linjeskift ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // `felt`: hvad det aktive felt er, hver gang det spoerges: 'tekst' (textarea/contenteditable), 'linje' (enkeltlinje-input)
 // eller 'ukendt' (fx en iframe). En liste giver svarene i raekkefoelge (fokus skifter undervejs).
-function linjeSide(felt, { afvisLinjeskift = false } = {}) {
-  const s = { value: '', indsat: [], spurgt: 0 };
+function linjeSide(felt, { afvisLinjeskift = false, kunTastet = false } = {}) {
+  const s = { value: '', indsat: [], taster: [], spurgt: 0 };
   const naeste = () => (Array.isArray(felt) ? felt[Math.min(s.spurgt++, felt.length - 1)] : felt);
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined,
@@ -38,8 +38,9 @@ function linjeSide(felt, { afvisLinjeskift = false } = {}) {
         if (x.includes('activeElement')) return svar(s.value);
         return svar(null);
       }
-      if (metode === 'Input.insertText') { s.indsat.push(p.text); s.value += afvisLinjeskift ? p.text.replace(/\n/g, '') : p.text; }
-      if (metode === 'Input.dispatchKeyEvent' && p.type === 'keyDown' && p.text) s.value += p.text;
+      // kunTastet: feltet tager kun tastet input - et indsat stykke tekst uden tast foran afvises (MAALT-moenster fra R130-Chrome).
+      if (metode === 'Input.insertText') { s.indsat.push(p.text); if (!kunTastet) s.value += afvisLinjeskift ? p.text.replace(/\n/g, '') : p.text; }
+      if (metode === 'Input.dispatchKeyEvent' && p.type === 'keyDown' && p.text) { s.taster.push(p); s.value += p.text; }
       return {};
     },
   } });
@@ -74,13 +75,29 @@ test('R127/R130: kan feltet ikke laeses (fx fokus i en iframe), sendes intet lin
   const tegn = linjeSide('ukendt');
   await tegn.u.hent('typeCharsAttached')(1, 'a\nb');
   assert.ok(!tegn.s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(tegn.s.indsat));
-  assert.deepEqual(tegn.s.indsat, [' ']);
+  // R130 i Chrome: tegn for tegn er mellemrummet en tastet mellemrumstast som de andre tegn (se testen nedenfor).
+  assert.deepEqual([tegn.s.indsat, tegn.s.value], [[], 'a b']);
+});
+
+// R130, MAALT i aegte headless Chrome (00ebeba): CSS-reserven i et input, der kun tager TASTET input. Mellemrummet blev
+// indsat (Input.insertText) og afvist af siden ("abc"), og svaret sagde 4 mellemrum for 2 linjeskift - hurtigvejens og
+// reservens tal blev lagt sammen, selvom kun reservens skrivning staar i feltet.
+test('R130: CSS-reserven i et input, der kun tager tastet input - mellemrummet tastes, og svaret taeller kun det der blev skrevet', async () => {
+  const { u, s } = linjeSide('linje', { kunTastet: true });
+  const r = await u.hent('dispatch')(9876, 'fill', { selector: '#m', value: 'a\nb\r\nc' });
+  assert.equal(s.value, 'a b c', `mellemrummene naaede ikke feltet: ${JSON.stringify(s.value)}`);
+  const mellemrum = s.taster.filter((t) => t.text === ' ');
+  assert.deepEqual(mellemrum.map((t) => [t.key, t.code, t.windowsVirtualKeyCode]), [[' ', 'Space', 32], [' ', 'Space', 32]], JSON.stringify(mellemrum));
+  assert.ok(!s.taster.some((t) => LINJESKIFT.test(t.text) || t.key === 'Enter'), JSON.stringify(s.taster));
+  assert.deepEqual([r.actual, r.line_breaks_as_spaces], ['a b c', 2], JSON.stringify(r));
+  assert.doesNotMatch(String(r.note), /formatted/i, r.note);
 });
 
 test('R127: tegn for tegn laeses feltet ved HVERT linjeskift - et fokusskift fra textarea til input mellem to linjeskift', async () => {
   const { u, s } = linjeSide(['tekst', 'linje']);
   await u.hent('typeCharsAttached')(1, 'a\nb\nc');
-  assert.deepEqual(s.indsat, ['\n', ' '], `det andet linjeskift (efter fokusskiftet til et input) blev sendt: ${JSON.stringify(s.indsat)}`);
+  assert.deepEqual(s.indsat, ['\n'], `det andet linjeskift (efter fokusskiftet til et input) blev sendt: ${JSON.stringify(s.indsat)}`);
+  assert.deepEqual(s.taster.map((t) => t.text), ['a', 'b', ' ', 'c'], 'efter fokusskiftet skal linjeskiftet tastes som et mellemrum');
 });
 
 // ── 2. set_date's fokusvagt gennem hele skrivningen ───────────────────────────────────────────────────────────────────

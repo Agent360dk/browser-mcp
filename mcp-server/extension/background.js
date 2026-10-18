@@ -1399,6 +1399,14 @@ async function typeCharsAttached(tabId, text) {
   // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
   // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
   const tegn = [...String(text)];
+  // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
+  const tastTegn = async (char) => {
+    const { code, vk, shift } = fysiskTast(char);
+    const mods = shift ? { modifiers: 8 } : {};
+    await tastParAttached(tabId,
+      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char, ...tastkodeFelter(vk), ...mods },
+      { key: char, ...(code ? { code } : {}), ...tastkodeFelter(vk), ...mods });
+  };
   for (let i = 0; i < tegn.length; i++) {
     const char = tegn[i];
     // R126 (Opus, MAALT i Chrome): "\t" kom frem som Tab og flyttede fokus, "\r" sendte formularen, og "\n" forsvandt i en
@@ -1411,8 +1419,10 @@ async function typeCharsAttached(tabId, text) {
         // et contenteditable-felt; i et enkeltlinje-input, i en iframe eller naar feltet ikke kan laeses, udelades det.
         if (char === '\r' && tegn[i + 1] === '\n') continue;
         // R130 (Opus): udeladt limede det ord sammen ("a\nb" -> "ab"); et mellemrum holder dem adskilt og sender ingen formular.
+        // MAALT i Chrome (R130): et felt, der kun tager tastet input, afviste et INDSAT mellemrum - her tastes det som
+        // mellemrumstasten, ligesom de andre tegn (et mellemrum sender ingen formular).
         if ((await linjeFelt(tabId)) !== 'tekst') {
-          await cdpSend(tabId, 'Input.insertText', { text: ' ' });
+          await tastTegn(' ');
           linjeskift.somMellemrum++;
           continue;
         }
@@ -1423,12 +1433,7 @@ async function typeCharsAttached(tabId, text) {
       await cdpSend(tabId, 'Input.insertText', { text: char });
       continue;
     }
-    // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
-    const { code, vk, shift } = fysiskTast(char);
-    const mods = shift ? { modifiers: 8 } : {};
-    await tastParAttached(tabId,
-      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char, ...tastkodeFelter(vk), ...mods },
-      { key: char, ...(code ? { code } : {}), ...tastkodeFelter(vk), ...mods });
+    await tastTegn(char);
     // Human-like typing: random 30-120ms, occasional longer pause
     const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
       ? 150 + Math.random() * 200  // thinking pause every ~10 chars
@@ -2279,8 +2284,10 @@ async function debuggerFill(tabId, selector, value) {
       await clearFieldIfFilledAttached(tabId);
       const skrevet = await skrivTegnMedBevis(tabId, value);
       tasterLanded = skrevet.landed;
-      linjeskift.somTekst += skrevet.linjeskift.somTekst;
-      linjeskift.somMellemrum += skrevet.linjeskift.somMellemrum;
+      // MAALT i Chrome (R130): hurtigvejens tal blev lagt til ("4 mellemrum" for 2 linjeskift); feltet holder nu kun
+      // reservens skrivning, saa det er dens tal der gaelder.
+      linjeskift.somTekst = skrevet.linjeskift.somTekst;
+      linjeskift.somMellemrum = skrevet.linjeskift.somMellemrum;
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
