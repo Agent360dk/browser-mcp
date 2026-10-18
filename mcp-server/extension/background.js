@@ -676,11 +676,13 @@ function erCdpFrist(e) {
   return /did not respond within|svarede ikke inden/.test((e && e.message) || '');
 }
 
-function cdpMedFrist(tabId, method, params) {
+// sessionId (1.31.0): en frame fra et andet domaene (OOPIF) er sit eget maal i debuggeren. Den naas gennem fanens egen
+// tilslutning med flade sessioner (Target.setAutoAttach, flatten:true, Chrome 125+), ved at sende sessionId med.
+function cdpMedFrist(tabId, method, params, sessionId = null) {
   let ur;
   const frist = cdpFrist(method, params);
   return Promise.race([
-    chrome.debugger.sendCommand({ tabId }, method, params),
+    chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, method, params),
     new Promise((_, afvis) => {
       // MAALT 11/9 (raa CDP-proeve i Chrome for Testing): Chrome leverer ikke Input.* til en fane i baggrunden.
       // Kaldet haenger, og efter aktivering svarer det paa millisekunder. Fejlen siger det, saa agenten ved hvad den goer.
@@ -694,7 +696,7 @@ function cdpMedFrist(tabId, method, params) {
   ]).finally(() => clearTimeout(ur));
 }
 
-async function cdpSend(tabId, method, params = {}) {
+async function cdpSend(tabId, method, params = {}, sessionId = null) {
   await debuggerAttach(tabId);
   let lastMsg = '';
   // 4 total attempts (initial + 3 retries) for read-only methods; backoff 100/300/500ms.
@@ -702,7 +704,7 @@ async function cdpSend(tabId, method, params = {}) {
   // where Chrome re-detaches between attach and command execution.
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return await cdpMedFrist(tabId, method, params);
+      return await cdpMedFrist(tabId, method, params, sessionId);
     } catch (e) {
       const msg = e?.message || String(e);
       const isDetachError =
@@ -5098,6 +5100,174 @@ async function interceptFileChooser(tabId, selector, fileList) {
 
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
+// ── Agentens JavaScript: KUN gennem chrome.debugger (1.31.0) ─────────────────────────────────────────────────────────────
+// Chrome Web Stores MV3-regler: kode, der ikke ligger i pakken, maa kun koeres gennem et API, der er lavet til det (Debugger
+// API eller User Scripts API), og «exemptions apply solely to the specific section of code covered by these APIs». Til og med
+// 1.30.3 gik browser_execute_script foerst gennem chrome.scripting og en streng kompileret i ISOLATED og MAIN, og
+// browser_select_frame kun den vej (R129b, Astra og Opus uafhaengigt). Nu gaar begge vaerktoejer gennem Runtime.evaluate i
+// sidens eller framens standardkontekst: koden ser sidens egne globale variabler som i MAIN, og sidens CSP stopper den ikke.
+// Ingen streng kompileres i udvidelsen selv (test/agentkode-debugger.test.mjs holder det fast).
+const FRAME_TEKST_UDTRYK = 'document.body.innerText.slice(0, 5000)';
+const AGENTKODE_KASTEDE = 'The code threw an error (or did not compile). It is not run again automatically: anything it did before the error has already happened.';
+
+// Fejlen fra Runtime.evaluate (exceptionDetails) som besked og navn - samme form som en fanget Error: «boom», «TypeError».
+function agentKodeFejl(ex) {
+  const e = (ex && ex.exception) || {};
+  const navn = e.className || undefined;
+  if (typeof e.description === 'string' && e.description) {
+    let besked = e.description.split('\n')[0];
+    if (navn && besked.startsWith(navn + ': ')) besked = besked.slice(navn.length + 2);
+    return { besked, navn };
+  }
+  if ('value' in e) return { besked: String(e.value), navn };   // throw 'tekst' eller et tal
+  return { besked: (ex && ex.text) || 'Script exception', navn };
+}
+
+// kontekst: {} = hovedsidens standardkontekst; { sessionId, contextId } = en bestemt frame (sessionId for en OOPIF).
+async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null } = {}) {
+  const p = { expression: '(' + kode + '\n)', returnByValue: true, awaitPromise: true };
+  if (contextId != null) p.contextId = contextId;
+  let raw, fejl = '', sendt = false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await debuggerAttach(tabId);
+      // MAALT 10/9 af Astra: faldt debuggeren af EFTER at koden var sendt, koerte en gentagelse BRUGERENS kode igen - op til
+      // fire gange. Vi kan ikke se, om et vilkaarligt script muterer. Er det sendt, gentages det ikke; kun en fejl FOER
+      // afsendelsen proeves igen. (Samme regel som for Runtime.evaluate i cdpSend.)
+      sendt = true;
+      raw = await cdpSend(tabId, 'Runtime.evaluate', p, sessionId);
+      break;
+    } catch (e) {
+      fejl = String(e?.message || e);
+      if (sendt) break;
+      if (!/detach|attach|gone|given id|not attached/i.test(fejl)) break;
+    }
+    await new Promise((r) => setTimeout(r, 200 + attempt * 200));
+  }
+  if (raw && raw.exceptionDetails) {
+    const { besked, navn } = agentKodeFejl(raw.exceptionDetails);
+    return { ok: false, error: besked, ...(navn ? { name: navn } : {}), method: 'debugger', note: AGENTKODE_KASTEDE };
+  }
+  // FIX (2026-07-16): paa nogle sider falder debuggeren af midt i kaldet, og sendCommand svarer `undefined` i stedet for at
+  // afvise. Et svar UDEN result er derfor ikke et tomt resultat. Et result af typen undefined er derimod kodens eget svar.
+  if (raw && raw.result) return { result: raw.result.value, method: 'debugger' };
+  if (!sendt) {
+    throw new Error('The Chrome debugger could not attach to the tab, so the code was not run (nothing was sent). ' + fejl);
+  }
+  throw new Error('The code was sent to the page, but no answer came back (' + (fejl || 'empty debugger response: ' + JSON.stringify(raw)) +
+    '). It MAY already have run. It is not repeated automatically - call again only if it is safe to run twice.');
+}
+
+// En knude i debuggerens frametrae: CDP's frame-id, adressen som webNavigation skriver den (med #fragment), og sessionen.
+function frameKnude(t, sid) {
+  return { id: t.frame.id, url: t.frame.url + (t.frame.urlFragment || ''), sid, boern: (t.childFrames || []).map((c) => frameKnude(c, sid)) };
+}
+
+// Udvidelsens frame (webNavigation) blandt debuggerens boern af samme forælder. De to id'er har intet til faelles, saa de
+// parres paa adressen; har flere soeskende samme adresse, i oprettelsesraekkefoelge (webNavigation's frameId stiger, og
+// debuggerens boern staar i den raekkefoelge de blev oprettet - maalt 19/10). Passer antallet ikke, gaettes der ikke.
+function vaelgFrameBarn(forfaeldreKnude, w, frames) {
+  const cdp = forfaeldreKnude.boern.filter((b) => b.url === w.url);
+  const web = frames.filter((f) => f.parentFrameId === w.parentFrameId && f.url === w.url).sort((a, b) => a.frameId - b.frameId);
+  if (cdp.length !== web.length) return null;
+  return cdp[web.indexOf(w)] || null;
+}
+
+// Frames fra andre domaener (OOPIF) staar IKKE i fanens Page.getFrameTree (maalt 19/10, Chrome 155): de er egne maal i
+// debuggeren. Target.setAutoAttach med flatten:true (Chrome 125+) tilslutter dem som sessioner under fanens tilslutning og
+// melder dem med Target.attachedToTarget; maalets id er framens id, og dens frametrae har parentId = forældrens frame-id.
+// Auto-attach slaas foerst fra: staar det allerede til, melder Chrome ikke de tilsluttede igen (maalt 19/10).
+async function tilknytFremmedeFrames(tabId, top) {
+  const alle = new Map();
+  const indeks = (k) => { alle.set(k.id, k); k.boern.forEach(indeks); };
+  indeks(top);
+  const koe = [null];
+  let antal = 0;
+  await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+  while (koe.length && antal < 40) {
+    const sid = koe.shift();
+    const nye = [];
+    const lyt = (kilde, metode, ep) => {
+      if (kilde.tabId !== tabId || (kilde.sessionId || null) !== sid || metode !== 'Target.attachedToTarget') return;
+      if (ep && ep.sessionId && ep.targetInfo && ep.targetInfo.type === 'iframe') nye.push(ep.sessionId);
+    };
+    chrome.debugger.onEvent.addListener(lyt);
+    try {
+      await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sid);
+      await new Promise((r) => setTimeout(r, 100));   // haendelserne naar udvidelsen hver for sig
+    } finally {
+      chrome.debugger.onEvent.removeListener(lyt);
+    }
+    for (const s of nye) {
+      const t = await cdpSend(tabId, 'Page.getFrameTree', {}, s).catch(() => null);
+      if (!t || !t.frameTree) continue;
+      const k = frameKnude(t.frameTree, s);
+      const far = alle.get(t.frameTree.frame.parentId);
+      if (far && !far.boern.some((b) => b.id === k.id)) far.boern.push(k);
+      indeks(k);
+      antal++;
+      koe.push(s);
+    }
+  }
+}
+
+// Framens standardkontekst (auxData.isDefault) - ikke en isoleret verden, som ikke ser framens egne globale variabler.
+// Runtime.enable melder de eksisterende kontekster, men kun naar domaenet ikke allerede er slaaet til (maalt 19/10), saa det
+// slaas fra foerst og fra igen bagefter. Konteksten kan stadig bruges efter Runtime.disable (maalt 19/10).
+async function standardKontekst(tabId, sid, frameId) {
+  let fundet = null;
+  const lyt = (kilde, metode, ep) => {
+    if (kilde.tabId !== tabId || (kilde.sessionId || null) !== sid || metode !== 'Runtime.executionContextCreated') return;
+    const c = ep && ep.context;
+    if (c && c.auxData && c.auxData.frameId === frameId && c.auxData.isDefault === true) fundet = c.id;
+  };
+  chrome.debugger.onEvent.addListener(lyt);
+  try {
+    await cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
+    await cdpSend(tabId, 'Runtime.enable', {}, sid);
+    for (let i = 0; fundet === null && i < 10; i++) await new Promise((r) => setTimeout(r, 50));
+  } finally {
+    chrome.debugger.onEvent.removeListener(lyt);
+    await cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
+  }
+  if (fundet === null) throw new Error(`the frame has no default execution context in the debugger (frame ${frameId})`);
+  return fundet;
+}
+
+// Udvidelsens frame (webNavigation) -> { kontekst: { sessionId, contextId }, ryd }. Hovedsiden (frameId 0) er fanens egen
+// standardkontekst. ryd() slaar auto-attach fra igen, naar den blev slaaet til (det kobler frame-sessionerne af).
+async function findFrameKontekst(tabId, frames, valgt) {
+  if (valgt.frameId === 0) return { kontekst: {}, ryd: async () => {} };
+  const efterId = new Map(frames.map((f) => [f.frameId, f]));
+  const kaede = [];
+  for (let f = valgt; f && f.frameId !== 0 && kaede.length <= 50; f = efterId.get(f.parentFrameId)) kaede.unshift(f);
+  if (!kaede.length || kaede[0].parentFrameId !== 0) throw new Error(`the frame's parent chain could not be read (frame ${valgt.frameId})`);
+  await debuggerAttach(tabId);
+  const top = frameKnude((await cdpSend(tabId, 'Page.getFrameTree', {})).frameTree, null);
+  let tilknyttet = false;
+  const ryd = async () => {
+    if (tilknyttet) await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+  };
+  try {
+    let knude = top;
+    for (const w of kaede) {
+      let b = vaelgFrameBarn(knude, w, frames);
+      if (!b && !tilknyttet) {
+        tilknyttet = true;
+        await tilknytFremmedeFrames(tabId, top);
+        b = vaelgFrameBarn(knude, w, frames);
+      }
+      if (!b) throw new Error(`frame ${w.frameId} (${w.url}) was not found in the debugger's frame tree`);
+      knude = b;
+    }
+    return { kontekst: { sessionId: knude.sid, contextId: await standardKontekst(tabId, knude.sid, knude.id) }, ryd };
+  } catch (e) {
+    await ryd();
+    throw e;
+  }
+}
+
+
 async function dispatch(port, method, params) {
   switch (method) {
     case 'navigate': {
@@ -5702,157 +5872,18 @@ async function dispatch(port, method, params) {
     }
 
     case 'execute_script': {
-      // v1.22.2 (DIAGNOSTIC): Try scripting paths but log all errors so we can see WHY they fail
-      // v1.26: accept `script` as alias for `code` — the historic param-name mismatch caused
+      // v1.26: accept `script` as alias for `code` - the historic param-name mismatch caused
       // silent "unserializable"/undefined failures that read as "execute_script is broken".
       if (params.code == null && typeof params.script === 'string') params.code = params.script;
       if (typeof params.code !== 'string' || !params.code.trim()) {
-        return { ok: false, error: 'Missing code. Pass a JavaScript EXPRESSION in `code` (e.g. an IIFE: (() => {...; return x;})()). `return ...` at top level is invalid — the handler wraps code in parentheses.' };
+        return { ok: false, error: 'Missing code. Pass a JavaScript EXPRESSION in `code` (e.g. an IIFE: (() => {...; return x;})()). `return ...` at top level is invalid - the handler wraps code in parentheses.' };
       }
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot execute scripts on chrome:// pages');
-
-      const diag = { tried: [] };
-
-      // MAALT 10/9 af Astra (anden runde), reproduceret med en taeller: kode der udfoerte en
-      // effekt og SAA kastede, blev koert igen via debuggeren - to effekter. `sendt` beskyttede
-      // kun debugger-loekken. Er koden koert, er dens fejl svaret; den koeres ikke igen.
-      // Samme runde: scripting-stierne afventede ikke et Promise ("Promise.resolve(42)" gav {}).
-      // Den injicerede funktion er nu async og afventer resultatet.
-      const koertOgFejlede = (r) => ({
-        ok: false, error: r.message, name: r.name,
-        method: r.world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
-        note: 'The code RAN and threw an error. It is not run again through the debugger, because what it ' +
-              'did manage before the error would then happen twice.',
-      });
-      // MAALT 11/9 af Astra (R5 F4), reproduceret: scriptet sendte en POST og returnerede et
-      // Promise; mens scripting-stien ventede, forsvandt dokumentet, og Chrome afviste med
-      // "Frame with ID 0 was removed." Handleren gik saa videre til debuggeren, som koerte koden
-      // igen - to POST'er. Forsvinder siden EFTER at koden er startet, kan den have koert, og
-      // den koeres ikke igen. Blev den aldrig indsproejtet, maa debuggeren stadig proeve.
-      const sidenForsvandt = (m) => /was removed|execution context was destroyed|document (was )?unloaded/i.test(m);
-      const maaskeKoert = (world, m) => ({
-        ok: false, error: m, maybe_ran: true,
-        method: world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
-        note: 'The page changed or closed while the code was running. It may already have run, so it ' +
-              'is not run again through the debugger. Call again only if it is safe to run twice.',
-      });
-      // Step 1: try ISOLATED world
-      try {
-        const [result] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          world: 'ISOLATED',
-          args: [params.code],
-          func: async (codeStr) => {
-            // Oversaettelse og koersel er adskilt: fejler oversaettelsen (CSP, syntaks), koerte
-            // intet, og debuggeren maa proeve. Fejler KOERSLEN, er koden allerede koert.
-            let fn;
-            try { fn = new Function('return (' + codeStr + ')'); }
-            catch (e) { return { __kompilering: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' }; }
-            try { return { __ok: true, value: await fn() }; }
-            catch (e) { return { __scriptingError: true, koerte: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' }; }
-          },
-        });
-        const r = result?.result;
-        diag.tried.push({ world: 'ISOLATED', result_keys: r ? Object.keys(r) : null, r_type: typeof r });
-        if (r && typeof r === 'object' && r.__ok) {
-          return { result: r.value, method: 'scripting-isolated' };
-        }
-        if (r && typeof r === 'object' && r.__scriptingError && r.koerte) return koertOgFejlede(r);
-        if (r && typeof r === 'object' && (r.__scriptingError || r.__kompilering)) {
-          diag.isolated_error = r.message;
-        }
-      } catch (e) {
-        // Ingen maybe_ran her. MAALT 11/9 i Chrome for Testing 153: `new Function` i ISOLATED afvises af udvidelsens
-        // CSP ('unsafe-eval'), saa brugerens kode kan aldrig have koert i denne verden. Sign-off (Astra): en afvisning
-        // med "Frame with ID 0 was removed." foer start gav maybe_ran og nul koersler, hvor 1.29.0 koerte koden via MAIN.
-        diag.isolated_throw = String(e?.message || e);
-      }
-
-      // Step 2: try MAIN world
-      try {
-        const [result] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          world: 'MAIN',
-          args: [params.code],
-          func: async (codeStr) => {
-            // Oversaettelse og koersel er adskilt: fejler oversaettelsen (CSP, syntaks), koerte
-            // intet, og debuggeren maa proeve. Fejler KOERSLEN, er koden allerede koert.
-            let fn;
-            try { fn = new Function('return (' + codeStr + ')'); }
-            catch (e) { return { __kompilering: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' }; }
-            try { return { __ok: true, value: await fn() }; }
-            catch (e) { return { __scriptingError: true, koerte: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' }; }
-          },
-        });
-        const r = result?.result;
-        diag.tried.push({ world: 'MAIN', result_keys: r ? Object.keys(r) : null, r_type: typeof r });
-        if (r && typeof r === 'object' && r.__ok) {
-          return { result: r.value, method: 'scripting-main' };
-        }
-        if (r && typeof r === 'object' && r.__scriptingError && r.koerte) return koertOgFejlede(r);
-        if (r && typeof r === 'object' && (r.__scriptingError || r.__kompilering)) {
-          diag.main_error = r.message;
-        }
-      } catch (e) {
-        const m = String(e?.message || e);
-        if (sidenForsvandt(m)) return maaskeKoert('MAIN', m);
-        diag.main_throw = m;
-      }
-
-      // Step 3: debugger fallback — the ONLY universal path for arbitrary STRING code
-      // (both scripting worlds block `new Function`: ISOLATED via MV3 extension-CSP,
-      // MAIN via the page\'s own unsafe-eval CSP). CDP Runtime.evaluate bypasses CSP.
-      // FIX (2026-07-16): retry on an EMPTY/undefined CDP response. On some pages the
-      // debugger auto-detaches mid-command and `chrome.debugger.sendCommand` RESOLVES
-      // with `undefined` instead of rejecting, so cdpSend's throw-based retry never
-      // fires and debuggerEval silently returned undefined → the caller saw a bare
-      // `{method:"debugger"}` with no result. Also surface script exceptions + raw
-      // diagnostics so a genuine failure is never mistaken for an empty success.
-      let rawDbg, dbgErr = '', sendt = false;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          await debuggerAttach(tab.id);
-          // MAALT 10/9 af Astra: faldt debuggeren af EFTER at scriptet var sendt, loeb loekken
-          // videre og koerte BRUGERENS kode igen — op til fire gange. Vi kan ikke se om et
-          // vilkaarligt script muterer. Samme regel som for Runtime.evaluate i cdpSend: er det
-          // sendt, gentages det ikke automatisk. Kun en fejl FOER afsendelse proeves igen.
-          sendt = true;
-          rawDbg = await cdpSend(tab.id, 'Runtime.evaluate', {
-            expression: '(' + params.code + '\n)',
-            returnByValue: true,
-            awaitPromise: true,
-          });
-          if (rawDbg && rawDbg.exceptionDetails) {
-            const ex = rawDbg.exceptionDetails;
-            await debuggerDetach(tab.id).catch(() => {});
-            throw new Error('__SCRIPT_EX__' + (ex.exception?.description || ex.text || 'Script exception'));
-          }
-          if (rawDbg && rawDbg.result && rawDbg.result.type !== 'undefined') {
-            await debuggerDetach(tab.id).catch(() => {});
-            return { result: rawDbg.result.value, method: 'debugger' };
-          }
-          dbgErr = 'empty/undefined CDP response: ' + JSON.stringify(rawDbg);
-          break;   // tomt svar efter afsendelse: scriptet kan have koert — gentag ikke
-        } catch (e) {
-          const m = String(e?.message || e);
-          if (m.startsWith('__SCRIPT_EX__')) {
-            throw new Error(m.slice('__SCRIPT_EX__'.length) + ' | scripting-diag: ' + JSON.stringify(diag));
-          }
-          dbgErr = m;
-          if (sendt) break;   // sendt = maaske koert — se kommentaren ved afsendelsen
-          if (!/detach|attach|empty|gone|given id|not attached/i.test(m)) break;
-        }
-        await debuggerDetach(tab.id).catch(() => {});
-        await new Promise(r => setTimeout(r, 200 + attempt * 200));
-      }
-      throw new Error(
-        'execute_script failed on all paths. debugger: ' + dbgErr +
-        (sendt ? ' | Note: the script was sent to the page before it failed and MAY already have run. ' +
-                 'It is not repeated automatically - call again only if it is safe to run twice.' : '') +
-        ' | raw: ' + JSON.stringify(rawDbg) +
-        ' | scripting-diag: ' + JSON.stringify(diag)
-      );
+      // 1.31.0: kun gennem debuggeren, i hovedsidens standardkontekst (sidens egne globale variabler, som MAIN foer).
+      // Til og med 1.30.3 stod her to forsoeg gennem chrome.scripting med strengkompilering (ISOLATED og MAIN) foer
+      // debuggeren - se koerAgentKode for hvorfor de er vaek, og for beskyttelsen mod at koere koden to gange.
+      return koerAgentKode(tab.id, params.code);
     }
 
     case 'click': {
@@ -7451,36 +7482,26 @@ async function dispatch(port, method, params) {
       if (!frames || frameIndex >= frames.length) {
         return { error: `Frame ${frameIndex} not found. Available: ${frames?.length || 0} frames`, frames: frames?.map((f, i) => ({ index: i, url: f.url })) };
       }
-      const frameId = frames[frameIndex].frameId;
-      // MAALT 21/8: her stod `func: new Function('return (' + code + ')')`. Den byggede
-      // funktionen i SERVICE-WORKEREN, hvor udvidelsens egen CSP forbyder eval — saa
-      // vaerktoejet fejlede paa hver eneste side, ogsaa med koden '1+1':
-      //   "Evaluating a string as JavaScript violates ... 'unsafe-eval' is not allowed".
-      // execute_script loeser det samme problem korrekt: send koden med som ARGUMENT og
-      // byg funktionen INDE i den injicerede func, hvor sidens egen CSP gaelder. Samme
-      // vej her.
-      //
-      // Og som i execute_script (v1.26): accepter `script` som alias for `code`. Samme
-      // navne-uoverensstemmelse har foer faaet vaerktoejer til at se brudte ud i tavshed.
+      const valgt = frames[frameIndex];
+      // Som i execute_script (v1.26): accepter `script` som alias for `code`. Samme navne-uoverensstemmelse har foer
+      // faaet vaerktoejer til at se brudte ud i tavshed.
       if (params.code == null && typeof params.script === 'string') params.code = params.script;
-      const code = params.code || 'document.body.innerText.slice(0, 5000)';
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id, frameIds: [frameId] },
-        world: 'MAIN',
-        args: [code],
-        func: (codeStr) => {
-          try {
-            return { __ok: true, value: new Function('return (' + codeStr + ')')() };
-          } catch (e) {
-            return { __scriptingError: true, message: String(e?.message || e) };
-          }
-        },
-      });
-      const r = result?.result;
-      if (r && r.__scriptingError) {
-        return { ok: false, error: r.message, frame_url: frames[frameIndex].url };
+      // 1.31.0: kun gennem debuggeren, i framens STANDARDkontekst (framens egne globale variabler, som MAIN foer). Uden
+      // kode laeses framens tekst med et fast udtryk fra pakken - ingen streng bygges eller kompileres i udvidelsen.
+      const code = params.code || FRAME_TEKST_UDTRYK;
+      let maal;
+      try {
+        maal = await findFrameKontekst(tab.id, frames, valgt);
+      } catch (e) {
+        return { ok: false, error: 'frame-not-reachable', sent: false, frame_url: valgt.url, detail: String(e?.message || e),
+          note: 'Nothing was run. The frame could not be found through the Chrome debugger (it may have navigated or closed). ' +
+                'Call browser_list_frames and try again.' };
       }
-      return { result: r?.value, frame_url: frames[frameIndex].url };
+      try {
+        return { ...(await koerAgentKode(tab.id, code, maal.kontekst)), frame_url: valgt.url };
+      } finally {
+        await maal.ryd();
+      }
     }
 
     case 'list_frames': {
