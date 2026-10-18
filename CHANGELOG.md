@@ -41,10 +41,12 @@ on a focused button it presses it, and on a checkbox it ticks it - before, it di
 and the answer said `key-not-delivered` although the key had landed.
 `browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
 the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
-A line break, carriage return or tab in the value is now inserted as text, not sent as a key: before, `"\t"` moved focus
-(and the answer read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. `"\r\n"` and `"\r"`
-are one line break. In a single-line input, whose value cannot hold a line break, it is left out - inserted there, it too
-submitted the form. An emoji is typed whole,
+A line break, carriage return or tab in the value is no longer sent as a key: before, `"\t"` moved focus (and the answer
+read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. A tab is inserted as text. Line breaks
+follow one rule on every path `browser_fill` writes by (inserting the value at once, and typing it character by character),
+checked in the field that has focus at each line break: `"\r\n"` and `"\r"` are one line break, written only in a textarea
+or a contenteditable field. In a single-line input, in a frame, or when the field cannot be read, it is left out - inserted
+into an input it submits the form - and the answer shows it with `differs` and `actual`. An emoji is typed whole,
 one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
 says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
 a tag, or rejected the keys), `false` (it saw no key arrive) or `null` (it could not tell, or the page navigated). In every
@@ -52,12 +54,15 @@ case it says to check the page before typing again; the advice to switch tabs an
 no key arrive. It counts only the browser's own key events, so a key the page fires itself does not count, and an editor
 that stops every key event before the tool's listener can make it see no key although the keys arrived.
 `browser_set_date`'s masked path now clears a prefilled field on macOS too (Chrome's select-all command, as in #68), so the
-field holds exactly the new date. It clears and types only while focus is on the field: when the page moves focus elsewhere
-as the field gets it, nothing is cleared or typed, and the answer is `focus-moved`. When every path fails after a path
-wrote to the field, the answer says so (`value_before`, `field_changed`) instead of ending as a bare error.
+field holds exactly the new date. Before each step that writes (select all, delete, typing) it checks that focus is still on
+the field, and stops at once when it is not: `focus-moved` names where focus went, `focus-unknown` says it could not be read,
+and the answer lists what had been changed by then and where (`value_before`, `field_changed`, `changed`). The field is
+found in the main document; a field inside a shadow root or a frame is not reached by this path. When every path fails
+after a path wrote to the field, the answer says so (`value_before`, `field_changed`) instead of ending as a bare error.
 
 **`browser_screenshot`: an older picture says so.** When the raised round's own capture does not arrive in time and an
-earlier capture is delivered instead, the answer now carries `stale: true` and a note: the page may have changed since.
+earlier capture is delivered instead, the answer now says `stale: true` with a note, next to the picture (also when it is
+saved to a file): the page may have changed since.
 
 **New answers an agent can see:**
 
@@ -73,7 +78,7 @@ earlier capture is delivered instead, the answer now carries `stale: true` and a
 | `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
 | `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
 | `keys_delivered: true`, `false` or `null` | `browser_fill` (empty field after typing) | The tool saw keys arrive / saw none / could not tell. Not proof of what the page did with them: check the page before typing again |
-| `error: "focus-moved"`, `focused` | `browser_set_date` | The page moved focus away from the field when it got focus; nothing was cleared or typed |
+| `error: "focus-moved"` or `"focus-unknown"`, `step`, `focused`, `changed` | `browser_set_date` | Before a writing step focus was no longer on the field (or could not be read); the tool stopped there, and `changed` lists what had been changed by then |
 | `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
 
