@@ -386,3 +386,14 @@ test('chrome.scripting faar aldrig agentens kode med som argument', () => {
     assert.doesNotMatch(blok, /scripting\.executeScript|safeExecuteScript/, `${navn} bruger stadig chrome.scripting`);
   }
 });
+
+// ── Popuppens handlingslog: agentens JavaScript fremhaeves i begge vaerktoejer ──
+// R129-ASTRA D40: execute_script stod i SENSITIVE, select_frame gjorde ikke - men begge koerer agentens kode.
+test('handlingsloggen fremhaever select_frame som execute_script (kategori sensitive)', async () => {
+  for (const metode of ['execute_script', 'select_frame']) {
+    const u = indlaesUdvidelse({ svar: {} });
+    await u.hent('logAction')(9876, metode);
+    const gemt = u.optager.til('storage.local.set').map((k) => k.args[0]).find((o) => o && Array.isArray(o.actionLog));
+    assert.equal(gemt?.actionLog[0]?.category, 'sensitive', `${metode} fremhaeves ikke i popuppens log`);
+  }
+});

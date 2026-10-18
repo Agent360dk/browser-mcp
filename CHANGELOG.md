@@ -80,6 +80,7 @@ debugging the browser is not new. What changes for an agent:
 | `browser_select_frame` with a promise: `{}` | the promise is awaited |
 | `browser_select_frame` answer: `result`, `frame_url` | also `method: "debugger"`; `ok: false`, `error: "frame-not-reachable"`, `sent: false` when the frame cannot be found through the debugger (nothing is run) |
 | Chrome refuses the debugger (enterprise policy, cancelled notice) and the page allows `eval` | the call fails and says the code was not run; there is no fallback through script injection |
+| The popup's action log highlights `execute_script` but not `select_frame` | both are highlighted, since both run the agent's JavaScript (with `get_cookies`, `get_local_storage`, `extract_token`) |
 
 **Manifest and privacy policy.** The unused `activeTab` permission is removed, and the short description says what is
 true: the agent *can* ask you for a 2FA code or a decision, and the tools work with MCP clients (not "any client"). The

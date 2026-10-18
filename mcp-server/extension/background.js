@@ -3512,7 +3512,8 @@ async function ensureOffscreenIndre() {
 
 // ── Action Logging ─────────────────────────────────────────────────────────
 
-const SENSITIVE = new Set(['get_cookies', 'get_local_storage', 'execute_script', 'extract_token']);
+// 1.31.0: select_frame koerer ogsaa agentens JavaScript (R129-ASTRA D40) og fremhaeves som execute_script.
+const SENSITIVE = new Set(['get_cookies', 'get_local_storage', 'execute_script', 'select_frame', 'extract_token']);
 
 // MAALT 11/9 (Astra, efterproevet): her stod `params: JSON.stringify(params).slice(0, 200)`.
 // De foerste 200 tegn af ALLE parametre — ogsaa vaerdien til fill (adgangskoder), cookie-
