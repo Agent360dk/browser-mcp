@@ -175,3 +175,26 @@ test('R127: en vaerdi af kun linjeskift i et enkeltlinjefelt - svaret siger at d
     assert.doesNotMatch(String(r.note), /switch_tab/, `${sel}: ${r.note}`);
   }
 });
+
+// Udtrykket i linjeFelt KOERES mod et modelleret dokument (ikke et svar, proeven selv vaelger): iframe, intet fokus, input,
+// textarea, contenteditable og et felt inde i en aaben shadow root.
+test('R127: linjeFelt laeser det aktive felt - textarea og contenteditable er tekst, input er linje, iframe er ukendt', async () => {
+  const vm = await import('node:vm');
+  const svarFor = async (aktiv) => {
+    const u = indlaesUdvidelse();
+    let udtryk = null;
+    u.ctx.cdpSend = async (_t, metode, p) => {
+      if (metode === 'Runtime.evaluate') { udtryk = p.expression; return { result: { value: vm.runInNewContext(udtryk, { document: { activeElement: aktiv } }) } }; }
+      return {};
+    };
+    return u.hent('linjeFelt')(1);
+  };
+  assert.equal(await svarFor({ tagName: 'IFRAME' }), 'ukendt', 'en iframe blev regnet som et felt');
+  assert.equal(await svarFor(null), 'ukendt');
+  assert.equal(await svarFor({ tagName: 'INPUT' }), 'linje');
+  assert.equal(await svarFor({ tagName: 'TEXTAREA' }), 'tekst');
+  assert.equal(await svarFor({ tagName: 'DIV', isContentEditable: true }), 'tekst', 'et contenteditable-felt blev ikke regnet som tekst');
+  assert.equal(await svarFor({ tagName: 'BODY' }), 'ukendt');
+  assert.equal(await svarFor({ tagName: 'MY-EDITOR', shadowRoot: { activeElement: { tagName: 'TEXTAREA' } } }), 'tekst', 'shadow root blev ikke fulgt');
+  assert.equal(await svarFor({ tagName: 'MY-FIELD', shadowRoot: { activeElement: { tagName: 'INPUT' } } }), 'linje');
+});
