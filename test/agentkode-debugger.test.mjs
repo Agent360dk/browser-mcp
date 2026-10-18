@@ -23,11 +23,15 @@ const BARN = 'https://top.example/barn';
 const FREMMED = 'https://pay.example/frame';
 
 // Chrome-modellen. `traeer` er Page.getFrameTree pr. session ('' = fanens egen), `kontekster` er de standardkontekster,
-// Runtime.enable melder pr. session, og `oopif` er de maal, Target.setAutoAttach melder i fanens session.
-function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate } = {}) {
+// Runtime.enable melder pr. session, og `oopif` er de maal, Target.setAutoAttach melder (i: den session, de meldes i).
+// Som Chrome (maalt 19/10): Runtime.enable og Target.setAutoAttach melder INTET, naar de allerede staar til.
+// `sene: true` leverer haendelserne 20 ms EFTER svaret - chrome.debugger lover ikke raekkefoelgen mellem de to.
+function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runtimeTil = [], autoAttachTil = [], sene = false } = {}) {
   const log = [];
   let u;
   const kilde = (sid) => (sid ? { tabId: 1, sessionId: sid } : { tabId: 1 });
+  const runtime = new Set(runtimeTil), auto = new Set(autoAttachTil);
+  const send = (...a) => (sene ? setTimeout(() => u.fyr(...a), 20) : u.fyr(...a));
   u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
@@ -39,13 +43,19 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate } = {
       const sid = maal.sessionId || '';
       log.push({ sid, metode, p, maal });
       if (metode === 'Page.getFrameTree') return { frameTree: traeer[sid] };
+      if (metode === 'Runtime.disable') { runtime.delete(sid); return {}; }
       if (metode === 'Runtime.enable') {
-        for (const context of kontekster[sid] || []) u.fyr('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context });
+        if (runtime.has(sid)) return {};
+        runtime.add(sid);
+        for (const context of kontekster[sid] || []) send('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context });
         return {};
       }
+      if (metode === 'Target.setAutoAttach' && !p.autoAttach) { auto.delete(sid); return {}; }
       if (metode === 'Target.setAutoAttach' && p.autoAttach) {
+        if (auto.has(sid)) return {};
+        auto.add(sid);
         for (const o of oopif.filter((x) => (x.i || '') === sid)) {
-          u.fyr('debugger.onEvent', kilde(sid), 'Target.attachedToTarget',
+          send('debugger.onEvent', kilde(sid), 'Target.attachedToTarget',
             { sessionId: o.sessionId, targetInfo: { targetId: o.targetId, type: 'iframe', url: o.url }, waitingForDebugger: false });
         }
         return {};
@@ -162,7 +172,8 @@ test('select_frame i en frame fra samme domaene: frameId oversaettes via Page.ge
   assert.equal(ev[0].sid, '');
   assert.equal(svar.result, 'ctx3');
   assert.equal(svar.frame_url, BARN);
-  assert.ok(m.log.some((x) => x.metode === 'Runtime.disable'), 'Runtime.enable skal slaas fra igen');
+  const sidste = (navn) => m.log.map((x) => x.metode).lastIndexOf(navn);
+  assert.ok(sidste('Runtime.disable') > sidste('Runtime.enable'), 'Runtime skal slaas fra igen, efter at konteksten er fundet');
 });
 
 test('select_frame: to frames med samme adresse skilles ad i oprettelsesraekkefoelge', async () => {
@@ -200,7 +211,54 @@ test('select_frame i en frame fra et andet domaene (OOPIF): Target.setAutoAttach
   assert.equal(ev[0].p.contextId, 1);
   assert.equal(svar.result, 'S-PAY/1');
   assert.equal(svar.frame_url, FREMMED);
-  assert.ok(m.log.some((x) => x.metode === 'Target.setAutoAttach' && !x.p.autoAttach && x.sid === ''), 'auto-attach skal slaas fra igen bagefter');
+  const aaFanen = m.log.filter((x) => x.metode === 'Target.setAutoAttach' && x.sid === '');
+  assert.equal(aaFanen.at(-1).p.autoAttach, false, 'auto-attach skal slaas fra igen bagefter');
+  assert.ok(m.log.indexOf(aaFanen.at(-1)) > m.log.indexOf(ev[0]), 'auto-attach slaas foerst fra, naar koden har koert i framen');
+});
+
+const oopifModel = (ekstra = {}) => ({
+  frames: toFrames,
+  traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]), 'S-PAY': { frame: { id: 'PAY', parentId: 'TOP', url: FREMMED } } },
+  kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')], 'S-PAY': [ctx(1, 'PAY')] },
+  oopif: [{ sessionId: 'S-PAY', targetId: 'PAY', url: FREMMED }],
+  evaluate: (maal, p) => ({ result: { type: 'string', value: `${maal.sessionId}/${p.contextId}` } }),
+  ...ekstra,
+});
+
+test('select_frame: haendelser, der kommer EFTER svaret paa kommandoen, findes stadig (frame fra samme og fra andet domaene)', async () => {
+  const m = sele(oopifModel({ sene: true }));
+  assert.equal((await m.kald('select_frame', { frame_index: 1, code: '1' })).result, 'undefined/2');
+  assert.equal((await m.kald('select_frame', { frame_index: 2, code: '1' })).result, 'S-PAY/1');
+});
+
+test('select_frame: staar Runtime og auto-attach allerede til (fx efter console_logs), slaas de fra foerst, saa Chrome melder igen', async () => {
+  const m = sele(oopifModel({ runtimeTil: ['', 'S-PAY'], autoAttachTil: [''] }));
+  assert.equal((await m.kald('select_frame', { frame_index: 1, code: '1' })).result, 'undefined/2');
+  assert.equal((await m.kald('select_frame', { frame_index: 2, code: '1' })).result, 'S-PAY/1');
+});
+
+test('select_frame: to kald i traek i en fremmed frame virker begge (auto-attach nulstilles mellem dem)', async () => {
+  const m = sele(oopifModel());
+  assert.equal((await m.kald('select_frame', { frame_index: 2, code: '1' })).result, 'S-PAY/1');
+  assert.equal((await m.kald('select_frame', { frame_index: 2, code: '2' })).result, 'S-PAY/1');
+});
+
+test('select_frame: en frame inde i en fremmed frame (OOPIF i OOPIF) naas gennem barnets egen auto-attach', async () => {
+  const DYB = 'https://dyb.example/x';
+  const m = sele({
+    frames: [...toFrames, { frameId: 11, parentFrameId: 9, url: DYB }],
+    traeer: {
+      '': topTrae([{ id: 'CDP-BARN', url: BARN }]),
+      'S-PAY': { frame: { id: 'PAY', parentId: 'TOP', url: FREMMED } },
+      'S-DYB': { frame: { id: 'DYB', parentId: 'PAY', url: DYB } },
+    },
+    kontekster: { '': [ctx(1, 'TOP')], 'S-PAY': [ctx(1, 'PAY')], 'S-DYB': [ctx(4, 'DYB')] },
+    oopif: [{ sessionId: 'S-PAY', targetId: 'PAY', url: FREMMED }, { i: 'S-PAY', sessionId: 'S-DYB', targetId: 'DYB', url: DYB }],
+    evaluate: (maal, p) => ({ result: { type: 'string', value: `${maal.sessionId}/${p.contextId}` } }),
+  });
+  const svar = await m.kald('select_frame', { frame_index: 3, code: '1' });
+  assert.equal(svar.result, 'S-DYB/4', JSON.stringify(svar));
+  assert.equal(svar.frame_url, DYB);
 });
 
 test('select_frame uden kode laeser framens tekst med et fast udtryk fra pakken', async () => {
