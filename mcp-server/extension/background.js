@@ -1448,6 +1448,15 @@ async function debuggerType(tabId, text) {
 
 // Svaret naar feltet er tomt efter en skrivning. `landed`: naaede tasterne siden (true), ikke (false), uvist (null).
 // Raadet om at proeve igen gives KUN, naar intet naaede frem.
+// R127 (MAALT i Chrome): en vaerdi af KUN linjeskift i et felt, der ikke tager linjeskift (linjeFelt), skrives slet ikke - saa
+// er et tomt felt det rigtige udfald, ikke en fejl, og intet blev sendt, der kunne sende formularen.
+function kunLinjeskiftSvar(ekstra) {
+  return { ok: true, ...ekstra, differs: true, value: '', actual: '',
+    note: 'The value holds only line breaks, and this field takes none (a single-line input, a frame, or a field that ' +
+          'could not be read), so they were left out and the field is empty. Nothing was sent that could submit a form.' };
+}
+const kunLinjeskift = (v) => /[\r\n]/.test(String(v)) && String(v).replace(/[\r\n]/g, '') === '';
+
 function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
   if (landed === true) {
     return { ok: true, ...ekstra, differs: true, keys_delivered: true, value: '', actual: '',
@@ -1963,6 +1972,7 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded) {
   const ikkeLeveret = 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
     'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
     'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.';
+  if (laest === '' && kunLinjeskift(oensket)) return kunLinjeskiftSvar(ekstra);
   if (laest === '') {
     // R125: blev der skrevet tegn for tegn, afgoer leveringen raadet (tomtFeltSvar); ellers som foer.
     if (tasterLanded !== undefined) {
@@ -6264,6 +6274,7 @@ async function dispatch(port, method, params) {
         if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
         const spaerret = await fieldBlocked(tab.id, null);
         if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
+        if (efterTekst === '' && kunLinjeskift(params.value)) return kunLinjeskiftSvar({ method: 'debugger' });
         if (efterTekst === '') {
           return tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
             'The field was empty after the write, and the tool saw no key arrive. The click may not have hit a field, or the ' +

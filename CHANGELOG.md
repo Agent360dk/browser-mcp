@@ -46,7 +46,8 @@ read another field), `"\r"` submitted the form, and `"\n"` was lost in a textare
 follow one rule on every path `browser_fill` writes by (inserting the value at once, and typing it character by character),
 checked in the field that has focus at each line break: `"\r\n"` and `"\r"` are one line break, written only in a textarea
 or a contenteditable field. In a single-line input, in a frame, or when the field cannot be read, it is left out - inserted
-into an input it submits the form - and the answer shows it with `differs` and `actual`. An emoji is typed whole,
+into an input it submits the form - and the answer shows it with `differs` and `actual`; a value of only line breaks there
+gives an empty field and `ok: true`, `differs: true` with a note saying so. An emoji is typed whole,
 one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
 says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
 a tag, or rejected the keys), `false` (it saw no key arrive) or `null` (it could not tell, or the page navigated). In every

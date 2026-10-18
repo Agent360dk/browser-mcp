@@ -161,3 +161,17 @@ test('R127: kan fokus ikke aflaeses, er svaret focus-unknown - ikke focus-moved 
   assert.deepEqual(s.sendt, [], JSON.stringify(s.sendt));
   assert.equal(s.felt.d, '16/10/2026');
 });
+
+// MAALT i Chrome (R127, efter rettelsen): en vaerdi, der KUN er linjeskift, i et enkeltlinje-input - linjeskiftene udelades,
+// feltet er tomt, og svaret var field-is-empty med raadet om en baggrundsfane. Det er ikke sandt: intet kunne skrives.
+test('R127: en vaerdi af kun linjeskift i et enkeltlinjefelt - svaret siger at de blev udeladt, ikke «field-is-empty»', async () => {
+  for (const sel of ['#f', 'text=Felt']) {
+    const { u, s } = linjeSide('linje');
+    const r = await u.hent('dispatch')(9876, 'fill', { selector: sel, value: '\r\n' });
+    assert.ok(!s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(s.indsat));
+    assert.notEqual(r.error, 'field-is-empty', `${sel}: ${JSON.stringify(r)}`);
+    assert.deepEqual([r.differs, r.actual], [true, ''], `${sel}: ${JSON.stringify(r)}`);
+    assert.match(String(r.note), /line break/i, `${sel}: ${r.note}`);
+    assert.doesNotMatch(String(r.note), /switch_tab/, `${sel}: ${r.note}`);
+  }
+});
