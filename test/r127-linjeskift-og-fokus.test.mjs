@@ -213,6 +213,10 @@ test('R130: kun linjeskift i en textarea, der afviser dem - noten siger at linje
     assert.doesNotMatch(String(r.note), /left out|takes none|nothing was sent/i, `${sel}: falsk note: ${r.note}`);
     assert.match(String(r.note), /sent/i, `${sel}: ${r.note}`);
     assert.match(String(r.note), /did not take/i, `${sel}: ${r.note}`);
+    // Et tekstfelt tager linjeskift: noten maa ikke sige at de blev til mellemrum, eller at feltet ikke tager dem.
+    assert.match(String(r.note), /as line breaks/i, `${sel}: ${r.note}`);
+    assert.doesNotMatch(String(r.note), /as spaces|takes no line breaks/i, `${sel}: ${r.note}`);
+    assert.equal(r.line_breaks_as_spaces, undefined, JSON.stringify(r));
   }
 });
 
