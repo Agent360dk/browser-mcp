@@ -22,3 +22,14 @@ test('manifestet beder ikke om activeTab, og den korte beskrivelse lover kun det
   assert.doesNotMatch(m.description, /any client/, 'kun MCP-klienter der kan koere en lokal server');
   assert.match(m.description, /MCP client/);
 });
+
+test('ingen side, README eller sidekilde naevner activeTab som tilladelse', async () => {
+  // Gaar filerne igennem uden git, saa proeven ogsaa koerer i en kopi uden .git (mutantkoersler).
+  const { readdirSync, statSync } = await import('node:fs');
+  const filer = [];
+  const gaa = (d) => { for (const n of readdirSync(join(ROD, d))) { const s = join(d, n); if (statSync(join(ROD, s)).isDirectory()) gaa(s); else if (/\.(html|md|txt)$/.test(n)) filer.push(s); } };
+  gaa('docs'); gaa('content'); filer.push('README.md', 'mcp-server/README.md');
+  const fund = filer.filter((f) => /\bactiveTab\b/.test(readFileSync(join(ROD, f), 'utf8')));
+  assert.ok(filer.length > 40, `for faa filer gennemgaaet (${filer.length})`);
+  assert.deepEqual(fund, [], 'activeTab naevnes stadig');
+});

@@ -171,8 +171,8 @@ running is the one being released - not another copy with the same version numbe
 failures that do show up are honest ones: mouse events are not delivered to a tab that is
 not in front, and the tools say so instead of reporting success. What the test covers
 
-- **strict CSP** - navigate, read, execute, wait and click all still work (falls back to
-  the Chrome Debugger API when script injection is blocked)
+- **strict CSP** - navigate, read, execute, wait and click all still work (scripts run
+  through the Chrome Debugger API, and the rest falls back to it when script injection is blocked)
 - **cross-origin iframes** - seen into and reached inside
 - **shadow DOM** - selectors reach through it
 - **controlled inputs** - `fill` sticks in a React-style controlled field
@@ -238,7 +238,7 @@ All four are optional. None is needed for normal use.
 | `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). On "Leave site?" it answers Stay and says so (`beforeunload-blocked`); `leave_page=true` leaves; an armed `browser_handle_dialog` answers instead of either |
 | `browser_get_page_content` | Get page text or HTML |
 | `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused; a covered window answers `window-covered`) |
-| `browser_execute_script` | Run JavaScript in page context |
+| `browser_execute_script` | Run JavaScript in the page's own context, through the Chrome debugger (CSP-strict sites too) |
 | `browser_extract_list` | Read the rows of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a hidden page (a background tab) a list that loads while scrolling stops early, and `reached_end` is false |
 
 ### Interaction
@@ -268,7 +268,7 @@ All four are optional. None is needed for normal use.
 | `browser_close_tab` | Close tab (session-owned only) |
 | `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
 | `browser_list_frames` | List iframes on page |
-| `browser_select_frame` | Execute JS in specific iframe |
+| `browser_select_frame` | Run JavaScript in a specific iframe, also one from another site, through the Chrome debugger |
 
 ### Data & Network
 | Tool | Description |
@@ -537,6 +537,11 @@ account and no server of ours between you and the page.
   you can turn on with `BROWSER_MCP_CHECK_NPM=1`. That bridge is **local and unauthenticated**:
   another program running as you on the same machine can connect to it. Browser
   MCP does not protect you from software you already run.
+- **JavaScript your agent sends** (`browser_execute_script`, `browser_select_frame`)
+  runs only through Chrome's Debugger API (1.31), in a tab of the agent's session;
+  it is not part of the extension, and Chrome shows its notice that the extension is
+  debugging the browser. `browser_list_tabs` returns the addresses and titles of the
+  session's tabs to your MCP client; Browser MCP does not read Chrome's history.
 - The profile name you set in the extension popup (1.31) and the installation id
   are labels for choosing a Chrome profile, not credentials. The extension sends
   them unsigned to every Browser MCP server on the port range, and another

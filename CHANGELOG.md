@@ -58,6 +58,36 @@ close it or reinstall the extension in it (renaming a copy does not help, it kee
 another installation both carry the name, the tool's answer and the diagnosis both give both pieces of advice, whatever
 order the connections came in.
 
+**The agent's JavaScript runs only through the Chrome debugger.** Up to 1.30.3, `browser_execute_script` first tried
+`chrome.scripting.executeScript` with the code compiled by `new Function`, in the extension's isolated world and then in
+the page's main world, and only then the debugger; `browser_select_frame` used only the scripting path. Chrome Web Store's
+Manifest V3 rules allow code that is not in the package only through an API made for it (the Debugger API or the User
+Scripts API), and only for the code that API runs. Both tools now evaluate through the debugger (`Runtime.evaluate`): in
+the page's own context, so the page's globals are visible as before, and in a frame's own context for
+`browser_select_frame`, also in a frame from another site (Chrome runs those as separate targets; the extension reaches
+them with `Target.setAutoAttach` and flat sessions, also when nested). A returned promise is awaited, and code that was
+sent is never sent again. The extension compiles no strings anywhere. Measured in headless Chrome 155 against 1.30.3 on a
+plain page, a page with a strict CSP, a promise, code that throws, and same-site, cross-site and nested frames. The debugger
+was already attached to the tab after `browser_navigate` in both versions, so Chrome's notice that the extension is
+debugging the browser is not new. What changes for an agent:
+
+| Before (1.30.3) | Now |
+|---|---|
+| `method`: `scripting-main`, `scripting-isolated` or `debugger` | always `debugger` |
+| A syntax error: a tool error with a `scripting-diag` trail | `ok: false`, `error`, `name: "SyntaxError"`, `method`, `note`, like any code that throws |
+| Code that throws: `ok: false` with the note "not run again through the debugger" | the same fields; the note says it is not run again |
+| `browser_select_frame` on a frame with a strict CSP: `ok: false` (`unsafe-eval`) | runs |
+| `browser_select_frame` with a promise: `{}` | the promise is awaited |
+| `browser_select_frame` answer: `result`, `frame_url` | also `method: "debugger"`; `ok: false`, `error: "frame-not-reachable"`, `sent: false` when the frame cannot be found through the debugger (nothing is run) |
+| Chrome refuses the debugger (enterprise policy, cancelled notice) and the page allows `eval` | the call fails and says the code was not run; there is no fallback through script injection |
+
+**Manifest and privacy policy.** The unused `activeTab` permission is removed, and the short description says what is
+true: the agent *can* ask you for a 2FA code or a decision, and the tools work with MCP clients (not "any client"). The
+privacy policy says what the code does: Browser MCP does not read Chrome's history, but `browser_list_tabs` returns the
+addresses and titles of the session's tabs to the AI client; the agent's JavaScript runs only through the Debugger API;
+answers in `browser_ask_user` go to the AI client, and the page's own listeners can see the keystrokes typed there; and
+the Chrome Web Store Limited Use statement.
+
 ## 1.30.3 (2026-10-15)
 
 **`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,
