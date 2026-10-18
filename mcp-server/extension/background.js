@@ -1376,11 +1376,25 @@ function tastkodeFelter(vk) { return vk ? { windowsVirtualKeyCode: vk, nativeVir
 
 // Types text as individual key events. Assumes the debugger is already attached —
 // debuggerType() is the public wrapper that manages attach/detach.
+// R127: hvilket slags felt har fokus lige nu? 'tekst' (textarea eller contenteditable: et linjeskift er tekst), 'linje'
+// (et <input>: et linjeskift sender formularen) eller 'ukendt' (en iframe, intet felt, eller kunne ikke laeses). Gennem aabne
+// shadow roots til det element, der faktisk har fokus. Et linjeskift skrives kun ved 'tekst'.
+async function linjeFelt(tabId) {
+  const svar = await evalAttached(tabId, `(() => { /* bmcpLinjeFelt */
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    if (!a || a.tagName === 'IFRAME' || a.tagName === 'FRAME') return 'ukendt';
+    if (a.tagName === 'TEXTAREA' || a.isContentEditable) return 'tekst';
+    if (a.tagName === 'INPUT') return 'linje';
+    return 'ukendt';
+  })()`).catch(() => 'ukendt');
+  return svar === 'tekst' || svar === 'linje' ? svar : 'ukendt';
+}
+
 async function typeCharsAttached(tabId, text) {
   // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
   // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
   const tegn = [...String(text)];
-  let enkeltlinje;   // R126: fokus i et enkeltlinjet <input>? Laeses foerste gang et linjeskift skal skrives
   for (let i = 0; i < tegn.length; i++) {
     const char = tegn[i];
     // R126 (Opus, MAALT i Chrome): "\t" kom frem som Tab og flyttede fokus, "\r" sendte formularen, og "\n" forsvandt i en
@@ -1388,15 +1402,11 @@ async function typeCharsAttached(tabId, text) {
     if (char < ' ') {
       if (char === '\r' || char === '\n') {
         // MAALT i Chrome (R126): et ENKELT "\n" eller "\r" indsat i et <input> sender formularen (som Enter), og "\r" + "\n"
-        // hver for sig giver to linjeskift i en textarea. Et linjeskift er ét: "\r\n" og "\r" bliver "\n". I et enkeltlinjet
-        // <input> kan en vaerdi ikke rumme et linjeskift (browseren fjerner det ogsaa fra el.value), saa det springes over.
+        // hver for sig giver to linjeskift i en textarea. Et linjeskift er ét: "\r\n" og "\r" bliver "\n". R127 (Astra): det
+        // aktive felt laeses ved HVERT linjeskift (fokus kan skifte undervejs), og linjeskiftet skrives kun i en textarea eller
+        // et contenteditable-felt; i et enkeltlinje-input, i en iframe eller naar feltet ikke kan laeses, udelades det.
         if (char === '\r' && tegn[i + 1] === '\n') continue;
-        if (enkeltlinje === undefined) {
-          enkeltlinje = await evalAttached(tabId, `(() => { let a = document.activeElement;
-            while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
-            return !!a && a.tagName === 'INPUT'; })()`).catch(() => true);
-        }
-        if (enkeltlinje !== false) continue;
+        if ((await linjeFelt(tabId)) !== 'tekst') continue;
         await cdpSend(tabId, 'Input.insertText', { text: '\n' });
         continue;
       }
@@ -1901,10 +1911,16 @@ async function tastParAttached(tabId, ned, op) {
 
 // Select-all + Backspace. Assumes the debugger is already attached.
 async function clearFieldAttached(tabId) {
+  await markerAltAttached(tabId);
+  await sletMarkeretAttached(tabId);
+}
+async function markerAltAttached(tabId) {
   // R125 (Opus, MAALT i Chrome paa macOS): cmd+a markerede ikke alt, og set_date's maskerede vej skrev datoen bag den
   // gamle ("16/10/202601/01/2000"). #68's laere: kun Chromes egen kommando markerer paa macOS.
   await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS, ...tastkodeFelter(65), commands: ['selectAll'] },
     { key: 'a', code: 'KeyA', ...tastkodeFelter(65) });
+}
+async function sletMarkeretAttached(tabId) {
   await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) },
     { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) });
 }
@@ -2169,7 +2185,13 @@ async function debuggerFill(tabId, selector, value) {
     // mapping entirely, and it turns a 40-character value from ~3 seconds of
     // keystrokes into a single call — which also shrinks the window in which the
     // debugger can detach mid-fill.
-    await cdpSend(tabId, 'Input.insertText', { text: value });
+    // R127 (Astra): ogsaa her gaelder linjeskiftreglen (linjeFelt) - et "\n" indsat i et enkeltlinje-input sender formularen.
+    let indsaet = String(value);
+    if (/[\r\n]/.test(indsaet)) {
+      indsaet = indsaet.replace(/\r\n?/g, '\n');
+      if ((await linjeFelt(tabId)) !== 'tekst') indsaet = indsaet.replace(/\n/g, '');
+    }
+    if (indsaet) await cdpSend(tabId, 'Input.insertText', { text: indsaet });
 
     // Verify something actually landed. Masked inputs, maxlength enforcement and
     // autocompletes that filter per keydown can swallow an inserted string, and
@@ -4356,26 +4378,64 @@ async function setDateNative(tabId, selector, iso) {
   return r.result || { ok: false, error: 'no-result' };
 }
 
+// R127 (Astra, model): har fokus feltet? { status: 'ja' | 'nej' | 'ukendt', tag, id }. Kun hoveddokumentets
+// document.activeElement sammenlignes med feltet (feltet findes med document.querySelector, saa et felt i en shadow root
+// findes slet ikke); navnet paa det element, der har fokus, foelger aabne shadow roots. En fejl er 'ukendt', ikke 'nej'.
+async function fokusPaaFelt(tabId, selector) {
+  const f = await evalAttached(tabId, `(() => { /* bmcpFokusPaaMaal */
+    const el = document.querySelector(${JSON.stringify(selector)});
+    let a = document.activeElement;
+    const paaMaal = !!el && a === el;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return { paaMaal, tag: a ? a.tagName : null, id: a && a.id ? a.id : null };
+  })()`).catch(() => null);
+  if (!f || typeof f.paaMaal !== 'boolean') return { status: 'ukendt' };
+  return { status: f.paaMaal ? 'ja' : 'nej', tag: f.tag, id: f.id };
+}
+
+// Vaerdierne i alle felter i hoveddokumentet (input, textarea, contenteditable), saa et fejlsvar kan sige, hvad der naaede
+// at blive aendret - og hvor.
+async function feltSnapshot(tabId, selector) {
+  const r = await evalAttached(tabId, `(() => { /* bmcpFeltSnapshot */
+    const maal = document.querySelector(${JSON.stringify(selector)});
+    return Array.from(document.querySelectorAll('input, textarea, [contenteditable]')).map((e) => ({
+      tag: e.tagName, id: e.id || null, maal: e === maal,
+      value: 'value' in e ? String(e.value) : String(e.textContent || '') }));
+  })()`).catch(() => null);
+  return Array.isArray(r) ? r : null;
+}
+
 async function setDateMaskedTyping(tabId, selector, iso, format) {
   const formatted = isoToFormat(iso, format);
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
   try {
-    // R126 (Astra i model, Opus i Chrome): et datofelt, hvis focus-handler flytter fokus til et andet felt, fik det andet
-    // felts tekst slettet af selectAll + Backspace og erstattet af datoen. Rydning og skrivning sker kun, naar fokus staar
-    // paa feltet selv (ogsaa gennem en shadow root); ellers roeres intet, og kalderen faar at vide hvorfor.
-    const fokus = await evalAttached(tabId, `(() => { /* bmcpFokusPaaMaal */
-      const el = document.querySelector(${JSON.stringify(selector)});
-      let a = document.activeElement;
-      while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
-      return { paaMaal: !!el && a === el, tag: a ? a.tagName : null, id: a && a.id ? a.id : null };
-    })()`).catch(() => null);
-    if (!fokus || fokus.paaMaal !== true) {
-      return { ok: false, focusMoved: true, focused: fokus ? { tag: fokus.tag, id: fokus.id } : null };
-    }
-    await clearFieldAttached(tabId);
+    // R126 + R127 (Astra i model, Opus i Chrome): et datofelt, hvis fokushaandtering flytter fokus til et andet felt, fik det
+    // andet felts tekst slettet og datoen skrevet dér. Fokus tjekkes nu foer HVER skrivende handling (marker alt, slet,
+    // indsaet); er det flyttet eller ukendt, stoppes der straks, og svaret siger hvad der naaede at blive aendret og hvor.
+    const foer = await feltSnapshot(tabId, selector);
+    const stop = async (trin) => {
+      const f = await fokusPaaFelt(tabId, selector);
+      if (f.status === 'ja') return null;
+      const efter = await feltSnapshot(tabId, selector);
+      const aendret = foer && efter && foer.length === efter.length
+        ? efter.map((e, n) => ({ ...e, before: foer[n].value })).filter((e) => e.value !== e.before)
+          .map((e) => ({ tag: e.tag, id: e.id, target: e.maal, value_before: e.before, value: e.value }))
+        : null;
+      return { ok: false, focusMoved: f.status === 'nej', focusUnknown: f.status === 'ukendt', step: trin,
+        focused: f.status === 'nej' ? { tag: f.tag, id: f.id } : null, changed: aendret };
+    };
+    let s;
+    if ((s = await stop('select-all'))) return s;
+    await markerAltAttached(tabId);
+    if ((s = await stop('delete'))) return s;
+    await sletMarkeretAttached(tabId);
+    if ((s = await stop('typing'))) return s;
     await cdpSend(tabId, 'Input.insertText', { text: formatted });
-    await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
+    // Tab flytter blot fokus videre. Har siden selv flyttet fokus efter datoen (et felt, der hopper videre), sendes den ikke.
+    if ((await fokusPaaFelt(tabId, selector)).status === 'ja') {
+      await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
+    }
   } finally {
     await debuggerDetach(tabId);
   }
@@ -6345,14 +6405,25 @@ async function dispatch(port, method, params) {
         if (fmt) {
           try {
             const maskeret = await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
-            if (maskeret && maskeret.focusMoved) {
+            if (maskeret && (maskeret.focusMoved || maskeret.focusUnknown)) {
               const v0 = await readBackValue(tab.id, params.selector).catch(() => null);
-              return { ok: false, error: 'focus-moved', current_value: v0, value_before: info.value,
-                focused: maskeret.focused,
-                note: 'When the field got focus, the page moved focus to another element' +
-                      (maskeret.focused ? ` (${maskeret.focused.tag}${maskeret.focused.id ? '#' + maskeret.focused.id : ''})` : '') +
-                      ', so nothing was cleared or typed: select-all and the typing would have hit that element. Check how ' +
-                      'the page wants the date entered (a date picker, perhaps), and use browser_click or browser_fill on that.' };
+              const trin = { 'select-all': 'selecting the field\'s text', delete: 'deleting it', typing: 'typing the date' }[maskeret.step] || maskeret.step;
+              const aendret = maskeret.changed;
+              // Foer den foerste skrivende handling har vaerktoejet intet skrevet - uanset om felterne kunne laeses.
+              const hvad = maskeret.step === 'select-all' ? 'Nothing was cleared or typed.'
+                : aendret === null || aendret === undefined ? 'What had been changed by then could not be read.'
+                : aendret.length === 0 ? 'Nothing was cleared or typed.'
+                  : 'Changed so far: ' + aendret.map((c) => `${c.target ? 'the date field' : (c.tag + (c.id ? '#' + c.id : ''))} ` +
+                    `(before ${JSON.stringify(c.value_before)}, now ${JSON.stringify(c.value)})`).join('; ') + '.';
+              const hvor = maskeret.focused ? ` (${maskeret.focused.tag}${maskeret.focused.id ? '#' + maskeret.focused.id : ''})` : '';
+              return { ok: false, error: maskeret.focusMoved ? 'focus-moved' : 'focus-unknown', step: maskeret.step,
+                current_value: v0, value_before: info.value, field_changed: v0 !== null && v0 !== info.value,
+                ...(maskeret.focused ? { focused: maskeret.focused } : {}), ...(aendret ? { changed: aendret } : {}),
+                note: (maskeret.focusMoved
+                  ? `Before ${trin}, focus was no longer on the field: the page moved it to another element${hvor}. `
+                  : `Before ${trin}, where focus is could not be read. `) +
+                  `The tool stopped there, so nothing more was typed. ${hvad} Check how the page wants the date entered ` +
+                  '(a date picker, perhaps), and use browser_click or browser_fill on that.' };
             }
             await new Promise(r => setTimeout(r, 250));
             const v = await readBackValue(tab.id, params.selector);

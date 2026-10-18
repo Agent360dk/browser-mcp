@@ -118,10 +118,10 @@ async function skriv(tekst, { enkeltlinje = false } = {}) {
   // Fokus: et enkeltlinjet <input> (true) eller en textarea (false) - laeses af typeCharsAttached ved foerste linjeskift.
   const foer = s.u.chrome.debugger.sendCommand;
   s.u.chrome.debugger.sendCommand = async (m, metode, p) => {
-    if (metode === 'Runtime.evaluate' && String(p?.expression || '').includes("a.tagName === 'INPUT'")) {
+    if (metode === 'Runtime.evaluate' && String(p?.expression || '').includes('bmcpLinjeFelt')) {
       await foer(m, metode, p);
       if (enkeltlinje === 'fejl') throw new Error('Inspected target navigated or closed');
-      return { result: { value: enkeltlinje } };
+      return { result: { value: enkeltlinje ? 'linje' : 'tekst' } };
     }
     return foer(m, metode, p);
   };

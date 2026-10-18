@@ -98,8 +98,8 @@ function falskUdvidelse(result) {
   return () => { stop = true; };
 }
 
-function skaermbillede(result) {
-  const p = spawn(process.execPath, [SRV], { stdio: ['pipe', 'pipe', 'pipe'],
+function skaermbillede(result, args = {}, cwd = undefined) {
+  const p = spawn(process.execPath, [SRV], { cwd, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) } });
   boern.push(p); p.stderr.on('data', () => {});
   const stopUdvidelse = falskUdvidelse(result);
@@ -117,7 +117,7 @@ function skaermbillede(result) {
       params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } } }) + '\n');
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call',
-      params: { name: 'browser_screenshot', arguments: {} } }) + '\n');
+      params: { name: 'browser_screenshot', arguments: args } }) + '\n');
   });
 }
 
@@ -184,4 +184,28 @@ test('click_xy and the screenshot note give the same conversion, by the width th
   assert.match(index, /for a point at \(x, y\) in an image shown W pixels wide, ` \+\s*`click \(x \/ W × \$\{vp\.css_width\}, y \/ W × \$\{vp\.css_width\}\)/);
   const s = TOOLS.find((t) => t.name === 'browser_screenshot').description;
   assert.match(s, /when Chrome reports them in time/, 'the screenshot description promised the viewport line unconditionally');
+});
+
+// R127 (Astra, MAALT i model): serveren smed `stale` og noten vaek i begge returveje - agenten saa aldrig, at billedet var
+// taget, foer vinduet blev haevet. Advarslen skal helt ud til klienten, ogsaa naar billedet gemmes til en fil.
+test('stale og noten naar helt ud til klienten - baade med billedet og naar det gemmes til en fil', { timeout: 90000 }, async () => {
+  const note = 'This picture was taken before the window was raised, because a new one did not arrive in time.';
+  const svar = await skaermbillede({ image: 'data:image/png;base64,' + PNG, stale: true, note });
+  assert.ok(svar, 'no answer from the server');
+  const tekst = svar.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+  assert.match(tekst, /stale: true/, `stale did not reach the client: ${tekst}`);
+  assert.match(tekst, /before the window was raised/, tekst);
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const mappe = mkdtempSync(join(tmpdir(), 'bmcp-stale-'));
+  try {
+    const gemt = await skaermbillede({ image: 'data:image/png;base64,' + PNG, stale: true, note }, { path: 'x.png' }, mappe);
+    assert.ok(gemt, 'no answer from the server (path)');
+    const t2 = gemt.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    assert.match(t2, /successfully saved/, t2);
+    assert.match(t2, /stale: true/, `stale did not reach the client on the save-to-file path: ${t2}`);
+  } finally { rmSync(mappe, { recursive: true, force: true }); }
+  const frisk = await skaermbillede({ image: 'data:image/png;base64,' + PNG });
+  assert.doesNotMatch(frisk.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n'), /stale/, 'a fresh picture was called stale');
 });

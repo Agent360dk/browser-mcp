@@ -1532,6 +1532,11 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
             `browser_click_xy takes CSS pixels: for a point at (x, y) in an image shown W pixels wide, ` +
             `click (x / W × ${vp.css_width}, y / W × ${vp.css_width}).` }]
         : [];
+      // R127 (Astra, MAALT i model): udvidelsen markerer et billede fra foer vinduet blev haevet med stale + en note - men
+      // serveren smed begge vaek, saa agenten aldrig saa advarslen. De gaar nu med ud i begge returveje.
+      const staleNote = result.stale
+        ? [{ type: 'text', text: `stale: true - ${result.note || 'This picture is older than the request; the page may have changed since.'}` }]
+        : [];
 
       if (args && args.path) {
         // MAALT 23/8: ingen indeslutning. En sti med ../../.. skrev til
@@ -1572,12 +1577,13 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
             { type: 'image', data: base64, mimeType },
+            ...staleNote,
             ...viewportNote,
           ]
         };
       }
 
-      return { content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] };
+      return { content: [{ type: 'image', data: base64, mimeType }, ...staleNote, ...viewportNote] };
     }
 
     const response = {
