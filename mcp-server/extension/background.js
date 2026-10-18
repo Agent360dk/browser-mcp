@@ -1383,15 +1383,19 @@ async function linjeFelt(tabId) {
   const svar = await evalAttached(tabId, `(() => { /* bmcpLinjeFelt */
     let a = document.activeElement;
     while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
-    if (!a || a.tagName === 'IFRAME' || a.tagName === 'FRAME') return 'ukendt';
-    if (a.tagName === 'TEXTAREA' || a.isContentEditable) return 'tekst';
-    if (a.tagName === 'INPUT') return 'linje';
+    // R130 (Opus, MAALT i Chrome): paa en XHTML-side er tagName "textarea" med smaa bogstaver - navnet sammenlignes derfor
+    // uden hensyn til store og smaa bogstaver (localName, ellers tagName).
+    const navn = a ? String(a.localName || a.tagName || '').toLowerCase() : '';
+    if (!a || navn === 'iframe' || navn === 'frame') return 'ukendt';
+    if (navn === 'textarea' || a.isContentEditable) return 'tekst';
+    if (navn === 'input') return 'linje';
     return 'ukendt';
   })()`).catch(() => 'ukendt');
   return svar === 'tekst' || svar === 'linje' ? svar : 'ukendt';
 }
 
 async function typeCharsAttached(tabId, text) {
+  const linjeskift = { somTekst: 0, somMellemrum: 0 };   // R130: hvordan linjeskiftene blev skrevet (svaret siger det)
   // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
   // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
   const tegn = [...String(text)];
@@ -1406,8 +1410,14 @@ async function typeCharsAttached(tabId, text) {
         // aktive felt laeses ved HVERT linjeskift (fokus kan skifte undervejs), og linjeskiftet skrives kun i en textarea eller
         // et contenteditable-felt; i et enkeltlinje-input, i en iframe eller naar feltet ikke kan laeses, udelades det.
         if (char === '\r' && tegn[i + 1] === '\n') continue;
-        if ((await linjeFelt(tabId)) !== 'tekst') continue;
+        // R130 (Opus): udeladt limede det ord sammen ("a\nb" -> "ab"); et mellemrum holder dem adskilt og sender ingen formular.
+        if ((await linjeFelt(tabId)) !== 'tekst') {
+          await cdpSend(tabId, 'Input.insertText', { text: ' ' });
+          linjeskift.somMellemrum++;
+          continue;
+        }
         await cdpSend(tabId, 'Input.insertText', { text: '\n' });
+        linjeskift.somTekst++;
         continue;
       }
       await cdpSend(tabId, 'Input.insertText', { text: char });
@@ -1425,6 +1435,7 @@ async function typeCharsAttached(tabId, text) {
       : 30 + Math.random() * 90;   // normal keystroke
     await new Promise(r => setTimeout(r, pause));
   }
+  return linjeskift;
 }
 
 // R125 (Astra, MAALT i model; Opus i Chrome): skrives der tegn for tegn, maales ogsaa om tasterne NAAEDE siden (samme
@@ -1433,8 +1444,9 @@ async function typeCharsAttached(tabId, text) {
 async function skrivTegnMedBevis(tabId, text) {
   const forventet = [...String(text)].find((c) => c >= ' ');
   const bevis = forventet ? await armerTastBevis(tabId, forventet).catch(() => null) : null;
-  await typeCharsAttached(tabId, text);
-  return bevis ? await laesTastBevis(tabId, bevis, { enhverTast: true }) : { landed: null };
+  const linjeskift = await typeCharsAttached(tabId, text);
+  const levering = bevis ? await laesTastBevis(tabId, bevis, { enhverTast: true }) : { landed: null };
+  return { ...levering, linjeskift };
 }
 
 async function debuggerType(tabId, text) {
@@ -1450,10 +1462,29 @@ async function debuggerType(tabId, text) {
 // Raadet om at proeve igen gives KUN, naar intet naaede frem.
 // R127 (MAALT i Chrome): en vaerdi af KUN linjeskift i et felt, der ikke tager linjeskift (linjeFelt), skrives slet ikke - saa
 // er et tomt felt det rigtige udfald, ikke en fejl, og intet blev sendt, der kunne sende formularen.
-function kunLinjeskiftSvar(ekstra) {
+// R130 (Opus i Chrome, Astra i model): noten sagde «this field takes none ... left out ... Nothing was sent» - ogsaa i en
+// textarea, hvor "\n" BLEV sendt, og siden afviste det. Noten siger nu, hvordan linjeskiftene faktisk blev sendt (som linjeskift
+// i et tekstfelt, som mellemrum i et felt uden linjeskift), og at feltet ikke tog dem.
+function kunLinjeskiftSvar(ekstra, ls) {
+  const somMellemrum = !!(ls && ls.somMellemrum && !ls.somTekst);
   return { ok: true, ...ekstra, differs: true, value: '', actual: '',
-    note: 'The value holds only line breaks, and this field takes none (a single-line input, a frame, or a field that ' +
-          'could not be read), so they were left out and the field is empty. Nothing was sent that could submit a form.' };
+    ...(somMellemrum ? { line_breaks_as_spaces: ls.somMellemrum } : {}),
+    note: 'The value holds only line breaks. They were sent ' +
+      (somMellemrum ? 'as spaces (this field takes no line breaks: a single-line input, a frame, or a field that could not be read)'
+        : 'as line breaks') + ', but the field is empty afterwards: the field did not take them.' };
+}
+
+// R130: blev linjeskift skrevet som mellemrum, siger svaret det - og er det den eneste forskel, skyder noten ikke aendringen
+// paa siden («formatted»): det var vaerktoejet, der skrev mellemrummet.
+function medLinjeskift(svar, oensket, ls) {
+  if (!svar || !ls || !ls.somMellemrum || svar.line_breaks_as_spaces) return svar;
+  const n = ls.somMellemrum;
+  const saetning = (n === 1 ? 'A line break was typed as a space' : `${n} line breaks were typed as spaces`) +
+    ': this field takes no line breaks (a single-line input, a frame, or a field that could not be read), and a line break ' +
+    'there could submit the form.';
+  const forventet = String(oensket).replace(/\r\n?/g, '\n').replace(/\n/g, ' ');
+  const kunDet = !ls.somTekst && typeof svar.actual === 'string' && svar.actual === forventet;
+  return { ...svar, line_breaks_as_spaces: n, note: kunDet || !svar.note ? saetning : `${svar.note} ${saetning}` };
 }
 const kunLinjeskift = (v) => /[\r\n]/.test(String(v)) && String(v).replace(/[\r\n]/g, '') === '';
 
@@ -1963,7 +1994,7 @@ async function clearFieldIfFilledAttached(tabId) {
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
 // API-overflade nogen kan laese i dag.
-function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded) {
+function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded, linjeskift) {
   if (laest === undefined || laest === null) {
     return { ok: true, ...ekstra, unknown: true,
       note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
@@ -1972,7 +2003,7 @@ function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded) {
   const ikkeLeveret = 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
     'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
     'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.';
-  if (laest === '' && kunLinjeskift(oensket)) return kunLinjeskiftSvar(ekstra);
+  if (laest === '' && kunLinjeskift(oensket)) return kunLinjeskiftSvar(ekstra, linjeskift);
   if (laest === '') {
     // R125: blev der skrevet tegn for tegn, afgoer leveringen raadet (tomtFeltSvar); ellers som foer.
     if (tasterLanded !== undefined) {
@@ -2197,9 +2228,13 @@ async function debuggerFill(tabId, selector, value) {
     // debugger can detach mid-fill.
     // R127 (Astra): ogsaa her gaelder linjeskiftreglen (linjeFelt) - et "\n" indsat i et enkeltlinje-input sender formularen.
     let indsaet = String(value);
+    const linjeskift = { somTekst: 0, somMellemrum: 0 };
     if (/[\r\n]/.test(indsaet)) {
       indsaet = indsaet.replace(/\r\n?/g, '\n');
-      if ((await linjeFelt(tabId)) !== 'tekst') indsaet = indsaet.replace(/\n/g, '');
+      const antal = (indsaet.match(/\n/g) || []).length;
+      // R130: i et felt uden linjeskift bliver hvert til ét mellemrum (ikke udeladt: ordene limes ellers sammen).
+      if ((await linjeFelt(tabId)) !== 'tekst') { indsaet = indsaet.replace(/\n/g, ' '); linjeskift.somMellemrum = antal; }
+      else linjeskift.somTekst = antal;
     }
     if (indsaet) await cdpSend(tabId, 'Input.insertText', { text: indsaet });
 
@@ -2242,7 +2277,10 @@ async function debuggerFill(tabId, selector, value) {
     }
     if (!landed) {
       await clearFieldIfFilledAttached(tabId);
-      tasterLanded = (await skrivTegnMedBevis(tabId, value)).landed;
+      const skrevet = await skrivTegnMedBevis(tabId, value);
+      tasterLanded = skrevet.landed;
+      linjeskift.somTekst += skrevet.linjeskift.somTekst;
+      linjeskift.somMellemrum += skrevet.linjeskift.somMellemrum;
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
@@ -2262,7 +2300,7 @@ async function debuggerFill(tabId, selector, value) {
       landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
       rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     }
-    return { value: landed, rammeHoerte: rammeHoerte, tasterLanded };
+    return { value: landed, rammeHoerte: rammeHoerte, tasterLanded, linjeskift };
   } finally {
     await debuggerDetach(tabId);
   }
@@ -4403,14 +4441,30 @@ async function fokusPaaFelt(tabId, selector) {
   return { status: f.paaMaal ? 'ja' : 'nej', tag: f.tag, id: f.id };
 }
 
-// Vaerdierne i alle felter i hoveddokumentet (input, textarea, contenteditable), saa et fejlsvar kan sige, hvad der naaede
-// at blive aendret - og hvor.
-async function feltSnapshot(tabId, selector) {
-  const r = await evalAttached(tabId, `(() => { /* bmcpFeltSnapshot */
+// Vaerdierne i alle felter i hoveddokumentet (input, textarea, contenteditable), saa et fejlsvar kan sige, hvad der naaede at
+// blive aendret - og hvor. R130 (Astra, model): felterne parres paa IDENTITET, ikke paa plads: elementerne gemmes i siden (under
+// en tilfaeldig noegle) og sammenlignes med sig selv bagefter. Bytter siden om paa raekkefoelgen, er det ingen aendring.
+async function feltFoer(tabId) {
+  const noegle = '__bmcpFelt' + Math.random().toString(36).slice(2, 10);
+  const ok = await evalAttached(tabId, `(() => { /* bmcpFeltFoer */
+    window[${JSON.stringify(noegle)}] = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
+      .map((e) => ({ e: e, v: 'value' in e ? String(e.value) : String(e.textContent || '') }));
+    return true;
+  })()`).catch(() => false);
+  return ok === true ? noegle : null;
+}
+async function feltAendringer(tabId, selector, noegle) {
+  if (!noegle) return null;
+  const r = await evalAttached(tabId, `(() => { /* bmcpFeltDiff */
+    const foer = window[${JSON.stringify(noegle)}];
+    if (!Array.isArray(foer)) return null;
     const maal = document.querySelector(${JSON.stringify(selector)});
-    return Array.from(document.querySelectorAll('input, textarea, [contenteditable]')).map((e) => ({
-      tag: e.tagName, id: e.id || null, maal: e === maal,
-      value: 'value' in e ? String(e.value) : String(e.textContent || '') }));
+    const ud = [];
+    for (const x of foer) {
+      const nu = 'value' in x.e ? String(x.e.value) : String(x.e.textContent || '');
+      if (nu !== x.v) ud.push({ tag: x.e.tagName, id: x.e.id || null, target: x.e === maal, value_before: x.v, value: nu });
+    }
+    return ud;
   })()`).catch(() => null);
   return Array.isArray(r) ? r : null;
 }
@@ -4419,19 +4473,16 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
   const formatted = isoToFormat(iso, format);
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
+  let noegle = null;
   try {
     // R126 + R127 (Astra i model, Opus i Chrome): et datofelt, hvis fokushaandtering flytter fokus til et andet felt, fik det
     // andet felts tekst slettet og datoen skrevet dér. Fokus tjekkes nu foer HVER skrivende handling (marker alt, slet,
     // indsaet); er det flyttet eller ukendt, stoppes der straks, og svaret siger hvad der naaede at blive aendret og hvor.
-    const foer = await feltSnapshot(tabId, selector);
+    noegle = await feltFoer(tabId);
     const stop = async (trin) => {
       const f = await fokusPaaFelt(tabId, selector);
       if (f.status === 'ja') return null;
-      const efter = await feltSnapshot(tabId, selector);
-      const aendret = foer && efter && foer.length === efter.length
-        ? efter.map((e, n) => ({ ...e, before: foer[n].value })).filter((e) => e.value !== e.before)
-          .map((e) => ({ tag: e.tag, id: e.id, target: e.maal, value_before: e.before, value: e.value }))
-        : null;
+      const aendret = await feltAendringer(tabId, selector, noegle);
       return { ok: false, focusMoved: f.status === 'nej', focusUnknown: f.status === 'ukendt', step: trin,
         focused: f.status === 'nej' ? { tag: f.tag, id: f.id } : null, changed: aendret };
     };
@@ -4447,6 +4498,7 @@ async function setDateMaskedTyping(tabId, selector, iso, format) {
       await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
     }
   } finally {
+    if (noegle) await evalAttached(tabId, `delete window[${JSON.stringify(noegle)}]`).catch(() => {});
     await debuggerDetach(tabId);
   }
   return { ok: true, formatted };
@@ -6274,24 +6326,25 @@ async function dispatch(port, method, params) {
         if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
         const spaerret = await fieldBlocked(tab.id, null);
         if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
-        if (efterTekst === '' && kunLinjeskift(params.value)) return kunLinjeskiftSvar({ method: 'debugger' });
+        const ls = levering ? levering.linjeskift : null;
+        if (efterTekst === '' && kunLinjeskift(params.value)) return kunLinjeskiftSvar({ method: 'debugger' }, ls);
         if (efterTekst === '') {
-          return tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
+          return medLinjeskift(tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
             'The field was empty after the write, and the tool saw no key arrive. The click may not have hit a field, or the ' +
             'tab is in the background, where Chrome does not deliver keystrokes. Check the page before typing again (an ' +
-            'editor can hide keys from the tool); if nothing happened there, call browser_switch_tab and try again.');
+            'editor can hide keys from the tool); if nothing happened there, call browser_switch_tab and try again.'), params.value, ls);
         }
-        return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
+        return medLinjeskift({ ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
-                'the value - or something was already there.' };
+                'the value - or something was already there.' }, params.value, ls);
       }
 
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
         if (efterFyld?.blocked) return fieldBlockedAnswer(efterFyld.blocked, 'debugger');
-        return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
-                        efterFyld?.rammeHoerte, efterFyld?.tasterLanded);
+        return medLinjeskift(fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
+                        efterFyld?.rammeHoerte, efterFyld?.tasterLanded, efterFyld?.linjeskift), params.value, efterFyld?.linjeskift);
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
         // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra

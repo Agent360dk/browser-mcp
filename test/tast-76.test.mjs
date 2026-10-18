@@ -153,10 +153,11 @@ test('fill: linjeskift, vognretur og tabulator skrives som indsat tekst - intet 
 test('fill: i et enkeltlinjet <input> springes linjeskift over - et indsat "\\n" dér sender formularen (MAALT i Chrome)', async () => {
   const { ned, indsat } = await skriv('a\r\nb\nc\td', { enkeltlinje: true });
   assert.deepEqual(ned.map((n) => n.text), ['a', 'b', 'c', 'd']);
-  assert.deepEqual(indsat, ['\t'], `et linjeskift blev indsat i et enkeltlinjet felt: ${JSON.stringify(indsat)}`);
+  // R130: et linjeskift bliver ét mellemrum (ikke udeladt, saa ord ikke limes sammen) - aldrig et "\n".
+  assert.deepEqual(indsat, [' ', ' ', '\t'], `et linjeskift blev indsat i et enkeltlinjet felt: ${JSON.stringify(indsat)}`);
   // Kan feltet ikke laeses, springes linjeskiftet ogsaa over - hellere et manglende linjeskift end en sendt formular.
   const uvis = await skriv('a\nb', { enkeltlinje: 'fejl' });
-  assert.deepEqual(uvis.indsat, [], JSON.stringify(uvis.indsat));
+  assert.deepEqual(uvis.indsat, [' '], JSON.stringify(uvis.indsat));
 });
 
 test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme regel som press_key', async () => {

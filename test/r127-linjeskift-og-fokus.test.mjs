@@ -17,7 +17,7 @@ const svar = (v) => ({ result: { value: v } });
 // ── 1. linjeskift ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // `felt`: hvad det aktive felt er, hver gang det spoerges: 'tekst' (textarea/contenteditable), 'linje' (enkeltlinje-input)
 // eller 'ukendt' (fx en iframe). En liste giver svarene i raekkefoelge (fokus skifter undervejs).
-function linjeSide(felt) {
+function linjeSide(felt, { afvisLinjeskift = false } = {}) {
   const s = { value: '', indsat: [], spurgt: 0 };
   const naeste = () => (Array.isArray(felt) ? felt[Math.min(s.spurgt++, felt.length - 1)] : felt);
   const u = indlaesUdvidelse({ svar: {
@@ -38,7 +38,7 @@ function linjeSide(felt) {
         if (x.includes('activeElement')) return svar(s.value);
         return svar(null);
       }
-      if (metode === 'Input.insertText') { s.indsat.push(p.text); s.value += p.text; }
+      if (metode === 'Input.insertText') { s.indsat.push(p.text); s.value += afvisLinjeskift ? p.text.replace(/\n/g, '') : p.text; }
       if (metode === 'Input.dispatchKeyEvent' && p.type === 'keyDown' && p.text) s.value += p.text;
       return {};
     },
@@ -49,12 +49,14 @@ function linjeSide(felt) {
 }
 const LINJESKIFT = /[\r\n]/;
 
-test('R127: CSS-vejen i fill sender intet linjeskift til et enkeltlinje-input - svaret viser det med differs/actual', async () => {
+test('R127/R130: CSS-vejen i et enkeltlinje-input sender intet linjeskift - hvert bliver ét mellemrum, og svaret siger det', async () => {
   const { u, s } = linjeSide('linje');
   const r = await u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'a\r\nb\nc' });
   assert.ok(!s.indsat.some((t) => LINJESKIFT.test(t)), `et linjeskift blev sendt til et enkeltlinjefelt: ${JSON.stringify(s.indsat)}`);
-  assert.equal(s.value, 'abc');
-  assert.deepEqual([r.differs, r.actual], [true, 'abc'], JSON.stringify(r));
+  assert.equal(s.value, 'a b c', 'ordene blev limet sammen (R130, Opus): et linjeskift skal blive et mellemrum');
+  assert.deepEqual([r.differs, r.actual, r.line_breaks_as_spaces], [true, 'a b c', 2], JSON.stringify(r));
+  assert.match(String(r.note), /line breaks? (were|was) typed as spaces?/i, r.note);
+  assert.doesNotMatch(String(r.note), /formatted/i, `noten skyder vaerktoejets egen aendring paa siden: ${r.note}`);
 });
 
 test('R127: CSS-vejen i en textarea skriver linjeskiftene (et "\\r\\n" er ét)', async () => {
@@ -64,19 +66,21 @@ test('R127: CSS-vejen i en textarea skriver linjeskiftene (et "\\r\\n" er ét)',
   assert.equal(r.ok, true, JSON.stringify(r));
 });
 
-test('R127: kan feltet ikke laeses (fx fokus i en iframe), udelades linjeskiftet - paa CSS-vejen og tegn for tegn', async () => {
+test('R127/R130: kan feltet ikke laeses (fx fokus i en iframe), sendes intet linjeskift - et mellemrum, paa CSS-vejen og tegn for tegn', async () => {
   const css = linjeSide('ukendt');
   await css.u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'a\nb' });
   assert.ok(!css.s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(css.s.indsat));
+  assert.equal(css.s.value, 'a b');
   const tegn = linjeSide('ukendt');
   await tegn.u.hent('typeCharsAttached')(1, 'a\nb');
   assert.ok(!tegn.s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(tegn.s.indsat));
+  assert.deepEqual(tegn.s.indsat, [' ']);
 });
 
 test('R127: tegn for tegn laeses feltet ved HVERT linjeskift - et fokusskift fra textarea til input mellem to linjeskift', async () => {
   const { u, s } = linjeSide(['tekst', 'linje']);
   await u.hent('typeCharsAttached')(1, 'a\nb\nc');
-  assert.deepEqual(s.indsat, ['\n'], `det andet linjeskift (efter fokusskiftet til et input) blev sendt: ${JSON.stringify(s.indsat)}`);
+  assert.deepEqual(s.indsat, ['\n', ' '], `det andet linjeskift (efter fokusskiftet til et input) blev sendt: ${JSON.stringify(s.indsat)}`);
 });
 
 // ── 2. set_date's fokusvagt gennem hele skrivningen ───────────────────────────────────────────────────────────────────
@@ -104,7 +108,12 @@ function datoSide({ flyt = null, fokusFejl = false } = {}) {
           if (fokusFejl) return { exceptionDetails: { text: 'Execution context was destroyed.' } };
           return svar({ paaMaal: s.fokus === 'd', tag: s.fokus === 'd' ? 'INPUT' : 'TEXTAREA', id: s.fokus });
         }
-        if (x.includes('bmcpFeltSnapshot')) return svar([{ tag: 'INPUT', id: 'd', value: s.felt.d, maal: true }, { tag: 'TEXTAREA', id: 'ta', value: s.felt.ta, maal: false }]);
+        // Aendringsrapporten (R130: paa identitet): «foer» gemmer vaerdierne, «diff» sammenligner samme felt med sig selv.
+        if (x.includes('bmcpFeltFoer')) { s.foer = { ...s.felt }; return svar(true); }
+        if (x.includes('bmcpFeltDiff')) {
+          return svar(Object.keys(s.felt).filter((k) => s.felt[k] !== s.foer[k]).map((k) => ({ tag: k === 'd' ? 'INPUT' : 'TEXTAREA',
+            id: k, target: k === 'd', value_before: s.foer[k], value: s.felt[k] })));
+        }
         if (x.includes('JSON.stringify({ value:')) return svar(JSON.stringify({ value: s.felt.d }));
         return svar(null);
       }
@@ -162,17 +171,31 @@ test('R127: kan fokus ikke aflaeses, er svaret focus-unknown - ikke focus-moved 
   assert.equal(s.felt.d, '16/10/2026');
 });
 
-// MAALT i Chrome (R127, efter rettelsen): en vaerdi, der KUN er linjeskift, i et enkeltlinje-input - linjeskiftene udelades,
-// feltet er tomt, og svaret var field-is-empty med raadet om en baggrundsfane. Det er ikke sandt: intet kunne skrives.
-test('R127: en vaerdi af kun linjeskift i et enkeltlinjefelt - svaret siger at de blev udeladt, ikke «field-is-empty»', async () => {
+// MAALT i Chrome (R127, efter rettelsen): en vaerdi, der KUN er linjeskift, i et enkeltlinje-input gav field-is-empty med raadet
+// om en baggrundsfane. R130: linjeskiftet bliver et mellemrum - feltet faar " ", og svaret siger hvorfor.
+test('R127/R130: en vaerdi af kun linjeskift i et enkeltlinjefelt - et mellemrum, ikke «field-is-empty»', async () => {
   for (const sel of ['#f', 'text=Felt']) {
     const { u, s } = linjeSide('linje');
     const r = await u.hent('dispatch')(9876, 'fill', { selector: sel, value: '\r\n' });
     assert.ok(!s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(s.indsat));
     assert.notEqual(r.error, 'field-is-empty', `${sel}: ${JSON.stringify(r)}`);
-    assert.deepEqual([r.differs, r.actual], [true, ''], `${sel}: ${JSON.stringify(r)}`);
-    assert.match(String(r.note), /line break/i, `${sel}: ${r.note}`);
+    assert.deepEqual([r.differs, r.actual], [true, ' '], `${sel}: ${JSON.stringify(r)}`);
+    assert.match(String(r.note), /typed as a space/i, `${sel}: ${r.note}`);
     assert.doesNotMatch(String(r.note), /switch_tab/, `${sel}: ${r.note}`);
+  }
+});
+
+// R130 (Opus i Chrome, Astra i model): i en TEXTAREA, der ikke tager linjeskiftet, sagde noten «this field takes none ... left
+// out ... Nothing was sent» - men "\n" blev sendt, og det var siden, der afviste det.
+test('R130: kun linjeskift i en textarea, der afviser dem - noten siger at linjeskiftet blev sendt, ikke at det blev udeladt', async () => {
+  for (const sel of ['#t', 'text=Felt']) {
+    const { u, s } = linjeSide('tekst', { afvisLinjeskift: true });
+    const r = await u.hent('dispatch')(9876, 'fill', { selector: sel, value: '\n' });
+    assert.ok(s.indsat.includes('\n'), `${sel}: linjeskiftet blev ikke sendt: ${JSON.stringify(s.indsat)}`);
+    assert.equal(s.value, '');
+    assert.doesNotMatch(String(r.note), /left out|takes none|nothing was sent/i, `${sel}: falsk note: ${r.note}`);
+    assert.match(String(r.note), /sent/i, `${sel}: ${r.note}`);
+    assert.match(String(r.note), /did not take/i, `${sel}: ${r.note}`);
   }
 });
 
@@ -197,4 +220,57 @@ test('R127: linjeFelt laeser det aktive felt - textarea og contenteditable er te
   assert.equal(await svarFor({ tagName: 'BODY' }), 'ukendt');
   assert.equal(await svarFor({ tagName: 'MY-EDITOR', shadowRoot: { activeElement: { tagName: 'TEXTAREA' } } }), 'tekst', 'shadow root blev ikke fulgt');
   assert.equal(await svarFor({ tagName: 'MY-FIELD', shadowRoot: { activeElement: { tagName: 'INPUT' } } }), 'linje');
+  // R130 (Opus, MAALT i Chrome): paa en XHTML-side (application/xhtml+xml) er tagName "textarea" med smaa bogstaver.
+  assert.equal(await svarFor({ tagName: 'textarea', localName: 'textarea' }), 'tekst', 'en XHTML-textarea blev ikke regnet som tekst');
+  assert.equal(await svarFor({ tagName: 'input', localName: 'input' }), 'linje', 'et XHTML-input blev ikke regnet som linje');
+  assert.equal(await svarFor({ tagName: 'iframe', localName: 'iframe' }), 'ukendt', 'en XHTML-iframe blev regnet som et felt');
+});
+
+// R130 (Astra, model): set_date's «changed» parrede felterne efter deres plads i et snapshot. Byttede siden om paa
+// raekkefoelgen undervejs, meldte svaret aendringer, der aldrig skete. Her KOERES udtrykkene mod et modelleret dokument, der
+// bytter datofeltet og textareaen, naar fokus flyttes efter select-all - ingen vaerdi aendres.
+test('R130: set_date\'s aendringsrapport kender felterne paa identitet - en ombytning af raekkefoelgen er ingen aendring', async () => {
+  const vm = await import('node:vm');
+  const d = { tagName: 'INPUT', localName: 'input', id: 'd', value: '16/10/2026' };
+  const ta = { tagName: 'TEXTAREA', localName: 'textarea', id: 'ta', value: 'VIGTIG TEKST' };
+  const st = { orden: [d, ta], fokus: d, markeret: null };
+  const document = {
+    get activeElement() { return st.fokus; },
+    querySelector: (q) => (q === '#d' ? d : null),
+    querySelectorAll: () => st.orden.slice(),
+  };
+  const sideVindue = {};
+  const u = indlaesUdvidelse({ svar: {
+    'debugger.attach': undefined, 'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+    'tabs.get': fane, 'tabs.query': [fane],
+    'debugger.sendCommand': (_m, metode, p = {}) => {
+      if (metode === 'DOM.getDocument') return { root: { nodeId: 1 } };
+      if (metode === 'DOM.querySelector') return { nodeId: 2 };
+      if (metode === 'Runtime.evaluate') {
+        const x = p.expression || '';
+        if (x.includes('window.__bmcpVagt = v')) return svar({ armet: true });
+        if (x.includes('placeholder: el.placeholder')) {
+          return svar(JSON.stringify({ found: true, tag: 'INPUT', inputType: 'text', readOnly: false, disabled: false,
+            placeholder: 'DD/MM/YYYY', ariaLabel: '', value: d.value }));
+        }
+        if (x.includes('bmcpFokusPaaMaal') || x.includes('bmcpFelt')) {
+          return svar(vm.runInNewContext(x, { document, window: sideVindue, Array, String, Object, Map, WeakMap, Math }));
+        }
+        if (x.includes('JSON.stringify({ value:')) return svar(JSON.stringify({ value: d.value }));
+        return svar(null);
+      }
+      if (metode === 'Input.dispatchKeyEvent' && p.type === 'keyUp' && p.key === 'a') {
+        st.fokus = ta; st.orden = [ta, d];   // siden flytter fokus og bytter om paa felterne
+      }
+      return {};
+    },
+  } });
+  u.ctx.chrome.scripting.executeScript = async () => [{ frameId: 0, result: { x: 10, y: 10, tag: 'INPUT', found: true } }];
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
+  const r = await u.hent('dispatch')(9876, 'set_date', { selector: '#d', date: '2000-01-01', skip_picker: true });
+  assert.equal(r.error, 'focus-moved', JSON.stringify(r));
+  assert.deepEqual([d.value, ta.value], ['16/10/2026', 'VIGTIG TEKST']);
+  assert.deepEqual(JSON.parse(JSON.stringify(r.changed ?? [])), [], `svaret meldte aendringer, der aldrig skete: ${JSON.stringify(r.changed)}`);
+  assert.match(String(r.note), /Nothing was (cleared or typed|changed)/i, r.note);
 });
