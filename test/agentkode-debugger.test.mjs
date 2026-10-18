@@ -136,6 +136,24 @@ test('execute_script: kan debuggeren ikke tilsluttes, sendes intet - og der er i
   assert.equal(m.scripting().length, 0);
 });
 
+test('execute_script: et svar UDEN result (debuggeren faldt af midt i kaldet) er ikke et tomt resultat - koden kan have koert', async () => {
+  const m = sele({ evaluate: () => undefined });
+  const svar = await fang(m.kald('execute_script', { code: 'window.__n = 1' }));
+  assert.match(svar.kastet || '', /MAY already have run/, JSON.stringify(svar));
+  assert.equal(m.evalueringer().length, 1);
+});
+
+test('execute_script: fejler tilslutningen FOER afsendelsen, proeves igen, og koden koerer én gang', async () => {
+  const m = sele({ evaluate: () => ({ result: { type: 'number', value: 7 } }) });
+  let forsoeg = 0;
+  m.u.chrome.debugger.attach = () => (++forsoeg <= 3 ? Promise.reject(new Error('Cannot attach to this target.')) : Promise.resolve());
+  m.u.hent('debuggerAttached').clear();
+  const svar = await fang(m.kald('execute_script', { code: '7' }));
+  assert.equal(svar.result, 7, JSON.stringify(svar));
+  assert.equal(m.evalueringer().length, 1);
+  assert.ok(forsoeg > 3, 'tilslutningen blev ikke proevet igen');
+});
+
 // ── browser_select_frame ───────────────────────────────────────────────────────
 
 const toFrames = [
@@ -286,6 +304,27 @@ test('select_frame: kaster koden, svares ok:false med framens adresse', async ()
   assert.equal(svar.error, 'inde i rammen');
   assert.equal(svar.frame_url, BARN);
   assert.equal(m.evalueringer().length, 1);
+});
+
+test('select_frame: viser debuggeren faerre frames med adressen end udvidelsen, gaettes der ikke', async () => {
+  const m = sele({
+    frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 4, parentFrameId: 0, url: BARN }, { frameId: 7, parentFrameId: 0, url: BARN }],
+    traeer: { '': topTrae([{ id: 'B', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(3, 'B')] },
+  });
+  const svar = await fang(m.kald('select_frame', { frame_index: 1, code: 'window.__n = 1' }));
+  assert.equal(svar.error, 'frame-not-reachable', JSON.stringify(svar));
+  assert.equal(m.evalueringer().length, 0, 'koden maa ikke koere i en frame, der maaske er en anden');
+});
+
+test('select_frame: en adresse med #fragment parres (debuggeren har fragmentet i urlFragment)', async () => {
+  const m = sele({
+    frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 5, parentFrameId: 0, url: BARN + '#trin2' }],
+    traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN, urlFragment: '#trin2' }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] },
+  });
+  await m.kald('select_frame', { frame_index: 1, code: '1' });
+  assert.equal(m.evalueringer()[0]?.p.contextId, 2);
 });
 
 test('select_frame: findes framen ikke i debuggeren, koeres intet - heller ikke i en anden frame', async () => {
