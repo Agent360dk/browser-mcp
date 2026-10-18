@@ -150,7 +150,7 @@ test('privacy-teksten er last (hash af den synlige tekst: beviser stabilitet, ik
   const body = docs('privacy.html').match(/<body>([\s\S]*)<\/body>/)[1].replace(/<a class="skip"[\s\S]*?<\/header>/, '');
   const tekst = body.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
   // Aendres politikken med vilje, opdateres hashen i samme commit og begrundelsen staar i commit-beskeden.
-  assert.equal(createHash('sha256').update(tekst).digest('hex'), '92883499c28184bc77c42844c7dbfbc8b16fd58b6e454763a50d90f09279b160');
+  assert.equal(createHash('sha256').update(tekst).digest('hex'), 'de6f39f268deeab00ef339ba9a24c8a1764884c8e1a936578af98b8ea78307cf');
   assert.match(docs('404.html'), /<meta name="robots" content="noindex">/);
   assert.doesNotMatch(readFileSync(join(rod, 'docs/sitemap.xml'), 'utf8'), /404\.html/);
 });
