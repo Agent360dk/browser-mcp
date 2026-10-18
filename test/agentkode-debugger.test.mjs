@@ -137,10 +137,12 @@ test('execute_script: kan debuggeren ikke tilsluttes, sendes intet - og der er i
 });
 
 test('execute_script: et svar UDEN result (debuggeren faldt af midt i kaldet) er ikke et tomt resultat - koden kan have koert', async () => {
-  const m = sele({ evaluate: () => undefined });
-  const svar = await fang(m.kald('execute_script', { code: 'window.__n = 1' }));
-  assert.match(svar.kastet || '', /MAY already have run/, JSON.stringify(svar));
-  assert.equal(m.evalueringer().length, 1);
+  for (const tomt of [undefined, {}]) {
+    const m = sele({ evaluate: () => tomt });
+    const svar = await fang(m.kald('execute_script', { code: 'window.__n = 1' }));
+    assert.match(svar.kastet || '', /MAY already have run/, `${JSON.stringify(tomt)}: ${JSON.stringify(svar)}`);
+    assert.equal(m.evalueringer().length, 1);
+  }
 });
 
 test('execute_script: fejler tilslutningen FOER afsendelsen, proeves igen, og koden koerer én gang', async () => {
