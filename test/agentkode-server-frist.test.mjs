@@ -99,8 +99,10 @@ async function kald(navn, metode, args, svarEfterMs, svar = null) {
     assert.ok(ud, `${navn} gav intet resultat inden for 15 s`);
     const sendt = u.fik.find((x) => x.m.method === metode);
     assert.ok(sendt, `udvidelsen fik aldrig ${metode} - proeven kan ikke maale noget`);
+    // Et manglende svar maa aldrig faa serveren til at sende agentens kode igen - den kan allerede have koert.
+    const antal = u.fik.filter((x) => x.m.method === metode).length;
     u.ws.close();
-    return { res: ud.m.result, ms: ud.t - sendt.t };
+    return { res: ud.m.result, ms: ud.t - sendt.t, antal };
   } finally { s.proces.kill(); }
 }
 
@@ -123,7 +125,8 @@ describe('R137: serverens frist for agentkodens to vaerktoejer', { concurrency: 
     });
 
     test(`(b) ${navn}: intet svar - struktureret no-answer, sent:'unknown', «MAY», isError`, async () => {
-      const { res, ms } = await kald(navn, metode, args, null);
+      const { res, ms, antal } = await kald(navn, metode, args, null);
+      assert.equal(antal, 1, `serveren sendte ${metode} ${antal} gange efter et manglende svar - koden kan have koert flere gange`);
       assert.equal(res.isError, true, 'et manglende svar er en fejl for klienten');
       let svar;
       try { svar = JSON.parse(res.content[0].text); } catch { assert.fail(`resultatet er ikke struktureret: ${res.content[0].text}`); }
