@@ -899,6 +899,15 @@ function proeveFrist(navn, standard) {
 }
 let KALD_FRIST_MS = proeveFrist('BROWSER_MCP_TEST_CALL_TIMEOUT_MS', 30000);
 
+// R137 (maalt 19/10, ogsaa paa 1.30.3): paa en side med 50-200 navigationer i sekundet lammes Chromes browsertraad. Udvidelsen
+// svarer agentkodens to vaerktoejer til tiden (budgettet SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS = 29,5 s efter at den modtog
+// kaldet), men svaret naaede ikke serveren inden dens 30 s, og agenten fik «Command timed out», som ikke siger, om koden kan
+// have koert. Serveren venter derfor margenen laengere paa netop de to, saa udvidelsens sande svar (call-timeout med sent, eller
+// «MAY already have run») naar frem. Udvidelsens budget er uaendret. Fyrer serverens ur alligevel, svares der struktureret
+// (no-answer, sent:'unknown') - se sendTilBane. (`let` + miljoe som KALD_FRIST_MS: BROWSER_MCP_TEST_AGENTCODE_MARGIN_MS.)
+let AGENTKODE_MARGEN_MS = proeveFrist('BROWSER_MCP_TEST_AGENTCODE_MARGIN_MS', 15000);
+const AGENTKODE_SERVER = new Set(['execute_script', 'select_frame']);
+
 // R121 (Astra, MAALT i model): close stoppede ikke et kald, der ventede paa forbindelse. Naar installationen kom tilbage, bandt
 // kaldet den lukkede partitions port igen og sendte sin kommando - efter at close havde svaret port_released: true. Et kald paa
 // en lukket bane stoppes derfor ved indgangen (foer porten bindes) og efter hver ventetid (foer det sendes). Var lukningen
@@ -1036,6 +1045,13 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     const id = ++cmdId;
     const timer = setTimeout(() => {
       pending.delete(id);
+      // R137: for agentkodens to vaerktoejer ved serveren ikke, om koden blev sendt til siden - og det skal agenten vide.
+      if (AGENTKODE_SERVER.has(method)) {
+        reject(new ProfilFejl({ ok: false, error: 'no-answer', sent: 'unknown',
+          note: `No answer reached the server within ${Math.round(timeoutMs / 1000)} seconds, so it cannot tell whether the code ` +
+            'was sent to the page: it MAY have run. It is not repeated automatically - call again only if it is safe to run twice.' }));
+        return;
+      }
       reject(new Error(`Command timed out after ${timeoutMs}ms: ${method}`));
     }, timeoutMs);
     // ⛔ MAALT 21/9 af en konsulent-model: parringsgaten afgoer hvem der FAAR en kommando,
@@ -1522,7 +1538,8 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
     // default would kill a long mail list mid-walk and report a partial set as complete.
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
                     method === 'solve_captcha' ? 60000 :
-                    method === 'extract_list' ? 180000 : KALD_FRIST_MS;
+                    method === 'extract_list' ? 180000 :
+                    AGENTKODE_SERVER.has(method) ? KALD_FRIST_MS + AGENTKODE_MARGEN_MS : KALD_FRIST_MS;
     const result = await sendToExtension(method, args || {}, timeout, bane);
 
     if (name === 'browser_screenshot' && result?.image) {

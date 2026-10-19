@@ -673,7 +673,8 @@ function cdpFrist(method, params) {
   const m = String(method);
   // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte". R131 (Opus, maalt i Chrome): 20 s skar et
   // loefte paa 21 s over, som 1.30.3 besvarede (MAIN-vejen havde ingen frist under serverens). Fristen foelger derfor
-  // serverens egen frist minus hjemrejsen - samme udledning som skaermbilledets budget. Kun koerAgentKode bruger awaitPromise.
+  // serverens standardfrist minus hjemrejsen - samme udledning som skaermbilledets budget. Kun koerAgentKode bruger awaitPromise.
+  // R137: for agentkodens to vaerktoejer venter serveren selv laengere end det (se AGENTKODE_FRIST); budgettet her er uaendret.
   if (m === 'Runtime.evaluate' && params && params.awaitPromise) return SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS;
   if (m === 'Page.captureScreenshot' || m === 'Network.getResponseBody') return CDP_FRIST_TUNG_MS;
   return m.startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
@@ -690,9 +691,11 @@ function cdpFrist(method, params) {
 // MAALT 12/9 af Astra (tredje runde paa samme sted): en gentilslutning paa 12,5 s betoed at kandidaten opgav efter 26,9 s,
 // hvor 1.29.0 leverede et billede efter 29,2 s. Aarsagen var ikke logikken, men TALLET: 26 s var valgt frit, ikke udledt.
 // Hver runde fandt et nyt scenarie i de 4 sekunder vi gav bort. Budgettet er derfor nu udledt af det eneste tal der
-// betyder noget - serverens egen frist pr. kald (sendToExtension i mcp-server/index.js) - minus den tid svaret skal
-// bruge paa at komme tilbage gennem broen. Aendrer serverens frist sig, foelger budgettet med.
-const SERVER_FRIST_MS = 30000;      // sendToExtension(..., timeoutMs = 30000) i mcp-server/index.js
+// betyder noget - serverens standardfrist pr. kald (KALD_FRIST_MS i mcp-server/index.js) - minus den tid svaret skal
+// bruge paa at komme tilbage gennem broen. Aendres serverens standardfrist, skal tallet her aendres med (det er ikke koblet).
+// R137: for execute_script og select_frame venter serveren KALD_FRIST_MS + AGENTKODE_MARGEN_MS (30 + 15 s), altsaa laengere
+// end budgettet her, saa svaret naar frem, ogsaa naar Chromes browsertraad er lammet. Budgettet her er det samme for alle.
+const SERVER_FRIST_MS = 30000;      // KALD_FRIST_MS i mcp-server/index.js (serverens standardfrist pr. vaerktoejskald)
 // MAALT 12/9 af Astra: hjemrejsen for en skaermbillede-stor nyttelast over den lokale WebSocket er 84-154 ms
 // (0,5 / 2 / 8 MB, tre maalinger hver). 1500 ms var 10x det - altsaa endnu et frit valgt tal i den regel der lige var
 // lukket. 500 ms er tre gange det maalte og krymper baandet, hvor 1.29.0 leverer og vi ikke goer, fra ~1,35 s til ~0,35 s.
@@ -5467,7 +5470,10 @@ function agentKodeFejl(ex) {
   return { besked: (ex && ex.text) || 'Script exception', navn };
 }
 
-// Hele vaerktoejskaldet har serverens budget (SERVER_FRIST_MS minus svarets hjemrejse), regnet fra udvidelsen MODTOG kaldet
+// R137: serveren venter selv 15 s laengere end dette budget paa de to vaerktoejer (KALD_FRIST_MS + AGENTKODE_MARGEN_MS i
+// mcp-server/index.js): maalt 19/10 naaede svaret ved budgettet ikke serveren inden 30 s, naar en side navigerede 50-200
+// gange i sekundet. Faar serveren alligevel intet svar, svarer den selv no-answer med sent:'unknown'.
+// Hele vaerktoejskaldet har serverens standardbudget (SERVER_FRIST_MS minus svarets hjemrejse), regnet fra udvidelsen MODTOG kaldet
 // (onMessage, foer sessionsgendannelse og adoption). R132/R133 (Astra): fristen gaelder forarbejdet, den sidste
 // afsendelseskontrol (efter tilslutningen i cdpSend) og svaret; oprydningen koerer videre efter svaret uden at holde det.
 // R134 (Astra): trin-for-trin-fristerne kunne ikke holde svaret inden for budgettet - tilslutning, gentilslutning,

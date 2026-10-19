@@ -67,6 +67,16 @@ after a path wrote to the field, the answer says so (`value_before`, `field_chan
 earlier capture is delivered instead, the answer now says `stale: true` with a note, next to the picture (also when it is
 saved to a file): the page may have changed since.
 
+**`browser_execute_script` and `browser_select_frame`: the server waits for the extension's answer.** On a page that
+navigates 50-200 times a second, Chrome's browser thread stalls. The extension still answered these two tools within its
+29.5 seconds, but the answer did not reach the server before the server's own 30-second limit, and the agent got the
+general "Command timed out after 30000ms", which does not say whether the code may have run (measured on 1.30.3 too). The
+server now waits 45 seconds for these two tools (its 30 seconds plus 15), which gives the extension's answer 15 more seconds
+to arrive: `call-timeout` with `sent: false` when nothing was run, or "MAY already have run". The extension's own 29.5 seconds are unchanged. If no
+answer arrives within the 45 seconds, the server answers `no-answer` with `sent: "unknown"`: the code MAY have run, it is
+not repeated, and the agent should call again only if the code is safe to run twice. Every other tool keeps its limit and
+its message.
+
 **New answers an agent can see:**
 
 | Answer | Where | Means |
@@ -85,6 +95,7 @@ saved to a file): the page may have changed since.
 | `error: "focus-moved"` or `"focus-unknown"`, `step`, `focused`, `changed` | `browser_set_date` | Before a writing step focus was no longer on the field (or could not be read); the tool stopped there, and `changed` lists what had been changed by then |
 | `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
+| `error: "no-answer"`, `sent: "unknown"` | `browser_execute_script`, `browser_select_frame` | No answer reached the server within 45 seconds. The code MAY have run; it is not repeated automatically, so call again only if it is safe to run twice |
 
 ## 1.31.0 (not released yet)
 
