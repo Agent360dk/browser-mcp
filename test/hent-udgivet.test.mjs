@@ -138,10 +138,10 @@ print(h.hent_udvidelse('9.9.9', ${JSON.stringify(ud)}, ${JSON.stringify(repo)}))
 });
 
 /** Et falsk `npm` der «installerer» en pakke med den givne package.json og brugerindgang. */
-function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `#!/usr/bin/env node\nconsole.log('9.9.9')`, link = true } = {}) {
+function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `#!/usr/bin/env node\nconsole.log('9.9.9')`, link = true, description, cp1252 = false } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'hent-server-'));
   const shim = join(d, 'shim'); mkdirSync(shim);
-  const pakke = JSON.stringify({ name: '@agent360/browser-mcp', version, bin });
+  const pakke = JSON.stringify({ name: '@agent360/browser-mcp', version, bin, ...(description ? { description } : {}) });
   writeFileSync(join(shim, 'npm'), `#!/bin/bash
 while [[ $# -gt 0 ]]; do [[ "$1" == --prefix ]] && { P="$2"; shift; }; shift; done
 M="$P/node_modules/@agent360/browser-mcp"; mkdir -p "$M/bin"
@@ -156,7 +156,7 @@ ${link ? `mkdir -p "$P/node_modules/.bin"; ln -sf ../@agent360/browser-mcp/bin/c
     return spawnSync('python3', ['-c', `import importlib.util
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
-print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1', PATH: `${shim}:${process.env.PATH}` } });
+${cp1252 ? `import builtins\nh.open = lambda f, *a, **k: builtins.open(f, *a, **{'encoding': 'cp1252', **k})\n` : ''}print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1', PATH: `${shim}:${process.env.PATH}` } });
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 
@@ -181,6 +181,11 @@ test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - i
   assert.notEqual(forkertFortolker.status, 0, 'en shebang til en fortolker der ikke findes blev godkendt');
   const intetLink = koerHentServer({ link: false });
   assert.match(intetLink.stderr, /npm lavede ingen kommando «browser-mcp»/, 'en pakke uden npm-kommando blev godkendt');
+  // R152 (Astra + Opus): PYTHONUTF8=1 i prøverne skjulte rettelsen - uden `encoding='utf-8'` i scriptet var alle stadig grønne.
+  // Her laaner scriptets `open` en Windows-standard (cp1252), og npm-beskrivelsen indeholder «Ł» (UTF-8 C5 81; 0x81 findes ikke
+  // i cp1252). Kun en eksplicit UTF-8-laesning kommer igennem.
+  const windowsTegnsaet = koerHentServer({ description: 'Łódź: 41 tools', cp1252: true });
+  assert.equal(windowsTegnsaet.status, 0, `package.json blev ikke laest som UTF-8 under et cp1252-standardtegnsaet: ${windowsTegnsaet.stderr.slice(-300)}`);
   const forkertVersion = koerHentServer({ version: '9.9.8' });
   assert.match(forkertVersion.stderr, /npm udleverede 9\.9\.8, ikke 9\.9\.9/);
 });

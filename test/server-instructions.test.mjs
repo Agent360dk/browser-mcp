@@ -162,6 +162,12 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     // R104 Opus forslag 1: vagten var bundet til ordlyden - en omskrivning som «… operating system's focus (measured)» slap igennem.
     assert.doesNotMatch(t, /operating system's focus[^.]{0,80}\(measured/, `${f} kalder fokuskravet maalt (omskrevet)`);
     // C11 (14/10-maalingen): én observation paa macOS naevnes - som én observation, ikke som en generel maaling
-    assert.match(t, /One observation on macOS \(GitHub's runner, 14 Oct 2026\)[^.]*TextEdit[^.]*front; that is one platform and one input type, not a general measurement/, `${f} naevner ikke 14/10-observationen med sin graense`);
+    // R152 (Astra + Opus): vagten var bundet til ordstumper - «did not see a key press land», «was not in front» og en
+    // generaliserende saetning («Input requires OS focus (measured).») slap igennem. Nu kraeves hele saetningen ordret, og
+    // ingen formulering maa kalde et fokus- eller forgrundskrav maalt.
+    assert.match(t, /One observation on macOS \(Chrome for Testing on GitHub's runner, 14 Oct 2026\) saw a key press land in the active tab while another app \(TextEdit\) was in front; that is one platform and one input type, not a general measurement\./, `${f} naevner ikke 14/10-observationen ordret med sin graense`);
+    assert.doesNotMatch(t, /\b(?:OS|operating system'?s?) focus[^.]{0,80}(?<!un)measured/i, `${f} kalder et OS-fokuskrav maalt`);
+    assert.doesNotMatch(t, /\bfocus\.\s*\(?measured/i, `${f} kalder fokus maalt i saetningen efter`);
+    assert.doesNotMatch(t, /\bin front[^.;]{0,40}(?<!un)measured\b/i, `${f} kalder et forgrundskrav maalt`);
   }
 });

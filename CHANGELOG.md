@@ -108,11 +108,15 @@ seconds. On the same kind of page that happened, and replacing the bridge also c
 question without an answer is followed by a second one, and the bridge is replaced only when neither is answered within
 3 seconds of the first. A bridge that is gone or outdated is still replaced at once.
 
-**Click proof: three precisions to the 1.30.2 notes (measured in R82, not new behaviour).** «A field» in the click proof means
-`input`, `select`, `textarea` or `button`; display elements such as `output`, `meter` and `progress` count as content inside a
-control frame. In Shoelace 2.x, an icon in an `sl-button`'s prefix or suffix slot never gets the click itself (the library sets
-`pointer-events: none` there), so clicking the icon answers `maybe_landed` - target the button. In Ionic, an `ion-segment-button`'s
-icon or label as the target answers `covered` before the press (the host takes the click); target the segment button itself.
+**Click proof: three precisions to the 1.30.2 notes (measured in R82, not new behaviour).** When the target itself is
+`input`, `select`, `textarea`, `button` or a custom element (a tag name with a hyphen), only a click that reaches that element
+counts as proof; display elements such as `output`, `meter` and `progress` as the target count as content inside a control frame.
+(When the target is a `label`, the proof is its associated control's own activation click, whatever that control is.)
+Measured in Shoelace 2.20.1 with its default styling: the custom `sl-icon` element in an `sl-button`'s prefix slot never gets
+the click itself (the library sets `pointer-events: none` there), so clicking that `sl-icon` answers `maybe_landed` - target the
+button. A native `svg` or `i` icon in the same place is not a field and answers `landed: true` when the button gets the click.
+Measured in Ionic 8.8.19: an `ion-segment-button`'s icon or label as the target answers `covered` before the press (the host takes
+the click); target the segment button itself. Other versions of these libraries are unmeasured.
 
 **New answers an agent can see:**
 

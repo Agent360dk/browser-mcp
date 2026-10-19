@@ -198,7 +198,7 @@ acknowledgement, so a background tab produces an honest failure instead of a sil
 Fully hands-off background input is not part of 1.30, and it is not something we can fix: Chrome
 delivers no mouse or keyboard input to a tab that is not the visible one in its window (measured).
 Whether it does to the active tab of a window without the operating system's focus is unmeasured in
-desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit)
+desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit)
 was in front; that is one platform and one input type, not a general measurement. Some of it cannot be solved at all: CSS
 `:hover` is a state the renderer owns and no script can fake it, a script-dispatched event is
 never `isTrusted`, `elementFromPoint` stops at a cross-origin iframe, and the text selection a
