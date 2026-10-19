@@ -195,7 +195,7 @@ test('runden hvor listen naar bunden, er ikke en runde hvor den stod paa bunden'
   assert.equal(svar.reached_end, true);
 });
 
-// Vaekst uden bevaegelse: hjulet ved bunden flytter intet, men loaderen laegger en pladsholder ind.
+// Vaekst mens der rulles: loaderen laegger pladsholdere ind, mens hjulet stadig flytter listen (R84 Astra: kommentaren sagde «uden bevaegelse»).
 test('en liste der vokser med pladsholdere, mens den rulles, er stadig i gang - ogsaa med stable_rounds 1', async () => {
   const f = feed({ pladsholdere: 2 });
   const svar = await udtraek(sele(f), { stable_rounds: 1 });

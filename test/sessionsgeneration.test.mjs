@@ -816,14 +816,15 @@ test('H3 i genopbygningen markerer FOER oprettelsen: fejler oprettelsen, og kan 
 
 // ── R146 (Astra D1): H3-markeringen sker FOER oprettelsen - ogsaa mens oprettelsen stadig venter ──────────────
 test('H3 i genopbygningen: mens oprettelsen af den nye bro venter, er den gamle bros kald allerede afvist (R146: D1)', async () => {
-  let findes = true, slipOpret, kontekstKald = 0;
+  let findes = true, slipOpret, opretKaldt, kontekstKald = 0;
   const opretVenter = new Promise((r) => { slipOpret = r; });
+  const opretStartet = new Promise((r) => { opretKaldt = r; });   // R147 (Astra): signal fra selve kaldet, ikke en fast ventetid
   let genbyg;
   const { sent, koert } = await ventendeKald('mnmn3333-1', async ({ u }) => {
     genbyg = u.hent('genbygOffscreen')().catch(() => {});   // holdes ved createDocument
-    await new Promise((r) => setTimeout(r, 30));
+    await opretStartet;
   }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
-    'offscreen.createDocument': () => opretVenter.then(() => { findes = true; }),
+    'offscreen.createDocument': () => { opretKaldt(); return opretVenter.then(() => { findes = true; }); },
     'runtime.getContexts': () => { kontekstKald += 1; if (kontekstKald === 1) return []; throw new Error('getContexts afvist'); },
     'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
   // det gamle kald er sluppet og besvaret, mens oprettelsen STADIG venter

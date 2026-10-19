@@ -159,5 +159,9 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     assert.doesNotMatch(t, /operating system's focus \(both measured/, `${f} kalder fokuskravet maalt`);
     assert.doesNotMatch(t, /needs the tab to be the visible one in a window that has the operating system's focus/, `${f} gør OS-fokus til et krav`);
     assert.match(t, /without the operating system's focus is unmeasured in desktop Chrome/, `${f} siger ikke at fokus-tilfaeldet er umaalt`);
+    // R104 Opus forslag 1: vagten var bundet til ordlyden - en omskrivning som «… operating system's focus (measured)» slap igennem.
+    assert.doesNotMatch(t, /operating system's focus[^.]{0,80}\(measured/, `${f} kalder fokuskravet maalt (omskrevet)`);
+    // C11 (14/10-maalingen): én observation paa macOS naevnes - som én observation, ikke som en generel maaling
+    assert.match(t, /One observation on macOS \(GitHub's runner, 14 Oct 2026\)[^.]*TextEdit[^.]*front; that is one platform and one input type, not a general measurement/, `${f} naevner ikke 14/10-observationen med sin graense`);
   }
 });

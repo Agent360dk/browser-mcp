@@ -21,7 +21,7 @@ const spaerretrin = (wf) => { const fra = wf.indexOf('- name: spaerren, isoleret
 const py = (kode) => execFileSync('python3', ['-c', `import importlib.util, sys, json
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
-${kode}`], { encoding: 'utf8' }).trim();
+${kode}`], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } }).trim();   // en Latin-1-Python paa Mac (10/10) laeste ellers forkert
 
 function repoMedTag(filer) {
   const d = mkdtempSync(join(tmpdir(), 'hent-tag-'));
@@ -156,7 +156,7 @@ ${link ? `mkdir -p "$P/node_modules/.bin"; ln -sf ../@agent360/browser-mcp/bin/c
     return spawnSync('python3', ['-c', `import importlib.util
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
-print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PATH: `${shim}:${process.env.PATH}` } });
+print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1', PATH: `${shim}:${process.env.PATH}` } });
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 

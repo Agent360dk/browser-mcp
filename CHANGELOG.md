@@ -108,6 +108,12 @@ seconds. On the same kind of page that happened, and replacing the bridge also c
 question without an answer is followed by a second one, and the bridge is replaced only when neither is answered within
 3 seconds of the first. A bridge that is gone or outdated is still replaced at once.
 
+**Click proof: three precisions to the 1.30.2 notes (measured in R82, not new behaviour).** «A field» in the click proof means
+`input`, `select`, `textarea` or `button`; display elements such as `output`, `meter` and `progress` count as content inside a
+control frame. In Shoelace 2.x, an icon in an `sl-button`'s prefix or suffix slot never gets the click itself (the library sets
+`pointer-events: none` there), so clicking the icon answers `maybe_landed` - target the button. In Ionic, an `ion-segment-button`'s
+icon or label as the target answers `covered` before the press (the host takes the click); target the segment button itself.
+
 **New answers an agent can see:**
 
 | Answer | Where | Means |
