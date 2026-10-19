@@ -22,30 +22,35 @@ const TOP = 'https://top.example/';
 const BARN = 'https://top.example/barn';
 const FREMMED = 'https://pay.example/frame';
 
-// Chrome-modellen. `traeer` er Page.getFrameTree pr. session ('' = fanens egen), `kontekster` er de standardkontekster,
-// Runtime.enable melder pr. session, og `oopif` er de maal, Target.setAutoAttach melder (i: den session, de meldes i).
-// Som Chrome (maalt 19/10): Runtime.enable og Target.setAutoAttach melder INTET, naar de allerede staar til.
-// `sene: true` leverer haendelserne 20 ms EFTER svaret - chrome.debugger lover ikke raekkefoelgen mellem de to.
-// Identitet (R131, Astra og Opus): `par` er SANDHEDEN, { udvidelsens frameId: CDP-frame-id }. Framens identitet er den
-// samme set fra begge sider: inde i framen (chrome.scripting, frameIdentitet(0)) og fra ejer-elementet i forælderen
-// (DOM.getFrameOwner + callFunctionOn, frameIdentitet(1)): [plads i window.frames, antal, ejer-plads, antal ejere].
-// Modellen giver pladsen efter udvidelsens frameId-raekkefoelge blandt soeskende, saa den IKKE falder sammen med
-// debuggerens raekkefoelge. `webPlads`/`cdpPlads` overstyrer en side (tuple eller Error), og `vaek` er frames,
-// webNavigation.getFrame ikke kender laengere.
+// Chrome-modellen. `traeer` er Page.getFrameTree pr. session ('' = fanens egen), `kontekster` er standardkontekster pr.
+// session; for hver af dem melder Runtime.enable OGSAA udvidelsens isolerede verden i samme frame (type isolated, origin
+// chrome-extension://<id>, id = 100 + standardkontekstens id) - som Chrome gjorde i maalingen 19/10. `oopif` er de maal,
+// Target.setAutoAttach melder (i: den session, de meldes i). Som Chrome: Runtime.enable og Target.setAutoAttach melder INTET,
+// naar de allerede staar til. `sene: true` leverer haendelserne 20 ms EFTER svaret.
+// Identitet: `par` er SANDHEDEN, { udvidelsens frameId: CDP-frame-id }. Hver frame har sit eget dokument med udvidelsens
+// maerker (R132). For 5b66c97's placeringsbevis giver modellen ogsaa pladsen i forælderen efter `orden` (udvidelsens
+// frameId-raekkefoelge, medmindre andet er sat), og `karrusel: { forfaelder, efter }` udskifter soeskende lige efter det
+// foerste chrome.scripting-kald - Opus' karrusel. `maerkFejl` lader udvidelsens maerkning fejle for en frame, og `vaek` er
+// frames, webNavigation.getFrame ikke kender laengere.
 function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runtimeTil = [], autoAttachTil = [], sene = false,
-  par = {}, webPlads = {}, cdpPlads = {}, vaek = [] } = {}) {
+  par = {}, maerkFejl = {}, vaek = [], karrusel = null } = {}) {
   const log = [];
   let u;
   const kilde = (sid) => (sid ? { tabId: 1, sessionId: sid } : { tabId: 1 });
   const runtime = new Set(runtimeTil), auto = new Set(autoAttachTil);
   const send = (...a) => (sene ? setTimeout(() => u.fyr(...a), 20) : u.fyr(...a));
-  const verdener = new Set();
   const alleFrames = frames || [{ frameId: 0, parentFrameId: -1, url: TOP }];
-  const sandPlads = (f) => {
-    const w = alleFrames.find((x) => x.frameId === f);
-    const s = alleFrames.filter((x) => x.frameId !== 0 && x.parentFrameId === w?.parentFrameId).map((x) => x.frameId).sort((a, b) => a - b);
-    return [s.indexOf(f), s.length, s.indexOf(f), s.length];
+  const orden = new Map();
+  for (const f of alleFrames) if (f.frameId !== 0) orden.set(f.parentFrameId, [...(orden.get(f.parentFrameId) || []), f.frameId].sort((a, b) => a - b));
+  let karruselKoert = false;
+  const pladsAf = (web) => {
+    const w = alleFrames.find((x) => x.frameId === web);
+    const s = orden.get(w ? w.parentFrameId : -2) || [];
+    return [s.indexOf(web), s.length, s.indexOf(web), s.length];
   };
+  const webAf = (cdp) => { const k = Object.keys(par).find((x) => par[x] === cdp); return k == null ? null : Number(k); };
+  const dokumenter = new Map();   // udvidelsens frameId -> maerker i udvidelsens isolerede verden
+  const iso = new Map();          // isoleret kontekst-id (pr. session) -> CDP-frame-id
   u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined, 'debugger.detach': undefined,
     'debugger.getTargets': [{ tabId: 1, attached: true }],
@@ -55,13 +60,23 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runt
     'webNavigation.getFrame': (q) => (vaek.includes(q.frameId) ? null : alleFrames.find((x) => x.frameId === q.frameId) || null),
     'scripting.executeScript': (o) => {
       log.push({ scripting: true, world: o.world, args: o.args, frameIds: o.target?.frameIds, func: o.func?.name });
-      if (o.func?.name === 'frameIdentitet' && o.world === 'ISOLATED' && o.args?.[0] === 0) {
-        const f = o.target.frameIds[0];
-        const v = f in webPlads ? webPlads[f] : sandPlads(f);
-        if (v instanceof Error) throw v;
-        return [{ frameId: o.target.frameIds[0], result: v }];
+      const f = o.target?.frameIds?.[0];
+      try {
+        if (o.world === 'ISOLATED' && o.func?.name === 'frameMaerke') {
+          if (maerkFejl[f]) throw maerkFejl[f];
+          const [h, maerke] = o.args;
+          if (!dokumenter.has(f)) dokumenter.set(f, new Set());
+          if (h === 0) dokumenter.get(f).add(maerke); else if (h === 2) dokumenter.get(f).delete(maerke);
+          return [{ frameId: f, result: true }];
+        }
+        if (o.world === 'ISOLATED' && o.func?.name === 'frameIdentitet' && o.args?.[0] === 0) {
+          if (maerkFejl[f]) throw maerkFejl[f];
+          return [{ frameId: f, result: pladsAf(f) }];
+        }
+        throw new Error('scripting maa ikke bruges til agentkode');
+      } finally {
+        if (karrusel && !karruselKoert) { karruselKoert = true; orden.set(karrusel.forfaelder, karrusel.efter); }
       }
-      throw new Error('scripting maa ikke bruges til agentkode');
     },
     'debugger.sendCommand': (maal, metode, p) => {
       const sid = maal.sessionId || '';
@@ -71,7 +86,15 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runt
       if (metode === 'Runtime.enable') {
         if (runtime.has(sid)) return {};
         runtime.add(sid);
-        for (const context of kontekster[sid] || []) send('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context });
+        for (const context of kontekster[sid] || []) {
+          send('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context });
+          if (context.auxData.isDefault) {
+            const c = { id: 100 + context.id, origin: 'chrome-extension://test-udvidelse-id', name: 'Agent360 Browser MCP',
+              auxData: { isDefault: false, type: 'isolated', frameId: context.auxData.frameId } };
+            iso.set(sid + '/' + c.id, context.auxData.frameId);
+            send('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context: c });
+          }
+        }
         return {};
       }
       if (metode === 'Target.setAutoAttach' && !p.autoAttach) { auto.delete(sid); return {}; }
@@ -84,21 +107,22 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runt
         }
         return {};
       }
-      if (metode === 'Page.createIsolatedWorld') { const c = 5000 + log.length; verdener.add(c); return { executionContextId: c }; }
-      if (metode === 'DOM.getFrameOwner') {
-        if (cdpPlads[p.frameId] instanceof Error) throw cdpPlads[p.frameId];
-        return { backendNodeId: 'ejer:' + p.frameId };
-      }
-      if (metode === 'DOM.resolveNode') {
-        assert.ok(verdener.has(p.executionContextId), 'ejeren skal laeses i en isoleret verden, som siden ikke kan pille ved');
-      }
+      // 5b66c97's placeringsbevis (bruges kun af den gamle kode i roed-foer-proeven).
+      if (metode === 'Page.createIsolatedWorld') return { executionContextId: 5000 + log.length };
+      if (metode === 'DOM.getFrameOwner') return { backendNodeId: 'ejer:' + p.frameId };
       if (metode === 'DOM.resolveNode') return { object: { objectId: 'obj:' + String(p.backendNodeId).slice(5) } };
-      if (metode === 'Runtime.callFunctionOn') {
-        assert.equal(p.arguments?.[0]?.value, 1, 'debuggerens side skal koere frameIdentitet(1)');
-        const c = String(p.objectId).slice(4);
-        const web = Object.keys(par).find((k) => par[k] === c);
-        const v = c in cdpPlads ? cdpPlads[c] : web != null ? sandPlads(Number(web)) : [90, 90, 90, 90];
-        return { result: { type: 'object', value: v } };
+      if (metode === 'Runtime.callFunctionOn' && p.objectId) {
+        const web = webAf(String(p.objectId).slice(4));
+        return { result: { type: 'object', value: web == null ? [90, 90, 90, 90] : pladsAf(web) } };
+      }
+      // R132: maerket spoerges i udvidelsens isolerede verden, med maerket som argument.
+      if (metode === 'Runtime.callFunctionOn' && p.executionContextId != null) {
+        const cdp = iso.get(sid + '/' + p.executionContextId);
+        if (cdp == null) throw new Error('Cannot find context with specified id');
+        const web = webAf(cdp);
+        const [h, maerke] = (p.arguments || []).map((a) => a.value);
+        const d = web == null ? new Set() : (dokumenter.get(web) || new Set());
+        return { result: { type: 'boolean', value: h === 1 ? d.has(maerke) : true } };
       }
       if (metode === 'Runtime.evaluate') return evaluate ? evaluate(maal, p) : { result: { type: 'string', value: 'svar' } };
       return {};
@@ -106,10 +130,9 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runt
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
   const evalueringer = () => log.filter((x) => x.metode === 'Runtime.evaluate');
-  // chrome.scripting med agentens kode (en tekst som argument) eller uden for ISOLATED. Identitetsopslaget er den pakkede
-  // frameIdentitet med et tal som argument.
-  const scripting = () => log.filter((x) => x.scripting && (x.world !== 'ISOLATED' || (x.args || []).some((a) => typeof a === 'string')));
-  return { u, log, evalueringer, scripting, kald: (navn, params) => u.hent('dispatch')(9876, navn, params) };
+  // chrome.scripting med agentens kode: alt andet end de pakkede identitetsfunktioner i ISOLATED.
+  const scripting = () => log.filter((x) => x.scripting && !(x.world === 'ISOLATED' && ['frameMaerke', 'frameIdentitet'].includes(x.func)));
+  return { u, log, evalueringer, scripting, dokumenter, kald: (navn, params) => u.hent('dispatch')(9876, navn, params) };
 }
 const fang = (p) => p.then((r) => r, (e) => ({ kastet: String(e?.message || e) }));
 const ctx = (id, frameId, isDefault = true) => ({ id, origin: 'x', name: '', auxData: { isDefault, type: isDefault ? 'default' : 'isolated', frameId } });
@@ -233,11 +256,15 @@ test('select_frame i en frame fra samme domaene: identiteten bevises paa ejer-el
   });
   const svar = await m.kald('select_frame', { frame_index: 1, code: 'window.hemmelig' });
   assert.equal(m.scripting().length, 0, 'chrome.scripting fik agentens kode');
-  const id = m.log.find((x) => x.scripting && x.func === 'frameIdentitet');
-  assert.ok(id, 'udvidelsens side af identiteten mangler');
-  assert.deepEqual([...id.frameIds], [5], 'identiteten maales INDE i netop den valgte frame');
-  assert.deepEqual([...id.args], [0]);
-  assert.ok(m.log.some((x) => x.metode === 'DOM.getFrameOwner' && x.p.frameId === 'CDP-BARN'), 'debuggerens side af identiteten mangler');
+  const saet = m.log.find((x) => x.scripting && x.func === 'frameMaerke' && x.args[0] === 0);
+  assert.ok(saet, 'udvidelsen satte intet maerke');
+  assert.deepEqual([...saet.frameIds], [5], 'maerket saettes i NETOP den valgte frame (Chrome vaelger dokumentet ud fra frameId)');
+  assert.match(saet.args[1], /^[0-9a-f]{32}$/, 'et tilfaeldigt engangsmaerke');
+  const spurgt = m.log.find((x) => x.metode === 'Runtime.callFunctionOn' && x.p.executionContextId === 103);
+  assert.ok(spurgt, 'debuggeren spurgte ikke udvidelsens isolerede verden i framen');
+  assert.deepEqual([...spurgt.p.arguments.map((a) => a.value)], [1, saet.args[1]], 'maerket gives som ARGUMENT, ikke bygget ind i koden');
+  assert.ok(m.log.some((x) => x.scripting && x.func === 'frameMaerke' && x.args[0] === 2 && x.args[1] === saet.args[1]), 'maerket fjernes bagefter');
+  assert.equal(m.dokumenter.get(5).size, 0);
   const ev = m.evalueringer();
   assert.equal(ev.length, 1);
   assert.equal(ev[0].p.contextId, 3, 'framens STANDARDkontekst (isDefault), ikke en isoleret verden og ikke hovedsiden');
@@ -286,19 +313,35 @@ test('select_frame: to OOPIF-soeskende med samme adresse rammer hver sin rigtige
 
 test('select_frame: kan identiteten ikke bevises, koeres intet - og svaret siger, om et nyt forsoeg kan hjaelpe', async () => {
   for (const [navn, ekstra, retry] of [
-    ['udvidelsen maa ikke laese framen', { webPlads: { 9: new Error('Cannot access contents of the page.') } }, false],
-    ['framen kan ikke se sin plads (shadow root paa en fremmed side)', { webPlads: { 9: [-1, 2, -1, -1] } }, false],
-    ['to kandidater har samme plads', { cdpPlads: { F2: [0, 2, 0, 2] } }, false],
-    ['debuggeren kan ikke laese nogen ejer', { cdpPlads: { F1: new Error('No node'), F2: new Error('No node') } }, true],
-    ['antallet af frames passer ikke (siden aendrede sig)', { cdpPlads: { F1: [0, 3, 0, 3], F2: [1, 3, 1, 3] } }, true],
-    ['framen forsvandt under opslaget', { webPlads: { 9: new Error('Frame with ID 9 was removed.') } }, true],
-    ['framen er vaek, saa en varig fejl er alligevel forbigaaende', { webPlads: { 9: [-1, 2, -1, -1] }, vaek: [9] }, true],
+    ['udvidelsen maa ikke koere i framen', { maerkFejl: { 9: new Error('Cannot access contents of url "chrome-extension://x/y". Extension manifest must request permission to access this host.') } }, false],
+    ['framen forsvandt under maerkningen', { maerkFejl: { 9: new Error('Frame with ID 9 was removed.') } }, true],
+    ['maerket findes ingen steder i debuggeren', { par: { 12: 'F2' } }, true],
+    ['maerket findes i to kontekster', { par: { 9: 'F1' }, ekstraPar: true }, true],
+    ['framen er vaek, saa en varig fejl er alligevel forbigaaende', { maerkFejl: { 9: new Error('Cannot access contents of the page.') }, vaek: [9] }, true],
   ]) {
-    const m = sele(toFremmede(ekstra));
+    const model = toFremmede(ekstra);
+    if (ekstra.ekstraPar) model.kontekster[''] = [ctx(1, 'TOP'), ctx(7, 'F1'), ctx(8, 'F1')];   // to kontekster med maerket
+    const m = sele(model);
     const svar = await fang(m.kald('select_frame', { frame_index: 1, code: 'window.__n = 1' }));
     ikkeNaaet(svar, retry);
     assert.equal(m.evalueringer().length, 0, `${navn}: koden maa ikke koere i en frame, der ikke er bevist`);
   }
+});
+
+// R132 (Astra i model, Opus i Chrome): siden fjerner en tidligere soester og tilfoejer en ny MELLEM udvidelsens maaling og
+// debuggerens. En anden frame faar samme plads, og 5b66c97 koerte koden i soeskende-framen med et normalt svar.
+test('select_frame: karrusellen (soester fjernet, ny tilfoejet under kaldet) rammer stadig netop den valgte frame (R132)', async () => {
+  const m = sele({
+    frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 3, parentFrameId: 0, url: TOP + 'X' },
+      { frameId: 4, parentFrameId: 0, url: TOP + 'A' }, { frameId: 5, parentFrameId: 0, url: TOP + 'B' }],
+    par: { 3: 'X', 4: 'A', 5: 'B', 6: 'C' },
+    karrusel: { forfaelder: 0, efter: [4, 5, 6] },
+    traeer: { '': topTrae([{ id: 'X', url: TOP + 'X' }, { id: 'A', url: TOP + 'A' }, { id: 'B', url: TOP + 'B' }, { id: 'C', url: TOP + 'C' }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'X'), ctx(3, 'A'), ctx(4, 'B'), ctx(5, 'C')] },
+    evaluate: (_maal, p) => ({ result: { type: 'string', value: { 2: 'X', 3: 'A', 4: 'B', 5: 'C' }[p.contextId] } }),
+  });
+  const svar = await fang(m.kald('select_frame', { frame_index: 2, code: '++window.__n' }));
+  assert.equal(svar.result, 'A', `koden koerte i ${svar.result} - den valgte frame er A: ${JSON.stringify(svar)}`);
 });
 
 test('select_frame: en about:blank skrevet med document.write (debuggeren viser forælderens adresse) naas (R131 Opus)', async () => {
@@ -317,7 +360,7 @@ test('select_frame: en frame, der ikke kan bevises, slaar ikke dens soeskende ud
     frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 16, parentFrameId: 0, url: 'about:blank' },
       { frameId: 17, parentFrameId: 0, url: 'about:blank' }, { frameId: 20, parentFrameId: 0, url: 'about:blank' }],
     par: { 16: 'X1', 17: 'X2', 20: 'X3' },
-    cdpPlads: { X2: new Error('No node with given id found') },
+    maerkFejl: { 17: new Error('Frame with ID 17 was removed.') },
     traeer: { '': topTrae([{ id: 'X1', url: TOP }, { id: 'X2', url: 'about:blank' }, { id: 'X3', url: 'about:blank' }]) },
     kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'X1'), ctx(3, 'X2'), ctx(4, 'X3')] },
   });
@@ -327,35 +370,6 @@ test('select_frame: en frame, der ikke kan bevises, slaar ikke dens soeskende ud
   assert.equal(m.evalueringer()[1]?.p.contextId, 4);
   ikkeNaaet(await m.kald('select_frame', { frame_index: 2, code: '1' }), true);
   assert.equal(m.evalueringer().length, 2);
-});
-
-test('select_frame: en frame i en shadow root (ingen plads i window.frames) bevises paa ejer-elementet', async () => {
-  const m = sele({
-    frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 4, parentFrameId: 0, url: BARN }, { frameId: 6, parentFrameId: 0, url: 'about:srcdoc' }],
-    par: { 4: 'A', 6: 'S' },
-    webPlads: { 4: [0, 1, 0, 2], 6: [-1, 1, 1, 2] },
-    cdpPlads: { A: [0, 1, 0, 2], S: [-1, 1, 1, 2] },
-    traeer: { '': topTrae([{ id: 'A', url: BARN }, { id: 'S', url: 'about:srcdoc' }]) },
-    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'A'), ctx(3, 'S')] },
-  });
-  await m.kald('select_frame', { frame_index: 2, code: '1' });
-  assert.equal(m.evalueringer()[0]?.p.contextId, 3);
-  await m.kald('select_frame', { frame_index: 1, code: '1' });
-  assert.equal(m.evalueringer()[1]?.p.contextId, 2);
-});
-
-test('select_frame: ejer-pladsen bruges kun for en frame uden plads i window.frames', async () => {
-  // Kandidaten S har samme ejer-plads som framen, men en plads i window.frames - det er ikke den samme frame.
-  const m = sele({
-    frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 6, parentFrameId: 0, url: 'about:srcdoc' }],
-    par: { 6: 'S' },
-    webPlads: { 6: [-1, 1, 1, 2] },
-    cdpPlads: { S: [0, 1, 1, 2] },
-    traeer: { '': topTrae([{ id: 'S', url: 'about:srcdoc' }]) },
-    kontekster: { '': [ctx(1, 'TOP'), ctx(3, 'S')] },
-  });
-  ikkeNaaet(await fang(m.kald('select_frame', { frame_index: 1, code: '1' })), true);
-  assert.equal(m.evalueringer().length, 0);
 });
 
 test('select_frame i en frame fra et andet domaene (OOPIF): Target.setAutoAttach med flatten, og koden koerer i barnets session', async () => {
@@ -375,7 +389,7 @@ test('select_frame i en frame fra et andet domaene (OOPIF): Target.setAutoAttach
   assert.ok(aa, 'OOPIF kraever Target.setAutoAttach');
   assert.equal(aa.p.flatten, true, 'flade sessioner (Chrome 125+)');
   assert.equal(aa.p.waitForDebuggerOnStart, false, 'en ny frame maa ikke fryses');
-  assert.ok(m.log.some((x) => x.metode === 'DOM.getFrameOwner' && x.p.frameId === 'PAY' && x.sid === ''), 'OOPIF-ejeren ligger i FORAELDERENS session');
+  assert.ok(m.log.some((x) => x.metode === 'Runtime.callFunctionOn' && x.sid === 'S-PAY' && x.p.executionContextId === 101), 'maerket findes i barnets egen session');
   const ev = m.evalueringer();
   assert.equal(ev.length, 1);
   assert.deepEqual({ ...ev[0].maal }, { tabId: 1, sessionId: 'S-PAY' }, 'koden skal sendes til barnets session');
@@ -431,7 +445,7 @@ test('select_frame: en frame inde i en fremmed frame (OOPIF i OOPIF) naas gennem
   const svar = await m.kald('select_frame', { frame_index: 3, code: '1' });
   assert.equal(svar.result, 'S-DYB/4', JSON.stringify(svar));
   assert.equal(svar.frame_url, DYB);
-  assert.ok(m.log.some((x) => x.metode === 'DOM.getFrameOwner' && x.p.frameId === 'DYB' && x.sid === 'S-PAY'), 'ejeren af DYB ligger i PAY');
+  assert.ok(m.log.some((x) => x.metode === 'Runtime.callFunctionOn' && x.sid === 'S-DYB'), 'maerket findes i DYB\'s egen session');
 });
 
 test('select_frame uden kode laeser framens tekst med et fast udtryk fra pakken', async () => {
@@ -495,6 +509,24 @@ test('agentens kode faar serverens frist minus hjemrejsen (29,5 s), ikke 20 s (R
   const u = indlaesUdvidelse({ svar: {} });
   assert.equal(u.hent('cdpFrist')('Runtime.evaluate', { awaitPromise: true }), 29500);
   assert.equal(u.hent('cdpFrist')('Runtime.evaluate', {}), 8000, 'kun loefter, der afventes, faar den lange frist');
+});
+
+test('29,5 s gaelder HELE kaldet: tiden brugt paa fane og frame traekkes fra, og et brugt budget sender intet (R132 Astra)', async () => {
+  const m = sele({ frames: toFrames, par: toPar, traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] } });
+  const frister = [];
+  const send = m.u.chrome.debugger.sendCommand;
+  m.u.chrome.debugger.sendCommand = (maal, metode, p) => {
+    if (metode === 'Runtime.evaluate') frister.push(Date.now());
+    return send(maal, metode, p);
+  };
+  const start = Date.now();
+  await m.kald('select_frame', { frame_index: 1, code: '1' });
+  assert.equal(m.u.hent('agentKodeSlut')(start), start + 29500);
+  // Et kald, hvis budget allerede er brugt: koden sendes ikke, og fejlen siger det.
+  const svar = await fang(m.u.hent('koerAgentKode')(1, 'window.__n = 1', {}, Date.now() - 1));
+  assert.match(svar.kastet || '', /not run \(nothing was sent\)/);
+  assert.equal(m.evalueringer().length, 1, 'koden maa ikke sendes, naar budgettet er brugt');
 });
 
 // ── Kilden: ingen strengkompilering i udvidelsen, intet activeTab ─────────────

@@ -392,7 +392,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_frame',
-    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by its element in the parent page, not by its address; if that cannot be proven, nothing is run (error frame-not-reachable, and retry says whether calling again can help).',
+    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by a one-time mark the extension puts in that frame\'s document, not by its address or position; if the mark is not found, nothing is run (error frame-not-reachable, and retry says whether calling again can help).',
     inputSchema: {
       type: 'object',
       properties: {

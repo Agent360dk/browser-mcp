@@ -680,9 +680,9 @@ function erCdpFrist(e) {
 
 // sessionId (1.31.0): en frame fra et andet domaene (OOPIF) er sit eget maal i debuggeren. Den naas gennem fanens egen
 // tilslutning med flade sessioner (Target.setAutoAttach, flatten:true, Chrome 125+), ved at sende sessionId med.
-function cdpMedFrist(tabId, method, params, sessionId = null) {
+function cdpMedFrist(tabId, method, params, sessionId = null, fristMs = null) {
   let ur;
-  const frist = cdpFrist(method, params);
+  const frist = fristMs != null ? fristMs : cdpFrist(method, params);
   return Promise.race([
     chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, method, params),
     new Promise((_, afvis) => {
@@ -698,7 +698,7 @@ function cdpMedFrist(tabId, method, params, sessionId = null) {
   ]).finally(() => clearTimeout(ur));
 }
 
-async function cdpSend(tabId, method, params = {}, sessionId = null) {
+async function cdpSend(tabId, method, params = {}, sessionId = null, fristMs = null) {
   await debuggerAttach(tabId);
   let lastMsg = '';
   // 4 total attempts (initial + 3 retries) for read-only methods; backoff 100/300/500ms.
@@ -706,7 +706,7 @@ async function cdpSend(tabId, method, params = {}, sessionId = null) {
   // where Chrome re-detaches between attach and command execution.
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return await cdpMedFrist(tabId, method, params, sessionId);
+      return await cdpMedFrist(tabId, method, params, sessionId, fristMs);
     } catch (e) {
       const msg = e?.message || String(e);
       const isDetachError =
@@ -5126,19 +5126,27 @@ function agentKodeFejl(ex) {
   return { besked: (ex && ex.text) || 'Script exception', navn };
 }
 
+// Hele vaerktoejskaldet har serverens budget (SERVER_FRIST_MS minus svarets hjemrejse), regnet fra dispatch modtog kaldet.
+// R132 (Astra): 29,5 s pr. Runtime.evaluate EFTER frameopslag og tilslutning kunne naa forbi serverens 30 s. Agentens kode
+// faar derfor kun det, der er tilbage, naar fanen, framen og debuggeren er fundet.
+function agentKodeSlut(start) { return start + SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS; }
+
 // kontekst: {} = hovedsidens standardkontekst; { sessionId, contextId } = en bestemt frame (sessionId for en OOPIF).
-async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null } = {}) {
+// slut: tidspunktet hvor kaldets budget er brugt (agentKodeSlut); uden det faar koden cdpFrist's frist.
+async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null } = {}, slut = null) {
   const p = { expression: '(' + kode + '\n)', returnByValue: true, awaitPromise: true };
   if (contextId != null) p.contextId = contextId;
   let raw, fejl = '', sendt = false;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       await debuggerAttach(tabId);
+      const tilbage = slut == null ? null : slut - Date.now();
+      if (tilbage != null && tilbage <= 0) { fejl = 'the call had used its time before the code could be sent'; break; }
       // MAALT 10/9 af Astra: faldt debuggeren af EFTER at koden var sendt, koerte en gentagelse BRUGERENS kode igen - op til
       // fire gange. Vi kan ikke se, om et vilkaarligt script muterer. Er det sendt, gentages det ikke; kun en fejl FOER
       // afsendelsen proeves igen. (Samme regel som for Runtime.evaluate i cdpSend.)
       sendt = true;
-      raw = await cdpSend(tabId, 'Runtime.evaluate', p, sessionId);
+      raw = await cdpSend(tabId, 'Runtime.evaluate', p, sessionId, tilbage);
       break;
     } catch (e) {
       fejl = String(e?.message || e);
@@ -5155,60 +5163,38 @@ async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null }
   // afvise. Et svar UDEN result er derfor ikke et tomt resultat. Et result af typen undefined er derimod kodens eget svar.
   if (raw && raw.result) return { result: raw.result.value, method: 'debugger' };
   if (!sendt) {
-    throw new Error('The Chrome debugger could not attach to the tab, so the code was not run (nothing was sent). ' + fejl);
+    throw new Error('The code was not run (nothing was sent): ' + (fejl || 'the Chrome debugger could not attach to the tab'));
   }
   throw new Error('The code was sent to the page, but no answer came back (' + (fejl || 'empty debugger response: ' + JSON.stringify(raw)) +
     '). It MAY already have run. It is not repeated automatically - call again only if it is safe to run twice.');
 }
 
-// En knude i debuggerens frametrae: CDP's frame-id, adressen og sessionen (adressen bruges kun i fejlbeskeder).
-function frameKnude(t, sid) {
-  return { id: t.frame.id, url: t.frame.url + (t.frame.urlFragment || ''), sid, boern: (t.childFrames || []).map((c) => frameKnude(c, sid)) };
+// ── Hvilken debugger-frame ER udvidelsens frame? Et engangsmaerke i framens dokument (R132, Astra og Opus) ───────────────
+// 866c49a parrede paa adresse og position, 5b66c97 paa placering (plads i window.frames). Begge kunne koere agentens kode i
+// en SOESKENDE-frame med et normalt svar: Chromium melder OOPIF-maal i en udokumenteret raekkefoelge, og en side, der
+// fjerner én frame og tilfoejer en anden mellem de to maalinger, giver en anden frame samme plads (Opus' karrusel, maalt i
+// Chrome: 4-31 af 40 forkerte ved 26-261 udskiftninger i sekundet). Placering er ikke identitet.
+// Nu er beviset et tilfaeldigt engangsmaerke:
+//   1. udvidelsen saetter maerket i udvidelsens ISOLATED-verden i netop den valgte frame (chrome.scripting, frameIds) -
+//      Chrome selv vaelger dokumentet ud fra udvidelsens frameId;
+//   2. debuggeren ser udvidelsens egen isolerede verden i hver frame (Runtime.executionContextCreated, type isolated, origin
+//      chrome-extension://<vores id>; maalt 19/10 i Chrome 155, ogsaa i OOPIF og i lukkede shadow roots) og spoerger hver af
+//      dem, om den har maerket (callFunctionOn med maerket som ARGUMENT - ingen streng bygges);
+//   3. kun den kontekst, der har maerket, er det dokument; agentens kode koerer i samme frames standardkontekst (isDefault)
+//      fra samme melding. Maerket fjernes bagefter.
+// Siden kan hverken se eller saette maerket: det ligger i udvidelsens isolerede verden, ikke i DOM'en.
+// handling 0 = saet, 1 = har framen maerket?, 2 = fjern.
+function frameMaerke(handling, maerke) {
+  const m = globalThis.__bmcpFrameMaerker || (globalThis.__bmcpFrameMaerker = new Set());
+  if (handling === 0) { m.add(maerke); return true; }
+  if (handling === 2) { m.delete(maerke); return true; }
+  return m.has(maerke);
 }
 
-// ── Hvilken debugger-frame ER udvidelsens frame? (R131, Astra og Opus) ──────────────────────────────────────────────────
-// 866c49a parrede paa adresse og position. Det gik galt to steder: to OOPIF-soeskende med samme adresse blev forvekslet,
-// fordi Chromium melder dem i en udokumenteret raekkefoelge (flat_set; maalt 19/10: t2 foer t1), og en about:blank skrevet
-// med document.write har i debuggeren forælderens adresse, saa ingen about:blank-soeskende kunne parres.
-// Nu bevises identiteten uden adresse og uden raekkefoelge, fra begge sider med SAMME pakkede funktion:
-//   udvidelsen koerer den i udvidelsens ISOLATED-verden INDE i netop den frame (chrome.scripting, frameIds) og maaler sin
-//   egen plads blandt forælderens frames (parent.frames - tilladt ogsaa paa tvaers af domaener);
-//   debuggeren koerer den i en isoleret verden i forælderen med this = ejer-elementet (DOM.getFrameOwner) og maaler
-//   ejerens contentWindow paa samme liste. Siden kan ikke pille ved isolerede verdener.
-// En frame i en shadow root staar ikke i window.frames (maalt 19/10); dér bruges ejer-elementets plads blandt forælderens
-// iframe/frame-elementer (ogsaa i aabne shadow roots), naar framen kan se sit ejer-element (samme domaene). chrome.runtime.
-// getFrameId findes IKKE i et content script (maalt 19/10, Chrome 155), saa den kan ikke bruges.
-// Antallene skal ogsaa passe, og kun ét match er et bevis; ellers koeres intet.
-// rolle 0: inde i framen (udvidelsen). rolle 1: this er ejer-elementet i forælderen (debuggeren).
-function frameIdentitet(rolle) {
-  const ejerPlads = (el) => {
-    if (!el) return [-1, -1];
-    const ejere = [];
-    const gaa = (rod) => {
-      for (const x of rod.querySelectorAll('*')) {
-        if (x.tagName === 'IFRAME' || x.tagName === 'FRAME') ejere.push(x);
-        if (x.shadowRoot) gaa(x.shadowRoot);
-      }
-    };
-    gaa(el.ownerDocument);
-    return [ejere.indexOf(el), ejere.length];
-  };
-  const plads = (far, w) => {
-    const n = far.frames.length;
-    for (let i = 0; i < n; i++) if (far.frames[i] === w) return [i, n];
-    return [-1, n];
-  };
-  if (rolle === 1) return [...plads(window, this.contentWindow), ...ejerPlads(this)];
-  let ejer = null;
-  try { ejer = window.frameElement; } catch (e) { ejer = null; }
-  return [...plads(window.parent, window), ...ejerPlads(ejer)];
-}
-
-// Samme frame set fra begge sider? Plads i window.frames, eller - for en frame uden plads dér - ejer-elementets plads.
-function sammeFrame(inde, ejer) {
-  if (!Array.isArray(inde) || !Array.isArray(ejer)) return false;
-  if (inde[0] >= 0) return inde[0] === ejer[0] && inde[1] === ejer[1];
-  return ejer[0] === -1 && inde[2] >= 0 && inde[2] === ejer[2] && inde[3] === ejer[3];
+function nytFrameMaerke() {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
 // Fejl ved framevalget. varig = et nyt forsoeg giver samme svar (agenten skal ikke gaa i ring); ellers kan det hjaelpe.
@@ -5218,76 +5204,52 @@ function frameFejl(besked, varig) {
   return e;
 }
 
-// Udvidelsens side: framens identitet, maalt inde i netop den frame (webNavigation-frameId) via chrome.scripting.
-async function identitetIUdvidelsen(tabId, frameId) {
-  let r;
+async function maerkFramen(tabId, frameId, maerke, handling) {
   try {
-    [r] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, world: 'ISOLATED', func: frameIdentitet, args: [0] });
+    const [r] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, world: 'ISOLATED', func: frameMaerke, args: [handling, maerke] });
+    if (!r || r.result !== true) throw new Error('no answer from the frame');
   } catch (e) {
     const m = String(e?.message || e);
-    throw frameFejl(`the extension could not read the frame (${m})`, !/removed|no frame|navigat|closed|not exist/i.test(m));
-  }
-  const v = r && r.result;
-  if (!Array.isArray(v) || (v[0] < 0 && v[2] < 0)) {
-    throw frameFejl('the frame cannot see its place in its parent (it may sit in a shadow root of a page from another site)', true);
-  }
-  return v;
-}
-
-// Debuggerens side: identiteten for en kandidat, maalt fra dens ejer-element i forælderen. null = kunne ikke laeses.
-async function identitetIDebuggeren(tabId, far, barn, verdener) {
-  try {
-    if (!verdener.has(far.id)) {
-      const w = await cdpSend(tabId, 'Page.createIsolatedWorld', { frameId: far.id, worldName: 'bmcp-frameidentitet' }, far.sid);
-      verdener.set(far.id, w.executionContextId);
-    }
-    const ejer = await cdpSend(tabId, 'DOM.getFrameOwner', { frameId: barn.id }, far.sid);
-    const node = await cdpSend(tabId, 'DOM.resolveNode', { backendNodeId: ejer.backendNodeId, executionContextId: verdener.get(far.id) }, far.sid);
-    const r = await cdpSend(tabId, 'Runtime.callFunctionOn', { objectId: node.object.objectId, functionDeclaration: frameIdentitet.toString(),
-      arguments: [{ value: 1 }], returnByValue: true }, far.sid);
-    const v = r && r.result && r.result.value;
-    return Array.isArray(v) ? v : null;
-  } catch {
-    return null;
+    // «Cannot access contents of ...»: udvidelsen maa ikke koere i den frame (fx en anden udvidelses side) - varigt.
+    throw frameFejl(`the extension could not mark the frame (${m})`, /cannot access|permission/i.test(m));
   }
 }
 
-// Barnet af den beviste forælder, som ER udvidelsens frame w - eller en fejl. Frames fra andre domaener tilknyttes kun,
-// naar ingen af forælderens egne boern passer.
-async function bevisFrameBarn(tabId, top, far, w, tilstand) {
-  const inde = await identitetIUdvidelsen(tabId, w.frameId);
-  const proevet = new Set();
-  const match = [];
-  const proev = async () => {
-    for (const b of far.boern) {
-      if (proevet.has(b.id)) continue;
-      proevet.add(b.id);
-      if (sammeFrame(inde, await identitetIDebuggeren(tabId, far, b, tilstand.verdener))) match.push(b);
-    }
+// Alle kontekster i en session, som Runtime.enable melder dem. Runtime.enable melder kun de eksisterende kontekster, naar
+// domaenet ikke allerede er slaaet til (maalt 19/10), saa det slaas fra foerst og fra igen bagefter; en kontekst kan stadig
+// bruges efter Runtime.disable (maalt 19/10). chrome.debugger lover ikke, at haendelserne kommer foer svaret, saa der ventes,
+// til der ikke kommer flere.
+async function konteksterISession(tabId, sid) {
+  const ctx = new Map();
+  const lyt = (kilde, metode, ep) => {
+    if (kilde.tabId !== tabId || (kilde.sessionId || null) !== sid) return;
+    if (metode === 'Runtime.executionContextCreated' && ep && ep.context) ctx.set(ep.context.id, ep.context);
+    if (metode === 'Runtime.executionContextDestroyed' && ep) ctx.delete(ep.executionContextId);
   };
-  await proev();
-  if (!match.length && !tilstand.tilknyttet) {
-    tilstand.tilknyttet = true;
-    await tilknytFremmedeFrames(tabId, top);
-    await proev();
+  chrome.debugger.onEvent.addListener(lyt);
+  try {
+    await cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
+    await cdpSend(tabId, 'Runtime.enable', {}, sid);
+    let foer = -1;
+    for (let i = 0; i < 10 && ctx.size !== foer; i++) {
+      foer = ctx.size;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } finally {
+    chrome.debugger.onEvent.removeListener(lyt);
+    await cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
   }
-  if (match.length > 1) throw frameFejl(`${match.length} frames in the debugger claim the same element (frame ${w.frameId})`, true);
-  if (!match.length) throw frameFejl(`frame ${w.frameId} (${w.url}) was not found in the debugger (it may be loading)`, false);
-  return match[0];
+  return [...ctx.values()];
 }
 
-// Frames fra andre domaener (OOPIF) staar IKKE i fanens Page.getFrameTree (maalt 19/10, Chrome 155): de er egne maal i
-// debuggeren. Target.setAutoAttach med flatten:true (Chrome 125+) tilslutter dem som sessioner under fanens tilslutning og
-// melder dem med Target.attachedToTarget; maalets id er framens id, og dens frametrae har parentId = forældrens frame-id.
+// Frames fra andre domaener (OOPIF) er egne maal i debuggeren. Target.setAutoAttach med flatten:true (Chrome 125+)
+// tilslutter dem som sessioner under fanens tilslutning og melder dem med Target.attachedToTarget - ogsaa inde i hinanden.
 // Auto-attach slaas foerst fra: staar det allerede til, melder Chrome ikke de tilsluttede igen (maalt 19/10).
-async function tilknytFremmedeFrames(tabId, top) {
-  const alle = new Map();
-  const indeks = (k) => { alle.set(k.id, k); k.boern.forEach(indeks); };
-  indeks(top);
+async function tilknytFremmedeFrames(tabId) {
+  const alle = [];
   const koe = [null];
-  let antal = 0;
   await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
-  while (koe.length && antal < 40) {
+  while (koe.length && alle.length < 40) {
     const sid = koe.shift();
     const nye = [];
     const lyt = (kilde, metode, ep) => {
@@ -5301,69 +5263,56 @@ async function tilknytFremmedeFrames(tabId, top) {
     } finally {
       chrome.debugger.onEvent.removeListener(lyt);
     }
-    for (const s of nye) {
-      const t = await cdpSend(tabId, 'Page.getFrameTree', {}, s).catch(() => null);
-      if (!t || !t.frameTree) continue;
-      const k = frameKnude(t.frameTree, s);
-      const far = alle.get(t.frameTree.frame.parentId);
-      if (far && !far.boern.some((b) => b.id === k.id)) far.boern.push(k);
-      indeks(k);
-      antal++;
-      koe.push(s);
-    }
+    for (const n of nye) { alle.push(n); koe.push(n); }
   }
+  return alle;
 }
 
-// Framens standardkontekst (auxData.isDefault) - ikke en isoleret verden, som ikke ser framens egne globale variabler.
-// Runtime.enable melder de eksisterende kontekster, men kun naar domaenet ikke allerede er slaaet til (maalt 19/10), saa det
-// slaas fra foerst og fra igen bagefter. Konteksten kan stadig bruges efter Runtime.disable (maalt 19/10).
-async function standardKontekst(tabId, sid, frameId) {
-  let fundet = null;
-  const lyt = (kilde, metode, ep) => {
-    if (kilde.tabId !== tabId || (kilde.sessionId || null) !== sid || metode !== 'Runtime.executionContextCreated') return;
-    const c = ep && ep.context;
-    if (c && c.auxData && c.auxData.frameId === frameId && c.auxData.isDefault === true) fundet = c.id;
-  };
-  chrome.debugger.onEvent.addListener(lyt);
-  try {
-    await cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
-    await cdpSend(tabId, 'Runtime.enable', {}, sid);
-    for (let i = 0; fundet === null && i < 10; i++) await new Promise((r) => setTimeout(r, 50));
-  } finally {
-    chrome.debugger.onEvent.removeListener(lyt);
-    await cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
+// Kontekster i sessionen, hvis udvidelses-verden har maerket -> [{ sid, standard }].
+async function findMaerket(tabId, sid, maerke) {
+  const egen = 'chrome-extension://' + chrome.runtime.id;
+  const ctxs = await konteksterISession(tabId, sid);
+  const fund = [];
+  for (const c of ctxs) {
+    if (!c.auxData || c.auxData.isDefault || c.origin !== egen) continue;
+    const r = await cdpSend(tabId, 'Runtime.callFunctionOn', { functionDeclaration: frameMaerke.toString(), executionContextId: c.id,
+      arguments: [{ value: 1 }, { value: maerke }], returnByValue: true }, sid).catch(() => null);
+    if (!r || !r.result || r.result.value !== true) continue;
+    fund.push({ sid, standard: ctxs.find((d) => d.auxData && d.auxData.isDefault === true && d.auxData.frameId === c.auxData.frameId) || null });
   }
-  if (fundet === null) throw new Error(`the frame has no default execution context in the debugger (frame ${frameId})`);
-  return fundet;
+  return fund;
 }
 
 // Udvidelsens frame (webNavigation) -> { kontekst: { sessionId, contextId }, ryd }. Hovedsiden (frameId 0) er fanens egen
-// standardkontekst. Hvert led fra hovedsiden og ned bevises med bevisFrameBarn. ryd() slaar auto-attach fra igen, naar den
-// blev slaaet til (det kobler frame-sessionerne af).
+// standardkontekst. ryd() fjerner maerket og slaar auto-attach fra igen, naar den blev slaaet til.
 async function findFrameKontekst(tabId, frames, valgt) {
   if (valgt.frameId === 0) return { kontekst: {}, ryd: async () => {} };
-  const efterId = new Map(frames.map((f) => [f.frameId, f]));
-  const kaede = [];
-  for (let f = valgt; f && f.frameId !== 0 && kaede.length <= 50; f = efterId.get(f.parentFrameId)) kaede.unshift(f);
-  if (!kaede.length || kaede[0].parentFrameId !== 0) throw frameFejl(`the frame's parent chain could not be read (frame ${valgt.frameId})`, false);
   try { await debuggerAttach(tabId); } catch (e) { throw frameFejl(String(e?.message || e), false); }
-  const top = frameKnude((await cdpSend(tabId, 'Page.getFrameTree', {})).frameTree, null);
-  const tilstand = { tilknyttet: false, verdener: new Map() };
+  const maerke = nytFrameMaerke();
+  await maerkFramen(tabId, valgt.frameId, maerke, 0);
+  let tilknyttet = false;
   const ryd = async () => {
-    if (tilstand.tilknyttet) await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+    await maerkFramen(tabId, valgt.frameId, maerke, 2).catch(() => {});
+    if (tilknyttet) await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
   };
   try {
-    let knude = top;
-    for (const w of kaede) knude = await bevisFrameBarn(tabId, top, knude, w, tilstand);
-    let contextId;
-    try { contextId = await standardKontekst(tabId, knude.sid, knude.id); } catch (e) { throw frameFejl(e.message, false); }
-    return { kontekst: { sessionId: knude.sid, contextId }, ryd };
+    let fund = await findMaerket(tabId, null, maerke);
+    if (!fund.length) {
+      tilknyttet = true;
+      for (const sid of await tilknytFremmedeFrames(tabId)) {
+        fund = await findMaerket(tabId, sid, maerke);
+        if (fund.length) break;
+      }
+    }
+    if (fund.length > 1) throw frameFejl(`${fund.length} debugger contexts carry the frame's mark (frame ${valgt.frameId})`, false);
+    if (!fund.length) throw frameFejl(`frame ${valgt.frameId} (${valgt.url}) was not found in the debugger (it may have navigated or closed)`, false);
+    if (!fund[0].standard) throw frameFejl(`the frame has no default execution context in the debugger (frame ${valgt.frameId})`, false);
+    return { kontekst: { sessionId: fund[0].sid, contextId: fund[0].standard.id }, ryd };
   } catch (e) {
     await ryd();
     throw e;
   }
 }
-
 
 async function dispatch(port, method, params) {
   switch (method) {
@@ -5969,6 +5918,7 @@ async function dispatch(port, method, params) {
     }
 
     case 'execute_script': {
+      const start = Date.now();
       // v1.26: accept `script` as alias for `code` - the historic param-name mismatch caused
       // silent "unserializable"/undefined failures that read as "execute_script is broken".
       if (params.code == null && typeof params.script === 'string') params.code = params.script;
@@ -5980,7 +5930,7 @@ async function dispatch(port, method, params) {
       // 1.31.0: kun gennem debuggeren, i hovedsidens standardkontekst (sidens egne globale variabler, som MAIN foer).
       // Til og med 1.30.3 stod her to forsoeg gennem chrome.scripting med strengkompilering (ISOLATED og MAIN) foer
       // debuggeren - se koerAgentKode for hvorfor de er vaek, og for beskyttelsen mod at koere koden to gange.
-      return koerAgentKode(tab.id, params.code);
+      return koerAgentKode(tab.id, params.code, {}, agentKodeSlut(start));
     }
 
     case 'click': {
@@ -7572,6 +7522,7 @@ async function dispatch(port, method, params) {
     }
 
     case 'select_frame': {
+      const start = Date.now();
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
       const frameIndex = params.frame_index ?? 0;
@@ -7595,14 +7546,14 @@ async function dispatch(port, method, params) {
         const varig = !!(e && e.varig) && !!findes;
         return { ok: false, error: 'frame-not-reachable', sent: false, retry: !varig, frame_url: valgt.url, detail: String(e?.message || e),
           note: varig
-            ? 'Nothing was run. This frame cannot be identified safely through the Chrome debugger, and calling again will give the ' +
-              'same answer. Work with it from the page instead (browser_execute_script, or tools such as browser_click and ' +
-              'browser_get_page_content).'
+            ? 'Nothing was run. The extension may not run in this frame, so it cannot be identified through the Chrome debugger, ' +
+              'and calling again will give the same answer. Work with it from the page instead (browser_execute_script, or tools ' +
+              'such as browser_click and browser_get_page_content).'
             : 'Nothing was run. The frame was not found (it may still be loading, or it navigated or closed). Call ' +
               'browser_list_frames and try once more.' };
       }
       try {
-        return { ...(await koerAgentKode(tab.id, code, maal.kontekst)), frame_url: valgt.url };
+        return { ...(await koerAgentKode(tab.id, code, maal.kontekst, agentKodeSlut(start))), frame_url: valgt.url };
       } finally {
         await maal.ryd();
       }

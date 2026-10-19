@@ -204,7 +204,7 @@ test('select_frame koerer agentens kode gennem debuggeren og bygger ingen funkti
   // Kommentarer strippes, saa forklaringen af den gamle kode ikke fyrer paa sig selv.
   const blok = caseBlok(bgSrc, 'select_frame').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
   assert.ok(!/new Function|scripting\.executeScript/.test(blok), 'select_frame bruger stadig chrome.scripting eller new Function');
-  assert.match(blok, /koerAgentKode\(tab\.id, code, maal\.kontekst\)/, 'koden skal koeres i den valgte frames kontekst via debuggeren');
+  assert.match(blok, /koerAgentKode\(tab\.id, code, maal\.kontekst, agentKodeSlut\(start\)\)/, 'koden skal koeres i den valgte frames kontekst via debuggeren');
 });
 
 // Testen for det strukturelle overlay-spor er FJERNET 22/8 sammen med sporet selv:
