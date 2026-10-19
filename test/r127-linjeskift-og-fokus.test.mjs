@@ -67,16 +67,18 @@ test('R127: CSS-vejen i en textarea skriver linjeskiftene (et "\\r\\n" er ét)',
   assert.equal(r.ok, true, JSON.stringify(r));
 });
 
-test('R127/R130: kan feltet ikke laeses (fx fokus i en iframe), sendes intet linjeskift - et mellemrum, paa CSS-vejen og tegn for tegn', async () => {
+// R138 (Opus, MAALT i Chrome): et mellemrum her kan vaere en mellemrumstast paa en knap, en submit eller et afkrydsningsfelt -
+// kan feltet ikke laeses som et tekstfelt, udelades linjeskiftet helt (som foer R130), og svaret siger det.
+test('R127/R138: kan feltet ikke laeses (fx fokus i en iframe eller paa en knap), sendes hverken linjeskift eller mellemrum, paa CSS-vejen og tegn for tegn', async () => {
   const css = linjeSide('ukendt');
   await css.u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'a\nb' });
   assert.ok(!css.s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(css.s.indsat));
-  assert.equal(css.s.value, 'a b');
+  assert.equal(css.s.value, 'ab');
   const tegn = linjeSide('ukendt');
   await tegn.u.hent('typeCharsAttached')(1, 'a\nb');
   assert.ok(!tegn.s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(tegn.s.indsat));
-  // R130 i Chrome: tegn for tegn er mellemrummet en tastet mellemrumstast som de andre tegn (se testen nedenfor).
-  assert.deepEqual([tegn.s.indsat, tegn.s.value], [[], 'a b']);
+  assert.deepEqual([tegn.s.indsat, tegn.s.value], [[], 'ab']);
+  assert.ok(!tegn.s.taster.some((t) => t.text === ' ' || t.code === 'Space'), `en mellemrumstast blev trykket: ${JSON.stringify(tegn.s.taster)}`);
 });
 
 // R130, MAALT i aegte headless Chrome (00ebeba): CSS-reserven i et input, der kun tager TASTET input. Mellemrummet blev
@@ -319,4 +321,25 @@ test('set_date: feltAendringer melder en aegte aendring og ikke en ombytning (R1
   d.value = '';
   const r = await u.hent('feltAendringer')(1, '#d', noegle);
   assert.deepEqual(json(r), [{ tag: 'INPUT', id: 'd', target: true, value_before: 'gammel', value: '' }], 'en aegte aendring blev ikke meldt');
+});
+
+// ── R138 (Opus, MAALT i Chrome paa e2ec519): fokus hoppede midt i fill til en knap, en submit-knap eller et afkrydsningsfelt, og
+//    linjeskiftet blev en mellemrumstast DER: 1 klik, 1 sendt formular, 1 kryds (0/0/0 paa 37ced8f). linjeFelt koeres her i en
+//    lille DOM: kun et tekst-input giver 'linje'; alt andet, der ikke er et tekstfelt, giver 'ukendt'.
+test('linjeFelt: kun tekst-input faar mellemrum - knap, submit, afkrydsning, radio og fil giver ukendt (R138)', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const u = indlaesUdvidelse();
+  let aktiv = null;
+  u.ctx.cdpSend = async (_t, metode, p) => (metode === 'Runtime.evaluate'
+    ? { result: { value: runInNewContext(p.expression, { document: { activeElement: aktiv } }) } } : {});
+  const input = (type) => ({ localName: 'input', tagName: 'INPUT', type, isContentEditable: false });
+  const forventet = [
+    [input('text'), 'linje'], [input('search'), 'linje'], [input('email'), 'linje'], [input('password'), 'linje'],
+    [input('submit'), 'ukendt'], [input('checkbox'), 'ukendt'], [input('radio'), 'ukendt'], [input('button'), 'ukendt'],
+    [input('file'), 'ukendt'], [{ localName: 'button', tagName: 'BUTTON', isContentEditable: false }, 'ukendt'],
+    [{ localName: 'textarea', tagName: 'TEXTAREA', isContentEditable: false }, 'tekst'],
+  ];
+  const faktisk = [];
+  for (const [el] of forventet) { aktiv = el; faktisk.push(await u.hent('linjeFelt')(1)); }
+  assert.deepEqual(faktisk, forventet.map((x) => x[1]), forventet.map((x, i) => `${x[0].type || x[0].localName}: ${faktisk[i]}`).join(', '));
 });

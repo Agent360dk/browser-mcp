@@ -157,9 +157,9 @@ test('fill: i et enkeltlinjet <input> springes linjeskift over - et indsat "\\n"
   assert.deepEqual(ned.map((n) => n.text), ['a', ' ', 'b', ' ', 'c', 'd']);
   assert.deepEqual(ned.filter((n) => n.text === ' ').map((n) => [n.code, n.windowsVirtualKeyCode]), [['Space', 32], ['Space', 32]]);
   assert.deepEqual(indsat, ['\t'], `et linjeskift blev indsat i et enkeltlinjet felt: ${JSON.stringify(indsat)}`);
-  // Kan feltet ikke laeses, springes linjeskiftet ogsaa over - hellere et manglende linjeskift end en sendt formular.
+  // Kan feltet ikke laeses, springes linjeskiftet over - hverken linjeskift eller mellemrumstast (R138: den kunne trykke en knap).
   const uvis = await skriv('a\nb', { enkeltlinje: 'fejl' });
-  assert.deepEqual([uvis.indsat, uvis.ned.map((n) => n.text)], [[], ['a', ' ', 'b']], JSON.stringify(uvis));
+  assert.deepEqual([uvis.indsat, uvis.ned.map((n) => n.text)], [[], ['a', 'b']], JSON.stringify(uvis));
 });
 
 test('#76: rydningen (ctrl/cmd+a, Backspace) sender tastkoderne 65 og 8 - samme regel som press_key', async () => {

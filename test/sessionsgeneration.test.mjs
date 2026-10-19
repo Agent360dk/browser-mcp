@@ -222,6 +222,66 @@ test('broen: en bestilt frigivelse for en anden generation end portens nuvaerend
 // forbindelse paa samme port (en partition, pid null) tog porten og aabnede fane 99. Da gendannelsen slap, koerte det gamle
 // kald sin kode i fane 99 og stemplede sessionen tilbage til den gamle generation og dens pid. Et kald fra en forbindelse, der
 // er lukket, maa intet koere og intet overtage.
+// Opstilling: et kald fra `gammelGen` venter i sessionsgendannelsen; `imens` koerer, mens det venter; saa slippes det.
+async function ventendeKald(gammelGen, imens, ekstraSvar = {}) {
+  let slip, ventede;
+  const blokeret = new Promise((r) => { slip = r; });
+  const inde = new Promise((r) => { ventede = r; });
+  let blokerEn = true;
+  const koert = [];
+  const fane = { id: 99, url: 'about:blank', windowId: 1, active: false };
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => {
+      if (blokerEn && arg && Object.hasOwn(arg, 'mcpPorts')) { blokerEn = false; ventede(); return blokeret; }
+      return arg && typeof arg === 'object' ? { ...arg } : {};
+    },
+    'tabs.create': fane, 'tabs.get': fane, 'tabs.query': [], 'tabs.group': 1,
+    'debugger.attach': undefined, 'debugger.detach': undefined, 'debugger.getTargets': [{ tabId: 99, attached: true }],
+    'debugger.sendCommand': (maal, metode, p) => {
+      if (metode === 'Runtime.evaluate') { koert.push(p.expression); return { result: { value: p.expression } }; }
+      return {};
+    },
+    ...ekstraSvar,
+  } });
+  const lytter = u.lyttere.get('runtime.onMessage')[0];
+  const kald = (gen, pid, kode) => new Promise((ok) => lytter(
+    { type: 'mcp_command', port: 19861, gen, pid, method: 'execute_script', params: { code: kode } }, {}, ok));
+  const gammelt = kald(gammelGen, 101, '"GAMMEL"');
+  await inde;
+  await imens({ u, kald });
+  slip({ mcpPorts: [19861] });
+  return { u, sent: await gammelt, koert };
+}
+
+// R138 (Opus, LAEST paa e7179d4): erstatter udvidelsen selv broen (closeDocument), koerer det gamle dokuments onclose naeppe, og
+// dets forbindelser faar aldrig en session_disconnect. Et kald fra det gamle dokument maa alligevel intet koere: en kommando fra
+// et NYT dokument, eller en genopbygning af broen, goer alle det gamle dokuments forbindelser lukkede.
+test('et kald fra et ERSTATTET bro-dokument koerer intet, naar det nye dokuments forbindelse har taget porten (R138)', async () => {
+  const { u, sent, koert } = await ventendeKald('aaaa1111-1', async ({ kald }) => {
+    const nyt = await kald('bbbb2222-1', null, '"NY"');
+    assert.match(String(nyt.result), /NY/, 'det nye dokuments kald koerte ikke - proeven kan ikke maale noget');
+  });
+  assert.ok(!koert.some((k) => k.includes('GAMMEL')), `det erstattede dokuments kode koerte: ${JSON.stringify(koert)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+  assert.equal(u.hent('sessions').get(19861).gen, 'bbbb2222-1', 'det erstattede dokument overtog sessionen');
+});
+
+test('et kald fra bro-dokumentet koerer intet, naar udvidelsen har genopbygget broen imens (R138)', async () => {
+  const { sent, koert } = await ventendeKald('aaaa1111-1', async ({ u }) => {
+    // samme dokument har allerede kaldt foer (det er den aktuelle bro), saa genopbygges broen
+    await u.hent('genbygOffscreen')();
+  }, (() => {
+    // Som i Chrome: efter closeDocument findes dokumentet ikke, saa genopbygningen opretter et nyt uden at spoerge det gamle.
+    let findes = true;
+    return { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; },
+      'offscreen.createDocument': () => { findes = true; },
+      // den nye bro svarer med den rigtige udgave, saa INTET andet end genopbygningen lukker den gamle
+      'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) };
+  })());
+  assert.ok(!koert.some((k) => k.includes('GAMMEL')), `koden fra den lukkede bro koerte: ${JSON.stringify(koert)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+});
+
 test('et kald fra en LUKKET forbindelse, der ventede i gendannelsen, koerer intet i den nye forbindelses fane (R138)', async () => {
   let slip, ventede;
   const blokeret = new Promise((r) => { slip = r; });

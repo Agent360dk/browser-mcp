@@ -88,6 +88,11 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
     'let offscreenIGang = null;',
     // 26/9: koeen har faaet sin egen funktion (iOffscreenKoe) - den skal med.
     udklip('iOffscreenKoe'),
+    // R138: en genopbygning goer det gamle bro-dokuments forbindelser lukkede (broenErstattes) - den aegte kode skal med.
+    'let broensDokument = null;',
+    udklip('doedeDokumenter', false),
+    udklip('dokumentDoedt'),
+    udklip('broenErstattes'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',

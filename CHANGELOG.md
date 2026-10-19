@@ -45,9 +45,11 @@ A line break, carriage return or tab in the value is no longer sent as a key: be
 read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. A tab is inserted as text. Line breaks
 follow one rule on every path `browser_fill` writes by (inserting the value at once, and typing it character by character),
 checked in the field that has focus at each line break: `"\r\n"` and `"\r"` are one line break, written as a line break only
-in a textarea or a contenteditable field (also on an XHTML page). In a single-line input, in a frame, or when the field
-cannot be read, it is typed as one space instead - a line break inserted into an input submits the form, and leaving it out
-glued the words together - and the answer says so (`line_breaks_as_spaces`, `differs`, `actual`). When a value of only line
+in a textarea or a contenteditable field (also on an XHTML page). In a single-line text input (type text, search, email, url,
+tel, password or number) it is typed as one space instead - a line break inserted into an input submits the form, and leaving
+it out glued the words together - and the answer says so (`line_breaks_as_spaces`, `differs`, `actual`). Anywhere else - focus
+on a button, a submit button, a checkbox, in a frame, or a field that cannot be read - it is left out, because the space key
+would press the button or tick the box, and the answer says that too (`line_breaks_left_out`). When a value of only line
 breaks leaves the field empty, the answer says how they were sent and that the field did not take them. An emoji is typed whole,
 one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
 says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
@@ -80,7 +82,9 @@ its message.
 **A call from a closed connection runs nothing.** When a connection to the extension closes, the extension remembers it
 (the last 16 per port). A call from that connection that was still waiting inside the extension, for instance while the
 extension restored its sessions after a restart, now stops before it touches a session or a tab. Before, it could run its code
-in a tab of the connection that took the port next (another partition or chat) and take that session over. Its answer
+in a tab of the connection that took the port next (another partition or chat) and take that session over. The same holds
+when the extension replaces its bridge itself: the old bridge's connections count as closed as soon as it is replaced, or as
+soon as a call comes from the new one, even if the old bridge never got to report that they closed. Its answer
 (`connection-closed`, `sent: false`) goes back over the closed connection, so no agent sees it; what changes is that nothing
 runs.
 
@@ -104,7 +108,8 @@ question without an answer is followed by a second one, and the bridge is replac
 | `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
 | `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
 | `keys_delivered: true`, `false` or `null` | `browser_fill` (empty field after typing) | The tool saw keys arrive / saw none / could not tell. Not proof of what the page did with them: check the page before typing again |
-| `line_breaks_as_spaces` | `browser_fill` | That many line breaks were typed as spaces, because the field takes none (a single-line input, a frame, or a field that could not be read) |
+| `line_breaks_as_spaces` | `browser_fill` | That many line breaks were typed as spaces, because the field is a single-line text input |
+| `line_breaks_left_out` | `browser_fill` | That many line breaks were left out, because focus was not in a text field (a button, a checkbox, a frame, or an element that could not be read) |
 | `error: "focus-moved"` or `"focus-unknown"`, `step`, `focused`, `changed` | `browser_set_date` | Before a writing step focus was no longer on the field (or could not be read); the tool stopped there, and `changed` lists what had been changed by then |
 | `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |

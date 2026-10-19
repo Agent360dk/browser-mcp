@@ -835,7 +835,29 @@ function forbindelsenLukket(port, gen) {
   while (saet.size > 16) saet.delete(saet.values().next().value);
   lukkedeGen.set(port, saet);
 }
-const fraLukketForbindelse = (port, gen) => typeof gen === 'string' && !!lukkedeGen.get(port)?.has(gen);
+// R138 (Opus, LAEST): erstatter udvidelsen selv broen (closeDocument), faar det gamle dokuments forbindelser ingen
+// session_disconnect. En generation er `<dokument>-<nr>` (offscreen.js), og der findes kun ét offscreen-dokument ad gangen: kommer
+// en kommando fra et NYT dokument, eller genopbygges broen, er alle det gamle dokuments forbindelser lukkede.
+let broensDokument = null;
+const doedeDokumenter = new Set();   // hoejst 16
+function dokumentAf(gen) {
+  const i = typeof gen === 'string' ? gen.lastIndexOf('-') : -1;
+  return i > 0 ? gen.slice(0, i) : null;
+}
+function dokumentDoedt(dok) {
+  if (!dok) return;
+  doedeDokumenter.add(dok);
+  while (doedeDokumenter.size > 16) doedeDokumenter.delete(doedeDokumenter.values().next().value);
+}
+function kommandoFraDokument(gen) {
+  const dok = dokumentAf(gen);
+  if (!dok || doedeDokumenter.has(dok)) return;
+  if (broensDokument && broensDokument !== dok) dokumentDoedt(broensDokument);
+  broensDokument = dok;
+}
+function broenErstattes() { dokumentDoedt(broensDokument); broensDokument = null; }
+const fraLukketForbindelse = (port, gen) => typeof gen === 'string'
+  && (!!lukkedeGen.get(port)?.has(gen) || doedeDokumenter.has(dokumentAf(gen)));
 const LUKKET_SVAR = { ok: false, error: 'connection-closed', sent: false,
   note: 'This call came from a connection to the extension that has closed since; nothing was run.' };
 // Hvilken plads en chat sidst havde, husket paa dens pid — ikke paa porten.
@@ -1429,14 +1451,19 @@ async function linjeFelt(tabId) {
     const navn = a ? String(a.localName || a.tagName || '').toLowerCase() : '';
     if (!a || navn === 'iframe' || navn === 'frame') return 'ukendt';
     if (navn === 'textarea' || a.isContentEditable) return 'tekst';
-    if (navn === 'input') return 'linje';
+    // R138 (Opus, MAALT i Chrome): mellemrumstasten klikker en knap, sender med en submit-knap og saetter et kryds. Kun et
+    // tekst-input faar linjeskiftet som mellemrum ('linje'); alt andet ('ukendt') faar intet.
+    if (navn === 'input') {
+      const type = String(a.type || 'text').toLowerCase();
+      return ['text', 'search', 'email', 'url', 'tel', 'password', 'number'].includes(type) ? 'linje' : 'ukendt';
+    }
     return 'ukendt';
   })()`).catch(() => 'ukendt');
   return svar === 'tekst' || svar === 'linje' ? svar : 'ukendt';
 }
 
 async function typeCharsAttached(tabId, text) {
-  const linjeskift = { somTekst: 0, somMellemrum: 0 };   // R130: hvordan linjeskiftene blev skrevet (svaret siger det)
+  const linjeskift = { somTekst: 0, somMellemrum: 0, udeladt: 0 };   // R130/R138: hvordan linjeskiftene blev skrevet (svaret siger det)
   // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
   // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
   const tegn = [...String(text)];
@@ -1462,11 +1489,15 @@ async function typeCharsAttached(tabId, text) {
         // R130 (Opus): udeladt limede det ord sammen ("a\nb" -> "ab"); et mellemrum holder dem adskilt og sender ingen formular.
         // MAALT i Chrome (R130): et felt, der kun tager tastet input, afviste et INDSAT mellemrum - her tastes det som
         // mellemrumstasten, ligesom de andre tegn (et mellemrum sender ingen formular).
-        if ((await linjeFelt(tabId)) !== 'tekst') {
+        // R138 (Opus): kun i et tekst-input - fokus kan hoppe til en knap eller et afkrydsningsfelt midt i skrivningen, og der
+        // trykker mellemrumstasten paa det. Andre steder (knap, afkrydsning, ramme, ukendt) udelades linjeskiftet, og svaret siger det.
+        const felt = await linjeFelt(tabId);
+        if (felt === 'linje') {
           await tastTegn(' ');
           linjeskift.somMellemrum++;
           continue;
         }
+        if (felt !== 'tekst') { linjeskift.udeladt++; continue; }
         await cdpSend(tabId, 'Input.insertText', { text: '\n' });
         linjeskift.somTekst++;
         continue;
@@ -1513,24 +1544,40 @@ async function debuggerType(tabId, text) {
 // i et tekstfelt, som mellemrum i et felt uden linjeskift), og at feltet ikke tog dem.
 function kunLinjeskiftSvar(ekstra, ls) {
   const somMellemrum = !!(ls && ls.somMellemrum && !ls.somTekst);
+  const udeladt = ls && ls.udeladt ? ls.udeladt : 0;
+  // R138: blev de alle udeladt, er intet sendt - og et tomt felt er netop det.
+  if (udeladt && !(ls.somMellemrum || ls.somTekst)) {
+    return { ok: true, ...ekstra, differs: true, value: '', actual: '', line_breaks_left_out: udeladt,
+      note: 'The value holds only line breaks, and they were left out: the focused element is not a text field (a button, ' +
+        'a checkbox, a frame, or an element that could not be read), so nothing was sent.' };
+  }
   return { ok: true, ...ekstra, differs: true, value: '', actual: '',
     ...(somMellemrum ? { line_breaks_as_spaces: ls.somMellemrum } : {}),
+    ...(udeladt ? { line_breaks_left_out: udeladt } : {}),
     note: 'The value holds only line breaks. They were sent ' +
-      (somMellemrum ? 'as spaces (this field takes no line breaks: a single-line input, a frame, or a field that could not be read)'
+      (somMellemrum ? 'as spaces (this field takes no line breaks: a single-line text input)'
         : 'as line breaks') + ', but the field is empty afterwards: the field did not take them.' };
 }
 
 // R130: blev linjeskift skrevet som mellemrum, siger svaret det - og er det den eneste forskel, skyder noten ikke aendringen
 // paa siden («formatted»): det var vaerktoejet, der skrev mellemrummet.
 function medLinjeskift(svar, oensket, ls) {
-  if (!svar || !ls || !ls.somMellemrum || svar.line_breaks_as_spaces) return svar;
-  const n = ls.somMellemrum;
-  const saetning = (n === 1 ? 'A line break was typed as a space' : `${n} line breaks were typed as spaces`) +
-    ': this field takes no line breaks (a single-line input, a frame, or a field that could not be read), and a line break ' +
-    'there could submit the form.';
-  const forventet = String(oensket).replace(/\r\n?/g, '\n').replace(/\n/g, ' ');
-  const kunDet = !ls.somTekst && typeof svar.actual === 'string' && svar.actual === forventet;
-  return { ...svar, line_breaks_as_spaces: n, note: kunDet || !svar.note ? saetning : `${svar.note} ${saetning}` };
+  if (!svar || !ls || (!ls.somMellemrum && !ls.udeladt) || svar.line_breaks_as_spaces || svar.line_breaks_left_out) return svar;
+  const n = ls.somMellemrum || 0;
+  const u = ls.udeladt || 0;
+  const saetninger = [];
+  if (n) saetninger.push((n === 1 ? 'A line break was typed as a space' : `${n} line breaks were typed as spaces`) +
+    ': this field is a single-line text input, and a line break there could submit the form.');
+  // R138 (Opus): en knap, et afkrydsningsfelt eller en ramme faar hverken linjeskift eller mellemrum - mellemrumstasten ville trykke paa dem.
+  if (u) saetninger.push((u === 1 ? 'A line break was left out' : `${u} line breaks were left out`) +
+    ': the focused element was not a text field (a button, a checkbox, a frame, or an element that could not be read), and a ' +
+    'key there could press it.');
+  const saetning = saetninger.join(' ');
+  const normal = String(oensket).replace(/\r\n?/g, '\n');
+  const forventet = u && !n ? normal.replace(/\n/g, '') : normal.replace(/\n/g, ' ');
+  const kunDet = !ls.somTekst && !(n && u) && typeof svar.actual === 'string' && svar.actual === forventet;
+  return { ...svar, ...(n ? { line_breaks_as_spaces: n } : {}), ...(u ? { line_breaks_left_out: u } : {}),
+    note: kunDet || !svar.note ? saetning : `${svar.note} ${saetning}` };
 }
 const kunLinjeskift = (v) => /[\r\n]/.test(String(v)) && String(v).replace(/[\r\n]/g, '') === '';
 
@@ -2274,13 +2321,16 @@ async function debuggerFill(tabId, selector, value) {
     // debugger can detach mid-fill.
     // R127 (Astra): ogsaa her gaelder linjeskiftreglen (linjeFelt) - et "\n" indsat i et enkeltlinje-input sender formularen.
     let indsaet = String(value);
-    const linjeskift = { somTekst: 0, somMellemrum: 0 };
+    const linjeskift = { somTekst: 0, somMellemrum: 0, udeladt: 0 };
     if (/[\r\n]/.test(indsaet)) {
       indsaet = indsaet.replace(/\r\n?/g, '\n');
       const antal = (indsaet.match(/\n/g) || []).length;
       // R130: i et felt uden linjeskift bliver hvert til ét mellemrum (ikke udeladt: ordene limes ellers sammen).
-      if ((await linjeFelt(tabId)) !== 'tekst') { indsaet = indsaet.replace(/\n/g, ' '); linjeskift.somMellemrum = antal; }
-      else linjeskift.somTekst = antal;
+      // R138: mellemrum kun i et tekst-input; ellers udelades de (samme regel som tegn for tegn).
+      const felt = await linjeFelt(tabId);
+      if (felt === 'tekst') linjeskift.somTekst = antal;
+      else if (felt === 'linje') { indsaet = indsaet.replace(/\n/g, ' '); linjeskift.somMellemrum = antal; }
+      else { indsaet = indsaet.replace(/\n/g, ''); linjeskift.udeladt = antal; }
     }
     if (indsaet) await cdpSend(tabId, 'Input.insertText', { text: indsaet });
 
@@ -2329,6 +2379,7 @@ async function debuggerFill(tabId, selector, value) {
       // reservens skrivning, saa det er dens tal der gaelder.
       linjeskift.somTekst = skrevet.linjeskift.somTekst;
       linjeskift.somMellemrum = skrevet.linjeskift.somMellemrum;
+      linjeskift.udeladt = skrevet.linjeskift.udeladt;
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
@@ -3669,7 +3720,7 @@ function ensureOffscreen() {
 function genbygOffscreen() {
   return iOffscreenKoe(async () => {
     try {
-      if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+      if (await chrome.offscreen.hasDocument()) { broenErstattes(); await chrome.offscreen.closeDocument(); }
     } catch (e) {
       console.warn('[BG] kunne ikke lukke broen foer genopbygning:', e?.message || e);
     }
@@ -3768,6 +3819,7 @@ async function ensureOffscreenIndre() {
     }
     console.warn(`[BG] offscreen-dokumentet svarer ikke — erstatter det (forsoeg ${offscreenGenskabt + 1}/${MAX_OFFSCREEN_GENSKAB})`);
     await chrome.storage.local.set({ offscreenGenskabt: offscreenGenskabt + 1 });
+    broenErstattes();   // R138: det gamle dokuments forbindelser er lukkede, ogsaa hvis det ikke naar at sige det selv
     try { await chrome.offscreen.closeDocument(); } catch (e) {
       console.warn('[BG] kunne ikke lukke det doede dokument:', e?.message || e);
       return;                                      // proev igen ved naeste hjerteslag
@@ -3855,6 +3907,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const port = msg.port;
     // R133 (Astra): kaldets ur starter HER, naar udvidelsen modtager det - foer sessionsgendannelse og adoption.
     const modtaget = Date.now();
+    kommandoFraDokument(msg.gen);   // R138: en kommando fra et nyt bro-dokument goer det gamle dokuments forbindelser lukkede
     logAction(port, msg.method);
     // R134: agentkodens to vaerktoejer svarer altid inden for budgettet (se AGENTKODE_FRIST). Kun det foerste svar sendes.
     const vagt = AGENTKODE_METODER.has(msg.method) ? { sendt: false, lukket: false } : null;
