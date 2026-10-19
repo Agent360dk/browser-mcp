@@ -288,15 +288,42 @@ const ikkeNaaet = (svar, retry) => {
   assert.match(svar.note, retry ? /try once more/ : /same answer/);
 };
 
-test('select_frame 0 koerer i hovedsiden via debuggeren', async () => {
-  const m = sele({ frames: toFrames });
+test('select_frame 0 koerer i hovedsiden via debuggeren - bundet til dokumentet med maerket, som underframes (R135)', async () => {
+  const m = sele({ frames: toFrames, par: { 0: 'TOP' }, traeer: { '': topTrae([]) }, kontekster: { '': [ctx(1, 'TOP')] } });
   const svar = await m.kald('select_frame', { frame_index: 0, code: 'location.href' });
   assert.equal(m.scripting().length, 0);
   assert.equal(m.evalueringer().length, 1);
-  assert.equal(m.evalueringer()[0].k, undefined);
+  assert.equal(m.evalueringer()[0].p.uniqueContextId, 'u.TOP.1', 'hovedsidens kontekst adresseres ved uniqueId');
   assert.equal(svar.result, 'svar');
   assert.equal(svar.frame_url, TOP);
 });
+
+test('select_frame 0: navigerer hovedsiden efter list_frames, er frame_url den nye adresse (R135 Astra)', async () => {
+  const m = sele({ frames: toFrames, par: { 0: 'TOP' }, traeer: { '': topTrae([]) }, kontekster: { '': [ctx(1, 'TOP')] },
+    nyAdresse: { 0: 'https://top.example/efter-navigation' } });
+  const svar = await m.kald('select_frame', { frame_index: 0, code: 'location.href' });
+  assert.equal(svar.frame_url, 'https://top.example/efter-navigation', JSON.stringify(svar));
+});
+
+// R135 (Astra): foerste debuggerkontrol lykkes, kontrollen i cdpSend finder debuggeren frakoblet, og de tre
+// tilslutningsforsoeg fejler. Nul Runtime.evaluate er sendt - svaret maa ikke sige «MAY already have run».
+for (const [vaerktoej, params] of [['execute_script', { code: 'window.__n = 1' }], ['select_frame', { frame_index: 0, code: 'window.__n = 1' }]]) {
+  test(`${vaerktoej}: fejler tilslutningen i cdpSend, siger svaret, at intet blev sendt (R135)`, async () => {
+    const m = sele({ frames: toFrames, par: { 0: 'TOP' }, traeer: { '': topTrae([]) }, kontekster: { '': [ctx(1, 'TOP')] } });
+    m.u.hent('debuggerAttached').add(1);
+    m.u.chrome.debugger.attach = () => Promise.reject(new Error('Cannot attach to this target.'));
+    // Fra koerAgentKode starter: dens egen kontrol (getTargets nr. 1) lykkes, derefter er debuggeren vaek.
+    const koer = m.u.hent('koerAgentKode');
+    let iKoer = false, kald = 0;
+    m.u.ctx.koerAgentKode = (...a) => { iKoer = true; return koer(...a); };
+    m.u.chrome.debugger.getTargets = () => Promise.resolve([{ tabId: 1, attached: !(iKoer && ++kald >= 2) }]);
+    const svar = await fang(m.kald(vaerktoej, params));
+    assert.ok(iKoer, 'testen er forkert: koerAgentKode blev aldrig kaldt');
+    assert.equal(m.evalueringer().length, 0, 'testen er forkert: koden blev sendt');
+    assert.doesNotMatch(JSON.stringify(svar), /MAY already have run/, `nul evalueringer, men svaret siger «MAY»: ${JSON.stringify(svar)}`);
+    assert.match(JSON.stringify(svar), /not run|nothing was sent|"sent":false/);
+  });
+}
 
 test('select_frame i en frame fra samme domaene: identiteten bevises med et engangsmaerke i framens dokument, og koden koerer i framens standardkontekst', async () => {
   const m = sele({

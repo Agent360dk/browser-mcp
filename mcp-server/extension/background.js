@@ -5179,34 +5179,37 @@ function agentKodeSlut(start) { return start + AGENTKODE_FRIST.budget; }
 async function koerAgentKode(tabId, kode, { sessionId = null, uniqueContextId = null } = {}, slut = null, vagt = null) {
   const p = { expression: '(' + kode + '\n)', returnByValue: true, awaitPromise: true };
   if (uniqueContextId != null) p.uniqueContextId = uniqueContextId;
-  let raw, fejl = '', sendt = false;
+  // R135 (Astra): «sendt» er ét sted - vagten, som cdpSend saetter LIGE foer Runtime.evaluate gaar til Chrome (efter cdpSends
+  // egen tilslutning). En lokal markering foer cdpSend sagde «MAY already have run», naar den tilslutning fejlede og intet
+  // var sendt. Uden en ydre vagt faar kaldet sin egen.
+  const v = vagt || { sendt: false, lukket: false };
+  let raw, fejl = '';
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       await debuggerAttach(tabId);
       if (slut != null && slut - Date.now() <= 0) { fejl = 'the call had used its time before the code could be sent'; break; }
-      // MAALT 10/9 af Astra: faldt debuggeren af EFTER at koden var sendt, koerte en gentagelse BRUGERENS kode igen - op til
-      // fire gange. Vi kan ikke se, om et vilkaarligt script muterer. Er det sendt, gentages det ikke; kun en fejl FOER
-      // afsendelsen proeves igen. (Samme regel som for Runtime.evaluate i cdpSend.)
-      sendt = true;
-      raw = await cdpSend(tabId, 'Runtime.evaluate', p, sessionId, slut, vagt);
+      raw = await cdpSend(tabId, 'Runtime.evaluate', p, sessionId, slut, v);
       break;
     } catch (e) {
       fejl = String(e?.message || e);
-      // Tiden slap op i cdpSend, foer noget blev sendt (efter tilslutningen).
-      if (e && e.ikkeSendt) { sendt = false; break; }
       // R132 (maalt i Opus' karrusel): forsvandt konteksten, foer Chrome slog den op, er udtrykket aldrig oversat eller
-      // koert - V8 afviser kaldet ved opslaget. Saa er intet sendt, og kalderen maa gerne proeve igen.
-      if (/Cannot find context with specified id|uniqueContextId not found/i.test(fejl)) { sendt = false; break; }
-      if (sendt) break;
+      // koert - V8 afviser kaldet ved opslaget. Saa er intet koert, og kalderen maa gerne proeve igen.
+      if (/Cannot find context with specified id|uniqueContextId not found/i.test(fejl)) { v.sendt = false; break; }
+      // MAALT 10/9 af Astra: faldt debuggeren af EFTER at koden var sendt, koerte en gentagelse BRUGERENS kode igen - op til
+      // fire gange. Vi kan ikke se, om et vilkaarligt script muterer. Er det sendt, gentages det ikke; kun en fejl FOER
+      // afsendelsen proeves igen. (Samme regel som for Runtime.evaluate i cdpSend.)
+      if (v.sendt) break;
+      if (e && e.ikkeSendt) break;   // tiden slap op foer afsendelsen
       if (!/detach|attach|gone|given id|not attached/i.test(fejl)) break;
     }
     await new Promise((r) => setTimeout(r, 200 + attempt * 200));
   }
+  const sendt = v.sendt;
   if (raw && raw.exceptionDetails) {
     const { besked, navn } = agentKodeFejl(raw.exceptionDetails);
     return { ok: false, error: besked, ...(navn ? { name: navn } : {}), method: 'debugger', note: AGENTKODE_KASTEDE };
   }
-// FIX (2026-07-16): paa nogle sider falder debuggeren af midt i kaldet, og sendCommand svarer `undefined` i stedet for at
+  // FIX (2026-07-16): paa nogle sider falder debuggeren af midt i kaldet, og sendCommand svarer `undefined` i stedet for at
   // afvise. Et svar UDEN result er derfor ikke et tomt resultat. Et result af typen undefined er derimod kodens eget svar.
   if (raw && raw.result) return { result: raw.result.value, method: 'debugger' };
   if (!sendt) {
@@ -5356,10 +5359,11 @@ async function findMaerket(tabId, sid, maerke, slut = null) {
 // «auto-attach fra» ikke kobler det nye kalds frame-sessioner af.
 const fanensOprydning = new Map();
 
-// Udvidelsens frame (webNavigation) -> { kontekst: { sessionId, uniqueContextId }, ryd }. Hovedsiden (frameId 0) er fanens
-// egen standardkontekst. ryd() fjerner maerket og slaar auto-attach fra igen; den afventes ikke af svaret.
+// Udvidelsens frame (webNavigation) -> { kontekst: { sessionId, uniqueContextId }, ryd, adresse }. Alle frames, ogsaa
+// hovedsiden, findes ved maerket. ryd() fjerner maerket og slaar auto-attach fra igen; den afventes ikke af svaret.
 async function findFrameKontekst(tabId, frames, valgt, slut = null) {
-  if (valgt.frameId === 0) return { kontekst: {}, ryd: async () => {} };
+  // R135 (Astra): ogsaa hovedsiden (frame 0) faar maerket - saa er frame_url dokumentets egen adresse, og navigerer siden
+  // mellem getAllFrames og koersel, er uniqueContextId vaek, og intet koeres.
   const forrige = fanensOprydning.get(tabId);
   if (forrige) await inden(forrige, slut == null ? Date.now() + 1000 : Math.min(slut, Date.now() + 1000), 'waiting for the previous call to clean up').catch(() => {});
   try { await inden(debuggerAttach(tabId), slut, 'attaching the debugger'); } catch (e) { throw frameFejl(String(e?.message || e), false); }
