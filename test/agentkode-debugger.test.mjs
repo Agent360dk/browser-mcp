@@ -33,7 +33,9 @@ const FREMMED = 'https://pay.example/frame';
 // foerste chrome.scripting-kald - Opus' karrusel. `maerkFejl` lader udvidelsens maerkning fejle for en frame, og `vaek` er
 // frames, webNavigation.getFrame ikke kender laengere.
 function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runtimeTil = [], autoAttachTil = [], sene = false,
-  par = {}, maerkFejl = {}, vaek = [], karrusel = null, oedelagt = {}, genbrug = null, ur = null, langsomOprydning = 0, ryddet = {} } = {}) {
+  par = {}, maerkFejl = {}, vaek = [], karrusel = null, oedelagt = {}, genbrug = null, ur = null, langsomOprydning = 0, ryddet = {},
+  nyAdresse = {} } = {}) {
+  // nyAdresse: framen har navigeret mellem getAllFrames og maerkningen - dens dokument har nu denne adresse.
   // genbrug (R133, Astra): et processkift genbruger det NUMERISKE kontekst-id. { naar: 'foer'|'efter' maerkeopslaget, fra: id,
   // til: id }: derefter betyder standardkontekst-id `fra` det samme som `til`, udvidelses-verdenens id (100+fra) er en
   // sidekontekst, hvis forfalskede Set svarer ja, og `fra`-kontekstens uniqueId'er er vaek («uniqueContextId not found»).
@@ -74,6 +76,7 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runt
           if (!dokumenter.has(f)) dokumenter.set(f, new Set());
           if (h === 0) dokumenter.get(f).add(maerke); else if (h === 2) dokumenter.get(f).delete(maerke);
           if (h === 2 && langsomOprydning) return new Promise((r) => setTimeout(() => { log.push({ oprydningFaerdig: true }); r([{ frameId: f, result: true }]); }, langsomOprydning));
+          if (h === 0) return [{ frameId: f, result: nyAdresse[f] || alleFrames.find((x) => x.frameId === f)?.url || 'about:blank' }];
           return [{ frameId: f, result: true }];
         }
         if (o.world === 'ISOLATED' && o.func?.name === 'frameIdentitet' && o.args?.[0] === 0) {
@@ -670,6 +673,13 @@ test('frist: har racen svaret (vagten er lukket), sender cdpSend aldrig agentkod
   const svar = await fang(m.u.hent('koerAgentKode')(1, 'window.__n = 1', {}, null, { sendt: false, lukket: true }));
   assert.equal(m.evalueringer().length, 0);
   assert.match(svar.kastet || '', /not run \(nothing was sent\)/);
+});
+
+test('select_frame: frame_url er adressen paa det dokument, koden koerte i - ogsaa hvis framen navigerede efter list_frames (R134 Opus)', async () => {
+  const m = sele({ frames: toFrames, par: toPar, traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] }, nyAdresse: { 5: 'https://andet.example/ny' } });
+  const svar = await m.kald('select_frame', { frame_index: 1, code: '1' });
+  assert.equal(svar.frame_url, 'https://andet.example/ny', JSON.stringify(svar));
 });
 
 // R133 (Opus): med 40 eller flere fremmede frames i toppen saa tilknytningen ikke i deres egne fremmede boern.

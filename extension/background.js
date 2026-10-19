@@ -5235,7 +5235,8 @@ async function koerAgentKode(tabId, kode, { sessionId = null, uniqueContextId = 
 // handling 0 = saet, 1 = har framen maerket?, 2 = fjern.
 function frameMaerke(handling, maerke) {
   const m = globalThis.__bmcpFrameMaerker || (globalThis.__bmcpFrameMaerker = new Set());
-  if (handling === 0) { m.add(maerke); return true; }
+  // R134 (Opus): adressen paa det dokument, maerket blev sat i - framen kan have navigeret siden getAllFrames.
+  if (handling === 0) { m.add(maerke); return String(location.href); }
   if (handling === 2) { m.delete(maerke); return true; }
   return m.has(maerke);
 }
@@ -5267,7 +5268,8 @@ async function maerkFramen(tabId, frameId, maerke, handling, slut = null) {
   try {
     const [r] = await inden(chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, world: 'ISOLATED', func: frameMaerke, args: [handling, maerke] }),
       slut, 'marking the frame');
-    if (!r || r.result !== true) throw new Error('no answer from the frame');
+    if (!r || (handling === 0 ? typeof r.result !== 'string' : r.result !== true)) throw new Error('no answer from the frame');
+    return r.result;
   } catch (e) {
     if (e && e.varig !== undefined) throw e;
     const m = String(e?.message || e);
@@ -5362,7 +5364,7 @@ async function findFrameKontekst(tabId, frames, valgt, slut = null) {
   if (forrige) await inden(forrige, slut == null ? Date.now() + 1000 : Math.min(slut, Date.now() + 1000), 'waiting for the previous call to clean up').catch(() => {});
   try { await inden(debuggerAttach(tabId), slut, 'attaching the debugger'); } catch (e) { throw frameFejl(String(e?.message || e), false); }
   const maerke = nytFrameMaerke();
-  await maerkFramen(tabId, valgt.frameId, maerke, 0, slut);
+  const adresse = await maerkFramen(tabId, valgt.frameId, maerke, 0, slut);
   let tilknyttet = false;
   const ryd = () => {
     const opr = (async () => {
@@ -5383,7 +5385,7 @@ async function findFrameKontekst(tabId, frames, valgt, slut = null) {
     if (fund.length > 1) throw frameFejl(`${fund.length} debugger contexts carry the frame's mark (frame ${valgt.frameId})`, false);
     if (!fund.length) throw frameFejl(`frame ${valgt.frameId} (${valgt.url}) was not found in the debugger (it may have navigated or closed)`, false);
     if (!fund[0].standard || !fund[0].standard.uniqueId) throw frameFejl(`the frame has no default execution context in the debugger (frame ${valgt.frameId})`, false);
-    return { kontekst: { sessionId: fund[0].sid, uniqueContextId: fund[0].standard.uniqueId }, ryd };
+    return { kontekst: { sessionId: fund[0].sid, uniqueContextId: fund[0].standard.uniqueId }, ryd, adresse };
   } catch (e) {
     ryd().catch(() => {});
     throw e;
@@ -7631,12 +7633,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
               'may still be loading, or it navigated, closed or was replaced). Call browser_list_frames and try once more.' };
       }
       try {
-        return { ...(await koerAgentKode(tab.id, code, maal.kontekst, slut, vagt)), frame_url: valgt.url };
+        // frame_url er adressen paa det dokument, maerket blev sat i (og koden koerte i) - ikke getAllFrames' aeldre bud.
+        return { ...(await koerAgentKode(tab.id, code, maal.kontekst, slut, vagt)), frame_url: maal.adresse || valgt.url };
       } catch (e) {
         // Framens kontekst forsvandt, mellem den blev fundet og koden blev sendt (fx en side, der udskifter sine frames):
         // intet er koert, og et nyt forsoeg kan lykkes.
         if (e && e.ikkeSendt) {
-          return { ok: false, error: 'frame-not-reachable', sent: false, retry: true, frame_url: valgt.url, detail: e.message,
+          return { ok: false, error: 'frame-not-reachable', sent: false, retry: true, frame_url: maal.adresse || valgt.url, detail: e.message,
             note: 'Nothing was run; the frame changed or the call ran out of time before the code could be sent. Call ' +
                   'browser_list_frames and try once more.' };
         }
