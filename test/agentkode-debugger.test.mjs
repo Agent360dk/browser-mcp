@@ -33,7 +33,7 @@ const FREMMED = 'https://pay.example/frame';
 // foerste chrome.scripting-kald - Opus' karrusel. `maerkFejl` lader udvidelsens maerkning fejle for en frame, og `vaek` er
 // frames, webNavigation.getFrame ikke kender laengere.
 function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runtimeTil = [], autoAttachTil = [], sene = false,
-  par = {}, maerkFejl = {}, vaek = [], karrusel = null } = {}) {
+  par = {}, maerkFejl = {}, vaek = [], karrusel = null, oedelagt = {} } = {}) {
   const log = [];
   let u;
   const kilde = (sid) => (sid ? { tabId: 1, sessionId: sid } : { tabId: 1 });
@@ -88,6 +88,11 @@ function sele({ frames, traeer = {}, kontekster = {}, oopif = [], evaluate, runt
         runtime.add(sid);
         for (const context of kontekster[sid] || []) {
           send('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context });
+          // `oedelagt`: framen navigerede under Runtime.enable - konteksten forsvinder igen, og en ny melder sig.
+          if (oedelagt[context.id]) {
+            send('debugger.onEvent', kilde(sid), 'Runtime.executionContextDestroyed', { executionContextId: context.id });
+            send('debugger.onEvent', kilde(sid), 'Runtime.executionContextCreated', { context: oedelagt[context.id] });
+          }
           if (context.auxData.isDefault) {
             const c = { id: 100 + context.id, origin: 'chrome-extension://test-udvidelse-id', name: 'Agent360 Browser MCP',
               auxData: { isDefault: false, type: 'isolated', frameId: context.auxData.frameId } };
@@ -426,6 +431,8 @@ test('select_frame: to kald i traek i en fremmed frame virker begge (auto-attach
   const m = sele(oopifModel());
   assert.equal((await m.kald('select_frame', { frame_index: 2, code: '1' })).result, 'S-PAY/1');
   assert.equal((await m.kald('select_frame', { frame_index: 2, code: '2' })).result, 'S-PAY/1');
+  const maerker = m.log.filter((x) => x.scripting && x.func === 'frameMaerke' && x.args[0] === 0).map((x) => x.args[1]);
+  assert.equal(new Set(maerker).size, 2, 'hvert kald faar sit eget engangsmaerke');
 });
 
 test('select_frame: en frame inde i en fremmed frame (OOPIF i OOPIF) naas gennem barnets egen auto-attach', async () => {
@@ -446,6 +453,17 @@ test('select_frame: en frame inde i en fremmed frame (OOPIF i OOPIF) naas gennem
   assert.equal(svar.result, 'S-DYB/4', JSON.stringify(svar));
   assert.equal(svar.frame_url, DYB);
   assert.ok(m.log.some((x) => x.metode === 'Runtime.callFunctionOn' && x.sid === 'S-DYB'), 'maerket findes i DYB\'s egen session');
+});
+
+test('select_frame: en kontekst, der forsvinder under opslaget, bruges ikke - den nye goer', async () => {
+  const m = sele({
+    frames: toFrames, par: toPar,
+    traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] },
+    oedelagt: { 2: ctx(9, 'CDP-BARN') },
+  });
+  await m.kald('select_frame', { frame_index: 1, code: '1' });
+  assert.equal(m.evalueringer()[0]?.p.contextId, 9);
 });
 
 test('select_frame uden kode laeser framens tekst med et fast udtryk fra pakken', async () => {
@@ -527,6 +545,15 @@ test('29,5 s gaelder HELE kaldet: tiden brugt paa fane og frame traekkes fra, og
   const svar = await fang(m.u.hent('koerAgentKode')(1, 'window.__n = 1', {}, Date.now() - 1));
   assert.match(svar.kastet || '', /not run \(nothing was sent\)/);
   assert.equal(m.evalueringer().length, 1, 'koden maa ikke sendes, naar budgettet er brugt');
+});
+
+test('agentens kode faar kun det, der er TILBAGE af budgettet - ikke en ny fuld frist', async () => {
+  const m = sele({ evaluate: () => new Promise(() => {}) });   // et loefte, der aldrig indfries
+  const t0 = Date.now();
+  const svar = await fang(m.u.hent('koerAgentKode')(1, 'new Promise(() => {})', {}, Date.now() + 150));
+  assert.ok(Date.now() - t0 < 3000, `ventede ${Date.now() - t0} ms - fristen fulgte ikke budgettet`);
+  assert.match(svar.kastet || '', /CDP did not respond within 1\d\d ms/);
+  assert.match(svar.kastet || '', /MAY already have run/);
 });
 
 // ── Kilden: ingen strengkompilering i udvidelsen, intet activeTab ─────────────
