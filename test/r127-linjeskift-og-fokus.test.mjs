@@ -17,7 +17,7 @@ const svar = (v) => ({ result: { value: v } });
 // ── 1. linjeskift ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // `felt`: hvad det aktive felt er, hver gang det spoerges: 'tekst' (textarea/contenteditable), 'linje' (enkeltlinje-input)
 // eller 'ukendt' (fx en iframe). En liste giver svarene i raekkefoelge (fokus skifter undervejs).
-function linjeSide(felt, { afvisLinjeskift = false, kunTastet = false } = {}) {
+function linjeSide(felt, { afvisLinjeskift = false, kunTastet = false, ulaeseligt = false } = {}) {
   const s = { value: '', indsat: [], taster: [], spurgt: 0 };
   const naeste = () => (Array.isArray(felt) ? felt[Math.min(s.spurgt++, felt.length - 1)] : felt);
   const u = indlaesUdvidelse({ svar: {
@@ -35,7 +35,7 @@ function linjeSide(felt, { afvisLinjeskift = false, kunTastet = false } = {}) {
         if (x.includes('isContentEditable')) return svar(false);
         if (x.includes('_valueTracker')) return svar({ v: s.value, ramme: null });
         if (x.includes('readOnly')) return svar(null);
-        if (x.includes('activeElement')) return svar(s.value);
+        if (x.includes('activeElement')) return svar(ulaeseligt ? null : s.value);
         return svar(null);
       }
       // kunTastet: feltet tager kun tastet input - et indsat stykke tekst uden tast foran afvises (MAALT-moenster fra R130-Chrome).
@@ -78,6 +78,10 @@ test('R127/R138: kan feltet ikke laeses (fx fokus i en iframe eller paa en knap)
   await tegn.u.hent('typeCharsAttached')(1, 'a\nb');
   assert.ok(!tegn.s.indsat.some((t) => LINJESKIFT.test(t)), JSON.stringify(tegn.s.indsat));
   assert.deepEqual([tegn.s.indsat, tegn.s.value], [[], 'ab']);
+  // R139 (Astra: feltet kunne omdoebes uden et roedt resultat): svaret paa fill siger, at linjeskiftet blev udeladt
+  const r = await linjeSide('ukendt').u.hent('dispatch')(9876, 'fill', { selector: '#f', value: 'a\nb' });
+  assert.equal(r.line_breaks_left_out, 1, `svaret siger ikke, at linjeskiftet blev udeladt: ${JSON.stringify(r)}`);
+  assert.match(String(r.note), /left out/, r.note);
   assert.ok(!tegn.s.taster.some((t) => t.text === ' ' || t.code === 'Space'), `en mellemrumstast blev trykket: ${JSON.stringify(tegn.s.taster)}`);
 });
 
@@ -335,6 +339,8 @@ test('linjeFelt: kun tekst-input faar mellemrum - knap, submit, afkrydsning, rad
   const input = (type) => ({ localName: 'input', tagName: 'INPUT', type, isContentEditable: false });
   const forventet = [
     [input('text'), 'linje'], [input('search'), 'linje'], [input('email'), 'linje'], [input('password'), 'linje'],
+    // R139 (Astra: «number» kunne fjernes uden et roedt resultat): hver type i listen, og et input uden type
+    [input('url'), 'linje'], [input('tel'), 'linje'], [input('number'), 'linje'], [input(undefined), 'linje'],
     [input('submit'), 'ukendt'], [input('checkbox'), 'ukendt'], [input('radio'), 'ukendt'], [input('button'), 'ukendt'],
     [input('file'), 'ukendt'], [{ localName: 'button', tagName: 'BUTTON', isContentEditable: false }, 'ukendt'],
     [{ localName: 'textarea', tagName: 'TEXTAREA', isContentEditable: false }, 'tekst'],
@@ -342,4 +348,13 @@ test('linjeFelt: kun tekst-input faar mellemrum - knap, submit, afkrydsning, rad
   const faktisk = [];
   for (const [el] of forventet) { aktiv = el; faktisk.push(await u.hent('linjeFelt')(1)); }
   assert.deepEqual(faktisk, forventet.map((x) => x[1]), forventet.map((x, i) => `${x[0].type || x[0].localName}: ${faktisk[i]}`).join(', '));
+});
+
+// R139 (Opus, MAALT i Chrome J5-J8): paa text=-vejen hoppede fokus til en ramme, <summary> eller role=button, feltet kunne ikke
+// laeses bagefter, og svaret (unknown) sagde intet om det udeladte linjeskift - CHANGELOG lover, at svaret siger det.
+test('text=-vejen: kan feltet ikke laeses bagefter, siger svaret stadig, at linjeskiftet blev udeladt (R139)', async () => {
+  const { u } = linjeSide('ukendt', { ulaeseligt: true });
+  const r = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Felt', value: 'a\nb' });
+  assert.equal(r.unknown, true, `proeven naaede ikke unknown-grenen: ${JSON.stringify(r)}`);
+  assert.equal(r.line_breaks_left_out, 1, `unknown-svaret siger ikke, at linjeskiftet blev udeladt: ${JSON.stringify(r)}`);
 });

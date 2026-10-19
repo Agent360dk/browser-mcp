@@ -223,12 +223,13 @@ test('broen: en bestilt frigivelse for en anden generation end portens nuvaerend
 // kald sin kode i fane 99 og stemplede sessionen tilbage til den gamle generation og dens pid. Et kald fra en forbindelse, der
 // er lukket, maa intet koere og intet overtage.
 // Opstilling: et kald fra `gammelGen` venter i sessionsgendannelsen; `imens` koerer, mens det venter; saa slippes det.
-async function ventendeKald(gammelGen, imens, ekstraSvar = {}) {
+async function ventendeKald(gammelGen, imens, ekstraSvar = {}, foer = null) {
   let slip, ventede;
   const blokeret = new Promise((r) => { slip = r; });
   const inde = new Promise((r) => { ventede = r; });
   let blokerEn = true;
   const koert = [];
+  const koertI = [];   // [kode, fane]
   const fane = { id: 99, url: 'about:blank', windowId: 1, active: false };
   const u = indlaesUdvidelse({ svar: {
     'storage.local.get': (arg) => {
@@ -238,7 +239,7 @@ async function ventendeKald(gammelGen, imens, ekstraSvar = {}) {
     'tabs.create': fane, 'tabs.get': fane, 'tabs.query': [], 'tabs.group': 1,
     'debugger.attach': undefined, 'debugger.detach': undefined, 'debugger.getTargets': [{ tabId: 99, attached: true }],
     'debugger.sendCommand': (maal, metode, p) => {
-      if (metode === 'Runtime.evaluate') { koert.push(p.expression); return { result: { value: p.expression } }; }
+      if (metode === 'Runtime.evaluate') { koert.push(p.expression); koertI.push([p.expression, maal.tabId]); return { result: { value: p.expression } }; }
       return {};
     },
     ...ekstraSvar,
@@ -246,11 +247,12 @@ async function ventendeKald(gammelGen, imens, ekstraSvar = {}) {
   const lytter = u.lyttere.get('runtime.onMessage')[0];
   const kald = (gen, pid, kode) => new Promise((ok) => lytter(
     { type: 'mcp_command', port: 19861, gen, pid, method: 'execute_script', params: { code: kode } }, {}, ok));
+  if (foer) await foer(u);
   const gammelt = kald(gammelGen, 101, '"GAMMEL"');
   await inde;
   await imens({ u, kald });
   slip({ mcpPorts: [19861] });
-  return { u, sent: await gammelt, koert };
+  return { u, sent: await gammelt, koert, koertI, kald };
 }
 
 // R138 (Opus, LAEST paa e7179d4): erstatter udvidelsen selv broen (closeDocument), koerer det gamle dokuments onclose naeppe, og
@@ -315,4 +317,100 @@ test('et kald fra en LUKKET forbindelse, der ventede i gendannelsen, koerer inte
   const s = u.hent('sessions').get(19861);
   assert.equal(s.gen, 'ny', 'den lukkede forbindelse overtog sessionen');
   assert.equal(s.pid, null, 'den lukkede forbindelses pid blev stemplet paa den nye forbindelses session');
+});
+
+// ── R139 (Astra, MAALT i model paa 1e00079) ─────────────────────────────────────
+// Adoptionen venter selv (mcpPorts, tabs.get) og skrev derefter sessionskortet uden at se efter igen: et kald fra en lukket
+// forbindelse adopterede en forældreløs donors session INDOVER den nye forbindelses session, og den nye forbindelses NAESTE kald
+// koerte i donorens fane. Adoptionen genkontrollerer nu efter hver ventetid: kaldets forbindelse, at porten stadig ingen faner
+// ejer, og at donoren er uaendret.
+test('et lukket kald i adoptionen overtager ikke den nye forbindelses session - og dens naeste kald koerer i dens egen fane (R139)', async () => {
+  const { u, sent, koert, koertI, kald } = await ventendeKald('aaaa1111-1', async ({ u: v, kald: k }) => {
+    await v.fyr('runtime.onMessage', { type: 'session_disconnect', port: 19861, gen: 'aaaa1111-1' }, {}, () => {});
+    const nyt = await k('aaaa1111-2', null, '"NY"');
+    assert.match(String(nyt.result), /NY/, 'den nye forbindelses kald koerte ikke - proeven kan ikke maale noget');
+  }, {}, async (v) => {
+    // en forældreløs session paa 19862 med samme pid som det gamle kald: noget adoptionen kan tage
+    v.hent('getSession')(19862, 101, 'donor-1');
+    await v.hent('addTabToSession')(19862, 41);
+  });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `det lukkede kalds kode koerte: ${JSON.stringify(koert)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+  const s = u.hent('sessions').get(19861);
+  assert.equal(s.gen, 'aaaa1111-2', 'sessionen paa porten tilhoerer ikke laengere den nye forbindelse');
+  assert.equal(s.pid, null, 'det lukkede kalds pid blev stemplet paa porten');
+  assert.ok(s.tabIds.has(99) && !s.tabIds.has(41), `porten ejer forkerte faner: ${JSON.stringify([...s.tabIds])}`);
+  assert.ok(u.hent('sessions').get(19862)?.tabIds.has(41), 'donorens session blev flyttet af et lukket kald');
+  const naeste = await kald('aaaa1111-2', null, '"NAESTE"');
+  assert.match(String(naeste.result), /NAESTE/);
+  const fane = koertI.find(([x]) => x.includes('NAESTE'))?.[1];
+  assert.equal(fane, 99, `den nye forbindelses naeste kald koerte i fane ${fane}, ikke i sin egen (99)`);
+});
+
+test('to forbindelser fra SAMME bro-dokument efter hinanden koerer begge (R139: dokumentet doer ikke af sig selv)', async () => {
+  const { u } = await ventendeKald('cccc3333-1', async () => {});
+  const lytter = u.lyttere.get('runtime.onMessage')[0];
+  const kald = (gen, kode) => new Promise((ok) => lytter(
+    { type: 'mcp_command', port: 19861, gen, pid: null, method: 'execute_script', params: { code: kode } }, {}, ok));
+  const a = await kald('cccc3333-1', '"A"');
+  const b = await kald('cccc3333-2', '"B"');
+  assert.match(String(a.result), /A/, `foerste kald blev afvist: ${JSON.stringify(a)}`);
+  assert.match(String(b.result), /B/, `en ny forbindelse fra samme dokument blev afvist: ${JSON.stringify(b)}`);
+});
+
+test('hjerteslaget erstatter en doed bro: et kald fra den, der ventede imens, koerer intet (R139)', async () => {
+  const { sent, koert } = await ventendeKald('dddd4444-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();
+  }, (() => {
+    let findes = true;
+    // broen svarer ikke (to ping), saa hjerteslaget lukker den og bygger en ny
+    return { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; },
+      'offscreen.createDocument': () => { findes = true; }, 'runtime.sendMessage': () => new Promise(() => {}) };
+  })());
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den erstattede bro koerte: ${JSON.stringify(koert)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+});
+
+test('kan broen ikke lukkes, er den ikke erstattet: kald fra den koerer stadig (R139)', async () => {
+  const { sent, koert } = await ventendeKald('eeee5555-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, { 'offscreen.hasDocument': true, 'offscreen.closeDocument': () => { throw new Error('closeDocument afvist'); },
+    'offscreen.createDocument': undefined, 'runtime.getManifest': { version: '9.9.9' },
+    'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), `en levende bro blev afvist, fordi lukningen fejlede: ${JSON.stringify(sent)}`);
+});
+
+test('et lukket kald adopterer ikke donorens faner til en port, ingen ny forbindelse har taget endnu (R139: generationen alene)', async () => {
+  const { u, sent } = await ventendeKald('ffff6666-1', async ({ u: v }) => {
+    await v.fyr('runtime.onMessage', { type: 'session_disconnect', port: 19861, gen: 'ffff6666-1' }, {}, () => {});
+  }, {}, async (v) => {
+    v.hent('getSession')(19862, 101, 'donor-1');
+    await v.hent('addTabToSession')(19862, 41);
+  });
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+  assert.ok(u.hent('sessions').get(19862)?.tabIds.has(41), 'donorens faner blev flyttet til en lukket forbindelses port');
+  assert.ok(!u.hent('sessions').get(19861)?.tabIds.has(41), 'den lukkede forbindelses port fik donorens fane');
+});
+
+test('aendres donoren, mens adoptionen venter paa fanerne, adopteres intet (R139)', async () => {
+  let slipFaner, venterPaaFaner, spaer = false;
+  const faneSpaerre = new Promise((r) => { slipFaner = r; });
+  const inde = new Promise((r) => { venterPaaFaner = r; });
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => (arg && Object.hasOwn(arg, 'mcpPorts') ? { mcpPorts: [19861] } : (arg && typeof arg === 'object' ? { ...arg } : {})),
+    // spaerren slaas foerst til, naar opstillingen er faerdig (addTabToSession spoerger selv tabs.get)
+    'tabs.get': (id) => { if (!spaer) return { id }; venterPaaFaner(); return faneSpaerre.then(() => ({ id })); },
+  } });
+  u.hent('getSession')(19862, 101, 'donor-1');
+  await u.hent('addTabToSession')(19862, 41);
+  spaer = true;
+  const adoption = u.hent('adoptOrphanedSession')(19861, 101, 'gggg7777-1');
+  await inde;
+  // imens: donorens port faar en ny session (en anden forbindelse tog porten og aabnede sin egen fane)
+  u.hent('sessions').delete(19862);
+  u.hent('getSession')(19862, 202, 'anden-1');
+  const ny = u.hent('sessions').get(19862);
+  slipFaner();
+  assert.equal(await adoption, null, 'adoptionen tog en donor, der var aendret imens');
+  assert.equal(u.hent('sessions').get(19862), ny, 'den nye session paa donorens port blev flyttet');
 });

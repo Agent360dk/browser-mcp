@@ -46,6 +46,8 @@ async function adoptér({ port, pid, sessioner = [], levende = [], doedeFaner = 
     tabs: { get: async (id) => { if (doedeFaner.includes(id)) throw new Error('no tab'); return { id }; } },
   };
   const src = [
+    // R139: adoptionen tjekker selv kaldets forbindelse; her er der ingen lukkede forbindelser.
+    'const fraLukketForbindelse = () => false;',
     udklip('adoptOrphanedSession'),
     'return adoptOrphanedSession(port, pid);',
   ].join('\n');

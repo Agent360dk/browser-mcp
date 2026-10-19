@@ -138,7 +138,7 @@ function getSession(port, pid, gen = null) {
 // Fix: before serving an unknown port, hand over the tabs of the largest session whose port
 // is no longer in mcpPorts (the live-connection list the offscreen bridge keeps in storage).
 // Keeps label/color so the user sees continuity instead of a renumbered session.
-async function adoptOrphanedSession(port, pid) {
+async function adoptOrphanedSession(port, pid, gen = null) {
   // Only ever fires for a session that OWNS NOTHING — a session with tabs is left alone.
   if (sessions.has(port) && sessions.get(port).tabIds.size) return null;
 
@@ -169,6 +169,11 @@ async function adoptOrphanedSession(port, pid) {
   // fra en session hvis port IKKE laengere er forbundet. Er donorens port stadig i
   // live, er det en anden chat der arbejder lige nu — ikke en genstartet server.
   // Listen vedligeholdes af broen (ws_status → mcpPorts) ved hver til- og frakobling.
+  // R139 (Astra, MAALT i model): adoptionen venter (mcpPorts, tabs.get) og skrev derefter sessionskortet uden at se efter igen.
+  // Et kald fra en forbindelse, der lukkede imens, adopterede donorens session INDOVER den nye forbindelses session, og den nye
+  // forbindelses naeste kald koerte i donorens fane. Efter hver ventetid: er kaldets forbindelse lukket, ejer porten nu faner,
+  // eller er donoren aendret, adopteres intet (kontrollen staar efter den sidste ventetid, lige foer kortet skrives).
+  const portenEjerFaner = () => sessions.has(port) && sessions.get(port).tabIds.size > 0;
   const { mcpPorts = [] } = await chrome.storage.local.get({ mcpPorts: [] });
   const levendePorte = new Set(mcpPorts.map(Number));
 
@@ -187,6 +192,7 @@ async function adoptOrphanedSession(port, pid) {
   for (const tabId of best.session.tabIds) {
     try { await chrome.tabs.get(tabId); alive.add(tabId); } catch {}
   }
+  if (fraLukketForbindelse(port, gen) || portenEjerFaner() || sessions.get(best.port) !== best.session) return null;
   if (!alive.size) {
     sessions.delete(best.port);
     persistSessions();
@@ -1548,8 +1554,8 @@ function kunLinjeskiftSvar(ekstra, ls) {
   // R138: blev de alle udeladt, er intet sendt - og et tomt felt er netop det.
   if (udeladt && !(ls.somMellemrum || ls.somTekst)) {
     return { ok: true, ...ekstra, differs: true, value: '', actual: '', line_breaks_left_out: udeladt,
-      note: 'The value holds only line breaks, and they were left out: the focused element is not a text field (a button, ' +
-        'a checkbox, a frame, or an element that could not be read), so nothing was sent.' };
+      note: 'The value holds only line breaks, and they were left out: the tool did not recognise the focused element as a text ' +
+        'field (a button, a checkbox, a frame, or an element it could not read), so nothing was sent.' };
   }
   return { ok: true, ...ekstra, differs: true, value: '', actual: '',
     ...(somMellemrum ? { line_breaks_as_spaces: ls.somMellemrum } : {}),
@@ -1570,7 +1576,8 @@ function medLinjeskift(svar, oensket, ls) {
     ': this field is a single-line text input, and a line break there could submit the form.');
   // R138 (Opus): en knap, et afkrydsningsfelt eller en ramme faar hverken linjeskift eller mellemrum - mellemrumstasten ville trykke paa dem.
   if (u) saetninger.push((u === 1 ? 'A line break was left out' : `${u} line breaks were left out`) +
-    ': the focused element was not a text field (a button, a checkbox, a frame, or an element that could not be read), and a ' +
+    ': the tool did not recognise the focused element as a text field (a button, a checkbox, a frame, or an element it could ' +
+    'not read), and a ' +
     'key there could press it.');
   const saetning = saetninger.join(' ');
   const normal = String(oensket).replace(/\r\n?/g, '\n');
@@ -3720,7 +3727,8 @@ function ensureOffscreen() {
 function genbygOffscreen() {
   return iOffscreenKoe(async () => {
     try {
-      if (await chrome.offscreen.hasDocument()) { broenErstattes(); await chrome.offscreen.closeDocument(); }
+      // R139 (Astra): erstattet er broen foerst, naar lukningen er lykkedes - en afvist lukning efterlader en levende bro.
+      if (await chrome.offscreen.hasDocument()) { await chrome.offscreen.closeDocument(); broenErstattes(); }
     } catch (e) {
       console.warn('[BG] kunne ikke lukke broen foer genopbygning:', e?.message || e);
     }
@@ -3819,11 +3827,12 @@ async function ensureOffscreenIndre() {
     }
     console.warn(`[BG] offscreen-dokumentet svarer ikke — erstatter det (forsoeg ${offscreenGenskabt + 1}/${MAX_OFFSCREEN_GENSKAB})`);
     await chrome.storage.local.set({ offscreenGenskabt: offscreenGenskabt + 1 });
-    broenErstattes();   // R138: det gamle dokuments forbindelser er lukkede, ogsaa hvis det ikke naar at sige det selv
     try { await chrome.offscreen.closeDocument(); } catch (e) {
       console.warn('[BG] kunne ikke lukke det doede dokument:', e?.message || e);
       return;                                      // proev igen ved naeste hjerteslag
     }
+    // R138/R139: lukket - det gamle dokuments forbindelser er lukkede, ogsaa hvis det ikke naaede at sige det selv.
+    broenErstattes();
   }
 
   // Versionen foelger med i URL'en. Et offscreen-dokument har IKKE
@@ -3917,7 +3926,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // session orphaned by an unclean disconnect so navigate→click keeps hitting the same tab.
     // R138: et kald fra en lukket forbindelse koerer intet - tjekket efter hver ventetid (gendannelse, adoption), foer sessionen roeres.
     const arbejde = restoreSessions()
-      .then(() => (fraLukketForbindelse(port, msg.gen) ? null : adoptOrphanedSession(port, msg.pid).catch(() => null))) // adoption is best-effort, never fatal
+      .then(() => adoptOrphanedSession(port, msg.pid, msg.gen).catch(() => null)) // adoption is best-effort, never fatal; R139: it checks the connection itself
       .then(() => {
         if (fraLukketForbindelse(port, msg.gen)) return { ...LUKKET_SVAR };
         // Stempl pid'en ÉT sted, foer dispatch. De fem nedstroems getSession(port)-kald
@@ -6575,9 +6584,10 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           '(() => { const a = document.activeElement; return a && "value" in a ? String(a.value) : null; })()')
           .catch(() => undefined);
         if (efterTekst === undefined || efterTekst === null) {
-          return { ok: true, method: 'debugger', unknown: true,
+          // R139 (Opus, MAALT): ogsaa et ulaeseligt felt faar at vide, hvordan linjeskiftene blev skrevet (udeladt eller mellemrum).
+          return medLinjeskift({ ok: true, method: 'debugger', unknown: true,
             note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
-                  'it landed. Read the field with browser_execute_script if it matters.' };
+                  'it landed. Read the field with browser_execute_script if it matters.' }, params.value, levering ? levering.linjeskift : null);
         }
         if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
         const spaerret = await fieldBlocked(tab.id, null);

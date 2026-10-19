@@ -43,13 +43,16 @@ and the answer said `key-not-delivered` although the key had landed.
 the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
 A line break, carriage return or tab in the value is no longer sent as a key: before, `"\t"` moved focus (and the answer
 read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. A tab is inserted as text. Line breaks
-follow one rule on every path `browser_fill` writes by (inserting the value at once, and typing it character by character),
-checked in the field that has focus at each line break: `"\r\n"` and `"\r"` are one line break, written as a line break only
+follow one rule on every path `browser_fill` writes by, checked in the element that has focus: once when the value is
+inserted at once, and at each line break when it is typed character by character. `"\r\n"` and `"\r"` are one line break, written as a line break only
 in a textarea or a contenteditable field (also on an XHTML page). In a single-line text input (type text, search, email, url,
-tel, password or number) it is typed as one space instead - a line break inserted into an input submits the form, and leaving
-it out glued the words together - and the answer says so (`line_breaks_as_spaces`, `differs`, `actual`). Anywhere else - focus
-on a button, a submit button, a checkbox, in a frame, or a field that cannot be read - it is left out, because the space key
-would press the button or tick the box, and the answer says that too (`line_breaks_left_out`). When a value of only line
+tel, password or number, or no or an unknown type, which the browser treats as text) it is typed as one space instead - a line break inserted into an input submits the form, and leaving
+it out glued the words together - and the answer says so (`line_breaks_as_spaces`, `differs`, `actual`). When the tool does
+not recognise the focused element as one of those text fields - a button, a submit button, a checkbox, a frame, a closed
+shadow root, or an element it cannot read - the line break is left out, because the space key would press the button or tick
+the box, and the answer says that too (`line_breaks_left_out`). A text field the tool cannot see into (in a frame or a closed
+shadow root) therefore loses its line breaks. Focus is read just before each line break is written; a page that moves focus
+in the moment between that check and the key gets the space like any other typed character. When a value of only line
 breaks leaves the field empty, the answer says how they were sent and that the field did not take them. An emoji is typed whole,
 one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
 says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
@@ -81,9 +84,11 @@ its message.
 
 **A call from a closed connection runs nothing.** When a connection to the extension closes, the extension remembers it
 (the last 16 per port). A call from that connection that was still waiting inside the extension, for instance while the
-extension restored its sessions after a restart, now stops before it touches a session or a tab. Before, it could run its code
-in a tab of the connection that took the port next (another partition or chat) and take that session over. The same holds
-when the extension replaces its bridge itself: the old bridge's connections count as closed as soon as it is replaced, or as
+extension looked for a session to take over after a restart, now stops before it touches a session or a tab: the takeover
+checks again after each wait that the call's connection is still open, that the port still owns no tabs and that the session
+it would take over is unchanged. Before, it could run its code in a tab of the connection that took the port next (another
+partition or chat), or move another session onto that port, so that the new connection's next call ran in the wrong tab. The same holds
+when the extension replaces its bridge itself: the old bridge's connections count as closed once it has been closed, or as
 soon as a call comes from the new one, even if the old bridge never got to report that they closed. Its answer
 (`connection-closed`, `sent: false`) goes back over the closed connection, so no agent sees it; what changes is that nothing
 runs.
@@ -109,7 +114,7 @@ question without an answer is followed by a second one, and the bridge is replac
 | `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
 | `keys_delivered: true`, `false` or `null` | `browser_fill` (empty field after typing) | The tool saw keys arrive / saw none / could not tell. Not proof of what the page did with them: check the page before typing again |
 | `line_breaks_as_spaces` | `browser_fill` | That many line breaks were typed as spaces, because the field is a single-line text input |
-| `line_breaks_left_out` | `browser_fill` | That many line breaks were left out, because focus was not in a text field (a button, a checkbox, a frame, or an element that could not be read) |
+| `line_breaks_left_out` | `browser_fill` | That many line breaks were left out, because the tool did not recognise the focused element as a text field (a button, a checkbox, a frame, a closed shadow root, or an element it could not read) |
 | `error: "focus-moved"` or `"focus-unknown"`, `step`, `focused`, `changed` | `browser_set_date` | Before a writing step focus was no longer on the field (or could not be read); the tool stopped there, and `changed` lists what had been changed by then |
 | `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
