@@ -466,6 +466,20 @@ test('select_frame: en kontekst, der forsvinder under opslaget, bruges ikke - de
   assert.equal(m.evalueringer()[0]?.p.contextId, 9);
 });
 
+test('select_frame: forsvinder konteksten, foer Chrome slaar den op, er intet koert - frame-not-reachable med retry (R132)', async () => {
+  const m = sele({
+    frames: toFrames, par: toPar,
+    traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] },
+    evaluate: () => { throw new Error('{"code":-32000,"message":"Cannot find context with specified id"}'); },
+  });
+  ikkeNaaet(await fang(m.kald('select_frame', { frame_index: 1, code: 'window.__n = 1' })), true);
+  assert.equal(m.evalueringer().length, 1, 'ingen gentagelse i samme kald');
+  // execute_script: samme fejl siger, at intet er koert (ikke «MAY already have run»).
+  const e = await fang(m.kald('execute_script', { code: '1' }));
+  assert.match(e.kastet || '', /not run \(nothing was sent\)/);
+});
+
 test('select_frame uden kode laeser framens tekst med et fast udtryk fra pakken', async () => {
   const m = sele({
     frames: toFrames, par: toPar,

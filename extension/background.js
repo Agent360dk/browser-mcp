@@ -5150,6 +5150,9 @@ async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null }
       break;
     } catch (e) {
       fejl = String(e?.message || e);
+      // R132 (maalt i Opus' karrusel): forsvandt konteksten, foer Chrome slog den op, er udtrykket aldrig oversat eller
+      // koert - V8 afviser kaldet ved opslaget. Saa er intet sendt, og kalderen maa gerne proeve igen.
+      if (/Cannot find context with specified id/i.test(fejl)) { sendt = false; break; }
       if (sendt) break;
       if (!/detach|attach|gone|given id|not attached/i.test(fejl)) break;
     }
@@ -5163,7 +5166,9 @@ async function koerAgentKode(tabId, kode, { sessionId = null, contextId = null }
   // afvise. Et svar UDEN result er derfor ikke et tomt resultat. Et result af typen undefined er derimod kodens eget svar.
   if (raw && raw.result) return { result: raw.result.value, method: 'debugger' };
   if (!sendt) {
-    throw new Error('The code was not run (nothing was sent): ' + (fejl || 'the Chrome debugger could not attach to the tab'));
+    const e = new Error('The code was not run (nothing was sent): ' + (fejl || 'the Chrome debugger could not attach to the tab'));
+    e.ikkeSendt = true;
+    throw e;
   }
   throw new Error('The code was sent to the page, but no answer came back (' + (fejl || 'empty debugger response: ' + JSON.stringify(raw)) +
     '). It MAY already have run. It is not repeated automatically - call again only if it is safe to run twice.');
@@ -7554,6 +7559,14 @@ async function dispatch(port, method, params) {
       }
       try {
         return { ...(await koerAgentKode(tab.id, code, maal.kontekst, agentKodeSlut(start))), frame_url: valgt.url };
+      } catch (e) {
+        // Framens kontekst forsvandt, mellem den blev fundet og koden blev sendt (fx en side, der udskifter sine frames):
+        // intet er koert, og et nyt forsoeg kan lykkes.
+        if (e && e.ikkeSendt) {
+          return { ok: false, error: 'frame-not-reachable', sent: false, retry: true, frame_url: valgt.url, detail: e.message,
+            note: 'Nothing was run. The frame changed before the code could be sent. Call browser_list_frames and try once more.' };
+        }
+        throw e;
       } finally {
         await maal.ryd();
       }
