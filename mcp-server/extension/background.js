@@ -3597,7 +3597,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         getSession(port, msg.pid);
         return dispatch(port, msg.method, msg.params, modtaget, vagt);
       });
-    arbejde.then(svar, (err) => svar({ __error: err.message || String(err) })); // ogsaa en afvist sessionsgendannelse svares
+    arbejde.then((r) => svar(r)).catch((err) => svar({ __error: err.message || String(err) })); // ogsaa en afvist sessionsgendannelse svares
     if (vagt) {
       const ur = setTimeout(() => {
         vagt.lukket = true;
@@ -3607,7 +3607,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           : { ok: false, error: 'call-timeout', sent: false, retry: true,
               note: 'Nothing was run; the call ran out of time before the code could be sent. Call again.' });
       }, Math.max(0, agentKodeSlut(modtaget) - Date.now()));
-      arbejde.then(() => clearTimeout(ur), () => clearTimeout(ur));
+      arbejde.catch(() => {}).then(() => clearTimeout(ur));
     }
     return true; // async response
   }
