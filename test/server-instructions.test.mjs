@@ -168,9 +168,21 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     assert.match(t, /One observation on macOS \(Chrome for Testing on GitHub's runner, 14 Oct 2026\) saw a key press land in the active tab while another app \(TextEdit\) was in front; that is one platform and one input type, not a general measurement\./, `${f} naevner ikke 14/10-observationen ordret med sin graense`);
     // R153 (Astra): tre formuleringer slap stadig igennem - «Measured: input requires OS focus.», «… in the foreground (measured).»
     // og «operating-system focus (measured)». Begge retninger (maalt foer og efter kravet) og bindestregsformen dækkes nu.
-    const krav = String.raw`(?:\b(?:OS|operating[- ]system'?s?) focus|\bin front\b|\bforeground\b)`;
+    // R153 (Opus): ogsaa «the window to have focus (measured)» og «frontmost app (measured)» slap igennem - ethvert fokus-/forgrundsord taeller.
+    const krav = String.raw`(?:\bfocus(?:ed)?\b|\bin front\b|\bforeground\b|\bfrontmost\b)`;
     assert.doesNotMatch(t, new RegExp(`${krav}[^.;]{0,80}(?<!un)measured\\b`, 'i'), `${f} kalder et fokus- eller forgrundskrav maalt`);
     assert.doesNotMatch(t, new RegExp(`(?<!un)measured\\b[^.;]{0,80}${krav}`, 'i'), `${f} kalder et fokus- eller forgrundskrav maalt (maalt foerst)`);
     assert.doesNotMatch(t, /\bfocus\.\s*\(?measured/i, `${f} kalder fokus maalt i saetningen efter`);
   }
+});
+
+// R153 (Opus): R152's afvisning (CHANGELOG generaliserede et maalt sl-icon til «an icon» paa «Shoelace 2.x») havde ingen proeve -
+// teksten kunne falde tilbage, eller afsnittet forsvinde, uden at noget blev roedt.
+test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte versioner', () => {
+  const t = readFileSync(join(rod, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(t, /Measured in Shoelace 2\.20\.1 with its default styling: the custom `sl-icon` element in an `sl-button`'s prefix slot never gets the click itself/);
+  assert.match(t, /Measured in Ionic 8\.8\.19: an `ion-segment-button`'s icon or label as the target answers `covered`/);
+  assert.match(t, /Other versions of these libraries are unmeasured\./);
+  assert.match(t, /inside an `sl-button` it is unmeasured in Chrome/);
+  assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
 });

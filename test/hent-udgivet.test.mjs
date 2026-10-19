@@ -271,3 +271,14 @@ test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2:
     assert.notEqual(kastede.status, 0, 'et flow der sluttede med exit 3 blev groent');
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
+
+// R153 (Opus): cp1252-proeven laaner kun `open` i hent_server - manifest.json (hent_udvidelse) og en `Path.read_text()` uden tegnsaet
+// slap igennem. Hver tekstlaesning i scriptet skal derfor selv naevne sit tegnsaet.
+test('hent-udgivet.py: hver tekstlaesning angiver encoding', () => {
+  const kilde = readFileSync(join(rod, 'scripts/hent-udgivet.py'), 'utf8');
+  const kald = [...kilde.matchAll(/\b(open|read_text|write_text)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)]
+    .filter(([, navn, arg]) => !(navn === 'open' && /['"][rw]?b['"]/.test(arg)));
+  assert.ok(kald.length >= 3, `fandt kun ${kald.length} laesninger - moenstret maaler ikke scriptet`);
+  const uden = kald.filter(([, , arg]) => !/encoding=/.test(arg)).map(([hele]) => hele.slice(0, 80));
+  assert.deepEqual(uden, [], `tekstlaesninger uden encoding: ${uden.join(' | ')}`);
+});
