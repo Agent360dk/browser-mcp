@@ -21,6 +21,9 @@ import { createContext, runInContext } from 'node:vm';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 const P = 19874;
+// R150 (Astra F4/F5): alle Chromes ikke-offscreen konteksttyper findes samtidig i proeverne af kontekstlisten (service workeren og
+// udvidelsens egne sider i fane, popup, sidepanel og udviklervaerktoejer), saa ethvert for bredt filter fanger en af dem.
+const ANDRE_KONTEKSTER = ['BACKGROUND', 'TAB', 'POPUP', 'SIDE_PANEL', 'DEVELOPER_TOOLS'].map((contextType) => ({ contextType }));
 const vent = (ms = 30) => new Promise((ok) => setTimeout(ok, ms));
 const lukkede = (u) => u.optager.til('tabs.remove').map((b) => b.args[0]);
 const frakobl = (u, gen) => u.fyr('runtime.onMessage', { type: 'session_disconnect', port: P, gen }, {}, () => {});
@@ -728,7 +731,7 @@ test('uden runtime.getContexts afgoer hasDocument alene: H3 erstatter broen (R14
 test('kontekstlisten spoerges efter OFFSCREEN_DOCUMENT - service workerens egen kontekst holder ikke broen i live (R144: B2)', async () => {
   const { sent, koert } = await ventendeKald('zzzz2626-1', async ({ u }) => {
     await u.hent('genbygOffscreen')();
-  }, h3Svar({ 'runtime.getContexts': (filter) => [{ contextType: 'BACKGROUND' }]   // dokumentet er lukket; workeren findes
+  }, h3Svar({ 'runtime.getContexts': (filter) => ANDRE_KONTEKSTER   // dokumentet er lukket; udvidelsens andre kontekster findes
     .filter((k) => !filter?.contextTypes || filter.contextTypes.includes(k.contextType)) }));
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `en lukket bro blev holdt i live af en anden konteksttype: ${JSON.stringify(sent)}`);
 });
@@ -843,7 +846,7 @@ test('hjerteslaget: mens den nye bro bygges, er den forsvundne bros kald allered
   }, { 'offscreen.hasDocument': () => findes,
     // R148/R149 (Astra F2/F3): kontekstlisten filtreres som i Chrome - service workeren (BACKGROUND) findes altid, og et filter med
     // flere typer faar alle de matchende
-    'runtime.getContexts': (filter) => [{ contextType: 'BACKGROUND' }, ...(findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : [])]
+    'runtime.getContexts': (filter) => [...ANDRE_KONTEKSTER, ...(findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : [])]
       .filter((k) => !filter?.contextTypes || filter.contextTypes.includes(k.contextType)),
     'offscreen.createDocument': () => { opretKaldt(); return opretVenter.then(() => { findes = true; }); },
     'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
