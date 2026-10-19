@@ -121,7 +121,9 @@ describe('R137: serverens frist for agentkodens to vaerktoejer', { concurrency: 
       const tekst = res.content.map((c) => c.text).join('\n');
       assert.doesNotMatch(tekst, /Command timed out/, `serveren opgav ved standardfristen, foer udvidelsens svar kom (${ms} ms): ${tekst}`);
       assert.deepEqual(JSON.parse(res.content[0].text), CALL_TIMEOUT, 'resultatet er ikke udvidelsens svar');
-      assert.ok(ms >= SENT_SVAR_MS, `svaret kom foer udvidelsen sendte det (${ms} ms) - proeven maaler ikke fristen`);
+      // CI 19/10 (Node 20): 3299 ms mod 3300 - en timer kan fyre ~1 ms foer Date.now() viser det. Pointen er, at svaret kom EFTER
+      // serverens standardfrist (STANDARD_MS), saa der gives 50 ms til urets opløsning, og standardfristen kraeves stadig overskredet.
+      assert.ok(ms >= SENT_SVAR_MS - 50 && ms > STANDARD_MS, `svaret kom foer udvidelsen sendte det (${ms} ms) - proeven maaler ikke fristen`);
     });
 
     test(`(b) ${navn}: intet svar - struktureret no-answer, sent:'unknown', «MAY», isError`, async () => {
