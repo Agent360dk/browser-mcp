@@ -185,6 +185,9 @@ async function adoptOrphanedSession(port, pid, gen = null) {
     if (!best || session.tabIds.size > best.session.tabIds.size) best = { port: p, session };
   }
   if (!best) return null;
+  // R140 (Astra, MAALT i model): kom donorens forbindelse tilbage under ventetiden, skiftede getSession generationen paa SAMME
+  // objekt, og identitetstjekket bestod. Donoren er kun forældreløs, hvis dens generation er den samme, og dens port stadig er doed.
+  const donorGen = best.session.gen;
 
   // Verify at least one tab survives — an orphan whose tabs the user already closed is
   // worthless, and adopting it would mask a genuinely fresh start.
@@ -192,7 +195,9 @@ async function adoptOrphanedSession(port, pid, gen = null) {
   for (const tabId of best.session.tabIds) {
     try { await chrome.tabs.get(tabId); alive.add(tabId); } catch {}
   }
-  if (fraLukketForbindelse(port, gen) || portenEjerFaner() || sessions.get(best.port) !== best.session) return null;
+  const { mcpPorts: nuPorte = [] } = await chrome.storage.local.get({ mcpPorts: [] });   // den sidste ventetid: porte laeses igen
+  if (fraLukketForbindelse(port, gen) || portenEjerFaner() || sessions.get(best.port) !== best.session
+    || best.session.gen !== donorGen || nuPorte.map(Number).includes(Number(best.port))) return null;
   if (!alive.size) {
     sessions.delete(best.port);
     persistSessions();

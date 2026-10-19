@@ -47,7 +47,8 @@ follow one rule on every path `browser_fill` writes by, checked in the element t
 inserted at once, and at each line break when it is typed character by character. `"\r\n"` and `"\r"` are one line break, written as a line break only
 in a textarea or a contenteditable field (also on an XHTML page). In a single-line text input (type text, search, email, url,
 tel, password or number, or no or an unknown type, which the browser treats as text) it is typed as one space instead - a line break inserted into an input submits the form, and leaving
-it out glued the words together - and the answer says so (`line_breaks_as_spaces`, `differs`, `actual`). When the tool does
+it out glued the words together - and the answer says so (`line_breaks_as_spaces`, and `differs` and `actual` when the field
+could be read back; when it could not, the answer has `unknown: true` and the count, but no value it did not see). When the tool does
 not recognise the focused element as one of those text fields - a button, a submit button, a checkbox, a frame, a closed
 shadow root, or an element it cannot read - the line break is left out, because the space key would press the button or tick
 the box, and the answer says that too (`line_breaks_left_out`). A text field the tool cannot see into (in a frame or a closed
@@ -85,8 +86,9 @@ its message.
 **A call from a closed connection runs nothing.** When a connection to the extension closes, the extension remembers it
 (the last 16 per port). A call from that connection that was still waiting inside the extension, for instance while the
 extension looked for a session to take over after a restart, now stops before it touches a session or a tab: the takeover
-checks again after each wait that the call's connection is still open, that the port still owns no tabs and that the session
-it would take over is unchanged. Before, it could run its code in a tab of the connection that took the port next (another
+checks again after its last wait, right before it changes anything, that the call's connection is still open, that the port
+still owns no tabs, and that the session it would take over is still orphaned: the same session, with the same connection, on a
+port that is still not connected. Before, it could run its code in a tab of the connection that took the port next (another
 partition or chat), or move another session onto that port, so that the new connection's next call ran in the wrong tab. The same holds
 when the extension replaces its bridge itself: the old bridge's connections count as closed once it has been closed, or as
 soon as a call comes from the new one, even if the old bridge never got to report that they closed. Its answer

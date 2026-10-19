@@ -414,3 +414,91 @@ test('aendres donoren, mens adoptionen venter paa fanerne, adopteres intet (R139
   assert.equal(await adoption, null, 'adoptionen tog en donor, der var aendret imens');
   assert.equal(u.hent('sessions').get(19862), ny, 'den nye session paa donorens port blev flyttet');
 });
+
+// ── R140 (Astra, MAALT i model paa 38169d0) ─────────────────────────────────────
+// Adoptionens slutkontrol saa kun donorens objekt-identitet. Kom donorens forbindelse tilbage, mens adoptionen ventede paa fanerne,
+// skiftede getSession generationen paa SAMME objekt - kontrollen bestod, og den levende donors fane blev flyttet. Plus fire
+// mutanter, der overlevede, fordi to betingelser altid blev testet sammen.
+function adoptionsSele({ mcpPorts = [19861] } = {}) {
+  let slipFaner, venterPaaFaner, spaer = false;
+  const faneSpaerre = new Promise((r) => { slipFaner = r; });
+  const inde = new Promise((r) => { venterPaaFaner = r; });
+  const lager = { mcpPorts };
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => (arg && Object.hasOwn(arg, 'mcpPorts') ? { mcpPorts: [...lager.mcpPorts] } : (arg && typeof arg === 'object' ? { ...arg } : {})),
+    // kun donorens fane (41) spaerres - andre opslag (fx addTabToSession for en ny fane) svarer straks
+    'tabs.get': (id) => { if (!spaer || id !== 41) return { id }; venterPaaFaner(); return faneSpaerre.then(() => ({ id })); },
+  } });
+  return { u, lager, spaerNu: () => { spaer = true; }, inde, slip: () => slipFaner() };
+}
+async function medDonor(s) {
+  s.u.hent('getSession')(19862, 101, 'donor-1');
+  await s.u.hent('addTabToSession')(19862, 41);
+  s.spaerNu();
+}
+
+test('kommer donorens forbindelse tilbage, mens adoptionen venter, adopteres intet (R140: levende donor)', async () => {
+  const s = adoptionsSele();
+  await medDonor(s);
+  const adoption = s.u.hent('adoptOrphanedSession')(19861, 101, 'aaaa1111-2');
+  await s.inde;
+  s.lager.mcpPorts = [19861, 19862];
+  s.u.hent('getSession')(19862, 101, 'aaaa1111-3');   // donorens forbindelse er tilbage og har sendt en kommando
+  s.slip();
+  assert.equal(await adoption, null, 'en levende donors session blev adopteret');
+  assert.ok(s.u.hent('sessions').get(19862)?.tabIds.has(41), 'den levende donor mistede sin fane');
+});
+
+test('donorens generation alene: skifter den, mens adoptionen venter, adopteres intet (R140)', async () => {
+  const s = adoptionsSele();
+  await medDonor(s);
+  const adoption = s.u.hent('adoptOrphanedSession')(19861, 101, 'aaaa1111-2');
+  await s.inde;
+  s.u.hent('getSession')(19862, 101, 'aaaa1111-3');   // porten staar endnu ikke i mcpPorts - kun generationen viser det
+  s.slip();
+  assert.equal(await adoption, null, 'donoren skiftede generation, men blev adopteret');
+});
+
+test('donorens port alene: bliver den levende, mens adoptionen venter, adopteres intet (R140)', async () => {
+  const s = adoptionsSele();
+  await medDonor(s);
+  const adoption = s.u.hent('adoptOrphanedSession')(19861, 101, 'aaaa1111-2');
+  await s.inde;
+  s.lager.mcpPorts = [19861, 19862];   // forbindelsen er tilbage, men har ikke sendt noget endnu
+  s.slip();
+  assert.equal(await adoption, null, 'donorens port blev levende, men sessionen blev adopteret');
+});
+
+test('porten faar en fane, mens adoptionen venter - adoptionen overskriver den ikke (R140: kun portenEjerFaner)', async () => {
+  const s = adoptionsSele();
+  await medDonor(s);
+  const adoption = s.u.hent('adoptOrphanedSession')(19861, 101, 'aaaa1111-2');
+  await s.inde;
+  s.u.hent('getSession')(19861, 101, 'aaaa1111-2');   // samme, levende forbindelse aabner en fane imens
+  await s.u.hent('addTabToSession')(19861, 99);
+  s.slip();
+  assert.equal(await adoption, null, 'adoptionen overskrev en port, der ejede en fane');
+  assert.ok(s.u.hent('sessions').get(19861)?.tabIds.has(99), 'portens egen fane forsvandt');
+});
+
+test('lukker forbindelsen, mens adoptionen venter paa fanerne, adopteres intet (R140: generationstjekket efter tabs.get)', async () => {
+  const s = adoptionsSele();
+  await medDonor(s);
+  const adoption = s.u.hent('adoptOrphanedSession')(19861, 101, 'hhhh8888-1');
+  await s.inde;
+  await s.u.fyr('runtime.onMessage', { type: 'session_disconnect', port: 19861, gen: 'hhhh8888-1' }, {}, () => {});
+  s.slip();
+  assert.equal(await adoption, null, 'en forbindelse, der lukkede under tabs.get, adopterede');
+  assert.ok(s.u.hent('sessions').get(19862)?.tabIds.has(41));
+});
+
+test('hjerteslaget: afvises lukningen, og svarer broen igen, koerer kald fra den stadig (R140)', async () => {
+  let pingSvarer = false;
+  const { koert } = await ventendeKald('iiii9999-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();   // broen svarer ikke -> lukning forsoeges -> afvist
+    pingSvarer = true;
+  }, { 'offscreen.hasDocument': true, 'offscreen.closeDocument': () => { throw new Error('closeDocument afvist'); },
+    'offscreen.createDocument': undefined, 'runtime.getManifest': { version: '9.9.9' },
+    'runtime.sendMessage': () => (pingSvarer ? { ok: true, version: '9.9.9' } : new Promise(() => {})) });
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en levende bro blev markeret lukket, fordi hjerteslagets lukning fejlede');
+});

@@ -358,3 +358,10 @@ test('text=-vejen: kan feltet ikke laeses bagefter, siger svaret stadig, at linj
   assert.equal(r.unknown, true, `proeven naaede ikke unknown-grenen: ${JSON.stringify(r)}`);
   assert.equal(r.line_breaks_left_out, 1, `unknown-svaret siger ikke, at linjeskiftet blev udeladt: ${JSON.stringify(r)}`);
 });
+
+test('text=-vejen: kan et tekst-input ikke laeses bagefter, siger svaret stadig, at linjeskiftet blev et mellemrum (R140)', async () => {
+  const { u } = linjeSide('linje', { ulaeseligt: true });
+  const r = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Felt', value: 'a\nb' });
+  assert.equal(r.unknown, true, `proeven naaede ikke unknown-grenen: ${JSON.stringify(r)}`);
+  assert.equal(r.line_breaks_as_spaces, 1, `unknown-svaret siger ikke, at linjeskiftet blev et mellemrum: ${JSON.stringify(r)}`);
+});
