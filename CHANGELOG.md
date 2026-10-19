@@ -77,6 +77,12 @@ answer arrives within the 45 seconds, the server answers `no-answer` with `sent:
 not repeated, and the agent should call again only if the code is safe to run twice. Every other tool keeps its limit and
 its message.
 
+**The extension's bridge is not torn down for one late answer.** The extension checks that its bridge (the offscreen
+document that holds the connection to the server) answers, and replaced it when one question got no answer within 1.5
+seconds. On the same kind of page that happened, and replacing the bridge also closes its connection to the server. Now a
+question without an answer is followed by a second one, and the bridge is replaced only when neither is answered within
+3 seconds of the first. A bridge that is gone or outdated is still replaced at once.
+
 **New answers an agent can see:**
 
 | Answer | Where | Means |

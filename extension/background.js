@@ -3540,12 +3540,24 @@ async function findElement(tabId, selectorStr, ingenRul = false) {
 // ud var ↻ i haanden.
 //
 // Nu spoerges dokumentet om det er der. Svarer det ikke, erstattes det.
+//
+// R137 (maalt 19/10 paa en side med 50-200 navigationer i sekundet): under en lammet browsertraad kom ét svar for sent, og
+// broen blev revet ned - med WebSocket-forbindelsen og de svar, der var paa vej. Broen erstattes derfor kun efter to mistede
+// svar i traek: svarer den foerste ping ikke inden 1,5 s, sendes en til, og et svar paa en af dem inden for 1,5 s mere taeller.
+// Et afslag (ingen modtager) er et svar: det er der ingen grund til at vente paa.
 async function offscreenSvarer() {
+  const ping = () => chrome.runtime.sendMessage({ type: 'bmcp_ping' });
+  const frist = () => new Promise((_, afvis) => setTimeout(() => afvis(new Error('no answer')), 1500));
   try {
-    const svar = await Promise.race([
-      chrome.runtime.sendMessage({ type: 'bmcp_ping' }),
-      new Promise((_, afvis) => setTimeout(() => afvis(new Error('no answer')), 1500)),
-    ]);
+    const foerste = ping();
+    foerste.catch(() => {});
+    let svar;
+    try {
+      svar = await Promise.race([foerste, frist()]);
+    } catch (e) {
+      if (e?.message !== 'no answer') throw e;
+      svar = await Promise.race([Promise.any([foerste, ping()]), frist()]);
+    }
     if (svar?.ok !== true) return false;
     // "Svarer den?" er ikke nok — den skal ogsaa vaere den udgave vi koerer nu.
     // En bro fra en aeldre udgave svarer lige saa villigt, og saa blev den aldrig
