@@ -3858,6 +3858,9 @@ async function ensureOffscreenIndre() {
     // R138/R139: lukket - det gamle dokuments forbindelser er lukkede, ogsaa hvis det ikke naaede at sige det selv.
     broenErstattes();
   }
+  // R144 (Astra, model): fandt hjerteslaget INGEN bro, og bekræfter begge kilder, at den er vaek, er den forrige bro erstattet - ogsaa
+  // naar en tidligere lukning efterlod den umarkeret (H3 med en kontekstliste, der endnu viste den).
+  if (!findes && broensDokument !== null && await broenErVaek()) broenErstattes();
 
   // Versionen foelger med i URL'en. Et offscreen-dokument har IKKE
   // chrome.runtime.getManifest() — kaldet kaster "is not a function", saa dokumentet

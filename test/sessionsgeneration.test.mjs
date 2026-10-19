@@ -576,7 +576,7 @@ test('lukker closeDocument broen og kaster bagefter, er broen erstattet: kald fr
   let findes = true;
   const { sent, koert } = await ventendeKald('mmmm1313-1', async ({ u }) => {
     await u.hent('genbygOffscreen')();
-  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+  }, { 'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []), 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
     'offscreen.createDocument': () => { findes = true; }, 'runtime.getManifest': { version: '9.9.9' },
     'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den lukkede bro koerte: ${JSON.stringify(sent)}`);
@@ -587,7 +587,7 @@ test('hjerteslaget: lukker closeDocument broen og kaster bagefter, er broen erst
   let findes = true;
   const { sent, koert } = await ventendeKald('nnnn1414-1', async ({ u }) => {
     await u.hent('ensureOffscreen')();
-  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+  }, { 'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []), 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
     'offscreen.createDocument': () => { findes = true; }, 'runtime.sendMessage': () => new Promise(() => {}) });
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den lukkede bro koerte: ${JSON.stringify(sent)}`);
 });
@@ -644,7 +644,7 @@ test('hjerteslaget: lukker closeDocument og kaster bagefter, bygges en ny bro (R
   let findes = true, oprettet = 0;
   await ventendeKald('tttt2020-1', async ({ u }) => {
     await u.hent('ensureOffscreen')();
-  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+  }, { 'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []), 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
     'offscreen.createDocument': () => { oprettet += 1; findes = true; }, 'runtime.sendMessage': () => new Promise(() => {}) });
   assert.equal(oprettet, 1, 'hjerteslaget gav op efter H3 i stedet for at bygge en ny bro');
 });
@@ -653,7 +653,7 @@ test('genopbygningen: H3 og en fejlet oprettelse - den gamle bro er stadig ersta
   let findes = true;
   const { sent, koert } = await ventendeKald('uuuu2121-1', async ({ u }) => {
     await u.hent('genbygOffscreen')().catch(() => {});
-  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+  }, { 'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []), 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
     'offscreen.createDocument': () => { throw new Error('oprettelse fejlede'); }, 'runtime.getManifest': { version: '9.9.9' },
     'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den lukkede bro koerte, fordi oprettelsen fejlede: ${JSON.stringify(sent)}`);
@@ -705,4 +705,55 @@ test('kan Chrome ikke liste sine kontekster, er broen IKKE erstattet: kald fra d
     };
   })());
   assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en bro blev markeret doed, selv om Chrome ikke kunne bekræfte det');
+});
+
+// ── R144 (Astra) ────────────────────────────────────────────────────────────────
+// B1: uden runtime.getContexts (Chrome foer 116) afgoer hasDocument alene. B2: kontekstlisten skal spoerges efter OFFSCREEN_DOCUMENT -
+// svaret her afhaenger af filteret. Og: finder hjerteslaget ingen bro, og bekræfter begge kilder det, er den forrige bro erstattet.
+function h3Svar(ekstra = {}) {
+  let findes = true;
+  return { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => { findes = true; }, 'runtime.getManifest': { version: '9.9.9' },
+    'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []),
+    'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }), ...ekstra };
+}
+
+test('uden runtime.getContexts afgoer hasDocument alene: H3 erstatter broen (R144: B1)', async () => {
+  const { sent, koert } = await ventendeKald('yyyy2525-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, h3Svar(), (u) => { delete u.ctx.chrome.runtime.getContexts; });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `uden getContexts blev en lukket bro ikke erstattet: ${JSON.stringify(sent)}`);
+});
+
+test('kontekstlisten spoerges efter OFFSCREEN_DOCUMENT - service workerens egen kontekst holder ikke broen i live (R144: B2)', async () => {
+  const { sent, koert } = await ventendeKald('zzzz2626-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, h3Svar({ 'runtime.getContexts': (filter) => {
+    const typer = filter?.contextTypes || [];
+    return typer.includes('OFFSCREEN_DOCUMENT') ? [] : [{ contextType: 'BACKGROUND' }];
+  } }));
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `en lukket bro blev holdt i live af en anden konteksttype: ${JSON.stringify(sent)}`);
+});
+
+test('finder hjerteslaget ingen bro, og bekræfter begge kilder det, er den forrige bro erstattet (R144)', async () => {
+  let kontekstHaenger = true;
+  const { sent, koert } = await ventendeKald('abab2727-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')().catch(() => {});     // H3, men kontekstlisten viser stadig dokumentet -> ikke markeret
+    kontekstHaenger = false;
+    await u.hent('ensureOffscreen')().catch(() => {});     // naeste hjerteslag: intet dokument, ingen kontekst
+  }, h3Svar({ 'offscreen.createDocument': () => { throw new Error('oprettelse fejlede'); },
+    'runtime.getContexts': () => (kontekstHaenger ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []) }));
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `hjerteslaget genoprettede uden at erstatte den forrige bro: ${JSON.stringify(sent)}`);
+});
+
+test('uden getContexts: kan Chrome ikke svare paa om broen findes, er den IKKE erstattet (R144: A1 for Chrome foer 116)', async () => {
+  const { koert } = await ventendeKald('cdcd2828-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, (() => {
+    let lukForsoegt = false, kontrolAfvist = false;
+    return { 'offscreen.hasDocument': () => { if (lukForsoegt && !kontrolAfvist) { kontrolAfvist = true; throw new Error('hasDocument afvist'); } return true; },
+      'offscreen.closeDocument': () => { lukForsoegt = true; throw new Error('closeDocument afvist'); }, 'offscreen.createDocument': undefined,
+      'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) };
+  })(), (u) => { delete u.ctx.chrome.runtime.getContexts; });
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'uden getContexts blev en bro markeret lukket paa et uafklaret hasDocument');
 });

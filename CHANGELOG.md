@@ -94,7 +94,8 @@ so such a session is not taken over. Before, it could run its code in a tab of t
 partition or chat), or move another session onto that port, so that the new connection's next call ran in the wrong tab. The same holds
 when the extension replaces its bridge itself: the old bridge's connections count as closed once Chrome has closed it - its close
 call succeeded, or failed while Chrome confirms the document is gone (no offscreen document, and no offscreen context where
-Chrome can report contexts) - or as soon as a call comes from the new one, even if the old
+Chrome can report contexts), or when a later heartbeat finds no bridge and both sources confirm it - or as soon as a call comes
+from the new one, even if the old
 bridge never got to report that they closed. If Chrome cannot confirm either, the old bridge is treated as still open. Its answer
 (`connection-closed`, `sent: false`) goes back over the closed connection, so no agent sees it; what changes is that nothing
 runs.
