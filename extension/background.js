@@ -823,6 +823,21 @@ const agentLukkedeFaner = new Set();
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
 // 1.32 (S4): port -> den generation (forbindelse), frigivelsen blev bestilt for (null for en session uden generation).
 const frivilligtFrigivet = new Map();
+// R138 (Astra, MAALT i model): et kald fra en forbindelse, der er lukket, ventede i sessionsgendannelsen, mens en ny forbindelse
+// tog porten; bagefter koerte det sin kode i den nye forbindelses fane og stemplede sessionen tilbage. Broen sender
+// session_disconnect med forbindelsens generation, naar den lukker; de generationer huskes her pr. port (de seneste 16), og et kald
+// fra en af dem koerer intet. Kun i hukommelsen: en genstartet service worker har ingen ventende kald fra foer genstarten.
+const lukkedeGen = new Map();   // port -> Set af generationer, hvis forbindelse er lukket
+function forbindelsenLukket(port, gen) {
+  if (typeof gen !== 'string') return;
+  const saet = lukkedeGen.get(port) || new Set();
+  saet.add(gen);
+  while (saet.size > 16) saet.delete(saet.values().next().value);
+  lukkedeGen.set(port, saet);
+}
+const fraLukketForbindelse = (port, gen) => typeof gen === 'string' && !!lukkedeGen.get(port)?.has(gen);
+const LUKKET_SVAR = { ok: false, error: 'connection-closed', sent: false,
+  note: 'This call came from a connection to the extension that has closed since; nothing was run.' };
 // Hvilken plads en chat sidst havde, husket paa dens pid — ikke paa porten.
 //
 // MAALT 8/9 (#17): siden porten slippes naar en session er faerdig, slettes sessionen.
@@ -3847,9 +3862,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const svar = (r) => { if (svaret) return; svaret = true; sendResponse(r); };
     // Restore sessions from storage (service worker may have restarted), then take over any
     // session orphaned by an unclean disconnect so navigate→click keeps hitting the same tab.
+    // R138: et kald fra en lukket forbindelse koerer intet - tjekket efter hver ventetid (gendannelse, adoption), foer sessionen roeres.
     const arbejde = restoreSessions()
-      .then(() => adoptOrphanedSession(port, msg.pid).catch(() => null)) // adoption is best-effort, never fatal
+      .then(() => (fraLukketForbindelse(port, msg.gen) ? null : adoptOrphanedSession(port, msg.pid).catch(() => null))) // adoption is best-effort, never fatal
       .then(() => {
+        if (fraLukketForbindelse(port, msg.gen)) return { ...LUKKET_SVAR };
         // Stempl pid'en ÉT sted, foer dispatch. De fem nedstroems getSession(port)-kald
         // arver den derfra, saa ingen af dem behoever at kende til pid-begrebet.
         getSession(port, msg.pid, msg.gen);
@@ -3871,6 +3888,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'session_disconnect') {
+    forbindelsenLukket(msg.port, msg.gen);
     releaseSession(msg.port, msg.gen);
     return;
   }

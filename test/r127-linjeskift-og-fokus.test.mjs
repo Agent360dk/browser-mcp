@@ -295,3 +295,28 @@ test('R130: set_date\'s aendringsrapport kender felterne paa identitet - en omby
   assert.deepEqual(JSON.parse(JSON.stringify(r.changed ?? [])), [], `svaret meldte aendringer, der aldrig skete: ${JSON.stringify(r.changed)}`);
   assert.match(String(r.note), /Nothing was (cleared or typed|changed)/i, r.note);
 });
+
+// ── R138 (Astra, mutant «nu = x.v» overlevede): set_date's ændringsrapport skal kunne melde en ÆGTE ændring. Prøverne maalte
+//    kun, at en ombytning ikke blev meldt; en rapport, der aldrig melder noget, bestod. Siden-koden koeres her i en lille DOM.
+test('set_date: feltAendringer melder en aegte aendring og ikke en ombytning (R138)', async () => {
+  const { runInNewContext } = await import('node:vm');
+  const u = indlaesUdvidelse();
+  const d = { tagName: 'INPUT', id: 'd', value: 'gammel' };
+  const andet = { tagName: 'TEXTAREA', id: 'ta', value: 'VIGTIG' };
+  let felter = [d, andet];
+  const doc = { querySelectorAll: () => felter, querySelector: () => d };
+  const vindue = {};
+  u.ctx.cdpSend = async (_t, metode, p) => (metode === 'Runtime.evaluate'
+    ? { result: { value: runInNewContext(p.expression, { document: doc, window: vindue }) } } : {});
+  // kun ombytning: intet meldes
+  let noegle = await u.hent('feltFoer')(1);
+  assert.ok(noegle, 'feltFoer gav ingen noegle - proeven kan ikke maale noget');
+  felter = [andet, d];
+  const json = (x) => JSON.parse(JSON.stringify(x));   // svaret kommer fra en anden vm-kontekst (andre prototyper)
+  assert.deepEqual(json(await u.hent('feltAendringer')(1, '#d', noegle)), [], 'en ombytning blev meldt som en aendring');
+  // aegte aendring i maalfeltet: meldes med foer og efter
+  noegle = await u.hent('feltFoer')(1);
+  d.value = '';
+  const r = await u.hent('feltAendringer')(1, '#d', noegle);
+  assert.deepEqual(json(r), [{ tag: 'INPUT', id: 'd', target: true, value_before: 'gammel', value: '' }], 'en aegte aendring blev ikke meldt');
+});

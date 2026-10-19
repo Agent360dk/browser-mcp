@@ -77,6 +77,13 @@ answer arrives within the 45 seconds, the server answers `no-answer` with `sent:
 not repeated, and the agent should call again only if the code is safe to run twice. Every other tool keeps its limit and
 its message.
 
+**A call from a closed connection runs nothing.** When a connection to the extension closes, the extension remembers it
+(the last 16 per port). A call from that connection that was still waiting inside the extension, for instance while the
+extension restored its sessions after a restart, now stops before it touches a session or a tab. Before, it could run its code
+in a tab of the connection that took the port next (another partition or chat) and take that session over. Its answer
+(`connection-closed`, `sent: false`) goes back over the closed connection, so no agent sees it; what changes is that nothing
+runs.
+
 **The extension's bridge is not torn down for one late answer.** The extension checks that its bridge (the offscreen
 document that holds the connection to the server) answers, and replaced it when one question got no answer within 1.5
 seconds. On the same kind of page that happened, and replacing the bridge also closes its connection to the server. Now a

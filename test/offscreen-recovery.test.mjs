@@ -233,6 +233,15 @@ test('R137: et svar efter 2 s én gang river ikke broen ned', async () => {
   assert.equal(r.oprettet, 0);
 });
 
+// R138 (Astra, mutant «kun den anden ping taeller» overlevede): foerste pings svar efter 2 s skal taelle, ogsaa naar den anden
+// aldrig svarer - ellers er det den anden pings svar, der redder broen, ikke det sene svar.
+test('R137/R138: den foerste pings sene svar taeller, selv om den anden ping aldrig svarer', async () => {
+  const r = await koer({ findes: true, pingForsinkelser: [2000, null] });
+  assert.equal(r.pings, 2, 'der blev ikke spurgt en gang til efter 1,5 s');
+  assert.equal(r.lukket, 0, 'det sene svar paa foerste ping blev ignoreret, og broen blev revet ned');
+  assert.equal(r.oprettet, 0);
+});
+
 test('R137: to mistede svar i traek erstatter stadig broen', async () => {
   const r = await koer({ findes: true, pingForsinkelser: [null, null] });
   assert.equal(r.pings, 2, 'der blev ikke spurgt to gange');

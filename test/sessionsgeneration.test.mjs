@@ -216,3 +216,43 @@ test('broen: en bestilt frigivelse for en anden generation end portens nuvaerend
     assert.equal(w2.readyState, 3, 'en frigivelse for den nuvaerende forbindelse lukkede den ikke');
   });
 });
+
+// ── R138 (Astra, MAALT i model paa e2ec519) ─────────────────────────────────────
+// Et kald fra den gamle forbindelse ventede i sessionsgendannelsen (storage.local.get), mens forbindelsen lukkede, og en ny
+// forbindelse paa samme port (en partition, pid null) tog porten og aabnede fane 99. Da gendannelsen slap, koerte det gamle
+// kald sin kode i fane 99 og stemplede sessionen tilbage til den gamle generation og dens pid. Et kald fra en forbindelse, der
+// er lukket, maa intet koere og intet overtage.
+test('et kald fra en LUKKET forbindelse, der ventede i gendannelsen, koerer intet i den nye forbindelses fane (R138)', async () => {
+  let slip, ventede;
+  const blokeret = new Promise((r) => { slip = r; });
+  const inde = new Promise((r) => { ventede = r; });
+  const koert = [];
+  const fane = { id: 99, url: 'about:blank', windowId: 1, active: false };
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => {
+      if (arg && Object.hasOwn(arg, 'mcpPorts')) { ventede(); return blokeret; }
+      return arg && typeof arg === 'object' ? { ...arg } : {};
+    },
+    'tabs.create': fane, 'tabs.get': fane, 'tabs.query': [], 'tabs.group': 1,
+    'debugger.attach': undefined, 'debugger.detach': undefined, 'debugger.getTargets': [{ tabId: 99, attached: true }],
+    'debugger.sendCommand': (maal, metode, p) => {
+      if (metode === 'Runtime.evaluate') { koert.push(p.expression); return { result: { value: p.expression } }; }
+      return {};
+    },
+  } });
+  const lytter = u.lyttere.get('runtime.onMessage')[0];
+  const kald = (gen, pid, kode) => new Promise((ok) => lytter(
+    { type: 'mcp_command', port: 19861, gen, pid, method: 'execute_script', params: { code: kode } }, {}, ok));
+  const gammelt = kald('gammel', 101, '"GAMMEL"');
+  await inde;
+  await u.fyr('runtime.onMessage', { type: 'session_disconnect', port: 19861, gen: 'gammel' }, {}, () => {});
+  const nyt = await kald('ny', null, '"NY"');
+  assert.match(String(nyt.result), /NY/, 'den nye forbindelses kald koerte ikke - proeven kan ikke maale noget');
+  slip({ mcpPorts: [19861] });
+  const sent = await gammelt;
+  assert.ok(!koert.some((k) => k.includes('GAMMEL')), `den lukkede forbindelses kode koerte i fane 99: ${JSON.stringify(koert)}`);
+  assert.equal(sent.sent, false, `svaret paa det gamle kald siger ikke sent:false: ${JSON.stringify(sent)}`);
+  const s = u.hent('sessions').get(19861);
+  assert.equal(s.gen, 'ny', 'den lukkede forbindelse overtog sessionen');
+  assert.equal(s.pid, null, 'den lukkede forbindelses pid blev stemplet paa den nye forbindelses session');
+});
