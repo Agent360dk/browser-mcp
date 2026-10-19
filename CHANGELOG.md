@@ -85,20 +85,22 @@ its message.
 
 **A call from a closed connection runs nothing.** When a connection to the extension closes, the extension remembers it
 (the last 16 per port). A call from that connection that was still waiting inside the extension, for instance while the
-extension looked for a session to take over after a restart, now stops before it touches a session or a tab: the takeover
+extension looked for a session to take over after a restart, now stops before it touches a session or a tab. The takeover
 checks again after its last wait, right before it changes anything, that the call's connection is still open, that the port
 still owns no tabs, and that the session it would take over is still orphaned: the same session, with the same connection, on a
 port the bridge has not reported as connected - by the latest status the extension has received, or, after the extension
-restarted and until the bridge next reports, by the stored list. It errs on the safe side: a port the bridge lists while it is still connecting counts as connected,
-so such a session is not taken over. Before, it could run its code in a tab of the connection that took the port next (another
-partition or chat), or move another session onto that port, so that the new connection's next call ran in the wrong tab. The same holds
-when the extension replaces its bridge itself: the old bridge's connections count as closed once Chrome has closed it - its close
-call succeeded, or failed while Chrome confirms the document is gone (no offscreen document, and no offscreen context where
-Chrome can report contexts), or when a later heartbeat finds no bridge and all available sources confirm it - or as soon as a call comes
-from the new one, even if the old
-bridge never got to report that they closed. If Chrome cannot confirm either, the old bridge is treated as still open. Its answer
-(`connection-closed`, `sent: false`) goes back over the closed connection, so no agent sees it; what changes is that nothing
-runs.
+restarted and until the bridge next reports, by the stored list. It errs on the safe side: a port the bridge lists while it is
+still connecting counts as connected, so such a session is not taken over. Before, a waiting call could run its code in a tab of
+the connection that took the port next (another partition or chat), or move another session onto that port, so that the new
+connection's next call ran in the wrong tab.
+
+The same holds when the bridge (the offscreen document) goes away, whether the extension replaces it or it closes by itself.
+Its connections count as closed as soon as one of these is true: the extension's close call succeeded; the close call failed,
+but Chrome reports no offscreen document and, where Chrome can list contexts (Chrome 116 and later), no offscreen context
+either; a later heartbeat (at most a minute later) finds no bridge and the same sources confirm it; or a call arrives from the
+new bridge. If Chrome cannot confirm that the old bridge is gone, it is treated as still open. A call from a closed connection
+gets `connection-closed`, `sent: false`; the answer goes back over the closed connection, so no agent sees it - what changes is
+that nothing runs.
 
 **The extension's bridge is not torn down for one late answer.** The extension checks that its bridge (the offscreen
 document that holds the connection to the server) answers, and replaced it when one question got no answer within 1.5
