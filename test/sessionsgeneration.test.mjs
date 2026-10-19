@@ -757,3 +757,56 @@ test('uden getContexts: kan Chrome ikke svare paa om broen findes, er den IKKE e
   })(), (u) => { delete u.ctx.chrome.runtime.getContexts; });
   assert.ok(koert.some((x) => x.includes('GAMMEL')), 'uden getContexts blev en bro markeret lukket paa et uafklaret hasDocument');
 });
+
+// ── R145 (Astra, dækning C2-C4 + den trofaste A3) ───────────────────────────────
+// Hjerteslaget, naar broen er forsvundet af sig selv: markerer det, og bygger det en ny? Og H3-markeringen sker FOER oprettelsen.
+function forsvundetSvar(kontekster) {
+  const s = { findes: true, oprettet: 0 };
+  const svar = { 'offscreen.hasDocument': () => s.findes, 'offscreen.createDocument': () => { s.oprettet += 1; s.findes = true; },
+    'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) };
+  if (kontekster !== undefined) svar['runtime.getContexts'] = kontekster;
+  return { s, svar };
+}
+
+test('broen forsvinder af sig selv: hjerteslaget markerer den forrige OG bygger én ny (R145: C2)', async () => {
+  const { s, svar } = forsvundetSvar(() => []);
+  const { sent, koert } = await ventendeKald('efef2929-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();   // opstartens egen opbygning er faerdig - ellers slutter hjerteslaget sig blot til den
+    s.findes = false;
+    await u.hent('ensureOffscreen')();
+  }, svar);
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `den forsvundne bros kald koerte: ${JSON.stringify(sent)}`);
+  assert.equal(s.oprettet, 1, `hjerteslaget byggede ${s.oprettet} broer, ikke én`);
+});
+
+test('broen forsvinder af sig selv uden getContexts: hasDocument alene markerer (R145: C3)', async () => {
+  const { s, svar } = forsvundetSvar();
+  const { sent, koert } = await ventendeKald('ghgh3030-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();   // opstartens egen opbygning er faerdig - ellers slutter hjerteslaget sig blot til den
+    s.findes = false;
+    await u.hent('ensureOffscreen')();
+  }, svar, (u) => { delete u.ctx.chrome.runtime.getContexts; });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `uden getContexts blev den forsvundne bro ikke markeret: ${JSON.stringify(sent)}`);
+  assert.equal(s.oprettet, 1);
+});
+
+test('broen forsvinder, men fraværet kan ikke bekræftes: hjerteslaget bygger stadig en ny bro (R145: C4)', async () => {
+  const { s, svar } = forsvundetSvar(() => { throw new Error('getContexts afvist'); });
+  await ventendeKald('ijij3131-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();   // opstartens egen opbygning er faerdig - ellers slutter hjerteslaget sig blot til den
+    s.findes = false;
+    await u.hent('ensureOffscreen')();
+  }, svar);
+  assert.equal(s.oprettet, 1, 'hjerteslaget opgav at bygge en ny bro, fordi fraværet ikke kunne bekræftes');
+});
+
+test('H3 i genopbygningen markerer FOER oprettelsen: fejler oprettelsen, og kan naeste kontrol ikke afgoere noget, er broen erstattet (R145: A3)', async () => {
+  let findes = true, kontekstKald = 0;
+  const { sent, koert } = await ventendeKald('klkl3232-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')().catch(() => {});
+  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => { throw new Error('oprettelse fejlede'); },
+    'runtime.getContexts': () => { kontekstKald += 1; if (kontekstKald === 1) return []; throw new Error('getContexts afvist'); },
+    'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `markeringen ventede paa oprettelsen, og den lukkede bros kald koerte: ${JSON.stringify(sent)}`);
+});
