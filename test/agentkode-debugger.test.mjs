@@ -593,6 +593,17 @@ test('budget: oprydningen (maerket fjernes) holder ikke svaret tilbage', async (
   assert.ok(m.log.some((x) => x.oprydningFaerdig), 'oprydningen blev ikke gjort faerdig');
 });
 
+test('budget: opslaget venter ikke forbi fristen, selv om framen aldrig svarer paa maerkningen', async () => {
+  const m = sele({ frames: toFrames, par: toPar, traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] } });
+  m.u.chrome.scripting.executeScript = () => new Promise(() => {});   // framen svarer aldrig
+  const t0 = Date.now();
+  const svar = await fang(m.u.hent('findFrameKontekst')(1, toFrames, toFrames[1], Date.now() + 150));
+  assert.ok(Date.now() - t0 < 1500, `opslaget ventede ${Date.now() - t0} ms`);
+  assert.match(svar.kastet || '', /ran out of time/);
+  assert.equal(m.evalueringer().length, 0);
+});
+
 // R133 (Opus): med 40 eller flere fremmede frames i toppen saa tilknytningen ikke i deres egne fremmede boern.
 test('select_frame: en fremmed frame inde i den 41. fremmede frame naas', async () => {
   const top = Array.from({ length: 41 }, (_, i) => ({ frameId: 100 + i, parentFrameId: 0, url: `https://x${i}.example/` }));
