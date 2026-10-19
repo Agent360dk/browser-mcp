@@ -728,10 +728,8 @@ test('uden runtime.getContexts afgoer hasDocument alene: H3 erstatter broen (R14
 test('kontekstlisten spoerges efter OFFSCREEN_DOCUMENT - service workerens egen kontekst holder ikke broen i live (R144: B2)', async () => {
   const { sent, koert } = await ventendeKald('zzzz2626-1', async ({ u }) => {
     await u.hent('genbygOffscreen')();
-  }, h3Svar({ 'runtime.getContexts': (filter) => {
-    const typer = filter?.contextTypes || [];
-    return typer.includes('OFFSCREEN_DOCUMENT') ? [] : [{ contextType: 'BACKGROUND' }];
-  } }));
+  }, h3Svar({ 'runtime.getContexts': (filter) => [{ contextType: 'BACKGROUND' }]   // dokumentet er lukket; workeren findes
+    .filter((k) => !filter?.contextTypes || filter.contextTypes.includes(k.contextType)) }));
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `en lukket bro blev holdt i live af en anden konteksttype: ${JSON.stringify(sent)}`);
 });
 
@@ -843,9 +841,10 @@ test('hjerteslaget: mens den nye bro bygges, er den forsvundne bros kald allered
     hjerteslag = u.hent('ensureOffscreen')().catch(() => {});
     await opretStartet;                         // hjerteslaget er naaet til oprettelsen, som venter
   }, { 'offscreen.hasDocument': () => findes,
-    // R148 (Astra F2): svaret afhaenger af filteret - service workerens egen kontekst (BACKGROUND) findes altid
-    'runtime.getContexts': (filter) => ((filter?.contextTypes || []).includes('OFFSCREEN_DOCUMENT')
-      ? (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []) : [{ contextType: 'BACKGROUND' }]),
+    // R148/R149 (Astra F2/F3): kontekstlisten filtreres som i Chrome - service workeren (BACKGROUND) findes altid, og et filter med
+    // flere typer faar alle de matchende
+    'runtime.getContexts': (filter) => [{ contextType: 'BACKGROUND' }, ...(findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : [])]
+      .filter((k) => !filter?.contextTypes || filter.contextTypes.includes(k.contextType)),
     'offscreen.createDocument': () => { opretKaldt(); return opretVenter.then(() => { findes = true; }); },
     'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `den forsvundne bros kald koerte, foer den nye bro var bygget: ${JSON.stringify(sent)}`);
