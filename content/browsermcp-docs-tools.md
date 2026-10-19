@@ -53,7 +53,7 @@ The list below is what the client has to choose from.
 | `browser_close_tab` | Close a tab by ID (session-owned tabs only). |
 | `browser_get_new_tab` | Return the most recently opened tab - useful after a link opens a new tab or an OAuth popup. |
 | `browser_list_frames` | List all iframes on the current page with URL and index. |
-| `browser_select_frame` | Execute JavaScript inside a specific iframe, targeted by index - also a frame from another site. Like `browser_execute_script` it runs through the Chrome debugger; the frame is identified by a one-time mark the extension puts in that frame's document, not by its address or position, and if the mark is not found, nothing is run (`frame-not-reachable`, with `retry` saying whether calling again can help). |
+| `browser_select_frame` | Execute JavaScript inside a specific iframe, targeted by index - also a frame from another site. Like `browser_execute_script` it runs through the Chrome debugger; the frame is identified by a one-time mark the extension puts in that frame's document, not by its address or position, and if the mark is not found, nothing is run (`frame-not-reachable`, with `retry` saying whether calling again can help; a frame whose document is replaced while the call looks for it gives `retry: true`). |
 
 ## Data & Storage - 5 tools
 
