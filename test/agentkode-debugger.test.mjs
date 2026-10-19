@@ -252,7 +252,7 @@ test('select_frame 0 koerer i hovedsiden via debuggeren', async () => {
   assert.equal(svar.frame_url, TOP);
 });
 
-test('select_frame i en frame fra samme domaene: identiteten bevises paa ejer-elementet, og koden koerer i framens standardkontekst', async () => {
+test('select_frame i en frame fra samme domaene: identiteten bevises med et engangsmaerke i framens dokument, og koden koerer i framens standardkontekst', async () => {
   const m = sele({
     frames: toFrames, par: toPar,
     traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
@@ -281,7 +281,7 @@ test('select_frame i en frame fra samme domaene: identiteten bevises paa ejer-el
   assert.ok(sidste('Runtime.disable') > sidste('Runtime.enable'), 'Runtime skal slaas fra igen, efter at konteksten er fundet');
 });
 
-test('select_frame: to frames fra samme domaene med samme adresse skilles ad paa ejer-elementet, ikke paa raekkefoelgen', async () => {
+test('select_frame: to frames fra samme domaene med samme adresse skilles ad paa maerket, ikke paa raekkefoelgen', async () => {
   // Debuggerens boern staar i omvendt raekkefoelge af udvidelsens frameId - en positionel parring ville bytte dem om.
   const m = sele({
     frames: [{ frameId: 0, parentFrameId: -1, url: TOP }, { frameId: 4, parentFrameId: 0, url: BARN }, { frameId: 7, parentFrameId: 0, url: BARN }],
