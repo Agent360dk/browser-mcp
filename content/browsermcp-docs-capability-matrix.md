@@ -58,7 +58,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | Wall | State | Note |
 |---|---|---|
 | Content Security Policy blocks injected script | **By design** | The debugger path does not go through `eval`, so CSP-strict pages (Google Cloud, Stripe, Angular Material) work where script injection is refused. |
-| Content inside an iframe | **By design** | `browser_list_frames` and `browser_select_frame`. |
+| Content inside an iframe | **By design** | `browser_list_frames` and `browser_select_frame`, also in a frame from another site. |
 | Shadow DOM | **By design** | The click path resolves through shadow roots before dispatching. |
 | React / Vue controlled input that "resets itself" | **Fixed in 1.29.1** | In v1.29.0 `browser_fill` could append instead of replacing. Fixed 2026-09-08: it now reads the field back after clearing it. |
 | Native `<select>` | **Measured** | `browser_select_option`, 9 ms, 2026-09-09. |
@@ -94,7 +94,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 ## Frequently asked questions
 
 **Does Browser MCP work on sites with a strict Content Security Policy?**
-Partly. The Chrome Debugger API carries most of the work, but `browser_execute_script` cannot run on pages with a strict CSP when the debugger is also unavailable - both string-evaluation paths are blocked, one by the page and one by the extension's own policy. It is written down rather than hidden.
+Yes, as long as Chrome lets the extension use its debugger. The Chrome Debugger API carries most of the work, and from 1.31.0 `browser_execute_script` and `browser_select_frame` run JavaScript only through it, which a page's CSP does not stop. When Chrome refuses the debugger (an enterprise policy, or the debugging notice was cancelled), those two tools fail with an error that says the code was not run. It is written down rather than hidden.
 
 **Does it work headless, or in CI?**
 No, and it never will. The extension drives a real Chrome on a real desktop. For CI, use Playwright MCP - that is what it was built for.

@@ -138,7 +138,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       get: (navn, cb) => { optager.kald.push({ sti: 'alarms.get', args: [navn] }); if (cb) cb(svar['alarms.get']); },
       onAlarm: haendelse('alarms.onAlarm'),
     },
-    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
+    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), getFrame: kald('webNavigation.getFrame'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
     notifications: { create: kald('notifications.create'), clear: kald('notifications.clear') },
     cookies: { getAll: kald('cookies.getAll'), set: kald('cookies.set'), getAllCookieStores: kald('cookies.getAllCookieStores') },
     permissions: { contains: kald('permissions.contains'), request: kald('permissions.request') },
@@ -155,7 +155,9 @@ export function byggChrome(svar = {}, optager = new Optager()) {
  *   u.optager.sidste('tabs.update')     -> hvad der blev sendt til Chrome
  *   u.fyr('tabs.onRemoved', 42)         -> fyr en registreret lytter
  */
-export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' } = {}) {
+// ur (R133): en funktion, der giver «nu» i ms. Saa bruger udvidelsens Date.now et virtuelt ur, og en proeve kan lade et
+// kald tage 1 s uden at vente 1 s. setTimeout er stadig det rigtige.
+export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js', ur = null } = {}) {
   const { chrome, optager, lyttere } = byggChrome(svar);
   const src = readFileSync(join(ROD, kilde), 'utf8');
 
@@ -188,10 +190,11 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
   const loeft = [
     'armeredeDialoger', 'dialogLoefter', 'sessions', 'debuggerAttached',
     'agentLukkedeFaner', 'SELECT_ALL_MODS', 'CDP_CHAR_CODES', 'RETRYABLE_CDP_METHODS',
-    'pendingAsks', 'NAV_FRISTER', 'dialogFaner',
+    'pendingAsks', 'NAV_FRISTER', 'dialogFaner', 'AGENTKODE_FRIST',
   ];
   const hale = '\n;' + loeft.map((n) => `try { globalThis.__t_${n} = ${n}; } catch (e) {}`).join('\n');
 
+  if (ur) { ctx.__ur = ur; vm.runInContext('Date.now = () => __ur();', ctx); }
   vm.runInContext(src + hale, ctx, { filename: kilde });
 
   for (const n of loeft) {

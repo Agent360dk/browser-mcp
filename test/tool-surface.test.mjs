@@ -198,16 +198,14 @@ test('parameter-aliasser findes hvor navnene historisk er blevet forvekslet', ()
   }
 });
 
-test('select_frame bygger ikke funktioner i service-workeren', () => {
-  const i = bgSrc.indexOf("case 'select_frame'");
-  // Kommentarer strippes: forklaringen af fejlen citerer den gamle kode, og en
-  // negativ paastand maa ikke fyre paa sin egen dokumentation.
-  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+test('select_frame koerer agentens kode gennem debuggeren og bygger ingen funktion af en streng', () => {
+  // MAALT 21/8: her stod `func: new Function(...)` i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet
+  // fejlede paa hver side. 1.20-1.30.3 sendte koden som argument og byggede funktionen i siden (stadig new Function).
+  // 1.31.0: Chrome Web Stores MV3-regler tillader kode udefra kun gennem Debugger API eller User Scripts API (R129b).
+  // Kommentarer strippes, saa forklaringen af den gamle kode ikke fyrer paa sig selv.
   const blok = caseBlok(bgSrc, 'select_frame').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
-  assert.ok(!/func: new Function\(/.test(blok),
-    "new Function() i selve executeScript-kaldet koeres i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet fejlede paa hver eneste side");
-  assert.match(blok, /args: \[code\]/, 'koden skal sendes med som argument');
-  assert.match(blok, /func: \(codeStr\) =>/, 'funktionen skal bygges INDE i den injicerede func, hvor sidens CSP gaelder');
+  assert.ok(!/new Function|scripting\.executeScript/.test(blok), 'select_frame bruger stadig chrome.scripting eller new Function');
+  assert.match(blok, /koerAgentKode\(tab\.id, code, maal\.kontekst, slut, vagt\)/, 'koden skal koeres i den valgte frames kontekst via debuggeren');
 });
 
 // Testen for det strukturelle overlay-spor er FJERNET 22/8 sammen med sporet selv:

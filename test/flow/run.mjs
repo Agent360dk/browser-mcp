@@ -721,7 +721,7 @@ try {
     const r = await kald('browser_navigate', { url: BASE + '/hard' });
     skalVaere(/[Hh]aard fixture/.test(r.tekst), 'kom ikke ind paa siden');
   });
-  await proev('#csp-execute_script', 'JS koerer trods CSP (falder tilbage til debuggeren)', async () => {
+  await proev('#csp-execute_script', 'JS koerer trods CSP (via debuggeren)', async () => {
     const r = await kald('browser_execute_script', { script: 'document.getElementById("titel").textContent' });
     skalVaere(r.tekst.includes('Haard fixture'), `fik ikke vaerdien: ${r.tekst.slice(0, 120)}`);
   });

@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** the five issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.29.1** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
+**Short answer:** the five issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.29.1** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → **fixed in 1.31.0**: scripts run only through the Chrome debugger, which the page's CSP does not stop; the dedicated tools (`fill`, `click`, `set_combobox`) are still the better first choice. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
 
 ## First: is it actually installed?
 
@@ -157,9 +157,9 @@ So v1.25.0 does both: `fill` now sends one `Input.insertText`, verifies the fiel
 
 **Symptom:** raw script execution returns errors (or nothing) on hardened sites - Google properties, Stripe-class dashboards.
 
-**Cause:** layered content-security-policy restrictions: the isolated-world path is constrained by the extension's own CSP, the main-world path by the site's, and the debugger fallback inherits the detach quirk above.
+**Cause (up to 1.30.3):** the first two attempts went through script injection, where the isolated-world path is constrained by the extension's own CSP and the main-world path by the site's, before the debugger was tried.
 
-**Workaround (and honestly, the better pattern):** use the purpose-built tools - `fill`, `click`, `set_date`, `set_combobox`, `get_page_content` run through the debugger/trusted-event layer and work on CSP-strict and React/Angular sites. Reach for `execute_script` last, not first. A hardened fallback chain shipped in v1.24.0.
+**Status: fixed in 1.31.0.** `browser_execute_script` and `browser_select_frame` run your agent's JavaScript only through the Chrome debugger (`Runtime.evaluate`), in the page's or frame's own context, and a page's CSP does not stop that. What is left: when Chrome refuses the debugger (an enterprise policy, or the debugging notice was cancelled), the call fails with an error that says the code was not run. The purpose-built tools - `fill`, `click`, `set_date`, `set_combobox`, `get_page_content` - are still the better first choice, because they check what happened on the page.
 
 ## Why publish our own bug list?
 
