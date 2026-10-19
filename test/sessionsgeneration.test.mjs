@@ -625,3 +625,51 @@ test('forsvinder donorens port fra en senere status, adopteres den (R142: M4, li
   const { r } = await statusOgAdoption([[19861, 19862], [19861]], 'rrrr1818-1');
   assert.ok(r && r.tabIds.has(41), 'en port, broen ikke længere melder, blev stadig regnet som levende');
 });
+
+// ── R143 (Astra, dækning A1-A4) ─────────────────────────────────────────────────
+test('afvises lukningen, og kan Chrome ikke svare paa om broen findes, er broen IKKE erstattet: kald fra den koerer (R143: A1)', async () => {
+  const { koert } = await ventendeKald('ssss1919-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, (() => {
+    // efter det afviste lukkeforsoeg kan Chrome ikke svare paa, om dokumentet findes (foerste kontrol); derefter svarer det igen
+    let lukForsoegt = false, kontrolAfvist = false;
+    return { 'offscreen.hasDocument': () => { if (lukForsoegt && !kontrolAfvist) { kontrolAfvist = true; throw new Error('hasDocument afvist'); } return true; },
+      'offscreen.closeDocument': () => { lukForsoegt = true; throw new Error('closeDocument afvist'); }, 'offscreen.createDocument': undefined,
+      'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) };
+  })());
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en bro, hvis lukning ikke kunne bekræftes, blev markeret lukket');
+});
+
+test('hjerteslaget: lukker closeDocument og kaster bagefter, bygges en ny bro (R143: A2)', async () => {
+  let findes = true, oprettet = 0;
+  await ventendeKald('tttt2020-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();
+  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => { oprettet += 1; findes = true; }, 'runtime.sendMessage': () => new Promise(() => {}) });
+  assert.equal(oprettet, 1, 'hjerteslaget gav op efter H3 i stedet for at bygge en ny bro');
+});
+
+test('genopbygningen: H3 og en fejlet oprettelse - den gamle bro er stadig erstattet (R143: A3)', async () => {
+  let findes = true;
+  const { sent, koert } = await ventendeKald('uuuu2121-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')().catch(() => {});
+  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => { throw new Error('oprettelse fejlede'); }, 'runtime.getManifest': { version: '9.9.9' },
+    'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den lukkede bro koerte, fordi oprettelsen fejlede: ${JSON.stringify(sent)}`);
+});
+
+test('foerste filter: en levende donor sorteres fra, og den doede donor adopteres - ogsaa naar den levende er stoerst (R143: A4)', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => (arg && Object.hasOwn(arg, 'mcpPorts') ? { mcpPorts: [] } : (arg && typeof arg === 'object' ? { ...arg } : {})),
+  } });
+  u.hent('getSession')(19862, 101, 'levende-1');
+  await u.hent('addTabToSession')(19862, 41);
+  await u.hent('addTabToSession')(19862, 42);
+  u.hent('getSession')(19863, 101, 'doed-1');
+  await u.hent('addTabToSession')(19863, 43);
+  await u.fyr('runtime.onMessage', { type: 'ws_status', connected: true, count: 2, ports: [19861, 19862] }, {}, () => {});
+  const r = await u.hent('adoptOrphanedSession')(19861, 101, 'vvvv2222-1');
+  assert.ok(r && r.tabIds.has(43), `den doede donor blev ikke adopteret (den levende blev valgt og afvist): ${r && JSON.stringify([...r.tabIds])}`);
+  assert.ok(u.hent('sessions').get(19862)?.tabIds.has(41), 'den levende donor mistede sine faner');
+});
