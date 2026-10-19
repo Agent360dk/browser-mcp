@@ -104,13 +104,16 @@ function skaermbillede(result, args = {}, cwd = undefined) {
   boern.push(p); p.stderr.on('data', () => {});
   const stopUdvidelse = falskUdvidelse(result);
   let buf = '';
+  // Windows (MAALT i CI 19/10, EBUSY ved rmdir): en mappe, en levende proces staar i, kan ikke slettes. Svaret gives derfor
+  // foerst, naar serveren er ude - ikke i samme oejeblik, den faar besked paa at stoppe.
+  const slut = (svar, res) => { stopUdvidelse(); if (p.exitCode !== null || p.signalCode !== null) res(svar); else { p.once('exit', () => res(svar)); p.kill('SIGKILL'); } };
   return new Promise((res) => {
-    const ur = setTimeout(() => { stopUdvidelse(); p.kill('SIGKILL'); res(null); }, 40000);
+    const ur = setTimeout(() => slut(null, res), 40000);
     p.stdout.on('data', (d) => {
       buf += d;
       for (const l of buf.split('\n')) {
         let m; try { m = JSON.parse(l); } catch { continue; }
-        if (m.id === 2) { clearTimeout(ur); stopUdvidelse(); p.kill('SIGKILL'); res(m.result); }
+        if (m.id === 2) { clearTimeout(ur); slut(m.result, res); }
       }
     });
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize',
