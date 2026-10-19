@@ -183,7 +183,7 @@ test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - i
   assert.match(intetLink.stderr, /npm lavede ingen kommando «browser-mcp»/, 'en pakke uden npm-kommando blev godkendt');
   // R152 (Astra + Opus): PYTHONUTF8=1 i prøverne skjulte rettelsen - uden `encoding='utf-8'` i scriptet var alle stadig grønne.
   // Her laaner scriptets `open` en Windows-standard (cp1252), og npm-beskrivelsen indeholder «Ł» (UTF-8 C5 81; 0x81 findes ikke
-  // i cp1252). Kun en eksplicit UTF-8-laesning kommer igennem.
+  // i cp1252). Proeven vogter mod et tilbagefald til Windows-standarden; latin-1 ville ogsaa komme igennem.
   const windowsTegnsaet = koerHentServer({ description: 'Łódź: 41 tools', cp1252: true });
   assert.equal(windowsTegnsaet.status, 0, `package.json blev ikke laest som UTF-8 under et cp1252-standardtegnsaet: ${windowsTegnsaet.stderr.slice(-300)}`);
   const forkertVersion = koerHentServer({ version: '9.9.8' });

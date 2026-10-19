@@ -166,8 +166,11 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     // generaliserende saetning («Input requires OS focus (measured).») slap igennem. Nu kraeves hele saetningen ordret, og
     // ingen formulering maa kalde et fokus- eller forgrundskrav maalt.
     assert.match(t, /One observation on macOS \(Chrome for Testing on GitHub's runner, 14 Oct 2026\) saw a key press land in the active tab while another app \(TextEdit\) was in front; that is one platform and one input type, not a general measurement\./, `${f} naevner ikke 14/10-observationen ordret med sin graense`);
-    assert.doesNotMatch(t, /\b(?:OS|operating system'?s?) focus[^.]{0,80}(?<!un)measured/i, `${f} kalder et OS-fokuskrav maalt`);
+    // R153 (Astra): tre formuleringer slap stadig igennem - «Measured: input requires OS focus.», «… in the foreground (measured).»
+    // og «operating-system focus (measured)». Begge retninger (maalt foer og efter kravet) og bindestregsformen dækkes nu.
+    const krav = String.raw`(?:\b(?:OS|operating[- ]system'?s?) focus|\bin front\b|\bforeground\b)`;
+    assert.doesNotMatch(t, new RegExp(`${krav}[^.;]{0,80}(?<!un)measured\\b`, 'i'), `${f} kalder et fokus- eller forgrundskrav maalt`);
+    assert.doesNotMatch(t, new RegExp(`(?<!un)measured\\b[^.;]{0,80}${krav}`, 'i'), `${f} kalder et fokus- eller forgrundskrav maalt (maalt foerst)`);
     assert.doesNotMatch(t, /\bfocus\.\s*\(?measured/i, `${f} kalder fokus maalt i saetningen efter`);
-    assert.doesNotMatch(t, /\bin front[^.;]{0,40}(?<!un)measured\b/i, `${f} kalder et forgrundskrav maalt`);
   }
 });
