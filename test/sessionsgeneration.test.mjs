@@ -842,7 +842,10 @@ test('hjerteslaget: mens den nye bro bygges, er den forsvundne bros kald allered
     findes = false;                             // broen forsvinder af sig selv
     hjerteslag = u.hent('ensureOffscreen')().catch(() => {});
     await opretStartet;                         // hjerteslaget er naaet til oprettelsen, som venter
-  }, { 'offscreen.hasDocument': () => findes, 'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []),
+  }, { 'offscreen.hasDocument': () => findes,
+    // R148 (Astra F2): svaret afhaenger af filteret - service workerens egen kontekst (BACKGROUND) findes altid
+    'runtime.getContexts': (filter) => ((filter?.contextTypes || []).includes('OFFSCREEN_DOCUMENT')
+      ? (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []) : [{ contextType: 'BACKGROUND' }]),
     'offscreen.createDocument': () => { opretKaldt(); return opretVenter.then(() => { findes = true; }); },
     'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `den forsvundne bros kald koerte, foer den nye bro var bygget: ${JSON.stringify(sent)}`);
