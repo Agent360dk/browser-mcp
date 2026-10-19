@@ -875,8 +875,13 @@ function kommandoFraDokument(gen) {
 }
 function broenErstattes() { dokumentDoedt(broensDokument); broensDokument = null; }
 // R141 (Opus H3): kastede closeDocument, er broen kun vaek, hvis Chrome siger, at dokumentet ikke findes. Kan det ikke afgoeres: ikke vaek.
+// R143 (Opus, MAALT med injektion): et enkelt falsk hasDocument-svar markerede en levende bro doed. Broen er kun vaek, naar Chromes
+// kontekstliste OGSAA er tom - to uafhaengige kilder. Findes getContexts ikke (Chrome foer 116), gaelder hasDocument alene.
 async function broenErVaek() {
-  return !(await chrome.offscreen.hasDocument().catch(() => true));
+  if (await chrome.offscreen.hasDocument().catch(() => true)) return false;
+  if (typeof chrome.runtime.getContexts !== 'function') return true;
+  const kontekster = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] }).catch(() => null);
+  return Array.isArray(kontekster) && kontekster.length === 0;
 }
 const fraLukketForbindelse = (port, gen) => typeof gen === 'string'
   && (!!lukkedeGen.get(port)?.has(gen) || doedeDokumenter.has(dokumentAf(gen)));

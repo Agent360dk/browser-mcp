@@ -88,12 +88,13 @@ its message.
 extension looked for a session to take over after a restart, now stops before it touches a session or a tab: the takeover
 checks again after its last wait, right before it changes anything, that the call's connection is still open, that the port
 still owns no tabs, and that the session it would take over is still orphaned: the same session, with the same connection, on a
-port the bridge has not reported as connected - by the latest status the extension has received, or, right after the extension
-restarted, by the stored list. It errs on the safe side: a port the bridge lists while it is still connecting counts as connected,
+port the bridge has not reported as connected - by the latest status the extension has received, or, after the extension
+restarted and until the bridge next reports, by the stored list. It errs on the safe side: a port the bridge lists while it is still connecting counts as connected,
 so such a session is not taken over. Before, it could run its code in a tab of the connection that took the port next (another
 partition or chat), or move another session onto that port, so that the new connection's next call ran in the wrong tab. The same holds
 when the extension replaces its bridge itself: the old bridge's connections count as closed once Chrome has closed it - its close
-call succeeded, or failed while Chrome confirms the document is gone - or as soon as a call comes from the new one, even if the old
+call succeeded, or failed while Chrome confirms the document is gone (no offscreen document, and no offscreen context where
+Chrome can report contexts) - or as soon as a call comes from the new one, even if the old
 bridge never got to report that they closed. If Chrome cannot confirm either, the old bridge is treated as still open. Its answer
 (`connection-closed`, `sent: false`) goes back over the closed connection, so no agent sees it; what changes is that nothing
 runs.

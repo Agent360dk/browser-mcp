@@ -83,6 +83,8 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       lastError: null,
       getManifest: (...a) => { optager.kald.push({ sti: 'runtime.getManifest', args: a }); return svar['runtime.getManifest'] ?? { version: '1.28.1' }; },
       sendMessage: kald('runtime.sendMessage'),
+      // R143: broenErVaek spoerger ogsaa Chromes kontekster; uden svar i proeven findes der ingen offscreen-kontekst
+      getContexts: async (...a) => { optager.kald.push({ sti: 'runtime.getContexts', args: a }); const v = svar['runtime.getContexts']; return typeof v === 'function' ? v(...a) : (v ?? []); },
       reload: kald('runtime.reload'),
       getURL: (p) => 'chrome-extension://test/' + p,
       onMessage: haendelse('runtime.onMessage'),

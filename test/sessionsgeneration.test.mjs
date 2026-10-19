@@ -673,3 +673,36 @@ test('foerste filter: en levende donor sorteres fra, og den doede donor adoptere
   assert.ok(r && r.tabIds.has(43), `den doede donor blev ikke adopteret (den levende blev valgt og afvist): ${r && JSON.stringify([...r.tabIds])}`);
   assert.ok(u.hent('sessions').get(19862)?.tabIds.has(41), 'den levende donor mistede sine faner');
 });
+
+// ── R143 (Opus, hærdning F1/F2) ─────────────────────────────────────────────────
+// Svarer hasDocument falsk om en bro, der lever, blev den markeret doed, og alle dens kald afvist, indtil Reconnect. Broen regnes nu
+// kun som vaek, naar ogsaa Chromes kontekstliste er tom - to uafhaengige kilder.
+test('siger hasDocument falsk, men findes broens kontekst stadig, er broen IKKE erstattet: kald fra den koerer (R143 F1)', async () => {
+  const { koert } = await ventendeKald('wwww2323-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, (() => {
+    let lukForsoegt = false, falskSvar = false;
+    return {
+      'offscreen.hasDocument': () => { if (lukForsoegt && !falskSvar) { falskSvar = true; return false; } return true; },
+      'offscreen.closeDocument': () => { lukForsoegt = true; throw new Error('closeDocument afvist'); }, 'offscreen.createDocument': undefined,
+      'runtime.getContexts': () => [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: 'chrome-extension://test/offscreen.html' }],
+      'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }),
+    };
+  })());
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en levende bro blev markeret doed paa ét falsk hasDocument-svar');
+});
+
+test('kan Chrome ikke liste sine kontekster, er broen IKKE erstattet: kald fra den koerer (R143 F1, uafklaret)', async () => {
+  const { koert } = await ventendeKald('xxxx2424-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, (() => {
+    let lukForsoegt = false, falskSvar = false;
+    return {
+      'offscreen.hasDocument': () => { if (lukForsoegt && !falskSvar) { falskSvar = true; return false; } return true; },
+      'offscreen.closeDocument': () => { lukForsoegt = true; throw new Error('closeDocument afvist'); }, 'offscreen.createDocument': undefined,
+      'runtime.getContexts': () => { throw new Error('getContexts afvist'); },
+      'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }),
+    };
+  })());
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en bro blev markeret doed, selv om Chrome ikke kunne bekræfte det');
+});
