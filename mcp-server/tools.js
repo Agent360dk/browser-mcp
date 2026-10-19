@@ -65,7 +65,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_execute_script',
-    description: 'Execute JavaScript in the current page, through the Chrome debugger (Runtime.evaluate) in the page\'s own context: the page\'s globals are visible and its Content Security Policy does not block it. A returned promise is awaited. If the code throws, the answer is ok:false with error and name, and the code is not run again. IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
+    description: 'Execute JavaScript in the current page, through the Chrome debugger (Runtime.evaluate) in the page\'s own context: the page\'s globals are visible and its Content Security Policy does not block it. A returned promise is awaited. If the code throws, the answer is ok:false with error and name, and the code is not run again. The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran). IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -392,7 +392,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_frame',
-    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by a one-time mark the extension puts in that frame\'s document, not by its address or position; if the mark is not found, nothing is run (error frame-not-reachable, and retry says whether calling again can help; a frame whose document is replaced while the call looks for it gives retry: true).',
+    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by a one-time mark the extension puts in that frame\'s document, not by its address or position; if the mark is not found, nothing is run (error frame-not-reachable, and retry says whether calling again can help; a frame whose document is replaced while the call looks for it gives retry: true). The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran).',
     inputSchema: {
       type: 'object',
       properties: {

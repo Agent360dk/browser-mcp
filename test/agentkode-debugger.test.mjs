@@ -604,6 +604,74 @@ test('budget: opslaget venter ikke forbi fristen, selv om framen aldrig svarer p
   assert.equal(m.evalueringer().length, 0);
 });
 
+// ── R134 (Astra): ÉN ydre frist om hele kaldet, fra modtagelsen. Astras tre forloeb er skaleret 1:100 (budget 300 ms i stedet
+// for 29,5 s, 29,4 s -> 294 ms, 1 s -> 100 ms) og koerer med rigtige timere; svaret skal komme ved fristen med sand sent-status.
+const viaBroen = (m, method, params) => {
+  const t0 = Date.now();
+  return new Promise((r) => m.u.fyr('runtime.onMessage', { type: 'mcp_command', port: 9876, method, params }, {}, (svar) => r({ svar, ms: Date.now() - t0 })));
+};
+const forsinket = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
+const kortFrist = (m, ms) => { m.u.hent('AGENTKODE_FRIST').budget = ms; };
+
+test('frist: foerste kontrol bruger 29,4 s og kontrollen i cdpSend 1 s - svar ved fristen, sent:false, og intet sendes bagefter', async () => {
+  const m = sele();
+  kortFrist(m, 300);
+  m.u.hent('debuggerAttached').add(1);
+  let n = 0;
+  m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? 294 : 100, [{ tabId: 1, attached: true }]);
+  const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
+  assert.ok(ms < 370, `svaret kom efter ${ms} ms - fristen var 300 ms`);
+  assert.deepEqual([svar.ok, svar.error, svar.sent, svar.retry], [false, 'call-timeout', false, true], JSON.stringify(svar));
+  await forsinket(250);
+  assert.equal(m.evalueringer().length, 0, 'agentkoden blev sendt, efter at fristsvaret var givet');
+});
+
+test('frist: evalueringen melder detach ved 29,4 s, og gentilslutningen tager 1 s - svar ved fristen med «MAY already have run»', async () => {
+  const m = sele({ evaluate: () => forsinket(294).then(() => { throw new Error('Debugger is not attached to the tab with id: 1.'); }) });
+  kortFrist(m, 300);
+  m.u.hent('debuggerAttached').add(1);
+  let n = 0;
+  m.u.chrome.debugger.getTargets = () => forsinket(++n <= 2 ? 0 : 100, [{ tabId: 1, attached: true }]);
+  const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
+  assert.ok(ms < 370, `svaret kom efter ${ms} ms - fristen var 300 ms`);
+  assert.match(String(svar.__error), /MAY already have run/, JSON.stringify(svar));
+  assert.equal(m.evalueringer().length, 1);
+});
+
+test('frist: sessionsgendannelsen bruger 31 s - svar ved fristen, sent:false, og intet sendes bagefter', async () => {
+  const m = sele();
+  kortFrist(m, 300);
+  const get = m.u.chrome.storage.local.get;
+  m.u.chrome.storage.local.get = (...a) => forsinket(310).then(() => get(...a));
+  const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
+  assert.ok(ms < 370, `svaret kom efter ${ms} ms - fristen var 300 ms`);
+  assert.equal(svar.error, 'call-timeout', JSON.stringify(svar));
+  assert.equal(svar.sent, false);
+  await forsinket(250);
+  assert.equal(m.evalueringer().length, 0, 'agentkoden blev sendt, efter at fristsvaret var givet');
+});
+
+test('frist med rigtige timere (Astra): budget 100 ms og en tilslutning paa 300 ms - svar ved 100 ms', async () => {
+  const m = sele({ frames: toFrames, par: toPar, traeer: { '': topTrae([{ id: 'CDP-BARN', url: BARN }]) },
+    kontekster: { '': [ctx(1, 'TOP'), ctx(2, 'CDP-BARN')] } });
+  kortFrist(m, 100);
+  m.u.chrome.debugger.getTargets = () => forsinket(300, [{ tabId: 1, attached: true }]);
+  m.u.hent('debuggerAttached').add(1);
+  const { svar, ms } = await viaBroen(m, 'select_frame', { frame_index: 1, code: 'window.__n = 1' });
+  assert.ok(ms < 170, `svaret kom efter ${ms} ms - fristen var 100 ms`);
+  assert.equal(svar.sent, false, JSON.stringify(svar));
+  assert.equal(svar.retry, true);
+  await forsinket(400);
+  assert.equal(m.evalueringer().length, 0);
+});
+
+test('frist: har racen svaret (vagten er lukket), sender cdpSend aldrig agentkoden', async () => {
+  const m = sele();
+  const svar = await fang(m.u.hent('koerAgentKode')(1, 'window.__n = 1', {}, null, { sendt: false, lukket: true }));
+  assert.equal(m.evalueringer().length, 0);
+  assert.match(svar.kastet || '', /not run \(nothing was sent\)/);
+});
+
 // R133 (Opus): med 40 eller flere fremmede frames i toppen saa tilknytningen ikke i deres egne fremmede boern.
 test('select_frame: en fremmed frame inde i den 41. fremmede frame naas', async () => {
   const top = Array.from({ length: 41 }, (_, i) => ({ frameId: 100 + i, parentFrameId: 0, url: `https://x${i}.example/` }));
