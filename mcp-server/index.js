@@ -891,6 +891,14 @@ function sendToExtension(method, params = {}, timeoutMs = 30000, bane = standard
 // til porten har vaeret aaben i ét skanningsinterval plus en margen. (`let`: model-proeverne korter den.)
 let FOERSTE_VALG_MS = 2500;
 
+// Vaerktoejskaldets standardfrist hos serveren (udvidelsens SERVER_FRIST_MS i background.js er den samme). `let` + miljoe:
+// proever, der starter den aegte server, korter den med BROWSER_MCP_TEST_CALL_TIMEOUT_MS; kun et positivt tal tages.
+function proeveFrist(navn, standard) {
+  const v = Number(process.env[navn]);
+  return Number.isFinite(v) && v > 0 ? v : standard;
+}
+let KALD_FRIST_MS = proeveFrist('BROWSER_MCP_TEST_CALL_TIMEOUT_MS', 30000);
+
 // R121 (Astra, MAALT i model): close stoppede ikke et kald, der ventede paa forbindelse. Naar installationen kom tilbage, bandt
 // kaldet den lukkede partitions port igen og sendte sin kommando - efter at close havde svaret port_released: true. Et kald paa
 // en lukket bane stoppes derfor ved indgangen (foer porten bindes) og efter hver ventetid (foer det sendes). Var lukningen
@@ -1514,7 +1522,7 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
     // default would kill a long mail list mid-walk and report a partial set as complete.
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
                     method === 'solve_captcha' ? 60000 :
-                    method === 'extract_list' ? 180000 : 30000;
+                    method === 'extract_list' ? 180000 : KALD_FRIST_MS;
     const result = await sendToExtension(method, args || {}, timeout, bane);
 
     if (name === 'browser_screenshot' && result?.image) {
