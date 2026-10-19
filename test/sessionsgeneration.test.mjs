@@ -830,3 +830,38 @@ test('H3 i genopbygningen: mens oprettelsen af den nye bro venter, er den gamle 
   assert.equal(sent.sent, false, JSON.stringify(sent));
   slipOpret(); await genbyg;
 });
+
+// ── R147 (Astra E2/E3): hjerteslagets fraværsgren ───────────────────────────────
+test('hjerteslaget: mens den nye bro bygges, er den forsvundne bros kald allerede afvist (R147: E2)', async () => {
+  let findes = true, slipOpret, opretKaldt;
+  const opretVenter = new Promise((r) => { slipOpret = r; });
+  const opretStartet = new Promise((r) => { opretKaldt = r; });
+  let hjerteslag;
+  const { sent, koert } = await ventendeKald('opop3434-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();          // opstartens egen opbygning er faerdig
+    findes = false;                             // broen forsvinder af sig selv
+    hjerteslag = u.hent('ensureOffscreen')().catch(() => {});
+    await opretStartet;                         // hjerteslaget er naaet til oprettelsen, som venter
+  }, { 'offscreen.hasDocument': () => findes, 'runtime.getContexts': () => (findes ? [{ contextType: 'OFFSCREEN_DOCUMENT' }] : []),
+    'offscreen.createDocument': () => { opretKaldt(); return opretVenter.then(() => { findes = true; }); },
+    'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `den forsvundne bros kald koerte, foer den nye bro var bygget: ${JSON.stringify(sent)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+  slipOpret(); await hjerteslag;
+});
+
+test('hjerteslaget: siger hasDocument falsk, men findes broens kontekst stadig, markeres den IKKE (R147: E3)', async () => {
+  let falske = 0;
+  const { u, koert } = await ventendeKald('qrqr3535-1', async ({ u: v }) => {
+    await v.hent('ensureOffscreen')();          // opstartens egen opbygning er faerdig
+    falske = 2;                                 // de naeste to hasDocument-svar er falske; konteksten lever
+    await v.hent('ensureOffscreen')().catch(() => {});
+  }, { 'offscreen.hasDocument': () => { if (falske > 0) { falske -= 1; return false; } return true; },
+    'runtime.getContexts': () => [{ contextType: 'OFFSCREEN_DOCUMENT' }],
+    'offscreen.createDocument': () => { throw new Error('Only a single offscreen document may be created.'); },
+    'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en levende bro blev dødsmarkeret af hjerteslaget trods en levende kontekst');
+  const lytter = u.lyttere.get('runtime.onMessage')[0];
+  const naeste = await new Promise((ok) => lytter({ type: 'mcp_command', port: 19861, gen: 'qrqr3535-1', pid: 101, method: 'execute_script', params: { code: '"NAESTE"' } }, {}, ok));
+  assert.match(String(naeste.result), /NAESTE/, `naeste kald fra den levende bro blev afvist: ${JSON.stringify(naeste)}`);
+});
