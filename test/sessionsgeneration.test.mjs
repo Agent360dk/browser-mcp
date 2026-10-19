@@ -558,3 +558,70 @@ test('faar porten en fane under adoptionens sidste laesning, overskrives den ikk
   assert.equal(await adoption, null, 'adoptionen overskrev en port, der fik en fane under den sidste laesning');
   assert.ok(s.u.hent('sessions').get(19861)?.tabIds.has(99));
 });
+
+// ── R141 (Opus, hærdning) ───────────────────────────────────────────────────────
+test('adoptionens foerste filter bruger broens status, naar den kendes: et aeldre lagersvar springer ikke en gyldig donor over (R141)', async () => {
+  const u = indlaesUdvidelse({ svar: {
+    // lageret er aeldre: det tror stadig, donorens port 19862 er forbundet
+    'storage.local.get': (arg) => (arg && Object.hasOwn(arg, 'mcpPorts') ? { mcpPorts: [19861, 19862] } : (arg && typeof arg === 'object' ? { ...arg } : {})),
+  } });
+  u.hent('getSession')(19862, 101, 'donor-1');
+  await u.hent('addTabToSession')(19862, 41);
+  await u.fyr('runtime.onMessage', { type: 'ws_status', connected: true, count: 1, ports: [19861] }, {}, () => {});
+  const r = await u.hent('adoptOrphanedSession')(19861, 101, 'llll1212-1');
+  assert.ok(r && r.tabIds.has(41), 'en gyldig donor blev sprunget over, fordi lageret var aeldre end broens status');
+});
+
+test('lukker closeDocument broen og kaster bagefter, er broen erstattet: kald fra den koerer intet (R141 H3)', async () => {
+  let findes = true;
+  const { sent, koert } = await ventendeKald('mmmm1313-1', async ({ u }) => {
+    await u.hent('genbygOffscreen')();
+  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => { findes = true; }, 'runtime.getManifest': { version: '9.9.9' },
+    'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den lukkede bro koerte: ${JSON.stringify(sent)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+});
+
+test('hjerteslaget: lukker closeDocument broen og kaster bagefter, er broen erstattet (R141 H3)', async () => {
+  let findes = true;
+  const { sent, koert } = await ventendeKald('nnnn1414-1', async ({ u }) => {
+    await u.hent('ensureOffscreen')();
+  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => { findes = true; }, 'runtime.sendMessage': () => new Promise(() => {}) });
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `koden fra den lukkede bro koerte: ${JSON.stringify(sent)}`);
+});
+
+// ── R142 (Astra, dækning) ───────────────────────────────────────────────────────
+// Broens portliste i hukommelsen: hver status ERSTATTER den forrige, portnumre kan komme som tekst, og en gyldig adoption skal
+// lykkes, naar listen kendes. Hver proeve er det eneste vaern for sin mutant (M1-M4).
+async function statusOgAdoption(statusser, gen) {
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => (arg && Object.hasOwn(arg, 'mcpPorts') ? { mcpPorts: [] } : (arg && typeof arg === 'object' ? { ...arg } : {})),
+  } });
+  u.hent('getSession')(19862, 101, 'donor-1');
+  await u.hent('addTabToSession')(19862, 41);
+  for (const ports of statusser) await u.fyr('runtime.onMessage', { type: 'ws_status', connected: true, count: ports.length, ports }, {}, () => {});
+  return { u, r: await u.hent('adoptOrphanedSession')(19861, 101, gen) };
+}
+
+test('kommer donorens port igen i en SENERE status, er donoren levende (R142: M1, kun foerste status gemt)', async () => {
+  const { r, u } = await statusOgAdoption([[19861], [19861, 19862]], 'oooo1515-1');
+  assert.equal(r, null, 'den seneste status blev ignoreret, og en levende donor blev adopteret');
+  assert.ok(u.hent('sessions').get(19862)?.tabIds.has(41));
+});
+
+test('portnumre som tekst i status beskytter ogsaa donoren (R142: M2)', async () => {
+  const { r } = await statusOgAdoption([['19861', '19862']], 'pppp1616-1');
+  assert.equal(r, null, 'en donorport sendt som tekst blev ikke genkendt som levende');
+});
+
+test('gyldig adoption med kendt portliste: kun adoptørens port er forbundet, donoren adopteres (R142: M3)', async () => {
+  const { r } = await statusOgAdoption([[19861]], 'qqqq1717-1');
+  assert.ok(r && r.tabIds.has(41), 'en gyldig adoption blev afvist, selv om kun adoptørens egen port er forbundet');
+});
+
+test('forsvinder donorens port fra en senere status, adopteres den (R142: M4, listen erstattes - den lægges ikke sammen)', async () => {
+  const { r } = await statusOgAdoption([[19861, 19862], [19861]], 'rrrr1818-1');
+  assert.ok(r && r.tabIds.has(41), 'en port, broen ikke længere melder, blev stadig regnet som levende');
+});

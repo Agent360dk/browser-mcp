@@ -109,6 +109,7 @@ function broModel({ levende = false } = {}) {
     const doedeDokumenter = new Set();
     ${udklip('dokumentDoedt')}
     ${udklip('broenErstattes')}
+    ${udklip('broenErVaek')}
     ${udklip('iOffscreenKoe')}
     ${udklip('ensureOffscreen')}
     ${udklip('genbygOffscreen')}

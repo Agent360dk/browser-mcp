@@ -174,8 +174,9 @@ async function adoptOrphanedSession(port, pid, gen = null) {
   // forbindelses naeste kald koerte i donorens fane. Efter hver ventetid: er kaldets forbindelse lukket, ejer porten nu faner,
   // eller er donoren aendret, adopteres intet (kontrollen staar efter den sidste ventetid, lige foer kortet skrives).
   const portenEjerFaner = () => sessions.has(port) && sessions.get(port).tabIds.size > 0;
-  const { mcpPorts = [] } = await chrome.storage.local.get({ mcpPorts: [] });
-  const levendePorte = new Set(mcpPorts.map(Number));
+  // R141 (Opus): kender udvidelsen broens status, er den nyere end lageret - ogsaa i det foerste filter.
+  const levendePorte = broensPorte !== null ? new Set(broensPorte)
+    : new Set(((await chrome.storage.local.get({ mcpPorts: [] })).mcpPorts || []).map(Number));
 
   let best = null;
   for (const [p, session] of sessions) {
@@ -873,6 +874,10 @@ function kommandoFraDokument(gen) {
   broensDokument = dok;
 }
 function broenErstattes() { dokumentDoedt(broensDokument); broensDokument = null; }
+// R141 (Opus H3): kastede closeDocument, er broen kun vaek, hvis Chrome siger, at dokumentet ikke findes. Kan det ikke afgoeres: ikke vaek.
+async function broenErVaek() {
+  return !(await chrome.offscreen.hasDocument().catch(() => true));
+}
 const fraLukketForbindelse = (port, gen) => typeof gen === 'string'
   && (!!lukkedeGen.get(port)?.has(gen) || doedeDokumenter.has(dokumentAf(gen)));
 const LUKKET_SVAR = { ok: false, error: 'connection-closed', sent: false,
@@ -3742,6 +3747,8 @@ function genbygOffscreen() {
       if (await chrome.offscreen.hasDocument()) { await chrome.offscreen.closeDocument(); broenErstattes(); }
     } catch (e) {
       console.warn('[BG] kunne ikke lukke broen foer genopbygning:', e?.message || e);
+      // R141 (Opus H3): lukkede Chrome dokumentet, men kastede bagefter, er broen alligevel erstattet.
+      if (await broenErVaek()) broenErstattes();
     }
     await ensureOffscreenIndre();
   });
@@ -3840,7 +3847,8 @@ async function ensureOffscreenIndre() {
     await chrome.storage.local.set({ offscreenGenskabt: offscreenGenskabt + 1 });
     try { await chrome.offscreen.closeDocument(); } catch (e) {
       console.warn('[BG] kunne ikke lukke det doede dokument:', e?.message || e);
-      return;                                      // proev igen ved naeste hjerteslag
+      // R141 (Opus H3): lukkede Chrome dokumentet, men kastede bagefter, gaelder det som lukket; ellers proeves igen senere.
+      if (!(await broenErVaek())) return;          // proev igen ved naeste hjerteslag
     }
     // R138/R139: lukket - det gamle dokuments forbindelser er lukkede, ogsaa hvis det ikke naaede at sige det selv.
     broenErstattes();

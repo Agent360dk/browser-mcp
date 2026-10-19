@@ -93,6 +93,7 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
     udklip('doedeDokumenter', false),
     udklip('dokumentDoedt'),
     udklip('broenErstattes'),
+    udklip('broenErVaek'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',
