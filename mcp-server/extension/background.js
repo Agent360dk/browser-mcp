@@ -195,9 +195,12 @@ async function adoptOrphanedSession(port, pid, gen = null) {
   for (const tabId of best.session.tabIds) {
     try { await chrome.tabs.get(tabId); alive.add(tabId); } catch {}
   }
-  const { mcpPorts: nuPorte = [] } = await chrome.storage.local.get({ mcpPorts: [] });   // den sidste ventetid: porte laeses igen
+  // Den sidste ventetid: kender udvidelsen broens portliste (ws_status siden start), bruges den - uden at vente. Ellers laeses lageret,
+  // og en status, der kom imens, taeller ogsaa: donoren lever, hvis EN af kilderne siger det.
+  const lagerPorte = broensPorte ? [] : ((await chrome.storage.local.get({ mcpPorts: [] })).mcpPorts || []);
+  const donorLever = (broensPorte !== null && broensPorte.has(Number(best.port))) || lagerPorte.map(Number).includes(Number(best.port));
   if (fraLukketForbindelse(port, gen) || portenEjerFaner() || sessions.get(best.port) !== best.session
-    || best.session.gen !== donorGen || nuPorte.map(Number).includes(Number(best.port))) return null;
+    || best.session.gen !== donorGen || donorLever) return null;
   if (!alive.size) {
     sessions.delete(best.port);
     persistSessions();
@@ -839,6 +842,9 @@ const frivilligtFrigivet = new Map();
 // session_disconnect med forbindelsens generation, naar den lukker; de generationer huskes her pr. port (de seneste 16), og et kald
 // fra en af dem koerer intet. Kun i hukommelsen: en genstartet service worker har ingen ventende kald fra foer genstarten.
 const lukkedeGen = new Map();   // port -> Set af generationer, hvis forbindelse er lukket
+// R141 (Astra, MAALT i model): et lagersvar kan vaere AELDRE end en ws_status, udvidelsen allerede har faaet. Broens seneste portliste
+// holdes derfor ogsaa i hukommelsen, sat synkront i lytteren. null = ingen status siden service workeren startede.
+let broensPorte = null;
 function forbindelsenLukket(port, gen) {
   if (typeof gen !== 'string') return;
   const saet = lukkedeGen.get(port) || new Set();
@@ -4000,6 +4006,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (count > 0) {
       chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
     }
+    broensPorte = new Set((msg.ports || []).map(Number));   // R141: synkront, foer lagret skrives
     chrome.storage.local.set({
       mcpConnected: msg.connected,
       mcpCount: count,

@@ -502,3 +502,59 @@ test('hjerteslaget: afvises lukningen, og svarer broen igen, koerer kald fra den
     'runtime.sendMessage': () => (pingSvarer ? { ok: true, version: '9.9.9' } : new Promise(() => {})) });
   assert.ok(koert.some((x) => x.includes('GAMMEL')), 'en levende bro blev markeret lukket, fordi hjerteslagets lukning fejlede');
 });
+
+// ── R141 (Astra, MAALT i model paa 08fa0b9) ─────────────────────────────────────
+// Den sidste lagerlaesning kunne aflevere et AELDRE billede af de levende porte end en ws_status, udvidelsen allerede havde faaet.
+// Adoptionen ser nu ogsaa broens seneste status (holdt i hukommelsen, sat synkront i lytteren). Og de to tjek, der kun blev
+// proevet ved tabs.get, proeves nu ogsaa under den sidste laesning (N1, N2).
+function sidsteLaesningSele() {
+  let slipLaes, venterPaaLaes, laesninger = 0, spaer = false;
+  const laesSpaerre = new Promise((r) => { slipLaes = r; });
+  const inde = new Promise((r) => { venterPaaLaes = r; });
+  const u = indlaesUdvidelse({ svar: {
+    'storage.local.get': (arg) => {
+      if (!(arg && Object.hasOwn(arg, 'mcpPorts'))) return arg && typeof arg === 'object' ? { ...arg } : {};
+      laesninger += 1;
+      // anden mcpPorts-laesning i adoptionen spaerres og afleverer det GAMLE billede
+      if (spaer && laesninger === 2) { venterPaaLaes(); return laesSpaerre.then(() => ({ mcpPorts: [19861] })); }
+      return { mcpPorts: [19861] };
+    },
+  } });
+  return { u, inde, slip: () => slipLaes(), spaerNu: () => { spaer = true; laesninger = 0; } };
+}
+async function donorOgStart(s, gen) {
+  s.u.hent('getSession')(19862, 101, 'donor-1');
+  await s.u.hent('addTabToSession')(19862, 41);
+  s.spaerNu();
+  const adoption = s.u.hent('adoptOrphanedSession')(19861, 101, gen);
+  await s.inde;
+  return { adoption };   // pakket ind: et returneret promise ville blive ventet paa (og venter selv paa slip)
+}
+
+test('et forældet lagersvar overtrumfer ikke en status, udvidelsen allerede har faaet: levende donor adopteres ikke (R141)', async () => {
+  const s = sidsteLaesningSele();
+  const { adoption } = await donorOgStart(s, 'aaaa1111-2');
+  // broen melder donorens port levende, mens lagerlaesningen er undervejs (med det gamle billede)
+  await s.u.fyr('runtime.onMessage', { type: 'ws_status', connected: true, count: 2, ports: [19861, 19862] }, {}, () => {});
+  s.slip();
+  assert.equal(await adoption, null, 'et forældet lagersvar fik adoptionen til at tage en levende donor');
+  assert.ok(s.u.hent('sessions').get(19862)?.tabIds.has(41), 'den levende donor mistede sin fane');
+});
+
+test('lukker forbindelsen under adoptionens sidste laesning, adopteres intet (R141: N1)', async () => {
+  const s = sidsteLaesningSele();
+  const { adoption } = await donorOgStart(s, 'jjjj1010-1');
+  await s.u.fyr('runtime.onMessage', { type: 'session_disconnect', port: 19861, gen: 'jjjj1010-1' }, {}, () => {});
+  s.slip();
+  assert.equal(await adoption, null, 'en forbindelse, der lukkede under den sidste laesning, adopterede');
+});
+
+test('faar porten en fane under adoptionens sidste laesning, overskrives den ikke (R141: N2)', async () => {
+  const s = sidsteLaesningSele();
+  const { adoption } = await donorOgStart(s, 'kkkk1111-1');
+  s.u.hent('getSession')(19861, 101, 'kkkk1111-1');
+  await s.u.hent('addTabToSession')(19861, 99);
+  s.slip();
+  assert.equal(await adoption, null, 'adoptionen overskrev en port, der fik en fane under den sidste laesning');
+  assert.ok(s.u.hent('sessions').get(19861)?.tabIds.has(99));
+});

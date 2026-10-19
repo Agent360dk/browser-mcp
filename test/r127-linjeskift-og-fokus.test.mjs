@@ -364,4 +364,6 @@ test('text=-vejen: kan et tekst-input ikke laeses bagefter, siger svaret stadig,
   const r = await u.hent('dispatch')(9876, 'fill', { selector: 'text=Felt', value: 'a\nb' });
   assert.equal(r.unknown, true, `proeven naaede ikke unknown-grenen: ${JSON.stringify(r)}`);
   assert.equal(r.line_breaks_as_spaces, 1, `unknown-svaret siger ikke, at linjeskiftet blev et mellemrum: ${JSON.stringify(r)}`);
+  // R141 (Astra N3): et ulaeseligt felt faar ingen opdigtet vaerdi - hverken actual, value eller differs
+  assert.ok(!('actual' in r) && !('value' in r) && !('differs' in r), `svaret paastaar en vaerdi, det aldrig saa: ${JSON.stringify(r)}`);
 });

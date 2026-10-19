@@ -48,6 +48,7 @@ async function adoptér({ port, pid, sessioner = [], levende = [], doedeFaner = 
   const src = [
     // R139: adoptionen tjekker selv kaldets forbindelse; her er der ingen lukkede forbindelser.
     'const fraLukketForbindelse = () => false;',
+    'let broensPorte = null;   // R141: ingen ws_status i denne sele - adoptionen laeser lageret',
     udklip('adoptOrphanedSession'),
     'return adoptOrphanedSession(port, pid);',
   ].join('\n');

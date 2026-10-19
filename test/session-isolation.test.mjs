@@ -44,7 +44,7 @@ function byg() {
   const fabrik = new Function(
     'sessions', 'chrome', 'persistSessions',
     // R139: adoptionen tjekker selv kaldets forbindelse; her er der ingen lukkede forbindelser.
-    `const fraLukketForbindelse = () => false; ${src}; return adoptOrphanedSession;`,
+    `const fraLukketForbindelse = () => false; let broensPorte = null; ${src}; return adoptOrphanedSession;`,
   );
   return fabrik(
     sessions,
