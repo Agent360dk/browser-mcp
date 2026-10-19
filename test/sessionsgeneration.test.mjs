@@ -792,12 +792,14 @@ test('broen forsvinder af sig selv uden getContexts: hasDocument alene markerer 
 
 test('broen forsvinder, men fraværet kan ikke bekræftes: hjerteslaget bygger stadig en ny bro (R145: C4)', async () => {
   const { s, svar } = forsvundetSvar(() => { throw new Error('getContexts afvist'); });
-  await ventendeKald('ijij3131-1', async ({ u }) => {
+  const { koert } = await ventendeKald('ijij3131-1', async ({ u }) => {
     await u.hent('ensureOffscreen')();   // opstartens egen opbygning er faerdig - ellers slutter hjerteslaget sig blot til den
     s.findes = false;
     await u.hent('ensureOffscreen')();
   }, svar);
   assert.equal(s.oprettet, 1, 'hjerteslaget opgav at bygge en ny bro, fordi fraværet ikke kunne bekræftes');
+  // R146 (Astra D2): uafklaret fravær markerer IKKE forgængeren - et kald fra den koerer stadig
+  assert.ok(koert.some((x) => x.includes('GAMMEL')), 'uafklaret fravær dødsmarkerede den forrige bro');
 });
 
 test('H3 i genopbygningen markerer FOER oprettelsen: fejler oprettelsen, og kan naeste kontrol ikke afgoere noget, er broen erstattet (R145: A3)', async () => {
@@ -809,4 +811,22 @@ test('H3 i genopbygningen markerer FOER oprettelsen: fejler oprettelsen, og kan 
     'runtime.getContexts': () => { kontekstKald += 1; if (kontekstKald === 1) return []; throw new Error('getContexts afvist'); },
     'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
   assert.ok(!koert.some((x) => x.includes('GAMMEL')), `markeringen ventede paa oprettelsen, og den lukkede bros kald koerte: ${JSON.stringify(sent)}`);
+});
+
+// ── R146 (Astra D1): H3-markeringen sker FOER oprettelsen - ogsaa mens oprettelsen stadig venter ──────────────
+test('H3 i genopbygningen: mens oprettelsen af den nye bro venter, er den gamle bros kald allerede afvist (R146: D1)', async () => {
+  let findes = true, slipOpret, kontekstKald = 0;
+  const opretVenter = new Promise((r) => { slipOpret = r; });
+  let genbyg;
+  const { sent, koert } = await ventendeKald('mnmn3333-1', async ({ u }) => {
+    genbyg = u.hent('genbygOffscreen')().catch(() => {});   // holdes ved createDocument
+    await new Promise((r) => setTimeout(r, 30));
+  }, { 'offscreen.hasDocument': () => findes, 'offscreen.closeDocument': () => { findes = false; throw new Error('lukket, men svaret fejlede'); },
+    'offscreen.createDocument': () => opretVenter.then(() => { findes = true; }),
+    'runtime.getContexts': () => { kontekstKald += 1; if (kontekstKald === 1) return []; throw new Error('getContexts afvist'); },
+    'runtime.getManifest': { version: '9.9.9' }, 'runtime.sendMessage': () => ({ ok: true, version: '9.9.9' }) });
+  // det gamle kald er sluppet og besvaret, mens oprettelsen STADIG venter
+  assert.ok(!koert.some((x) => x.includes('GAMMEL')), `den gamle bros kald koerte, foer den nye bro var bygget: ${JSON.stringify(sent)}`);
+  assert.equal(sent.sent, false, JSON.stringify(sent));
+  slipOpret(); await genbyg;
 });
