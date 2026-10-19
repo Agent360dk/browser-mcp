@@ -1,0 +1,76 @@
+name: side
+
+# browsermcp.dev bygges og udgives HER, med friske tal bagt ind - uden et commit til main.
+#
+# Hvorfor (målt 19/10): tal.yml skubbede tallene til main, men main kræver PR + seks tjek uden undtagelse, så hvert skub blev
+# afvist fra 13/10, og siden stod fast på 53 stjerner, mens GitHub havde 58. Nu går Pages-kilden via GitHub Actions: dette job
+# tjekker main ud, bager stjerner, npm-hentninger og Chrome Web Store-brugere ind i docs/index.html (scripts/stjerner.py),
+# genererer sitemappen igen, kører de samme tjek som før og udgiver docs/ som Pages-artefakt. Intet skrives tilbage til repoet.
+#
+# Kører dagligt, ved hvert skub til main der rører siden, og ved håndkørsel. Fejler en kilde eller et tjek, udgives intet,
+# og den forrige udgave står. Actions er låst til SHA (som udgivelse.yml); checkout gemmer ikke tokenet, npm kører uden
+# install-scripts, og jobbet har kun læseret til indholdet.
+
+on:
+  schedule:
+    - cron: '17 5 * * *'   # 07.17 dansk sommertid
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'content/**'
+      - 'scripts/stjerner.py'
+      - 'scripts/generate-docs.py'
+      - '.github/workflows/side.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  byg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0   # generate-docs.py daterer siderne efter deres seneste commit
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: bag tallene ind
+        run: python3 scripts/stjerner.py
+      - name: generer siderne igen (sitemappens lastmod)
+        run: |
+          python3 scripts/generate-docs.py > /dev/null
+          aendret=$(git status --porcelain | awk '{print $2}' | sort | tr '\n' ' ')
+          case "$aendret" in
+            ""|"docs/index.html "|"docs/sitemap.xml "|"docs/index.html docs/sitemap.xml ") echo "aendret: ${aendret:-intet}" ;;
+            *) echo "uventede filer efter generering: $aendret"; exit 1 ;;
+          esac
+      - name: tjek og proever
+        run: |
+          python3 scripts/stjerner.py --tjek
+          python3 scripts/check-docs.py
+          npm ci --prefix mcp-server --ignore-scripts --no-audit --no-fund
+          node --test test/forside.test.mjs
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs
+
+  udgiv:
+    needs: byg
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.udgivelse.outputs.page_url }}
+    steps:
+      - id: udgivelse
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
