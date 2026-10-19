@@ -682,6 +682,17 @@ test('select_frame: frame_url er adressen paa det dokument, koden koerte i - ogs
   assert.equal(svar.frame_url, 'https://andet.example/ny', JSON.stringify(svar));
 });
 
+test('den pakkede frameMaerke: saetter og giver dokumentets adresse, svarer kun ja paa sit eget maerke, og fjerner det igen', () => {
+  const u = indlaesUdvidelse({ svar: {} });
+  u.ctx.location = { href: 'https://frame.example/side?x=1' };
+  const f = u.hent('frameMaerke');
+  assert.equal(f(0, 'a'.repeat(32)), 'https://frame.example/side?x=1');
+  assert.equal(f(1, 'a'.repeat(32)), true);
+  assert.equal(f(1, 'b'.repeat(32)), false, 'et andet maerke findes ikke');
+  assert.equal(f(2, 'a'.repeat(32)), true);
+  assert.equal(f(1, 'a'.repeat(32)), false, 'maerket er fjernet');
+});
+
 // R133 (Opus): med 40 eller flere fremmede frames i toppen saa tilknytningen ikke i deres egne fremmede boern.
 test('select_frame: en fremmed frame inde i den 41. fremmede frame naas', async () => {
   const top = Array.from({ length: 41 }, (_, i) => ({ frameId: 100 + i, parentFrameId: 0, url: `https://x${i}.example/` }));
