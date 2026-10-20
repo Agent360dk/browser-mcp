@@ -13,7 +13,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +49,7 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
       chmodSync(join(bin, k), 0o755);
     }
   }
+  if (!win) symlinkSync(process.execPath, join(bin, 'node'));
   if (cursor) {
     mkdirSync(join(hjem, '.cursor'));
     if (cursorIndhold !== undefined) writeFileSync(join(hjem, '.cursor', 'mcp.json'), cursorIndhold);
@@ -58,7 +59,10 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
     shell: process.platform === 'win32',
     env: process.platform === 'win32'
       ? { ...process.env, Path: `${bin};${dirname(process.execPath)};${process.env.Path || ''}`, HOME: hjem, USERPROFILE: hjem }
-      : { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
+      // 20/10: PATH bar hele nodes mappe, og dér ligger globalt installerede klienter (codex kom i nvm's mappe 20/10 17.29) -
+      // installeren fandt saa den RIGTIGE codex og «registrerede» i en proeve, hvor ingen klienter maa findes. Kun node selv
+      // laegges ind, som et link i attrap-mappen.
+      : { PATH: `${bin}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
   });
   // MAALT 19/9: paa Windows koeres klienterne gennem cmd.exe med citerede argumenter
   // (ellers kan .cmd-attrapper slet ikke findes), saa loggen faar 'codex "mcp" "add" ...'.
