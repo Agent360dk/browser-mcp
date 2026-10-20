@@ -15,7 +15,7 @@
 
 import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 
@@ -79,29 +79,27 @@ function koerKlient(kommando, args, valg = {}) {
   // R163 (Opus, 20/10): gennem cmd.exe er en manglende klient et ikke-nul exit, ikke ENOENT, og installeren skrev «Codex is
   // installed, but registration failed» til hver Windows-bruger uden Codex. Kommandoen slaas derfor op foerst; findes den ikke,
   // er svaret ENOENT som paa macOS og Linux.
-  // SIKKERHED (20/10): cmd.exe og CreateProcess soeger i arbejdsmappen foer PATH, og det goer `where` ogsaa. En codex.bat (eller
-  // where.exe) i den mappe, brugeren koerer `install` fra, maatte aldrig koere. where.exe koeres ved absolut sti fra System32,
-  // med System32 som arbejdsmappe og NoDefaultCurrentDirectoryInExePath; et fund i brugerens arbejdsmappe afvises, og klienten
-  // koeres ved den fundne absolutte sti.
-  // R165 (Astra): kun en fil DIREKTE i arbejdsmappen afvises - Windows soeger kun dér, ikke i undermapperne. Fra hjemmemappen
-  // (PowerShells standard) ligger npm's globale programmer, Claude Code og VS Code i undermapper og er installeret. Skallen er
-  // System32's cmd.exe ved absolut sti; uden ComSpec ville Node ellers starte «cmd.exe» ved navn.
+  // SIKKERHED (20/10): cmd.exe og CreateProcess soeger i arbejdsmappen foer PATH. En codex.bat i den mappe, brugeren koerer
+  // `install` fra, maa aldrig koere. Opslaget sker derfor her, i PATH's absolutte mapper med PATHEXT's endelser - aldrig i
+  // arbejdsmappen selv eller i dens node_modules (npx laegger node_modules\.bin paa PATH) - og klienten koeres ved den fundne
+  // fulde sti gennem System32's cmd.exe med NoDefaultCurrentDirectoryInExePath.
+  // R165 (Astra + Opus): where.exe's tekst bruges ikke: den kommer i konsollens tegntabel (en sti med ø blev oedelagt), dens
+  // foerste linje kan vaere npm's skript uden endelse, og et praefiks-filter paa den afviste klienter under hjemmemappen.
   const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
   const env = { ...process.env, ...(valg.env || {}), NoDefaultCurrentDirectoryInExePath: '1' };
-  const ikkeFundet = () => Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
-  const arbejdsmappe = String(process.cwd()).toLowerCase().replace(/\\+$/, '');
-  const iArbejdsmappen = (fil) => dirname(fil).toLowerCase().replace(/\\+$/, '') === arbejdsmappe;
-  let sti;
-  try {
-    sti = String(execFileSync(join(system32, 'where.exe'), [kommando], { stdio: ['ignore', 'pipe', 'ignore'], cwd: system32, env }))
-      .split(/\r?\n/).map((l) => l.trim()).find((l) => l && !iArbejdsmappen(l));
-  } catch (err) {
-    // R164 (Astra): kun «intet fundet» (where's exit 1) betyder, at klienten ikke er installeret. Kunne opslaget ikke koeres
-    // (where.exe mangler, adgang naegtet), ved vi det ikke - og det maa ikke blive til et tavst «ikke installeret».
-    if (err && err.status === 1) throw ikkeFundet();
-    throw Object.assign(new Error(`could not check whether ${kommando} is installed: ${err && (err.code || err.message)}`), { code: 'OPSLAG_FEJLEDE' });
+  const variabel = (navn) => { const k = Object.keys(env).find((x) => x.toUpperCase() === navn); return k ? String(env[k]) : ''; };
+  const arbejdsmappe = resolve(process.cwd()).toLowerCase();
+  const endelser = (variabel('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim()).filter((e) => /^\.\w+$/.test(e));
+  let sti = null;
+  for (const post of variabel('PATH').split(';')) {
+    const mappe = post.trim().replace(/^"(.*)"$/, '$1');
+    if (!mappe || !isAbsolute(mappe)) continue;   // en relativ post ville pege ind i arbejdsmappen
+    const m = resolve(mappe).toLowerCase();
+    if (m === arbejdsmappe || m.startsWith(arbejdsmappe.replace(/\\$/, '') + '\\node_modules\\')) continue;
+    sti = endelser.map((e) => join(mappe, kommando + e)).find((f) => existsSync(f));
+    if (sti) break;
   }
-  if (!sti) throw ikkeFundet();
+  if (!sti) throw Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
   const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
   // En Windows-sti kan ikke indeholde anfoerselstegn; den citeres uden escaping (citer fordobler \\, som ville bryde \\\\server\\-stier).
   return execFileSync(`"${sti}"`, args.map(citer), { ...valg, env, shell: join(system32, 'cmd.exe') });
@@ -121,9 +119,7 @@ function registerWithClaudeCode() {
       return true;
     }
     // `claude` not on PATH, or a different client entirely. Do not pretend it worked.
-    console.log(err && err.code === 'OPSLAG_FEJLEDE'
-      ? '⚠️  Could not register automatically (could not check whether the `claude` command is installed).'
-      : '⚠️  Could not register automatically (the `claude` command was not found).');
+    console.log('⚠️  Could not register automatically (the `claude` command was not found).');
     console.log('   Register the server yourself - Claude Code:');
     console.log('     claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest');
     console.log('   Codex:');
@@ -146,10 +142,6 @@ function registerWithCodex() {
     return true;
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;   // Codex er ikke installeret
-    if (err && err.code === 'OPSLAG_FEJLEDE') {
-      console.log('⚠️  Could not check whether Codex is installed. If you use Codex, run: codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest');
-      return false;
-    }
     const msg = String(err && (err.stderr || err.message) || '');
     if (/already exists/i.test(msg)) {
       console.log('✅ Already registered with Codex - nothing to do');
@@ -164,11 +156,7 @@ function registerWithVSCode() {
   let hjaelp;
   try {
     hjaelp = String(koerKlient('code', ['--help'], { stdio: 'pipe' }));
-  } catch (err) {
-    if (err && err.code === 'OPSLAG_FEJLEDE') {
-      console.log('⚠️  Could not check whether VS Code is installed. If you use it, use "Add to VS Code" in the README.');
-      return false;
-    }
+  } catch {
     return null;   // VS Code's `code` er ikke paa PATH
   }
   // Kun versioner der kender flaget, faar det - en aeldre `code` ville aabne et vindue med JSON'en som filnavn.

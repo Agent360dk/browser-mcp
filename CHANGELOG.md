@@ -14,15 +14,15 @@ lookup is now skipped there, and the guard watches the nearest parent process an
 run `ps` by absolute path without a shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
 `npm-cli.js` by absolute path. It also runs from your home folder, so a `.npmrc` in the folder the server was started in no
 longer chooses the registry, and only a plain version number is passed on to the agent. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
-Windows; it now runs `where.exe` from System32, ignores a match that sits directly in the current folder (programs in its
-subfolders, such as npm's global folder under your home folder, are still found) and runs the client by its full path through
-System32's `cmd.exe`.
+Windows; it now looks the client up in PATH itself (absolute folders only, never the current folder or its `node_modules`, and
+only with the extensions in PATHEXT) and runs it by its full path through System32's `cmd.exe`. Clients under the folder you run it
+from, such as npm's global folder under your home folder, are still found, and a path with letters such as ø works.
 Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
 
 **Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
 cmd.exe, and a missing `codex` came back as a failed command instead of "not found", so `install` told every Windows user without
-Codex "Codex is installed, but registration failed". It now looks the command up with `where` first; a client that is not there
-is skipped, as on macOS and Linux, and if the lookup itself fails, the installer says it could not check instead of guessing.
+Codex "Codex is installed, but registration failed". It now looks the command up first; a client that is not there
+is skipped, as on macOS and Linux.
 
 **Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so
 the server could not tell profiles apart: with the extension enabled in two of them, commands went to one of them, and which

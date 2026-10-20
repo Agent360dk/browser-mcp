@@ -129,7 +129,7 @@ test('en Cursor-fil der ikke kan laeses, overskrives ikke', () => {
 });
 
 // SIKKERHED (20/10): paa Windows soeger cmd.exe og CreateProcess i arbejdsmappen foer PATH. En codex.bat i den mappe, brugeren
-// koerer `install` fra, maa aldrig koere - heller ikke en where.exe dér. Proeven koerer koerKlient fra cli.js med falsk platform.
+// koerer `install` fra, maa aldrig koere. Proeven koerer koerKlient fra cli.js med falsk platform, falsk PATH og falsk filsystem.
 function klientKilde() {
   const kilde = readFileSync(cli, 'utf8');
   const i = kilde.indexOf('function koerKlient(');
@@ -142,87 +142,62 @@ function klientKilde() {
   }
   throw new Error('koerKlient: ingen afsluttende kroelparentes');
 }
-test('SIKKERHED (Windows): installeren koerer aldrig en klient eller where.exe fra arbejdsmappen', async () => {
+test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen, og finder klienterne under den', async () => {
   const { win32 } = await import('node:path');
-  const lav = (whereSvar, cwd = 'C:\\proj') => {
+  // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
+  // der findes, og ser hvad der koeres.
+  const lav = ({ path, filer = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path' }) => {
     const kald = [];
-    const execFileSync = (k, args, valg) => {
-      kald.push({ k, args, valg });
-      if (kald.length === 1) { if (whereSvar instanceof Error) throw whereSvar; return whereSvar; }
-      return 'ok';
-    };
-    const proc = { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, cwd: () => cwd };
-    const fn = new Function('execFileSync', 'process', 'join', 'dirname', `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname);
-    return { fn, kald };
+    const tjekket = [];
+    const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
+    const env = { SystemRoot: 'C:\\Windows', PATHEXT: pathext, [noegle]: path };
+    const proc = { platform: 'win32', env, cwd: () => cwd };
+    // Som Windows: en relativ sti slaas op i arbejdsmappen (ellers kunne proeven ikke se en relativ PATH-post koere en fil dér).
+    const findes = (f) => { const fuld = win32.resolve(cwd, String(f)); tjekket.push(fuld); return filer.some((x) => x.toLowerCase() === fuld.toLowerCase()); };
+    const fn = new Function('execFileSync', 'process', 'join', 'resolve', 'isAbsolute', 'existsSync', `${klientKilde()}; return koerKlient;`)(
+      execFileSync, proc, win32.join, win32.resolve, win32.isAbsolute, findes);
+    return { fn, kald, tjekket };
   };
-  const a = lav('C:\\proj\\codex.bat\r\nC:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd\r\n');
-  a.fn('codex', ['mcp', 'add'], { stdio: 'pipe' });
-  assert.equal(a.kald[0].k, 'C:\\Windows\\System32\\where.exe', `where skal koeres ved absolut sti, fik ${a.kald[0].k}`);
-  assert.equal(a.kald[0].valg.cwd, 'C:\\Windows\\System32', 'where skal koere uden for brugerens arbejdsmappe');
-  assert.equal(a.kald[0].valg.env.NoDefaultCurrentDirectoryInExePath, '1');
-  assert.equal(a.kald.length, 2);
-  assert.match(String(a.kald[1].k), /AppData\\Roaming\\npm\\codex\.cmd/, `klienten skal koeres ved den fundne absolutte sti uden for arbejdsmappen, fik ${a.kald[1].k}`);
-  assert.doesNotMatch(String(a.kald[1].k), /\\proj\\/, 'en codex.bat i arbejdsmappen blev koert');
-  assert.equal(a.kald[1].valg.env.NoDefaultCurrentDirectoryInExePath, '1');
-  // R165 (Astra): skallen er System32's cmd.exe ved absolut sti - ikke «cmd.exe» ved navn, som Node falder tilbage paa uden ComSpec.
-  assert.equal(a.kald[1].valg.shell, 'C:\\Windows\\System32\\cmd.exe', `skallen skal vaere System32's cmd.exe, fik ${a.kald[1].valg.shell}`);
-  // R165 (Astra): kun selve arbejdsmappen afvises. Koeres install fra hjemmemappen (PowerShells standard), ligger npm's globale
-  // programmer, Claude Code og VS Code i UNDERMAPPER af den - de er installeret og skal findes.
-  for (const [cwd, klient] of [
-    ['C:\\Users\\u', 'C:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd'],
-    ['C:\\Users\\u\\', 'C:\\Users\\u\\.local\\bin\\claude.exe'],
-    ['C:\\', 'C:\\Users\\u\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd'],
-  ]) {
-    const h = lav(`${klient}\r\n`, cwd);
-    h.fn('codex', ['mcp'], {});
-    assert.equal(h.kald.length, 2, `fra ${cwd} blev ${klient} afvist som om den laa i arbejdsmappen`);
-    assert.equal(h.kald[1].k, `"${klient}"`);
-  }
-  const hjemFil = lav('C:\\Users\\u\\codex.bat\r\n', 'C:\\Users\\U');
-  assert.throws(() => hjemFil.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en codex.bat direkte i arbejdsmappen (anden skrivemaade) blev koert');
-  const rodFil = lav('C:\\codex.bat\r\n', 'C:\\');
-  assert.throws(() => rodFil.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en codex.bat i drevets rod blev koert, da install koerte fra roden');
-  const kunCwd = lav('C:\\proj\\codex.bat\r\n');
-  assert.throws(() => kunCwd.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en klient der kun findes i arbejdsmappen, er ikke installeret');
-  assert.equal(kunCwd.kald.length, 1, 'og intet andet koeres');
-  const ingen = lav(Object.assign(new Error('INFO: Could not find files'), { status: 1 }));
-  assert.throws(() => ingen.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT');
-  assert.equal(ingen.kald.length, 1);
-  // R164 (Astra): kunne opslaget ikke koeres (where.exe mangler, adgang naegtet), er klienten IKKE dermed «ikke installeret».
-  for (const fejl of [Object.assign(new Error('spawn where.exe ENOENT'), { code: 'ENOENT' }), Object.assign(new Error('EACCES'), { code: 'EACCES' })]) {
-    const f = lav(fejl);
-    assert.throws(() => f.fn('codex', ['mcp'], {}), (e) => e.code === 'OPSLAG_FEJLEDE', `en opslagsfejl (${fejl.code}) blev til «ikke installeret»`);
-  }
-});
+  const NPM = 'C:\\Users\\u\\AppData\\Roaming\\npm';
+  // Windows' filsystem skelner ikke store og smaa bogstaver; endelsen kommer fra PATHEXT (.CMD).
+  const lig = (faktisk, forventet, besked) => assert.equal(String(faktisk).toLowerCase(), String(forventet).toLowerCase(), besked);
+  const koert = (h) => { h.fn('codex', ['mcp', 'add'], { stdio: 'pipe' }); assert.equal(h.kald.length, 1, 'netop én proces: klienten'); return h.kald[0]; };
+  const ikke = (h, hvorfor) => { assert.throws(() => h.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', hvorfor); assert.deepEqual(h.kald, [], `${hvorfor} - og intet koeres`); };
 
-test('en opslagsfejl siges som «kunne ikke tjekke», ikke som «installeret» eller tavst «ikke installeret» (R164)', () => {
-  const kilde = readFileSync(cli, 'utf8');
-  const hent = (navn) => {
-    const i = kilde.indexOf(`function ${navn}(`);
-    let d = 0;
-    for (let k = kilde.indexOf(') {', i) + 2; k < kilde.length; k++) {
-      if (kilde[k] === '{') d++; else if (kilde[k] === '}' && --d === 0) return kilde.slice(i, k + 1);
-    }
-    throw new Error(`${navn} blev ikke fundet i cli.js`);
-  };
-  const koer = (navn) => {
-    const linjer = [];
-    const koerKlient = () => { throw Object.assign(new Error('could not check'), { code: 'OPSLAG_FEJLEDE' }); };
-    const fn = new Function('koerKlient', 'console', 'SERVER_NAVN', 'SERVER_KOMMANDO', 'SERVER_ARGS', `${hent(navn)}; return ${navn};`)(
-      koerKlient, { log: (t) => linjer.push(t) }, 'browser-mcp', 'npx', ['@agent360/browser-mcp@latest']);
-    return { svar: fn(), tekst: linjer.join('\n') };
-  };
-  const codex = koer('registerWithCodex');
-  assert.equal(codex.svar, false, 'Codex: en opslagsfejl maa ikke give null (tavst sprunget over)');
-  assert.match(codex.tekst, /Could not check whether Codex is installed/);
-  assert.doesNotMatch(codex.tekst, /Codex is installed, but/);
-  const vsc = koer('registerWithVSCode');
-  assert.equal(vsc.svar, false, 'VS Code: en opslagsfejl maa ikke give null (tavst sprunget over)');
-  assert.match(vsc.tekst, /Could not check whether VS Code is installed/);
-  const claude = koer('registerWithClaudeCode');
-  assert.equal(claude.svar, false);
-  assert.match(claude.tekst, /could not check whether the `claude` command is installed/);
-  assert.doesNotMatch(claude.tekst, /command was not found/);
+  // Arbejdsmappen staar paa PATH og har en codex.bat: den springes over, og den rigtige klient koeres ved fuld sti.
+  const a = koert(lav({ path: `C:\\proj;${NPM};C:\\Windows\\System32`, filer: ['C:\\proj\\codex.bat', `${NPM}\\codex.cmd`] }));
+  lig(a.k, `"${NPM}\\codex.cmd"`, `klienten skal koeres ved den fundne fulde sti, fik ${a.k}`);
+  assert.equal(a.valg.shell, 'C:\\Windows\\System32\\cmd.exe', `skallen skal vaere System32's cmd.exe, fik ${a.valg.shell}`);
+  assert.equal(a.valg.env.NoDefaultCurrentDirectoryInExePath, '1');
+  // Kun i arbejdsmappen, i en relativ PATH-post eller i arbejdsmappens node_modules (npx) = ikke installeret.
+  ikke(lav({ path: 'C:\\proj', filer: ['C:\\proj\\codex.bat'] }), 'en klient der kun findes i arbejdsmappen, er ikke installeret');
+  ikke(lav({ path: '.;bin;C:\\Windows\\System32', filer: ['C:\\proj\\codex.bat', 'C:\\proj\\bin\\codex.cmd'] }), 'en relativ PATH-post peger ind i arbejdsmappen');
+  ikke(lav({ path: 'C:\\proj\\node_modules\\.bin', filer: ['C:\\proj\\node_modules\\.bin\\codex.cmd'] }), 'arbejdsmappens node_modules er arbejdsmappens');
+  ikke(lav({ path: 'C:\\PROJ\\', filer: ['C:\\proj\\codex.bat'], cwd: 'c:\\proj' }), 'arbejdsmappen med anden skrivemaade');
+  ikke(lav({ path: `${NPM};C:\\Windows\\System32`, filer: [] }), 'findes klienten ingen steder, er den ikke installeret');
+  // R165 (Astra + Opus): fra hjemmemappen (PowerShells standard) og drevets rod ligger klienterne i UNDERMAPPER - de findes.
+  for (const [cwd, mappe, fil] of [
+    ['C:\\Users\\u', NPM, 'codex.cmd'],
+    ['C:\\Users\\u\\', 'C:\\Users\\u\\.local\\bin', 'codex.exe'],
+    ['C:\\', 'C:\\Users\\u\\AppData\\Local\\Programs\\Microsoft VS Code\\bin', 'codex.cmd'],
+  ]) {
+    const k = koert(lav({ path: `${mappe};C:\\Windows\\System32`, filer: [`${mappe}\\${fil}`], cwd }));
+    lig(k.k, `"${mappe}\\${fil}"`, `fra ${cwd} blev ${mappe}\\${fil} ikke fundet, eller stien blev ikke citeret`);
+  }
+  ikke(lav({ path: 'C:\\', filer: ['C:\\codex.bat'], cwd: 'C:\\' }), 'en codex.bat i drevets rod, naar install koerer fra roden');
+  // R165 (Opus): en sti med ø (et dansk brugernavn) koeres som den er.
+  const oe = koert(lav({ path: 'C:\\Users\\Søren\\AppData\\Roaming\\npm', filer: ['C:\\Users\\Søren\\AppData\\Roaming\\npm\\codex.cmd'] }));
+  lig(oe.k, '"C:\\Users\\Søren\\AppData\\Roaming\\npm\\codex.cmd"');
+  // R165 (Opus): npm's skript uden endelse ved siden af codex.cmd vaelges ikke; kun PATHEXT's endelser, i PATHEXT's raekkefoelge.
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex`, `${NPM}\\codex.cmd`] })).k, `"${NPM}\\codex.cmd"`);
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`, `${NPM}\\codex.exe`] })).k, `"${NPM}\\codex.exe"`, '.EXE kommer foer .CMD i PATHEXT');
+  // PATH's raekkefoelge afgoer, citerede poster virker, og variabelnavnet er uden forskel paa store og smaa bogstaver.
+  lig(koert(lav({ path: `"C:\\A b";${NPM}`, filer: ['C:\\A b\\codex.cmd', `${NPM}\\codex.cmd`] })).k, '"C:\\A b\\codex.cmd"');
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`], noegle: 'PATH' })).k, `"${NPM}\\codex.cmd"`);
+  // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
+  const t = lav({ path: `C:\\proj;${NPM}`, filer: [`${NPM}\\codex.cmd`] });
+  koert(t);
+  assert.ok(!t.tjekket.some((f) => /^c:\\proj\\/i.test(f)), `opslaget kiggede i arbejdsmappen: ${t.tjekket.join(', ')}`);
 });
 
 test('klienter der ikke findes, roeres ikke og kaldes ikke registreret', () => {
