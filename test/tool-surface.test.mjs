@@ -359,7 +359,9 @@ test('provide_feedback beskriver logbogen og npm-opslaget som koden goer dem', (
   assert.match(indexSrc, /\.slice\(0, 160\);\n  return `\$\{kind\}\|\$\{tool \|\| '-'\}\|\$\{kerne\}`;/, 'vagten forudsaetter aftrykket kind|tool|160 tegn - ellers ret tekst og kontrakt');
   assert.match(d, /again only if the earlier write failed/, 'en fejlet skrivning proeves igen - det skal staa');
   assert.match(d, /replaced with \[email\] and \[number\] in what_happened, attempted and worked before they are written or put in the issue link/, 'rensningen skal staa i beskrivelsen');
-  assert.match(indexSrc, /execFile\('npm', \['view'/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
+  // 20/10 (sikkerhed): paa Windows koeres npm som node + npm-cli.js ved absolut sti; kommandoen er stadig `npm view`.
+  assert.match(indexSrc, /let kommando = 'npm', foer = \[\];/, 'vagten forudsaetter at npm-tjekket som standard koerer `npm` - ellers ret tekst og kontrakt');
+  assert.match(indexSrc, /execFile\(kommando, \[\.\.\.foer, 'view', '@agent360\/browser-mcp', 'version'\]/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
   assert.match(indexSrc, /^const TJEK_NPM = process\.env\.BROWSER_MCP_CHECK_NPM === '1';$/m, 'npm-tjekket er et tilvalg (=1) - teksterne siger «off by default»');
   assert.match(indexSrc, /^const FEEDBACK_LOG = join\(homedir\(\), '\.browser-mcp', 'feedback\.jsonl'\);$/m, 'teksten naevner stien ~/.browser-mcp/feedback.jsonl');
   assert.match(d, /npm view/, 'npm-tjekket er `npm view` mod brugerens opsaetning, ikke et fast offentligt register');
