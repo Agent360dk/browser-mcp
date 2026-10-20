@@ -77,13 +77,27 @@ function koerKlient(kommando, args, valg = {}) {
   // vi er ved at rette, bare med en ny aarsag.
   if (process.platform !== 'win32') return execFileSync(kommando, args, valg);
   // R163 (Opus, 20/10): gennem cmd.exe er en manglende klient et ikke-nul exit, ikke ENOENT, og installeren skrev «Codex is
-  // installed, but registration failed» til hver Windows-bruger uden Codex. `where` (System32, uafhaengigt af sprog) afgoer
-  // foerst om kommandoen findes; findes den ikke, er svaret ENOENT som paa macOS og Linux.
-  try { execFileSync('where', [kommando], { stdio: 'pipe' }); } catch {
-    throw Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
+  // installed, but registration failed» til hver Windows-bruger uden Codex. Kommandoen slaas derfor op foerst; findes den ikke,
+  // er svaret ENOENT som paa macOS og Linux.
+  // SIKKERHED (20/10): cmd.exe og CreateProcess soeger i arbejdsmappen foer PATH, og det goer `where` ogsaa. En codex.bat (eller
+  // where.exe) i den mappe, brugeren koerer `install` fra, maatte aldrig koere. where.exe koeres ved absolut sti fra System32,
+  // med System32 som arbejdsmappe og NoDefaultCurrentDirectoryInExePath; et fund i brugerens arbejdsmappe afvises, og klienten
+  // koeres ved den fundne absolutte sti.
+  const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+  const env = { ...process.env, ...(valg.env || {}), NoDefaultCurrentDirectoryInExePath: '1' };
+  const ikkeFundet = () => Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
+  const arbejdsmappe = String(process.cwd()).toLowerCase().replace(/\\+$/, '') + '\\';
+  let sti;
+  try {
+    sti = String(execFileSync(join(system32, 'where.exe'), [kommando], { stdio: ['ignore', 'pipe', 'ignore'], cwd: system32, env }))
+      .split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.toLowerCase().startsWith(arbejdsmappe));
+  } catch {
+    throw ikkeFundet();
   }
+  if (!sti) throw ikkeFundet();
   const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
-  return execFileSync(kommando, args.map(citer), { ...valg, shell: true });
+  // En Windows-sti kan ikke indeholde anfoerselstegn; den citeres uden escaping (citer fordobler \\, som ville bryde \\\\server\\-stier).
+  return execFileSync(`"${sti}"`, args.map(citer), { ...valg, env, shell: true });
 }
 
 function registerWithClaudeCode() {
