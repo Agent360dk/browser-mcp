@@ -734,7 +734,9 @@ test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, s
     assert.equal(captchaFrister.length, 1, `CAPTCHA-kontrollen kom ikke under én frist: ${captchaFrister.length}`);
     assert.ok(captchaFrister[0] <= start + FRISTER.loft + 50,
       `CAPTCHA-kontrollens frist sluttede ${captchaFrister[0] - start - FRISTER.loft} ms efter loftet`);
-    assert.ok(brugt < FRISTER.loft + 1000, `CAPTCHA-kontrollen gik langt ud over loftet: ${brugt} ms`);
+    // R162 (Opus): ydergrænsen loft + 500 fanger ventetid uden for den indpakkede frist (fx et genforsøg eller en pause efter kontrollen).
+    // Målt: korrekt kode 912-953 ms ved load 124; værste fulde suite (D19) 1212 ms.
+    assert.ok(brugt < FRISTER.loft + 500, `navigationen gik ud over loftet: ${brugt} ms`);
     assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
   });
 });
