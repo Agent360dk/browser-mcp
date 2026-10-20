@@ -146,16 +146,32 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path' }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path' }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
     const env = { SystemRoot: 'C:\\Windows', PATHEXT: pathext, [noegle]: path };
     const proc = { platform: 'win32', env, cwd: () => cwd };
-    // Som Windows: en relativ sti slaas op i arbejdsmappen (ellers kunne proeven ikke se en relativ PATH-post koere en fil dér).
-    const findes = (f) => { const fuld = win32.resolve(cwd, String(f)); tjekket.push(fuld); return filer.some((x) => x.toLowerCase() === fuld.toLowerCase()); };
-    const fn = new Function('execFileSync', 'process', 'join', 'resolve', 'isAbsolute', 'existsSync', `${klientKilde()}; return koerKlient;`)(
-      execFileSync, proc, win32.join, win32.resolve, win32.isAbsolute, findes);
+    const lc = (x) => String(x).toLowerCase();
+    // Som Windows: en relativ sti slaas op i arbejdsmappen, og et alias (8.3-navn, \\?\, junction) er samme mappe som sit maal.
+    const aegte = (p) => {
+      let r = win32.resolve(cwd, String(p));
+      for (const [a, b] of Object.entries(aliaser)) if (lc(r) === lc(a) || lc(r).startsWith(lc(a) + '\\')) r = b + r.slice(a.length);
+      return win32.resolve(r);
+    };
+    const kendte = new Set([cwd, ...mapper, ...[...filer, ...appAlias].map((f) => win32.dirname(f))].map((m) => lc(win32.resolve(m))));
+    const realpathSync = { native: (p) => { const r = aegte(p); if (!kendte.has(lc(r))) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); return r; } };
+    const statSync = (f) => {
+      const r = lc(aegte(f)); tjekket.push(r);
+      if (filer.some((x) => lc(x) === r)) return { isFile: () => true, isDirectory: () => false };
+      if (mapper.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => true };
+      const alias = appAlias.some((x) => lc(x) === r);   // en App Execution Alias kan ikke stat'es (Node #36790)
+      throw Object.assign(new Error(alias ? 'EACCES' : 'ENOENT'), { code: alias ? 'EACCES' : 'ENOENT' });
+    };
+    const lstatSync = (f) => appAlias.some((x) => lc(x) === lc(aegte(f))) ? { isDirectory: () => false, isSymbolicLink: () => true } : statSync(f);
+    const existsSync = (f) => { try { statSync(f); return true; } catch { return false; } };
+    const fn = new Function('execFileSync', 'process', 'join', 'dirname', 'resolve', 'isAbsolute', 'existsSync', 'statSync', 'lstatSync', 'realpathSync',
+      `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname, win32.resolve, win32.isAbsolute, existsSync, statSync, lstatSync, realpathSync);
     return { fn, kald, tjekket };
   };
   const NPM = 'C:\\Users\\u\\AppData\\Roaming\\npm';
@@ -194,6 +210,21 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   // PATH's raekkefoelge afgoer, citerede poster virker, og variabelnavnet er uden forskel paa store og smaa bogstaver.
   lig(koert(lav({ path: `"C:\\A b";${NPM}`, filer: ['C:\\A b\\codex.cmd', `${NPM}\\codex.cmd`] })).k, '"C:\\A b\\codex.cmd"');
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`], noegle: 'PATH' })).k, `"${NPM}\\codex.cmd"`);
+  // R166 (Astra): et traef skal vaere en fil. En MAPPE ved navn codex.exe (eller codex.cmd i en tidligere PATH-mappe) skygger ikke.
+  lig(koert(lav({ path: 'C:\\tools', mapper: ['C:\\tools\\codex.exe'], filer: ['C:\\tools\\codex.cmd'] })).k, '"C:\\tools\\codex.cmd"');
+  lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A', 'C:\\A\\codex.cmd'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R166 (Astra): et andet navn for arbejdsmappen er stadig arbejdsmappen - 8.3-navn, \\?\-sti, junction - og node_modules-roden er dens.
+  ikke(lav({ path: 'C:\\LONGPR~1', filer: ['C:\\Long Project\\codex.bat'], cwd: 'C:\\Long Project', aliaser: { 'C:\\LONGPR~1': 'C:\\Long Project' } }), 'et 8.3-navn for arbejdsmappen');
+  ikke(lav({ path: '\\\\?\\C:\\proj', filer: ['C:\\proj\\codex.bat'], aliaser: { '\\\\?\\C:\\proj': 'C:\\proj' } }), 'en \\\\?\\-sti til arbejdsmappen');
+  ikke(lav({ path: 'C:\\link', filer: ['C:\\proj\\codex.bat'], aliaser: { 'C:\\link': 'C:\\proj' } }), 'en junction til arbejdsmappen');
+  ikke(lav({ path: 'C:\\proj\\node_modules', filer: ['C:\\proj\\node_modules\\codex.cmd'] }), 'arbejdsmappens node_modules-rod');
+  ikke(lav({ path: 'C:\\findes-ikke', filer: [] }), 'en PATH-mappe der ikke findes');
+  // En App Execution Alias (WindowsApps) kan ikke stat'es, men er et program.
+  const WA = 'C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps';
+  lig(koert(lav({ path: WA, appAlias: [`${WA}\\codex.exe`] })).k, `"${WA}\\codex.exe"`);
+  // PATHEXT fra miljoeet afgoer raekkefoelgen (ikke en indbygget standard), og en endelse med bindestreg er en endelse.
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`, `${NPM}\\codex.exe`], pathext: '.CMD;.EXE' })).k, `"${NPM}\\codex.cmd"`);
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.my-ext`], pathext: '.MY-EXT' })).k, `"${NPM}\\codex.my-ext"`);
   // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
   const t = lav({ path: `C:\\proj;${NPM}`, filer: [`${NPM}\\codex.cmd`] });
   koert(t);

@@ -13,7 +13,7 @@
  * install silently did nothing while printing success.
  */
 
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, statSync, lstatSync, realpathSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { dirname, join, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
@@ -85,18 +85,26 @@ function koerKlient(kommando, args, valg = {}) {
   // fulde sti gennem System32's cmd.exe med NoDefaultCurrentDirectoryInExePath.
   // R165 (Astra + Opus): where.exe's tekst bruges ikke: den kommer i konsollens tegntabel (en sti med ø blev oedelagt), dens
   // foerste linje kan vaere npm's skript uden endelse, og et praefiks-filter paa den afviste klienter under hjemmemappen.
+  // R166 (Astra): mapperne sammenlignes paa deres aegte sti (realpath: 8.3-navne, \\?\-stier og junctions til arbejdsmappen er
+  // samme mappe), og et traef skal vaere en fil - en mappe ved navn codex.exe maa ikke skygge for codex.cmd. En App Execution
+  // Alias kan ikke stat'es (EACCES), men lstat'es; den regnes som et program.
   const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
   const env = { ...process.env, ...(valg.env || {}), NoDefaultCurrentDirectoryInExePath: '1' };
   const variabel = (navn) => { const k = Object.keys(env).find((x) => x.toUpperCase() === navn); return k ? String(env[k]) : ''; };
-  const arbejdsmappe = resolve(process.cwd()).toLowerCase();
-  const endelser = (variabel('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim()).filter((e) => /^\.\w+$/.test(e));
+  const aegte = (p) => { try { return realpathSync.native(p).toLowerCase(); } catch { return null; } };
+  const arbejdsmappe = aegte(process.cwd()) || resolve(process.cwd()).toLowerCase();
+  const nodeModules = arbejdsmappe.replace(/\\$/, '') + '\\node_modules';
+  const erProgram = (f) => {
+    try { return statSync(f).isFile(); } catch { try { return !lstatSync(f).isDirectory(); } catch { return false; } }
+  };
+  const endelser = (variabel('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim()).filter((e) => /^\.[^\s\\/:*?"<>|.]+$/.test(e));
   let sti = null;
   for (const post of variabel('PATH').split(';')) {
     const mappe = post.trim().replace(/^"(.*)"$/, '$1');
     if (!mappe || !isAbsolute(mappe)) continue;   // en relativ post ville pege ind i arbejdsmappen
-    const m = resolve(mappe).toLowerCase();
-    if (m === arbejdsmappe || m.startsWith(arbejdsmappe.replace(/\\$/, '') + '\\node_modules\\')) continue;
-    sti = endelser.map((e) => join(mappe, kommando + e)).find((f) => existsSync(f));
+    const m = aegte(mappe);
+    if (!m || m === arbejdsmappe || m === nodeModules || m.startsWith(nodeModules + '\\')) continue;   // findes ikke, eller er arbejdsmappens
+    sti = endelser.map((e) => join(mappe, kommando + e)).find(erProgram);
     if (sti) break;
   }
   if (!sti) throw Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });

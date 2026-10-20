@@ -236,13 +236,16 @@ test('SIKKERHED: npm-tjekket starter paa Windows aldrig «npm» fra arbejdsmappe
   const mac = lav('darwin', () => true);
   assert.equal(await mac.fn(), '9.9.9');
   assert.equal(mac.kald[0][0], 'npm', 'paa macOS og Linux er npm-opslaget uaendret');
+  // R166 (Astra): ogsaa Linux maales for sig - en mutant der kun aendrer Linux-grenen, skal fanges.
+  const lin = lav('linux', () => true);
+  assert.equal(await lin.fn(), '9.9.9');
   // R165 (Astra): uden skal og med en tidsgraense paa alle platforme - et haengende npm maa ikke holde provide_feedback.
-  for (const k of [w, mac]) {
+  for (const k of [w, mac, lin]) {
     assert.ok(!k.kald[0][2].shell, 'npm-opslaget startes gennem en skal');
     assert.ok(k.kald[0][2].timeout > 0 && k.kald[0][2].timeout <= 10000, `npm-opslaget har ingen fornuftig tidsgraense: ${k.kald[0][2].timeout}`);
   }
   // R164 (Opus): npm laeser .npmrc i arbejdsmappen. Opslaget koeres fra hjemmemappen paa alle platforme.
-  for (const k of [w, mac]) assert.equal(k.kald[0][2] && k.kald[0][2].cwd, HJEM, 'npm-opslaget skal koeres fra hjemmemappen, ikke fra arbejdsmappen');
+  for (const k of [w, mac, lin]) assert.equal(k.kald[0][2] && k.kald[0][2].cwd, HJEM, 'npm-opslaget skal koeres fra hjemmemappen, ikke fra arbejdsmappen');
   // Et fremmed register kan svare med fritekst efter tallet; kun et rent versionsnummer naar videre til agenten.
   assert.equal(await lav('darwin', () => true, '1.99.0 - INDSAT TEKST til agenten\n').fn(), null, 'fritekst efter versionsnummeret slap igennem');
   assert.equal(await lav('darwin', () => true, '1.31.0-beta.1\n').fn(), '1.31.0-beta.1', 'en forhaandsudgave er stadig et versionsnummer');
