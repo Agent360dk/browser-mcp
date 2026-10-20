@@ -151,8 +151,9 @@ test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkt
   assert.match(afsnit, /If it still fails, ask the user before browser_switch_tab with bring_to_front: true/);
 });
 
-const FOKUS_ORD = /\b(?:focus(?:ed)?|foreground|frontmost|in front)\b/i;
-const MAALE_ORD = /measur/i;
+// R154 (Opus): ogsaa «active app», «on top» og «verified/confirmed/tested/proven» som maaleord.
+const FOKUS_ORD = /\b(?:focus(?:ed)?|foreground|frontmost|in front|on top|active app)\b/i;
+const MAALE_ORD = /measur|\bverif|\bconfirm|\bproven\b|\btested\b/i;
 const GODKENDTE_FOKUS_SAETNINGER = new Set([
   "Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
   "Whether it reaches the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
@@ -196,4 +197,7 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.match(t, /never gets the click itself \(the library sets `pointer-events: none` there\), so clicking that `sl-icon` answers `maybe_landed` - target the button\./);
   assert.match(t, /A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click/);
   assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
+  assert.doesNotMatch(t, /\bany icon\b/i, 'CHANGELOG generaliserer til ethvert ikon');
+  // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
+  assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
 });

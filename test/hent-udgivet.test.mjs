@@ -288,7 +288,8 @@ for n in ast.walk(t):
             if any('b' in str(m) for m in tilstand):
                 continue
             kald += 1
-            if not any(k.arg == 'encoding' for k in n.keywords):
+            # R154 (Opus): encoding=None er det lokale tegnsaet igen - kun en navngivet streng taeller.
+            if not any(k.arg == 'encoding' and isinstance(k.value, ast.Constant) and isinstance(k.value.value, str) for k in n.keywords):
                 uden += 1
                 print('UDEN', n.lineno)
 print('KALD', kald, 'UDEN', uden)`, join(rod, 'scripts/hent-udgivet.py')], { encoding: 'utf8' });

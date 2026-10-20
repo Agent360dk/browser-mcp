@@ -95,7 +95,8 @@ async function optagne() {
 
 function start() {
   const p = spawn(process.execPath, [SRV], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });
-  p.stderr.on('data', () => {});   // serveren skriver diagnostik; testen laeser svarene paa stdout
+  p.log = '';
+  p.stderr.on('data', (d) => { p.log += d; });   // serverens diagnostik; svarene laeses paa stdout
   boerneprocesser.push(p);
   return p;
 }
@@ -152,9 +153,15 @@ test('foerste browser-kald tager porten', async () => {
   assert.deepEqual(await optagne(), foer, 'porten var taget allerede foer kaldet');
 
   browserKald(p);                         // svaret er ligegyldigt - der er ingen udvidelse
-  let efter = foer;
-  for (let i = 0; i < 30 && efter.length === foer.length; i++) { await vent(200); efter = await optagne(); }
-  assert.equal(efter.length, foer.length + 1, 'foerste browser-kald bandt ingen port');
+  // 20/10 (GitHub, static (20) paa 0c91f85): «2 porte optaget, ventede 1». Proevefilerne koerer parallelt, og en anden fil kan
+  // ramme samme tilfaeldige spaend. Proeven binder sig derfor til den port, SERVEREN melder, og kraever at netop den er ny og optaget.
+  const meldt = () => Number((p.log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1]) || null;
+  for (let i = 0; i < 30 && !meldt(); i++) await vent(200);
+  const port = meldt();
+  assert.ok(port, 'foerste browser-kald bandt ingen port (serveren meldte ingen)');
+  assert.ok(port >= BASE && port <= MAX, `serveren bandt ${port}, uden for spaendet ${BASE}-${MAX}`);
+  assert.ok(!foer.includes(port), `port ${port} var optaget allerede foer kaldet`);
+  assert.ok((await optagne()).includes(port), `serveren meldte ${port}, men porten er ikke optaget`);
 });
 
 test('en sultet server faar en port naar en bliver fri - uden genstart', async () => {
