@@ -199,6 +199,8 @@ test('SIKKERHED: ps-opslaget koerer ingen fil fra arbejdsmappen - Windows starte
   const lin = lav('linux', (sti) => sti === '/usr/bin/ps');
   assert.equal(lin.fn(1234), 42);
   assert.equal(lin.kald[0][1], '/usr/bin/ps', `paa Linux uden /bin/ps skal /usr/bin/ps bruges, fik ${lin.kald[0][1]}`);
+  // R165 (Astra): heller ikke paa Linux gennem en skal.
+  assert.ok(!lin.kald[0][3] || !lin.kald[0][3].shell, 'ps paa Linux startes gennem en skal');
   // R164 (Opus): NixOS har kun systemprofilens ps.
   const nix = lav('linux', (sti) => sti === '/run/current-system/sw/bin/ps');
   assert.equal(nix.fn(1234), 42);
@@ -234,6 +236,11 @@ test('SIKKERHED: npm-tjekket starter paa Windows aldrig «npm» fra arbejdsmappe
   const mac = lav('darwin', () => true);
   assert.equal(await mac.fn(), '9.9.9');
   assert.equal(mac.kald[0][0], 'npm', 'paa macOS og Linux er npm-opslaget uaendret');
+  // R165 (Astra): uden skal og med en tidsgraense paa alle platforme - et haengende npm maa ikke holde provide_feedback.
+  for (const k of [w, mac]) {
+    assert.ok(!k.kald[0][2].shell, 'npm-opslaget startes gennem en skal');
+    assert.ok(k.kald[0][2].timeout > 0 && k.kald[0][2].timeout <= 10000, `npm-opslaget har ingen fornuftig tidsgraense: ${k.kald[0][2].timeout}`);
+  }
   // R164 (Opus): npm laeser .npmrc i arbejdsmappen. Opslaget koeres fra hjemmemappen paa alle platforme.
   for (const k of [w, mac]) assert.equal(k.kald[0][2] && k.kald[0][2].cwd, HJEM, 'npm-opslaget skal koeres fra hjemmemappen, ikke fra arbejdsmappen');
   // Et fremmed register kan svare med fritekst efter tallet; kun et rent versionsnummer naar videre til agenten.

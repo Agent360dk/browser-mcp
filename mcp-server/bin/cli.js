@@ -83,14 +83,18 @@ function koerKlient(kommando, args, valg = {}) {
   // where.exe) i den mappe, brugeren koerer `install` fra, maatte aldrig koere. where.exe koeres ved absolut sti fra System32,
   // med System32 som arbejdsmappe og NoDefaultCurrentDirectoryInExePath; et fund i brugerens arbejdsmappe afvises, og klienten
   // koeres ved den fundne absolutte sti.
+  // R165 (Astra): kun en fil DIREKTE i arbejdsmappen afvises - Windows soeger kun dér, ikke i undermapperne. Fra hjemmemappen
+  // (PowerShells standard) ligger npm's globale programmer, Claude Code og VS Code i undermapper og er installeret. Skallen er
+  // System32's cmd.exe ved absolut sti; uden ComSpec ville Node ellers starte «cmd.exe» ved navn.
   const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
   const env = { ...process.env, ...(valg.env || {}), NoDefaultCurrentDirectoryInExePath: '1' };
   const ikkeFundet = () => Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
-  const arbejdsmappe = String(process.cwd()).toLowerCase().replace(/\\+$/, '') + '\\';
+  const arbejdsmappe = String(process.cwd()).toLowerCase().replace(/\\+$/, '');
+  const iArbejdsmappen = (fil) => dirname(fil).toLowerCase().replace(/\\+$/, '') === arbejdsmappe;
   let sti;
   try {
     sti = String(execFileSync(join(system32, 'where.exe'), [kommando], { stdio: ['ignore', 'pipe', 'ignore'], cwd: system32, env }))
-      .split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.toLowerCase().startsWith(arbejdsmappe));
+      .split(/\r?\n/).map((l) => l.trim()).find((l) => l && !iArbejdsmappen(l));
   } catch (err) {
     // R164 (Astra): kun «intet fundet» (where's exit 1) betyder, at klienten ikke er installeret. Kunne opslaget ikke koeres
     // (where.exe mangler, adgang naegtet), ved vi det ikke - og det maa ikke blive til et tavst «ikke installeret».
@@ -100,7 +104,7 @@ function koerKlient(kommando, args, valg = {}) {
   if (!sti) throw ikkeFundet();
   const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
   // En Windows-sti kan ikke indeholde anfoerselstegn; den citeres uden escaping (citer fordobler \\, som ville bryde \\\\server\\-stier).
-  return execFileSync(`"${sti}"`, args.map(citer), { ...valg, env, shell: true });
+  return execFileSync(`"${sti}"`, args.map(citer), { ...valg, env, shell: join(system32, 'cmd.exe') });
 }
 
 function registerWithClaudeCode() {
