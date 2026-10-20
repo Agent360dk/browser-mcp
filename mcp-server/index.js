@@ -1782,10 +1782,12 @@ function npmLatestVersion() {
       if (!existsSync(cli)) return resolve(null);
       kommando = process.execPath; foer = [cli];
     }
-    execFile(kommando, [...foer, 'view', '@agent360/browser-mcp', 'version'], { timeout: 6000 }, (err, stdout) => {
+    // R164 (Opus): npm laeser .npmrc i arbejdsmappen, og en fremmed mappe kan dermed pege paa sit eget register og svare med
+    // fritekst. Opslaget koeres derfor fra hjemmemappen, og kun et rent versionsnummer godtages.
+    execFile(kommando, [...foer, 'view', '@agent360/browser-mcp', 'version'], { timeout: 6000, cwd: homedir() }, (err, stdout) => {
       if (err) return resolve(null);
       const v = String(stdout).trim();
-      const ok = /^\d+\.\d+\.\d+/.test(v) ? v : null;
+      const ok = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v) ? v : null;
       if (ok) npmLatestCache = { version: ok, at: Date.now() };
       resolve(ok);
     });
@@ -2153,11 +2155,11 @@ process.on('exit', () => {
 // ligger i vagt.js, saa de kan koeres i en test uden at starte en server.
 // SIKKERHED (20/10, privat rapport): her stod execSync(`ps -o ppid= -p ${pid}`) - en tekststreng gennem en skal. Paa Windows
 // leder cmd.exe i arbejdsmappen foer PATH, saa en ps.bat/ps.cmd/ps.exe i den mappe, brugeren aabnede, koerte ved opstart.
-// Windows har ingen ps: opslaget springes over (vagten falder tilbage paa idle-graensen, som foer). Ellers koeres ps ved
-// absolut sti og uden skal.
+// Windows har ingen ps: opslaget springes over (vagten vogter saa kun den naermeste foraelder, plus idle-graensen, som foer).
+// Ellers koeres ps ved absolut sti og uden skal. R164 (Opus): NixOS har hverken /bin/ps eller /usr/bin/ps, kun systemprofilens.
 function laesPpid(pid) {
   if (process.platform === 'win32') return null;
-  const ps = ['/bin/ps', '/usr/bin/ps'].find((sti) => existsSync(sti));
+  const ps = ['/bin/ps', '/usr/bin/ps', '/run/current-system/sw/bin/ps'].find((sti) => existsSync(sti));
   if (!ps) return null;
   try {
     const ud = execFileSync(ps, ['-o', 'ppid=', '-p', String(pid)], {

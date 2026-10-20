@@ -199,6 +199,10 @@ test('SIKKERHED: ps-opslaget koerer ingen fil fra arbejdsmappen - Windows starte
   const lin = lav('linux', (sti) => sti === '/usr/bin/ps');
   assert.equal(lin.fn(1234), 42);
   assert.equal(lin.kald[0][1], '/usr/bin/ps', `paa Linux uden /bin/ps skal /usr/bin/ps bruges, fik ${lin.kald[0][1]}`);
+  // R164 (Opus): NixOS har kun systemprofilens ps.
+  const nix = lav('linux', (sti) => sti === '/run/current-system/sw/bin/ps');
+  assert.equal(nix.fn(1234), 42);
+  assert.equal(nix.kald[0][1], '/run/current-system/sw/bin/ps', `paa NixOS skal systemprofilens ps bruges, fik ${nix.kald[0][1]}`);
   const intet = lav('linux', () => false);
   assert.equal(intet.fn(1234), null, 'findes ps ikke, er svaret null');
   assert.deepEqual(intet.kald, [], 'og intet startes');
@@ -207,13 +211,14 @@ test('SIKKERHED: ps-opslaget koerer ingen fil fra arbejdsmappen - Windows starte
 test('SIKKERHED: npm-tjekket starter paa Windows aldrig «npm» fra arbejdsmappen', async () => {
   const kilde = funktionsKilde(srv, 'npmLatestVersion');
   const { win32, posix } = await import('node:path');
-  const lav = (platform, findes) => {
+  const HJEM = '/hjem/bruger';
+  const lav = (platform, findes, svar = '9.9.9\n') => {
     const kald = [];
-    const execFile = (kommando, args, valg, cb) => { kald.push([kommando, args, valg]); cb(null, '9.9.9\n'); };
+    const execFile = (kommando, args, valg, cb) => { kald.push([kommando, args, valg]); cb(null, svar); };
     const sti = platform === 'win32' ? win32 : posix;
     const proc = { platform, execPath: platform === 'win32' ? 'C:\\Program Files\\nodejs\\node.exe' : '/usr/local/bin/node' };
-    const fn = new Function('execFile', 'existsSync', 'process', 'join', 'dirname', 'TJEK_NPM', 'NPM_LATEST_TTL_MS',
-      `let npmLatestCache = null; ${kilde}; return npmLatestVersion;`)(execFile, findes, proc, sti.join, sti.dirname, true, 0);
+    const fn = new Function('execFile', 'existsSync', 'process', 'join', 'dirname', 'homedir', 'TJEK_NPM', 'NPM_LATEST_TTL_MS',
+      `let npmLatestCache = null; ${kilde}; return npmLatestVersion;`)(execFile, findes, proc, sti.join, sti.dirname, () => HJEM, true, 0);
     return { fn, kald, proc };
   };
   const w = lav('win32', () => true);
@@ -229,6 +234,11 @@ test('SIKKERHED: npm-tjekket starter paa Windows aldrig «npm» fra arbejdsmappe
   const mac = lav('darwin', () => true);
   assert.equal(await mac.fn(), '9.9.9');
   assert.equal(mac.kald[0][0], 'npm', 'paa macOS og Linux er npm-opslaget uaendret');
+  // R164 (Opus): npm laeser .npmrc i arbejdsmappen. Opslaget koeres fra hjemmemappen paa alle platforme.
+  for (const k of [w, mac]) assert.equal(k.kald[0][2] && k.kald[0][2].cwd, HJEM, 'npm-opslaget skal koeres fra hjemmemappen, ikke fra arbejdsmappen');
+  // Et fremmed register kan svare med fritekst efter tallet; kun et rent versionsnummer naar videre til agenten.
+  assert.equal(await lav('darwin', () => true, '1.99.0 - INDSAT TEKST til agenten\n').fn(), null, 'fritekst efter versionsnummeret slap igennem');
+  assert.equal(await lav('darwin', () => true, '1.31.0-beta.1\n').fn(), '1.31.0-beta.1', 'en forhaandsudgave er stadig et versionsnummer');
 });
 
 test('idle-graensen er en bagstopper, ikke den primaere vagt', () => {
