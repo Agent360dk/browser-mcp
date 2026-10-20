@@ -120,6 +120,11 @@ button got the click (inside an `sl-button` it is unmeasured in Chrome).
 Measured in Ionic 8.8.19: an `ion-segment-button`'s icon or label as the target answers `covered` before the press (the host takes
 the click); target the segment button itself. Other versions of these libraries are unmeasured.
 
+**Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
+cmd.exe, and a missing `codex` came back as a failed command instead of "not found", so `install` told every Windows user without
+Codex "Codex is installed, but registration failed". It now looks the command up with `where` first; a client that is not there
+is skipped, as on macOS and Linux.
+
 **New answers an agent can see:**
 
 | Answer | Where | Means |

@@ -76,6 +76,12 @@ function koerKlient(kommando, args, valg = {}) {
   // som try/catch'en herunder laeser som "klienten er ikke installeret" - samme tavse fejl
   // vi er ved at rette, bare med en ny aarsag.
   if (process.platform !== 'win32') return execFileSync(kommando, args, valg);
+  // R163 (Opus, 20/10): gennem cmd.exe er en manglende klient et ikke-nul exit, ikke ENOENT, og installeren skrev «Codex is
+  // installed, but registration failed» til hver Windows-bruger uden Codex. `where` (System32, uafhaengigt af sprog) afgoer
+  // foerst om kommandoen findes; findes den ikke, er svaret ENOENT som paa macOS og Linux.
+  try { execFileSync('where', [kommando], { stdio: 'pipe' }); } catch {
+    throw Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
+  }
   const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
   return execFileSync(kommando, args.map(citer), { ...valg, shell: true });
 }
