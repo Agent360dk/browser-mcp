@@ -134,6 +134,9 @@ test('klienter der ikke findes, roeres ikke og kaldes ikke registreret', () => {
   assert.equal(kald, '');
   assert.equal(cursorEfter, null, 'en Cursor-fil blev oprettet uden at Cursor findes');
   assert.doesNotMatch(ud, /Registered with (Codex|Cursor|VS Code)/, 'installationen paastod en registrering der ikke skete');
+  // R163 (Opus): paa Windows gav en manglende codex et ikke-nul exit fra cmd.exe i stedet for ENOENT, og installeren skrev
+  // «Codex is installed, but registration failed» til hver Windows-bruger uden Codex.
+  assert.doesNotMatch(ud, /Codex is installed/, 'installationen paastod at Codex er installeret, selv om den ikke findes');
 });
 
 // MAALT 13/9 paa den KOLDE sti, som en ny bruger gaar den: `npx @agent360/browser-mcp --version`
