@@ -146,7 +146,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], mappeLinks = [], mappeLinkKode = 'EPERM', utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], mappeLinks = [], mappeLinkKode = 'EPERM', wsl = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
@@ -159,7 +159,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       for (const [a, b] of Object.entries(aliaser)) if (lc(r) === lc(a) || lc(r).startsWith(lc(a) + '\\')) r = b + r.slice(a.length);
       return win32.resolve(r);
     };
-    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...appAliasLink, ...doede, ...mappeLinks].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
+    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...appAliasLink, ...doede, ...mappeLinks, ...wsl].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
     const realpathSync = { native: (p) => {
       // R167 (Astra): paa et netdrev kan realpath fejle med EACCES, selv om mappen og klienten findes.
       if (utilgaengelige.some((x) => lc(win32.resolve(x)) === lc(win32.resolve(cwd, String(p))))) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
@@ -172,6 +172,8 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       if (mapper.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => true, isSymbolicLink: () => false };
       // R168 (Opus N5): et link til en mappe, stat ikke maa aabne (ACL), giver EPERM; lstat ser kun linket.
       if (mappeLinks.some((x) => lc(x) === r)) throw Object.assign(new Error(mappeLinkKode), { code: mappeLinkKode });
+      // R170 (Astra/Opus O5): et WSL-symlink giver EACCES baade for stat og lstat - det er intet program.
+      if (wsl.some((x) => lc(x) === r)) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
       // R167 (Opus L3b): en libuv, der falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
       if (appAliasLink.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => false, isSymbolicLink: () => true };
       const alias = appAlias.some((x) => lc(x) === r);   // en App Execution Alias kan ikke stat'es (Node #36790)
@@ -181,7 +183,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
     const lstatSync = (f) => [...appAlias, ...doede, ...mappeLinks].some((x) => lc(x) === lc(aegte(f))) ? { isDirectory: () => false, isSymbolicLink: () => true } : statSync(f);
     const existsSync = (f) => { try { statSync(f); return true; } catch { return false; } };
     const fn = new Function('execFileSync', 'process', 'join', 'dirname', 'resolve', 'isAbsolute', 'existsSync', 'statSync', 'lstatSync', 'realpathSync',
-      `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname, win32.resolve, win32.isAbsolute, existsSync, statSync, lstatSync, realpathSync);
+      `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname, (...a) => win32.resolve(cwd, ...a), win32.isAbsolute, existsSync, statSync, lstatSync, realpathSync);
     return { fn, kald, tjekket };
   };
   const NPM = 'C:\\Users\\u\\AppData\\Roaming\\npm';
@@ -270,6 +272,19 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
   // R169 (Opus): en rodrelativ post (\\tools) loeses mod arbejdsmappens drev - samme klasse som C:bin.
   ikke(lav({ cwd: 'F:\\project', path: '\\tools', filer: ['F:\\tools\\codex.cmd'] }), 'en rodrelativ PATH-post');
+  // R170 (Astra): rodrelativ ogsaa med skraastreg og med gentagne separatorer (///tools, //), som normaliseres til \\tools og \\.
+  ikke(lav({ cwd: 'F:\\project', path: '/tools', filer: ['F:\\tools\\codex.cmd'] }), '/tools');
+  ikke(lav({ cwd: 'F:\\project', path: '///tools', filer: ['F:\\tools\\codex.cmd'] }), '///tools');
+  ikke(lav({ cwd: 'F:\\project', path: '\\\\\\tools', filer: ['F:\\tools\\codex.cmd'] }), 'tre omvendte skraastreger foer tools');
+  ikke(lav({ cwd: 'F:\\project', path: '//', filer: ['F:\\codex.cmd'] }), '//');
+  // ... men UNC- og enhedsstier er ikke rodrelative: klienter dér findes.
+  lig(koert(lav({ path: '\\\\srv\\share\\tools', filer: ['\\\\srv\\share\\tools\\codex.cmd'] })).k, '"\\\\srv\\share\\tools\\codex.cmd"');
+  lig(koert(lav({ path: '//srv/share/tools', filer: ['\\\\srv\\share\\tools\\codex.cmd'] })).k, '"\\\\srv\\share\\tools\\codex.cmd"');
+  lig(koert(lav({ path: '\\\\?\\C:\\tools', aliaser: { '\\\\?\\C:\\tools': 'C:\\tools' }, filer: ['C:\\tools\\codex.cmd'] })).k, '"\\\\?\\C:\\tools\\codex.cmd"');
+  // R170 (Astra/Opus O5): et WSL-symlink (EACCES ogsaa paa lstat) springes over; den gyldige codex.cmd i en senere mappe vaelges.
+  lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], wsl: ['C:\\A\\codex.exe'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R170 (Astra/Opus O9): kun arbejdsmappens node_modules og dens undermapper - ikke en soeskendemappe som node_modulesX.
+  lig(koert(lav({ path: 'C:\\proj\\node_modulesX\\bin', filer: ['C:\\proj\\node_modulesX\\bin\\codex.cmd'] })).k, '"C:\\proj\\node_modulesX\\bin\\codex.cmd"');
   // R169 (Astra): ogsaa UNKNOWN (et doedt link til en server, der ikke svarer) for sig.
   lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], mappeLinkKode: 'UNKNOWN', filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
   // R169 (Astra, Opus N8): .bin-reglen gaelder ogsaa den aegte sti - et alias til en node_modules\.bin uden for projektet.
