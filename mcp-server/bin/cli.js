@@ -113,7 +113,8 @@ function koerKlient(kommando, args, valg = {}) {
   let sti = null;
   for (const post of variabel('PATH').split(';')) {
     const mappe = post.trim().replace(/^"(.*)"$/, '$1');
-    if (!mappe || !isAbsolute(mappe)) continue;   // en relativ post ville pege ind i arbejdsmappen
+    // En relativ post (bin, C:bin) peger ind i arbejdsmappen, en rodrelativ (\tools) ind i dens drev - R169 (Opus).
+    if (!mappe || !isAbsolute(mappe) || /^[\\/](?![\\/])/.test(mappe)) continue;
     // Arbejdsmappen, dens node_modules og - R166 (Opus) - enhver node_modules\.bin: npx laegger hver forfaders paa PATH, og
     // C:\node_modules kan oprettes af enhver bruger.
     if ([skrevet(mappe), aegte(mappe) || skrevet(mappe)].some(arbejdsmappens)) continue;
