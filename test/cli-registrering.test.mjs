@@ -13,7 +13,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,6 +49,7 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
       chmodSync(join(bin, k), 0o755);
     }
   }
+  if (!win) symlinkSync(process.execPath, join(bin, 'node'));
   if (cursor) {
     mkdirSync(join(hjem, '.cursor'));
     if (cursorIndhold !== undefined) writeFileSync(join(hjem, '.cursor', 'mcp.json'), cursorIndhold);
@@ -57,8 +58,15 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
     encoding: 'utf8', timeout: 30000,
     shell: process.platform === 'win32',
     env: process.platform === 'win32'
-      ? { ...process.env, Path: `${bin};${dirname(process.execPath)};${process.env.Path || ''}`, HOME: hjem, USERPROFILE: hjem }
-      : { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
+      // R162 (Astra): ogsaa paa Windows et minimalt miljoe - brugerens Path og nodes mappe (hvor globale klienter kan ligge)
+      // er ude; kun attrap-mappen og Windows' egne mapper, som cmd.exe skal bruge.
+      ? { SystemRoot: process.env.SystemRoot, ComSpec: process.env.ComSpec, PATHEXT: process.env.PATHEXT, TEMP: process.env.TEMP, TMP: process.env.TMP,
+          Path: `${bin};${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`, HOME: hjem, USERPROFILE: hjem,
+          APPDATA: join(hjem, 'AppData', 'Roaming'), LOCALAPPDATA: join(hjem, 'AppData', 'Local') }
+      // 20/10: PATH bar hele nodes mappe, og dér ligger globalt installerede klienter (codex kom i nvm's mappe 20/10 17.29) -
+      // installeren fandt saa den RIGTIGE codex og «registrerede» i en proeve, hvor ingen klienter maa findes. Kun node selv
+      // laegges ind, som et link i attrap-mappen.
+      : { PATH: `${bin}:/usr/bin:/bin`, HOME: hjem, USERPROFILE: hjem },
   });
   // MAALT 19/9: paa Windows koeres klienterne gennem cmd.exe med citerede argumenter
   // (ellers kan .cmd-attrapper slet ikke findes), saa loggen faar 'codex "mcp" "add" ...'.
@@ -126,6 +134,9 @@ test('klienter der ikke findes, roeres ikke og kaldes ikke registreret', () => {
   assert.equal(kald, '');
   assert.equal(cursorEfter, null, 'en Cursor-fil blev oprettet uden at Cursor findes');
   assert.doesNotMatch(ud, /Registered with (Codex|Cursor|VS Code)/, 'installationen paastod en registrering der ikke skete');
+  // R163 (Opus): paa Windows gav en manglende codex et ikke-nul exit fra cmd.exe i stedet for ENOENT, og installeren skrev
+  // «Codex is installed, but registration failed» til hver Windows-bruger uden Codex.
+  assert.doesNotMatch(ud, /Codex is installed/, 'installationen paastod at Codex er installeret, selv om den ikke findes');
 });
 
 // MAALT 13/9 paa den KOLDE sti, som en ny bruger gaar den: `npx @agent360/browser-mcp --version`

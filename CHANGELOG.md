@@ -14,6 +14,11 @@ lookup is now skipped there, and the guard relies on the idle limit as before; m
 shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
 `npm-cli.js` by absolute path. Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
 
+**Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
+cmd.exe, and a missing `codex` came back as a failed command instead of "not found", so `install` told every Windows user without
+Codex "Codex is installed, but registration failed". It now looks the command up with `where` first; a client that is not there
+is skipped, as on macOS and Linux.
+
 **Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so
 the server could not tell profiles apart: with the extension enabled in two of them, commands went to one of them, and which
 one could change when the other reconnected. 1.30.2 only warned, and the warning that commands had moved to another
