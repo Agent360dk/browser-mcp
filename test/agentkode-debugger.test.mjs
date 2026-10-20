@@ -661,7 +661,9 @@ test('frist: foerste kontrol bruger 29,4 s og kontrollen i cdpSend 1 s - svar ve
     kortFrist(m, 1500);
     m.u.hent('debuggerAttached').add(1);
     let n = 0;
-    m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? 1400 : 500, [{ tabId: 1, attached: true }]);
+    // R161 (Opus): første kontrol regnes fra kaldets start, så en langsom opstart ikke tavst flytter prøven over på en anden vej.
+    const t0 = Date.now();
+    m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? Math.max(0, 1400 - (Date.now() - t0)) : 500, [{ tabId: 1, attached: true }]);
     const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
     assert.ok(ms < 1850, `svaret kom efter ${ms} ms - fristen var 1500 ms`);
     assert.deepEqual([svar.ok, svar.error, svar.sent, svar.retry], [false, 'call-timeout', false, true], JSON.stringify(svar));

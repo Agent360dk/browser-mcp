@@ -712,15 +712,27 @@ async function bedsteAfTre(forsoeg) {
 }
 
 test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, siger svaret det', async () => {
-  // 20/10 (D19, R161): den stramme graense (loft + MARGEN) er bevaret - loft + 1000 lod en kontrol paa 1,5 x loftet passere.
-  // Bedste af tre forsoeg mod forbigaaende belastning.
+  // 20/10 (D19, R161 Opus): vægurets tid kan ikke både tåle belastning og fange en kontrol, der får lidt for lang tid. Den
+  // bærende måling er derfor i kodens eget ur: den frist, CAPTCHA-kontrollen faktisk får, skal ende inden for loftet regnet fra
+  // navigationens start (navigerSomEjer). Vægurets grænse står kun som grov ydergrænse mod en kontrol helt uden loft.
   await bedsteAfTre(async () => {
     const m = model({ beskyt: false, captchaMs: 3000 });
+    const ctx = m.u.ctx;
+    const [naviger, detect, vente] = [ctx.navigerSomEjer, ctx.detectCaptcha, ctx.venteMedFrist];
+    let start = null, captchaLoefte = null;
+    const captchaFrister = [];
+    ctx.navigerSomEjer = (...a) => { if (start === null) start = Date.now(); return naviger(...a); };
+    ctx.detectCaptcha = (...a) => (captchaLoefte = detect(...a));
+    ctx.venteMedFrist = (loefte, ms) => { if (loefte && loefte === captchaLoefte) captchaFrister.push(Date.now() + ms); return vente(loefte, ms); };
     const t0 = Date.now();
     const r = await fang(m.nav());
     const brugt = Date.now() - t0;
     assert.equal(r.ok, true, vis(r));
-    assert.ok(brugt < FRISTER.loft + MARGEN, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
+    assert.ok(start !== null, 'navigationen gik ikke gennem navigerSomEjer - proeven maaler en anden vej');
+    assert.equal(captchaFrister.length, 1, `CAPTCHA-kontrollen kom ikke under én frist: ${captchaFrister.length}`);
+    assert.ok(captchaFrister[0] <= start + FRISTER.loft + 50,
+      `CAPTCHA-kontrollens frist sluttede ${captchaFrister[0] - start - FRISTER.loft} ms efter loftet`);
+    assert.ok(brugt < FRISTER.loft + 1000, `CAPTCHA-kontrollen gik langt ud over loftet: ${brugt} ms`);
     assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
   });
 });

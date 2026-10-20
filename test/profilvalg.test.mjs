@@ -545,7 +545,7 @@ async function aegteServer(env) {
   srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
   const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
   skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'p', version: '0' } } });
-  assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 5000));
+  assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 15000));   // R161 (Opus): 5 s var for lidt under fuld belastning (D19)
   skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
   let n = 10;
   const send = (name, args = {}) => { const id = ++n; skriv({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }); return id; };
@@ -563,20 +563,25 @@ async function bedsteAfTre(forsoeg) {
   throw sidste;
 }
 
-test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,5 s efter listening -> profile-ambiguous', async () => {
+test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,0 s efter listening -> profile-ambiguous', async () => {
   // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
   // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
-  // 20/10 (D19, R161): 1,5 s er bevaret (1,0 s lod et vindue paa 1,2 s passere); bedste af tre forsoeg mod forbigaaende belastning.
+  // 20/10 (D19, R161 Opus): den røde D19-kørsel fejlede på ventetiden til `initialize` (5 s), ikke på B. B hilser efter 1,0 s,
+  // og vinduet vogtes af en NEDRE grænse, som belastning ikke kan bryde: svaret må tidligst komme 2450 ms efter kaldet
+  // (serverens vindue er 2500 ms fra porten bandt). Uden vinduet svarer serveren efter ~1,5 s og er rød.
   await bedsteAfTre(async () => {
     const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
     try {
+      const tKald = Date.now();
       const id = s.send('browser_list_tabs');
       const p = await s.lytter();
       const t0 = Date.now();
       const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
-      await vent(Math.max(0, 1500 - (Date.now() - t0)));
+      await vent(Math.max(0, 1000 - (Date.now() - t0)));
       const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
       const r = await s.svar(id);
+      const svartid = Date.now() - tKald;
+      assert.ok(svartid >= 2450, `svaret kom efter ${svartid} ms - serveren ventede ikke vinduet ud, før den valgte`);
       assert.ok(r, 'intet svar');
       const j = JSON.parse(r.result.content[0].text);
       assert.equal(j.error, 'profile-ambiguous', `foerste kald laaste sig stille: ${r.result.content[0].text.slice(0, 200)}`);
