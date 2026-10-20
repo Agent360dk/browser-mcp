@@ -146,7 +146,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], doede = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
@@ -159,8 +159,12 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       for (const [a, b] of Object.entries(aliaser)) if (lc(r) === lc(a) || lc(r).startsWith(lc(a) + '\\')) r = b + r.slice(a.length);
       return win32.resolve(r);
     };
-    const kendte = new Set([cwd, ...mapper, ...[...filer, ...appAlias].map((f) => win32.dirname(f))].map((m) => lc(win32.resolve(m))));
-    const realpathSync = { native: (p) => { const r = aegte(p); if (!kendte.has(lc(r))) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); return r; } };
+    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...doede].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
+    const realpathSync = { native: (p) => {
+      // R167 (Astra): paa et netdrev kan realpath fejle med EACCES, selv om mappen og klienten findes.
+      if (utilgaengelige.some((x) => lc(win32.resolve(x)) === lc(win32.resolve(cwd, String(p))))) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      const r = aegte(p); if (!kendte.has(lc(r))) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); return r;
+    } };
     const statSync = (f) => {
       const r = lc(aegte(f)); tjekket.push(r);
       if (filer.some((x) => lc(x) === r)) return { isFile: () => true, isDirectory: () => false };
@@ -168,7 +172,8 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       const alias = appAlias.some((x) => lc(x) === r);   // en App Execution Alias kan ikke stat'es (Node #36790)
       throw Object.assign(new Error(alias ? 'EACCES' : 'ENOENT'), { code: alias ? 'EACCES' : 'ENOENT' });
     };
-    const lstatSync = (f) => appAlias.some((x) => lc(x) === lc(aegte(f))) ? { isDirectory: () => false, isSymbolicLink: () => true } : statSync(f);
+    // En App Execution Alias og et doedt symlink kan begge lstat'es, men ikke stat'es: aliaset giver EACCES, det doede link ENOENT.
+    const lstatSync = (f) => [...appAlias, ...doede].some((x) => lc(x) === lc(aegte(f))) ? { isDirectory: () => false, isSymbolicLink: () => true } : statSync(f);
     const existsSync = (f) => { try { statSync(f); return true; } catch { return false; } };
     const fn = new Function('execFileSync', 'process', 'join', 'dirname', 'resolve', 'isAbsolute', 'existsSync', 'statSync', 'lstatSync', 'realpathSync',
       `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname, win32.resolve, win32.isAbsolute, existsSync, statSync, lstatSync, realpathSync);
@@ -237,6 +242,16 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex`, `${NPM}\\codex.cmd`], pathext: ';.COM;;.CMD;' })).k, `"${NPM}\\codex.cmd"`);
   // R166 (Opus): ComSpec fra miljoeet aendrer ikke skallen - den er System32's cmd.exe ved absolut sti.
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`], comspec: 'cmd.exe' })).valg.shell, 'C:\\Windows\\System32\\cmd.exe');
+  // R167 (Astra): et doedt symlink er intet program - den gyldige codex.cmd ved siden af (eller i en senere mappe) vaelges.
+  lig(koert(lav({ path: 'C:\\tools', doede: ['C:\\tools\\codex.exe'], filer: ['C:\\tools\\codex.cmd'] })).k, '"C:\\tools\\codex.cmd"');
+  lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], doede: ['C:\\A\\codex.cmd'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R167 (Astra): filteret gaelder baade den skrevne og den aegte sti - en junction maa ikke foere node_modules\.bin uden om det.
+  ikke(lav({ path: 'C:\\proj\\node_modules\\.bin', filer: ['C:\\proj\\payload\\codex.cmd'], aliaser: { 'C:\\proj\\node_modules\\.bin': 'C:\\proj\\payload' } }), 'node_modules\\.bin som junction til en anden mappe i projektet');
+  ikke(lav({ path: 'C:\\proj\\node_modules\\.bin', filer: ['D:\\packages\\.bin\\codex.cmd'], aliaser: { 'C:\\proj\\node_modules': 'D:\\packages' } }), 'node_modules som junction til et andet drev');
+  // R167 (Astra): arbejdsmappen sammenlignes ogsaa paa sin aegte sti - koeres install fra et 8.3-navn, er det lange navn stadig arbejdsmappen.
+  ikke(lav({ path: 'C:\\Long Project', filer: ['C:\\Long Project\\codex.bat'], cwd: 'C:\\LONGPR~1', aliaser: { 'C:\\LONGPR~1': 'C:\\Long Project' } }), 'arbejdsmappens lange navn, naar install koerer fra 8.3-navnet');
+  // R167 (Astra): kan realpath ikke laese en netdrevsmappe (EACCES), bruges den skrevne sti - klienten dér findes stadig.
+  lig(koert(lav({ path: 'Z:\\bin', utilgaengelige: ['Z:\\bin'], filer: ['Z:\\bin\\codex.cmd'] })).k, '"Z:\\bin\\codex.cmd"');
   // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
   const t = lav({ path: `C:\\proj;${NPM}`, filer: [`${NPM}\\codex.cmd`] });
   koert(t);

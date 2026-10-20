@@ -14,9 +14,11 @@ lookup is now skipped there, and the guard watches the nearest parent process an
 run `ps` by absolute path without a shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
 `npm-cli.js` by absolute path. It also runs from your home folder, so a `.npmrc` in the folder the server was started in no
 longer chooses the registry, and only a plain version number is passed on to the agent. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
-Windows; it now looks the client up in PATH itself (absolute folders only, never the current folder or its `node_modules` nor
-a `node_modules\.bin` folder, also under another name for the same folder, only files and only with the extensions in PATHEXT) and runs it by its full path through System32's `cmd.exe`. Clients under the folder you run it
-from, such as npm's global folder under your home folder, are still found, and a path with letters such as ø works.
+Windows; it now looks the client up in PATH itself and runs it by its full path through System32's `cmd.exe`. The lookup
+takes absolute folders only, never the current folder, its `node_modules` or any `node_modules\.bin` folder (also when the
+folder is named another way, such as an 8.3 name or a junction), only files and only the extensions in PATHEXT. Clients under
+the folder you run it from, such as npm's global folder under your home folder, are still found, and a path with letters such
+as ø works.
 Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
 
 **Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
