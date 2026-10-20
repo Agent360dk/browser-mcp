@@ -255,6 +255,13 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   ikke(lav({ path: 'C:\\Long Project', filer: ['C:\\Long Project\\codex.bat'], cwd: 'C:\\LONGPR~1', aliaser: { 'C:\\LONGPR~1': 'C:\\Long Project' } }), 'arbejdsmappens lange navn, naar install koerer fra 8.3-navnet');
   // R167 (Astra): kan realpath ikke laese en netdrevsmappe (EACCES), bruges den skrevne sti - klienten dér findes stadig.
   lig(koert(lav({ path: 'Z:\\bin', utilgaengelige: ['Z:\\bin'], filer: ['Z:\\bin\\codex.cmd'] })).k, '"Z:\\bin\\codex.cmd"');
+  // R168 (Astra): hver regel ser begge stavemaader og er uden forskel paa store og smaa bogstaver.
+  ikke(lav({ cwd: 'C:\\LONGPR~1', path: 'C:\\Long Project\\node_modules\\pkg\\bin', aliaser: { 'C:\\LONGPR~1': 'C:\\Long Project' },
+    filer: ['C:\\Long Project\\node_modules\\pkg\\bin\\codex.cmd'] }), 'arbejdsmappen i 8.3-form, dens node_modules i lang form');
+  ikke(lav({ cwd: 'R:\\proj', path: 'R:\\proj', utilgaengelige: ['R:\\proj'], filer: ['R:\\proj\\codex.bat'] }), 'arbejdsmappen, naar realpath ikke kan laese den');
+  ikke(lav({ path: 'C:\\proj\\node_modules', aliaser: { 'C:\\proj\\node_modules': 'D:\\packages' }, filer: ['D:\\packages\\codex.cmd'] }), 'node_modules-roden som junction til et andet drev');
+  ikke(lav({ path: 'C:\\x', aliaser: { 'C:\\x': 'C:\\proj\\NODE_MODULES\\pkg\\bin' }, filer: ['C:\\proj\\NODE_MODULES\\pkg\\bin\\codex.cmd'] }), 'et alias, hvis aegte sti staver node_modules med store bogstaver');
+  ikke(lav({ cwd: 'C:\\Users\\u', path: 'C:\\NODE_MODULES\\.BIN', aliaser: { 'C:\\NODE_MODULES\\.BIN': 'C:\\pub\\x' }, filer: ['C:\\pub\\x\\codex.cmd'] }), 'NODE_MODULES\\.BIN med store bogstaver som junction');
   // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
   const t = lav({ path: `C:\\proj;${NPM}`, filer: [`${NPM}\\codex.cmd`] });
   koert(t);
