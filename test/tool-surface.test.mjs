@@ -520,8 +520,10 @@ test('BROWSER_MCP_CHECK_NPM taendes kun af vaerdien 1', () => {
 test('npm-tjekket koerer kun med BROWSER_MCP_CHECK_NPM=1, som `npm view`, og husker svaret', async () => {
   const lav = (tilvalgt) => {
     const kald = [];
-    const f = new Function('TJEK_NPM', 'execFile', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
-      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); });
+    // R164 (Opus): Windows-grenen har sin egen proeve i vagter.test.mjs. Her er platformen fastlagt, saa proeven maaler
+    // tilvalget og cachen ens paa alle maskiner (med den aegte process ramte den Windows-grenen uden join paa GitHubs Windows-job).
+    const f = new Function('TJEK_NPM', 'execFile', 'process', 'homedir', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
+      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); }, { platform: 'linux', execPath: '/usr/bin/node' }, () => '/hjem');
     return { f, kald };
   };
   const fra = lav(false);

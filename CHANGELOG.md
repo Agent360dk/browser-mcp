@@ -8,11 +8,12 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 **Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
 servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the
-current folder before PATH, so a file named `ps.bat`, `ps.cmd` or `ps.exe` in the folder an MCP client started the server in ran at
-startup (clients that set `NoDefaultCurrentDirectoryInExePath`, such as Claude Code, were not affected). Windows has no `ps`, so the
+current folder before PATH, so a file named `ps` with any extension Windows runs (`ps.bat`, `ps.cmd`, `ps.exe` and others) in the folder an MCP
+client started the server in ran at startup (clients that set `NoDefaultCurrentDirectoryInExePath`, such as Claude Code, were not affected). Windows has no `ps`, so the
 lookup is now skipped there, and the guard watches the nearest parent process and the idle limit, as it did before; macOS and Linux
 run `ps` by absolute path without a shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
-`npm-cli.js` by absolute path. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
+`npm-cli.js` by absolute path. It also runs from your home folder, so a `.npmrc` in the folder the server was started in no
+longer chooses the registry, and only a plain version number is passed on to the agent. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
 Windows; it now runs `where.exe` from System32, ignores matches in the current folder and runs the client by its full path.
 Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
 
