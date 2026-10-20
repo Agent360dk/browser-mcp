@@ -152,8 +152,17 @@ test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkt
 });
 
 // R154 (Opus): ogsaa «active app», «on top» og «verified/confirmed/tested/proven» som maaleord.
-const FOKUS_ORD = /\b(?:focus(?:ed)?|foreground|frontmost|in front|on top|active app)\b/i;
+const FOKUS_ORD = /\b(?:(?:un)?focus(?:s?ed)?|foreground|frontmost|in front|on top|active app)\b/i;   // R155 (Opus): «unfocused», «focussed»
 const MAALE_ORD = /measur|\bverif|\bconfirm|\bproven\b|\btested\b/i;
+// R155 (Opus): en falsk saetning lige EFTER en godkendt saetning («… decides. Since 20 Oct that is settled by measurement: it does not.»)
+// har intet fokusord og slap igennem. Fokusafsnittet fryses derfor ordret paa hver flade, inklusive starten af saetningen efter -
+// ogsaa en indsat saetning midt i eller lige efter er dermed roed.
+const FROSNE_FOKUS_AFSNIT = {
+  'README.md': "Chrome delivers no mouse or keyboard input to a tab that is not the visible one in its window (measured). Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement. Some of it cannot be solved at all:",
+  'content/browsermcp-docs-troubleshooting.md': "Input - typing, hover, coordinate clicks - does not reach a tab that is not the visible one in its window (measured). Whether it reaches the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement. When input does not land, the agent has to ask you, and you decide. **Fix status:",
+};
+FROSNE_FOKUS_AFSNIT['mcp-server/README.md'] = FROSNE_FOKUS_AFSNIT['README.md'];
+
 const GODKENDTE_FOKUS_SAETNINGER = new Set([
   "Up to 1.30.1 the agent then called `browser_switch_tab`, which brought Chrome in front of you every time, and a screenshot of a covered window raised Chrome and left it there.",
   "Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
@@ -180,6 +189,7 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     // eller i saetningen efter taler om maaling, skal vaere én af de reviewede saetninger herunder. En ny formulering - ogsaa en sand -
     // er roed med vilje: den skal reviewes og tilfoejes her, foer den maa staa paa en flade.
     // R155 (Astra): ogsaa maaleord i saetningen FOER taeller, og markdown-fremhaevning (**in** front) fjernes foer ordene soeges.
+    assert.ok(t.includes(FROSNE_FOKUS_AFSNIT[f]), `${f}: fokusafsnittet er aendret - en reviewet tekst skal ind i FROSNE_FOKUS_AFSNIT, foer den maa staa paa fladen`);
     const saetninger = t.replace(/\*+/g, '').split(/(?<=[.!?])\s+/);
     const nye = saetninger.filter((x, i) => FOKUS_ORD.test(x)
       && (MAALE_ORD.test(x) || MAALE_ORD.test(saetninger[i + 1] || '') || MAALE_ORD.test(saetninger[i - 1] || '')))
@@ -200,7 +210,7 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.match(t, /never gets the click itself \(the library sets `pointer-events: none` there\), so clicking that `sl-icon` answers `maybe_landed` - target the button\./);
   assert.match(t, /A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click/);
   assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
-  assert.doesNotMatch(t, /\bany icon\b/i, 'CHANGELOG generaliserer til ethvert ikon');
+  assert.doesNotMatch(t, /\b(?:any|every|all) icons?\b/i, 'CHANGELOG generaliserer til ethvert ikon');   // R155 (Opus): «every icon»
   // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
   assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
 });
