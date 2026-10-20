@@ -91,21 +91,30 @@ function koerKlient(kommando, args, valg = {}) {
   const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
   const env = { ...process.env, ...(valg.env || {}), NoDefaultCurrentDirectoryInExePath: '1' };
   const variabel = (navn) => { const k = Object.keys(env).find((x) => x.toUpperCase() === navn); return k ? String(env[k]) : ''; };
+  // R167 (Astra): filteret gaelder baade den skrevne og den aegte sti - en junction maa ikke foere node_modules\.bin uden om det - og
+  // kan realpath ikke laese en mappe (EACCES paa et netdrev), bruges den skrevne. Kun en adgangsfejl (App Execution Alias) giver
+  // lstat-vejen; et doedt symlink (ENOENT) er intet program.
   const aegte = (p) => { try { return realpathSync.native(p).toLowerCase(); } catch { return null; } };
-  const arbejdsmappe = aegte(process.cwd()) || resolve(process.cwd()).toLowerCase();
-  const nodeModules = arbejdsmappe.replace(/\\$/, '') + '\\node_modules';
+  const skrevet = (p) => resolve(p).toLowerCase();
+  const arbejdsmapper = [...new Set([skrevet(process.cwd()), aegte(process.cwd())].filter(Boolean))];
+  const arbejdsmappens = (m) => m.endsWith('\\node_modules\\.bin') || arbejdsmapper.some((a) => {
+    const nodeModules = a.replace(/\\$/, '') + '\\node_modules';
+    return m === a || m === nodeModules || m.startsWith(nodeModules + '\\');
+  });
   const erProgram = (f) => {
-    try { return statSync(f).isFile(); } catch { try { return !lstatSync(f).isDirectory(); } catch { return false; } }
+    try { return statSync(f).isFile(); } catch (err) {
+      if (!err || !['EACCES', 'EPERM', 'UNKNOWN'].includes(err.code)) return false;
+      try { return !lstatSync(f).isDirectory(); } catch { return false; }
+    }
   };
   const endelser = (variabel('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim()).filter((e) => /^\.[^\s\\/:*?"<>|.]+$/.test(e));
   let sti = null;
   for (const post of variabel('PATH').split(';')) {
     const mappe = post.trim().replace(/^"(.*)"$/, '$1');
     if (!mappe || !isAbsolute(mappe)) continue;   // en relativ post ville pege ind i arbejdsmappen
-    const m = aegte(mappe);
-    if (!m || m === arbejdsmappe || m === nodeModules || m.startsWith(nodeModules + '\\')) continue;   // findes ikke, eller er arbejdsmappens
-    // R166 (Opus): npx laegger ogsaa hver forfaders node_modules\.bin paa PATH, og C:\node_modules kan oprettes af enhver bruger.
-    if (m.endsWith('\\node_modules\\.bin')) continue;
+    // Arbejdsmappen, dens node_modules og - R166 (Opus) - enhver node_modules\.bin: npx laegger hver forfaders paa PATH, og
+    // C:\node_modules kan oprettes af enhver bruger.
+    if ([skrevet(mappe), aegte(mappe) || skrevet(mappe)].some(arbejdsmappens)) continue;
     sti = endelser.map((e) => join(mappe, kommando + e)).find(erProgram);
     if (sti) break;
   }
