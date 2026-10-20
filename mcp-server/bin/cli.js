@@ -91,8 +91,11 @@ function koerKlient(kommando, args, valg = {}) {
   try {
     sti = String(execFileSync(join(system32, 'where.exe'), [kommando], { stdio: ['ignore', 'pipe', 'ignore'], cwd: system32, env }))
       .split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.toLowerCase().startsWith(arbejdsmappe));
-  } catch {
-    throw ikkeFundet();
+  } catch (err) {
+    // R164 (Astra): kun «intet fundet» (where's exit 1) betyder, at klienten ikke er installeret. Kunne opslaget ikke koeres
+    // (where.exe mangler, adgang naegtet), ved vi det ikke - og det maa ikke blive til et tavst «ikke installeret».
+    if (err && err.status === 1) throw ikkeFundet();
+    throw Object.assign(new Error(`could not check whether ${kommando} is installed: ${err && (err.code || err.message)}`), { code: 'OPSLAG_FEJLEDE' });
   }
   if (!sti) throw ikkeFundet();
   const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
@@ -114,7 +117,9 @@ function registerWithClaudeCode() {
       return true;
     }
     // `claude` not on PATH, or a different client entirely. Do not pretend it worked.
-    console.log('⚠️  Could not register automatically (the `claude` command was not found).');
+    console.log(err && err.code === 'OPSLAG_FEJLEDE'
+      ? '⚠️  Could not register automatically (could not check whether the `claude` command is installed).'
+      : '⚠️  Could not register automatically (the `claude` command was not found).');
     console.log('   Register the server yourself - Claude Code:');
     console.log('     claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest');
     console.log('   Codex:');
@@ -137,6 +142,10 @@ function registerWithCodex() {
     return true;
   } catch (err) {
     if (err && err.code === 'ENOENT') return null;   // Codex er ikke installeret
+    if (err && err.code === 'OPSLAG_FEJLEDE') {
+      console.log('⚠️  Could not check whether Codex is installed. If you use Codex, run: codex mcp add browser-mcp -- npx @agent360/browser-mcp@latest');
+      return false;
+    }
     const msg = String(err && (err.stderr || err.message) || '');
     if (/already exists/i.test(msg)) {
       console.log('✅ Already registered with Codex - nothing to do');
@@ -151,7 +160,11 @@ function registerWithVSCode() {
   let hjaelp;
   try {
     hjaelp = String(koerKlient('code', ['--help'], { stdio: 'pipe' }));
-  } catch {
+  } catch (err) {
+    if (err && err.code === 'OPSLAG_FEJLEDE') {
+      console.log('⚠️  Could not check whether VS Code is installed. If you use it, use "Add to VS Code" in the README.');
+      return false;
+    }
     return null;   // VS Code's `code` er ikke paa PATH
   }
   // Kun versioner der kender flaget, faar det - en aeldre `code` ville aabne et vindue med JSON'en som filnavn.

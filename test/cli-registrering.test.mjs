@@ -170,6 +170,41 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient eller where.exe f
   const ingen = lav(Object.assign(new Error('INFO: Could not find files'), { status: 1 }));
   assert.throws(() => ingen.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT');
   assert.equal(ingen.kald.length, 1);
+  // R164 (Astra): kunne opslaget ikke koeres (where.exe mangler, adgang naegtet), er klienten IKKE dermed «ikke installeret».
+  for (const fejl of [Object.assign(new Error('spawn where.exe ENOENT'), { code: 'ENOENT' }), Object.assign(new Error('EACCES'), { code: 'EACCES' })]) {
+    const f = lav(fejl);
+    assert.throws(() => f.fn('codex', ['mcp'], {}), (e) => e.code === 'OPSLAG_FEJLEDE', `en opslagsfejl (${fejl.code}) blev til «ikke installeret»`);
+  }
+});
+
+test('en opslagsfejl siges som «kunne ikke tjekke», ikke som «installeret» eller tavst «ikke installeret» (R164)', () => {
+  const kilde = readFileSync(cli, 'utf8');
+  const hent = (navn) => {
+    const i = kilde.indexOf(`function ${navn}(`);
+    let d = 0;
+    for (let k = kilde.indexOf(') {', i) + 2; k < kilde.length; k++) {
+      if (kilde[k] === '{') d++; else if (kilde[k] === '}' && --d === 0) return kilde.slice(i, k + 1);
+    }
+    throw new Error(`${navn} blev ikke fundet i cli.js`);
+  };
+  const koer = (navn) => {
+    const linjer = [];
+    const koerKlient = () => { throw Object.assign(new Error('could not check'), { code: 'OPSLAG_FEJLEDE' }); };
+    const fn = new Function('koerKlient', 'console', 'SERVER_NAVN', 'SERVER_KOMMANDO', 'SERVER_ARGS', `${hent(navn)}; return ${navn};`)(
+      koerKlient, { log: (t) => linjer.push(t) }, 'browser-mcp', 'npx', ['@agent360/browser-mcp@latest']);
+    return { svar: fn(), tekst: linjer.join('\n') };
+  };
+  const codex = koer('registerWithCodex');
+  assert.equal(codex.svar, false, 'Codex: en opslagsfejl maa ikke give null (tavst sprunget over)');
+  assert.match(codex.tekst, /Could not check whether Codex is installed/);
+  assert.doesNotMatch(codex.tekst, /Codex is installed, but/);
+  const vsc = koer('registerWithVSCode');
+  assert.equal(vsc.svar, false, 'VS Code: en opslagsfejl maa ikke give null (tavst sprunget over)');
+  assert.match(vsc.tekst, /Could not check whether VS Code is installed/);
+  const claude = koer('registerWithClaudeCode');
+  assert.equal(claude.svar, false);
+  assert.match(claude.tekst, /could not check whether the `claude` command is installed/);
+  assert.doesNotMatch(claude.tekst, /command was not found/);
 });
 
 test('klienter der ikke findes, roeres ikke og kaldes ikke registreret', () => {

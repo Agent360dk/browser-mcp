@@ -195,6 +195,10 @@ test('SIKKERHED: ps-opslaget koerer ingen fil fra arbejdsmappen - Windows starte
   assert.ok(typeof kommando === 'string' && kommando.startsWith('/'), `ps skal have en absolut sti, fik ${kommando}`);
   assert.deepEqual(args, ['-o', 'ppid=', '-p', '1234']);
   assert.ok(!valg || !valg.shell, 'ingen shell-indstilling');
+  // R164 (Astra): ogsaa Linux-grenen, hvor ps ligger i /usr/bin.
+  const lin = lav('linux', (sti) => sti === '/usr/bin/ps');
+  assert.equal(lin.fn(1234), 42);
+  assert.equal(lin.kald[0][1], '/usr/bin/ps', `paa Linux uden /bin/ps skal /usr/bin/ps bruges, fik ${lin.kald[0][1]}`);
   const intet = lav('linux', () => false);
   assert.equal(intet.fn(1234), null, 'findes ps ikke, er svaret null');
   assert.deepEqual(intet.kald, [], 'og intet startes');
@@ -216,7 +220,8 @@ test('SIKKERHED: npm-tjekket starter paa Windows aldrig «npm» fra arbejdsmappe
   assert.equal(await w.fn(), '9.9.9');
   assert.equal(w.kald.length, 1);
   assert.equal(w.kald[0][0], w.proc.execPath, `paa Windows skal npm koeres som node + npm-cli.js ved absolut sti, ikke «${w.kald[0][0]}»`);
-  assert.match(String(w.kald[0][1][0]), /npm-cli\.js$/);
+  // R164 (Astra): den praecise, absolutte sti ved siden af node - ikke blot et navn, der ender paa npm-cli.js.
+  assert.equal(w.kald[0][1][0], win32.join('C:\\Program Files\\nodejs', 'node_modules', 'npm', 'bin', 'npm-cli.js'));
   assert.ok(!w.kald[0][2] || !w.kald[0][2].shell, 'ingen skal');
   const mangler = lav('win32', () => false);
   assert.equal(await mangler.fn(), null, 'uden npm-cli.js ved siden af node er svaret ukendt');
