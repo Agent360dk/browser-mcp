@@ -148,6 +148,19 @@ is skipped, as on macOS and Linux.
 
 ## 1.31.0 (not released yet)
 
+**Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
+servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the
+current folder before PATH, so a file named `ps.bat`, `ps.cmd` or `ps.exe` in the folder an MCP client started the server in ran at
+startup (clients that set `NoDefaultCurrentDirectoryInExePath`, such as Claude Code, were not affected). Windows has no `ps`, so the
+lookup is now skipped there, and the guard relies on the idle limit as before; macOS and Linux run `ps` by absolute path without a
+shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
+`npm-cli.js` by absolute path. Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
+
+**Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
+cmd.exe, and a missing `codex` came back as a failed command instead of "not found", so `install` told every Windows user without
+Codex "Codex is installed, but registration failed". It now looks the command up with `where` first; a client that is not there
+is skipped, as on macOS and Linux.
+
 **Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so
 the server could not tell profiles apart: with the extension enabled in two of them, commands went to one of them, and which
 one could change when the other reconnected. 1.30.2 only warned, and the warning that commands had moved to another
