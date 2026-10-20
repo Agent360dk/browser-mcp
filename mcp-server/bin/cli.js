@@ -102,7 +102,8 @@ function koerKlient(kommando, args, valg = {}) {
     return m === a || m === nodeModules || m.startsWith(nodeModules + '\\');
   });
   const erProgram = (f) => {
-    try { return statSync(f).isFile(); } catch (err) {
+    // R167 (Opus L3b): en libuv, der selv falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
+    try { const s = statSync(f); return s.isFile() || s.isSymbolicLink(); } catch (err) {
       if (!err || !['EACCES', 'EPERM', 'UNKNOWN'].includes(err.code)) return false;
       try { return !lstatSync(f).isDirectory(); } catch { return false; }
     }

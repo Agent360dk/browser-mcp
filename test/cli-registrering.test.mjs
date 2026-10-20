@@ -146,7 +146,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], doede = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
@@ -159,7 +159,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       for (const [a, b] of Object.entries(aliaser)) if (lc(r) === lc(a) || lc(r).startsWith(lc(a) + '\\')) r = b + r.slice(a.length);
       return win32.resolve(r);
     };
-    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...doede].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
+    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...appAliasLink, ...doede].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
     const realpathSync = { native: (p) => {
       // R167 (Astra): paa et netdrev kan realpath fejle med EACCES, selv om mappen og klienten findes.
       if (utilgaengelige.some((x) => lc(win32.resolve(x)) === lc(win32.resolve(cwd, String(p))))) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
@@ -169,6 +169,8 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       const r = lc(aegte(f)); tjekket.push(r);
       if (filer.some((x) => lc(x) === r)) return { isFile: () => true, isDirectory: () => false };
       if (mapper.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => true };
+      // R167 (Opus L3b): en libuv, der falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
+      if (appAliasLink.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => false, isSymbolicLink: () => true };
       const alias = appAlias.some((x) => lc(x) === r);   // en App Execution Alias kan ikke stat'es (Node #36790)
       throw Object.assign(new Error(alias ? 'EACCES' : 'ENOENT'), { code: alias ? 'EACCES' : 'ENOENT' });
     };
@@ -228,6 +230,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   // En App Execution Alias (WindowsApps) kan ikke stat'es, men er et program.
   const WA = 'C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps';
   lig(koert(lav({ path: WA, appAlias: [`${WA}\\codex.exe`] })).k, `"${WA}\\codex.exe"`);
+  lig(koert(lav({ path: WA, appAliasLink: [`${WA}\\codex.exe`] })).k, `"${WA}\\codex.exe"`, 'en App Execution Alias, som stat melder som link');
   // PATHEXT fra miljoeet afgoer raekkefoelgen (ikke en indbygget standard), og en endelse med bindestreg er en endelse.
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`, `${NPM}\\codex.exe`], pathext: '.CMD;.EXE' })).k, `"${NPM}\\codex.cmd"`);
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.my-ext`], pathext: '.MY-EXT' })).k, `"${NPM}\\codex.my-ext"`);
