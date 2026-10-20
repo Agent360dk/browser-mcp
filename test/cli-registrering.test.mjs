@@ -146,7 +146,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], mappeLinks = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
@@ -159,7 +159,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       for (const [a, b] of Object.entries(aliaser)) if (lc(r) === lc(a) || lc(r).startsWith(lc(a) + '\\')) r = b + r.slice(a.length);
       return win32.resolve(r);
     };
-    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...appAliasLink, ...doede].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
+    const kendte = new Set([cwd, ...mapper, ...utilgaengelige, ...[...filer, ...appAlias, ...appAliasLink, ...doede, ...mappeLinks].map((f) => win32.dirname(f))].map((m) => lc(aegte(m))));
     const realpathSync = { native: (p) => {
       // R167 (Astra): paa et netdrev kan realpath fejle med EACCES, selv om mappen og klienten findes.
       if (utilgaengelige.some((x) => lc(win32.resolve(x)) === lc(win32.resolve(cwd, String(p))))) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
@@ -167,15 +167,18 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
     } };
     const statSync = (f) => {
       const r = lc(aegte(f)); tjekket.push(r);
-      if (filer.some((x) => lc(x) === r)) return { isFile: () => true, isDirectory: () => false };
-      if (mapper.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => true };
+      // R168 (Opus): ogsaa isSymbolicLink, saa en regel ikke kan bestaa via en TypeError.
+      if (filer.some((x) => lc(x) === r)) return { isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false };
+      if (mapper.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => true, isSymbolicLink: () => false };
+      // R168 (Opus N5): et link til en mappe, stat ikke maa aabne (ACL), giver EPERM; lstat ser kun linket.
+      if (mappeLinks.some((x) => lc(x) === r)) throw Object.assign(new Error('EPERM'), { code: 'EPERM' });
       // R167 (Opus L3b): en libuv, der falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
       if (appAliasLink.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => false, isSymbolicLink: () => true };
       const alias = appAlias.some((x) => lc(x) === r);   // en App Execution Alias kan ikke stat'es (Node #36790)
       throw Object.assign(new Error(alias ? 'EACCES' : 'ENOENT'), { code: alias ? 'EACCES' : 'ENOENT' });
     };
     // En App Execution Alias og et doedt symlink kan begge lstat'es, men ikke stat'es: aliaset giver EACCES, det doede link ENOENT.
-    const lstatSync = (f) => [...appAlias, ...doede].some((x) => lc(x) === lc(aegte(f))) ? { isDirectory: () => false, isSymbolicLink: () => true } : statSync(f);
+    const lstatSync = (f) => [...appAlias, ...doede, ...mappeLinks].some((x) => lc(x) === lc(aegte(f))) ? { isDirectory: () => false, isSymbolicLink: () => true } : statSync(f);
     const existsSync = (f) => { try { statSync(f); return true; } catch { return false; } };
     const fn = new Function('execFileSync', 'process', 'join', 'dirname', 'resolve', 'isAbsolute', 'existsSync', 'statSync', 'lstatSync', 'realpathSync',
       `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname, win32.resolve, win32.isAbsolute, existsSync, statSync, lstatSync, realpathSync);
@@ -262,6 +265,11 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   ikke(lav({ path: 'C:\\proj\\node_modules', aliaser: { 'C:\\proj\\node_modules': 'D:\\packages' }, filer: ['D:\\packages\\codex.cmd'] }), 'node_modules-roden som junction til et andet drev');
   ikke(lav({ path: 'C:\\x', aliaser: { 'C:\\x': 'C:\\proj\\NODE_MODULES\\pkg\\bin' }, filer: ['C:\\proj\\NODE_MODULES\\pkg\\bin\\codex.cmd'] }), 'et alias, hvis aegte sti staver node_modules med store bogstaver');
   ikke(lav({ cwd: 'C:\\Users\\u', path: 'C:\\NODE_MODULES\\.BIN', aliaser: { 'C:\\NODE_MODULES\\.BIN': 'C:\\pub\\x' }, filer: ['C:\\pub\\x\\codex.cmd'] }), 'NODE_MODULES\\.BIN med store bogstaver som junction');
+  // R168 (Opus): kun App Execution Aliasens egen fejl (EACCES) giver lstat-vejen - et mappe-link (EPERM) eller et doedt link til en
+  // server, der ikke svarer (UNKNOWN), er intet program, og den gyldige codex.cmd i en senere mappe vaelges.
+  lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R168 (Opus N3): install koert fra drevets rod - C:\node_modules og dens undermapper er arbejdsmappens.
+  ikke(lav({ cwd: 'C:\\', path: 'C:\\node_modules\\pkg\\bin', filer: ['C:\\node_modules\\pkg\\bin\\codex.cmd'] }), 'C:\\node_modules\\pkg\\bin, naar install koerer fra roden');
   // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
   const t = lav({ path: `C:\\proj;${NPM}`, filer: [`${NPM}\\codex.cmd`] });
   koert(t);
