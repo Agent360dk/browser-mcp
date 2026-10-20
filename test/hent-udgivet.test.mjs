@@ -308,7 +308,7 @@ for n in ast.walk(t):
     if isinstance(mode, ast.Constant) and 'b' in str(mode.value):
         continue
     kald += 1
-    if not (isinstance(enc, ast.Constant) and isinstance(enc.value, str)):
+    if not (isinstance(enc, ast.Constant) and isinstance(enc.value, str) and enc.value.lower() != 'locale'):   # R156 (Opus): 'locale' er det lokale tegnsaet
         uden += 1
         print('UDEN', n.lineno)
 print('KALD', kald, 'UDEN', uden)`, join(rod, 'scripts/hent-udgivet.py')], { encoding: 'utf8' });
