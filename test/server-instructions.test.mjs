@@ -155,6 +155,7 @@ test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkt
 const FOKUS_ORD = /\b(?:focus(?:ed)?|foreground|frontmost|in front|on top|active app)\b/i;
 const MAALE_ORD = /measur|\bverif|\bconfirm|\bproven\b|\btested\b/i;
 const GODKENDTE_FOKUS_SAETNINGER = new Set([
+  "Up to 1.30.1 the agent then called `browser_switch_tab`, which brought Chrome in front of you every time, and a screenshot of a covered window raised Chrome and left it there.",
   "Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
   "Whether it reaches the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
   "One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement.",
@@ -178,8 +179,10 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     // falsk roedt paa sande saetninger. Reglen er nu et GODKENDT SAET: enhver saetning, der naevner fokus eller forgrund, og som selv
     // eller i saetningen efter taler om maaling, skal vaere én af de reviewede saetninger herunder. En ny formulering - ogsaa en sand -
     // er roed med vilje: den skal reviewes og tilfoejes her, foer den maa staa paa en flade.
-    const saetninger = t.split(/(?<=[.!?])\s+/);
-    const nye = saetninger.filter((x, i) => FOKUS_ORD.test(x) && (MAALE_ORD.test(x) || MAALE_ORD.test(saetninger[i + 1] || '')))
+    // R155 (Astra): ogsaa maaleord i saetningen FOER taeller, og markdown-fremhaevning (**in** front) fjernes foer ordene soeges.
+    const saetninger = t.replace(/\*+/g, '').split(/(?<=[.!?])\s+/);
+    const nye = saetninger.filter((x, i) => FOKUS_ORD.test(x)
+      && (MAALE_ORD.test(x) || MAALE_ORD.test(saetninger[i + 1] || '') || MAALE_ORD.test(saetninger[i - 1] || '')))
       .filter((x) => !GODKENDTE_FOKUS_SAETNINGER.has(x));
     assert.deepEqual(nye, [], `${f} har en ureviewet saetning om fokus/forgrund og maaling - review den og tilfoej den til GODKENDTE_FOKUS_SAETNINGER`);
   }

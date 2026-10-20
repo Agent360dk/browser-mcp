@@ -277,21 +277,36 @@ test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2:
 test('hent-udgivet.py: hver tekstlaesning angiver encoding', () => {
   // R154 (Astra): en tekstsoegning efter «encoding=» gav falsk roedt paa «encoding = 'utf-8'» og lod en kommentar taelle som argument.
   // Pythons egen parser afgoer det nu: hvert open/read_text/write_text-kald uden binaer tilstand skal have et encoding-noegleord.
+  // R155 (Astra): argumenterne laeses efter hvert kalds egen signatur - builtin/io.open(file, mode, buffering, encoding),
+  // Path.open(mode, buffering, encoding), read_text(encoding, errors), write_text(data, encoding). Kun open kan vaere binaer.
   const ud = execFileSync('python3', ['-c', `import ast, sys
 t = ast.parse(open(sys.argv[1], encoding='utf-8').read())
 kald = uden = 0
+def arg(n, pos, navn):
+    for k in n.keywords:
+        if k.arg == navn:
+            return k.value
+    return n.args[pos] if len(n.args) > pos else None
 for n in ast.walk(t):
-    if isinstance(n, ast.Call):
-        navn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, 'id', '')
-        if navn in ('open', 'read_text', 'write_text'):
-            tilstand = [a.value for a in n.args[1:2] if isinstance(a, ast.Constant)] + [k.value.value for k in n.keywords if k.arg == 'mode' and isinstance(k.value, ast.Constant)]
-            if any('b' in str(m) for m in tilstand):
-                continue
-            kald += 1
-            # R154 (Opus): encoding=None er det lokale tegnsaet igen - kun en navngivet streng taeller.
-            if not any(k.arg == 'encoding' and isinstance(k.value, ast.Constant) and isinstance(k.value.value, str) for k in n.keywords):
-                uden += 1
-                print('UDEN', n.lineno)
+    if not isinstance(n, ast.Call):
+        continue
+    f = n.func
+    if isinstance(f, ast.Name) and f.id == 'open' or isinstance(f, ast.Attribute) and f.attr == 'open' and isinstance(f.value, ast.Name) and f.value.id == 'io':
+        mode, enc = arg(n, 1, 'mode'), arg(n, 3, 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr == 'open':
+        mode, enc = arg(n, 0, 'mode'), arg(n, 2, 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr == 'read_text':
+        mode, enc = None, arg(n, 0, 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr == 'write_text':
+        mode, enc = None, arg(n, 1, 'encoding')
+    else:
+        continue
+    if isinstance(mode, ast.Constant) and 'b' in str(mode.value):
+        continue
+    kald += 1
+    if not (isinstance(enc, ast.Constant) and isinstance(enc.value, str)):
+        uden += 1
+        print('UDEN', n.lineno)
 print('KALD', kald, 'UDEN', uden)`, join(rod, 'scripts/hent-udgivet.py')], { encoding: 'utf8' });
   const [, kald, uden] = ud.match(/KALD (\d+) UDEN (\d+)/);
   assert.ok(Number(kald) >= 3, `fandt kun ${kald} tekstlaesninger - parseren maaler ikke scriptet`);
