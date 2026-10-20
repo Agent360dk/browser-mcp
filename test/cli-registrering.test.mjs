@@ -58,7 +58,11 @@ function installer({ klienter = [], codeKanAddMcp = true, cursor = false, cursor
     encoding: 'utf8', timeout: 30000,
     shell: process.platform === 'win32',
     env: process.platform === 'win32'
-      ? { ...process.env, Path: `${bin};${dirname(process.execPath)};${process.env.Path || ''}`, HOME: hjem, USERPROFILE: hjem }
+      // R162 (Astra): ogsaa paa Windows et minimalt miljoe - brugerens Path og nodes mappe (hvor globale klienter kan ligge)
+      // er ude; kun attrap-mappen og Windows' egne mapper, som cmd.exe skal bruge.
+      ? { SystemRoot: process.env.SystemRoot, ComSpec: process.env.ComSpec, PATHEXT: process.env.PATHEXT, TEMP: process.env.TEMP, TMP: process.env.TMP,
+          Path: `${bin};${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`, HOME: hjem, USERPROFILE: hjem,
+          APPDATA: join(hjem, 'AppData', 'Roaming'), LOCALAPPDATA: join(hjem, 'AppData', 'Local') }
       // 20/10: PATH bar hele nodes mappe, og dér ligger globalt installerede klienter (codex kom i nvm's mappe 20/10 17.29) -
       // installeren fandt saa den RIGTIGE codex og «registrerede» i en proeve, hvor ingen klienter maa findes. Kun node selv
       // laegges ind, som et link i attrap-mappen.

@@ -716,7 +716,9 @@ test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, s
   // bærende måling er derfor i kodens eget ur: den frist, CAPTCHA-kontrollen faktisk får, skal ende inden for loftet regnet fra
   // navigationens start (navigerSomEjer). Vægurets grænse står kun som grov ydergrænse mod en kontrol helt uden loft.
   await bedsteAfTre(async () => {
-    const m = model({ beskyt: false, captchaMs: 3000 });
+    // R162 (Astra): navMs 200 - navigationen bruger en maerkbar del af budgettet, saa ogsaa et nyt, fuldt loft til CAPTCHA-kontrollen
+    // (i stedet for resttiden) ender over loftet.
+    const m = model({ beskyt: false, captchaMs: 3000, navMs: 200 });
     const ctx = m.u.ctx;
     const [naviger, detect, vente] = [ctx.navigerSomEjer, ctx.detectCaptcha, ctx.venteMedFrist];
     let start = null, captchaLoefte = null;

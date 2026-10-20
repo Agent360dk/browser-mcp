@@ -542,7 +542,9 @@ async function aegteServer(env) {
   }));
   let fejl = ''; const ud = []; let rest = '';
   srv.stderr.on('data', (d) => { fejl += d; });
-  srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
+  // R162 (Astra): hvert svar stemples, naar det ANKOMMER - en tidsmaaling efter aflaesningen kan medregne forsinkelse.
+  const modtaget = new Map();
+  srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { const o = JSON.parse(l); if (o.id != null && !modtaget.has(o.id)) modtaget.set(o.id, Date.now()); ud.push(o); } catch {} } });
   const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
   skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'p', version: '0' } } });
   assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 15000));   // R161 (Opus): 5 s var for lidt under fuld belastning (D19)
@@ -551,7 +553,7 @@ async function aegteServer(env) {
   const send = (name, args = {}) => { const id = ++n; skriv({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }); return id; };
   const svar = (id, ms = 25000) => venteTil(() => ud.find((x) => x.id === id), ms);
   const lytter = async () => Number((await venteTil(() => /listening on ws:\/\/127\.0\.0\.1:(\d+)/.exec(fejl), 5000))[1]);
-  return { srv, send, svar, lytter, fejl: () => fejl };
+  return { srv, send, svar, lytter, fejl: () => fejl, modtagetTid: (id) => modtaget.get(id) };
 }
 
 // 20/10 (R161, Astra): en fast tidsmargen kan ikke baade taale belastning og fange en mutant, der er 1,5 gange for langsom.
@@ -580,7 +582,7 @@ test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,0 s efte
       await vent(Math.max(0, 1000 - (Date.now() - t0)));
       const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
       const r = await s.svar(id);
-      const svartid = Date.now() - tKald;
+      const svartid = s.modtagetTid(id) - tKald;
       assert.ok(svartid >= 2450, `svaret kom efter ${svartid} ms - serveren ventede ikke vinduet ud, før den valgte`);
       assert.ok(r, 'intet svar');
       const j = JSON.parse(r.result.content[0].text);
