@@ -104,7 +104,8 @@ function koerKlient(kommando, args, valg = {}) {
   const erProgram = (f) => {
     // R167 (Opus L3b): en libuv, der selv falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
     try { const s = statSync(f); return s.isFile() || s.isSymbolicLink(); } catch (err) {
-      if (!err || !['EACCES', 'EPERM', 'UNKNOWN'].includes(err.code)) return false;
+      // R168 (Opus): kun App Execution Aliasens egen fejl (EACCES); EPERM og UNKNOWN kommer ogsaa fra mappe-links og doede links.
+      if (!err || err.code !== 'EACCES') return false;
       try { return !lstatSync(f).isDirectory(); } catch { return false; }
     }
   };
