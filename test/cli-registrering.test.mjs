@@ -146,7 +146,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], mappeLinks = [], utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], appAliasLink = [], doede = [], mappeLinks = [], mappeLinkKode = 'EPERM', utilgaengelige = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
@@ -171,7 +171,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
       if (filer.some((x) => lc(x) === r)) return { isFile: () => true, isDirectory: () => false, isSymbolicLink: () => false };
       if (mapper.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => true, isSymbolicLink: () => false };
       // R168 (Opus N5): et link til en mappe, stat ikke maa aabne (ACL), giver EPERM; lstat ser kun linket.
-      if (mappeLinks.some((x) => lc(x) === r)) throw Object.assign(new Error('EPERM'), { code: 'EPERM' });
+      if (mappeLinks.some((x) => lc(x) === r)) throw Object.assign(new Error(mappeLinkKode), { code: mappeLinkKode });
       // R167 (Opus L3b): en libuv, der falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
       if (appAliasLink.some((x) => lc(x) === r)) return { isFile: () => false, isDirectory: () => false, isSymbolicLink: () => true };
       const alias = appAlias.some((x) => lc(x) === r);   // en App Execution Alias kan ikke stat'es (Node #36790)
@@ -268,6 +268,10 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   // R168 (Opus): kun App Execution Aliasens egen fejl (EACCES) giver lstat-vejen - et mappe-link (EPERM) eller et doedt link til en
   // server, der ikke svarer (UNKNOWN), er intet program, og den gyldige codex.cmd i en senere mappe vaelges.
   lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R169 (Astra): ogsaa UNKNOWN (et doedt link til en server, der ikke svarer) for sig.
+  lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], mappeLinkKode: 'UNKNOWN', filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R169 (Astra, Opus N8): .bin-reglen gaelder ogsaa den aegte sti - et alias til en node_modules\.bin uden for projektet.
+  ikke(lav({ path: 'C:\\alias', aliaser: { 'C:\\alias': 'D:\\shared\\node_modules\\.bin' }, filer: ['D:\\shared\\node_modules\\.bin\\codex.cmd'] }), 'et alias til en node_modules\\.bin uden for projektet');
   // R168 (Opus N3): install koert fra drevets rod - C:\node_modules og dens undermapper er arbejdsmappens.
   ikke(lav({ cwd: 'C:\\', path: 'C:\\node_modules\\pkg\\bin', filer: ['C:\\node_modules\\pkg\\bin\\codex.cmd'] }), 'C:\\node_modules\\pkg\\bin, naar install koerer fra roden');
   // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
