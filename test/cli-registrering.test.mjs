@@ -268,6 +268,8 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   // R168 (Opus): kun App Execution Aliasens egen fejl (EACCES) giver lstat-vejen - et mappe-link (EPERM) eller et doedt link til en
   // server, der ikke svarer (UNKNOWN), er intet program, og den gyldige codex.cmd i en senere mappe vaelges.
   lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
+  // R169 (Opus): en rodrelativ post (\\tools) loeses mod arbejdsmappens drev - samme klasse som C:bin.
+  ikke(lav({ cwd: 'F:\\project', path: '\\tools', filer: ['F:\\tools\\codex.cmd'] }), 'en rodrelativ PATH-post');
   // R169 (Astra): ogsaa UNKNOWN (et doedt link til en server, der ikke svarer) for sig.
   lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], mappeLinks: ['C:\\A\\codex.exe'], mappeLinkKode: 'UNKNOWN', filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
   // R169 (Astra, Opus N8): .bin-reglen gaelder ogsaa den aegte sti - et alias til en node_modules\.bin uden for projektet.

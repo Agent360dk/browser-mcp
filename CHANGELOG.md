@@ -16,7 +16,7 @@ run `ps` by absolute path without a shell. The opt-in npm check (`BROWSER_MCP_CH
 longer chooses the registry, and only a plain version number is passed on to the agent. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
 Windows; it now looks the client up in PATH itself and runs it by its full path through System32's `cmd.exe`. The lookup
 takes absolute folders only, never the current folder, its `node_modules` or any `node_modules\.bin` folder (also when the
-folder is named another way that Windows can resolve, such as an 8.3 name or a junction), only files and only the extensions in PATHEXT. Clients under
+folder is named another way, such as an 8.3 name or a junction, as long as the drive can report the folder's real path), only files and only the extensions in PATHEXT. Clients under
 the folder you run it from, such as npm's global folder under your home folder, are still found, and a path with letters such
 as ø works.
 Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
