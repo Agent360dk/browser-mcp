@@ -144,15 +144,15 @@ function klientKilde() {
 }
 test('SIKKERHED (Windows): installeren koerer aldrig en klient eller where.exe fra arbejdsmappen', async () => {
   const { win32 } = await import('node:path');
-  const lav = (whereSvar) => {
+  const lav = (whereSvar, cwd = 'C:\\proj') => {
     const kald = [];
     const execFileSync = (k, args, valg) => {
       kald.push({ k, args, valg });
       if (kald.length === 1) { if (whereSvar instanceof Error) throw whereSvar; return whereSvar; }
       return 'ok';
     };
-    const proc = { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, cwd: () => 'C:\\proj' };
-    const fn = new Function('execFileSync', 'process', 'join', `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join);
+    const proc = { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, cwd: () => cwd };
+    const fn = new Function('execFileSync', 'process', 'join', 'dirname', `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join, win32.dirname);
     return { fn, kald };
   };
   const a = lav('C:\\proj\\codex.bat\r\nC:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd\r\n');
@@ -164,6 +164,24 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient eller where.exe f
   assert.match(String(a.kald[1].k), /AppData\\Roaming\\npm\\codex\.cmd/, `klienten skal koeres ved den fundne absolutte sti uden for arbejdsmappen, fik ${a.kald[1].k}`);
   assert.doesNotMatch(String(a.kald[1].k), /\\proj\\/, 'en codex.bat i arbejdsmappen blev koert');
   assert.equal(a.kald[1].valg.env.NoDefaultCurrentDirectoryInExePath, '1');
+  // R165 (Astra): skallen er System32's cmd.exe ved absolut sti - ikke «cmd.exe» ved navn, som Node falder tilbage paa uden ComSpec.
+  assert.equal(a.kald[1].valg.shell, 'C:\\Windows\\System32\\cmd.exe', `skallen skal vaere System32's cmd.exe, fik ${a.kald[1].valg.shell}`);
+  // R165 (Astra): kun selve arbejdsmappen afvises. Koeres install fra hjemmemappen (PowerShells standard), ligger npm's globale
+  // programmer, Claude Code og VS Code i UNDERMAPPER af den - de er installeret og skal findes.
+  for (const [cwd, klient] of [
+    ['C:\\Users\\u', 'C:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd'],
+    ['C:\\Users\\u\\', 'C:\\Users\\u\\.local\\bin\\claude.exe'],
+    ['C:\\', 'C:\\Users\\u\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd'],
+  ]) {
+    const h = lav(`${klient}\r\n`, cwd);
+    h.fn('codex', ['mcp'], {});
+    assert.equal(h.kald.length, 2, `fra ${cwd} blev ${klient} afvist som om den laa i arbejdsmappen`);
+    assert.equal(h.kald[1].k, `"${klient}"`);
+  }
+  const hjemFil = lav('C:\\Users\\u\\codex.bat\r\n', 'C:\\Users\\U');
+  assert.throws(() => hjemFil.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en codex.bat direkte i arbejdsmappen (anden skrivemaade) blev koert');
+  const rodFil = lav('C:\\codex.bat\r\n', 'C:\\');
+  assert.throws(() => rodFil.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en codex.bat i drevets rod blev koert, da install koerte fra roden');
   const kunCwd = lav('C:\\proj\\codex.bat\r\n');
   assert.throws(() => kunCwd.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en klient der kun findes i arbejdsmappen, er ikke installeret');
   assert.equal(kunCwd.kald.length, 1, 'og intet andet koeres');
