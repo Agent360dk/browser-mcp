@@ -51,7 +51,7 @@ Chrome window as the agent, its tab can still become the visible one there; `bro
 `new_tab: true` and `eget_vindue: true` gives the agent a window of its own (without a position it can
 still open on your screen, behind or beside what you are doing). A screenshot of a covered window answers `window-covered`.
 
-**What you can do today.** Reading and scripts work in a background tab, and so do screenshots, as long as Chrome produces a picture. When it does not - usually because its window is covered by other windows or minimized - the answer is `window-covered`, and Chrome is not pulled in front.
+**What you can do today.** Reading and scripts work in a background tab, and so do screenshots, as long as Chrome produces a picture. When Chrome gives no picture in time, or the picture cannot be read back - usually because its window is covered by other windows or minimized - the answer is `window-covered`, and Chrome is not pulled in front; other errors are reported as they are.
 Input - typing, hover, coordinate clicks - does not reach a tab that is not the visible one in its
 window (measured). Whether it reaches the active tab of a window without the operating system's focus is
 unmeasured in desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit)

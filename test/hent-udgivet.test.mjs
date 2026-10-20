@@ -275,10 +275,24 @@ test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2:
 // R153 (Opus): cp1252-proeven laaner kun `open` i hent_server - manifest.json (hent_udvidelse) og en `Path.read_text()` uden tegnsaet
 // slap igennem. Hver tekstlaesning i scriptet skal derfor selv naevne sit tegnsaet.
 test('hent-udgivet.py: hver tekstlaesning angiver encoding', () => {
-  const kilde = readFileSync(join(rod, 'scripts/hent-udgivet.py'), 'utf8');
-  const kald = [...kilde.matchAll(/\b(open|read_text|write_text)\(([^()]*(?:\([^()]*\)[^()]*)*)\)/g)]
-    .filter(([, navn, arg]) => !(navn === 'open' && /['"][rw]?b['"]/.test(arg)));
-  assert.ok(kald.length >= 3, `fandt kun ${kald.length} laesninger - moenstret maaler ikke scriptet`);
-  const uden = kald.filter(([, , arg]) => !/encoding=/.test(arg)).map(([hele]) => hele.slice(0, 80));
-  assert.deepEqual(uden, [], `tekstlaesninger uden encoding: ${uden.join(' | ')}`);
+  // R154 (Astra): en tekstsoegning efter «encoding=» gav falsk roedt paa «encoding = 'utf-8'» og lod en kommentar taelle som argument.
+  // Pythons egen parser afgoer det nu: hvert open/read_text/write_text-kald uden binaer tilstand skal have et encoding-noegleord.
+  const ud = execFileSync('python3', ['-c', `import ast, sys
+t = ast.parse(open(sys.argv[1], encoding='utf-8').read())
+kald = uden = 0
+for n in ast.walk(t):
+    if isinstance(n, ast.Call):
+        navn = n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, 'id', '')
+        if navn in ('open', 'read_text', 'write_text'):
+            tilstand = [a.value for a in n.args[1:2] if isinstance(a, ast.Constant)] + [k.value.value for k in n.keywords if k.arg == 'mode' and isinstance(k.value, ast.Constant)]
+            if any('b' in str(m) for m in tilstand):
+                continue
+            kald += 1
+            if not any(k.arg == 'encoding' for k in n.keywords):
+                uden += 1
+                print('UDEN', n.lineno)
+print('KALD', kald, 'UDEN', uden)`, join(rod, 'scripts/hent-udgivet.py')], { encoding: 'utf8' });
+  const [, kald, uden] = ud.match(/KALD (\d+) UDEN (\d+)/);
+  assert.ok(Number(kald) >= 3, `fandt kun ${kald} tekstlaesninger - parseren maaler ikke scriptet`);
+  assert.equal(Number(uden), 0, `tekstlaesninger uden encoding paa linje: ${ud.match(/UDEN \d+/g)?.join(', ')}`);
 });

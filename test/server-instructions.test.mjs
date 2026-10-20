@@ -151,6 +151,15 @@ test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkt
   assert.match(afsnit, /If it still fails, ask the user before browser_switch_tab with bring_to_front: true/);
 });
 
+const FOKUS_ORD = /\b(?:focus(?:ed)?|foreground|frontmost|in front)\b/i;
+const MAALE_ORD = /measur/i;
+const GODKENDTE_FOKUS_SAETNINGER = new Set([
+  "Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
+  "Whether it reaches the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
+  "One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement.",
+  "When Chrome gives no picture in time, or the picture cannot be read back - usually because its window is covered by other windows or minimized - the answer is `window-covered`, and Chrome is not pulled in front; other errors are reported as they are.",
+]);
+
 // R103 (Astra + Opus): README og fejlfindingssiden kaldte et fokuskrav «measured», mens tools.js siger at input til den aktive
 // fane i et ufokuseret vindue er umaalt. Ingen flade maa igen paastaa det som maalt.
 test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er umaalt', () => {
@@ -162,17 +171,16 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     // R104 Opus forslag 1: vagten var bundet til ordlyden - en omskrivning som «… operating system's focus (measured)» slap igennem.
     assert.doesNotMatch(t, /operating system's focus[^.]{0,80}\(measured/, `${f} kalder fokuskravet maalt (omskrevet)`);
     // C11 (14/10-maalingen): én observation paa macOS naevnes - som én observation, ikke som en generel maaling
-    // R152 (Astra + Opus): vagten var bundet til ordstumper - «did not see a key press land», «was not in front» og en
-    // generaliserende saetning («Input requires OS focus (measured).») slap igennem. Nu kraeves hele saetningen ordret, og
-    // ingen formulering maa kalde et fokus- eller forgrundskrav maalt.
+    // R152 (Astra + Opus): vagten var bundet til ordstumper - «did not see a key press land» og «was not in front» slap igennem.
     assert.match(t, /One observation on macOS \(Chrome for Testing on GitHub's runner, 14 Oct 2026\) saw a key press land in the active tab while another app \(TextEdit\) was in front; that is one platform and one input type, not a general measurement\./, `${f} naevner ikke 14/10-observationen ordret med sin graense`);
-    // R153 (Astra): tre formuleringer slap stadig igennem - «Measured: input requires OS focus.», «… in the foreground (measured).»
-    // og «operating-system focus (measured)». Begge retninger (maalt foer og efter kravet) og bindestregsformen dækkes nu.
-    // R153 (Opus): ogsaa «the window to have focus (measured)» og «frontmost app (measured)» slap igennem - ethvert fokus-/forgrundsord taeller.
-    const krav = String.raw`(?:\bfocus(?:ed)?\b|\bin front\b|\bforeground\b|\bfrontmost\b)`;
-    assert.doesNotMatch(t, new RegExp(`${krav}[^.;]{0,80}(?<!un)measured\\b`, 'i'), `${f} kalder et fokus- eller forgrundskrav maalt`);
-    assert.doesNotMatch(t, new RegExp(`(?<!un)measured\\b[^.;]{0,80}${krav}`, 'i'), `${f} kalder et fokus- eller forgrundskrav maalt (maalt foerst)`);
-    assert.doesNotMatch(t, /\bfocus\.\s*\(?measured/i, `${f} kalder fokus maalt i saetningen efter`);
+    // R153-R154 (Astra + Opus): regex-vagter mod «maalt»-formuleringer blev ved med at slippe nye omskrivninger igennem og gav
+    // falsk roedt paa sande saetninger. Reglen er nu et GODKENDT SAET: enhver saetning, der naevner fokus eller forgrund, og som selv
+    // eller i saetningen efter taler om maaling, skal vaere én af de reviewede saetninger herunder. En ny formulering - ogsaa en sand -
+    // er roed med vilje: den skal reviewes og tilfoejes her, foer den maa staa paa en flade.
+    const saetninger = t.split(/(?<=[.!?])\s+/);
+    const nye = saetninger.filter((x, i) => FOKUS_ORD.test(x) && (MAALE_ORD.test(x) || MAALE_ORD.test(saetninger[i + 1] || '')))
+      .filter((x) => !GODKENDTE_FOKUS_SAETNINGER.has(x));
+    assert.deepEqual(nye, [], `${f} har en ureviewet saetning om fokus/forgrund og maaling - review den og tilfoej den til GODKENDTE_FOKUS_SAETNINGER`);
   }
 });
 
@@ -184,5 +192,8 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.match(t, /Measured in Ionic 8\.8\.19: an `ion-segment-button`'s icon or label as the target answers `covered`/);
   assert.match(t, /Other versions of these libraries are unmeasured\./);
   assert.match(t, /inside an `sl-button` it is unmeasured in Chrome/);
+  // R154 (Astra): maaleplaceringen og svarene skal ogsaa vaere bundet, ikke kun versionerne.
+  assert.match(t, /never gets the click itself \(the library sets `pointer-events: none` there\), so clicking that `sl-icon` answers `maybe_landed` - target the button\./);
+  assert.match(t, /A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click/);
   assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
 });
