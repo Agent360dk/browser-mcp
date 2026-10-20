@@ -213,7 +213,8 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
   // R155-R156 (Opus): «every icon», «each icon» - men ikke «all icons in colour» om noget andet.
   // R157 (Astra): sammenhaengen tjekkes i hele saetningen, begge sider af ordet.
-  const ikonGeneraliseringer = t.split(/(?<=[.!?])\s+/).filter((x) => /\b(?:any|every|all|each) icons?\b/i.test(x) && /\b(?:button|maybe_landed|landed|covered|click(?:s|ed|ing)?)\b/i.test(x));
+  // R157 (Opus): «e.g.» midt i en saetning maa ikke dele den - der deles kun foran et stort bogstav.
+  const ikonGeneraliseringer = t.split(/(?<=[.!?])\s+(?=[A-Z*`])/).filter((x) => /\b(?:any|every|all|each) icons?\b/i.test(x) && /\b(?:button|maybe_landed|landed|covered|click(?:s|ed|ing)?)\b/i.test(x));
   assert.deepEqual(ikonGeneraliseringer, [], 'CHANGELOG generaliserer til ethvert ikon');
   // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
   assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
