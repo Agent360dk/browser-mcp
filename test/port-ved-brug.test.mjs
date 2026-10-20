@@ -299,8 +299,8 @@ test('kald 1 fejler paa fuldt spaend, kald 2 lykkes - uden genstart', async () =
 test('serveren binder kun gennem WebSocketServer (det proevekrogen kan se)', () => {
   const kilde = readFileSync(SRV, 'utf8');
   for (const [moenster, hvad] of [[/\bworker_threads\b/, 'worker_threads'], [/\bnode:dgram\b|\bdgram\b/, 'dgram'],
-    [/process\.binding\(/, 'process.binding'], [/\.listen\(/, 'en direkte .listen(']]) {
+    [/process\.binding\s*\(/, 'process.binding'], [/\.listen\s*\(/, 'en direkte .listen(']]) {
     assert.doesNotMatch(kilde, moenster, `index.js bruger ${hvad} - proevekrogen i port-ved-brug ser ikke den binding; udvid krogen`);
   }
-  assert.equal((kilde.match(/new WebSocketServer\(/g) || []).length, 1, 'serveren skal have netop ét WebSocketServer-sted');
+  assert.equal((kilde.match(/new\s+WebSocketServer\s*\(/g) || []).length, 1, 'serveren skal have netop ét WebSocketServer-sted');
 });

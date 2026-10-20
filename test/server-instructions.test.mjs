@@ -171,6 +171,16 @@ const GODKENDTE_FOKUS_SAETNINGER = new Set([
   "When Chrome gives no picture in time, or the picture cannot be read back - usually because its window is covered by other windows or minimized - the answer is `window-covered`, and Chrome is not pulled in front; other errors are reported as they are.",
 ]);
 
+const GODKENDTE_IKON_SAETNINGER = new Set([
+  "(When the target is a `label` and the action is a click, the proof is its associated control's own activation click or a click on the control itself, whatever that control is.) Measured in Shoelace 2.20.1 with its default styling: the custom `sl-icon` element in an `sl-button`'s prefix slot never gets the click itself (the library sets `pointer-events: none` there), so clicking that `sl-icon` answers `maybe_landed` - target the button.",
+  "A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click (inside an `sl-button` it is unmeasured in Chrome).",
+  "Measured in Ionic 8.8.19: an `ion-segment-button`'s icon or label as the target answers `covered` before the press (the host takes the click); target the segment button itself.",
+  "The mouse events are bound to the target that was found: each one at the click point is judged on the element that gets it, and only that very event reaching the target counts as proof (for a field clicked through its label, the field's own click, only when the label's click was not cancelled, and once; around the target, only its own control frame (a button, link or summary, or an element with a button, link, menu item, option, tab, checkbox, radio or switch role), not a container that listens for its children, and for a field, a button or any custom element (a tag name with a hyphen, as every form-associated custom field has) as the target, not even its own box: only an event that reaches the target itself, so a custom icon whose click only reaches the button around it is `maybe_landed`); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes.",
+  "A text selector picks a clickable child only when the text is in it, so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did, and a delete ran); a text next to an icon button with no text of its own now clicks the row, not the button.",
+  "- \"Restart your agent and the extension icon turns green\" was wrong in sixteen places, and had been since 1.29.0 changed the server to take a port on first use rather than at startup.",
+  "Worse, the icon never turns green at all: there is one icon and nothing changes its colour.",
+]);
+
 // R103 (Astra + Opus): README og fejlfindingssiden kaldte et fokuskrav «measured», mens tools.js siger at input til den aktive
 // fane i et ufokuseret vindue er umaalt. Ingen flade maa igen paastaa det som maalt.
 test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er umaalt', () => {
@@ -213,9 +223,11 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
   // R155-R156 (Opus): «every icon», «each icon» - men ikke «all icons in colour» om noget andet.
   // R157 (Astra): sammenhaengen tjekkes i hele saetningen, begge sider af ordet.
-  // R157 (Opus): «e.g.» midt i en saetning maa ikke dele den - der deles kun foran et stort bogstav.
-  const ikonGeneraliseringer = t.split(/(?<=[.!?])\s+(?=[A-Z*`])/).filter((x) => /\b(?:any|every|all|each) icons?\b/i.test(x) && /\b(?:button|maybe_landed|landed|covered|click(?:s|ed|ing)?)\b/i.test(x));
-  assert.deepEqual(ikonGeneraliseringer, [], 'CHANGELOG generaliserer til ethvert ikon');
+  // R158 (Astra): en regex mod ikon-generaliseringer svingede mellem falsk groent og falsk roedt (ordstilling, «e.g.», «button palette»).
+  // Reglen er nu den samme som for fokus: hver CHANGELOG-saetning, der naevner et ikon, skal vaere én af de reviewede herunder.
+  // En ny saetning om ikoner - ogsaa en sand - er roed med vilje, indtil den er reviewet og tilfoejet.
+  const nyeIkonSaetninger = t.split(/(?<=[.!?])\s+/).filter((x) => /\bicons?\b/i.test(x) && !GODKENDTE_IKON_SAETNINGER.has(x));
+  assert.deepEqual(nyeIkonSaetninger, [], 'CHANGELOG har en ureviewet saetning om ikoner - review den og tilfoej den til GODKENDTE_IKON_SAETNINGER');
   // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
   assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
 });
