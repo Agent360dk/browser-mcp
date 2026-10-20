@@ -146,11 +146,11 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   const { win32 } = await import('node:path');
   // Et falsk filsystem og en falsk PATH: koerKlient fra cli.js slaar selv op i PATH (R165), saa proeven bestemmer, hvilke filer
   // der findes, og ser hvad der koeres.
-  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path' }) => {
+  const lav = ({ path, filer = [], mapper = [], aliaser = {}, appAlias = [], cwd = 'C:\\proj', pathext = '.COM;.EXE;.BAT;.CMD', noegle = 'Path', comspec }) => {
     const kald = [];
     const tjekket = [];
     const execFileSync = (k, args, valg) => { kald.push({ k, args, valg }); return 'ok'; };
-    const env = { SystemRoot: 'C:\\Windows', PATHEXT: pathext, [noegle]: path };
+    const env = { SystemRoot: 'C:\\Windows', PATHEXT: pathext, [noegle]: path, ...(comspec ? { ComSpec: comspec } : {}) };
     const proc = { platform: 'win32', env, cwd: () => cwd };
     const lc = (x) => String(x).toLowerCase();
     // Som Windows: en relativ sti slaas op i arbejdsmappen, og et alias (8.3-navn, \\?\, junction) er samme mappe som sit maal.
@@ -218,6 +218,7 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   ikke(lav({ path: '\\\\?\\C:\\proj', filer: ['C:\\proj\\codex.bat'], aliaser: { '\\\\?\\C:\\proj': 'C:\\proj' } }), 'en \\\\?\\-sti til arbejdsmappen');
   ikke(lav({ path: 'C:\\link', filer: ['C:\\proj\\codex.bat'], aliaser: { 'C:\\link': 'C:\\proj' } }), 'en junction til arbejdsmappen');
   ikke(lav({ path: 'C:\\proj\\node_modules', filer: ['C:\\proj\\node_modules\\codex.cmd'] }), 'arbejdsmappens node_modules-rod');
+  ikke(lav({ path: 'C:\\proj\\node_modules\\pakke\\bin', filer: ['C:\\proj\\node_modules\\pakke\\bin\\codex.cmd'] }), 'en mappe under arbejdsmappens node_modules');
   ikke(lav({ path: 'C:\\findes-ikke', filer: [] }), 'en PATH-mappe der ikke findes');
   // En App Execution Alias (WindowsApps) kan ikke stat'es, men er et program.
   const WA = 'C:\\Users\\u\\AppData\\Local\\Microsoft\\WindowsApps';
@@ -225,6 +226,17 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   // PATHEXT fra miljoeet afgoer raekkefoelgen (ikke en indbygget standard), og en endelse med bindestreg er en endelse.
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`, `${NPM}\\codex.exe`], pathext: '.CMD;.EXE' })).k, `"${NPM}\\codex.cmd"`);
   lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.my-ext`], pathext: '.MY-EXT' })).k, `"${NPM}\\codex.my-ext"`);
+  // R166 (Opus): en drevrelativ post (C:bin) er ogsaa relativ til arbejdsmappen.
+  ikke(lav({ path: 'C:bin', filer: ['C:\\proj\\bin\\codex.cmd'] }), 'en drevrelativ PATH-post');
+  // R166 (Opus): npx laegger ogsaa forfaedrenes node_modules\.bin paa PATH, og C:\node_modules kan oprettes af enhver bruger.
+  ikke(lav({ path: 'C:\\node_modules\\.bin', filer: ['C:\\node_modules\\.bin\\codex.cmd'], cwd: 'C:\\Users\\u' }), 'en forfaders node_modules\\.bin');
+  ikke(lav({ path: 'C:\\Users\\node_modules\\.bin', filer: ['C:\\Users\\node_modules\\.bin\\codex.cmd'], cwd: 'C:\\Users\\u\\x' }), 'en anden forfaders node_modules\\.bin');
+  // R166 (Opus): mappen foer endelsen - .cmd i foerste PATH-mappe slaar .exe i anden, som hos cmd.exe.
+  lig(koert(lav({ path: 'C:\\A;C:\\B', filer: ['C:\\A\\codex.cmd', 'C:\\B\\codex.exe'] })).k, '"C:\\A\\codex.cmd"');
+  // R166 (Opus): tomme PATHEXT-poster er ingen endelse - ellers kommer npm's skript uden endelse tilbage (N3).
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex`, `${NPM}\\codex.cmd`], pathext: ';.COM;;.CMD;' })).k, `"${NPM}\\codex.cmd"`);
+  // R166 (Opus): ComSpec fra miljoeet aendrer ikke skallen - den er System32's cmd.exe ved absolut sti.
+  lig(koert(lav({ path: NPM, filer: [`${NPM}\\codex.cmd`], comspec: 'cmd.exe' })).valg.shell, 'C:\\Windows\\System32\\cmd.exe');
   // Opslaget starter ingen proces (heller ikke where.exe): det eneste kald er klienten.
   const t = lav({ path: `C:\\proj;${NPM}`, filer: [`${NPM}\\codex.cmd`] });
   koert(t);

@@ -104,6 +104,8 @@ function koerKlient(kommando, args, valg = {}) {
     if (!mappe || !isAbsolute(mappe)) continue;   // en relativ post ville pege ind i arbejdsmappen
     const m = aegte(mappe);
     if (!m || m === arbejdsmappe || m === nodeModules || m.startsWith(nodeModules + '\\')) continue;   // findes ikke, eller er arbejdsmappens
+    // R166 (Opus): npx laegger ogsaa hver forfaders node_modules\.bin paa PATH, og C:\node_modules kan oprettes af enhver bruger.
+    if (m.endsWith('\\node_modules\\.bin')) continue;
     sti = endelser.map((e) => join(mappe, kommando + e)).find(erProgram);
     if (sti) break;
   }
