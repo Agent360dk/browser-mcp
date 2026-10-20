@@ -14,11 +14,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ledErDoedt, forfaedreKaede } from './vagt.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
-import { execSync, execFile } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import { dirname, join, resolve, sep, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync, existsSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 // Read version from package.json - single source of truth, never drifts
@@ -1487,7 +1487,15 @@ function npmLatestVersion() {
   return new Promise((resolve) => {
     // Offline, bag proxy, eller npm mangler paa PATH: svar null i stedet for at fejle.
     // En friskheds-kontrol maa aldrig vaere det der braekker vaerktoejet.
-    execFile('npm', ['view', '@agent360/browser-mcp', 'version'], { timeout: 6000 }, (err, stdout) => {
+    // SIKKERHED (20/10, privat rapport): paa Windows soeger CreateProcess ogsaa i arbejdsmappen, saa en npm.exe dér koerte, og
+    // npm.cmd kan slet ikke startes uden skal. Paa Windows koeres derfor npm-cli.js ved siden af node selv, ved absolut sti.
+    let kommando = 'npm', foer = [];
+    if (process.platform === 'win32') {
+      const cli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+      if (!existsSync(cli)) return resolve(null);
+      kommando = process.execPath; foer = [cli];
+    }
+    execFile(kommando, [...foer, 'view', '@agent360/browser-mcp', 'version'], { timeout: 6000 }, (err, stdout) => {
       if (err) return resolve(null);
       const v = String(stdout).trim();
       const ok = /^\d+\.\d+\.\d+/.test(v) ? v : null;
@@ -1842,9 +1850,16 @@ process.on('exit', () => {
 
 // ps-opslaget bor her (det er en sideeffekt); selve kaede-logikken og doeds-dommen
 // ligger i vagt.js, saa de kan koeres i en test uden at starte en server.
+// SIKKERHED (20/10, privat rapport): her stod execSync(`ps -o ppid= -p ${pid}`) - en tekststreng gennem en skal. Paa Windows
+// leder cmd.exe i arbejdsmappen foer PATH, saa en ps.bat/ps.cmd/ps.exe i den mappe, brugeren aabnede, koerte ved opstart.
+// Windows har ingen ps: opslaget springes over (vagten falder tilbage paa idle-graensen, som foer). Ellers koeres ps ved
+// absolut sti og uden skal.
 function laesPpid(pid) {
+  if (process.platform === 'win32') return null;
+  const ps = ['/bin/ps', '/usr/bin/ps'].find((sti) => existsSync(sti));
+  if (!ps) return null;
   try {
-    const ud = execSync(`ps -o ppid= -p ${pid}`, {
+    const ud = execFileSync(ps, ['-o', 'ppid=', '-p', String(pid)], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 2000,   // et haengende ps ville ellers blokere hele opstarten synkront
