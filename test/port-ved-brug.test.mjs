@@ -100,7 +100,12 @@ const KROG = 'data:text/javascript,' + encodeURIComponent(`
 import net from 'node:net';
 const listen = net.Server.prototype.listen;
 net.Server.prototype.listen = function (...a) {
-  this.once('listening', () => { const ad = this.address(); if (ad && typeof ad === 'object') process.stderr.write('[PROEVE-LISTEN] ' + ad.port + '\\n'); });
+  // R157 (Astra): én varig lytter pr. serverobjekt, sat FORREST - et fejlet forsoeg efterfulgt af succes taeller én gang, og en
+  // anden lytter, der lukker serveren straks, kan ikke naa at goere address() tom foer krogen har set porten.
+  if (!this.__proeveKrog) {
+    this.__proeveKrog = true;
+    this.prependListener('listening', () => { const ad = this.address(); process.stderr.write('[PROEVE-LISTEN] ' + (ad && typeof ad === 'object' ? ad.port : String(ad)) + '\\n'); });
+  }
   return listen.apply(this, a);
 };`);
 
@@ -113,8 +118,8 @@ function start() {
 }
 
 const meldtPort = (p) => Number((p.log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1]) || null;
-/** Porte i spaendet, som NETOP denne serverproces har aabnet (fra proevekrogen). */
-const egnePorte = (p) => [...p.log.matchAll(/\[PROEVE-LISTEN\] (\d+)/g)].map((m) => Number(m[1])).filter((x) => x >= BASE && x <= MAX);
+/** ALLE porte, som NETOP denne serverproces har aabnet (fra proevekrogen) - ogsaa uden for spaendet (R157, Astra). */
+const egnePorte = (p) => [...p.log.matchAll(/\[PROEVE-LISTEN\] (\S+)/g)].map((m) => (/^\d+$/.test(m[1]) ? Number(m[1]) : m[1]));
 
 let n = 0;
 function send(p, method, params) {
@@ -174,6 +179,7 @@ test('foerste browser-kald tager porten', async () => {
   await vent(400);                        // en eventuel ekstra binding skal naa at vise sig
   const egne = egnePorte(p);
   assert.equal(egne.length, 1, `foerste browser-kald skulle binde praecis én port, bandt: [${egne.join(', ')}]`);
+  assert.ok(egne[0] >= BASE && egne[0] <= MAX, `serveren lyttede paa ${egne[0]}, uden for spaendet ${BASE}-${MAX}`);
   assert.equal(meldtPort(p), egne[0], `serveren meldte ${meldtPort(p)}, men lyttede paa ${egne[0]}`);
   assert.ok(!foer.includes(egne[0]), `port ${egne[0]} var optaget allerede foer kaldet`);
   assert.ok((await optagne()).includes(egne[0]), `port ${egne[0]} er ikke optaget`);
@@ -250,6 +256,7 @@ test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller
     'beskeden forklarer ikke at doeren lige er aabnet: ' + svar.slice(0, 240));
   const egne = egnePorte(p);
   assert.equal(egne.length, 1, `porten blev ikke bundet som én port: [${egne.join(', ')}]`);
+  assert.ok(egne[0] >= BASE && egne[0] <= MAX, `serveren lyttede paa ${egne[0]}, uden for spaendet`);
   assert.ok(!foer.includes(egne[0]) && (await optagne()).includes(egne[0]), `porten ${egne[0]} blev ikke bundet`);
 });
 
