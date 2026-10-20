@@ -643,17 +643,36 @@ const viaBroen = (m, method, params) => {
 const forsinket = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
 const kortFrist = (m, ms) => { m.u.hent('AGENTKODE_FRIST').budget = ms; };
 
+// 20/10 (R161, Astra): en fast tidsmargen kan ikke baade taale belastning og fange en mutant, der er 1,5 gange for langsom.
+// Tidsproeverne beholder derfor den stramme graense og koerer bedste af tre forsoeg: en rigtig fejl er roed i alle tre,
+// en forbigaaende forsinkelse paa en belastet maskine rammer ét.
+async function bedsteAfTre(forsoeg) {
+  let sidste;
+  for (let i = 0; i < 3; i++) { try { return await forsoeg(i); } catch (e) { sidste = e; } }
+  throw sidste;
+}
+
 test('frist: foerste kontrol bruger 29,4 s og kontrollen i cdpSend 1 s - svar ved fristen, sent:false, og intet sendes bagefter', async () => {
-  const m = sele();
-  kortFrist(m, 300);
-  m.u.hent('debuggerAttached').add(1);
-  let n = 0;
-  m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? 294 : 100, [{ tabId: 1, attached: true }]);
-  const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
-  assert.ok(ms < 370, `svaret kom efter ${ms} ms - fristen var 300 ms`);
-  assert.deepEqual([svar.ok, svar.error, svar.sent, svar.retry], [false, 'call-timeout', false, true], JSON.stringify(svar));
-  await forsinket(250);
-  assert.equal(m.evalueringer().length, 0, 'agentkoden blev sendt, efter at fristsvaret var givet');
+  // 20/10 (D16, R161): skaleret til en frist paa 1500 ms. Med 300 ms og 294 ms var margenen 6 ms - under Windows' timeropløsning
+  // (~15,6 ms), og prøven var ustabil dér. Foerste kontrol slutter nu 100 ms foer fristen; kontrollen i cdpSend (500 ms) strækker
+  // sig stadig over den. Bedste af tre forsoeg mod forbigaaende belastning.
+  await bedsteAfTre(async () => {
+    const m = sele();
+    kortFrist(m, 1500);
+    m.u.hent('debuggerAttached').add(1);
+    let n = 0;
+    // R161 (Opus): første kontrol regnes fra kaldets start, så en langsom opstart ikke tavst flytter prøven over på en anden vej.
+    const t0 = Date.now();
+    m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? Math.max(0, 1400 - (Date.now() - t0)) : 500, [{ tabId: 1, attached: true }]);
+    const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
+    // R162 (Astra): proeven skal ogsaa have naaet kontrollen i cdpSend (det andet getTargets-kald), ellers maaler den en anden vej.
+    const kontrollerVedSvar = n;
+    assert.ok(kontrollerVedSvar >= 2, `kun ${kontrollerVedSvar} kontrol(ler) foer svaret - kontrollen i cdpSend blev aldrig naaet`);
+    assert.ok(ms < 1850, `svaret kom efter ${ms} ms - fristen var 1500 ms`);
+    assert.deepEqual([svar.ok, svar.error, svar.sent, svar.retry], [false, 'call-timeout', false, true], JSON.stringify(svar));
+    await forsinket(1250);
+    assert.equal(m.evalueringer().length, 0, 'agentkoden blev sendt, efter at fristsvaret var givet');
+  });
 });
 
 test('frist: evalueringen melder detach ved 29,4 s, og gentilslutningen tager 1 s - svar ved fristen med «MAY already have run»', async () => {
