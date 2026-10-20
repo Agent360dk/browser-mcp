@@ -708,7 +708,8 @@ test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, s
   const r = await fang(m.nav());
   const brugt = Date.now() - t0;
   assert.equal(r.ok, true, vis(r));
-  assert.ok(brugt < FRISTER.loft + MARGEN, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
+  // 20/10 (D19): MARGEN (250 ms) var for stram under fuld suite-belastning. Kontrollen tager 3000 ms; loft + 1000 skelner stadig klart.
+  assert.ok(brugt < FRISTER.loft + 1000, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
   assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
 });
 

@@ -644,15 +644,17 @@ const forsinket = (ms, v) => new Promise((r) => setTimeout(() => r(v), ms));
 const kortFrist = (m, ms) => { m.u.hent('AGENTKODE_FRIST').budget = ms; };
 
 test('frist: foerste kontrol bruger 29,4 s og kontrollen i cdpSend 1 s - svar ved fristen, sent:false, og intet sendes bagefter', async () => {
+  // 20/10 (D16): skaleret 5x. Med fristen 300 ms var margenen 6 ms - under Windows' timeropløsning (~15,6 ms), og prøven var
+  // ustabil dér. Forholdet 29,4 s af 30 s og kontrollen paa 1 s er det samme.
   const m = sele();
-  kortFrist(m, 300);
+  kortFrist(m, 1500);
   m.u.hent('debuggerAttached').add(1);
   let n = 0;
-  m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? 294 : 100, [{ tabId: 1, attached: true }]);
+  m.u.chrome.debugger.getTargets = () => forsinket(++n === 1 ? 1470 : 500, [{ tabId: 1, attached: true }]);
   const { svar, ms } = await viaBroen(m, 'execute_script', { code: 'window.__n = 1' });
-  assert.ok(ms < 370, `svaret kom efter ${ms} ms - fristen var 300 ms`);
+  assert.ok(ms < 1850, `svaret kom efter ${ms} ms - fristen var 1500 ms`);
   assert.deepEqual([svar.ok, svar.error, svar.sent, svar.retry], [false, 'call-timeout', false, true], JSON.stringify(svar));
-  await forsinket(250);
+  await forsinket(1250);
   assert.equal(m.evalueringer().length, 0, 'agentkoden blev sendt, efter at fristsvaret var givet');
 });
 

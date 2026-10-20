@@ -563,7 +563,8 @@ test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,5 s efte
     const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
     // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
     // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
-    await vent(Math.max(0, 1500 - (Date.now() - t0)));
+    // 20/10 (D19): ogsaa 1,5 s blev roed under fuld belastning. 1,0 s er stadig efter A og giver 1,5 s margen til vinduet paa 2,5 s.
+    await vent(Math.max(0, 1000 - (Date.now() - t0)));
     const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
     const r = await s.svar(id);
     assert.ok(r, 'intet svar');
