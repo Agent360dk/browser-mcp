@@ -12,7 +12,9 @@ current folder before PATH, so a file named `ps.bat`, `ps.cmd` or `ps.exe` in th
 startup (clients that set `NoDefaultCurrentDirectoryInExePath`, such as Claude Code, were not affected). Windows has no `ps`, so the
 lookup is now skipped there, and the guard relies on the idle limit as before; macOS and Linux run `ps` by absolute path without a
 shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
-`npm-cli.js` by absolute path. Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
+`npm-cli.js` by absolute path. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
+Windows; it now runs `where.exe` from System32, ignores matches in the current folder and runs the client by its full path.
+Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
 
 **Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
 cmd.exe, and a missing `codex` came back as a failed command instead of "not found", so `install` told every Windows user without

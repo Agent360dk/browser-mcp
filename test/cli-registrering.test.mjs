@@ -128,6 +128,50 @@ test('en Cursor-fil der ikke kan laeses, overskrives ikke', () => {
   assert.equal(cursorEfter, '{ ikke gyldig json', 'brugerens Cursor-konfiguration blev overskrevet');
 });
 
+// SIKKERHED (20/10): paa Windows soeger cmd.exe og CreateProcess i arbejdsmappen foer PATH. En codex.bat i den mappe, brugeren
+// koerer `install` fra, maa aldrig koere - heller ikke en where.exe dér. Proeven koerer koerKlient fra cli.js med falsk platform.
+function klientKilde() {
+  const kilde = readFileSync(cli, 'utf8');
+  const i = kilde.indexOf('function koerKlient(');
+  assert.ok(i >= 0, 'fandt ikke koerKlient i cli.js');
+  let d = 0;
+  // kroppen starter efter parameterlisten (`valg = {}` har sin egen kroelparentes)
+  for (let k = kilde.indexOf(') {', i) + 2; k < kilde.length; k++) {
+    if (kilde[k] === '{') d++;
+    else if (kilde[k] === '}' && --d === 0) return kilde.slice(i, k + 1);
+  }
+  throw new Error('koerKlient: ingen afsluttende kroelparentes');
+}
+test('SIKKERHED (Windows): installeren koerer aldrig en klient eller where.exe fra arbejdsmappen', async () => {
+  const { win32 } = await import('node:path');
+  const lav = (whereSvar) => {
+    const kald = [];
+    const execFileSync = (k, args, valg) => {
+      kald.push({ k, args, valg });
+      if (kald.length === 1) { if (whereSvar instanceof Error) throw whereSvar; return whereSvar; }
+      return 'ok';
+    };
+    const proc = { platform: 'win32', env: { SystemRoot: 'C:\\Windows' }, cwd: () => 'C:\\proj' };
+    const fn = new Function('execFileSync', 'process', 'join', `${klientKilde()}; return koerKlient;`)(execFileSync, proc, win32.join);
+    return { fn, kald };
+  };
+  const a = lav('C:\\proj\\codex.bat\r\nC:\\Users\\u\\AppData\\Roaming\\npm\\codex.cmd\r\n');
+  a.fn('codex', ['mcp', 'add'], { stdio: 'pipe' });
+  assert.equal(a.kald[0].k, 'C:\\Windows\\System32\\where.exe', `where skal koeres ved absolut sti, fik ${a.kald[0].k}`);
+  assert.equal(a.kald[0].valg.cwd, 'C:\\Windows\\System32', 'where skal koere uden for brugerens arbejdsmappe');
+  assert.equal(a.kald[0].valg.env.NoDefaultCurrentDirectoryInExePath, '1');
+  assert.equal(a.kald.length, 2);
+  assert.match(String(a.kald[1].k), /AppData\\Roaming\\npm\\codex\.cmd/, `klienten skal koeres ved den fundne absolutte sti uden for arbejdsmappen, fik ${a.kald[1].k}`);
+  assert.doesNotMatch(String(a.kald[1].k), /\\proj\\/, 'en codex.bat i arbejdsmappen blev koert');
+  assert.equal(a.kald[1].valg.env.NoDefaultCurrentDirectoryInExePath, '1');
+  const kunCwd = lav('C:\\proj\\codex.bat\r\n');
+  assert.throws(() => kunCwd.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT', 'en klient der kun findes i arbejdsmappen, er ikke installeret');
+  assert.equal(kunCwd.kald.length, 1, 'og intet andet koeres');
+  const ingen = lav(Object.assign(new Error('INFO: Could not find files'), { status: 1 }));
+  assert.throws(() => ingen.fn('codex', ['mcp'], {}), (e) => e.code === 'ENOENT');
+  assert.equal(ingen.kald.length, 1);
+});
+
 test('klienter der ikke findes, roeres ikke og kaldes ikke registreret', () => {
   const { status, ud, kald, cursorEfter } = installer({});
   assert.equal(status, 0, ud);
