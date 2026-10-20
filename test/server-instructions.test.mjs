@@ -221,12 +221,13 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.match(t, /never gets the click itself \(the library sets `pointer-events: none` there\), so clicking that `sl-icon` answers `maybe_landed` - target the button\./);
   assert.match(t, /A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click/);
   assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
-  // R155-R156 (Opus): «every icon», «each icon» - men ikke «all icons in colour» om noget andet.
-  // R157 (Astra): sammenhaengen tjekkes i hele saetningen, begge sider af ordet.
-  // R158 (Astra): en regex mod ikon-generaliseringer svingede mellem falsk groent og falsk roedt (ordstilling, «e.g.», «button palette»).
+  // R155-R159: regex-regler mod ikon-generaliseringer svingede mellem falsk groent og falsk roedt (ordstilling, «e.g.», «button palette»).
   // Reglen er nu den samme som for fokus: hver CHANGELOG-saetning, der naevner et ikon, skal vaere én af de reviewede herunder.
-  // En ny saetning om ikoner - ogsaa en sand - er roed med vilje, indtil den er reviewet og tilfoejet.
-  const nyeIkonSaetninger = t.split(/(?<=[.!?])\s+/).filter((x) => /\bicons?\b/i.test(x) && !GODKENDTE_IKON_SAETNINGER.has(x));
+  // En ny saetning om ikoner - ogsaa en sand - er roed med vilje, indtil den er reviewet og tilfoejet. Markdown-fremhaevning
+  // (*icon*, _icon_, __icon__) fjernes foerst, som i fokusvagten (R159, Astra).
+  const udenFremhaevning = (x) => x.replace(/\*+/g, '').replace(/(?<!\w)_+|_+(?!\w)/g, '');
+  const godkendte = new Set([...GODKENDTE_IKON_SAETNINGER].map(udenFremhaevning));
+  const nyeIkonSaetninger = udenFremhaevning(t).split(/(?<=[.!?])\s+/).filter((x) => /\bicons?\b/i.test(x) && !godkendte.has(x));
   assert.deepEqual(nyeIkonSaetninger, [], 'CHANGELOG har en ureviewet saetning om ikoner - review den og tilfoej den til GODKENDTE_IKON_SAETNINGER');
   // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
   assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
