@@ -554,24 +554,35 @@ async function aegteServer(env) {
   return { srv, send, svar, lytter, fejl: () => fejl };
 }
 
+// 20/10 (R161, Astra): en fast tidsmargen kan ikke baade taale belastning og fange en mutant, der er 1,5 gange for langsom.
+// Tidsproeverne beholder derfor den stramme graense og koerer bedste af tre forsoeg: en rigtig fejl er roed i alle tre,
+// en forbigaaende forsinkelse paa en belastet maskine rammer ét.
+async function bedsteAfTre(forsoeg) {
+  let sidste;
+  for (let i = 0; i < 3; i++) { try { return await forsoeg(i); } catch (e) { sidste = e; } }
+  throw sidste;
+}
+
 test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,5 s efter listening -> profile-ambiguous', async () => {
-  const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
-  try {
-    const id = s.send('browser_list_tabs');
-    const p = await s.lytter();
-    const t0 = Date.now();
-    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
-    // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
-    // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
-    // 20/10 (D19): ogsaa 1,5 s blev roed under fuld belastning. 1,0 s er stadig efter A og giver 1,5 s margen til vinduet paa 2,5 s.
-    await vent(Math.max(0, 1000 - (Date.now() - t0)));
-    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
-    const r = await s.svar(id);
-    assert.ok(r, 'intet svar');
-    const j = JSON.parse(r.result.content[0].text);
-    assert.equal(j.error, 'profile-ambiguous', `foerste kald laaste sig stille: ${r.result.content[0].text.slice(0, 200)}`);
-    assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
-  } finally { s.srv.kill(); }
+  // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
+  // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
+  // 20/10 (D19, R161): 1,5 s er bevaret (1,0 s lod et vindue paa 1,2 s passere); bedste af tre forsoeg mod forbigaaende belastning.
+  await bedsteAfTre(async () => {
+    const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
+    try {
+      const id = s.send('browser_list_tabs');
+      const p = await s.lytter();
+      const t0 = Date.now();
+      const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+      await vent(Math.max(0, 1500 - (Date.now() - t0)));
+      const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+      const r = await s.svar(id);
+      assert.ok(r, 'intet svar');
+      const j = JSON.parse(r.result.content[0].text);
+      assert.equal(j.error, 'profile-ambiguous', `foerste kald laaste sig stille: ${r.result.content[0].text.slice(0, 200)}`);
+      assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
+    } finally { s.srv.kill(); }
+  });
 });
 
 test('R115 Astra 4 (aegte server): browser_provide_feedback kalder to profiler med samme navn en konflikt - ikke «no extension connected»', async () => {

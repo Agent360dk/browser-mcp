@@ -702,15 +702,27 @@ test('R108-A3a: loftet er samlet - en boks lige foer loftet forlaenger ikke kald
   assert.ok(brugt < FRISTER.loft + MARGEN, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms (${vis(r)})`);
 });
 
+// 20/10 (R161, Astra): en fast tidsmargen kan ikke baade taale belastning og fange en mutant, der er 1,5 gange for langsom.
+// Tidsproeverne beholder derfor den stramme graense og koerer bedste af tre forsoeg: en rigtig fejl er roed i alle tre,
+// en forbigaaende forsinkelse paa en belastet maskine rammer ét.
+async function bedsteAfTre(forsoeg) {
+  let sidste;
+  for (let i = 0; i < 3; i++) { try { return await forsoeg(i); } catch (e) { sidste = e; } }
+  throw sidste;
+}
+
 test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, siger svaret det', async () => {
-  const m = model({ beskyt: false, captchaMs: 3000 });
-  const t0 = Date.now();
-  const r = await fang(m.nav());
-  const brugt = Date.now() - t0;
-  assert.equal(r.ok, true, vis(r));
-  // 20/10 (D19): MARGEN (250 ms) var for stram under fuld suite-belastning. Kontrollen tager 3000 ms; loft + 1000 skelner stadig klart.
-  assert.ok(brugt < FRISTER.loft + 1000, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
-  assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
+  // 20/10 (D19, R161): den stramme graense (loft + MARGEN) er bevaret - loft + 1000 lod en kontrol paa 1,5 x loftet passere.
+  // Bedste af tre forsoeg mod forbigaaende belastning.
+  await bedsteAfTre(async () => {
+    const m = model({ beskyt: false, captchaMs: 3000 });
+    const t0 = Date.now();
+    const r = await fang(m.nav());
+    const brugt = Date.now() - t0;
+    assert.equal(r.ok, true, vis(r));
+    assert.ok(brugt < FRISTER.loft + MARGEN, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
+    assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
+  });
 });
 
 test('R108-A4: reattach_debugger glemmer en boks, den ikke kan se laengere - naeste kald spoerger porten', async () => {
