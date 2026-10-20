@@ -190,7 +190,8 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     // er roed med vilje: den skal reviewes og tilfoejes her, foer den maa staa paa en flade.
     // R155 (Astra): ogsaa maaleord i saetningen FOER taeller, og markdown-fremhaevning (**in** front) fjernes foer ordene soeges.
     assert.ok(t.includes(FROSNE_FOKUS_AFSNIT[f]), `${f}: fokusafsnittet er aendret - en reviewet tekst skal ind i FROSNE_FOKUS_AFSNIT, foer den maa staa paa fladen`);
-    const saetninger = t.replace(/\*+/g, '').split(/(?<=[.!?])\s+/);
+    // R156 (Astra): ogsaa understregnings-fremhaevning (__in__ front) fjernes; en understregning MELLEM to ordtegn (browser_fill) bliver.
+    const saetninger = t.replace(/\*+/g, '').replace(/(?<!\w)_+|_+(?!\w)/g, '').split(/(?<=[.!?])\s+/);
     const nye = saetninger.filter((x, i) => FOKUS_ORD.test(x)
       && (MAALE_ORD.test(x) || MAALE_ORD.test(saetninger[i + 1] || '') || MAALE_ORD.test(saetninger[i - 1] || '')))
       .filter((x) => !GODKENDTE_FOKUS_SAETNINGER.has(x));

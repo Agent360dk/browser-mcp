@@ -93,26 +93,28 @@ async function optagne() {
   return ude;
 }
 
+// R156 (Astra): at tilskrive porte ud fra spaendet (eller ud fra hvad der slipper, naar serveren draebes) kan forveksles med en
+// anden proces' porte - prøvefilerne koerer parallelt. Serverbarnet faar derfor en proevekrog, der melder hver `listen` fra NETOP
+// den proces. Det virker ens paa macOS, Linux og Windows og maaler ogsaa, at serveren kun aabner én port.
+const KROG = 'data:text/javascript,' + encodeURIComponent(`
+import net from 'node:net';
+const listen = net.Server.prototype.listen;
+net.Server.prototype.listen = function (...a) {
+  this.once('listening', () => { const ad = this.address(); if (ad && typeof ad === 'object') process.stderr.write('[PROEVE-LISTEN] ' + ad.port + '\\n'); });
+  return listen.apply(this, a);
+};`);
+
 function start() {
-  const p = spawn(process.execPath, [SRV], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });
+  const p = spawn(process.execPath, ['--import', KROG, SRV], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });
   p.log = '';
   p.stderr.on('data', (d) => { p.log += d; });   // serverens diagnostik; svarene laeses paa stdout
   boerneprocesser.push(p);
   return p;
 }
 
-// 20/10 (R155, Astra): proevefilerne koerer parallelt og kan ramme samme tilfaeldige spaend, saa «en port mere i spaendet» kan vaere
-// en anden fils. En port tilskrives serveren, naar serveren selv melder den - eller, for en ny port den IKKE meldte, naar porten
-// slipper, saa snart serveren er draebt (en fremmed proces' port bliver staaende).
 const meldtPort = (p) => Number((p.log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1]) || null;
-async function serverensNyePorte(p, foer) {
-  const nye = (await optagne()).filter((x) => !foer.includes(x));
-  if (!nye.length) return [];
-  p.kill('SIGKILL');
-  await vent(800);
-  const stadig = await optagne();
-  return nye.filter((x) => !stadig.includes(x));
-}
+/** Porte i spaendet, som NETOP denne serverproces har aabnet (fra proevekrogen). */
+const egnePorte = (p) => [...p.log.matchAll(/\[PROEVE-LISTEN\] (\d+)/g)].map((m) => Number(m[1])).filter((x) => x >= BASE && x <= MAX);
 
 let n = 0;
 function send(p, method, params) {
@@ -153,9 +155,8 @@ test('en server der aldrig bruger browseren tager ingen port', async () => {
   const p = start();
   await haandtryk(p);
   await vent(2500);                       // rigeligt: den gamle kode bandt inden for ~50 ms
-  assert.equal(meldtPort(p), null, 'serveren meldte en port uden at et eneste browser-vaerktoej var kaldt');
-  assert.deepEqual(await serverensNyePorte(p, foer), [],
-    'serveren tog en port uden at et eneste browser-vaerktoej var kaldt');
+  assert.ok(p.log.includes('server running'), 'serveren startede ikke (proevekrogen eller serveren fejlede): ' + p.log.slice(0, 300));
+  assert.deepEqual(egnePorte(p), [], 'serveren tog en port uden at et eneste browser-vaerktoej var kaldt');
 });
 
 test('foerste browser-kald tager porten', async () => {
@@ -164,17 +165,18 @@ test('foerste browser-kald tager porten', async () => {
   await haandtryk(p);
   // Skal stadig staa uden port PAA DETTE TIDSPUNKT - ellers maaler resten ingenting.
   await vent(1500);
-  assert.equal(meldtPort(p), null, 'porten var taget allerede foer kaldet');
+  assert.deepEqual(egnePorte(p), [], 'porten var taget allerede foer kaldet');
 
   browserKald(p);                         // svaret er ligegyldigt - der er ingen udvidelse
   // 20/10 (GitHub, static (20) paa 0c91f85): «2 porte optaget, ventede 1». Proevefilerne koerer parallelt, og en anden fil kan
   // ramme samme tilfaeldige spaend. Proeven binder sig derfor til den port, SERVEREN melder, og kraever at netop den er ny og optaget.
-  for (let i = 0; i < 30 && !meldtPort(p); i++) await vent(200);
-  const port = meldtPort(p);
-  assert.ok(port, 'foerste browser-kald bandt ingen port (serveren meldte ingen)');
-  assert.ok(port >= BASE && port <= MAX, `serveren bandt ${port}, uden for spaendet ${BASE}-${MAX}`);
-  assert.ok(!foer.includes(port), `port ${port} var optaget allerede foer kaldet`);
-  assert.ok((await optagne()).includes(port), `serveren meldte ${port}, men porten er ikke optaget`);
+  for (let i = 0; i < 30 && !egnePorte(p).length; i++) await vent(200);
+  await vent(400);                        // en eventuel ekstra binding skal naa at vise sig
+  const egne = egnePorte(p);
+  assert.equal(egne.length, 1, `foerste browser-kald skulle binde praecis én port, bandt: [${egne.join(', ')}]`);
+  assert.equal(meldtPort(p), egne[0], `serveren meldte ${meldtPort(p)}, men lyttede paa ${egne[0]}`);
+  assert.ok(!foer.includes(egne[0]), `port ${egne[0]} var optaget allerede foer kaldet`);
+  assert.ok((await optagne()).includes(egne[0]), `port ${egne[0]} er ikke optaget`);
 });
 
 test('en sultet server faar en port naar en bliver fri - uden genstart', async () => {
@@ -246,8 +248,9 @@ test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller
     'brugeren sendes hen for at geninstallere en udvidelse der ikke naaede at forbinde: ' + svar.slice(0, 240));
   assert.match(svar, /has not connected yet|scans every/,
     'beskeden forklarer ikke at doeren lige er aabnet: ' + svar.slice(0, 240));
-  const port = meldtPort(p);
-  assert.ok(port && !foer.includes(port) && (await optagne()).includes(port), `porten blev ikke bundet (meldt: ${port})`);
+  const egne = egnePorte(p);
+  assert.equal(egne.length, 1, `porten blev ikke bundet som én port: [${egne.join(', ')}]`);
+  assert.ok(!foer.includes(egne[0]) && (await optagne()).includes(egne[0]), `porten ${egne[0]} blev ikke bundet`);
 });
 
 // ── #14: den paastand fejlbeskeden faktisk giver ────────────────────────────

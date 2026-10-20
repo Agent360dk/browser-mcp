@@ -277,8 +277,9 @@ test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2:
 test('hent-udgivet.py: hver tekstlaesning angiver encoding', () => {
   // R154 (Astra): en tekstsoegning efter «encoding=» gav falsk roedt paa «encoding = 'utf-8'» og lod en kommentar taelle som argument.
   // Pythons egen parser afgoer det nu: hvert open/read_text/write_text-kald uden binaer tilstand skal have et encoding-noegleord.
-  // R155 (Astra): argumenterne laeses efter hvert kalds egen signatur - builtin/io.open(file, mode, buffering, encoding),
-  // Path.open(mode, buffering, encoding), read_text(encoding, errors), write_text(data, encoding). Kun open kan vaere binaer.
+  // R155-R156 (Astra): signaturer kan ikke gaettes ud fra et attributnavn (io.open, builtins.open, codecs.open, en alias). Reglen er
+  // derfor en liste over TILLADTE former: open(...) (indbygget), Path(...).open/read_text/write_text. Enhver anden «.open»-form er
+  // roed til review. Tekst skal angive encoding som en navngiven streng; kun open kan vaere binaer.
   const ud = execFileSync('python3', ['-c', `import ast, sys
 t = ast.parse(open(sys.argv[1], encoding='utf-8').read())
 kald = uden = 0
@@ -287,18 +288,21 @@ def arg(n, pos, navn):
         if k.arg == navn:
             return k.value
     return n.args[pos] if len(n.args) > pos else None
+def er_path(v):
+    return isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id in ('Path', 'PurePath')
 for n in ast.walk(t):
     if not isinstance(n, ast.Call):
         continue
     f = n.func
-    if isinstance(f, ast.Name) and f.id == 'open' or isinstance(f, ast.Attribute) and f.attr == 'open' and isinstance(f.value, ast.Name) and f.value.id == 'io':
+    if isinstance(f, ast.Name) and f.id == 'open':
         mode, enc = arg(n, 1, 'mode'), arg(n, 3, 'encoding')
-    elif isinstance(f, ast.Attribute) and f.attr == 'open':
-        mode, enc = arg(n, 0, 'mode'), arg(n, 2, 'encoding')
-    elif isinstance(f, ast.Attribute) and f.attr == 'read_text':
-        mode, enc = None, arg(n, 0, 'encoding')
-    elif isinstance(f, ast.Attribute) and f.attr == 'write_text':
-        mode, enc = None, arg(n, 1, 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr in ('open', 'read_text', 'write_text') and er_path(f.value):
+        mode = arg(n, 0, 'mode') if f.attr == 'open' else None
+        enc = arg(n, {'open': 2, 'read_text': 0, 'write_text': 1}[f.attr], 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr in ('open', 'read_text', 'write_text', 'read_bytes'):
+        kald += 1; uden += 1
+        print('UKENDT', n.lineno)
+        continue
     else:
         continue
     if isinstance(mode, ast.Constant) and 'b' in str(mode.value):
@@ -310,5 +314,5 @@ for n in ast.walk(t):
 print('KALD', kald, 'UDEN', uden)`, join(rod, 'scripts/hent-udgivet.py')], { encoding: 'utf8' });
   const [, kald, uden] = ud.match(/KALD (\d+) UDEN (\d+)/);
   assert.ok(Number(kald) >= 3, `fandt kun ${kald} tekstlaesninger - parseren maaler ikke scriptet`);
-  assert.equal(Number(uden), 0, `tekstlaesninger uden encoding paa linje: ${ud.match(/UDEN \d+/g)?.join(', ')}`);
+  assert.equal(Number(uden), 0, `tekstlaesninger uden encoding eller i en ukendt form (review): ${ud.match(/(?:UDEN|UKENDT) \d+/g)?.join(', ')}`);
 });
