@@ -52,14 +52,19 @@ async function vaelg({ faner = {}, session = {}, aktivér = undefined } = {}) {
 
   const fn = new Function('chrome', 'getSession', 'addTabToSession', 'persistSessions', 'console',
     `return (async () => { ${src} })()`);
-  const tab = await fn(
-    chrome,
-    () => s,
-    async (_p, id) => { s.tabIds.add(id); log.tilfoejet.push(id); },
-    () => {},
-    { log() {}, warn() {} },
-  );
-  return { tab, session: s, log, faner };
+  let tab = null, fejl = null;
+  try {
+    tab = await fn(
+      chrome,
+      () => s,
+      async (_p, id) => { s.tabIds.add(id); log.tilfoejet.push(id); },
+      () => {},
+      { log() {}, warn() {} },
+    );
+  } catch (e) { fejl = e; }
+  // Et kald, der ikke burde fejle, skal stadig vaelte proeven - ikke gemme sig i `fejl`.
+  if (fejl && !fejl.ingenAktiv) throw fejl;
+  return { tab, fejl, session: s, log, faner };
 }
 
 // ── Mutations-verificeret: chrome://-gaten fjernet gav roed.
@@ -98,24 +103,62 @@ test('vores egen tomme fane genbruges - ikke én ny pr. kald', async () => {
 //    alligevel hen over tabIds, faar samme fejl paa samme id, og sletter den dér.
 //    Rettelsen er defensiv redundans, ikke en adfaerdsaendring. Jeg skriver det her
 //    frem for at bygge en test der lader som om den maaler noget.
-test('en doed aktiv fane ryddes ud af sessionen', async () => {
-  const { session } = await vaelg({
+test('en doed aktiv fane ryddes ud af sessionen - og der gaettes ikke paa en anden', async () => {
+  const { session, fejl, log } = await vaelg({
     faner: { 22: 'https://example.com/' },     // 11 findes ikke laengere
     session: { activeTabId: 11, tabIds: [11, 22] },
   });
   assert.ok(!session.tabIds.has(11),
     'nulstilles activeTabId FOER id\'et fanges, sletter koden `null` i stedet - ' +
     'og sessionen fyldes langsomt med spoegelsesfaner der taeller mod loftet');
-  assert.equal(session.activeTabId, 22, 'og den skal falde tilbage paa en brugbar fane');
+  // 1.33 (privat rapport 3.2): foer faldt kaldet stille tilbage paa fane 22 - og navigate skrev hen over den.
+  assert.ok(fejl && fejl.ingenAktiv, 'uden aktiv fane skal kaldet svare, ikke vaelge fane 22 selv');
+  assert.equal(session.activeTabId, null, 'ingen anden fane maa goeres aktiv bag kalderens ryg');
+  assert.match(fejl.message, /nothing was sent/, 'svaret skal sige, at intet er sendt');
+  assert.match(fejl.message, /\b22 "[^"]*" https:\/\/example\.com\//, 'svaret skal liste sessionens faner, saa agenten kan vaelge');
+  assert.equal(log.oprettet.length, 0, 'og der oprettes ingen ny fane i stedet');
 });
 
-test('en levende fane i sessionen foretraekkes frem for en ny', async () => {
-  const { tab, log } = await vaelg({
+test('uden aktiv fane gaettes der ikke - heller ikke naar sessionen kun har én fane med indhold', async () => {
+  const { tab, fejl, session, log } = await vaelg({
     faner: { 33: 'https://example.org/' },
     session: { activeTabId: null, tabIds: [33] },
   });
-  assert.equal(tab.id, 33, 'den skal genbruge det den har');
+  // MAALT paa 1.27.1 (privat rapport 3.2): den ene resterende fane var en side, brugeren arbejdede i.
+  assert.equal(tab, null);
+  assert.ok(fejl && fejl.ingenAktiv);
+  assert.equal(session.activeTabId, null);
   assert.equal(log.oprettet.length, 0);
+});
+
+test('privat rapport 2.4: er den aktive fane sessionens egen about:blank, bruges DEN - ikke en anden fane', async () => {
+  const { tab, session, log } = await vaelg({
+    faner: { 11: 'https://example.com/arbejde', 12: 'about:blank' },
+    session: { activeTabId: 12, tabIds: [11, 12] },
+  });
+  assert.equal(tab.id, 12, 'foer tog kaldet fane 11 og skrev hen over den, mens 12 var aktiv');
+  assert.equal(session.activeTabId, 12);
+  assert.equal(log.oprettet.length, 0);
+});
+
+test('uden aktiv fane genbruges en egen tom fane, naar sessionen ikke har andre (FIX-4)', async () => {
+  const { tab, fejl, session, log } = await vaelg({
+    faner: { 12: 'about:blank' },
+    session: { activeTabId: null, tabIds: [12] },
+  });
+  assert.equal(fejl, null, 'en tom fane har intet, der kan skrives hen over');
+  assert.equal(tab.id, 12);
+  assert.equal(session.activeTabId, 12);
+  assert.equal(log.oprettet.length, 0);
+});
+
+test('en aktiv chrome://-side giver en ny fane - aldrig en anden af sessionens sider', async () => {
+  const { tab, log } = await vaelg({
+    faner: { 11: 'chrome://settings/', 22: 'https://example.com/arbejde' },
+    session: { activeTabId: 11, tabIds: [11, 22] },
+  });
+  assert.notEqual(tab.id, 22, 'foer faldt kaldet tilbage paa fane 22');
+  assert.equal(log.oprettet.length, 1, 'der laves en ny, brugbar fane i stedet');
 });
 
 // ── Mutations-verificeret: `activate = false` -> `true` gav roed (allerede daekket i

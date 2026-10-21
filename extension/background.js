@@ -447,14 +447,18 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     }
   };
 
-  // Prefer the active (last navigated) tab
+  // Prefer the active (last navigated) tab.
+  // 1.33 (privat rapport 2.4): ogsaa naar den aktive fane er sessionens egen tomme about:-side. Foer blev den sprunget over,
+  // og kaldet tog stille en anden af sessionens faner - navigate skrev i fane A, mens B = about:blank var aktiv (MAALT).
+  let aktivChrome = false;
   if (session.activeTabId) {
     const aktiv = session.activeTabId;   // FIX-17 / R112: det id, der faktisk slaas op - laest FOER opslaget
     try {
       const tab = await chrome.tabs.get(aktiv);
       // R113: ogsaa et vellykket, men sent opslag - ellers sendte et gammelt kald sin adresse eller sit script til den gamle fane.
       sessionUroert();
-      if (consider(tab)) target = tab;
+      if (tab.url.startsWith('chrome://')) aktivChrome = true;
+      else target = tab;
     } catch (e) {
       if (e && e.sessionSkiftet) throw e;
       sessionUroert();
@@ -464,18 +468,34 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     }
   }
 
-  // Fallback: any usable session tab
+  // Ingen aktiv fane: den blev lukket (af agenten eller brugeren), eller den blev aldrig valgt.
+  // 1.33 (privat rapport 3.2): foer valgtes stille den foerste brugbare af sessionens oevrige faner, og navigate skrev hen over
+  // en side, brugeren arbejdede i (MAALT paa 1.27.1). Nu gaettes der ikke: har sessionen en fane med indhold, svarer kaldet med
+  // listen og sender intet. Doede faner ryddes og egne tomme faner genbruges som foer. Er den aktive fane en chrome://-side, faar
+  // kaldet som foer en ny fane - den skriver ikke hen over noget.
   if (!target) {
+    const medIndhold = [];
     for (const tabId of [...session.tabIds]) {
       try {
         const tab = await chrome.tabs.get(tabId);
         sessionUroert();
-        if (consider(tab)) { session.activeTabId = tabId; forventetAktiv = tabId; target = tab; break; }
+        if (consider(tab)) medIndhold.push(tab);
       } catch (e) {
         if (e && e.sessionSkiftet) throw e;
         sessionUroert();
         session.tabIds.delete(tabId);
       }
+    }
+    if (medIndhold.length && !aktivChrome) {
+      persistSessions();
+      const liste = medIndhold.slice(0, 10)
+        .map((t) => `${t.id} ${JSON.stringify(String(t.title || '').slice(0, 60))} ${String(t.url).slice(0, 100)}`).join('; ');
+      const e = new Error('This session has no active tab (the tab it worked in was closed, by the agent or the user), so ' +
+        'this call did not guess which of the session\'s other tabs to use: nothing was sent, and no tab was changed. The ' +
+        `session's tabs: ${liste}${medIndhold.length > 10 ? ` (and ${medIndhold.length - 10} more)` : ''}. Call ` +
+        'browser_switch_tab with the tab you mean, or browser_navigate with new_tab: true.');
+      e.ingenAktiv = true;
+      throw e;
     }
   }
 
@@ -1106,6 +1126,9 @@ const NAV_NOTER = {
   'navigation-failed': 'Chrome refused the navigation (detail), and the tab is where it was.',
   'session-changed': 'Another call changed this session\'s active tab while this one waited for Chrome (it switched to, ' +
     'opened or closed a tab), so nothing was sent. Check the tabs with browser_list_tabs, then call again if you still need to.',
+  'no-active-tab': 'This session has no active tab (the tab it worked in was closed), and nothing was sent: the call did not ' +
+    'guess which of the session\'s other tabs to use (detail lists them). Call browser_switch_tab with the tab you mean and ' +
+    'navigate again, or pass new_tab: true.',
   'session-langsom': 'Chrome took longer than the time limit to report this session\'s tabs, and nothing was sent. Try ' +
     'again in a moment; if it keeps happening, ask the user (browser_ask_user) to look at Chrome.',
   'beforeunload-blocked': 'The page asked "Leave site?" and the answer was Stay (answered_by), so the tab is still on url. ' +
@@ -5850,7 +5873,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
             return { ok: false, error: 'session-changed', sent: false, requested_url: String(params.url), detail: e.message,
               note: NAV_NOTER['session-changed'] };
           }
-          throw e;
+          if (!(e && e.ingenAktiv)) throw e;
+          // 1.33 (privat rapport 3.2): uden en aktiv fane vaelges der ikke en anden. new_tab beholder alle sessionens sider og
+          // aabner bare en ny - den gaar videre med tab = null.
+          if (!params.new_tab) {
+            return { ok: false, error: 'no-active-tab', sent: false, requested_url: String(params.url), detail: e.message,
+              note: NAV_NOTER['no-active-tab'] };
+          }
         }
       }
       // R111 (b): brugte opslaget fristen, og er intet sendt endnu, svares der nu - med en kendt boks, hvis der er en.

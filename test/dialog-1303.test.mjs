@@ -1310,3 +1310,28 @@ test('serveren: navigate- og dialogfejl er isError:true, et bevist ok:true er de
   const ok = await kald('browser_navigate', { ok: true, url: NY, tab_id: 1 });
   assert.notEqual(ok.isError, true, vis(ok));
 });
+
+// 1.33 (privat rapport 3.2): efter at den aktive fane er lukket, skrev navigate uden new_tab stille i sessionens foerste
+// resterende fane - en side, brugeren arbejdede i (MAALT paa 1.27.1). Nu sendes intet, og svaret siger hvorfor.
+test('1.33 3.2: uden aktiv fane sender navigate intet til sessionens anden fane - no-active-tab, sent:false', async () => {
+  const m = model({ beskyt: false });
+  m.u.hent('sessions').get(9876).activeTabId = null;          // den aktive fane er lukket; fane 1 (kladde) er tilbage
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'no-active-tab', vis(r));
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0, 'adressen blev sendt til fane 1 alligevel');
+  assert.equal(m.log.filter((x) => x[0] === 'tabs.create').length, 0, 'en ny fane blev oprettet i stedet for at svare');
+  assert.equal(m.t.url, GAMMEL, 'fane 1 skal staa, hvor den stod');
+  assert.match(r.detail, /\b1 "kladde"/, 'svaret skal liste sessionens faner');
+  assert.equal(m.u.hent('sessions').get(9876).activeTabId, null, 'fane 1 maa ikke goeres aktiv bag kalderens ryg');
+});
+
+test('1.33 3.2: uden aktiv fane aabner navigate med new_tab en ny fane - og fane 1 roeres ikke', async () => {
+  const m = model({ beskyt: false });
+  m.u.hent('sessions').get(9876).activeTabId = null;
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(m.log.filter((x) => x[0] === 'tabs.create' && x[1] === NY).length, 1, `ingen ny fane med adressen: ${vis(r)}`);
+  assert.equal(m.adresser(), 0, 'fane 1 fik adressen');
+  assert.equal(m.t.url, GAMMEL);
+  assert.notEqual(r.error, 'no-active-tab', vis(r));
+});
