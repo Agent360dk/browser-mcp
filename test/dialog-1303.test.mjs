@@ -159,6 +159,8 @@ function model(opt = {}) {
         if (t.kvitterFoerst) { setTimeout(() => { if (t.boks === b) luk(t.lukResultat ?? p.accept); }, t.lukMs); return {}; }
         return sov(t.lukMs).then(() => { if (t.boks === b) luk(p.accept); return {}; });
       }
+      // 1.33 (2.2): captchaSvar er det, CAPTCHA-finderen svarer i siden.
+      if (metode === 'Runtime.evaluate' && t.captchaSvar && String(p.expression || '').includes('captchaFund')) return { result: { value: t.captchaSvar } };
       if (metode === 'Runtime.evaluate' && t.captchaMs && !t.boks) return sov(t.captchaMs).then(() => ({ result: { value: { found: false, types: [] } } }));
       return t.boks ? new Promise(() => {}) : {};
     },
@@ -1377,4 +1379,28 @@ test('4.2: armeringen varer 10 s som standard og hoejst 30 s - svaret siger det'
   const a = m.u.hent('armeredeDialoger').get(1);
   assert.ok(a.udloeb - Date.now() <= 30000, 'udloebet skal foelge loftet, ikke det oenskede');
   clearTimeout(a.timer);
+});
+
+test('1.33 2.2: et usynligt reCAPTCHA meldes som oplysning paa navigate - ingen captcha_detected og intet raad om at loese', async () => {
+  const m = model({ beskyt: false, captchaSvar: { found: false, types: [], invisible: ['recaptcha'] } });
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.captcha_invisible, 'recaptcha');
+  assert.equal(r.captcha_detected, undefined, 'navigate bad om browser_solve_captcha paa en side uden noget at loese');
+  assert.equal(r.hint, undefined);
+});
+
+test('1.33 2.2: et synligt afkrydsningsfelt meldes stadig som fund paa navigate', async () => {
+  const m = model({ beskyt: false, captchaSvar: { found: true, types: ['recaptcha_v2_checkbox'] } });
+  const r = await fang(m.nav());
+  assert.equal(r.captcha_detected, 'recaptcha_v2_checkbox', vis(r));
+  assert.match(r.hint, /browser_solve_captcha/);
+  assert.equal(r.captcha_invisible, undefined);
+});
+
+test('1.33 2.2: ogsaa i en ny fane (new_tab) meldes et usynligt reCAPTCHA som oplysning', async () => {
+  const m = model({ beskyt: false, captchaSvar: { found: false, types: [], invisible: ['recaptcha'] } });
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(r.captcha_invisible, 'recaptcha', vis(r));
+  assert.equal(r.captcha_detected, undefined);
 });

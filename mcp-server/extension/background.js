@@ -1353,7 +1353,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar, navSlut) {
   if (captcha && captcha.found) {
     result.captcha_detected = captcha.types.join(', ');
     result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;
-  }
+  } else if (captcha && captcha.invisible) result.captcha_invisible = captcha.invisible.join(', ');
   return result;
 }
 
@@ -6168,7 +6168,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (captcha && captcha.found) {
         result.captcha_detected = captcha.types.join(', ');
         result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;
-      }
+      } else if (captcha && captcha.invisible) result.captcha_invisible = captcha.invisible.join(', ');
       return result;
     }
 
@@ -8495,81 +8495,97 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
 
 // ── CAPTCHA Detection & Solving Helpers ─────────────────────────────────────
 
+// Koeres i siden (se detectCaptcha). Selvstaendig, saa den kan proeves uden en browser (test/captcha-fund.test.mjs).
+function captchaFund() {
+  const res = { found: false, types: [] };
+
+  // 1.33 (privat rapport 2.2, MAALT af begge bedoemmere): en anchor-ramme med size=invisible (det usynlige maerke) blev
+  // meldt som recaptcha_v2_checkbox, og navigate bad om browser_solve_captcha paa en side uden noget at loese. Nu er en
+  // usynlig reCAPTCHA en oplysning (invisible), ikke et fund; et afkrydsningsfelt og en billedudfordring taeller kun,
+  // naar de kan ses - reCAPTCHA indlaeser udfordringens ramme skjult paa forhaand.
+  const kanSes = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 10 || r.height < 10 || r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (st.visibility === 'hidden' || st.visibility === 'collapse' || parseFloat(st.opacity) === 0) return false;
+    }
+    return true;
+  };
+  const ankre = [...document.querySelectorAll('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]')];
+  const usynligt = (f) => /[?&]size=invisible(&|$)/.test(f.getAttribute('src') || '');
+  const recaptchaAnchor = ankre.find((f) => !usynligt(f) && kanSes(f));
+  if (recaptchaAnchor) {
+    res.found = true;
+    res.types.push('recaptcha_v2_checkbox');
+    const container = document.querySelector('.g-recaptcha');
+    if (container) res.sitekey = container.getAttribute('data-sitekey');
+  }
+
+  // reCAPTCHA v2 — image challenge iframe
+  const recaptchaChallenge = [...document.querySelectorAll('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]')].find(kanSes);
+  if (recaptchaChallenge) {
+    res.found = true;
+    if (!res.types.includes('recaptcha_v2_checkbox')) res.types.push('recaptcha_v2_image');
+    res.types.push('recaptcha_v2_challenge_visible');
+    // Get iframe dimensions for grid clicking
+    const rect = recaptchaChallenge.getBoundingClientRect();
+    res.challengeFrame = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  }
+
+  // Usynlig reCAPTCHA (maerket eller en anchor med size=invisible): meldes, saa tilstedevaerelsen ikke skjules, men er
+  // ikke et fund - der er intet at klikke.
+  if (!recaptchaAnchor && !recaptchaChallenge && (document.querySelector('.grecaptcha-badge') || ankre.some(usynligt))) {
+    res.invisible = ['recaptcha'];
+    res.invisible_note = 'An invisible reCAPTCHA is on this page: there is nothing to click, it scores the visit in the background. If the page still blocks you, ask the user with browser_ask_user.';
+  }
+
+  // hCaptcha
+  const hcaptcha = document.querySelector('iframe[src*="hcaptcha.com"], .h-captcha');
+  if (hcaptcha) {
+    res.found = true;
+    res.types.push('hcaptcha');
+    const container = document.querySelector('.h-captcha');
+    if (container) res.sitekey = container.getAttribute('data-sitekey');
+  }
+
+  // Cloudflare Turnstile
+  const turnstile = document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile');
+  if (turnstile) {
+    res.found = true;
+    res.types.push('cloudflare_turnstile');
+    const container = document.querySelector('.cf-turnstile');
+    if (container) res.sitekey = container.getAttribute('data-sitekey');
+  }
+
+  // Cloudflare challenge page (5-second interstitial)
+  if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
+    res.found = true;
+    res.types.push('cloudflare_challenge_page');
+    res.note = 'Cloudflare challenge page. It may clear by itself: wait 5-10 seconds with browser_wait and detect again, and if it does not clear, ask the user with browser_ask_user.';
+  }
+
+  // FunCaptcha / Arkose Labs
+  const funcaptcha = document.querySelector('#FunCaptcha, iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
+  if (funcaptcha) {
+    res.found = true;
+    res.types.push('funcaptcha');
+  }
+
+  if (!res.found) res.note = res.invisible ? 'No CAPTCHA to solve on this page.' : 'No CAPTCHA detected on this page.';
+  res.pageUrl = window.location.href;
+  return res;
+}
+
 async function detectCaptcha(tabId) {
   try {
     await debuggerAttach(tabId);
     const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
-      expression: `(() => {
-        const res = { found: false, types: [] };
-
-        // reCAPTCHA v2 — checkbox iframe
-        const recaptchaAnchor = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
-        if (recaptchaAnchor) {
-          res.found = true;
-          res.types.push('recaptcha_v2_checkbox');
-          const container = document.querySelector('.g-recaptcha');
-          if (container) res.sitekey = container.getAttribute('data-sitekey');
-        }
-
-        // reCAPTCHA v2 — image challenge iframe
-        const recaptchaChallenge = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
-        if (recaptchaChallenge) {
-          res.found = true;
-          if (!res.types.includes('recaptcha_v2_checkbox')) res.types.push('recaptcha_v2_image');
-          res.types.push('recaptcha_v2_challenge_visible');
-          // Get iframe dimensions for grid clicking
-          const rect = recaptchaChallenge.getBoundingClientRect();
-          res.challengeFrame = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        }
-
-        // reCAPTCHA v3 — invisible badge
-        const recaptchaV3 = document.querySelector('.grecaptcha-badge');
-        if (recaptchaV3 && !recaptchaAnchor) {
-          res.found = true;
-          res.types.push('recaptcha_v3_invisible');
-          res.note = 'reCAPTCHA v3 is invisible and score-based: there is nothing to click. If the page still blocks you, ask the user with browser_ask_user.';
-        }
-
-        // hCaptcha
-        const hcaptcha = document.querySelector('iframe[src*="hcaptcha.com"], .h-captcha');
-        if (hcaptcha) {
-          res.found = true;
-          res.types.push('hcaptcha');
-          const container = document.querySelector('.h-captcha');
-          if (container) res.sitekey = container.getAttribute('data-sitekey');
-        }
-
-        // Cloudflare Turnstile
-        const turnstile = document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile');
-        if (turnstile) {
-          res.found = true;
-          res.types.push('cloudflare_turnstile');
-          const container = document.querySelector('.cf-turnstile');
-          if (container) res.sitekey = container.getAttribute('data-sitekey');
-        }
-
-        // Cloudflare challenge page (5-second interstitial)
-        if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
-          res.found = true;
-          res.types.push('cloudflare_challenge_page');
-          res.note = 'Cloudflare challenge page. It may clear by itself: wait 5-10 seconds with browser_wait and detect again, and if it does not clear, ask the user with browser_ask_user.';
-        }
-
-        // FunCaptcha / Arkose Labs
-        const funcaptcha = document.querySelector('#FunCaptcha, iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
-        if (funcaptcha) {
-          res.found = true;
-          res.types.push('funcaptcha');
-        }
-
-        if (!res.found) res.note = 'No CAPTCHA detected on this page.';
-        res.pageUrl = window.location.href;
-        return JSON.stringify(res);
-      })()`,
+      expression: `(${captchaFund})()`,
       returnByValue: true,
     });
     await debuggerDetach(tabId);
-    return JSON.parse(result.value);
+    return result.value;
   } catch (e) {
     try { await debuggerDetach(tabId); } catch {}
     return { found: false, error: e.message };
@@ -8582,7 +8598,9 @@ async function clickRecaptchaCheckbox(tabId) {
     // Find the reCAPTCHA anchor iframe position
     const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
-        const iframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+        // 1.33 (2.2): aldrig det usynlige maerkes anchor - det er intet afkrydsningsfelt.
+        const iframe = [...document.querySelectorAll('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]')]
+          .find((f) => !/[?&]size=invisible(&|$)/.test(f.getAttribute('src') || ''));
         if (!iframe) return JSON.stringify({ found: false });
         const rect = iframe.getBoundingClientRect();
         // Checkbox is roughly at 27,30 inside the iframe (standard reCAPTCHA layout)

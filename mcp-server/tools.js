@@ -459,7 +459,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_solve_captcha',
-    description: 'Detect CAPTCHAs on the current page and work through them, one action per call. "detect" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. "click_checkbox" tries the reCAPTCHA checkbox and detects again. "click_grid" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. "ask_human" returns the message to show the user with browser_ask_user.',
+    description: 'Detect CAPTCHAs on the current page and work through them, one action per call. "detect" reports a visible reCAPTCHA checkbox or image challenge, hCaptcha, Cloudflare Turnstile and FunCaptcha; an invisible reCAPTCHA (the badge) has nothing to click and is reported as invisible, not found, and browser_navigate reports it as captcha_invisible. "click_checkbox" tries the reCAPTCHA checkbox and detects again. "click_grid" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. "ask_human" returns the message to show the user with browser_ask_user.',
     inputSchema: {
       type: 'object',
       properties: {
