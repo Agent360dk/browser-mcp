@@ -22,7 +22,7 @@ The list below is what the client has to choose from.
 | `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. In the current tab, `ok: true` means Chrome took the address and the new page was proven loaded within about 25 seconds (the wait ends half a second before that limit, so the answer fits inside it). If the page asks "Leave site?", the answer is Stay (or whatever an armed `browser_handle_dialog` says) and the error `beforeunload-blocked` says so - the page may hold unsaved work, so the agent should ask you before calling again with `leave_page: true`. Other outcomes are errors that say whether the address was sent: `navigation-in-progress`, `dialog-open`, `tab-not-responding`, `navigation-failed`, `dialog-unconfirmed`, `navigation-unconfirmed` (may still complete later; a download or a 204 answer never loads a page and ends here too), `tab-closed`, `session-changed` (another call changed the session's active tab meanwhile; nothing was sent). |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
 | `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. A window covered by other windows answers `window-covered`; Chrome is raised only with `bring_to_front: true`. |
-| `browser_execute_script` | Run arbitrary JavaScript in the page context and return the result. |
+| `browser_execute_script` | Run arbitrary JavaScript in the page's own context and return the result. It runs through the Chrome debugger, so a page's CSP does not block it; a promise is awaited, and code that throws is not run again. The call answers within 29.5 seconds; if the time runs out before the code is sent, the answer is `call-timeout` with `sent: false` (nothing ran). |
 | `browser_extract_list` | Read the rows of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. In the active tab it scrolls with real wheel events, also at the bottom, so feeds that load on wheel (Threads, X) load; a hidden page (a background tab) gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false. `reached_end` is true only when the list stood at its bottom with nothing new for several rounds. Rows with the same text come back once, so compare the count with what the page says. |
 
 ## Interaction - 14 tools
@@ -53,7 +53,7 @@ The list below is what the client has to choose from.
 | `browser_close_tab` | Close a tab by ID (session-owned tabs only). |
 | `browser_get_new_tab` | Return the most recently opened tab - useful after a link opens a new tab or an OAuth popup. |
 | `browser_list_frames` | List all iframes on the current page with URL and index. |
-| `browser_select_frame` | Execute JavaScript inside a specific iframe, targeted by index. |
+| `browser_select_frame` | Execute JavaScript inside a specific iframe, targeted by index - also a frame from another site. Like `browser_execute_script` it runs through the Chrome debugger; the frame is identified by a one-time mark the extension puts in that frame's document, not by its address or position, and if the mark is not found, nothing is run (`frame-not-reachable`, with `retry` saying whether calling again can help; a frame whose document is replaced while the call looks for it gives `retry: true`). Like `browser_execute_script`, it answers within 29.5 seconds and says whether the code was sent. |
 
 ## Data & Storage - 5 tools
 
@@ -111,7 +111,7 @@ Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a CAPT
 | Tool | Description |
 |---|---|
 | `browser_provide_feedback` | Self-check plus report in one call. Compares the connected extension against this server and detects more than one Browser MCP extension connected at once, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict, concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. The agent calls it on its own whenever a tool blocks it. |
-| `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. |
+| `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the extension popup, the installation id and the version. |
 | `browser_reattach_debugger` | Force-detach and re-attach the Chrome debugger on the current tab. Use when click/fill/press_key start timing out or report a ghost attach while `browser_list_tabs` still works - faster than reloading the extension. |
 
 ---

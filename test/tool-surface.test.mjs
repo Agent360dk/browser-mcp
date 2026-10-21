@@ -197,16 +197,14 @@ test('parameter-aliasser findes hvor navnene historisk er blevet forvekslet', ()
   }
 });
 
-test('select_frame bygger ikke funktioner i service-workeren', () => {
-  const i = bgSrc.indexOf("case 'select_frame'");
-  // Kommentarer strippes: forklaringen af fejlen citerer den gamle kode, og en
-  // negativ paastand maa ikke fyre paa sin egen dokumentation.
-  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+test('select_frame koerer agentens kode gennem debuggeren og bygger ingen funktion af en streng', () => {
+  // MAALT 21/8: her stod `func: new Function(...)` i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet
+  // fejlede paa hver side. 1.20-1.30.3 sendte koden som argument og byggede funktionen i siden (stadig new Function).
+  // 1.31.0: Chrome Web Stores MV3-regler tillader kode udefra kun gennem Debugger API eller User Scripts API (R129b).
+  // Kommentarer strippes, saa forklaringen af den gamle kode ikke fyrer paa sig selv.
   const blok = caseBlok(bgSrc, 'select_frame').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
-  assert.ok(!/func: new Function\(/.test(blok),
-    "new Function() i selve executeScript-kaldet koeres i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet fejlede paa hver eneste side");
-  assert.match(blok, /args: \[code\]/, 'koden skal sendes med som argument');
-  assert.match(blok, /func: \(codeStr\) =>/, 'funktionen skal bygges INDE i den injicerede func, hvor sidens CSP gaelder');
+  assert.ok(!/new Function|scripting\.executeScript/.test(blok), 'select_frame bruger stadig chrome.scripting eller new Function');
+  assert.match(blok, /koerAgentKode\(tab\.id, code, maal\.kontekst, slut, vagt\)/, 'koden skal koeres i den valgte frames kontekst via debuggeren');
 });
 
 // Testen for det strukturelle overlay-spor er FJERNET 22/8 sammen med sporet selv:
@@ -361,7 +359,9 @@ test('provide_feedback beskriver logbogen og npm-opslaget som koden goer dem', (
   assert.match(indexSrc, /\.slice\(0, 160\);\n  return `\$\{kind\}\|\$\{tool \|\| '-'\}\|\$\{kerne\}`;/, 'vagten forudsaetter aftrykket kind|tool|160 tegn - ellers ret tekst og kontrakt');
   assert.match(d, /again only if the earlier write failed/, 'en fejlet skrivning proeves igen - det skal staa');
   assert.match(d, /replaced with \[email\] and \[number\] in what_happened, attempted and worked before they are written or put in the issue link/, 'rensningen skal staa i beskrivelsen');
-  assert.match(indexSrc, /execFile\('npm', \['view'/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
+  // 20/10 (sikkerhed): paa Windows koeres npm som node + npm-cli.js ved absolut sti; kommandoen er stadig `npm view`.
+  assert.match(indexSrc, /let kommando = 'npm', foer = \[\];/, 'vagten forudsaetter at npm-tjekket som standard koerer `npm` - ellers ret tekst og kontrakt');
+  assert.match(indexSrc, /execFile\(kommando, \[\.\.\.foer, 'view', '@agent360\/browser-mcp', 'version'\]/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
   assert.match(indexSrc, /^const TJEK_NPM = process\.env\.BROWSER_MCP_CHECK_NPM === '1';$/m, 'npm-tjekket er et tilvalg (=1) - teksterne siger «off by default»');
   assert.match(indexSrc, /^const FEEDBACK_LOG = join\(homedir\(\), '\.browser-mcp', 'feedback\.jsonl'\);$/m, 'teksten naevner stien ~/.browser-mcp/feedback.jsonl');
   assert.match(d, /npm view/, 'npm-tjekket er `npm view` mod brugerens opsaetning, ikke et fast offentligt register');
@@ -520,8 +520,10 @@ test('BROWSER_MCP_CHECK_NPM taendes kun af vaerdien 1', () => {
 test('npm-tjekket koerer kun med BROWSER_MCP_CHECK_NPM=1, som `npm view`, og husker svaret', async () => {
   const lav = (tilvalgt) => {
     const kald = [];
-    const f = new Function('TJEK_NPM', 'execFile', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
-      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); });
+    // R164 (Opus): Windows-grenen har sin egen proeve i vagter.test.mjs. Her er platformen fastlagt, saa proeven maaler
+    // tilvalget og cachen ens paa alle maskiner (med den aegte process ramte den Windows-grenen uden join paa GitHubs Windows-job).
+    const f = new Function('TJEK_NPM', 'execFile', 'process', 'homedir', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
+      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); }, { platform: 'linux', execPath: '/usr/bin/node' }, () => '/hjem');
     return { f, kald };
   };
   const fra = lav(false);

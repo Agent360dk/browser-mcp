@@ -4,6 +4,113 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.31.0 (not released yet)
+
+**Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
+servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the
+current folder before PATH, so a file named `ps` with any extension Windows runs (`ps.bat`, `ps.cmd`, `ps.exe` and others) in the folder an MCP
+client started the server in ran at startup (clients that set `NoDefaultCurrentDirectoryInExePath`, such as Claude Code, were not affected). Windows has no `ps`, so the
+lookup is now skipped there, and the guard watches the nearest parent process and the idle limit, as it did before; macOS and Linux
+run `ps` by absolute path without a shell. The opt-in npm check (`BROWSER_MCP_CHECK_NPM=1`) had the same pattern for `npm`; on Windows it now runs node's own
+`npm-cli.js` by absolute path. It also runs from your home folder, so a `.npmrc` in the folder the server was started in no
+longer chooses the registry, and only a plain version number is passed on to the agent. The installer (`npx @agent360/browser-mcp install`) had the same pattern for the clients it registers on
+Windows; it now looks the client up in PATH itself and runs it by its full path through System32's `cmd.exe`. The lookup
+takes absolute folders only, never the current folder, its `node_modules` or any `node_modules\.bin` folder (also when the
+folder is named another way, such as an 8.3 name or a junction, as long as the drive can report the folder's real path), only files and only the extensions in PATHEXT. Clients under
+the folder you run it from, such as npm's global folder under your home folder, are still found, and a path with letters such
+as ø works.
+Reported privately by [@arasmileska](https://github.com/arasmileska) - thank you.
+
+**Windows: the installer no longer says Codex is installed when it is not.** On Windows the installer runs clients through
+cmd.exe, and a missing `codex` came back as a failed command instead of "not found", so `install` told every Windows user without
+Codex "Codex is installed, but registration failed". It now looks the command up first; a client that is not there
+is skipped, as on macOS and Linux.
+
+**Choose the Chrome profile (#58, joseph-lewis).** The Chrome Web Store extension has the same id in every Chrome profile, so
+the server could not tell profiles apart: with the extension enabled in two of them, commands went to one of them, and which
+one could change when the other reconnected. 1.30.2 only warned, and the warning that commands had moved to another
+connection came after a command had already run there. Now each installation of the extension (one per Chrome profile)
+creates a random installation id once, keeps it in the extension's local storage, and sends it with its greeting, together
+with a name you can give the profile in the popup ("This Chrome profile"). `BROWSER_MCP_PROFILE=<name>` in a client's MCP
+config makes that client drive that profile; it works together with `BROWSER_MCP_EXTENSION_ID`. A chat is locked to the
+installation from its first command, also without `BROWSER_MCP_PROFILE`, and the server never moves it to another profile
+on its own: when that profile goes away, the next call says so and sends nothing, and only the call after that picks again.
+If the same installation comes back in time (the extension reconnects), the chat continues without an error. A call that
+was already waiting when the installation went away gets `profile-disconnected` too; it cannot reach another installation
+before the agent has seen the error. A chat's first call waits until the port has been open for about 2.5 seconds before it
+chooses: the extension scans every 2 seconds in each profile, and without the wait a second profile with the same name, or a
+copied profile, could connect just after the choice and never be seen (measured in Chrome: 7 of 20 first calls). The margin is about half a
+second on an idle machine; a profile whose scan comes later (for instance under heavy load) can still be missed by the first
+choice, and the chat then stays with the profile that did connect. A port released
+after the chat's last tab closed keeps the lock; for an extension before 1.31, which reports no installation, it is released
+as in 1.30.2. Renaming in the popup greets every connected server again with the new name; no connection or running call is
+dropped, and a chat that already drives the installation keeps driving it. The name and the id are labels to choose by, not
+credentials: the greeting is not signed, and another program on the machine can claim any name. Both appear in
+`browser_about` and in the `profile-*` answers, so they reach the agent and its model provider like any tool answer (README,
+Security).
+
+**Groundwork for partitions (#20, ugbodagadave).** The server's bridge now has lanes: one listener code per lane, one map of
+pending calls where each call is bound to the connection it was sent to, `terminate` taken only from the lane's own active
+connection, and one guard against messages that are not objects. There is still one lane (the default one) and no new tool;
+the partition tool from PR #20 comes on top of this in a later version, with credit. The five faults measured in PR #20's own
+listener (a reply from another lane's socket accepted in both directions, `null` stopping the server, a later connection
+taking over a lane, a dead connection answering only after 30 seconds) are fixed tests against these lanes.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `error: "profile-invalid"` | every browser tool | `BROWSER_MCP_PROFILE` is set but is not a valid name (letters, digits, dot, dash, underscore, 1-32). Nothing was sent; the server does not fall back to some profile. The value is not repeated in the answer |
+| `error: "profile-not-connected"`, `profile`, `connected` | every browser tool | No connected installation has the name. The call first waited for it: about 7.5 seconds, and up to about 17.5 seconds when the port opened in the last 10 seconds, as on a chat's first browser call (2.5 seconds before the first choice plus a doubled wait); `connected` lists what the server can see (at most 10) |
+| `error: "profile-routing-unsupported"` | every browser tool | `BROWSER_MCP_PROFILE` is set, but every connected extension is older than 1.31 and reports no name |
+| `error: "profile-ambiguous"`, `candidates` | every browser tool | Two or more connections carry the name, or the installation the chat drives or is about to drive is connected twice (a copied profile, also without `BROWSER_MCP_PROFILE`). Answered without waiting further; nothing was sent |
+| `error: "profile-disconnected"`, `lost`, `connected` | every browser tool | The installation the chat was driving is gone (after waiting the same time for it to come back; at once for an extension before 1.31, which cannot be recognised). Nothing was sent. Calls that were already waiting get the same answer; the next call picks again |
+| a note in the answer | the first command | Without `BROWSER_MCP_PROFILE` and with several installations connected: which one the chat now drives, and that it stays with it |
+| `installations`, `installations_note` | `browser_about` | The installations connected to the chat: `profile`, `instance`, `version`, `driven` (at most 10) |
+
+All of these errors have `sent: false` and `isError: true`. The 1.30.2 note "commands now go to another one" is gone. The
+warning about the same extension connected more than once now only appears for connections that report no installation:
+one that greeted without an installation, or one that still has not greeted 3 seconds after connecting (an extension before
+1.28 never greets). A connection that has just opened and not greeted yet does not count, neither in the server's log nor in
+the next tool answer. `browser_provide_feedback` reports a profile choice that cannot be made instead of "No Chrome extension
+is connected": two profiles with the same name or a copied profile give verdict `conflict`, and for a copy the advice is to
+close it or reinstall the extension in it (renaming a copy does not help, it keeps the same installation id). When a copy and
+another installation both carry the name, the tool's answer and the diagnosis both give both pieces of advice, whatever
+order the connections came in.
+
+**The agent's JavaScript runs only through the Chrome debugger.** Up to 1.30.3, `browser_execute_script` first tried
+`chrome.scripting.executeScript` with the code compiled by `new Function`, in the extension's isolated world and then in
+the page's main world, and only then the debugger; `browser_select_frame` used only the scripting path. Chrome Web Store's
+Manifest V3 rules allow code that is not in the package only through an API made for it (the Debugger API or the User
+Scripts API), and only for the code that API runs. Both tools now evaluate through the debugger (`Runtime.evaluate`): in
+the page's own context, so the page's globals are visible as before, and in a frame's own context for
+`browser_select_frame`, also in a frame from another site (Chrome runs those as separate targets; the extension reaches
+them with `Target.setAutoAttach` and flat sessions, also when nested). A returned promise is awaited, and code that was
+sent is never sent again. The extension compiles no strings anywhere. Measured in headless Chrome 155 against 1.30.3 on a
+plain page, a page with a strict CSP, a promise, code that throws, and same-site, cross-site and nested frames. The debugger
+was already attached to the tab after `browser_navigate` in both versions, so Chrome's notice that the extension is
+debugging the browser is not new. What changes for an agent:
+
+| Before (1.30.3) | Now |
+|---|---|
+| `method`: `scripting-main`, `scripting-isolated` or `debugger` | always `debugger` |
+| A syntax error: a tool error with a `scripting-diag` trail | `ok: false`, `error`, `name: "SyntaxError"`, `method`, `note`, like any code that throws |
+| Code that throws: `ok: false` with the note "not run again through the debugger" | the same fields; the note says it is not run again |
+| `browser_select_frame` on a frame with a strict CSP: `ok: false` (`unsafe-eval`) | runs |
+| `browser_select_frame` with a promise: `{}` | the promise is awaited |
+| `browser_select_frame` answer: `result`, `frame_url` | `frame_url` is the address of the document the code ran in (read when the mark is set), which can differ from `browser_list_frames` if the frame navigated in between; also `method: "debugger"`; `ok: false`, `error: "frame-not-reachable"`, `sent: false` and `retry` when the frame cannot be identified through the debugger (nothing is run; `retry: false` only when the extension may not run in that frame at all, where calling again gives the same answer) |
+| `browser_select_frame` picks the frame Chrome's scripting API names | the extension puts a random one-time mark in that frame's document, in the extension's own isolated world where the page cannot see or set it, and the code runs only in the frame whose debugger context carries the mark, addressed by the context's `uniqueId` (a numeric context id can be reused by another process after a navigation); address, order and position play no part. Two frames with the same address, `about:blank` frames written with `document.write` and frames in open or closed shadow roots are each reached, and frames are never mixed up; a frame whose document is replaced while the call looks for it is not reached (`retry: true`), so a frame that reloads every second or faster may need several calls. The mark is removed afterwards, without holding up the answer |
+| A promise on a page with a strict CSP (debugger path) waited at most 20 seconds | `browser_execute_script` and `browser_select_frame` answer within 29.5 seconds of the extension receiving the call (the server's 30-second limit minus half a second for the answer); the agent's code may wait for what is left after the tab and frame are found, on every page. If the time runs out first, the answer says whether the code was sent: `ok: false`, `error: "call-timeout"`, `sent: false`, `retry: true` when it was not (it is then never sent), or "MAY already have run" when it was |
+| Chrome refuses the debugger (enterprise policy, cancelled notice) and the page allows `eval` | the call fails and says the code was not run; there is no fallback through script injection |
+| The popup's action log highlights `execute_script` but not `select_frame` | both are highlighted, since both run the agent's JavaScript (alongside `get_cookies` and `get_local_storage`) |
+
+**Manifest and privacy policy.** The unused `activeTab` permission is removed, and the short description says what is
+true: the agent *can* ask you for a 2FA code or a decision, and the tools work with MCP clients (not "any client"). The
+privacy policy says what the code does: Browser MCP does not read Chrome's history, but `browser_list_tabs` returns the
+addresses and titles of the session's tabs to the AI client; the agent's JavaScript runs only through the Debugger API;
+answers in `browser_ask_user` go to the AI client, and the page's own listeners can see the keystrokes typed there; and
+the Chrome Web Store Limited Use statement.
+
 ## 1.30.3 (2026-10-15)
 
 **`browser_navigate` and "Leave site?" (#69).** 1.30.2 said this would come in a later version; it is fixed here. Before,

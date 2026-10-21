@@ -22,3 +22,7 @@ These are documented on the [privacy page](https://browsermcp.dev/privacy.html) 
 
 - The localhost WebSocket bridge between the extension and the MCP server is not password-protected. Any software already running on the same computer could connect to the same local ports (9876-9895). Removing or disabling the extension closes it.
 - What the agent reads from a page is passed to the user's own AI client and its model provider, like anything else the user shows that client.
+
+## Before Browser MCP's code runs
+
+`npx @agent360/browser-mcp` reads npm's settings and packages in the folder it is run from, in the nearest folder above it that has a `package.json` or `node_modules`, and in a folder further up whose `package.json` lists it as a workspace. A folder you do not trust can point npm to another registry with a `.npmrc`, replace the package with its own copy in `node_modules`, or, on Windows, where npx starts the package through `cmd.exe`, put a program there that runs first - all before Browser MCP's own code runs. Start the server and the installer from a folder you trust, such as your home folder, and do not keep a `node_modules`, `package.json` or `.npmrc` you did not create in a folder above it (on Windows, any user can create `C:\node_modules`).
