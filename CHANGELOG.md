@@ -32,7 +32,9 @@ answers `page-changed`. An accept answers "Leave site?" - armed or already open 
 
 **Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the
 window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left
-in that window (`kept_window_open: true`). A check that fails stops the close, and closes run one at a time.
+in that window (`kept_window_open: true`). A check that fails stops the close. A close that Chrome does not complete within
+5 seconds - while "Leave site?" is open, or on a busy page, `chrome.tabs.remove` never answers - answers `tab-not-closed`
+and does not hold up the closes of other chats.
 
 **A screenshot path is a .png file and never replaces a file by accident.** With `path` set to a file in the working
 folder, `browser_screenshot` overwrote it with PNG bytes - `package.json` and `.vscode/tasks.json` included. Now the path
@@ -42,8 +44,8 @@ checked before the screenshot is taken.
 **An invisible reCAPTCHA is reported, not flagged.** A page with only the invisible reCAPTCHA badge made
 `browser_navigate` report `captcha_detected: recaptcha_v2_checkbox` and ask for `browser_solve_captcha`, so an agent that
 stops for a CAPTCHA stopped for nothing. Now a checkbox and an image challenge count only when they can be seen; an
-invisible reCAPTCHA is reported as `captcha_invisible` (navigate) and `invisible` (detect). Nothing changes in what is sent
-to the site.
+invisible reCAPTCHA - and likewise an invisible hCaptcha or a hidden Turnstile - is reported as `captcha_invisible`
+(navigate) and `invisible` (detect). Nothing changes in what is sent to the site.
 
 **Smaller fixes.** `browser_navigate` with `new_tab` says the tab opened in the background (`active: false`). The "not
 connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked

@@ -36,6 +36,8 @@ function lavSide() {
     closest(sel) { for (let n = this; n && n.nodeType === 1; n = n.parentNode) if (n.tagName === sel.toUpperCase()) return n; return null; }
     getAttribute(n) { return this.attrs && n in this.attrs ? this.attrs[n] : null; }
     get options() { return this.kids.filter((k) => k.nodeType === 1 && k.tagName === 'OPTION'); }
+    // Som i Chrome: et fast element (uden transform-forfader) har ingen offsetParent.
+    get offsetParent() { return this.stil.position === 'fixed' ? null : this.parentNode; }
     get selectedIndex() { return this.options.findIndex((o) => o.selected); }
     add(...boern) {
       for (const c of boern) { const n = typeof c === 'string' ? new Tekst(c) : c; n.parentNode = this; this.kids.push(n); }
@@ -360,4 +362,33 @@ test('R174 (Astra W4): den synlige tekst laeses i dokumentets raekkefoelge', () 
   const v = side((b, El) => b.add(new El('p').add(new El('b').add('Sa'), new El('i').add('ved'))));
   assert.equal(v(null, 'Saved').synlig, true);
   assert.equal(v(null, 'vedSa').synlig, false);
+});
+
+// ── R174 (Opus, MAALT i Chrome 155): fast-reglen var for bred ─────────────────────────────────────────
+test('R174: indhold under folden i en fast boks, der kan rulles (modal, <dialog>), er synligt', () => {
+  const s1 = lavSide();
+  const modal = new s1.El('div', { stil: { position: 'fixed', overflowX: 'hidden', overflowY: 'auto' }, rect: [100, 100, 600, 500] });
+  s1.body.add(modal.add(new s1.El('button', { rect: [110, 1400, 100, 30] }).add('Bekraeft')));
+  assert.equal(s1.koer(KILDE, null, 'Bekraeft').synlig, true, 'man ruller i modalen til knappen');
+  const s2 = lavSide();
+  const fast = new s2.El('div', { stil: { position: 'fixed' }, rect: [100, 100, 600, 500] });
+  s2.body.add(fast.add(new s2.El('p', { rect: [110, 1400, 100, 20] }).add('Under')));
+  assert.equal(s2.koer(KILDE, null, 'Under').synlig, false, 'en fast boks, der ikke kan rulles, viser ikke det, der ligger under vinduet');
+  const s3 = lavSide();
+  const ude = new s3.El('div', { stil: { position: 'fixed', overflowY: 'auto' }, rect: [1400, 100, 300, 500] });
+  s3.body.add(ude.add(new s3.El('p', { rect: [1410, 120, 100, 20] }).add('Skuffe')));
+  assert.equal(s3.koer(KILDE, null, 'Skuffe').synlig, false, 'en rullebar fast boks uden for vinduet viser intet');
+});
+
+test('R174 (Opus W4): tekst helt under en boks, der skaerer af, er skjult', () => {
+  const v = side((b, El) => b.add(new El('div', { rect: [10, 10, 300, 100], stil: { overflowX: 'hidden', overflowY: 'hidden' } })
+    .add(new El('p', { rect: [10, 500, 100, 20] }).add('Gemt'))));
+  assert.equal(v(null, 'Gemt').synlig, false);
+});
+
+test('R174: afskaering vurderes pr. akse - overflow-x hidden med overflow-y auto kan rulles lodret', () => {
+  const boks = (child) => side((b, El) => b.add(new El('div', { rect: [10, 10, 300, 100], stil: { overflowX: 'hidden', overflowY: 'auto' } })
+    .add(new El('p', { rect: child }).add('Gemt'))))(null, 'Gemt').synlig;
+  assert.equal(boks([10, 500, 100, 20]), true, 'under boksen: man ruller ned til den');
+  assert.equal(boks([400, 20, 100, 20]), false, 'til hoejre for boksen: skaaret af');
 });

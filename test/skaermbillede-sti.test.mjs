@@ -224,3 +224,11 @@ test('R173 (Opus S4): en billedendelse med store bogstaver godtages', { timeout:
   assert.match(JSON.stringify(svar), /successfully saved/, JSON.stringify(svar).slice(0, 200));
   assert.ok(existsSync(join(arbejd, 'inde', 'STORE-BOGSTAVER.PNG')));
 });
+
+test('R174 (Opus): en mappe ved navn x.png afvises som mappe - uden optagelse', { timeout: 45000 }, async () => {
+  mkdirSync(join(arbejd, 'inde', 'mappe.png'), { recursive: true });
+  const foer = billederTaget;
+  const svar = await skaermbillede('inde/mappe.png');
+  assert.match(JSON.stringify(svar), /is a folder, not a file/, JSON.stringify(svar).slice(0, 200));
+  assert.equal(billederTaget, foer);
+});

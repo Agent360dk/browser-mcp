@@ -127,3 +127,28 @@ test('R174 (Astra C4): et afkrydsningsfelt, som browserens checkVisibility siger
   const r = side((El) => { const f = new El('iframe', { attrs: { src: ANKER + '&size=normal' } }); f.checkVisibility = () => false; });
   assert.equal(r.found, false, JSON.stringify(r));
 });
+
+test('R174 (Opus C9): en anchor med size=invisible uden maerke meldes ogsaa som usynlig', () => {
+  const r = side((El) => new El('iframe', { attrs: { src: ANKER + '&size=invisible' }, rect: [1210, 726, 256, 60] }));
+  assert.equal(r.found, false);
+  assert.deepEqual(r.invisible, ['recaptcha']);
+});
+
+// R174 (Opus, MAALT i Chrome): samme klasse som 2.2 hos to andre leverandoerer.
+test('R174: et usynligt hCaptcha er intet fund - en synlig udfordring er', () => {
+  const usynlig = side((El) => new El('div', { cls: 'h-captcha', attrs: { 'data-size': 'invisible' } }));
+  assert.equal(usynlig.found, false, JSON.stringify(usynlig));
+  assert.deepEqual(usynlig.invisible, ['hcaptcha']);
+  const udfordring = side((El) => {
+    new El('div', { cls: 'h-captcha', attrs: { 'data-size': 'invisible' } });
+    new El('iframe', { attrs: { src: 'https://newassets.hcaptcha.com/captcha/v1/x/static/hcaptcha.html#frame=challenge' }, rect: [100, 100, 400, 580] });
+  });
+  assert.deepEqual(udfordring.types, ['hcaptcha']);
+});
+
+test('R174: et skjult Turnstile (interaction-only) er intet fund - et synligt er', () => {
+  const skjult = side((El) => new El('div', { cls: 'cf-turnstile', stil: { visibility: 'hidden' } }));
+  assert.equal(skjult.found, false, JSON.stringify(skjult));
+  assert.deepEqual(skjult.invisible, ['turnstile']);
+  assert.deepEqual(side((El) => new El('div', { cls: 'cf-turnstile' })).types, ['cloudflare_turnstile']);
+});

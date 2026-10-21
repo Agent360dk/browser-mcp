@@ -855,6 +855,7 @@ async function cdpSend(tabId, method, params = {}, sessionId = null, slut = null
 const agentLukkedeFaner = new Set();
 // R173: close_tab-handleren koerer lukningerne én ad gangen gennem denne kaede.
 let fanelukninger = Promise.resolve();
+const fanerUnderLukning = new Set();   // R174: fjernelsen er sendt, Chrome har ikke svaret endnu
 // Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
@@ -3111,10 +3112,16 @@ function ventMaal(sel, tekst, wantTag) {
     if (r.width < 2 || r.height < 2) return false;
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
-    let fast = false;
+    // R174 (Opus, MAALT i Chrome 155): fast-reglen fra R173 gjorde indhold under folden i en FAST boks, der kan rulles (en lang
+    // <dialog>.showModal(), en modal, en app-skal), «usynligt». Kun et aegte fast element taeller (offsetParent er null - et
+    // fixed inde i en transform-forfader opfoerer sig som absolute), og kan der rulles mellem elementet og den faste boks, er
+    // indholdet synligt, naar den faste boks selv er i vinduet.
+    let fast = null, rul = false, rulVedFast = false;
     for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
       const s = getComputedStyle(n);
-      if (s.position === 'fixed') fast = true;
+      const ruller = /(auto|scroll)/.test(s.overflowX + ' ' + s.overflowY);
+      if (n !== el && ruller) rul = true;
+      if (s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
       if (parseFloat(s.opacity) === 0) return false;
       if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
         const b = n.getBoundingClientRect();
@@ -3122,14 +3129,20 @@ function ventMaal(sel, tekst, wantTag) {
         // R173 (Astra, MAALT): tekst helt uden for en boks, der skaerer af (hidden/clip), talte som synlig. En boks, der kan
         // rulles (auto/scroll), skjuler ikke - som siden under folden.
         const skaerer = (v) => v === 'hidden' || v === 'clip';
-        if ((skaerer(s.overflowX) || skaerer(s.overflowY))
-          && (r.right <= b.left || r.left >= b.right || r.bottom <= b.top || r.top >= b.bottom)) return false;
+        // Pr. akse (R174): overflow-x: hidden med overflow-y: auto skaerer kun vandret - lodret kan der rulles.
+        if ((skaerer(s.overflowX) && (r.right <= b.left || r.left >= b.right))
+          || (skaerer(s.overflowY) && (r.bottom <= b.top || r.top >= b.bottom))) return false;
       }
     }
     // R173 (Opus, MAALT i Chrome): et fast element (position:fixed, ogsaa via en forfader) ruller ikke med siden - det er kun
     // synligt i vinduet. En topbjaelke skubbet op med translateY(-100%) paa en rullet side og en skuffe skubbet ud til hoejre
     // med translateX(100%) talte som synlige.
-    if (fast) return r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
+    // Vinduets synlige flade er uden rullebjaelke (MAALT i Chrome 155: en skuffe skubbet ud med translateX(100%) stod paa x=1265
+    // under en rullebjaelke paa 15 px, og innerWidth paa 1280 regnede den som i vinduet).
+    const rod = document.documentElement;
+    const bredde = (rod && rod.clientWidth) || window.innerWidth, hoejde = (rod && rod.clientHeight) || window.innerHeight;
+    const iVindue = (b) => b.right > 0 && b.bottom > 0 && b.left < bredde && b.top < hoejde;
+    if (fast) return iVindue(r) || (rulVedFast && iVindue(fast.getBoundingClientRect()));
     return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
   };
   // Tekst i script, style, template, noscript og title vises aldrig. MAALT i headless Chrome: et <script> med ordet gjorde
@@ -7830,11 +7843,14 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (portFejl && s.boks) return await svarAaben(s.boks);
       if (portFejl) {
         const e = portFejl;
+        // R174 (Opus, MAALT i Chrome 155): raadet her sagde, at browser_close_tab springer prompten over. Det holder for en alert
+        // og en confirm, men mens «Leave site?» staar aaben, lukker Chrome ikke fanen.
         return { ok: false, error: 'tab-not-responding', detail: e.message,
           note: 'Chrome did not answer on this tab. A common cause is a dialog that is already open - an alert, a confirm or ' +
                 'a "Leave site?" prompt that appeared before anything was listening. Such a dialog cannot be answered from ' +
-                'here: ask the user to answer it in Chrome, or close the tab with browser_close_tab, which skips the prompt ' +
-                'but loses anything unsaved on the page. Next time, arm browser_handle_dialog before the action that opens it.' };
+                'here: ask the user to answer it in Chrome. An alert or a confirm also goes away if the tab is closed with ' +
+                'browser_close_tab (anything unsaved on the page is lost); while "Leave site?" is open, Chrome does not close ' +
+                'the tab. Next time, arm browser_handle_dialog before the action that opens it.' };
       }
       // Astra R107 (maalt i model): en boks, der aabnede, mens Page.enable ventede, gav armed:true med 0 svar. Tilstanden
       // tjekkes derfor IGEN efter porten, foer der armeres.
@@ -8493,36 +8509,47 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       // R173 (Astra, MAALT): et afvist opslag eller en afvist oprettelse blev slugt, og fanen blev lukket alligevel; og to
       // samtidige lukninger saa begge to faner og lukkede dem begge. Nu standser en fejl lukningen (intet lukkes), og
       // lukningerne koerer én ad gangen, saa den anden ser vinduet, som det er efter den foerste.
-      const luk = async () => {
+      // R174 (Opus, MAALT i Chrome 155): chrome.tabs.remove svarer aldrig, naar siden viser «Leave site?» eller er travl - og med
+      // én faelles koe stoppede én saadan lukning alle close_tab i alle sessioner. Koeen daekker nu kun tjekket af vinduet og den
+      // tomme fane og slippes, saa snart fjernelsen er SENDT; faner under lukning taelles ikke med som tilbage i vinduet.
+      const forbered = async () => {
         let holdtAaben = false;
         const fane = await chrome.tabs.get(tabId);
-        const iVinduet = await chrome.tabs.query({ windowId: fane.windowId });
-        if (iVinduet.length <= 1) {
-          // R173 (Opus, MAALT i rigtig Chrome): kun 'normal' talt gav en unoedig tom fane i brugerens vindue, naar fanen var
-          // den eneste i et popup-vindue - et popup- eller app-vindue holder ogsaa Chrome i live.
-          const vinduer = await chrome.windows.getAll({ windowTypes: ['normal', 'popup', 'app'] });
-          if (vinduer.length <= 1) {
-            await chrome.tabs.create({ windowId: fane.windowId, url: 'about:blank', active: false });
-            holdtAaben = true;
-          }
+        // R173 (Opus, MAALT i rigtig Chrome): et popup- eller app-vindue holder ogsaa Chrome i live, ikke kun et normalt.
+        const vinduer = await chrome.windows.getAll({ populate: true, windowTypes: ['normal', 'popup', 'app'] });
+        const andre = (w) => (w.tabs || []).some((t) => t.id !== tabId && !fanerUnderLukning.has(t.id));
+        const mit = vinduer.find((w) => w.id === fane.windowId);
+        if (!(mit && andre(mit)) && !vinduer.some((w) => w.id !== fane.windowId && andre(w))) {
+          await chrome.tabs.create({ windowId: fane.windowId, url: 'about:blank', active: false });
+          holdtAaben = true;
         }
         agentLukkedeFaner.add(tabId);
-        await chrome.tabs.remove(tabId);
-        session.tabIds.delete(tabId);
-        const varAktiv = session.activeTabId === tabId;
-        if (varAktiv) session.activeTabId = null;
-        persistSessions();
-        // R173 (Opus): efter at agenten lukkede sin aktive fane, svarer naeste kald no-active-tab - det skal staa i svaret.
-        return { ok: true, remaining: session.tabIds.size, ...(varAktiv && session.tabIds.size ? { active_tab: null,
-          active_note: 'This was the session\'s active tab, so the session has no active tab now: call browser_switch_tab ' +
-            'with the tab to continue in (browser_list_tabs lists them) before the next call.' } : {}),
-          ...(holdtAaben ? { kept_window_open: true,
-          note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
-            'have closed Chrome and disconnected the extension.' } : {}) };
+        fanerUnderLukning.add(tabId);
+        const fjern = chrome.tabs.remove(tabId);
+        const ryd = () => fanerUnderLukning.delete(tabId);
+        fjern.then(ryd, ryd);
+        return { holdtAaben, fjern };
       };
-      const tur = fanelukninger.then(luk);
+      const tur = fanelukninger.then(forbered);
       fanelukninger = tur.catch(() => {});
-      return await tur;
+      const { holdtAaben, fjern } = await tur;
+      if (await venteMedFrist(fjern, NAV_FRISTER.luk) === FRIST_UDLOEB) {
+        return { ok: false, error: 'tab-not-closed', tab_id: tabId,
+          note: `Chrome did not close the tab within ${NAV_FRISTER.luk} ms: the page may be asking "Leave site?" (it may hold ` +
+            'unsaved work) or be busy. The close may still happen later. Ask the user (browser_ask_user) to look at the tab; ' +
+            'browser_handle_dialog with action "dismiss" keeps the page.' };
+      }
+      session.tabIds.delete(tabId);
+      const varAktiv = session.activeTabId === tabId;
+      if (varAktiv) session.activeTabId = null;
+      persistSessions();
+      // R173 (Opus): efter at agenten lukkede sin aktive fane, svarer naeste kald no-active-tab - det skal staa i svaret.
+      return { ok: true, remaining: session.tabIds.size, ...(varAktiv && session.tabIds.size ? { active_tab: null,
+        active_note: 'This was the session\'s active tab, so the session has no active tab now: call browser_switch_tab ' +
+          'with the tab to continue in (browser_list_tabs lists them) before the next call.' } : {}),
+        ...(holdtAaben ? { kept_window_open: true,
+        note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
+          'have closed Chrome and disconnected the extension.' } : {}) };
     }
 
     case 'solve_captcha': {
@@ -8691,27 +8718,36 @@ function captchaFund() {
 
   // Usynlig reCAPTCHA (maerket eller en anchor med size=invisible): meldes, saa tilstedevaerelsen ikke skjules, men er
   // ikke et fund - der er intet at klikke.
+  const usynlige = [];
   if (!recaptchaAnchor && !recaptchaChallenge && (document.querySelector('.grecaptcha-badge') || ankre.some(usynligt))) {
-    res.invisible = ['recaptcha'];
-    res.invisible_note = 'An invisible reCAPTCHA is on this page: there is nothing to click, it scores the visit in the background. If the page still blocks you, ask the user with browser_ask_user.';
+    usynlige.push('recaptcha');
   }
 
-  // hCaptcha
-  const hcaptcha = document.querySelector('iframe[src*="hcaptcha.com"], .h-captcha');
-  if (hcaptcha) {
-    res.found = true;
-    res.types.push('hcaptcha');
-    const container = document.querySelector('.h-captcha');
-    if (container) res.sitekey = container.getAttribute('data-sitekey');
+  // hCaptcha. R174 (Opus, MAALT i Chrome): et usynligt hCaptcha (data-size=invisible) gav found:true - samme klasse som 2.2.
+  // Et fund kraever en ramme eller et felt, der kan ses; et usynligt felt taeller ikke.
+  const hc = [...document.querySelectorAll('iframe[src*="hcaptcha.com"], .h-captcha')];
+  if (hc.length) {
+    if (hc.some((el) => kanSes(el) && el.getAttribute('data-size') !== 'invisible')) {
+      res.found = true;
+      res.types.push('hcaptcha');
+      const container = document.querySelector('.h-captcha');
+      if (container) res.sitekey = container.getAttribute('data-sitekey');
+    } else usynlige.push('hcaptcha');
   }
 
-  // Cloudflare Turnstile
-  const turnstile = document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile');
-  if (turnstile) {
-    res.found = true;
-    res.types.push('cloudflare_turnstile');
-    const container = document.querySelector('.cf-turnstile');
-    if (container) res.sitekey = container.getAttribute('data-sitekey');
+  // Cloudflare Turnstile. R174 (Opus, MAALT i Chrome): et skjult Turnstile (appearance interaction-only) gav found:true.
+  const ts = [...document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], .cf-turnstile')];
+  if (ts.length) {
+    if (ts.some(kanSes)) {
+      res.found = true;
+      res.types.push('cloudflare_turnstile');
+      const container = document.querySelector('.cf-turnstile');
+      if (container) res.sitekey = container.getAttribute('data-sitekey');
+    } else usynlige.push('turnstile');
+  }
+  if (usynlige.length) {
+    res.invisible = usynlige;
+    res.invisible_note = 'An invisible CAPTCHA (' + usynlige.join(', ') + ') is on this page: there is nothing to click, it checks the visit in the background. If the page still blocks you, ask the user with browser_ask_user.';
   }
 
   // Cloudflare challenge page (5-second interstitial)

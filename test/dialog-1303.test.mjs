@@ -1565,3 +1565,16 @@ test('R174: en dialog fra et nyt dokument, der aabnede mens kaldet ventede, besv
   assert.equal(r.error, 'page-changed', vis(r));
   assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
 });
+
+test('R174 (Opus G3): armeringen hoerer til fanens EGEN session, ogsaa naar en anden session staar foerst', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const sessions = m.u.hent('sessions');
+  const egen = sessions.get(9876);
+  sessions.delete(9876);
+  sessions.set(9875, { tabIds: new Set([7]), activeTabId: 7, groupId: 2, label: 'Claude 2', color: 'red' });   // staar nu foerst
+  sessions.set(9876, egen);
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1, 'armeringen blev holdt tilbage af en anden sessions aktive fane');
+});

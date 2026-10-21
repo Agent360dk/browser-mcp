@@ -266,7 +266,7 @@ All four are optional. None is needed for normal use.
 |------|-------------|
 | `browser_list_tabs` | List session's tabs only |
 | `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
-| `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open |
+| `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open; a tab Chrome does not close within 5 s (a "Leave site?" prompt) answers `tab-not-closed` |
 | `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
 | `browser_list_frames` | List iframes on page |
 | `browser_select_frame` | Run JavaScript in a specific iframe, also one from another site, through the Chrome debugger |
@@ -281,7 +281,7 @@ All four are optional. None is needed for normal use.
 ### CAPTCHA Solving
 | Tool | Description |
 |------|-------------|
-| `browser_solve_captcha` | Detect CAPTCHAs and work through them one step per call. Reports a visible reCAPTCHA checkbox or image challenge, hCaptcha, Turnstile, FunCaptcha; an invisible reCAPTCHA has nothing to click and is reported as `invisible`, not found. Actions: `detect`, `click_checkbox` (tries the reCAPTCHA checkbox), `click_grid` (clicks the reCAPTCHA cells you choose; it returns no image, so take a screenshot first), `ask_human` (returns the message to show with `browser_ask_user`) |
+| `browser_solve_captcha` | Detect CAPTCHAs and work through them one step per call. Reports a visible reCAPTCHA checkbox or image challenge, hCaptcha, Turnstile, FunCaptcha; an invisible reCAPTCHA, hCaptcha or Turnstile has nothing to click and is reported as `invisible`, not found. Actions: `detect`, `click_checkbox` (tries the reCAPTCHA checkbox), `click_grid` (clicks the reCAPTCHA cells you choose; it returns no image, so take a screenshot first), `ask_human` (returns the message to show with `browser_ask_user`) |
 
 ### Human-in-the-Loop
 | Tool | Description |

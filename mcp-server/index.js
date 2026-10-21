@@ -42,7 +42,7 @@ let extensionUpdated = false;
 // her bliver de til isError, saa klienten ser dem som fejl.
 const NAV_DIALOG_FEJL = new Set(['navigation-in-progress', 'dialog-open', 'tab-not-responding', 'navigation-failed',
   'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed',
-  'session-changed', 'no-active-tab', 'page-changed', 'leave-page-required']);
+  'session-changed', 'no-active-tab', 'page-changed', 'leave-page-required', 'tab-not-closed']);
 
 // Spaendet kan flyttes med env - ellers ville en test af port-udsultning skulle
 // beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.
@@ -1333,8 +1333,8 @@ browser_solve_captcha runs one action per call; it does not solve a CAPTCHA on i
 For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher.
 
 ## OAuth popups
-- OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group
-- Use browser_get_new_tab to access them, or they'll become your active tab automatically
+- A popup or new tab that one of your session's tabs opens (an OAuth login, a target=_blank link) belongs to your session: browser_get_new_tab finds it, and browser_switch_tab makes it your active tab
+- When it closes itself after the login, your session has no active tab: call browser_switch_tab back to the tab you came from
 
 ## Shadow DOM (Shopify, Salesforce, etc.)
 - CSS selectors automatically search inside shadow DOM
@@ -1546,8 +1546,10 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
       if (!/\.png$/i.test(oensket)) {
         throw new Error(`path must end in .png ("${args.path}"): a screenshot is PNG data, and it is only saved as a .png file. No screenshot was taken.`);
       }
+      let st = null; try { st = lstatSync(oensket); } catch {}
+      // R174 (Opus): en MAPPE ved navn x.png fik teksten «points outside (through a link)» (en mappe har nlink > 1).
+      if (st && st.isDirectory()) throw new Error(`${oensket} is a folder, not a file, and no screenshot was taken. Choose a file name.`);
       if (args.overwrite !== true) {
-        let st = null; try { st = lstatSync(oensket); } catch {}
         if (st && st.isFile() && st.nlink === 1) {
           throw new Error(`A file already exists at ${oensket}, and no screenshot was taken. Pass overwrite: true to replace it, or ` +
             'choose another name.');
@@ -1962,11 +1964,15 @@ async function handleProvideFeedback(args) {
     findings.push('The browser has not been used in this chat yet, so there is no connection to measure. That is not an error.');
   } else if (!active) {
     findings.push('No Chrome extension is connected to this MCP server right now.');
-    fix_steps.push('Check that Chrome is running and the extension is enabled on chrome://extensions, then click the icon → Reconnect.');
+    // R174 (Opus): samme profilraad som «not connected» (3.3) - Chrome kan vaere aaben med kun en anden profils vinduer.
+    fix_steps.push('Check that Chrome has a window open in the profile where the extension is installed (Chrome can be open with ' +
+      'only another profile\'s windows), and that the extension is enabled there on chrome://extensions, then click the icon → Reconnect.');
   }
   if (serverOutdated) {
     findings.push(`The MCP server is running v${PKG_VERSION}, but npm has v${npmLatest}. The error may already be fixed.`);
-    fix_steps.push(`Restart the client - it fetches @agent360/browser-mcp@latest by itself (v${npmLatest}).`);
+    // R174 (Opus, 4.1): kun en klient, der er sat op med @latest, henter den nye version ved en genstart.
+    fix_steps.push(`If the client runs @agent360/browser-mcp@latest, restarting it fetches v${npmLatest}. If you pinned a version, ` +
+      `move the pin to ${npmLatest} once you have reviewed it.`);
   }
   if (extOutdated) {
     findings.push(

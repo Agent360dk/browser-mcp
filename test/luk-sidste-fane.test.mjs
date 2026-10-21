@@ -15,19 +15,17 @@ function chrome(vinduer, fejl = {}, typer = {}) {
   const fanensVindue = (id) => Number(Object.keys(vinduer).find((w) => vinduer[w].includes(id)));
   const u = indlaesUdvidelse({ svar: {
     'tabs.get': (id) => { const w = fanensVindue(id); if (!w) throw new Error('No tab with id: ' + id); return { id, windowId: w, url: 'https://x.example/' }; },
-    // Som Chrome: svaret er vinduet, som det var, da opslaget blev stillet - det kommer lidt senere.
-    'tabs.query': async (q) => {
+    // Som Chrome: windowTypes filtrerer, og med populate er fanerne dem, der var der, da der blev spurgt - svaret kommer lidt senere.
+    'windows.getAll': async (q) => {
       if (fejl.query) throw new Error('query afvist');
       if (fejl.foersteQuery && !fejl.brugt) { fejl.brugt = true; throw new Error('query afvist'); }
-      const nu = (vinduer[q.windowId] || []).map((id) => ({ id, windowId: q.windowId }));
+      const nu = Object.keys(vinduer).map((w) => ({ id: Number(w), type: typer[w] || 'normal', tabs: vinduer[w].map((id) => ({ id })) }))
+        .filter((v) => !q || !q.windowTypes || q.windowTypes.includes(v.type));
       await new Promise((r) => setTimeout(r, 5));
       return nu;
     },
-    // Som Chrome: windowTypes filtrerer (popup-vinduer m.fl. er ikke 'normal').
-    'windows.getAll': (q) => Object.keys(vinduer).map((w) => ({ id: Number(w), type: typer[w] || 'normal' }))
-      .filter((v) => !q || !q.windowTypes || q.windowTypes.includes(v.type)),
     'tabs.create': (o) => { if (fejl.create) throw new Error('create afvist'); log.push(['create', o.windowId, o.url, o.active]); const id = 900 + log.length; vinduer[o.windowId].push(id); return { id, windowId: o.windowId, url: o.url }; },
-    'tabs.remove': (id) => { log.push(['remove', id]); const w = fanensVindue(id); vinduer[w] = vinduer[w].filter((x) => x !== id); },
+    'tabs.remove': (id) => { if (fejl.haenger === id) { log.push(['remove-haenger', id]); return new Promise(() => {}); } log.push(['remove', id]); const w = fanensVindue(id); vinduer[w] = vinduer[w].filter((x) => x !== id); },
   } });
   return { u, log, luk: (id, faner) => {
     u.hent('sessions').set(9876, { tabIds: new Set(faner), activeTabId: faner[0], groupId: 1, label: 'Claude 1', color: 'blue' });
@@ -114,4 +112,38 @@ test('R174 (Astra L2): en lukning, der fejler, spaerrer ikke de naeste i koeen',
   assert.equal(a.status, 'rejected', 'den foerste fejler (opslaget afvises)');
   assert.equal(b.status, 'fulfilled', `den anden skal gennemfoeres: ${JSON.stringify(b.reason?.message)}`);
   assert.deepEqual(c.log.filter((x) => x[0] === 'remove'), [['remove', 12]]);
+});
+
+// R174 (Opus, MAALT i Chrome 155): chrome.tabs.remove svarer aldrig, mens «Leave site?» staar aaben eller siden er travl. Med
+// én faelles koe stoppede én saadan lukning alle close_tab i alle sessioner.
+test('R174: en lukning, der aldrig svarer, svarer tab-not-closed - og spaerrer ikke andre sessioners lukninger', { timeout: 5000 }, async () => {
+  const vinduer = { 1: [11, 12, 13] };
+  const c = chrome(vinduer, { haenger: 11 });
+  c.u.hent('NAV_FRISTER').luk = 300;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  c.u.hent('sessions').set(9877, { tabIds: new Set([12]), activeTabId: 12, groupId: 2, label: 'Claude 2', color: 'red' });
+  const d = c.u.hent('dispatch');
+  const t0 = Date.now();
+  const a = d(9876, 'close_tab', { tab_id: 11 });
+  await new Promise((r) => setTimeout(r, 20));
+  const b = await d(9877, 'close_tab', { tab_id: 12 });
+  const tB = Date.now() - t0;
+  assert.equal(b.ok, true, JSON.stringify(b));
+  assert.ok(tB < 250, `den anden sessions lukning ventede paa den hængende: ${tB} ms`);
+  const ra = await a;
+  assert.equal(ra.error, 'tab-not-closed', JSON.stringify(ra));
+  assert.ok(c.u.hent('sessions').get(9876).tabIds.has(11), 'en fane, der ikke blev lukket, er stadig sessionens');
+});
+
+test('R174: en fane under lukning taeller ikke som tilbage i vinduet - to lukninger efterlader stadig én tom fane', { timeout: 5000 }, async () => {
+  const vinduer = { 1: [11, 12] };
+  const c = chrome(vinduer, { haenger: 11 });
+  c.u.hent('NAV_FRISTER').luk = 300;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const d = c.u.hent('dispatch');
+  const a = d(9876, 'close_tab', { tab_id: 11 });       // haenger (fanen er stadig i vinduet)
+  await new Promise((r) => setTimeout(r, 30));
+  const b = await d(9876, 'close_tab', { tab_id: 12 });
+  assert.equal(b.kept_window_open, true, `11 er ved at blive lukket, saa 12 er den sidste: ${JSON.stringify(b)}`);
+  await a;
 });
