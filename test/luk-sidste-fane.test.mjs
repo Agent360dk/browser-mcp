@@ -18,6 +18,7 @@ function chrome(vinduer, fejl = {}, typer = {}) {
     // Som Chrome: svaret er vinduet, som det var, da opslaget blev stillet - det kommer lidt senere.
     'tabs.query': async (q) => {
       if (fejl.query) throw new Error('query afvist');
+      if (fejl.foersteQuery && !fejl.brugt) { fejl.brugt = true; throw new Error('query afvist'); }
       const nu = (vinduer[q.windowId] || []).map((id) => ({ id, windowId: q.windowId }));
       await new Promise((r) => setTimeout(r, 5));
       return nu;
@@ -102,4 +103,15 @@ test('R173 (Opus): lukker agenten sin aktive fane, siger svaret, at sessionen nu
   assert.match(r.active_note, /browser_switch_tab/);
   const ikkeAktiv = await chrome({ 1: [11, 12, 13] }).luk(12, [11, 12]);
   assert.equal(ikkeAktiv.active_note, undefined, 'en anden fane end den aktive giver ingen note');
+});
+
+test('R174 (Astra L2): en lukning, der fejler, spaerrer ikke de naeste i koeen', async () => {
+  const fejl = { foersteQuery: true };
+  const c = chrome({ 1: [11, 12, 13] }, fejl);
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const d = c.u.hent('dispatch');
+  const [a, b] = await Promise.allSettled([d(9876, 'close_tab', { tab_id: 11 }), d(9876, 'close_tab', { tab_id: 12 })]);
+  assert.equal(a.status, 'rejected', 'den foerste fejler (opslaget afvises)');
+  assert.equal(b.status, 'fulfilled', `den anden skal gennemfoeres: ${JSON.stringify(b.reason?.message)}`);
+  assert.deepEqual(c.log.filter((x) => x[0] === 'remove'), [['remove', 12]]);
 });

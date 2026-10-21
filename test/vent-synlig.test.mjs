@@ -31,8 +31,12 @@ function lavSide() {
       this.stil = { display: 'block', opacity: '1', overflowX: 'visible', overflowY: 'visible', ...(o.stil || {}) };
       this.r = o.rect || [10, 10, 100, 20];   // [x, y, bredde, hoejde]
       this.selected = !!o.selected; this.multiple = !!o.multiple; this.size = o.size || 0;
+      this.attrs = { ...(o.attrs || {}) };
     }
     closest(sel) { for (let n = this; n && n.nodeType === 1; n = n.parentNode) if (n.tagName === sel.toUpperCase()) return n; return null; }
+    getAttribute(n) { return this.attrs && n in this.attrs ? this.attrs[n] : null; }
+    get options() { return this.kids.filter((k) => k.nodeType === 1 && k.tagName === 'OPTION'); }
+    get selectedIndex() { return this.options.findIndex((o) => o.selected); }
     add(...boern) {
       for (const c of boern) { const n = typeof c === 'string' ? new Tekst(c) : c; n.parentNode = this; this.kids.push(n); }
       return this;
@@ -330,4 +334,30 @@ test('R173 (Opus): en ukendt state afvises - hidden betyder ikke stille «visibl
   const u = indlaesUdvidelse({ svar: { 'tabs.get': (id) => ({ id, url: 'https://side.example/', windowId: 1, active: true }) } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 'Claude 1', color: 'blue' });
   await assert.rejects(u.hent('dispatch')(9876, 'wait', { selector: '#spinner', state: 'hidden', timeout: 500 }), /state must be/);
+});
+
+// ── R174 (Astra, MAALT i side-modellen) ──────────────────────────────────────────────────────────────
+test('R174: en <option> med label viser sin label, ikke sin tekst', () => {
+  const v = side((b, El) => b.add(new El('select', { rect: [10, 10, 200, 30] }).add(
+    new El('option', { rect: [0, 0, 0, 0], selected: true, attrs: { label: 'Pending' } }).add('Saved'))));
+  assert.equal(v(null, 'Saved').synlig, false, 'teksten bag en label vises ikke');
+  assert.equal(v(null, 'Pending').synlig, true, 'labelen staar i feltet');
+  assert.equal(v(null, 'Pending', 'select').synlig, true, 'ogsaa for select:text(Pending)');
+});
+
+test('R174: tag-vejen bruger den synlige tekst - «Sa<span skjult>X</span>ved» er button:text(Saved)', () => {
+  const v = side((b, El) => b.add(new El('button').add('Sa', new El('span', { stil: { display: 'none' } }).add('X'), 'ved')));
+  assert.equal(v(null, 'Saved').synlig, true);
+  assert.equal(v(null, 'Saved', 'button').synlig, true, 'tag-vejen og den frie vej skal svare ens');
+});
+
+test('R174: synlig tekst direkte i en shadow root er ogsaa paa siden', () => {
+  const v = side((b, El) => { const h = new El('div'); b.add(h); h.attachShadow().add('Gemt'); });
+  assert.deepEqual(v(null, 'Gemt'), { synlig: true, paaSiden: true });
+});
+
+test('R174 (Astra W4): den synlige tekst laeses i dokumentets raekkefoelge', () => {
+  const v = side((b, El) => b.add(new El('p').add(new El('b').add('Sa'), new El('i').add('ved'))));
+  assert.equal(v(null, 'Saved').synlig, true);
+  assert.equal(v(null, 'vedSa').synlig, false);
 });

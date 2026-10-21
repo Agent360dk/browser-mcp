@@ -46,6 +46,9 @@ async function vaelg({ faner = {}, session = {}, aktivér = undefined } = {}) {
   };
 
   const src = [
+    // R174: skift af den aktive fane gaar gennem skiftAktiv (afvaebner en armering paa den gamle fane).
+    'const armeredeDialoger = new Map(); const afvaebnDialog = () => {};',
+    udklip('skiftAktiv'),
     udklip('getSessionTab'),
     aktivér === undefined ? 'return getSessionTab(9877);' : `return getSessionTab(9877, ${aktivér});`,
   ].join('\n');

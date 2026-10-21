@@ -503,7 +503,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
   if (!target && blankFallback) {
     sessionUroert();
     target = blankFallback;
-    session.activeTabId = target.id;
+    skiftAktiv(session, target.id);
     persistSessions();
   }
 
@@ -518,7 +518,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     // R111: feltet fortaeller navigate, at adressen ER sendt (fanen blev oprettet med den).
     if (opretMed) target.oprettetMedUrl = true;
     await addTabToSession(port, target.id);
-    session.activeTabId = target.id;
+    skiftAktiv(session, target.id);
     persistSessions();
     // fall through to the activate branch (SC-3: previously returned early, skipping it)
   }
@@ -940,6 +940,17 @@ function husketPlads(pid, nummer) {
 // den naeste dialog paa fanen. `wait: true` giver den gamle blokerende adfaerd for
 // de tilfaelde hvor dialogen allerede er undervejs.
 const armeredeDialoger = new Map();
+// R174 (Astra, MAALT): armeringen fulgte kun fanen i det oejeblik, dialogen kom - et skift vaek og tilbage slap igennem. Et
+// skift af sessionens aktive fane afvaebner nu straks den gamle fanes armering. Samme skift glemmer en OAuth-tilbagevenden
+// (R173), medmindre det er popuppen selv, der bliver aktiv. ALLE skift af sessionens aktive fane til en fane gaar herigennem.
+function skiftAktiv(session, id) {
+  const gammel = session.activeTabId;
+  if (gammel != null && gammel !== id && armeredeDialoger.has(gammel)) {
+    afvaebnDialog(gammel, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
+  }
+  if (session.tilbageTil && id !== session.tilbageTil.popup) session.tilbageTil = null;
+  session.activeTabId = id;
+}
 // R173 (Opus, MAALT i egen session): mellemrummet mellem to af en agents kald var 20-108 s - 10 s brod forloebet «armer, klik».
 // Beskyttelsen ligger i typefiltret, afvaebningen ved side- og faneskift og loftet; standarden er derfor loftet.
 const DIALOG_ARMERING = { standard: 30000, loft: 30000 };
@@ -1048,8 +1059,10 @@ function dialogKoordinator(source, method, p) {
   } else if (method === 'Page.frameNavigated') {
     // R173 (Astra, MAALT): efter et dokumentskift i fanen svarede armeringen den nye sides confirm (og med leave_page dens
     // «Leave site?»). Samtykket gjaldt den side, agenten saa - et nyt dokument i hovedrammen afvaebner.
-    if (p && p.frame && !p.frame.parentId && armeredeDialoger.has(tabId)) {
-      afvaebnDialog(tabId, 'the page changed (a new document loaded) before a dialog appeared, so the arming was dropped');
+    if (p && p.frame && !p.frame.parentId) {
+      const s = dialogFane(tabId);
+      s.dokGen = (s.dokGen || 0) + 1;
+      if (armeredeDialoger.has(tabId)) afvaebnDialog(tabId, 'the page changed (a new document loaded) before a dialog appeared, so the arming was dropped');
     }
   } else if (method === 'Page.javascriptDialogClosed') {
     const s = dialogFaner.get(tabId);
@@ -1068,6 +1081,17 @@ function dialogKoordinator(source, method, p) {
   }
 }
 chrome.debugger.onEvent.addListener(dialogKoordinator);
+
+// R174 (Astra, MAALT): en URL-sammenligning baerer ikke dokumentbindingen - samme adresse genindlaest, eller en ny adresse
+// efter det sidste opslag, slap igennem. Hver fane har en dokumentgeneration, som taelles op, naar Chrome begynder at indlaese
+// et dokument i den. En armering gaelder kun i den generation, den blev sat i, og den afvaebnes straks. Fejler reglen, er det
+// i den sikre retning (en armering droppes, en dialog besvares ikke) - aldrig et svar paa en side, agenten ikke saa.
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!info || info.status !== 'loading') return;
+  const s = dialogFane(tabId);
+  s.dokGen = (s.dokGen || 0) + 1;
+  if (armeredeDialoger.has(tabId)) afvaebnDialog(tabId, 'the page changed (a new document started loading) before a dialog appeared, so the arming was dropped');
+});
 
 // Debuggeren faldt af, eller fanen lukkede: en boks, vi kendte, er nu ukendt. Intet sendes igen; Page.enable-porten
 // afgoer naeste kald (en aaben boks faar den til at haenge, maalt F4).
@@ -1365,7 +1389,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar, navSlut) {
 
   // Bevist: samme svar som foer, nu med ok:true og - hvis en boks blev besvaret undervejs - hvem der svarede.
   s.pendingUrl = null;
-  session.activeTabId = tab.id;
+  skiftAktiv(session, tab.id);
   persistSessions();
   // R109: fanen, som beviset saa den - intet nyt, ubegraenset opslag efter fristen.
   const updated = bevisFane;
@@ -1434,10 +1458,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     session.tabIds.delete(tabId);
     // R173: en OAuth-popup, udvidelsen selv gjorde aktiv, lukkede sig selv - tilbage til aabneren, hvis den stadig er
     // sessionens og popuppen stadig var den aktive fane (agenten havde ikke selv skiftet).
+    // R174 (Astra): ikke naar agenten selv lukkede popuppen - saa gaelder no-active-tab som ved enhver anden af dens lukninger.
     if (session.tilbageTil && session.tilbageTil.popup === tabId) {
       const aabner = session.tilbageTil.aabner;
       session.tilbageTil = null;
-      if (session.activeTabId === tabId && session.tabIds.has(aabner)) { session.activeTabId = aabner; persistSessions(); }
+      if (!lukketAfAgenten && session.activeTabId === tabId && session.tabIds.has(aabner)) { skiftAktiv(session, aabner); persistSessions(); }
     }
     if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
@@ -3138,10 +3163,20 @@ function ventMaal(sel, tekst, wantTag) {
         ejer = ejer.parentElement;
       }
       if (ejer.nodeName === 'OPTION') {
+        // R174 (Astra, MAALT i modellen): en ikke-tom label er det, der vises (HTML-standarden) - ikke optionens tekst.
+        if (ejer.getAttribute && ejer.getAttribute('label')) continue;
         const valg = ejer.closest ? ejer.closest('select') : null;
         if (valg && !valg.multiple && !(valg.size > 1) && ejer.selected) ejer = valg;
       }
       if (vises(ejer)) ud += t.data;
+    }
+    // ... og den valgte options label staar i den lukkede <select>.
+    const valgte = [...(rod.nodeName === 'SELECT' ? [rod] : []), ...(rod.querySelectorAll ? rod.querySelectorAll('select') : [])];
+    for (const v of valgte) {
+      if (v.multiple || v.size > 1) continue;
+      const o = v.options && v.options[v.selectedIndex];
+      const etiket = o && o.getAttribute && o.getAttribute('label');
+      if (etiket && vises(v)) ud += '\n' + etiket + '\n';
     }
     return ud;
   };
@@ -3151,9 +3186,14 @@ function ventMaal(sel, tekst, wantTag) {
     const m = alle.filter((el) => (!tag || el.tagName === tag) && !IKKE_VIST.has(el.tagName)
       && (el.textContent || '').includes(tekst) && vistTekst(el).includes(tekst));
     // Uden tag: den synlige tekst i dokumentet og i hver shadow root (tekst over en skyggegraense laeses ikke som én).
+    // Med tag: den synlige tekst i hvert element af den slags. R174 (Astra): her filtreredes foerst paa den raa textContent,
+    // saa «Sa<span skjult>X</span>ved» blev fundet som text=Saved, men overset som button:text(Saved).
     const roedder = [document, ...alle.filter((el) => el.shadowRoot).map((el) => el.shadowRoot)];
-    const synlig = tag ? m.some((el) => synligTekst(el).includes(tekst)) : roedder.some((rod) => synligTekst(rod).includes(tekst));
-    return { synlig, paaSiden: m.length > 0 };
+    const synlig = tag
+      ? alle.some((el) => el.tagName === tag && synligTekst(el).includes(tekst))
+      : roedder.some((rod) => synligTekst(rod).includes(tekst));
+    // Det, der kan ses, findes ogsaa paa siden (R174, Astra: tekst direkte i en shadow root gav synlig:true, paaSiden:false).
+    return { synlig, paaSiden: m.length > 0 || synlig };
   }
   const matches = alleDybt(document, sel, []);
   return { synlig: matches.some(synligt), paaSiden: matches.length > 0 };
@@ -4569,7 +4609,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
       for (const [port, session] of sessions) {
         if (tab.openerTabId && session.tabIds.has(tab.openerTabId)) {
           await addTabToSession(port, tab.id);
-          session.activeTabId = tab.id;
+          skiftAktiv(session, tab.id);
           // R173 (Opus, MAALT i modellen): skiftet til popuppen er udvidelsens eget. Lukker popuppen sig selv (et vellykket
           // login), gaar sessionen tilbage til aabneren - se onRemoved. Uden det stod agenten uden aktiv fane (no-active-tab).
           session.tilbageTil = { popup: tab.id, aabner: tab.openerTabId };
@@ -6093,7 +6133,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           tab = vindue.tabs && vindue.tabs[0];
           if (!tab) return { ok: false, error: 'eget_vindue: Chrome created a window with no tab' };
           await addTabToSession(port, tab.id, { gruppe: false });
-          getSession(port).activeTabId = tab.id;
+          skiftAktiv(getSession(port), tab.id);
           persistSessions();
 
           // ⛔ MAALT 21/9 mod rigtig Chrome: her stod `placeret: { left: spec.left }` og
@@ -6221,7 +6261,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       });
 
       // Set as active tab for this session
-      session.activeTabId = tab.id;
+      skiftAktiv(session, tab.id);
       persistSessions();
       // R112 (Astra 1, Opus N-a): et EKSPLICIT tjek af fristen foer succes - et bevis, der vandt over en udloebet timer (fordi
       // sessionsarbejdet brugte fristen), er stadig efter loftet.
@@ -7757,7 +7797,15 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const levetid = Math.min(oensket, DIALOG_ARMERING.loft);
       const forlad = params.leave_page === true;
       const s = dialogFane(tab.id);
-      const svarAaben = (boks) => besvarAabenBoks(tab.id, boks, action, promptText, forlad);
+      // R174 (Astra, MAALT): et nyt dokument, der aabnede en confirm, mens dette kald ventede paa tilknytning og port, blev
+      // besvaret direkte med accept. Dokumentgenerationen fra kaldets start afgoer: er den skiftet, svares og armeres der ikke.
+      const startGen = s.dokGen || 0;
+      const sideSkiftet = () => (s.dokGen || 0) !== startGen;
+      const sideSvar = (nu) => ({ ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
+        note: 'The page in this tab changed while this call waited, so nothing was answered or armed. Read the tab, then ' +
+          'arm again right before the action that opens the dialog.' });
+      const foerKendt = s.boks;   // en boks, der stod aaben, da kaldet kom, hoerer til den side, agenten saa
+      const svarAaben = (boks) => (boks !== foerKendt && sideSkiftet() ? sideSvar(null) : besvarAabenBoks(tab.id, boks, action, promptText, forlad));
 
       // #69 (1.30.3): en SET boks, der staar aaben, besvares straks gennem koordinatoren - uden Page.enable, som haenger,
       // mens en boks staar aaben (maalt F4). Dommen kommer fra Closed.
@@ -7795,11 +7843,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       // afvaebne). Skiftede adressen imens, armeres der ikke.
       const nu = await chrome.tabs.get(tab.id).catch(() => null);
       const uden = (u) => String(u || '').split('#')[0];
-      if (!nu || uden(nu.url) !== uden(tab.url)) {
-        return { ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
-          note: 'The page in this tab changed while the arming was being set, so nothing was armed. Read the tab, then arm ' +
-            'again right before the action that opens the dialog.' };
-      }
+      if (!nu || uden(nu.url) !== uden(tab.url) || sideSkiftet()) return sideSvar(nu);
       afvaebnDialog(tab.id, 'a new arming took over this tab');   // kun én ad gangen
 
       let opfyld;
@@ -8409,7 +8453,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           vinduesFokus = false;
         }
       }
-      session.activeTabId = tab.id;
+      skiftAktiv(session, tab.id);
       persistSessions();
       let synlighed = null;
       try {

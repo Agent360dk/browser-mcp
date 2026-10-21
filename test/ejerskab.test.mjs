@@ -305,3 +305,26 @@ test('R173: er aabneren selv lukket, peger sessionen ikke paa en doed fane', asy
   await new Promise((r) => setTimeout(r, 20));
   assert.notEqual(s.activeTabId, 1);
 });
+
+// R174 (Astra, MAALT): tilbagevenden skete ogsaa ved agentens egen close_tab og efter et skift vaek og tilbage.
+test('R174: lukker agenten selv popuppen, gaar sessionen ikke tilbage til aabneren', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  u.hent('agentLukkedeFaner').add(50);
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.notEqual(s.activeTabId, 1);
+});
+
+test('R174: efter et skift vaek fra popuppen og tilbage giver dens lukning ikke aabneren tilbage', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  s.tabIds.add(60);
+  u.hent('skiftAktiv')(s, 60);
+  u.hent('skiftAktiv')(s, 50);
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.notEqual(s.activeTabId, 1, 'agenten har selv styret fanerne siden popuppen kom');
+});

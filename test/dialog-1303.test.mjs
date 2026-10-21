@@ -1514,3 +1514,54 @@ test('R173: med leave_page forlades siden; dismiss bliver - begge besvares strak
   assert.equal(d.ok, true, vis(d));
   assert.deepEqual(nej.svar().map((x) => x[2]), [false]);
 });
+
+// ── R174 (Astra, MAALT): armeringen var ikke bundet til dokument og fane ──────────────────────────────
+test('R174: alle skift af sessionens aktive fane gaar gennem skiftAktiv - ingen sidevej uden om afvaebningen', () => {
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const sideveje = kilde.split('\n').filter((l) => /\.activeTabId = (?!null\b)/.test(l) && !/^\s*session\.activeTabId = id;$/.test(l));
+  assert.deepEqual(sideveje, [], 'en tildeling uden om skiftAktiv kan skifte fane uden at afvaebne');
+});
+
+test('R174: skift vaek og tilbage afvaebner - den gamle fanes naeste alert besvares ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2);
+  m.u.hent('skiftAktiv')(sess, 2);
+  m.u.hent('skiftAktiv')(sess, 1);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'armeringen skal vaere vaek efter skiftet vaek');
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0);
+});
+
+test('R174: et nyt dokument paa samme adresse (genindlaesning) afvaebner', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den genindlaeste sides alert blev besvaret af armeringen fra foer');
+});
+
+test('R174: et nyt dokument, mens armeringen bliver sat, giver page-changed - ogsaa paa samme adresse', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });   // adressen er den samme
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R174: en dialog fra et nyt dokument, der aabnede mens kaldet ventede, besvares ikke', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message: 'Ny side' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
+});

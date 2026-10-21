@@ -122,3 +122,8 @@ test('2.2: click_checkbox vaelger aldrig det usynlige maerkes anchor', async () 
   assert.equal(r.found, true, udtryk[0].slice(0, 200));
   assert.ok(Math.abs(r.x - (20 + 27)) < 30 && r.y > 250, `klikket skal ramme det synlige felt, ikke maerket: ${JSON.stringify(r)}`);
 });
+
+test('R174 (Astra C4): et afkrydsningsfelt, som browserens checkVisibility siger ikke tegnes, er intet fund', () => {
+  const r = side((El) => { const f = new El('iframe', { attrs: { src: ANKER + '&size=normal' } }); f.checkVisibility = () => false; });
+  assert.equal(r.found, false, JSON.stringify(r));
+});
