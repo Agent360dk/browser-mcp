@@ -611,3 +611,47 @@ test('R176: indlejrede rullebokse - den yderste boks afgoer sidens begyndelse', 
   s.body.add(ydre.add(indre.add(new s.El('p', { rect: [20, -480, 285, 18] }).add('Dybt'))));
   assert.equal(s.koer(KILDE, null, 'Dybt').synlig, true, 'man ruller den ydre boks op til den indre');
 });
+
+// ── R177 (Astra, MAALT i modellen): indlejrede rullebokse ───────────────────────────────────────────
+test('R177: tekst i en rullet indre rulleboks kan naas - den ydre boks maaler den indre boks, ikke teksten', () => {
+  const s = lavSide();
+  const ydre = boks(s, {}, [20, 100, 300, 400]);
+  const indre = boks(s, {}, [20, 110, 300, 200], { scrollTop: 500 });
+  s.body.add(ydre.add(indre.add(new s.El('p', { rect: [20, -390, 285, 18] }).add('Indre'))));
+  assert.equal(s.koer(KILDE, null, 'Indre').synlig, true);
+  const k = lavSide();
+  const klip = new k.El('div', { stil: { overflowX: 'hidden', overflowY: 'hidden' }, rect: [0, 0, 400, 300] });
+  k.body.add(klip.add(boks(k, {}, [10, 10, 300, 200], { scrollTop: 600 }).add(new k.El('p', { rect: [10, -500, 285, 18] }).add('Klippet'))));
+  assert.equal(k.koer(KILDE, null, 'Klippet').synlig, true, 'en afskaerende forfader maaler ogsaa den indre boks');
+});
+
+test('R177: en indre rulleboks foer den ydre boks begyndelse kan ikke naas', () => {
+  const s = lavSide();
+  const ydre = boks(s, {}, [20, 100, 300, 400]);
+  const indre = boks(s, {}, [-9999, 110, 300, 200]);
+  s.body.add(ydre.add(indre.add(new s.El('p', { rect: [-9999, 120, 285, 18] }).add('Udenfor'))));
+  assert.equal(s.koer(KILDE, null, 'Udenfor').synlig, false);
+});
+
+test('R177: en boks, der skaerer vandret og ruller lodret, skaerer stadig sit eget indhold vandret', () => {
+  const s = lavSide();
+  s.body.add(boks(s, { overflowX: 'hidden' }, [100, 100, 300, 200]).add(new s.El('span', { rect: [600, 150, 100, 18] }).add('Vandret')));
+  assert.equal(s.koer(KILDE, null, 'Vandret').synlig, false);
+});
+
+test('R177 (Astra, MAALT i Chrome): et fixed element under en transform-forfader slipper ud af en statisk rulleboks', () => {
+  const s = lavSide();
+  const transform = new s.El('div', { stil: { transform: 'translateZ(0)' }, rect: [0, 0, 780, 400] });
+  const rulle = boks(s, {}, [100, 200, 400, 100]);
+  s.body.add(transform.add(rulle.add(new s.El('div', { stil: { position: 'fixed' }, offsetParent: transform, rect: [21, 21, 180, 30] }).add('Fast'))));
+  assert.equal(s.koer(KILDE, null, 'Fast').synlig, true);
+});
+
+test('R177: et relativt eller sticky element ruller med sin boks - det slipper ikke ud', () => {
+  for (const position of ['relative', 'sticky']) {
+    const s = lavSide();
+    // Til venstre for boksens begyndelse, men inde paa siden - kun boksens regel kan afvise det.
+    s.body.add(boks(s, {}, [400, 20, 300, 200]).add(new s.El('a', { stil: { position }, offsetParent: s.body, rect: [100, 50, 100, 18] }).add('Spring')));
+    assert.equal(s.koer(KILDE, null, 'Spring').synlig, false, position);
+  }
+});

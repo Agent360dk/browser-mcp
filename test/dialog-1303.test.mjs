@@ -46,7 +46,10 @@ function model(opt = {}) {
     fjernedeFaner: new Set(), nyGetMs: 0,
     // R176: loaderNr (hovedrammens dokument; et nyt dokument faar et nyt), traeMs (Page.getFrameTree svarer langsomt),
     // traeUdenId (svaret mangler loaderId).
-    loaderNr: 1, traeMs: 0, traeUdenId: false, ...opt };
+    loaderNr: 1, traeMs: 0, traeUdenId: false,
+    // R177: rammeId (hovedrammens id - en prerender-aktivering giver et nyt), boern (iframes), dialogRamme (rammen, en dialog
+    // kommer fra; ellers hovedrammen).
+    rammeId: 'top', boern: [], dialogRamme: null, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -60,7 +63,8 @@ function model(opt = {}) {
   };
   const aabnBoks = (url) => {
     t.boks = { navs: [url], set: t.pageOn, type: t.boksType };
-    if (t.boks.set) emit('Page.javascriptDialogOpening', { type: t.boksType, message: t.boksType === 'beforeunload' ? '' : 'Hej' });
+    if (t.boks.set) emit('Page.javascriptDialogOpening', { type: t.boksType, message: t.boksType === 'beforeunload' ? '' : 'Hej',
+      frameId: t.dialogRamme || t.rammeId });
   };
   const forlad = (url) => {
     if (t.boks) return new Promise((r) => t.boks.navs.push([url, r]));
@@ -163,7 +167,8 @@ function model(opt = {}) {
         return sov(t.lukMs).then(() => { if (t.boks === b) luk(p.accept); return {}; });
       }
       if (metode === 'Page.getFrameTree' && !t.boks) {
-        const r = () => ({ frameTree: { frame: { id: 'top', ...(t.traeUdenId ? {} : { loaderId: 'L' + t.loaderNr }) } } });
+        const r = () => ({ frameTree: { frame: { id: t.rammeId, ...(t.traeUdenId ? {} : { loaderId: 'L' + t.loaderNr }) },
+          childFrames: t.boern.map((id) => ({ frame: { id, parentId: t.rammeId } })) } });
         const ms = t.traeKoe && t.traeKoe.length ? t.traeKoe.shift() : t.traeMs;   // traeKoe: ventetid pr. kald, i raekkefoelge
         return ms ? sov(ms).then(r) : r();
       }
@@ -1708,4 +1713,50 @@ test('R176: en armering, der forbruges eller afloeses mens Chrome svarer, roeres
   const ny = m.u.hent('armeredeDialoger').get(1);
   await sov(300);
   assert.equal(m.u.hent('armeredeDialoger').get(1), ny, 'det gamle tjek afvaebnede den nye armering');
+});
+
+// ── R177 (Astra, MAALT i modellen): kapløbet mellem den nye sides dialog og Chromes svar ─────────────────
+// MAALT i Chrome 155 22/10: mens en dialog staar aaben, svarer Page.getFrameTree ikke; dialogen baerer sin rammes frameId.
+test('R177: den nye sides confirm, der aabner foer Chromes svar paa dokumentet, besvares ikke (ny hovedramme)', async () => {
+  const m = model({ boksType: 'confirm' });
+  const r0 = await m.dialog({ action: 'accept' });
+  assert.equal(r0.armed, true, vis(r0));
+  m.t.rammeId = 'forhaand'; m.t.loaderNr++;                  // aktiveringen: ny hovedramme, kun «loading»
+  m.t.traeKoe = [300];                                        // Chromes svar kommer foerst efter dialogen
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: 'https://forhaand.example/', status: 'loading' });
+  m.sidenNavigerer('https://forhaand.example/');              // den nye side spoerger straks
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R177: en iframes dialog paa siden, der blev armeret, besvares stadig', async () => {
+  const m = model({ boksType: 'confirm', boern: ['annonce'] });
+  await m.dialog({ action: 'accept' });
+  m.t.dialogRamme = 'annonce';
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R177 (Astra 3A-6): uden dokument-id ved armeringen afvaebner «loading» straks - en dialog lige efter besvares ikke', async () => {
+  const m = model({ boksType: 'confirm', traeUdenId: true });
+  const r0 = await m.dialog({ action: 'accept' });
+  assert.equal(r0.armed, true, vis(r0));
+  m.t.traeMs = 200;
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message: 'Ny side', frameId: 'top' });
+  await sov(20);
+  assert.equal(m.svar().length, 0, 'dialogen kom, mens tjekket ventede, og blev besvaret');
+});
+
+test('R177 (Astra): et nyt dokument, mens armeringen spoerger Chrome om dokumentet, giver page-changed', async () => {
+  const m = model({ boksType: 'confirm', traeKoe: [150] });
+  const p = m.dialog({ action: 'accept' });
+  for (let i = 0; i < 100 && !m.log.some((x) => x[0] === 'cdp' && x[1] === 'Page.getFrameTree'); i++) await sov(2);
+  m.t.loaderNr++;
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
 });
