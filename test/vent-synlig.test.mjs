@@ -77,10 +77,11 @@ function lavSide() {
     },
   };
   const getComputedStyle = (el) => ({ ...el.stil, visibility: synlighed(el) });
+  const vindue = { scrollX: 0, scrollY: 0 };
   const koer = (kilde, sel, tekst, tag = null) => new Function('document', 'window', 'getComputedStyle', 'NodeFilter',
     `return (${kilde})(${JSON.stringify(sel)}, ${JSON.stringify(tekst)}, ${JSON.stringify(tag)});`)(
-    document, { scrollX: 0, scrollY: 0 }, getComputedStyle, { SHOW_TEXT: 4 });
-  return { El, Tekst, body, koer };
+    document, vindue, getComputedStyle, { SHOW_TEXT: 4 });
+  return { El, Tekst, body, koer, vindue };
 }
 
 const KILDE = indlaesUdvidelse({ svar: {} }).hent('ventMaal').toString();
@@ -265,4 +266,27 @@ test('R173: tekst direkte i en shadow root (uden element om sig) taeller med sin
   assert.equal(v(null, 'Gemt').synlig, true);
   const skjult = side((b, El) => { const h = new El('div', { stil: { opacity: '0' } }); b.add(h); h.attachShadow().add('Gemt'); });
   assert.equal(skjult(null, 'Gemt').synlig, false);
+});
+
+test('R173 (Opus V2): en boks paa 100 x 1 eller 1 x 100 px er skjult - begge maal skal vaere mindst 2 px', () => {
+  for (const rect of [[10, 10, 100, 1], [10, 10, 1, 100]]) {
+    const v = side((b, El) => b.add(new El('p', { rect }).add('Gemt')));
+    assert.equal(v(null, 'Gemt').synlig, false, JSON.stringify(rect));
+  }
+});
+
+test('R173 (Opus V6): en tekst over vinduet paa en rullet side er synlig - kun det, der ligger foran sidens begyndelse, er skjult', () => {
+  const s = lavSide();
+  s.vindue.scrollY = 1000;                               // siden er rullet 1000 px ned
+  s.body.add(new s.El('p', { rect: [10, -500, 100, 20] }).add('Gemt'));    // 500 px nede paa siden, over vinduet
+  assert.equal(s.koer(KILDE, null, 'Gemt').synlig, true, 'teksten staar paa siden - man ruller bare op');
+  const t = lavSide();
+  t.vindue.scrollY = 1000;
+  t.body.add(new t.El('p', { rect: [10, -1500, 100, 20] }).add('Gemt'));   // foran sidens begyndelse
+  assert.equal(t.koer(KILDE, null, 'Gemt').synlig, false);
+});
+
+test('R173 (Opus V8): visibility:collapse er skjult', () => {
+  const v = side((b, El) => b.add(new El('p', { stil: { visibility: 'collapse' } }).add('Gemt')));
+  assert.deepEqual(v(null, 'Gemt'), { synlig: false, paaSiden: true });
 });
