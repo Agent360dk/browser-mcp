@@ -1309,6 +1309,11 @@ test('serveren: navigate- og dialogfejl er isError:true, et bevist ok:true er de
   assert.equal(igang.isError, true, vis(igang));
   const skiftet = await kald('browser_navigate', { ok: false, error: 'session-changed', sent: false });
   assert.equal(skiftet.isError, true, `session-changed er en fejl for klienten (R113): ${vis(skiftet)}`);
+  // 1.33 / R173 (Opus F5: overlevede): de to nye fejlkoder skal ogsaa vaere fejl for klienten.
+  const ingenAktiv = await kald('browser_navigate', { ok: false, error: 'no-active-tab', sent: false });
+  assert.equal(ingenAktiv.isError, true, `no-active-tab er en fejl for klienten: ${vis(ingenAktiv)}`);
+  const sideSkiftet = await kald('browser_handle_dialog', { ok: false, error: 'page-changed', armed: false });
+  assert.equal(sideSkiftet.isError, true, `page-changed er en fejl for klienten: ${vis(sideSkiftet)}`);
   const ok = await kald('browser_navigate', { ok: true, url: NY, tab_id: 1 });
   assert.notEqual(ok.isError, true, vis(ok));
 });
