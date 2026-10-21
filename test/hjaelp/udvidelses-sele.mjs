@@ -100,7 +100,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       onUpdated: haendelse('tabs.onUpdated'),
     },
     tabGroups: { update: kald('tabGroups.update'), query: kald('tabGroups.query') },
-    windows: { update: kald('windows.update'), get: kald('windows.get'), getLastFocused: kald('windows.getLastFocused'), create: kald('windows.create') },
+    windows: { update: kald('windows.update'), get: kald('windows.get'), getLastFocused: kald('windows.getLastFocused'), create: kald('windows.create'), getAll: kald('windows.getAll') },
     debugger: {
       attach: kald('debugger.attach'), detach: kald('debugger.detach'),
       sendCommand: kald('debugger.sendCommand'), getTargets: kald('debugger.getTargets'),

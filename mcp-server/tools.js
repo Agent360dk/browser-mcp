@@ -423,7 +423,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_close_tab',
-    description: 'Close a browser tab by ID. Only tabs owned by the current session can be closed.',
+    description: 'Close a browser tab by ID. Only tabs owned by the current session can be closed. If it is the last tab in Chrome\'s last window, an empty tab is left in that window (kept_window_open: true), because closing the window would close Chrome and disconnect the extension.',
     inputSchema: {
       type: 'object',
       properties: {

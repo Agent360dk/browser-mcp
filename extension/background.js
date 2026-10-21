@@ -8345,12 +8345,29 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }
       // Maerk lukningen som agentens egen. Ellers laeser onRemoved den tomme session som
       // "brugeren er faerdig" og lukker serveren ned midt i samtalen (MAALT 22/8).
+      // 1.33 (privat rapport 3.1, MAALT paa 1.30.1): var fanen den sidste i Chromes sidste vindue, lukkede vinduet - og paa
+      // Windows og Linux hele Chrome, saa naeste kald fik «extension not connected». Nu bliver en tom fane staaende i vinduet,
+      // og svaret siger det. Lukningen afvises ikke: serveren lukker selv en partitions faner gennem close_tab.
+      let holdtAaben = false;
+      try {
+        const fane = await chrome.tabs.get(tabId);
+        const iVinduet = await chrome.tabs.query({ windowId: fane.windowId });
+        if (iVinduet.length <= 1) {
+          const vinduer = await chrome.windows.getAll({ windowTypes: ['normal'] });
+          if (vinduer.length <= 1) {
+            await chrome.tabs.create({ windowId: fane.windowId, url: 'about:blank', active: false });
+            holdtAaben = true;
+          }
+        }
+      } catch {}   // findes fanen ikke, svarer chrome.tabs.remove nedenfor med Chromes egen fejl
       agentLukkedeFaner.add(tabId);
       await chrome.tabs.remove(tabId);
       session.tabIds.delete(tabId);
       if (session.activeTabId === tabId) session.activeTabId = null;
       persistSessions();
-      return { ok: true, remaining: session.tabIds.size };
+      return { ok: true, remaining: session.tabIds.size, ...(holdtAaben ? { kept_window_open: true,
+        note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would have ' +
+          'closed Chrome and disconnected the extension.' } : {}) };
     }
 
     case 'solve_captcha': {
