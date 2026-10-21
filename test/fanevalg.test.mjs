@@ -141,6 +141,18 @@ test('privat rapport 2.4: er den aktive fane sessionens egen about:blank, bruges
   assert.equal(log.oprettet.length, 0);
 });
 
+test('R173: uden aktiv fane og med baade en tom fane og en fane med indhold gaettes der heller ikke', async () => {
+  // Astra (R173, MAALT): en mutant, der lod den tomme fane vinde over fejlen, overlevede - kombinationen manglede.
+  const { tab, fejl, session, log } = await vaelg({
+    faner: { 12: 'about:blank', 33: 'https://example.org/arbejde' },
+    session: { activeTabId: null, tabIds: [12, 33] },
+  });
+  assert.equal(tab, null);
+  assert.ok(fejl && fejl.ingenAktiv, 'den tomme fane maa ikke skjule, at der er en fane med indhold at vaelge mellem');
+  assert.equal(session.activeTabId, null);
+  assert.equal(log.oprettet.length, 0);
+});
+
 test('uden aktiv fane genbruges en egen tom fane, naar sessionen ikke har andre (FIX-4)', async () => {
   const { tab, fejl, session, log } = await vaelg({
     faner: { 12: 'about:blank' },

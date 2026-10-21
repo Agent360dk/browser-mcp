@@ -196,5 +196,13 @@ test('1.33: et billede, der findes, overskrives kun med overwrite: true', { time
   assert.equal(readFileSync(join(arbejd, 'inde', 'gammel.png'), 'utf8'), 'GAMMELT-BILLEDE');
   const ja = await skaermbillede('inde/gammel.png', arbejd, { overwrite: true });
   assert.match(JSON.stringify(ja), /successfully saved/, JSON.stringify(ja).slice(0, 200));
-  assert.notEqual(readFileSync(join(arbejd, 'inde', 'gammel.png'), 'utf8'), 'GAMMELT-BILLEDE');
+  // R173 (Astra): ogsaa de skrevne bytes - ikke kun at filen aendrede sig.
+  assert.deepEqual(readFileSync(join(arbejd, 'inde', 'gammel.png')), Buffer.from(PNG, 'base64'));
+});
+
+test('R173: overwrite skal vaere true - en sandhedsvaerdi som "yes" erstatter ikke', { timeout: 45000 }, async () => {
+  writeFileSync(join(arbejd, 'inde', 'ja.png'), 'BEHOLD');
+  const svar = await skaermbillede('inde/ja.png', arbejd, { overwrite: 'yes' });
+  assert.match(JSON.stringify(svar), /already exists/, JSON.stringify(svar).slice(0, 200));
+  assert.equal(readFileSync(join(arbejd, 'inde', 'ja.png'), 'utf8'), 'BEHOLD');
 });
