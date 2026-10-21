@@ -42,7 +42,7 @@ let extensionUpdated = false;
 // her bliver de til isError, saa klienten ser dem som fejl.
 const NAV_DIALOG_FEJL = new Set(['navigation-in-progress', 'dialog-open', 'tab-not-responding', 'navigation-failed',
   'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed',
-  'session-changed', 'no-active-tab']);
+  'session-changed', 'no-active-tab', 'page-changed']);
 
 // Spaendet kan flyttes med env - ellers ville en test af port-udsultning skulle
 // beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.

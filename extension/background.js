@@ -1022,7 +1022,12 @@ function dialogKoordinator(source, method, p) {
     // naeste alert/confirm/prompt, og boksen gaar til navigates eget svar (Stay) eller bliver staaende til brugeren.
     // En armeret dismiss (Stay) kan ikke miste noget og svarer som foer.
     const forbeholdt = !!a && boks.type === 'beforeunload' && a.action === 'accept' && a.leave !== true;
-    const gyldig = !!a && !udloebet && !forbeholdt;
+    // R173 (Astra, MAALT): efter switch_tab til en anden fane svarede armeringen stadig den gamle fanes naeste confirm. En
+    // armering gaelder kun, mens fanen er sin sessions aktive fane - ogsaa naar skiftet skete, mens armeringen blev sat.
+    let ejer = null;
+    for (const [, sess] of sessions) if (sess.tabIds.has(tabId)) { ejer = sess; break; }
+    const flyttet = !!a && !!ejer && ejer.activeTabId !== tabId;
+    const gyldig = !!a && !udloebet && !forbeholdt && !flyttet;
     if (gyldig) {
       afvaebnDialog(tabId);   // forbruges - uden grund, for vi svarer selv lige her
       boks.armering = a;
@@ -1032,9 +1037,16 @@ function dialogKoordinator(source, method, p) {
       }, NAV_FRISTER.luk);
     } else {
       if (udloebet) afvaebnDialog(tabId, 'the arming expired before a dialog appeared');
+      else if (flyttet) afvaebnDialog(tabId, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
       if (s.ejer && s.ejer.sent && boks.type === 'beforeunload') dialogSvar(tabId, boks, s.ejer.leave === true, '', 'navigate');
     }
     vaekDialogVentere(s, null);
+  } else if (method === 'Page.frameNavigated') {
+    // R173 (Astra, MAALT): efter et dokumentskift i fanen svarede armeringen den nye sides confirm (og med leave_page dens
+    // «Leave site?»). Samtykket gjaldt den side, agenten saa - et nyt dokument i hovedrammen afvaebner.
+    if (p && p.frame && !p.frame.parentId && armeredeDialoger.has(tabId)) {
+      afvaebnDialog(tabId, 'the page changed (a new document loaded) before a dialog appeared, so the arming was dropped');
+    }
   } else if (method === 'Page.javascriptDialogClosed') {
     const s = dialogFaner.get(tabId);
     const boks = s && s.boks;
@@ -7732,6 +7744,15 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       // Astra R107 (maalt i model): en boks, der aabnede, mens Page.enable ventede, gav armed:true med 0 svar. Tilstanden
       // tjekkes derfor IGEN efter porten, foer der armeres.
       if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      // R173 (Astra): et nyt dokument, mens tilknytningen og porten ventede, ses ikke af afvaebningen (der var intet at
+      // afvaebne). Skiftede adressen imens, armeres der ikke.
+      const nu = await chrome.tabs.get(tab.id).catch(() => null);
+      const uden = (u) => String(u || '').split('#')[0];
+      if (!nu || uden(nu.url) !== uden(tab.url)) {
+        return { ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
+          note: 'The page in this tab changed while the arming was being set, so nothing was armed. Read the tab, then arm ' +
+            'again right before the action that opens the dialog.' };
+      }
       afvaebnDialog(tab.id, 'a new arming took over this tab');   // kun én ad gangen
 
       let opfyld;

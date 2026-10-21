@@ -1420,3 +1420,49 @@ test('1.33 5.9: navigate i den aktive fane faar ingen active-note', async () => 
   assert.equal(r.active, undefined, vis(r));
   assert.equal(r.active_note, undefined);
 });
+
+// R173 (Astra, MAALT): armeringen overlevede dokument- og faneskift og svarede accept paa senere dialoger.
+test('R173: et nyt dokument i hovedrammen afvaebner - den nye sides alert besvares ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const loefte = m.u.hent('dialogLoefter').get(1);
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'top', url: 'https://ny-side.example/' } });
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'armeringen skal vaere vaek efter dokumentskiftet');
+  const r = await loefte;
+  assert.match(String(r.error), /page changed/, vis(r));
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den nye sides alert blev besvaret af den gamle armering');
+});
+
+test('R173: en ny ramme INDE i siden afvaebner ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'barn', parentId: 'top', url: 'https://annonce.example/' } });
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'en iframe, der indlaeses, er ikke et nyt dokument i fanen');
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R173: efter et faneskift i sessionen besvares den gamle fanes dialog ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2); sess.activeTabId = 2;                  // switch_tab til fane 2
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'armeringen svarede paa en fane, sessionen ikke laengere arbejder i');
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'og den skal vaere afvaebnet');
+});
+
+test('R173: skifter adressen, mens armeringen bliver sat, armeres der ikke - page-changed', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.t.url = 'https://anden-side.example/';                  // siden skifter, mens Page.enable venter
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.equal(r.armed, false);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
