@@ -1538,9 +1538,28 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
       }
     }
 
+    // R173 (Opus, MAALT gennem den aegte server): stien blev foerst kontrolleret EFTER optagelsen, og billedet blev smidt vaek
+    // ved afvisning. Navnet og en almindelig fil, der findes, afgoeres nu, foer der tages et billede. Links og hardlinks gaar
+    // videre til sikkerhedstjekket nedenfor. Billedet er altid PNG (udvidelsen laver intet andet), saa kun .png.
+    if (name === 'browser_screenshot' && args && args.path) {
+      const oensket = resolve(process.cwd(), String(args.path));
+      if (!/\.png$/i.test(oensket)) {
+        throw new Error(`path must end in .png ("${args.path}"): a screenshot is PNG data, and it is only saved as a .png file. No screenshot was taken.`);
+      }
+      if (args.overwrite !== true) {
+        let st = null; try { st = lstatSync(oensket); } catch {}
+        if (st && st.isFile() && st.nlink === 1) {
+          throw new Error(`A file already exists at ${oensket}, and no screenshot was taken. Pass overwrite: true to replace it, or ` +
+            'choose another name.');
+        }
+      }
+    }
+
     // extract_list scrolls a container in a loop (up to 300 rounds × wait_ms), so the 30 s
     // default would kill a long mail list mid-walk and report a partial set as complete.
+    // R173 (Opus): wait med en timeout over 30 s ramte serverens frist foer sin egen; fristen foelger nu timeout (hoejst 60 s).
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
+                    method === 'wait' ? Math.max(KALD_FRIST_MS, Math.min(Number(args?.timeout) || 10000, 60000) + 5000) :
                     method === 'solve_captcha' ? 60000 :
                     method === 'extract_list' ? 180000 :
                     AGENTKODE_SERVER.has(method) ? KALD_FRIST_MS + AGENTKODE_MARGEN_MS : KALD_FRIST_MS;
@@ -1603,8 +1622,8 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
         // 1.33 (privat rapport, fund i R172; MAALT af begge bedoemmere paa d002938): stien kunne vaere enhver fil i
         // arbejdsmappen, og package.json og .vscode/tasks.json blev overskrevet med PNG-bytes. Stien kommer fra en model, der
         // laeser fremmede sider. Nu: kun en billedendelse, og en fil, der findes, overskrives kun med overwrite: true.
-        if (!/\.(png|jpe?g|webp)$/i.test(targetPath)) {
-          throw new Error(`path must end in .png, .jpg, .jpeg or .webp ("${args.path}"): a screenshot is only saved as an image file.`);
+        if (!/\.png$/i.test(targetPath)) {
+          throw new Error(`path must end in .png ("${args.path}"): a screenshot is PNG data, and it is only saved as a .png file.`);
         }
         const erstat = args.overwrite === true;
         mkdirSync(dirname(targetPath), { recursive: true });

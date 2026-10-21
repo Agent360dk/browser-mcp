@@ -715,3 +715,9 @@ test('4.1: serverens installationsraad bruger serverens egen version, ikke den n
   assert.doesNotMatch(indexSrc, /npx @agent360\/browser-mcp install/, 'et raad uden version henter den nyeste pakke');
   assert.equal(indexSrc.split('npx @agent360/browser-mcp@${PKG_VERSION} install').length - 1, 3, 'de tre raad (ukendt metode, fix_steps x2)');
 });
+
+// R173 (Opus): wait med en timeout over 30 s ramte serverens frist foer sin egen. Begge ender har nu samme loft paa 60 s.
+test('R173: ventefristen foelger timeout i serveren og har samme loft i udvidelsen', () => {
+  assert.match(indexSrc, /method === 'wait' \? Math\.max\(KALD_FRIST_MS, Math\.min\(Number\(args\?\.timeout\) \|\| 10000, 60000\) \+ 5000\)/);
+  assert.match(caseBlok(bgSrc, 'wait'), /const timeout = Math\.min\(Number\(params\.timeout\) \|\| 10000, 60000\);/);
+});

@@ -58,7 +58,7 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'File path inside the working directory to save the screenshot to (e.g. screenshots/page.png). It must end in .png, .jpg, .jpeg or .webp, and an existing file is not replaced unless overwrite is true.' },
+        path: { type: 'string', description: 'File path inside the working directory to save the screenshot to (e.g. screenshots/page.png). It must end in .png (the screenshot is PNG data), and an existing file is not replaced unless overwrite is true; both are checked before the screenshot is taken.' },
         overwrite: { type: 'boolean', description: 'Replace an existing image file at path (default: false)' },
         bring_to_front: { type: 'boolean', description: 'Raise Chrome in front of the user if its window is covered, and leave it there. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
@@ -172,7 +172,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector or text selector (e.g. "text=Success", "button:text(Next)") to wait for' },
-        timeout: { type: 'number', description: 'Max wait time in ms (default: 10000)' },
+        timeout: { type: 'number', description: 'Max wait time in ms (default: 10000, at most 60000)' },
         state: { type: 'string', enum: ['visible', 'attached'], description: 'visible (default): wait until a match can be seen. attached: wait until a match exists on the page, seen or not.' },
       },
       required: ['selector'],

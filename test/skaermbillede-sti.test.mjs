@@ -47,6 +47,7 @@ after(async () => {
   for (const d of [arbejd, udenfor]) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
+let billederTaget = 0;   // R173: hvor mange skaermbilleder den falske udvidelse blev bedt om
 /** Falsk udvidelse: ringer op til spaendet, hilser, og svarer paa hvert kald. */
 function falskUdvidelse() {
   let stop = false;
@@ -62,6 +63,7 @@ function falskUdvidelse() {
       ws.on('message', (d) => {
         let m; try { m = JSON.parse(d); } catch { return; }
         if (m.id === undefined) return;
+        if (m.method === 'screenshot') billederTaget++;
         const result = m.method === 'screenshot' ? { image: 'data:image/png;base64,' + PNG } : {};
         ws.send(JSON.stringify({ id: m.id, result }));
       });
@@ -182,7 +184,9 @@ test('1.33: en sti uden billedendelse afvises - projektets filer roeres ikke', {
   writeFileSync(join(arbejd, '.vscode', 'tasks.json'), '{"tasks":[]}');
   // R173 (Opus S1): 'billede.png.json' fanger en endelsesregel uden $-anker.
   // R173 (Opus S3): en afvist sti maa heller ikke efterlade en ny mappe ('nymappe/x.json').
-  for (const sti of ['package.json', '.vscode/tasks.json', 'ny.txt', 'billede.png.json', 'nymappe/x.json']) {
+  // R173 (Opus): .jpg/.webp holdt PNG-bytes - billedet er altid PNG, saa kun .png.
+  const foer = billederTaget;
+  for (const sti of ['package.json', '.vscode/tasks.json', 'ny.txt', 'billede.png.json', 'nymappe/x.json', 'foto.jpg', 'foto.webp']) {
     const svar = await skaermbillede(sti);
     assert.match(JSON.stringify(svar), /must end in \.png/, `${sti}: ${JSON.stringify(svar).slice(0, 200)}`);
   }
@@ -191,11 +195,14 @@ test('1.33: en sti uden billedendelse afvises - projektets filer roeres ikke', {
   assert.ok(!existsSync(join(arbejd, 'ny.txt')));
   assert.ok(!existsSync(join(arbejd, 'billede.png.json')));
   assert.ok(!existsSync(join(arbejd, 'nymappe')), 'en afvist sti oprettede en mappe');
+  assert.equal(billederTaget, foer, 'et skaermbillede blev taget, selv om stien blev afvist (R173, Opus)');
 });
 
 test('1.33: et billede, der findes, overskrives kun med overwrite: true', { timeout: 45000 }, async () => {
   writeFileSync(join(arbejd, 'inde', 'gammel.png'), 'GAMMELT-BILLEDE');
+  const foer = billederTaget;
   const nej = await skaermbillede('inde/gammel.png');
+  assert.equal(billederTaget, foer, 'et skaermbillede blev taget til en fil, der findes');
   assert.match(JSON.stringify(nej), /already exists[^"]*Pass overwrite: true/, JSON.stringify(nej).slice(0, 300));
   assert.equal(readFileSync(join(arbejd, 'inde', 'gammel.png'), 'utf8'), 'GAMMELT-BILLEDE');
   const ja = await skaermbillede('inde/gammel.png', arbejd, { overwrite: true });

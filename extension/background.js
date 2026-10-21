@@ -7074,7 +7074,8 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
     case 'wait': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const timeout = params.timeout || 10000;
+      // R173: hoejst 60 s - serveren venter tilsvarende (se index.js).
+      const timeout = Math.min(Number(params.timeout) || 10000, 60000);
       const sel = params.selector;
       // 1.33 (privat rapport 2.1): standard er «synlig»; state: 'attached' venter som foer kun paa, at det findes paa siden.
       // R173 (Opus): en ukendt state (fx Playwrights 'hidden' eller 'detached') betoed stille «visible» - en agent, der ventede
