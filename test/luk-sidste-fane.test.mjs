@@ -119,7 +119,7 @@ test('R174 (Astra L2): en lukning, der fejler, spaerrer ikke de naeste i koeen',
 test('R174: en lukning, der aldrig svarer, svarer tab-not-closed - og spaerrer ikke andre sessioners lukninger', { timeout: 5000 }, async () => {
   const vinduer = { 1: [11, 12, 13] };
   const c = chrome(vinduer, { haenger: 11 });
-  c.u.hent('NAV_FRISTER').luk = 300;
+  c.u.hent('LUK_FANE').ms = 300;
   c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
   c.u.hent('sessions').set(9877, { tabIds: new Set([12]), activeTabId: 12, groupId: 2, label: 'Claude 2', color: 'red' });
   const d = c.u.hent('dispatch');
@@ -138,7 +138,7 @@ test('R174: en lukning, der aldrig svarer, svarer tab-not-closed - og spaerrer i
 test('R174: en fane under lukning taeller ikke som tilbage i vinduet - to lukninger efterlader stadig én tom fane', { timeout: 5000 }, async () => {
   const vinduer = { 1: [11, 12] };
   const c = chrome(vinduer, { haenger: 11 });
-  c.u.hent('NAV_FRISTER').luk = 300;
+  c.u.hent('LUK_FANE').ms = 300;
   c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
   const d = c.u.hent('dispatch');
   const a = d(9876, 'close_tab', { tab_id: 11 });       // haenger (fanen er stadig i vinduet)
@@ -146,4 +146,27 @@ test('R174: en fane under lukning taeller ikke som tilbage i vinduet - to luknin
   const b = await d(9876, 'close_tab', { tab_id: 12 });
   assert.equal(b.kept_window_open, true, `11 er ved at blive lukket, saa 12 er den sidste: ${JSON.stringify(b)}`);
   await a;
+});
+
+// R175 (Opus, MAALT i Chrome): efter tab-not-closed stod fanen «under lukning» for altid.
+test('R175: en fane, der ikke blev lukket, taeller igen - en senere lukning laver ingen unoedig tom fane', { timeout: 5000 }, async () => {
+  const vinduer = { 1: [11, 12] };
+  const c = chrome(vinduer, { haenger: 11 });
+  c.u.hent('LUK_FANE').ms = 200;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const d = c.u.hent('dispatch');
+  const a = await d(9876, 'close_tab', { tab_id: 11 });
+  assert.equal(a.error, 'tab-not-closed', JSON.stringify(a));
+  const b = await d(9876, 'close_tab', { tab_id: 12 });
+  assert.equal(b.kept_window_open, undefined, `fane 11 staar der stadig: ${JSON.stringify(b)}`);
+});
+
+test('R175: tab-not-closed siger det, hvis der allerede blev lavet en tom fane', { timeout: 5000 }, async () => {
+  const c = chrome({ 1: [11] }, { haenger: 11 });
+  c.u.hent('LUK_FANE').ms = 200;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const r = await c.u.hent('dispatch')(9876, 'close_tab', { tab_id: 11 });
+  assert.equal(r.error, 'tab-not-closed');
+  assert.equal(r.kept_window_open, true);
+  assert.match(r.note, /empty tab was already left/);
 });

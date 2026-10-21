@@ -12,9 +12,9 @@ Most of this release answers a private report (thank you), checked item by item 
 silently used another of the session's tabs - `browser_navigate` then loaded the address into a page the user was working
 in. The same happened after the active tab was closed. Now the active blank tab is used, and with no active tab and other
 tabs that have content, the call answers `no-active-tab` (nothing sent, the session's tabs listed) instead of choosing:
-call `browser_switch_tab`, or `browser_navigate` with `new_tab: true`. An OAuth popup that the extension itself made active
-and that closes itself after the login gives the session its opener back; closing the active tab with `browser_close_tab`
-says that there is no active tab now.
+call `browser_switch_tab`, or `browser_navigate` with `new_tab: true`. When a login popup the agent switched to closes
+itself, the session has no active tab: switch back to the tab you came from. Closing the active tab with
+`browser_close_tab` says that there is no active tab now.
 
 **`browser_wait` waits for something you can see.** `found: true` came back for text inside `display:none`,
 `visibility:hidden`, `opacity:0` and off-page elements, and the CSS path accepted `display:none`. Now only visible text
@@ -25,9 +25,10 @@ keeps the old wait for existence (for example a hidden file input before `browse
 error. The page is no longer scrolled while waiting, and the timeout is at most 60 seconds - the server now waits as long.
 
 **`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any dialog,
-"Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, it is dropped when a new
-document starts loading in the tab or the session moves to another tab, and a page that changes while it is being set
-answers `page-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
+"Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, and it is dropped when a new
+document loads in the tab (a reload too - not an address change within the same page, and not a frame) or the session moves
+to another tab. A page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile
+`session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
 (otherwise `leave-page-required`); a dismiss is unchanged.
 
 **Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the

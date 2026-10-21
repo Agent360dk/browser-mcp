@@ -856,6 +856,9 @@ const agentLukkedeFaner = new Set();
 // R173: close_tab-handleren koerer lukningerne én ad gangen gennem denne kaede.
 let fanelukninger = Promise.resolve();
 const fanerUnderLukning = new Set();   // R174: fjernelsen er sendt, Chrome har ikke svaret endnu
+// R175 (Opus): serverens partitionslukning giver hver close_tab 5 s - udvidelsens frist skal ligge inden for, ellers giver
+// serveren op foerst og ser aldrig tab-not-closed.
+const LUK_FANE = { ms: 4000 };
 // Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
@@ -1088,11 +1091,16 @@ chrome.debugger.onEvent.addListener(dialogKoordinator);
 // efter det sidste opslag, slap igennem. Hver fane har en dokumentgeneration, som taelles op, naar Chrome begynder at indlaese
 // et dokument i den. En armering gaelder kun i den generation, den blev sat i, og den afvaebnes straks. Fejler reglen, er det
 // i den sikre retning (en armering droppes, en dialog besvares ikke) - aldrig et svar paa en side, agenten ikke saa.
+// R175 (Opus, MAALT i Chrome 155): «loading» kommer ogsaa ved pushState, replaceState, hash og en iframe, der skifter adresse -
+// ikke kun ved et nyt dokument. Det afvaebnede en armering, saa en confirm efter et SPA-skift stod ubesvaret og klikket hang.
+// «loading» bruges derfor kun til at se, om noget skiftede, mens et handle_dialog-kald koerer (den sikre retning: page-changed).
+// En sat armering afvaebnes af hovedrammens Page.frameNavigated (et nyt dokument, ogsaa en genindlaesning; aldrig et SPA-skift
+// eller en iframe). Opus maalte: «loading» kommer aldrig foer «Leave site?» (0/9), og frameNavigated kommer foer en ny sides
+// straks-confirm (12/12).
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (!info || info.status !== 'loading') return;
   const s = dialogFane(tabId);
   s.dokGen = (s.dokGen || 0) + 1;
-  if (armeredeDialoger.has(tabId)) afvaebnDialog(tabId, 'the page changed (a new document started loading) before a dialog appeared, so the arming was dropped');
 });
 
 // Debuggeren faldt af, eller fanen lukkede: en boks, vi kendte, er nu ukendt. Intet sendes igen; Page.enable-porten
@@ -3121,7 +3129,13 @@ function ventMaal(sel, tekst, wantTag) {
     for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
       const s = getComputedStyle(n);
       const ruller = /(auto|scroll)/.test(s.overflowX + ' ' + s.overflowY);
-      if (n !== el && ruller) rul = true;
+      if (n !== el && ruller) {
+        rul = true;
+        // R175 (Opus, MAALT i Chrome 155): «kan rulles» er ikke «kan naas». Indhold til venstre for eller over en rulleboks'
+        // begyndelse (en menu skubbet ud med translateX(-100%), et link paa left:-9999px) kan aldrig rulles frem.
+        const sb = n.getBoundingClientRect();
+        if (r.right <= sb.left - (n.scrollLeft || 0) || r.bottom <= sb.top - (n.scrollTop || 0)) return false;
+      }
       // R175 (Astra, MAALT i modellen): den YDRE faste ramme overskrev den indre - en fast skuffe uden for vinduet i en synlig,
       // rullebar fast ramme blev «synlig». Den inderste faste boks afgoer: den er placeret efter vinduet, ikke efter rammen.
       if (!fast && s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
@@ -3143,7 +3157,10 @@ function ventMaal(sel, tekst, wantTag) {
     // Vinduets synlige flade er uden rullebjaelke (MAALT i Chrome 155: en skuffe skubbet ud med translateX(100%) stod paa x=1265
     // under en rullebjaelke paa 15 px, og innerWidth paa 1280 regnede den som i vinduet).
     const rod = document.documentElement;
-    const bredde = (rod && rod.clientWidth) || window.innerWidth, hoejde = (rod && rod.clientHeight) || window.innerHeight;
+    // R175 (Opus, MAALT): i quirks-tilstand er documentElement.clientHeight hele dokumentets hoejde (4333 mod 713) - den mindste
+    // af de to er vinduet.
+    const bredde = Math.min(window.innerWidth, (rod && rod.clientWidth) || window.innerWidth);
+    const hoejde = Math.min(window.innerHeight, (rod && rod.clientHeight) || window.innerHeight);
     const iVindue = (b) => b.right > 0 && b.bottom > 0 && b.left < bredde && b.top < hoejde;
     if (fast) return iVindue(r) || (rulVedFast && iVindue(fast.getBoundingClientRect()));
     return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
@@ -8560,11 +8577,15 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const tur = fanelukninger.then(forbered);
       fanelukninger = tur.catch(() => {});
       const { holdtAaben, fjern } = await tur;
-      if (await venteMedFrist(fjern, NAV_FRISTER.luk) === FRIST_UDLOEB) {
-        return { ok: false, error: 'tab-not-closed', tab_id: tabId,
-          note: `Chrome did not close the tab within ${NAV_FRISTER.luk} ms: the page may be asking "Leave site?" (it may hold ` +
-            'unsaved work) or be busy. The close may still happen later. Ask the user (browser_ask_user) to look at the tab; ' +
-            'browser_handle_dialog with action "dismiss" keeps the page.' };
+      if (await venteMedFrist(fjern, LUK_FANE.ms) === FRIST_UDLOEB) {
+        // R175 (Opus, MAALT i Chrome): efter Stay svarer chrome.tabs.remove aldrig - fanen stod saa «under lukning» for altid,
+        // og en senere lukning lavede en unoedig tom fane med en usand note. Fanen er der stadig; den taeller igen.
+        fanerUnderLukning.delete(tabId);
+        return { ok: false, error: 'tab-not-closed', tab_id: tabId, ...(holdtAaben ? { kept_window_open: true } : {}),
+          note: `Chrome did not close the tab within ${LUK_FANE.ms} ms: the page may be asking "Leave site?" (it may hold ` +
+            'unsaved work) or be busy, and the tab is still open. The close may still happen later, if the prompt is answered ' +
+            'with Leave. Ask the user (browser_ask_user) to look at the tab.' +
+            (holdtAaben ? ' An empty tab was already left in the window, because this looked like the last tab.' : '') };
       }
       session.tabIds.delete(tabId);
       const varAktiv = session.activeTabId === tabId;

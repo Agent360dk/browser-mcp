@@ -95,7 +95,7 @@ function lavSide() {
   const koer = (kilde, sel, tekst, tag = null) => new Function('document', 'window', 'getComputedStyle', 'NodeFilter',
     `return (${kilde})(${JSON.stringify(sel)}, ${JSON.stringify(tekst)}, ${JSON.stringify(tag)});`)(
     document, vindue, getComputedStyle, { SHOW_TEXT: 4 });
-  return { El, Tekst, body, koer, vindue };
+  return { El, Tekst, body, koer, vindue, document };
 }
 
 const KILDE = indlaesUdvidelse({ svar: {} }).hent('ventMaal').toString();
@@ -439,4 +439,27 @@ test('R175: en lukket <select>s tekst smelter ikke sammen med naboteksten («Sa[
     new El('option', { rect: [0, 0, 0, 0], selected: true }).add('ve')), 'd')));
   assert.equal(v(null, 'Saved').synlig, false);
   assert.equal(v(null, 've').synlig, true);
+});
+
+// ── R175 (Opus, MAALT i Chrome 155) ──────────────────────────────────────────────────────────────────
+test('R175 (Opus): indhold til venstre for eller over en rullebar fast skals begyndelse er skjult', () => {
+  const menu = lavSide();
+  const skal = new menu.El('div', { stil: { position: 'fixed', overflowX: 'auto', overflowY: 'auto' }, rect: [0, 0, 1265, 800] });
+  menu.body.add(skal.add(new menu.El('nav', { rect: [-300, 0, 300, 800] }).add('Settings')));
+  assert.equal(menu.koer(KILDE, null, 'Settings').synlig, false, 'menuen skubbet ud med translateX(-100%) kan ikke rulles frem');
+  const spring = lavSide();
+  const skal2 = new spring.El('div', { stil: { position: 'fixed', overflowY: 'auto' }, rect: [0, 0, 1265, 800] });
+  spring.body.add(skal2.add(new spring.El('a', { rect: [-9999, 10, 120, 20] }).add('Til indhold')));
+  assert.equal(spring.koer(KILDE, null, 'Til indhold').synlig, false);
+  const nede = lavSide();
+  const skal3 = new nede.El('div', { stil: { position: 'fixed', overflowY: 'auto' }, rect: [0, 0, 1265, 800] });
+  nede.body.add(skal3.add(new nede.El('p', { rect: [10, 2000, 100, 20] }).add('Nede')));
+  assert.equal(nede.koer(KILDE, null, 'Nede').synlig, true, 'under skallens bund kan man rulle til den');
+});
+
+test('R175 (Opus): i quirks-tilstand er vinduet det mindste af innerHeight og documentElement.clientHeight', () => {
+  const s = lavSide();
+  s.document.documentElement = { clientWidth: 1265, clientHeight: 4333 };   // quirks: hele dokumentets hoejde
+  s.body.add(new s.El('div', { stil: { position: 'fixed' }, rect: [10, 1000, 200, 40] }).add('Bundark'));
+  assert.equal(s.koer(KILDE, null, 'Bundark').synlig, false, 'et fast ark under vinduet (800) er ikke synligt');
 });

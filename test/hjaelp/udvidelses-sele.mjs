@@ -193,7 +193,7 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js',
   const loeft = [
     'armeredeDialoger', 'dialogLoefter', 'sessions', 'debuggerAttached',
     'agentLukkedeFaner', 'SELECT_ALL_MODS', 'CDP_CHAR_CODES', 'RETRYABLE_CDP_METHODS',
-    'pendingAsks', 'NAV_FRISTER', 'dialogFaner', 'AGENTKODE_FRIST',
+    'pendingAsks', 'NAV_FRISTER', 'dialogFaner', 'AGENTKODE_FRIST', 'LUK_FANE',
   ];
   const hale = '\n;' + loeft.map((n) => `try { globalThis.__t_${n} = ${n}; } catch (e) {}`).join('\n');
 

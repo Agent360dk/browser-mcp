@@ -1538,7 +1538,8 @@ test('R174: skift vaek og tilbage afvaebner - den gamle fanes naeste alert besva
 test('R174: et nyt dokument paa samme adresse (genindlaesning) afvaebner', async () => {
   const m = model({ boksType: 'alert' });
   await m.dialog({ action: 'accept' });
-  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  // R175: en genindlaesning giver hovedrammens frameNavigated (MAALT i Chrome) - det er den, der afvaebner en sat armering.
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'top', url: GAMMEL } });
   assert.ok(!m.u.hent('armeredeDialoger').has(1));
   m.sidenNavigerer('https://alert.example/');
   await sov(80);
@@ -1604,4 +1605,15 @@ test('R175: et skift vaek og tilbage, mens Page.enable venter, giver session-cha
   m.sidenNavigerer('https://alert.example/');
   await sov(80);
   assert.equal(m.svar().length, 0);
+});
+
+// R175 (Opus, MAALT i Chrome 155): «loading» kommer ogsaa ved pushState/replaceState/hash og en iframe, der skifter adresse.
+test('R175: et «loading» uden nyt dokument (SPA-skift, iframe) afvaebner ikke en sat armering', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL + '#ny', status: 'loading' });
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'et SPA-skift er ikke et nyt dokument');
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1, 'alerten efter SPA-skiftet skal besvares');
 });
