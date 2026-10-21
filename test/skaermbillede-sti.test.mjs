@@ -72,7 +72,7 @@ function falskUdvidelse() {
   return () => { stop = true; };
 }
 
-function skaermbillede(sti, cwd = arbejd) {
+function skaermbillede(sti, cwd = arbejd, ekstra = {}) {
   const p = spawn(process.execPath, [SRV], { cwd, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) } });
   boern.push(p); p.stderr.on('data', () => {});
@@ -91,7 +91,7 @@ function skaermbillede(sti, cwd = arbejd) {
       params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } } }) + '\n');
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call',
-      params: { name: 'browser_screenshot', arguments: { path: sti } } }) + '\n');
+      params: { name: 'browser_screenshot', arguments: { path: sti, ...ekstra } } }) + '\n');
   });
 }
 
@@ -172,4 +172,29 @@ test('#70: en absolut sti gennem et alias for arbejdsmappen (/var, 8.3-kortnavn)
   const svar = await skaermbillede(join(alias, 'inde', 'alias.png'), arbejdReel);
   assert.match(svar, /successfully saved/, `afvist paa stavemaaden alene: ${svar.slice(0, 240)}`);
   assert.ok(existsSync(join(arbejdReel, 'inde', 'alias.png')));
+});
+
+// 1.33 (R172, MAALT af begge bedoemmere paa d002938): package.json og .vscode/tasks.json i arbejdsmappen blev overskrevet med
+// PNG-bytes, og serveren svarede «successfully saved». Stien kommer fra en model, der laeser fremmede sider.
+test('1.33: en sti uden billedendelse afvises - projektets filer roeres ikke', { timeout: 45000 }, async () => {
+  writeFileSync(join(arbejd, 'package.json'), '{"name":"brugerens"}');
+  mkdirSync(join(arbejd, '.vscode'), { recursive: true });
+  writeFileSync(join(arbejd, '.vscode', 'tasks.json'), '{"tasks":[]}');
+  for (const sti of ['package.json', '.vscode/tasks.json', 'ny.txt']) {
+    const svar = await skaermbillede(sti);
+    assert.match(JSON.stringify(svar), /must end in \.png/, `${sti}: ${JSON.stringify(svar).slice(0, 200)}`);
+  }
+  assert.equal(readFileSync(join(arbejd, 'package.json'), 'utf8'), '{"name":"brugerens"}');
+  assert.equal(readFileSync(join(arbejd, '.vscode', 'tasks.json'), 'utf8'), '{"tasks":[]}');
+  assert.ok(!existsSync(join(arbejd, 'ny.txt')));
+});
+
+test('1.33: et billede, der findes, overskrives kun med overwrite: true', { timeout: 45000 }, async () => {
+  writeFileSync(join(arbejd, 'inde', 'gammel.png'), 'GAMMELT-BILLEDE');
+  const nej = await skaermbillede('inde/gammel.png');
+  assert.match(JSON.stringify(nej), /already exists[^"]*Pass overwrite: true/, JSON.stringify(nej).slice(0, 300));
+  assert.equal(readFileSync(join(arbejd, 'inde', 'gammel.png'), 'utf8'), 'GAMMELT-BILLEDE');
+  const ja = await skaermbillede('inde/gammel.png', arbejd, { overwrite: true });
+  assert.match(JSON.stringify(ja), /successfully saved/, JSON.stringify(ja).slice(0, 200));
+  assert.notEqual(readFileSync(join(arbejd, 'inde', 'gammel.png'), 'utf8'), 'GAMMELT-BILLEDE');
 });

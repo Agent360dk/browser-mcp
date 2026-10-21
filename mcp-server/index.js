@@ -1596,8 +1596,24 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
               : `"${args.path}" points outside. Use a relative path without ../.`),
           );
         }
+        // 1.33 (privat rapport, fund i R172; MAALT af begge bedoemmere paa d002938): stien kunne vaere enhver fil i
+        // arbejdsmappen, og package.json og .vscode/tasks.json blev overskrevet med PNG-bytes. Stien kommer fra en model, der
+        // laeser fremmede sider. Nu: kun en billedendelse, og en fil, der findes, overskrives kun med overwrite: true.
+        if (!/\.(png|jpe?g|webp)$/i.test(targetPath)) {
+          throw new Error(`path must end in .png, .jpg, .jpeg or .webp ("${args.path}"): a screenshot is only saved as an image file.`);
+        }
+        const erstat = args.overwrite === true;
         mkdirSync(dirname(targetPath), { recursive: true });
-        writeFileSync(targetPath, Buffer.from(base64, 'base64'));
+        // wx er atomisk: findes filen, skrives der intet - ogsaa hvis den blev oprettet lige foer.
+        try {
+          writeFileSync(targetPath, Buffer.from(base64, 'base64'), { flag: erstat ? 'w' : 'wx' });
+        } catch (e) {
+          if (e && e.code === 'EEXIST') {
+            throw new Error(`A file already exists at ${targetPath}, and nothing was written. Pass overwrite: true to replace ` +
+              'it, or choose another name.');
+          }
+          throw e;
+        }
         return {
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
