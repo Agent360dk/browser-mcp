@@ -853,6 +853,8 @@ async function cdpSend(tabId, method, params = {}, sessionId = null, slut = null
 // Faner agenten selv lukkede via close_tab. En tom session betyder kun "arbejdet er slut"
 // hvis det var BRUGEREN der lukkede den sidste fane.
 const agentLukkedeFaner = new Set();
+// R173: close_tab-handleren koerer lukningerne én ad gangen gennem denne kaede.
+let fanelukninger = Promise.resolve();
 // Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
@@ -8399,8 +8401,11 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       // 1.33 (privat rapport 3.1, MAALT paa 1.30.1): var fanen den sidste i Chromes sidste vindue, lukkede vinduet - og paa
       // Windows og Linux hele Chrome, saa naeste kald fik «extension not connected». Nu bliver en tom fane staaende i vinduet,
       // og svaret siger det. Lukningen afvises ikke: serveren lukker selv en partitions faner gennem close_tab.
-      let holdtAaben = false;
-      try {
+      // R173 (Astra, MAALT): et afvist opslag eller en afvist oprettelse blev slugt, og fanen blev lukket alligevel; og to
+      // samtidige lukninger saa begge to faner og lukkede dem begge. Nu standser en fejl lukningen (intet lukkes), og
+      // lukningerne koerer én ad gangen, saa den anden ser vinduet, som det er efter den foerste.
+      const luk = async () => {
+        let holdtAaben = false;
         const fane = await chrome.tabs.get(tabId);
         const iVinduet = await chrome.tabs.query({ windowId: fane.windowId });
         if (iVinduet.length <= 1) {
@@ -8410,15 +8415,18 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
             holdtAaben = true;
           }
         }
-      } catch {}   // findes fanen ikke, svarer chrome.tabs.remove nedenfor med Chromes egen fejl
-      agentLukkedeFaner.add(tabId);
-      await chrome.tabs.remove(tabId);
-      session.tabIds.delete(tabId);
-      if (session.activeTabId === tabId) session.activeTabId = null;
-      persistSessions();
-      return { ok: true, remaining: session.tabIds.size, ...(holdtAaben ? { kept_window_open: true,
-        note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would have ' +
-          'closed Chrome and disconnected the extension.' } : {}) };
+        agentLukkedeFaner.add(tabId);
+        await chrome.tabs.remove(tabId);
+        session.tabIds.delete(tabId);
+        if (session.activeTabId === tabId) session.activeTabId = null;
+        persistSessions();
+        return { ok: true, remaining: session.tabIds.size, ...(holdtAaben ? { kept_window_open: true,
+          note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
+            'have closed Chrome and disconnected the extension.' } : {}) };
+      };
+      const tur = fanelukninger.then(luk);
+      fanelukninger = tur.catch(() => {});
+      return await tur;
     }
 
     case 'solve_captcha': {
