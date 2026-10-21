@@ -236,9 +236,9 @@ All four are optional. None is needed for normal use.
 ### Navigation & Content
 | Tool | Description |
 |------|-------------|
-| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). On "Leave site?" it answers Stay and says so (`beforeunload-blocked`); `leave_page=true` leaves; an armed `browser_handle_dialog` answers instead of either |
+| `browser_navigate` | Navigate to URL (reuses tab, or `new_tab=true`). On "Leave site?" it answers Stay and says so (`beforeunload-blocked`); `leave_page=true` leaves; an armed `browser_handle_dialog` answers instead (a dismiss, or an accept armed with `leave_page`). A new tab opens in the background (`active: false`); with no active tab the call answers `no-active-tab` instead of guessing another tab |
 | `browser_get_page_content` | Get page text or HTML |
-| `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused; a covered window answers `window-covered`) |
+| `browser_screenshot` | Screenshot via Chrome Debugger (works even when tab isn't focused; a covered window answers `window-covered`). A `path` must end in `.png`, and an existing file is replaced only with `overwrite: true` |
 | `browser_execute_script` | Run JavaScript in the page's own context, through the Chrome debugger (CSP-strict sites too) |
 | `browser_extract_list` | Read the rows of a long/virtualised list by scrolling its container until no new rows appear; scrolls with real wheel events in the active tab, so feeds that load on wheel (Threads, X) load; in a hidden page (a background tab) a list that loads while scrolling stops early, and `reached_end` is false |
 
@@ -249,13 +249,13 @@ All four are optional. None is needed for normal use.
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
 | `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). From 1.32 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea; Space types a space, presses a focused button and ticks a checkbox (before, neither key did any of these). Key codes follow the US layout ("," is 188 `Comma`); shifted characters such as `<` are sent with Shift, capital letters without. With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
 | `browser_scroll` | Scroll to element or by pixels |
-| `browser_wait` | Wait for element to appear |
+| `browser_wait` | Wait for an element or text to be visible: a match that is hidden, closed, clipped or off the page does not count (`on_page_but_hidden`); `state: "attached"` waits for it to exist |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
 | `browser_select_option` | Native `<select>` + custom dropdowns (Angular Material, React Select); a custom trigger or option the mouse would not reach is not clicked (`covered`) |
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
-| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt/"Leave site?" dialogs: answers one the extension saw open, or arms for the next (one that opened before anything listened cannot be answered from here) |
+| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt/"Leave site?" dialogs: answers one the extension saw open, or arms for the next (one that opened before anything listened cannot be answered from here). An arming lasts at most 30 s and is dropped when a new document loads or the session moves to another tab; "Leave site?" is accepted only with `leave_page: true` |
 | `browser_double_click` | True double-click (two trusted press/release pairs); answers `covered` when the mouse would not reach it |
 | `browser_right_click` | Right-click to open page-level context menus; answers `covered` when the mouse would not reach it |
 | `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
@@ -266,7 +266,7 @@ All four are optional. None is needed for normal use.
 |------|-------------|
 | `browser_list_tabs` | List session's tabs only |
 | `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
-| `browser_close_tab` | Close tab (session-owned only) |
+| `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open |
 | `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
 | `browser_list_frames` | List iframes on page |
 | `browser_select_frame` | Run JavaScript in a specific iframe, also one from another site, through the Chrome debugger |
@@ -281,7 +281,7 @@ All four are optional. None is needed for normal use.
 ### CAPTCHA Solving
 | Tool | Description |
 |------|-------------|
-| `browser_solve_captcha` | Detect CAPTCHAs and work through them one step per call. Auto-detects reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha. Actions: `detect`, `click_checkbox` (tries the reCAPTCHA checkbox), `click_grid` (clicks the reCAPTCHA cells you choose; it returns no image, so take a screenshot first), `ask_human` (returns the message to show with `browser_ask_user`) |
+| `browser_solve_captcha` | Detect CAPTCHAs and work through them one step per call. Reports a visible reCAPTCHA checkbox or image challenge, hCaptcha, Turnstile, FunCaptcha; an invisible reCAPTCHA has nothing to click and is reported as `invisible`, not found. Actions: `detect`, `click_checkbox` (tries the reCAPTCHA checkbox), `click_grid` (clicks the reCAPTCHA cells you choose; it returns no image, so take a screenshot first), `ask_human` (returns the message to show with `browser_ask_user`) |
 
 ### Human-in-the-Loop
 | Tool | Description |

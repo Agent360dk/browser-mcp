@@ -4,6 +4,51 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.33.0 (not released yet)
+
+Most of this release answers a private report (thank you), checked item by item and reviewed in several rounds.
+
+**No call guesses another tab.** When the session's active tab was its own blank `about:blank`, a call skipped it and
+silently used another of the session's tabs - `browser_navigate` then loaded the address into a page the user was working
+in. The same happened after the active tab was closed. Now the active blank tab is used, and with no active tab and other
+tabs that have content, the call answers `no-active-tab` (nothing sent, the session's tabs listed) instead of choosing:
+call `browser_switch_tab`, or `browser_navigate` with `new_tab: true`. An OAuth popup that the extension itself made active
+and that closes itself after the login gives the session its opener back; closing the active tab with `browser_close_tab`
+says that there is no active tab now.
+
+**`browser_wait` waits for something you can see.** `found: true` came back for text inside `display:none`,
+`visibility:hidden`, `opacity:0` and off-page elements, and the CSS path accepted `display:none`. Now only visible text
+counts: text whose own element can be seen (also through a closed `<details>`, `content-visibility`, a box with
+`overflow: hidden`, a fixed element outside the window, or an `<option>` with a `label`), in the order it is drawn. If only
+hidden matches exist when the time is up, the answer is `found: false` with `on_page_but_hidden: true`. `state: "attached"`
+keeps the old wait for existence (for example a hidden file input before `browser_upload_file`); any other `state` is an
+error. The page is no longer scrolled while waiting, and the timeout is at most 60 seconds - the server now waits as long.
+
+**`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any dialog,
+"Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, it is dropped when a new
+document starts loading in the tab or the session moves to another tab, and a page that changes while it is being set
+answers `page-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
+(otherwise `leave-page-required`); a dismiss is unchanged.
+
+**Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the
+window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left
+in that window (`kept_window_open: true`). A check that fails stops the close, and closes run one at a time.
+
+**A screenshot path is a .png file and never replaces a file by accident.** With `path` set to a file in the working
+folder, `browser_screenshot` overwrote it with PNG bytes - `package.json` and `.vscode/tasks.json` included. Now the path
+must end in `.png` (the screenshot is PNG data), and an existing file is replaced only with `overwrite: true`; both are
+checked before the screenshot is taken.
+
+**An invisible reCAPTCHA is reported, not flagged.** A page with only the invisible reCAPTCHA badge made
+`browser_navigate` report `captcha_detected: recaptcha_v2_checkbox` and ask for `browser_solve_captcha`, so an agent that
+stops for a CAPTCHA stopped for nothing. Now a checkbox and an image challenge count only when they can be seen; an
+invisible reCAPTCHA is reported as `captcha_invisible` (navigate) and `invisible` (detect). Nothing changes in what is sent
+to the site.
+
+**Smaller fixes.** `browser_navigate` with `new_tab` says the tab opened in the background (`active: false`). The "not
+connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked
+install has its own id. The server's install advice names its own version, so a pinned version stays pinned. The `@modelcontextprotocol/sdk` floor is raised to 1.32.1 (supersedes #80).
+
 ## 1.32.0 (not released yet)
 
 **Partitions for parallel agents (#20).** Thanks to [@ugbodagadave](https://github.com/ugbodagadave), whose PR #20 had the
