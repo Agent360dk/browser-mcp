@@ -3017,6 +3017,70 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 // Funktionen er selvstaendig, saa den kan sendes som `func` til chrome.scripting OG som tekst til Runtime.evaluate.
 // `gem` lægger elementet paa window.__bmcpMaal og dets daekningsregel paa window.__bmcpMaalTjek (til script-klikket og
 // vagten i armerMaalVagt); `kunElement` returnerer selve elementet.
+// 1.33 (privat rapport 2.1, MAALT i headless Chrome af to bedoemmere): browser_wait meldte found:true for tekst, ingen kan
+// se. display:none gav finderens {found:false, hidden:true}, og wait tjekkede kun, at der kom et svar; visibility:hidden,
+// opacity:0 og en tekst flyttet ud af siden (left:-9999px) faldt tilbage til et skjult match. CSS-vejen svarede ja til et
+// element med display:none. Ét kriterium for begge veje: et match er synligt, naar det har en boks paa mindst 2 x 2 px, der
+// ikke ligger helt foran sidens begyndelse, ikke er visibility:hidden/collapse, og hverken det eller en forfader har opacity 0
+// eller er en lukket boks (hoejde eller bredde under 2 px med overflow skaaret af). Siden rulles ikke.
+function ventMaal(sel, tekst, wantTag) {
+  function collectAll(root, results) {
+    for (const el of root.querySelectorAll('*')) {
+      results.push(el);
+      if (el.shadowRoot) collectAll(el.shadowRoot, results);
+    }
+    return results;
+  }
+  function alleDybt(root, s, ud) {
+    for (const el of root.querySelectorAll(s)) ud.push(el);
+    for (const n of root.querySelectorAll('*')) if (n.shadowRoot) alleDybt(n.shadowRoot, s, ud);
+    return ud;
+  }
+  const forfader = (n) => n.parentElement || (n.parentNode && n.parentNode.host) || null;
+  const synligt = (el) => {
+    // display:none (ogsaa paa en forfader) og display:contents giver en boks paa 0 x 0 - stoerrelsen fanger dem.
+    if (!el || !el.getBoundingClientRect) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    if (r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
+    for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
+      const s = getComputedStyle(n);
+      if (parseFloat(s.opacity) === 0) return false;
+      if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
+        const b = n.getBoundingClientRect();
+        if (b.width < 2 || b.height < 2) return false;
+      }
+    }
+    return true;
+  };
+  // Tekst i script, style, template, noscript og title vises aldrig. MAALT i headless Chrome: et <script> med ordet gjorde
+  // ellers ordet «paa siden», og <body> - hvis textContent ogsaa rummer scriptets tekst - blev regnet for synlig.
+  const IKKE_VIST = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'TITLE']);
+  const vistTekst = (el) => {
+    let ud = '';
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t = w.nextNode(); t; t = w.nextNode()) {
+      let skjult = false;
+      for (let n = t.parentNode; n && n !== el.parentNode; n = n.parentNode) if (IKKE_VIST.has(n.nodeName)) { skjult = true; break; }
+      if (!skjult) ud += t.data;
+    }
+    return ud;
+  };
+  let matches;
+  if (tekst != null) {
+    const tag = wantTag ? String(wantTag).toUpperCase() : null;
+    const m = collectAll(document, []).filter((el) => (!tag || el.tagName === tag) && !IKKE_VIST.has(el.tagName)
+      && (el.textContent || '').includes(tekst) && vistTekst(el).includes(tekst));
+    // Det inderste match: <div><span>Gemt</span></div> er spannet, ikke div'en omkring det.
+    matches = m.filter((el) => !m.some((o) => o !== el && el.contains(o)));
+  } else {
+    matches = alleDybt(document, sel, []);
+  }
+  return { synlig: matches.some(synligt), paaSiden: matches.length > 0 };
+}
+
 function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // Interactive controls we prefer to actually click. Fixes the class of bug where a
   // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
@@ -6924,22 +6988,34 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const timeout = params.timeout || 10000;
       const sel = params.selector;
+      // 1.33 (privat rapport 2.1): standard er «synlig»; state: 'attached' venter som foer kun paa, at det findes paa siden.
+      const kunPaaSiden = params.state === 'attached';
+      const p = parseSelector(sel);
       const start = Date.now();
+      let sidst = null;
       while (Date.now() - start < timeout) {
         // Text-based selectors use debugger directly
-        if (sel.startsWith('text=') || sel.match(/^\w+:text\(/)) {
-          const el = await resolveElement(tab.id, sel);
-          if (el) return { found: true, method: 'debugger' };
+        let r, method;
+        if (p.type === 'text') {
+          r = await debuggerEval(tab.id, `(${ventMaal})(null, ${JSON.stringify(p.text)}, ${JSON.stringify(p.tag)})`);
+          method = 'debugger';
         } else {
-          const scriptResult = await safeExecuteScript(tab.id, (s) => !!document.querySelector(s), [sel]);
+          const scriptResult = await safeExecuteScript(tab.id, ventMaal, [p.selector, null, null]);
           if (scriptResult.cspBlocked) {
-            const found = await debuggerEval(tab.id, `!!document.querySelector(${JSON.stringify(sel)})`);
-            if (found) return { found: true, method: 'debugger' };
-          } else if (scriptResult.result) {
-            return { found: true };
-          }
+            r = await debuggerEval(tab.id, `(${ventMaal})(${JSON.stringify(p.selector)}, null, null)`);
+            method = 'debugger';
+          } else r = scriptResult.result;
+        }
+        if (r) sidst = r;
+        if (r && (kunPaaSiden ? r.paaSiden : r.synlig)) {
+          return { found: true, visible: !!r.synlig, ...(method ? { method } : {}) };
         }
         await new Promise(r => setTimeout(r, 500));
+      }
+      if (sidst && sidst.paaSiden && !kunPaaSiden) {
+        return { found: false, on_page_but_hidden: true, note: 'The selector matches something on the page, but nothing ' +
+          'that can be seen: it is display:none, visibility:hidden, opacity 0, smaller than 2 px, or moved outside the page. ' +
+          'Pass state: "attached" to wait only for it to exist.' };
       }
       return { found: false };
     }

@@ -166,12 +166,13 @@ export const TOOLS = [
   },
   {
     name: 'browser_wait',
-    description: 'Wait for an element to appear on the page. Supports CSS and text-based selectors.',
+    description: 'Wait for an element or a text to be visible on the page. Supports CSS and text-based selectors. found is true only for a match that can be seen: one that is display:none, visibility:hidden, opacity 0 (itself or a parent), smaller than 2 px, inside a closed box, or moved outside the page does not count, and the page is not scrolled. If only such matches exist when the time is up, the answer is found:false with on_page_but_hidden:true. Pass state: "attached" to wait only for the match to exist; visible then says whether it can be seen.',
     inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector or text selector (e.g. "text=Success", "button:text(Next)") to wait for' },
         timeout: { type: 'number', description: 'Max wait time in ms (default: 10000)' },
+        state: { type: 'string', enum: ['visible', 'attached'], description: 'visible (default): wait until a match can be seen. attached: wait until a match exists on the page, seen or not.' },
       },
       required: ['selector'],
     },
