@@ -1093,14 +1093,30 @@ chrome.debugger.onEvent.addListener(dialogKoordinator);
 // i den sikre retning (en armering droppes, en dialog besvares ikke) - aldrig et svar paa en side, agenten ikke saa.
 // R175 (Opus, MAALT i Chrome 155): «loading» kommer ogsaa ved pushState, replaceState, hash og en iframe, der skifter adresse -
 // ikke kun ved et nyt dokument. Det afvaebnede en armering, saa en confirm efter et SPA-skift stod ubesvaret og klikket hang.
-// «loading» bruges derfor kun til at se, om noget skiftede, mens et handle_dialog-kald koerer (den sikre retning: page-changed).
+// «loading» bruges derfor til at se, om noget skiftede, mens et handle_dialog-kald koerer (den sikre retning: page-changed),
+// og til at spoerge, om hovedrammen har faaet et nyt dokument (loaderTjek nedenfor).
 // En sat armering afvaebnes af hovedrammens Page.frameNavigated (et nyt dokument, ogsaa en genindlaesning; aldrig et SPA-skift
 // eller en iframe). Opus maalte: «loading» kommer aldrig foer «Leave site?» (0/9), og frameNavigated kommer foer en ny sides
 // straks-confirm (12/12).
+// R176 (Opus, MAALT i Chrome 155): en prerender-aktivering (speculation rules) skifter dokument UDEN frameNavigated - kun
+// «loading» og en ny loaderId i hovedrammen. Armeringen svarede den nye sides confirm (9/9). En armering baerer derfor
+// hovedrammens loaderId, og ved «loading» spoerges Chrome: er det et andet dokument, afvaebnes den. Kan det ikke afgoeres
+// (intet svar, intet id), afvaebnes den ogsaa - den sikre retning.
+const hovedLoader = async (tabId) => {
+  const t = await venteMedFrist(cdpSend(tabId, 'Page.getFrameTree', {}), NAV_FRISTER.port).catch(() => null);
+  return (t && t !== FRIST_UDLOEB && t.frameTree && t.frameTree.frame && t.frameTree.frame.loaderId) || null;
+};
+async function loaderTjek(tabId, a) {
+  const nu = a.loader ? await hovedLoader(tabId) : null;
+  if (armeredeDialoger.get(tabId) !== a) return;   // forbrugt eller afloest imens
+  if (!nu || nu !== a.loader) afvaebnDialog(tabId, 'the page changed (a new document became active) before a dialog appeared, so the arming was dropped');
+}
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (!info || info.status !== 'loading') return;
   const s = dialogFane(tabId);
   s.dokGen = (s.dokGen || 0) + 1;
+  const a = armeredeDialoger.get(tabId);
+  if (a) loaderTjek(tabId, a);
 });
 
 // Debuggeren faldt af, eller fanen lukkede: en boks, vi kendte, er nu ukendt. Intet sendes igen; Page.enable-porten
@@ -3125,27 +3141,47 @@ function ventMaal(sel, tekst, wantTag) {
     // <dialog>.showModal(), en modal, en app-skal), «usynligt». Kun et aegte fast element taeller (offsetParent er null - et
     // fixed inde i en transform-forfader opfoerer sig som absolute), og kan der rulles mellem elementet og den faste boks, er
     // indholdet synligt, naar den faste boks selv er i vinduet.
-    let fast = null, rul = false, rulVedFast = false;
+    let fast = null, rul = false, rulVedFast = false, ytre = null, hopTil = null;
+    // R176 (Opus, MAALT i Chrome 155): begyndelsen af en rulleboks er ikke altid oeverst til venstre. I rtl, row-reverse,
+    // column-reverse og vertical-rl ligger den til hoejre eller nederst, og rulningen er negativ.
+    const omvendt = (st, n) => {
+      const wm = st.writingMode || 'horizontal-tb';
+      const lodretSkrift = /^(vertical|sideways)/.test(wm);
+      let x = lodretSkrift ? /-rl$/.test(wm) : st.direction === 'rtl';
+      let y = false;
+      if (/flex/.test(st.display || '') && !lodretSkrift) {
+        if (st.flexDirection === 'row-reverse') x = !x;
+        if (st.flexDirection === 'column-reverse') y = true;
+      }
+      if ((n.scrollLeft || 0) < 0) x = true;
+      if ((n.scrollTop || 0) < 0) y = true;
+      return { x, y };
+    };
     for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
       const s = getComputedStyle(n);
       // R176 (Astra, MAALT i modellen): et fast element undslipper rulning og afskaering hos forfaedrene OVER sig - kun deres
-      // opacity gaelder stadig. Et synligt fast barn uden for sin rulleforfaders boks blev ellers afvist.
+      // opacity gaelder stadig. Et synligt fast barn uden for sin rulleforfaders boks blev ellers afvist. R176 (Opus, MAALT i
+      // Chrome): det samme gaelder et absolut element og forfaedrene MELLEM det og dets indeholdende blok (offsetParent).
       const overFast = !!fast;
+      if (hopTil && n === hopTil) hopTil = null;
+      const sprunget = overFast || !!hopTil;
       const ruller = /(auto|scroll)/.test(s.overflowX + ' ' + s.overflowY);
-      if (!overFast && n !== el && ruller) {
+      if (!sprunget && n !== el && ruller) {
         rul = true;
-        // R175 (Opus, MAALT i Chrome 155): «kan rulles» er ikke «kan naas». Indhold til venstre for eller over en rulleboks'
-        // begyndelse (en menu skubbet ud med translateX(-100%), et link paa left:-9999px) kan aldrig rulles frem. R176 (Astra):
-        // i en rtl-boks ruller indholdet mod venstre (negativ scrollLeft) - der gaelder kun den lodrette begyndelse.
+        ytre = n;
+        // R175 (Opus, MAALT i Chrome 155): «kan rulles» er ikke «kan naas». Indhold foer en rulleboks' begyndelse (en menu
+        // skubbet ud med translateX(-100%), et link paa left:-9999px) kan aldrig rulles frem - begyndelsen pr. akse, se omvendt.
         const sb = n.getBoundingClientRect();
-        const ltr = s.direction !== 'rtl';
-        if ((ltr && r.right <= sb.left - (n.scrollLeft || 0)) || r.bottom <= sb.top - (n.scrollTop || 0)) return false;
+        const o = omvendt(s, n);
+        const foerX = o.x ? r.left >= sb.right - (n.scrollLeft || 0) : r.right <= sb.left - (n.scrollLeft || 0);
+        const foerY = o.y ? r.top >= sb.bottom - (n.scrollTop || 0) : r.bottom <= sb.top - (n.scrollTop || 0);
+        if (foerX || foerY) return false;
       }
       // R175 (Astra, MAALT i modellen): den YDRE faste ramme overskrev den indre - en fast skuffe uden for vinduet i en synlig,
       // rullebar fast ramme blev «synlig». Den inderste faste boks afgoer: den er placeret efter vinduet, ikke efter rammen.
       if (!fast && s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
       if (parseFloat(s.opacity) === 0) return false;
-      if (!overFast && n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
+      if (!sprunget && n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
         const b = n.getBoundingClientRect();
         if (b.width < 2 || b.height < 2) return false;
         // R173 (Astra, MAALT): tekst helt uden for en boks, der skaerer af (hidden/clip), talte som synlig. En boks, der kan
@@ -3155,20 +3191,27 @@ function ventMaal(sel, tekst, wantTag) {
         if ((skaerer(s.overflowX) && (r.right <= b.left || r.left >= b.right))
           || (skaerer(s.overflowY) && (r.bottom <= b.top || r.top >= b.bottom))) return false;
       }
+      if (!fast && !hopTil && s.position === 'absolute') hopTil = n.offsetParent || null;
     }
     // R173 (Opus, MAALT i Chrome): et fast element (position:fixed, ogsaa via en forfader) ruller ikke med siden - det er kun
     // synligt i vinduet. En topbjaelke skubbet op med translateY(-100%) paa en rullet side og en skuffe skubbet ud til hoejre
     // med translateX(100%) talte som synlige.
     // Vinduets synlige flade er uden rullebjaelke (MAALT i Chrome 155: en skuffe skubbet ud med translateX(100%) stod paa x=1265
-    // under en rullebjaelke paa 15 px, og innerWidth paa 1280 regnede den som i vinduet).
-    const rod = document.documentElement;
+    // under en rullebjaelke paa 15 px, og innerWidth paa 1280 regnede den som i vinduet). R176 (Opus, MAALT): i quirks-tilstand
+    // med vandret rullebjaelke giver document.scrollingElement fladen; documentElement giver hele dokumentet.
+    const rod = document.scrollingElement || document.documentElement;
     // R175 (Opus, MAALT): i quirks-tilstand er documentElement.clientHeight hele dokumentets hoejde (4333 mod 713) - den mindste
     // af de to er vinduet.
     const bredde = Math.min(window.innerWidth, (rod && rod.clientWidth) || window.innerWidth);
     const hoejde = Math.min(window.innerHeight, (rod && rod.clientHeight) || window.innerHeight);
     const iVindue = (b) => b.right > 0 && b.bottom > 0 && b.left < bredde && b.top < hoejde;
     if (fast) return iVindue(r) || (rulVedFast && iVindue(fast.getBoundingClientRect()));
-    return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
+    // Sidens begyndelse. R176 (Opus, MAALT i Chrome): indhold rullet forbi i en rulleboks har negative sidekoordinater, men kan
+    // naas ved at rulle boksen - for indhold i en rulleboks afgoer den yderste rulleboks' plads. Paa en rtl-side ligger sidens
+    // vandrette begyndelse til hoejre; der gaelder kun den lodrette.
+    const b = ytre ? ytre.getBoundingClientRect() : r;
+    const sideRtl = getComputedStyle(document.documentElement || document.body || el).direction === 'rtl';
+    return (sideRtl || b.right + window.scrollX > 0) && b.bottom + window.scrollY > 0;
   };
   // Tekst i script, style, template, noscript og title vises aldrig. MAALT i headless Chrome: et <script> med ordet gjorde
   // ellers ordet «paa siden», og <body> - hvis textContent ogsaa rummer scriptets tekst - blev regnet for synlig.
@@ -7906,6 +7949,8 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
                 'browser_close_tab (anything unsaved on the page is lost); while "Leave site?" is open, Chrome does not close ' +
                 'the tab. Next time, arm browser_handle_dialog before the action that opens it.' };
       }
+      // R176 (Opus): armeringen bindes til hovedrammens dokument (loaderId), se loaderTjek.
+      const loader = await hovedLoader(tab.id);
       // Astra R107 (maalt i model): en boks, der aabnede, mens Page.enable ventede, gav armed:true med 0 svar. Tilstanden
       // tjekkes derfor IGEN efter porten, foer der armeres.
       if (s.boks) return await svarAaben(s.boks);
@@ -7925,7 +7970,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
 
       // Koordinatoren forbruger armeringen, naar boksen aabner, og opfylder loeftet, naar Chrome melder boksen lukket.
       armeredeDialoger.set(tab.id, { timer, action, accept: action === 'accept', text: promptText, leave: forlad,
-        udloeb: Date.now() + levetid, opfyld });
+        udloeb: Date.now() + levetid, opfyld, loader });
       dialogLoefter.set(tab.id, svar);
 
       if (vent) return await svar;

@@ -7,6 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // vinduer: { vinduesId: [faneId, ...] }
@@ -176,6 +177,15 @@ test('R175: tab-not-closed siger det, hvis der allerede blev lavet en tom fane',
 test('R176 (Astra): close_tab-fristen er 4 s og regnes fra kaldets start - inden for serverens 5 s', () => {
   const c = chrome({ 1: [11] });
   assert.equal(c.u.hent('LUK_FANE').ms, 4000);
+  // R176 (Opus, LAEST): fladerne sagde 5 s, koden 4000 ms. Hver flade skal naevne kodens frist.
+  const sek = c.u.hent('LUK_FANE').ms / 1000;
+  const rod = new URL('..', import.meta.url);
+  for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md', 'docs/docs/tools/index.html', 'mcp-server/tools.js', 'CHANGELOG.md']) {
+    const tekst = readFileSync(new URL(f, rod), 'utf8').replace(/\s+/g, ' ');
+    const m = tekst.match(/does not (?:close the tab|close|complete) within (\d+) (?:s|seconds)\b/g) || [];
+    assert.ok(m.length >= 1, f + ' naevner ikke close_tab-fristen');
+    for (const x of m) assert.match(x, new RegExp(`within ${sek} (s|seconds)$`), f + ': ' + x);
+  }
 });
 
 test('R176 (Astra, MAALT): fristen regnes fra kaldets start - et langsomt vindueopslag forlaenger den ikke', { timeout: 5000 }, async () => {

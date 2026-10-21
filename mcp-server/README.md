@@ -255,7 +255,7 @@ All four are optional. None is needed for normal use.
 | `browser_set_combobox` | Autocomplete/combobox: type query → wait for filtered listbox → click option (multi-value chip support). Use when `browser_select_option` fails on lazy-rendered options |
 | `browser_set_date` | Robust date inputs: tries native value-set → masked typing → calendar-picker navigation (MUI/AntD/react-datepicker/Lexical). Use when `browser_fill` fails on date fields |
 | `browser_dismiss_overlays` | Bulk-dismiss popups/modals/tooltips/banners via aria-label/text/×-char heuristics. `non_critical` mode preserves dialogs with form data |
-| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt/"Leave site?" dialogs: answers one the extension saw open, or arms for the next (one that opened before anything listened cannot be answered from here). An arming lasts at most 30 s and is dropped when a new document loads in the tab (a reload too, not an address change within the page) or the session moves to another tab; "Leave site?" is accepted only with `leave_page: true` |
+| `browser_handle_dialog` | Accept/dismiss native alert/confirm/prompt/"Leave site?" dialogs: answers one the extension saw open, or arms for the next (one that opened before anything listened cannot be answered from here). An arming lasts at most 30 s and is dropped when a new document loads or becomes active in the tab (a reload or a prerendered page too, not an address change within the page) or the session moves to another tab; "Leave site?" is accepted only with `leave_page: true` |
 | `browser_double_click` | True double-click (two trusted press/release pairs); answers `covered` when the mouse would not reach it |
 | `browser_right_click` | Right-click to open page-level context menus; answers `covered` when the mouse would not reach it |
 | `browser_click_xy` | Escape hatch: click at raw viewport coordinates (CSS pixels) with trusted mouse events |
@@ -266,7 +266,7 @@ All four are optional. None is needed for normal use.
 |------|-------------|
 | `browser_list_tabs` | List session's tabs only |
 | `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
-| `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open; a tab Chrome does not close within 5 s (a "Leave site?" prompt) answers `tab-not-closed` |
+| `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open; a tab Chrome does not close within 4 s (a "Leave site?" prompt) answers `tab-not-closed` |
 | `browser_get_new_tab` | Get most recently opened tab (OAuth popups) |
 | `browser_list_frames` | List iframes on page |
 | `browser_select_frame` | Run JavaScript in a specific iframe, also one from another site, through the Chrome debugger |

@@ -43,7 +43,10 @@ function model(opt = {}) {
     getMs: 0, attachMs: 0, navMs: 3, updAfvisMs: 0, gammelComplete: null, svarMs: 0, captchaMs: 0, fjernet: false,
     naesteId: 9, nyeFaner: new Map(), createMs: 0, groupMs: 0,
     // R112: fjernedeFaner (fanen er lukket), nyGetMs (opslag af en oprettet, indlaest fane er langsomme efter det foerste).
-    fjernedeFaner: new Set(), nyGetMs: 0, ...opt };
+    fjernedeFaner: new Set(), nyGetMs: 0,
+    // R176: loaderNr (hovedrammens dokument; et nyt dokument faar et nyt), traeMs (Page.getFrameTree svarer langsomt),
+    // traeUdenId (svaret mangler loaderId).
+    loaderNr: 1, traeMs: 0, traeUdenId: false, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -52,7 +55,7 @@ function model(opt = {}) {
     if (t.haengNav) return;
     // Et fragment paa samme side: ingen 'loading', kun den nye adresse (som Chrome).
     if (url.split('#')[0] === t.url.split('#')[0] && url.includes('#')) { t.url = url; status('complete'); return; }
-    t.url = (t.omdiriger && t.omdiriger[url]) || url; t.title = t.url; t.beskyt = false;
+    t.url = (t.omdiriger && t.omdiriger[url]) || url; t.title = t.url; t.beskyt = false; t.loaderNr++;
     status('loading'); setTimeout(() => status('complete'), 30);
   };
   const aabnBoks = (url) => {
@@ -158,6 +161,11 @@ function model(opt = {}) {
         // proeve kan se, hvilken af de to svaret bygger paa).
         if (t.kvitterFoerst) { setTimeout(() => { if (t.boks === b) luk(t.lukResultat ?? p.accept); }, t.lukMs); return {}; }
         return sov(t.lukMs).then(() => { if (t.boks === b) luk(p.accept); return {}; });
+      }
+      if (metode === 'Page.getFrameTree' && !t.boks) {
+        const r = () => ({ frameTree: { frame: { id: 'top', ...(t.traeUdenId ? {} : { loaderId: 'L' + t.loaderNr }) } } });
+        const ms = t.traeKoe && t.traeKoe.length ? t.traeKoe.shift() : t.traeMs;   // traeKoe: ventetid pr. kald, i raekkefoelge
+        return ms ? sov(ms).then(r) : r();
       }
       // 1.33 (2.2): captchaSvar er det, CAPTCHA-finderen svarer i siden.
       if (metode === 'Runtime.evaluate' && t.captchaSvar && String(p.expression || '').includes('captchaFund')) return { result: { value: t.captchaSvar } };
@@ -1643,4 +1651,61 @@ test('R176: en ny sides boks, der aabner mens det foerste opslag venter, besvare
   const r = await p;
   assert.equal(r.error, 'page-changed', vis(r));
   assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret');
+});
+
+// ── R176 (Opus, MAALT i Chrome 155): prerender-aktivering skifter dokument uden frameNavigated ─────────────────────
+test('R176: et nyt dokument uden frameNavigated (prerender-aktivering) afvaebner - den nye sides confirm besvares ikke', async () => {
+  const m = model({ boksType: 'confirm' });
+  const r0 = await m.dialog({ action: 'accept' });
+  assert.equal(r0.armed, true, vis(r0));
+  m.t.loaderNr++;                                             // aktiveringen: ny loaderId, kun «loading»
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: 'https://forhaand.example/', status: 'loading' });
+  await sov(20);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'armeringen stod efter et nyt dokument');
+  m.sidenNavigerer('https://forhaand.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
+});
+
+test('R176: «loading» med samme dokument (SPA-skift) lader armeringen staa - ogsaa naar Chrome svarer langsomt', async () => {
+  const m = model({ boksType: 'confirm', traeMs: 40 });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL + 'spa', status: 'loading' });
+  await sov(80);
+  assert.ok(m.u.hent('armeredeDialoger').has(1));
+  m.sidenNavigerer('https://spa.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1, 'confirmen efter SPA-skiftet skal besvares');
+});
+
+test('R176: kan dokumentet ikke afgoeres ved «loading», afvaebnes armeringen (den sikre retning)', async () => {
+  for (const [navn, opt] of [['intet id ved armeringen', { traeUdenId: true }]]) {
+    const m = model({ boksType: 'confirm', ...opt });
+    const r0 = await m.dialog({ action: 'accept' });
+    assert.equal(r0.armed, true, navn + ' ' + vis(r0));
+    m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+    await sov(20);
+    assert.ok(!m.u.hent('armeredeDialoger').has(1), navn);
+  }
+  const m = model({ boksType: 'confirm' });
+  await m.dialog({ action: 'accept' });
+  m.t.traeUdenId = true;                                      // svaret ved «loading» mangler id
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  await sov(20);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'intet id ved «loading»');
+});
+
+test('R176: en armering, der forbruges eller afloeses mens Chrome svarer, roeres ikke af det gamle svar', async () => {
+  const m = model({ boksType: 'confirm' });
+  await m.dialog({ action: 'accept' });
+  m.t.traeKoe = [200];                                        // Chromes svar paa det gamle tjek kommer sent ...
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL + 'spa', status: 'loading' });
+  m.t.loaderNr++;                                             // ... siden skifter imens ...
+  const t0 = Date.now();
+  const r1 = await m.dialog({ action: 'dismiss' });           // ... og en ny armering saettes paa det nye dokument
+  assert.equal(r1.armed, true, vis(r1));
+  assert.ok(Date.now() - t0 < 150, 'den nye armering skal staa, foer det gamle svar kommer');
+  const ny = m.u.hent('armeredeDialoger').get(1);
+  await sov(300);
+  assert.equal(m.u.hent('armeredeDialoger').get(1), ny, 'det gamle tjek afvaebnede den nye armering');
 });

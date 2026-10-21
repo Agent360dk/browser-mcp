@@ -33,6 +33,7 @@ function lavSide() {
       this.selected = !!o.selected; this.multiple = !!o.multiple; this.size = o.size || 0;
       this.attrs = { ...(o.attrs || {}) };
       if ('offsetParent' in o) this.opTvang = o.offsetParent;   // fixed inde i en transform-forfader har en offsetParent
+      this.scrollLeft = o.scrollLeft || 0; this.scrollTop = o.scrollTop || 0;
     }
     closest(sel) { for (let n = this; n && n.nodeType === 1; n = n.parentNode) if (n.tagName === sel.toUpperCase()) return n; return null; }
     getAttribute(n) { return this.attrs && n in this.attrs ? this.attrs[n] : null; }
@@ -484,4 +485,129 @@ test('R176: i en rtl-rulleboks kan der rulles mod venstre - indhold til venstre 
   const rulle = new s.El('div', { stil: { overflowX: 'auto', direction: 'rtl' }, rect: [400, 10, 300, 100] });
   s.body.add(rulle.add(new s.El('p', { rect: [100, 20, 100, 20] }).add('Venstre')));
   assert.equal(s.koer(KILDE, null, 'Venstre').synlig, true);
+});
+
+// ── R176 (Opus, MAALT i Chrome 155): rullebokse med omvendt begyndelse, rullet forbi, og absolutte udbrud ─────────────────
+const boks = (s, stil, rect, ekstra = {}) => new s.El('div', { stil: { overflowX: 'auto', overflowY: 'auto', ...stil }, rect, ...ekstra });
+
+test('R176: en rullet ltr-boks - indhold rullet forbi (negative sidekoordinater) kan naas, et link paa left:-9999px kan ikke', () => {
+  const s = lavSide();
+  const b = boks(s, {}, [20, 20, 300, 200], { scrollTop: 600 });
+  s.body.add(b.add(new s.El('p', { rect: [20, -480, 285, 18] }).add('Forbi'), new s.El('a', { rect: [-9999, 50, 100, 18] }).add('Spring')));
+  assert.equal(s.koer(KILDE, null, 'Forbi').synlig, true, 'man ruller boksen op til det');
+  assert.equal(s.koer(KILDE, null, 'Spring').synlig, false, 'til venstre for boksens begyndelse');
+});
+
+test('R176: rtl - en rullet boks viser sit indhold, og overloeb til venstre kan naas', () => {
+  const s = lavSide();
+  const b = boks(s, { direction: 'rtl' }, [20, 260, 400, 60], { scrollLeft: -500 });
+  s.body.add(b.add(new s.El('span', { rect: [220, 260, 100, 40] }).add('Midt'), new s.El('span', { rect: [-780, 260, 100, 40] }).add('Venstre')));
+  assert.equal(s.koer(KILDE, null, 'Midt').synlig, true);
+  assert.equal(s.koer(KILDE, null, 'Venstre').synlig, true);
+  const ude = lavSide();
+  ude.body.add(boks(ude, { direction: 'rtl' }, [20, 260, 400, 60]).add(new ude.El('span', { rect: [500, 260, 100, 40] }).add('Hoejre')));
+  assert.equal(ude.koer(KILDE, null, 'Hoejre').synlig, false, 'til hoejre for en rtl-boks begyndelse kan aldrig rulles frem');
+});
+
+test('R176: column-reverse og row-reverse - begyndelsen er nederst og til hoejre', () => {
+  const s = lavSide();
+  const chat = boks(s, { display: 'flex', flexDirection: 'column-reverse' }, [460, 480, 300, 200], { scrollTop: -400 });
+  s.body.add(chat.add(new s.El('p', { rect: [460, 560, 285, 40] }).add('Besked'), new s.El('p', { rect: [460, -740, 285, 40] }).add('Aeldste')));
+  assert.equal(s.koer(KILDE, null, 'Besked').synlig, true, 'en rullet chat viser beskeden paa skaermen');
+  assert.equal(s.koer(KILDE, null, 'Aeldste').synlig, true, 'den aeldste besked kan rulles frem');
+  const r = lavSide();
+  r.body.add(boks(r, { display: 'flex', flexDirection: 'row-reverse' }, [800, 260, 300, 60], { scrollLeft: -500 })
+    .add(new r.El('span', { rect: [900, 260, 100, 40] }).add('Raekke')));
+  assert.equal(r.koer(KILDE, null, 'Raekke').synlig, true);
+});
+
+test('R176: vertical-rl - begyndelsen er til hoejre; indhold til venstre kan rulles frem', () => {
+  const s = lavSide();
+  s.body.add(boks(s, { writingMode: 'vertical-rl' }, [800, 340, 200, 120]).add(new s.El('p', { rect: [400, 340, 30, 105] }).add('Sidste')));
+  assert.equal(s.koer(KILDE, null, 'Sidste').synlig, true);
+});
+
+test('R176: et absolut element slipper ud af en rulleboks, der ikke er dets indeholdende blok', () => {
+  const s = lavSide();
+  const tabel = boks(s, { overflowY: 'visible' }, [300, 900, 600, 60]);
+  s.body.add(tabel.add(new s.El('span', { stil: { position: 'absolute' }, offsetParent: s.body, rect: [1040, 150, 200, 18] }).add('Udbrud')));
+  assert.equal(s.koer(KILDE, null, 'Udbrud').synlig, true);
+  const inde = lavSide();
+  const pos = boks(inde, { position: 'relative', overflowX: 'hidden', overflowY: 'hidden' }, [300, 100, 300, 100]);
+  inde.body.add(pos.add(new inde.El('span', { stil: { position: 'absolute' }, offsetParent: pos, rect: [700, 120, 100, 18] }).add('Skaaret')));
+  assert.equal(inde.koer(KILDE, null, 'Skaaret').synlig, false, 'er rulleboksen den indeholdende blok, skaerer den');
+});
+
+test('R176: et fast element over en rulleboks laengere nede, eller til venstre for den, er synligt', () => {
+  const s = lavSide();
+  const main = boks(s, {}, [0, 600, 1265, 3000]);
+  s.body.add(main.add(new s.El('div', { stil: { position: 'fixed' }, rect: [1040, 16, 200, 30] }).add('Toast')));
+  assert.equal(s.koer(KILDE, null, 'Toast').synlig, true, 'rullebokse over et fast element afgoer ikke dets plads');
+  const v = lavSide();
+  const app = boks(v, {}, [300, 0, 965, 800]);
+  v.body.add(app.add(new v.El('div', { stil: { position: 'fixed' }, rect: [16, 600, 200, 30] }).add('Hjaelp')));
+  assert.equal(v.koer(KILDE, null, 'Hjaelp').synlig, true);
+});
+
+test('R176: paa en vandret rullet rtl-side er indhold paa skaermen synligt', () => {
+  const s = lavSide();
+  s.document.documentElement = { clientWidth: 1265, clientHeight: 800, stil: { direction: 'rtl' } };
+  s.vindue.scrollX = -1000;
+  s.body.add(new s.El('p', { rect: [765, 100, 200, 18] }).add('Paa skaermen'));
+  assert.equal(s.koer(KILDE, null, 'Paa skaermen').synlig, true);
+});
+
+test('R176: i quirks-tilstand med vandret rullebjaelke giver scrollingElement vinduets hoejde', () => {
+  const s = lavSide();
+  s.document.documentElement = { clientWidth: 1265, clientHeight: 4333 };
+  s.document.scrollingElement = { clientWidth: 1265, clientHeight: 698 };
+  s.vindue.innerHeight = 713;
+  s.body.add(new s.El('div', { stil: { position: 'fixed' }, rect: [0, 698, 1265, 40] }).add('Bundark'));
+  assert.equal(s.koer(KILDE, null, 'Bundark').synlig, false, 'arket ligger under rullebjaelken, uden for fladen');
+});
+
+test('R176 (Opus M5-9): i en aaben liste viser en option med label sin label - ogsaa uden tag', () => {
+  const v = side((b, El) => b.add(new El('select', { rect: [10, 10, 200, 60], multiple: true }).add(
+    new El('option', { rect: [10, 10, 200, 20], attrs: { label: 'Pending' } }).add('Saved'),
+    new El('option', { rect: [10, 30, 200, 20] }).add('Andet'))));
+  assert.equal(v(null, 'Saved').synlig, false);
+  assert.equal(v(null, 'Pending').synlig, true);
+  assert.equal(v(null, 'Andet').synlig, true, 'en option uden label viser sin tekst');
+});
+
+test('R176: urullede reverse-bokse - indhold paa begyndelsens side kan rulles frem', () => {
+  const r = lavSide();
+  r.body.add(boks(r, { display: 'flex', flexDirection: 'row-reverse' }, [800, 260, 300, 60])
+    .add(new r.El('span', { rect: [500, 260, 100, 40] }).add('Til venstre')));
+  assert.equal(r.koer(KILDE, null, 'Til venstre').synlig, true, 'row-reverse loeber over mod venstre');
+  const c = lavSide();
+  c.body.add(boks(c, { display: 'flex', flexDirection: 'column-reverse' }, [460, 480, 300, 200])
+    .add(new c.El('p', { rect: [460, 300, 285, 40] }).add('Over')));
+  assert.equal(c.koer(KILDE, null, 'Over').synlig, true, 'column-reverse loeber over opad');
+});
+
+test('R176: en negativ rulning afgoer begyndelsen, ogsaa hvor stilen ikke siger det', () => {
+  // Lodret skrift med flex column-reverse begynder til hoejre, og med direction:rtl nederst (Chrome melder negativ rulning).
+  const x = lavSide();
+  x.body.add(boks(x, { writingMode: 'vertical-lr', display: 'flex', flexDirection: 'column-reverse' }, [300, 100, 600, 200], { scrollLeft: -500 })
+    .add(new x.El('p', { rect: [400, 100, 100, 180] }).add('Vandret')));
+  assert.equal(x.koer(KILDE, null, 'Vandret').synlig, true);
+  const y = lavSide();
+  y.body.add(boks(y, { writingMode: 'vertical-lr', direction: 'rtl' }, [300, 100, 200, 600], { scrollTop: -400 })
+    .add(new y.El('p', { rect: [300, 200, 180, 100] }).add('Lodret')));
+  assert.equal(y.koer(KILDE, null, 'Lodret').synlig, true);
+});
+
+test('R176 (Opus M9-4): vandret rullet ltr-boks - indhold rullet forbi til venstre kan naas', () => {
+  const s = lavSide();
+  s.body.add(boks(s, {}, [20, 20, 300, 200], { scrollLeft: 600 }).add(new s.El('span', { rect: [-200, 50, 100, 18] }).add('Forbi')));
+  assert.equal(s.koer(KILDE, null, 'Forbi').synlig, true);
+});
+
+test('R176: indlejrede rullebokse - den yderste boks afgoer sidens begyndelse', () => {
+  const s = lavSide();
+  const ydre = boks(s, {}, [20, 20, 300, 200], { scrollTop: 700 });
+  const indre = boks(s, {}, [20, -500, 300, 200]);
+  s.body.add(ydre.add(indre.add(new s.El('p', { rect: [20, -480, 285, 18] }).add('Dybt'))));
+  assert.equal(s.koer(KILDE, null, 'Dybt').synlig, true, 'man ruller den ydre boks op til den indre');
 });

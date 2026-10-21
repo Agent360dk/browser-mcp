@@ -26,7 +26,7 @@ error. The page is no longer scrolled while waiting, and the timeout is at most 
 
 **`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any dialog,
 "Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, and it is dropped when a new
-document loads in the tab (a reload too - not an address change within the same page, and not a frame) or the session moves
+document loads or becomes active in the tab (a reload or a prerendered page too - not an address change within the same page, and not a frame) or the session moves
 to another tab. A page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile
 `session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
 (otherwise `leave-page-required`); a dismiss is unchanged.
@@ -34,7 +34,7 @@ to another tab. A page that changes while the arming is being set answers `page-
 **Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the
 window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left
 in that window (`kept_window_open: true`). A check that fails stops the close. A close that Chrome does not complete within
-5 seconds - while "Leave site?" is open, or on a busy page, `chrome.tabs.remove` never answers - answers `tab-not-closed`
+4 seconds - while "Leave site?" is open, or on a busy page, `chrome.tabs.remove` never answers - answers `tab-not-closed`
 and does not hold up the closes of other chats; such a tab still counts as closing, so a later close of the window's other
 tab leaves an empty tab rather than risk Chrome closing.
 
