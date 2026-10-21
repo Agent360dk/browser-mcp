@@ -356,8 +356,9 @@ function bygForklaring(version) {
   const i = kilde.indexOf('function forklarSkaevhed');
   let d = 0, j = kilde.indexOf('{', i);
   for (; j < kilde.length; j++) { if (kilde[j] === '{') d++; else if (kilde[j] === '}' && --d === 0) break; }
-  return new Function('activeConnection', kilde.slice(a, j + 1) + '; return forklarSkaevhed;')(
-    () => (version === undefined ? null : { version }),
+  // 1.33 (4.1): raadet naevner serverens egen version (PKG_VERSION).
+  return new Function('activeConnection', 'PKG_VERSION', kilde.slice(a, j + 1) + '; return forklarSkaevhed;')(
+    () => (version === undefined ? null : { version }), '9.9.9',
   );
 }
 
@@ -368,6 +369,7 @@ test('gammel udvidelse: ukendt metode forklares, ikke bare rapporteres', () => {
   assert.match(svar, /1-3 days/, 'vinduets laengde naevnes ikke');
   assert.match(svar, /Until then: /, 'ingen erstatning tilbudt');
   assert.ok(!svar.startsWith('Error: Unknown method'), 'den gaadefulde besked staar stadig');
+  assert.match(svar, /npx @agent360\/browser-mcp@9\.9\.9 install/, 'raadet skal bruge serverens egen version (4.1)');
 });
 
 test('alle otte metoder fra v1.26.0 har en erstatning', () => {

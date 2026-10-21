@@ -1710,7 +1710,8 @@ function forklarSkaevhed(besked) {
     'release - the server updates immediately via npm. Everything else works meanwhile.\n' +
     (alt ? `\nUntil then: ${alt}.\n` : '') +
     '\nCheck whether an update is waiting: chrome://extensions → Agent360 Browser MCP. ' +
-    'If it is loaded as "unpacked", run `npx @agent360/browser-mcp install`.';
+    `If it is loaded as "unpacked", run \`npx @agent360/browser-mcp@${PKG_VERSION} install\` (this server's version, so ` +
+    'the extension matches it and a version you pinned stays pinned).';
 }
 
 const REPO_URL = 'https://github.com/Agent360dk/browser-mcp';
@@ -1964,12 +1965,13 @@ async function handleProvideFeedback(args) {
         ? 'If the extension came from the Chrome Web Store: there is probably a newer version in review ' +
           '(1-3 days after a release). ↻ reload does NOT fetch it before Google has approved - ' +
           'that is expected and passes by itself. Everything else works meanwhile. ' +
-          'If it is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload.'
+          `If it is loaded as "unpacked": run \`npx @agent360/browser-mcp@${PKG_VERSION} install\` (this server's version) ` +
+          'and then chrome://extensions → Agent360 Browser MCP → ↻ reload.'
         // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
         // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
-        : 'If the extension is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome Web Store: the new version ' +
+        : `If the extension is loaded as "unpacked": run \`npx @agent360/browser-mcp@${PKG_VERSION} install\` (this ` +
+          'server\'s version) and then chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome ' +
+          'Web Store: the new version ' +
           'is probably in review (1-3 days after a release), and ↻ reload does NOT fetch it before Google has ' +
           'approved - that is expected and passes by itself. Everything else works meanwhile.',
     );

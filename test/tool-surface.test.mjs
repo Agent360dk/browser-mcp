@@ -707,3 +707,11 @@ test('3.3: «not connected» naevner profilens vindue og begge installationsmaad
   assert.match(blok, /chromewebstore\.google\.com/);
   assert.match(blok, /loaded unpacked/);
 });
+
+// 1.33 (privat rapport 4.1): raadet «run npx @agent360/browser-mcp install» hentede den nyeste pakke, og install kopierer
+// udvidelsens filer uden betingelse (cli.js) - en bruger, der havde fastlaast en gennemgaaet version, fik en anden udvidelse.
+// Raadet bruger nu serverens egen version.
+test('4.1: serverens installationsraad bruger serverens egen version, ikke den nyeste', () => {
+  assert.doesNotMatch(indexSrc, /npx @agent360\/browser-mcp install/, 'et raad uden version henter den nyeste pakke');
+  assert.equal(indexSrc.split('npx @agent360/browser-mcp@${PKG_VERSION} install').length - 1, 3, 'de tre raad (ukendt metode, fix_steps x2)');
+});
