@@ -2530,8 +2530,8 @@ async function filAdgangsSvar(besked) {
   };
 }
 
-// #67 (arasmileska; X og 37 af 37 Facebook-gruppeopslag): siden laeste filen i sin change-lytter og ryddede feltet
-// (input.value = ''), og saa var svaret file-not-attached - en agent, der troede paa det, vedhaeftede igen og postede to
+// #67 (37 af 37 uploads paa sider, der rydder feltet): siden laeste filen i sin change-lytter og ryddede feltet
+// (input.value = ''), og saa var svaret file-not-attached - en agent, der troede paa det, vedhaeftede igen og sendte to
 // gange. En lytter i fangstfasen, sat FOER filen afleveres, ser feltet i det oejeblik siden faar det: paa window for et
 // felt i dokumentet (window kommer foer alle sidens egne lyttere), paa feltet selv for et felt uden for dokumentet.
 // Svaret er { antal, navne } eller null (ingen change). Selvstaendig, saa den kan koere i siden.
@@ -3197,8 +3197,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       if (desc && (desc.textContent || '').includes(tekst)) return desc;
       return el;
     }
-    // #70 (arasmileska; Search Console og Facebook har skjulte kopier af knapper): `text=Request indexing` stoppede ved en
-    // skjult foerste «Request indexing» og meldte «not visible», skoent en synlig knap med samme tekst fandtes. Et maal
+    // #70 (sider med skjulte kopier af knapper): `text=Send` stoppede ved en skjult foerste «Send» og meldte
+    // «not visible», skoent en synlig knap med samme tekst fandtes. Et maal
     // med en boks og uden visibility:hidden foretraekkes nu; findes der kun skjulte, vaelges som foer, og svaret siger det.
     const synlig = (el) => {
       if (!el || !el.getBoundingClientRect) return false;
