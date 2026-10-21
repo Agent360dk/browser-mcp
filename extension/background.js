@@ -3047,6 +3047,9 @@ function ventMaal(sel, tekst, wantTag) {
   const synligt = (el) => {
     // display:none (ogsaa paa en forfader) og display:contents giver en boks paa 0 x 0 - stoerrelsen fanger dem.
     if (!el || !el.getBoundingClientRect) return false;
+    // R173 (MAALT i headless Chrome 155): indhold i en lukket <details> og under content-visibility:hidden har en boks paa
+    // 740 x 18 og ingen af stilene nedenfor - kun browserens egen checkVisibility ved, at det ikke tegnes.
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true })) return false;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return false;
     if (r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
@@ -3058,6 +3061,11 @@ function ventMaal(sel, tekst, wantTag) {
       if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
         const b = n.getBoundingClientRect();
         if (b.width < 2 || b.height < 2) return false;
+        // R173 (Astra, MAALT): tekst helt uden for en boks, der skaerer af (hidden/clip), talte som synlig. En boks, der kan
+        // rulles (auto/scroll), skjuler ikke - som siden under folden.
+        const skaerer = (v) => v === 'hidden' || v === 'clip';
+        if ((skaerer(s.overflowX) || skaerer(s.overflowY))
+          && (r.right <= b.left || r.left >= b.right || r.bottom <= b.top || r.top >= b.bottom)) return false;
       }
     }
     return true;
@@ -3075,16 +3083,31 @@ function ventMaal(sel, tekst, wantTag) {
     }
     return ud;
   };
-  let matches;
+  // R173 (Astra, MAALT i side-modellen): det inderste match afgjorde sagen - en synlig knap med en skjult <span>Saved</span>
+  // blev godkendt, «Sa<span skjult>ved</span>» ogsaa, og et synligt «Saved» med en skjult kopi inden i blev overset. Nu
+  // afgoer den SYNLIGE tekst: tekstnoder, hvis eget element kan ses, i dokumentets raekkefoelge.
+  const kendt = new Map();
+  const vises = (el) => { if (!kendt.has(el)) kendt.set(el, synligt(el)); return kendt.get(el); };
+  const synligTekst = (rod) => {
+    let ud = '';
+    const w = document.createTreeWalker(rod, NodeFilter.SHOW_TEXT);
+    for (let t = w.nextNode(); t; t = w.nextNode()) {
+      const ejer = t.parentElement || (t.parentNode && t.parentNode.host) || null;   // tekst direkte i en shadow root
+      if (ejer && !IKKE_VIST.has(ejer.nodeName) && vises(ejer)) ud += t.data;
+    }
+    return ud;
+  };
   if (tekst != null) {
     const tag = wantTag ? String(wantTag).toUpperCase() : null;
-    const m = collectAll(document, []).filter((el) => (!tag || el.tagName === tag) && !IKKE_VIST.has(el.tagName)
+    const alle = collectAll(document, []);
+    const m = alle.filter((el) => (!tag || el.tagName === tag) && !IKKE_VIST.has(el.tagName)
       && (el.textContent || '').includes(tekst) && vistTekst(el).includes(tekst));
-    // Det inderste match: <div><span>Gemt</span></div> er spannet, ikke div'en omkring det.
-    matches = m.filter((el) => !m.some((o) => o !== el && el.contains(o)));
-  } else {
-    matches = alleDybt(document, sel, []);
+    // Uden tag: den synlige tekst i dokumentet og i hver shadow root (tekst over en skyggegraense laeses ikke som én).
+    const roedder = [document, ...alle.filter((el) => el.shadowRoot).map((el) => el.shadowRoot)];
+    const synlig = tag ? m.some((el) => synligTekst(el).includes(tekst)) : roedder.some((rod) => synligTekst(rod).includes(tekst));
+    return { synlig, paaSiden: m.length > 0 };
   }
+  const matches = alleDybt(document, sel, []);
   return { synlig: matches.some(synligt), paaSiden: matches.length > 0 };
 }
 
@@ -8511,6 +8534,7 @@ function captchaFund() {
   // usynlig reCAPTCHA en oplysning (invisible), ikke et fund; et afkrydsningsfelt og en billedudfordring taeller kun,
   // naar de kan ses - reCAPTCHA indlaeser udfordringens ramme skjult paa forhaand.
   const kanSes = (el) => {
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true })) return false;
     const r = el.getBoundingClientRect();
     if (r.width < 10 || r.height < 10 || r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
     for (let n = el; n && n.nodeType === 1; n = n.parentElement) {

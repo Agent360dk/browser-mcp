@@ -16,7 +16,10 @@ import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // ── Del A: side-modellen ───────────────────────────────────────────────────────
 function lavSide() {
-  class Tekst { constructor(data) { this.data = data; this.nodeType = 3; this.nodeName = '#text'; this.parentNode = null; } }
+  class Tekst {
+    constructor(data) { this.data = data; this.nodeType = 3; this.nodeName = '#text'; this.parentNode = null; }
+    get parentElement() { return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null; }
+  }
   class El {
     constructor(tag, o = {}) {
       this.tagName = this.nodeName = tag.toUpperCase();
@@ -63,6 +66,7 @@ function lavSide() {
     return 'visible';
   };
   const document = {
+    kids: [html],
     querySelectorAll: (sel) => [...(sel === '*' || passer(html, sel) ? [html] : []), ...html.querySelectorAll(sel)],
     createTreeWalker: (rod) => {
       const tekster = [];
@@ -76,7 +80,7 @@ function lavSide() {
   const koer = (kilde, sel, tekst, tag = null) => new Function('document', 'window', 'getComputedStyle', 'NodeFilter',
     `return (${kilde})(${JSON.stringify(sel)}, ${JSON.stringify(tekst)}, ${JSON.stringify(tag)});`)(
     document, { scrollX: 0, scrollY: 0 }, getComputedStyle, { SHOW_TEXT: 4 });
-  return { El, body, koer };
+  return { El, Tekst, body, koer };
 }
 
 const KILDE = indlaesUdvidelse({ svar: {} }).hent('ventMaal').toString();
@@ -206,4 +210,59 @@ test('2.1 (vaerktoej): intet match - found:false uden on_page_but_hidden', async
   const r = await vaerktoej({ tekst: () => ({ synlig: false, paaSiden: false }) }).vent({ selector: 'text=Gemt', timeout: 700 });
   // Svaret kommer fra udvidelsens VM (en anden Object-prototype), saa indholdet sammenlignes.
   assert.deepEqual(JSON.parse(JSON.stringify(r)), { found: false });
+});
+
+// ── R173 (Astra, MAALT i side-modellen): det inderste match afgjorde sagen ─────────────────────────────────
+test('R173: en synlig knap, hvis eneste tekst er en skjult <span>, er ikke synlig for button:text(...)', () => {
+  const v = side((b, El) => b.add(new El('button').add(new El('span', { stil: { display: 'none' } }).add('Saved'))));
+  assert.deepEqual(v(null, 'Saved', 'button'), { synlig: false, paaSiden: true });
+});
+
+test('R173: «Sa<span skjult>ved</span>» viser ikke «Saved»', () => {
+  const v = side((b, El) => b.add(new El('p').add('Sa', new El('span', { stil: { display: 'none' } }).add('ved'))));
+  assert.deepEqual(v(null, 'Saved'), { synlig: false, paaSiden: true });
+});
+
+test('R173: et synligt «Saved» med en skjult kopi inden i er synligt', () => {
+  const v = side((b, El) => b.add(new El('p').add('Saved', new El('span', { stil: { display: 'none' } }).add('Saved'))));
+  assert.equal(v(null, 'Saved').synlig, true);
+});
+
+test('R173: tekst uden for en boks med overflow hidden er skjult - i en rullebar boks er den synlig', () => {
+  const ude = (overflow) => side((b, El) => b.add(new El('div', { rect: [10, 10, 300, 200], stil: { overflowX: overflow, overflowY: overflow } })
+    .add(new El('p', { rect: [400, 10, 100, 20] }).add('Gemt'))))(null, 'Gemt').synlig;
+  assert.equal(ude('hidden'), false, 'overflow hidden skaerer teksten af');
+  assert.equal(ude('clip'), false);
+  assert.equal(ude('auto'), true, 'en rullebar boks kan rulles til teksten - som siden under folden');
+});
+
+test('R173: tekst i et <style> er hverken paa siden eller synlig', () => {
+  const v = side((b, El) => b.add(new El('style', { stil: { display: 'none' } }).add('.Gemt { color: red }')));
+  assert.deepEqual(v(null, 'Gemt'), { synlig: false, paaSiden: false });
+});
+
+test('R173: CSS-vejen sender selektoren til siden som argument', async () => {
+  const args = [];
+  const u = indlaesUdvidelse({ svar: {
+    'tabs.get': (id) => ({ id, url: 'https://side.example/', windowId: 1, active: true }),
+    'scripting.executeScript': (o) => { args.push(o.args); return [{ result: { synlig: true, paaSiden: true } }]; },
+  } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 'Claude 1', color: 'blue' });
+  await u.hent('dispatch')(9876, 'wait', { selector: '#besked', timeout: 700 });
+  assert.deepEqual(JSON.parse(JSON.stringify(args[0])), ['#besked', null, null]);
+});
+
+test('R173: browserens egen checkVisibility afgoer en lukket <details> (boksen alene ser synlig ud)', () => {
+  // MAALT i headless Chrome 155: <p> i en lukket <details> har en boks paa 740 x 18, men checkVisibility() er false.
+  const v = side((b, El) => { const p = new El('p').add('Gemt'); p.checkVisibility = () => false; b.add(new El('details').add(p)); });
+  assert.deepEqual(v(null, 'Gemt'), { synlig: false, paaSiden: true });
+  const aaben = side((b, El) => { const p = new El('p').add('Gemt'); p.checkVisibility = () => true; b.add(new El('details').add(p)); });
+  assert.equal(aaben(null, 'Gemt').synlig, true);
+});
+
+test('R173: tekst direkte i en shadow root (uden element om sig) taeller med sin vaerts synlighed', () => {
+  const v = side((b, El) => { const h = new El('div'); b.add(h); h.attachShadow().add('Gemt'); });
+  assert.equal(v(null, 'Gemt').synlig, true);
+  const skjult = side((b, El) => { const h = new El('div', { stil: { opacity: '0' } }); b.add(h); h.attachShadow().add('Gemt'); });
+  assert.equal(skjult(null, 'Gemt').synlig, false);
 });
