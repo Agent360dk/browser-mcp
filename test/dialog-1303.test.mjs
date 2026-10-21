@@ -1404,3 +1404,19 @@ test('1.33 2.2: ogsaa i en ny fane (new_tab) meldes et usynligt reCAPTCHA som op
   assert.equal(r.captcha_invisible, 'recaptcha', vis(r));
   assert.equal(r.captcha_detected, undefined);
 });
+
+// 1.33 (privat rapport 5.9): navigate(new_tab) aabner fanen i baggrunden; svaret sagde det ikke.
+test('1.33 5.9: en ny fane i baggrunden - svaret siger active:false og raader til browser_switch_tab', async () => {
+  const m = model({ beskyt: false });
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(r.tab_id, 10, vis(r));
+  assert.equal(r.active, false);
+  assert.match(r.active_note, /browser_switch_tab/);
+});
+
+test('1.33 5.9: navigate i den aktive fane faar ingen active-note', async () => {
+  const m = model({ beskyt: false });
+  const r = await fang(m.nav());
+  assert.equal(r.active, undefined, vis(r));
+  assert.equal(r.active_note, undefined);
+});

@@ -6169,6 +6169,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         result.captcha_detected = captcha.types.join(', ');
         result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;
       } else if (captcha && captcha.invisible) result.captcha_invisible = captcha.invisible.join(', ');
+      // 1.33 (privat rapport 5.9): en ny fane aabnes i baggrunden, og svaret sagde det ikke - som switch_tab siger synligheden.
+      // (Hertil naar kun en ny fane: navigate i den aktive fane svarer fra navigerIFanen.)
+      if (updated && updated.active === false) {
+        result.active = false;
+        result.active_note = 'The new tab opened in the background: it is not the active tab in its window. Call ' +
+          'browser_switch_tab before key presses, hover, the mouse wheel or coordinate clicks; read landed in their answers.';
+      }
       return result;
     }
 
