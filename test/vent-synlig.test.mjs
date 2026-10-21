@@ -463,3 +463,25 @@ test('R175 (Opus): i quirks-tilstand er vinduet det mindste af innerHeight og do
   s.body.add(new s.El('div', { stil: { position: 'fixed' }, rect: [10, 1000, 200, 40] }).add('Bundark'));
   assert.equal(s.koer(KILDE, null, 'Bundark').synlig, false, 'et fast ark under vinduet (800) er ikke synligt');
 });
+
+// ── R176 (Astra, MAALT i modellen) ───────────────────────────────────────────────────────────────────
+test('R176: en <option label> som soegerod (option:text(...)) viser sin label, ikke sin tekst', () => {
+  const v = side((b, El) => b.add(new El('select', { rect: [10, 10, 200, 60], size: 2 }).add(
+    new El('option', { rect: [10, 10, 200, 20], selected: true, attrs: { label: 'Pending' } }).add('Saved'))));
+  assert.equal(v(null, 'Saved', 'option').synlig, false);
+  assert.equal(v(null, 'Pending', 'option').synlig, true);
+});
+
+test('R176: et fast barn undslipper sin rulleforfaders boks - det er synligt i vinduet', () => {
+  const s = lavSide();
+  const rulle = new s.El('div', { stil: { overflowY: 'auto' }, rect: [400, 400, 300, 200] });
+  s.body.add(rulle.add(new s.El('div', { stil: { position: 'fixed' }, rect: [10, 10, 200, 40] }).add('Banner')));
+  assert.equal(s.koer(KILDE, null, 'Banner').synlig, true);
+});
+
+test('R176: i en rtl-rulleboks kan der rulles mod venstre - indhold til venstre er ikke afvist', () => {
+  const s = lavSide();
+  const rulle = new s.El('div', { stil: { overflowX: 'auto', direction: 'rtl' }, rect: [400, 10, 300, 100] });
+  s.body.add(rulle.add(new s.El('p', { rect: [100, 20, 100, 20] }).add('Venstre')));
+  assert.equal(s.koer(KILDE, null, 'Venstre').synlig, true);
+});

@@ -3128,19 +3128,24 @@ function ventMaal(sel, tekst, wantTag) {
     let fast = null, rul = false, rulVedFast = false;
     for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
       const s = getComputedStyle(n);
+      // R176 (Astra, MAALT i modellen): et fast element undslipper rulning og afskaering hos forfaedrene OVER sig - kun deres
+      // opacity gaelder stadig. Et synligt fast barn uden for sin rulleforfaders boks blev ellers afvist.
+      const overFast = !!fast;
       const ruller = /(auto|scroll)/.test(s.overflowX + ' ' + s.overflowY);
-      if (n !== el && ruller) {
+      if (!overFast && n !== el && ruller) {
         rul = true;
         // R175 (Opus, MAALT i Chrome 155): «kan rulles» er ikke «kan naas». Indhold til venstre for eller over en rulleboks'
-        // begyndelse (en menu skubbet ud med translateX(-100%), et link paa left:-9999px) kan aldrig rulles frem.
+        // begyndelse (en menu skubbet ud med translateX(-100%), et link paa left:-9999px) kan aldrig rulles frem. R176 (Astra):
+        // i en rtl-boks ruller indholdet mod venstre (negativ scrollLeft) - der gaelder kun den lodrette begyndelse.
         const sb = n.getBoundingClientRect();
-        if (r.right <= sb.left - (n.scrollLeft || 0) || r.bottom <= sb.top - (n.scrollTop || 0)) return false;
+        const ltr = s.direction !== 'rtl';
+        if ((ltr && r.right <= sb.left - (n.scrollLeft || 0)) || r.bottom <= sb.top - (n.scrollTop || 0)) return false;
       }
       // R175 (Astra, MAALT i modellen): den YDRE faste ramme overskrev den indre - en fast skuffe uden for vinduet i en synlig,
       // rullebar fast ramme blev «synlig». Den inderste faste boks afgoer: den er placeret efter vinduet, ikke efter rammen.
       if (!fast && s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
       if (parseFloat(s.opacity) === 0) return false;
-      if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
+      if (!overFast && n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
         const b = n.getBoundingClientRect();
         if (b.width < 2 || b.height < 2) return false;
         // R173 (Astra, MAALT): tekst helt uden for en boks, der skaerer af (hidden/clip), talte som synlig. En boks, der kan
@@ -3188,7 +3193,7 @@ function ventMaal(sel, tekst, wantTag) {
     // R175 (Astra, MAALT i modellen): en TreeWalker over tekst lagde en <select>s etiket EFTER al den oevrige tekst, saa
     // «Sa<select>…</select>ved» blev til «Saved». Traeet gaas nu igennem i tegnet raekkefoelge, og en lukket <select>
     // bidrager paa sin egen plads med det, den viser - adskilt fra naboerne.
-    const tekst = (t, ejer) => {
+    const tekstNode = (t, ejer) => {
       // R173 (Opus, MAALT i Chrome): tekst direkte i et display:contents-element (fx et #root) tegnes i en forfaders boks.
       for (let i = 0; i < 50 && ejer.parentElement && getComputedStyle(ejer).display === 'contents'; i++) {
         if (getComputedStyle(ejer).visibility !== 'visible') break;   // en skjult contents-forfader skjuler ogsaa teksten
@@ -3196,33 +3201,33 @@ function ventMaal(sel, tekst, wantTag) {
       }
       if (vises(ejer)) ud += t.data;
     };
+    // Et element bidrager efter samme regler, hvad enten det er roden eller et barn. R176 (Astra, MAALT i modellen): en
+    // <option label> som SOEGEROD (option:text(...)) fik sin tekst talt - kun et barn fik label-reglen.
+    const element = (c) => {
+      if (IKKE_VIST.has(c.nodeName)) return;
+      if (c.nodeName === 'SELECT' && !c.multiple && !(c.size > 1)) {
+        // En lukket <select> viser den valgte options etiket - en ikke-tom label, ellers optionens tekst (HTML-standarden).
+        const o = c.options && c.options[c.selectedIndex];
+        const vist = o ? ((o.getAttribute && o.getAttribute('label')) || o.textContent || '') : '';
+        if (vist && vises(c)) ud += '\n' + vist + '\n';
+        return;
+      }
+      if (c.nodeName === 'OPTION' && c.getAttribute && c.getAttribute('label')) {
+        // R174 (Astra): i en aaben liste viser en option med label sin label, ikke sin tekst.
+        if (vises(c)) ud += '\n' + c.getAttribute('label') + '\n';
+        return;
+      }
+      gaa(c, c);
+    };
     const gaa = (n, ejer) => {
       for (const c of n.childNodes || []) {
-        if (c.nodeType === 3) { if (ejer) tekst(c, ejer); continue; }
-        if (c.nodeType !== 1 || IKKE_VIST.has(c.nodeName)) continue;
-        if (c.nodeName === 'SELECT' && !c.multiple && !(c.size > 1)) {
-          // En lukket <select> viser den valgte options etiket - en ikke-tom label, ellers optionens tekst (HTML-standarden).
-          const o = c.options && c.options[c.selectedIndex];
-          const vist = o ? ((o.getAttribute && o.getAttribute('label')) || o.textContent || '') : '';
-          if (vist && vises(c)) ud += '\n' + vist + '\n';
-          continue;
-        }
-        if (c.nodeName === 'OPTION' && c.getAttribute && c.getAttribute('label')) {
-          // R174 (Astra): i en aaben liste viser en option med label sin label, ikke sin tekst.
-          if (vises(c)) ud += '\n' + c.getAttribute('label') + '\n';
-          continue;
-        }
-        gaa(c, c);
+        if (c.nodeType === 3) { if (ejer) tekstNode(c, ejer); continue; }
+        if (c.nodeType === 1) element(c);
       }
     };
     // Tekst direkte i en shadow root tegnes i vaertens boks.
-    gaa(rod, rod.nodeType === 1 ? rod : (rod.host || null));
-    if (rod.nodeType === 1 && rod.nodeName === 'SELECT') {
-      // select:text(...): selve feltet er roden.
-      const o = rod.options && rod.options[rod.selectedIndex];
-      const vist = o ? ((o.getAttribute && o.getAttribute('label')) || o.textContent || '') : '';
-      if (!rod.multiple && !(rod.size > 1) && vist && vises(rod)) ud = '\n' + vist + '\n';
-    }
+    if (rod.nodeType === 1) element(rod);
+    else gaa(rod, rod.host || null);
     return ud;
   };
   if (tekst != null) {
@@ -7834,11 +7839,16 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       // R175 (Astra, MAALT): bindingen gjaldt fra efter faneopslaget - en genindlaesning, mens det foerste opslag ventede, og et
       // skift vaek og tilbage, mens Page.enable ventede, slap igennem. Fanens dokumentgeneration tages nu FOER foerste ventetid,
       // og sessionens skifttaeller skal vaere uaendret, naar der armeres eller svares.
+      // R176 (Astra, MAALT): skifttaelleren og «den kendte boks» blev ogsaa taget efter opslaget - et skift vaek og tilbage under
+      // det foerste opslag, og en ny sides boks, der kom imens, slap igennem. Alt tages nu foer foerste ventetid.
       const sessFoer = getSession(port);
       const aktivFoer = sessFoer.activeTabId;
       const genFoer = aktivFoer != null ? (dialogFaner.get(aktivFoer)?.dokGen || 0) : null;
+      const kendtFoer = aktivFoer != null ? (dialogFaner.get(aktivFoer)?.boks || null) : null;
+      const skiftFoer = sessFoer.skiftNr || 0;
       const tab = await getSessionTab(port);
-      const skiftEfterOpslag = sessFoer.skiftNr || 0;
+      // Har opslaget selv valgt fanen (ingen aktiv fane foer kaldet), er dets eget skift ikke et skift under kaldet.
+      const skiftEfterOpslag = tab.id === aktivFoer ? skiftFoer : (sessFoer.skiftNr || 0);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const action = params.action === 'dismiss' ? 'dismiss' : 'accept';
       const promptText = params.text || '';
@@ -7861,7 +7871,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         : { ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
             note: 'The page in this tab changed while this call waited, so nothing was answered or armed. Read the tab, then ' +
               'arm again right before the action that opens the dialog.' });
-      const foerKendt = s.boks;   // en boks, der stod aaben, da kaldet kom, hoerer til den side, agenten saa
+      const foerKendt = tab.id === aktivFoer ? kendtFoer : null;   // en boks, der stod aaben, da kaldet kom, hoerer til siden, agenten saa
       const svarAaben = (boks) => (boks !== foerKendt && sideSkiftet() ? sideSvar(null) : besvarAabenBoks(tab.id, boks, action, promptText, forlad));
 
       // #69 (1.30.3): en SET boks, der staar aaben, besvares straks gennem koordinatoren - uden Page.enable, som haenger,
@@ -8565,7 +8575,8 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         const mit = vinduer.find((w) => w.id === fane.windowId);
         if (!(mit && andre(mit)) && !vinduer.some((w) => w.id !== fane.windowId && andre(w))) {
           await chrome.tabs.create({ windowId: fane.windowId, url: 'about:blank', active: false });
-          holdtAaben = true;
+          // Staar en anden fane i vinduet stadig og venter paa at blive lukket, er det ikke sikkert, at denne var den sidste.
+          holdtAaben = (mit && (mit.tabs || []).some((t) => t.id !== tabId && fanerUnderLukning.has(t.id))) ? 'ventende' : true;
         }
         agentLukkedeFaner.add(tabId);
         fanerUnderLukning.add(tabId);
@@ -8574,13 +8585,16 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         fjern.then(ryd, ryd);
         return { holdtAaben, fjern };
       };
+      // R176 (Astra, MAALT): fristen begyndte efter forberedelsen, saa et kald kunne vare laengere end serverens 5 s.
+      const slut = Date.now() + LUK_FANE.ms;
       const tur = fanelukninger.then(forbered);
       fanelukninger = tur.catch(() => {});
       const { holdtAaben, fjern } = await tur;
-      if (await venteMedFrist(fjern, LUK_FANE.ms) === FRIST_UDLOEB) {
-        // R175 (Opus, MAALT i Chrome): efter Stay svarer chrome.tabs.remove aldrig - fanen stod saa «under lukning» for altid,
-        // og en senere lukning lavede en unoedig tom fane med en usand note. Fanen er der stadig; den taeller igen.
-        fanerUnderLukning.delete(tabId);
+      if (await venteMedFrist(fjern, Math.max(0, slut - Date.now())) === FRIST_UDLOEB) {
+        // R176 (Astra, MAALT i modellen): en udloebet frist er ikke bevis for, at lukningen er opgivet - fjernelsen gik igennem
+        // 400 ms senere, og en lukning af den anden fane imens havde regnet med, at denne holdt vinduet aabent: nul faner.
+        // Fanen bliver derfor «under lukning», til Chrome svarer. Prisen er i hoejst en unoedig tom fane (R175, Opus), aldrig et
+        // lukket Chrome.
         return { ok: false, error: 'tab-not-closed', tab_id: tabId, ...(holdtAaben ? { kept_window_open: true } : {}),
           note: `Chrome did not close the tab within ${LUK_FANE.ms} ms: the page may be asking "Leave site?" (it may hold ` +
             'unsaved work) or be busy, and the tab is still open. The close may still happen later, if the prompt is answered ' +
@@ -8596,8 +8610,11 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         active_note: 'This was the session\'s active tab, so the session has no active tab now: call browser_switch_tab ' +
           'with the tab to continue in (browser_list_tabs lists them) before the next call.' } : {}),
         ...(holdtAaben ? { kept_window_open: true,
-        note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
-          'have closed Chrome and disconnected the extension.' } : {}) };
+        note: holdtAaben === 'ventende'
+          ? 'An empty tab was left in this window: the only other tab in Chrome is still being closed (its close has not ' +
+            'finished), and if it goes, Chrome would close and disconnect the extension.'
+          : 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
+            'have closed Chrome and disconnected the extension.' } : {}) };
     }
 
     case 'solve_captcha': {

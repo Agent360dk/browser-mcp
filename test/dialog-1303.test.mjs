@@ -1617,3 +1617,30 @@ test('R175: et «loading» uden nyt dokument (SPA-skift, iframe) afvaebner ikke 
   await sov(80);
   assert.equal(m.svar().length, 1, 'alerten efter SPA-skiftet skal besvares');
 });
+
+// ── R176 (Astra, MAALT): bindingen tages foer foerste ventetid ─────────────────────────────────────────
+test('R176: et skift vaek og tilbage, mens det foerste faneopslag venter, giver session-changed', async () => {
+  const m = model({ boksType: 'alert', getMs: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2);
+  m.u.hent('skiftAktiv')(sess, 2);
+  m.u.hent('skiftAktiv')(sess, 1);
+  const r = await p;
+  assert.equal(r.error, 'session-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R176: en ny sides boks, der aabner mens det foerste opslag venter, besvares ikke', async () => {
+  const m = model({ boksType: 'alert', getMs: 60 });
+  await m.enable();
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'top', url: GAMMEL } });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message: 'Ny side' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret');
+});

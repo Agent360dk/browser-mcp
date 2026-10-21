@@ -35,7 +35,8 @@ to another tab. A page that changes while the arming is being set answers `page-
 window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left
 in that window (`kept_window_open: true`). A check that fails stops the close. A close that Chrome does not complete within
 5 seconds - while "Leave site?" is open, or on a busy page, `chrome.tabs.remove` never answers - answers `tab-not-closed`
-and does not hold up the closes of other chats.
+and does not hold up the closes of other chats; such a tab still counts as closing, so a later close of the window's other
+tab leaves an empty tab rather than risk Chrome closing.
 
 **A screenshot path is a .png file and never replaces a file by accident.** With `path` set to a file in the working
 folder, `browser_screenshot` overwrote it with PNG bytes - `package.json` and `.vscode/tasks.json` included. Now the path

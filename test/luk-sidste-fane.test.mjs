@@ -21,7 +21,7 @@ function chrome(vinduer, fejl = {}, typer = {}) {
       if (fejl.foersteQuery && !fejl.brugt) { fejl.brugt = true; throw new Error('query afvist'); }
       const nu = Object.keys(vinduer).map((w) => ({ id: Number(w), type: typer[w] || 'normal', tabs: vinduer[w].map((id) => ({ id })) }))
         .filter((v) => !q || !q.windowTypes || q.windowTypes.includes(v.type));
-      await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, fejl.langsomMs || 5));
       return nu;
     },
     'tabs.create': (o) => { if (fejl.create) throw new Error('create afvist'); log.push(['create', o.windowId, o.url, o.active]); const id = 900 + log.length; vinduer[o.windowId].push(id); return { id, windowId: o.windowId, url: o.url }; },
@@ -148,8 +148,9 @@ test('R174: en fane under lukning taeller ikke som tilbage i vinduet - to luknin
   await a;
 });
 
-// R175 (Opus, MAALT i Chrome): efter tab-not-closed stod fanen «under lukning» for altid.
-test('R175: en fane, der ikke blev lukket, taeller igen - en senere lukning laver ingen unoedig tom fane', { timeout: 5000 }, async () => {
+// R176 (Astra, MAALT i modellen): en udloebet frist er ikke bevis for, at lukningen er opgivet. Fjernelsen kan gaa igennem
+// bagefter (svarer brugeren Leave), og en lukning af vinduets anden fane imens maa ikke regne med, at den holder vinduet aabent.
+test('R176: en fane, hvis lukning ikke er afsluttet, holder ikke vinduet aabent - den tomme fane laves, og noten siger hvorfor', { timeout: 5000 }, async () => {
   const vinduer = { 1: [11, 12] };
   const c = chrome(vinduer, { haenger: 11 });
   c.u.hent('LUK_FANE').ms = 200;
@@ -158,7 +159,8 @@ test('R175: en fane, der ikke blev lukket, taeller igen - en senere lukning lave
   const a = await d(9876, 'close_tab', { tab_id: 11 });
   assert.equal(a.error, 'tab-not-closed', JSON.stringify(a));
   const b = await d(9876, 'close_tab', { tab_id: 12 });
-  assert.equal(b.kept_window_open, undefined, `fane 11 staar der stadig: ${JSON.stringify(b)}`);
+  assert.equal(b.kept_window_open, true, `fane 11 kan stadig forsvinde: ${JSON.stringify(b)}`);
+  assert.match(b.note, /still being closed/);
 });
 
 test('R175: tab-not-closed siger det, hvis der allerede blev lavet en tom fane', { timeout: 5000 }, async () => {
@@ -169,4 +171,20 @@ test('R175: tab-not-closed siger det, hvis der allerede blev lavet en tom fane',
   assert.equal(r.error, 'tab-not-closed');
   assert.equal(r.kept_window_open, true);
   assert.match(r.note, /empty tab was already left/);
+});
+
+test('R176 (Astra): close_tab-fristen er 4 s og regnes fra kaldets start - inden for serverens 5 s', () => {
+  const c = chrome({ 1: [11] });
+  assert.equal(c.u.hent('LUK_FANE').ms, 4000);
+});
+
+test('R176 (Astra, MAALT): fristen regnes fra kaldets start - et langsomt vindueopslag forlaenger den ikke', { timeout: 5000 }, async () => {
+  const c = chrome({ 1: [11, 12] }, { haenger: 11, langsomMs: 400 });
+  c.u.hent('LUK_FANE').ms = 300;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const t0 = Date.now();
+  const r = await c.u.hent('dispatch')(9876, 'close_tab', { tab_id: 11 });
+  const t = Date.now() - t0;
+  assert.equal(r.error, 'tab-not-closed', JSON.stringify(r));
+  assert.ok(t < 600, `svaret kom efter ${t} ms - fristen begyndte foerst efter opslaget`);
 });
