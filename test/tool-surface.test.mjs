@@ -695,3 +695,15 @@ test('CHANGELOG 1.30.2 naevner hvert nyt svar, og hvert findes i koden', () => {
   // file-access-off: raekken skal naevne begge tilfaelde, som koden har dem (R62).
   assert.match(afsnit, /`file_access: false`\) or Chrome could not tell \(`file_access: null`/);
 });
+
+// 1.33 (privat rapport 3.3): «not connected» pegede kun paa butikkens id og «Chrome is open» - men Chrome kan vaere aaben med
+// kun en anden profils vinduer, og en udpakket installation har et andet id. Det var hver gang den rigtige aarsag.
+test('3.3: «not connected» naevner profilens vindue og begge installationsmaader', () => {
+  const i = indexSrc.indexOf("'Chrome extension not connected after 5 retries.\\n'");
+  assert.ok(i > -1, 'fejlteksten findes');
+  const blok = indexSrc.slice(i, indexSrc.indexOf('Still stuck', i));
+  assert.match(blok, /at least one window in the profile where the extension is installed/);
+  assert.match(blok, /only another profile\\'s windows/);
+  assert.match(blok, /chromewebstore\.google\.com/);
+  assert.match(blok, /loaded unpacked/);
+});

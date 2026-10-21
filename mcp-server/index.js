@@ -1034,9 +1034,13 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
       'Browser MCP needs BOTH halves: this MCP server (running) and the Agent360 Browser MCP ' +
       'Chrome extension (apparently not reachable).\n' +
       'Check, in order:\n' +
-      '  1. Chrome is actually open and running.\n' +
-      '  2. The extension is installed and enabled at chrome://extensions - install it from\n' +
-      '     https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n' +
+      // 1.33 (privat rapport 3.3): Chrome kan vaere aaben med kun en ANDEN profils vinduer - saa koerer udvidelsen ikke. Det
+      // var hver gang den rigtige aarsag i rapportoerens tilfaelde, og teksten sendte agenten til «not installed».
+      '  1. Chrome is open with at least one window in the profile where the extension is installed\n' +
+      '     (Chrome can be open with only another profile\'s windows; then the extension is not running).\n' +
+      '  2. The extension is installed and enabled at chrome://extensions in that profile - from the Chrome Web Store\n' +
+      '     (https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)\n' +
+      '     or loaded unpacked (Load unpacked; its id is then not the store\'s).\n' +
       '  3. Click the extension icon -> Reconnect, and wait 2-3 seconds.\n' +
       'Still stuck: https://browsermcp.dev/docs/troubleshooting/'
     );
