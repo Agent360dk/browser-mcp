@@ -233,9 +233,9 @@ test('S4a: en armeret dismiss vinder over leave_page - ét svar, og dommen er bl
   assert.equal(m.t.url, GAMMEL);
 });
 
-test('S4b: en armeret accept forlader siden - ok:true, ét svar, og armeringens loefte siger accept fra Closed', async () => {
+test('S4b: en armeret accept med leave_page forlader siden - ok:true, ét svar, og armeringens loefte siger accept fra Closed', async () => {
   const m = model();
-  await m.dialog({ action: 'accept' });
+  await m.dialog({ action: 'accept', leave_page: true });
   const loefte = m.u.hent('dialogLoefter').get(1);
   const r = await fang(m.nav());
   assert.equal(r.ok, true, vis(r));
@@ -1334,4 +1334,47 @@ test('1.33 3.2: uden aktiv fane aabner navigate med new_tab en ny fane - og fane
   assert.equal(m.adresser(), 0, 'fane 1 fik adressen');
   assert.equal(m.t.url, GAMMEL);
   assert.notEqual(r.error, 'no-active-tab', vis(r));
+});
+
+// 1.33 (privat rapport 4.2): en glemt armering (60 s, intet loft, alle bokstyper) kunne svare «Leave site?» med accept og
+// forlade en side med ugemt arbejde. Nu svarer en armeret accept kun alert/confirm/prompt, medmindre leave_page er sat.
+test('4.2: en armeret accept uden leave_page svarer ikke «Leave site?» - navigates Stay svarer, og armeringen bliver', async () => {
+  const m = model();
+  await m.dialog({ action: 'accept' });
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'beforeunload-blocked', vis(r));
+  assert.equal(r.answered_by, 'navigate');
+  assert.deepEqual(m.svar().map((x) => x[2]), [false], 'armeringen svarede accept paa «Leave site?»');
+  assert.equal(m.t.url, GAMMEL, 'siden blev forladt');
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'armeringen skal staa til naeste alert/confirm/prompt');
+});
+
+test('4.2: en armeret accept uden leave_page svarer ikke en «Leave site?», siden selv aabner - boksen bliver til brugeren', async () => {
+  const m = model();
+  await m.dialog({ action: 'accept' });
+  await m.sidenNavigerer(NY);
+  await sov(120);
+  assert.equal(m.svar().length, 0, 'armeringen svarede «Leave site?»');
+  assert.ok(m.u.hent('dialogFaner').get(1)?.boks, 'boksen skal staa aaben til brugeren');
+});
+
+test('4.2: med leave_page svarer den armerede accept ogsaa en «Leave site?», siden selv aabner', async () => {
+  const m = model();
+  await m.dialog({ action: 'accept', leave_page: true });
+  await m.sidenNavigerer(NY);
+  await sov(120);
+  assert.deepEqual(m.svar().map((x) => x[2]), [true]);
+});
+
+test('4.2: armeringen varer 10 s som standard og hoejst 30 s - svaret siger det', async () => {
+  const m = model({ beskyt: false });
+  const std = await m.dialog({ action: 'dismiss' });
+  assert.equal(std.expires_in_ms, 10000, vis(std));
+  assert.equal(std.timeout_capped_from, undefined);
+  const lang = await m.dialog({ action: 'dismiss', timeout: 120000 });
+  assert.equal(lang.expires_in_ms, 30000, vis(lang));
+  assert.equal(lang.timeout_capped_from, 120000);
+  const a = m.u.hent('armeredeDialoger').get(1);
+  assert.ok(a.udloeb - Date.now() <= 30000, 'udloebet skal foelge loftet, ikke det oenskede');
+  clearTimeout(a.timer);
 });

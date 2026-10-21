@@ -257,13 +257,14 @@ export const TOOLS = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Answer a JavaScript alert/confirm/prompt or "Leave site?" on the active tab. If a dialog this extension saw open is on screen and nobody is answering it, it is answered now, and the reply says what Chrome reports happened (action accept or dismiss). Otherwise this arms automatic handling of the next dialog on the tab and returns immediately - call it BEFORE the click that opens the dialog, because a dialog freezes the tab. Pass wait=true only when the dialog is already opening. Errors: dialog-being-answered (browser_navigate or an earlier call is answering it - wait), dialog-unconfirmed (answered, but Chrome did not confirm it closed), tab-not-responding (a dialog that opened before anything listened, or a busy page; the note says what to do).',
+    description: 'Answer a JavaScript alert/confirm/prompt or "Leave site?" on the active tab. If a dialog this extension saw open is on screen and nobody is answering it, it is answered now, and the reply says what Chrome reports happened (action accept or dismiss). Otherwise this arms automatic handling of the next dialog on the tab and returns immediately - call it BEFORE the click that opens the dialog, because a dialog freezes the tab. Pass wait=true only when the dialog is already opening. An armed accept never answers "Leave site?" unless leave_page is true; the arming lasts 10 s by default and at most 30 s. Errors: dialog-being-answered (browser_navigate or an earlier call is answering it - wait), dialog-unconfirmed (answered, but Chrome did not confirm it closed), tab-not-responding (a dialog that opened before anything listened, or a busy page; the note says what to do).',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['accept', 'dismiss'], description: 'Accept or dismiss the dialog (default: accept)' },
         text: { type: 'string', description: 'Text to enter for prompt() dialogs' },
-        timeout: { type: 'number', description: 'How long the arming stays active in ms (default: 60000)' },
+        timeout: { type: 'number', description: 'How long the arming stays active in ms (default: 10000, at most 30000)' },
+        leave_page: { type: 'boolean', description: 'With action accept: also accept a "Leave site?" (beforeunload), which leaves the page and loses anything unsaved on it. Default false: an armed accept answers alerts, confirms and prompts only. Ask the user first.' },
         wait: { type: 'boolean', description: 'Block until a dialog appears instead of arming and returning (default: false). Only use when the dialog is already on its way.' },
       },
     },

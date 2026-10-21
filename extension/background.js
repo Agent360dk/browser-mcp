@@ -938,6 +938,7 @@ function husketPlads(pid, nummer) {
 // den naeste dialog paa fanen. `wait: true` giver den gamle blokerende adfaerd for
 // de tilfaelde hvor dialogen allerede er undervejs.
 const armeredeDialoger = new Map();
+const DIALOG_ARMERING = { standard: 10000, loft: 30000 };
 // Loeftet for den senest armerede dialog pr. fane. Ligger UDEN for armeredeDialoger,
 // fordi lytteren afvaebner i samme oejeblik dialogen aabner — og klikket skal kunne
 // vente paa svaret BAGEFTER.
@@ -1015,7 +1016,13 @@ function dialogKoordinator(source, method, p) {
     // R109 (Astra 3): kun bokse, der aabner EFTER adressen er sendt - et Stay fra sidens egen navigation foer det er ikke vores.
     if (s.ejer && s.ejer.sent) s.ejer.bokse.push(boks);
     const a = armeredeDialoger.get(tabId);
-    const gyldig = !!a && (a.udloeb == null || Date.now() < a.udloeb);
+    const udloebet = !!a && a.udloeb != null && Date.now() >= a.udloeb;
+    // 1.33 (privat rapport 4.2): en armeret accept svarede ogsaa «Leave site?» - en glemt armering kunne forlade en side med
+    // ugemt arbejde. Accept af beforeunload kraever nu leave_page: true ved armeringen; ellers bliver armeringen staaende til
+    // naeste alert/confirm/prompt, og boksen gaar til navigates eget svar (Stay) eller bliver staaende til brugeren.
+    // En armeret dismiss (Stay) kan ikke miste noget og svarer som foer.
+    const forbeholdt = !!a && boks.type === 'beforeunload' && a.action === 'accept' && a.leave !== true;
+    const gyldig = !!a && !udloebet && !forbeholdt;
     if (gyldig) {
       afvaebnDialog(tabId);   // forbruges - uden grund, for vi svarer selv lige her
       boks.armering = a;
@@ -1024,7 +1031,7 @@ function dialogKoordinator(source, method, p) {
         if (!boks.lukket && a.opfyld) a.opfyld(dialogUbekraeftet(boks));
       }, NAV_FRISTER.luk);
     } else {
-      if (a) afvaebnDialog(tabId, 'the arming expired before a dialog appeared');
+      if (udloebet) afvaebnDialog(tabId, 'the arming expired before a dialog appeared');
       if (s.ejer && s.ejer.sent && boks.type === 'beforeunload') dialogSvar(tabId, boks, s.ejer.leave === true, '', 'navigate');
     }
     vaekDialogVentere(s, null);
@@ -7656,7 +7663,11 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const action = params.action === 'dismiss' ? 'dismiss' : 'accept';
       const promptText = params.text || '';
       const vent = params.wait === true;              // gammel, blokerende adfaerd
-      const levetid = params.timeout || 60000;
+      // 1.33 (privat rapport 4.2): 60 s uden loft blev til 10 s som standard og hoejst 30 s. En armering er til klikket lige
+      // efter - ikke en staaende regel paa fanen.
+      const oensket = Number(params.timeout) > 0 ? Number(params.timeout) : DIALOG_ARMERING.standard;
+      const levetid = Math.min(oensket, DIALOG_ARMERING.loft);
+      const forlad = params.leave_page === true;
       const s = dialogFane(tab.id);
 
       // #69 (1.30.3): en SET boks, der staar aaben, besvares straks gennem koordinatoren - uden Page.enable, som haenger,
@@ -7701,7 +7712,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }, levetid);
 
       // Koordinatoren forbruger armeringen, naar boksen aabner, og opfylder loeftet, naar Chrome melder boksen lukket.
-      armeredeDialoger.set(tab.id, { timer, action, accept: action === 'accept', text: promptText,
+      armeredeDialoger.set(tab.id, { timer, action, accept: action === 'accept', text: promptText, leave: forlad,
         udloeb: Date.now() + levetid, opfyld });
       dialogLoefter.set(tab.id, svar);
 
@@ -7713,7 +7724,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         armed: true,
         action,
         expires_in_ms: levetid,
-        note: 'The next dialog on this tab is handled automatically. Now click whatever opens it.',
+        ...(oensket > levetid ? { timeout_capped_from: oensket } : {}),
+        ...(action === 'accept' ? { leave_page: forlad } : {}),
+        note: (action === 'accept' && !forlad
+          ? 'The next alert, confirm or prompt on this tab is accepted automatically. A "Leave site?" is not: the page may ' +
+            'hold unsaved work, so ask the user (browser_ask_user) and arm again with leave_page: true if they agree. '
+          : 'The next dialog on this tab is handled automatically. ') +
+          (oensket > levetid ? `The arming lasts at most ${DIALOG_ARMERING.loft} ms. ` : '') + 'Now click whatever opens it.',
       };
     }
 
