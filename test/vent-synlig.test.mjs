@@ -30,7 +30,9 @@ function lavSide() {
       this.shadowRoot = null;
       this.stil = { display: 'block', opacity: '1', overflowX: 'visible', overflowY: 'visible', ...(o.stil || {}) };
       this.r = o.rect || [10, 10, 100, 20];   // [x, y, bredde, hoejde]
+      this.selected = !!o.selected; this.multiple = !!o.multiple; this.size = o.size || 0;
     }
+    closest(sel) { for (let n = this; n && n.nodeType === 1; n = n.parentNode) if (n.tagName === sel.toUpperCase()) return n; return null; }
     add(...boern) {
       for (const c of boern) { const n = typeof c === 'string' ? new Tekst(c) : c; n.parentNode = this; this.kids.push(n); }
       return this;
@@ -51,7 +53,8 @@ function lavSide() {
     }
     getClientRects() { return this.vist() ? [this.getBoundingClientRect()] : []; }
     getBoundingClientRect() {
-      const [x, y, width, height] = this.vist() ? this.r : [0, 0, 0, 0];
+      // display:contents har ingen egen boks (som i Chrome).
+      const [x, y, width, height] = this.vist() && this.stil.display !== 'contents' ? this.r : [0, 0, 0, 0];
       return { x, y, width, height, left: x, top: y, right: x + width, bottom: y + height };
     }
     attachShadow() { const s = new El('#shadow'); s.nodeType = 11; s.host = this; this.shadowRoot = s; return s; }
@@ -77,7 +80,7 @@ function lavSide() {
     },
   };
   const getComputedStyle = (el) => ({ ...el.stil, visibility: synlighed(el) });
-  const vindue = { scrollX: 0, scrollY: 0 };
+  const vindue = { scrollX: 0, scrollY: 0, innerWidth: 1280, innerHeight: 800 };
   const koer = (kilde, sel, tekst, tag = null) => new Function('document', 'window', 'getComputedStyle', 'NodeFilter',
     `return (${kilde})(${JSON.stringify(sel)}, ${JSON.stringify(tekst)}, ${JSON.stringify(tag)});`)(
     document, vindue, getComputedStyle, { SHOW_TEXT: 4 });
@@ -289,4 +292,42 @@ test('R173 (Opus V6): en tekst over vinduet paa en rullet side er synlig - kun d
 test('R173 (Opus V8): visibility:collapse er skjult', () => {
   const v = side((b, El) => b.add(new El('p', { stil: { visibility: 'collapse' } }).add('Gemt')));
   assert.deepEqual(v(null, 'Gemt'), { synlig: false, paaSiden: true });
+});
+
+// ── R173 (Opus, MAALT i Chrome 155) ──────────────────────────────────────────────────────────────────
+test('R173 (Opus): et fast element er kun synligt i vinduet - topbjaelke skubbet op, skuffe skubbet ud til hoejre', () => {
+  const s1 = lavSide(); s1.vindue.scrollY = 1000;
+  s1.body.add(new s1.El('header', { stil: { position: 'fixed' }, rect: [0, -60, 1280, 60] }).add('Menu'));
+  assert.equal(s1.koer(KILDE, null, 'Menu').synlig, false, 'translateY(-100%) paa en rullet side - over vinduet, ikke paa siden');
+  const s2 = lavSide();
+  s2.body.add(new s2.El('aside', { stil: { position: 'fixed' }, rect: [1280, 0, 300, 800] }).add('Skuffe'));
+  assert.equal(s2.koer(KILDE, null, 'Skuffe').synlig, false, 'translateX(100%) - til hoejre for vinduet');
+  const s3 = lavSide(); s3.vindue.scrollY = 1000;
+  s3.body.add(new s3.El('header', { stil: { position: 'fixed' }, rect: [0, 0, 1280, 60] }).add('Menu'));
+  assert.equal(s3.koer(KILDE, null, 'Menu').synlig, true, 'en fast topbjaelke i vinduet er synlig, ogsaa paa en rullet side');
+  const s4 = lavSide();
+  const fast = new s4.El('div', { stil: { position: 'fixed' }, rect: [1280, 0, 300, 800] });
+  s4.body.add(fast.add(new s4.El('p', { rect: [1290, 10, 100, 20] }).add('Inde')));
+  assert.equal(s4.koer(KILDE, null, 'Inde').synlig, false, 'ogsaa naar det er en forfader, der er fast');
+});
+
+test('R173 (Opus): tekst direkte i et display:contents-element er synlig - i en skjult contents-forfader ikke', () => {
+  const v = side((b, El) => b.add(new El('div', { id: 'root', stil: { display: 'contents' } }).add('Velkommen')));
+  assert.equal(v(null, 'Velkommen').synlig, true);
+  const skjult = side((b, El) => b.add(new El('div', { stil: { display: 'contents', visibility: 'hidden' } }).add('Velkommen')));
+  assert.equal(skjult(null, 'Velkommen').synlig, false);
+});
+
+test('R173 (Opus): den valgte <option> i en lukket <select> er synlig - de andre ikke', () => {
+  const v = side((b, El) => b.add(new El('select', { rect: [10, 10, 200, 30] }).add(
+    new El('option', { rect: [0, 0, 0, 0], selected: true }).add('Danmark'),
+    new El('option', { rect: [0, 0, 0, 0] }).add('Norge'))));
+  assert.equal(v(null, 'Danmark').synlig, true, 'den valgte staar i feltet');
+  assert.equal(v(null, 'Norge').synlig, false, 'en ikke-valgt option i en lukket select ses ikke');
+});
+
+test('R173 (Opus): en ukendt state afvises - hidden betyder ikke stille «visible»', async () => {
+  const u = indlaesUdvidelse({ svar: { 'tabs.get': (id) => ({ id, url: 'https://side.example/', windowId: 1, active: true }) } });
+  u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 'Claude 1', color: 'blue' });
+  await assert.rejects(u.hent('dispatch')(9876, 'wait', { selector: '#spinner', state: 'hidden', timeout: 500 }), /state must be/);
 });

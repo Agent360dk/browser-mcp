@@ -940,7 +940,9 @@ function husketPlads(pid, nummer) {
 // den naeste dialog paa fanen. `wait: true` giver den gamle blokerende adfaerd for
 // de tilfaelde hvor dialogen allerede er undervejs.
 const armeredeDialoger = new Map();
-const DIALOG_ARMERING = { standard: 10000, loft: 30000 };
+// R173 (Opus, MAALT i egen session): mellemrummet mellem to af en agents kald var 20-108 s - 10 s brod forloebet «armer, klik».
+// Beskyttelsen ligger i typefiltret, afvaebningen ved side- og faneskift og loftet; standarden er derfor loftet.
+const DIALOG_ARMERING = { standard: 30000, loft: 30000 };
 // Loeftet for den senest armerede dialog pr. fane. Ligger UDEN for armeredeDialoger,
 // fordi lytteren afvaebner i samme oejeblik dialogen aabner — og klikket skal kunne
 // vente paa svaret BAGEFTER.
@@ -1100,7 +1102,7 @@ function venteMedFrist(loefte, ms) {
 }
 
 // handle_dialog paa en set, aaben boks: svar nu gennem koordinatoren og vent paa Chromes Closed (5 s).
-async function besvarAabenBoks(tabId, boks, action, promptText) {
+async function besvarAabenBoks(tabId, boks, action, promptText, forlad = false) {
   const sf = dialogFaner.get(tabId);
   if (!boks.besvaretAf && sf && sf.udestaaende.size) {
     return { ok: false, error: 'dialog-being-answered', ...dialogFelter(boks), answered_by: 'an earlier answer',
@@ -1114,6 +1116,14 @@ async function besvarAabenBoks(tabId, boks, action, promptText) {
       note: boks.besvaretAf === 'navigate'
         ? 'browser_navigate is answering this dialog (Stay, or Leave with leave_page:true). Wait for its answer; it says what happened.'
         : 'An earlier browser_handle_dialog is answering this dialog. Wait a moment, then look at the tab before you act again.' };
+  }
+  // R173 (Opus H1, MAALT): en AABEN «Leave site?» blev besvaret accept af et handle_dialog() uden argumenter - siden blev
+  // forladt uden leave_page, mod reglen for en armering. Samme regel her, lige foer der ville blive sendt.
+  if (boks.type === 'beforeunload' && action === 'accept' && forlad !== true) {
+    return { ok: false, error: 'leave-page-required', ...dialogFelter(boks), sent: false,
+      note: 'A "Leave site?" is open on this tab, and accepting it leaves the page and loses anything unsaved on it. Nothing ' +
+        'was answered. Ask the user (browser_ask_user); if they agree, call again with leave_page: true, or pass action: ' +
+        '"dismiss" to stay.' };
   }
   const lukket = new Promise((r) => { boks.vedLukket = r; });
   dialogSvar(tabId, boks, action === 'accept', promptText, 'handle_dialog');
@@ -1138,7 +1148,8 @@ const NAV_NOTER = {
     'detaches or the tab closes; browser_reattach_debugger releases it.',
   'dialog-open': 'A dialog is open on this tab, and nothing was sent. For "Leave site?" (dialog_type beforeunload) the page ' +
     'may hold unsaved work: ask the user with browser_ask_user before leaving. Then answer it with browser_handle_dialog - ' +
-    'accept leaves the page (pending_url, if any, may then load), dismiss stays - and navigate again if you still need to.',
+    'accept with leave_page: true leaves the page (pending_url, if any, may then load), dismiss stays - and navigate again if ' +
+    'you still need to.',
   'dialog-open-sent': 'The address was sent, and the page then opened a dialog that is not "Leave site?" (dialog_type). It ' +
     'was not answered. Answer it with browser_handle_dialog, then read the tab before you navigate again.',
   'tab-not-responding': 'Chrome did not answer on this tab within the time limit: a busy page, or a dialog Chrome does not ' +
@@ -1421,6 +1432,13 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   for (const [port, session] of sessions) {
     if (!session.tabIds.has(tabId)) continue;
     session.tabIds.delete(tabId);
+    // R173: en OAuth-popup, udvidelsen selv gjorde aktiv, lukkede sig selv - tilbage til aabneren, hvis den stadig er
+    // sessionens og popuppen stadig var den aktive fane (agenten havde ikke selv skiftet).
+    if (session.tilbageTil && session.tilbageTil.popup === tabId) {
+      const aabner = session.tilbageTil.aabner;
+      session.tilbageTil = null;
+      if (session.activeTabId === tabId && session.tabIds.has(aabner)) { session.activeTabId = aabner; persistSessions(); }
+    }
     if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
@@ -3066,11 +3084,12 @@ function ventMaal(sel, tekst, wantTag) {
     if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true })) return false;
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return false;
-    if (r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
     const cs = getComputedStyle(el);
     if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
+    let fast = false;
     for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
       const s = getComputedStyle(n);
+      if (s.position === 'fixed') fast = true;
       if (parseFloat(s.opacity) === 0) return false;
       if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
         const b = n.getBoundingClientRect();
@@ -3082,7 +3101,11 @@ function ventMaal(sel, tekst, wantTag) {
           && (r.right <= b.left || r.left >= b.right || r.bottom <= b.top || r.top >= b.bottom)) return false;
       }
     }
-    return true;
+    // R173 (Opus, MAALT i Chrome): et fast element (position:fixed, ogsaa via en forfader) ruller ikke med siden - det er kun
+    // synligt i vinduet. En topbjaelke skubbet op med translateY(-100%) paa en rullet side og en skuffe skubbet ud til hoejre
+    // med translateX(100%) talte som synlige.
+    if (fast) return r.right > 0 && r.bottom > 0 && r.left < window.innerWidth && r.top < window.innerHeight;
+    return r.right + window.scrollX > 0 && r.bottom + window.scrollY > 0;
   };
   // Tekst i script, style, template, noscript og title vises aldrig. MAALT i headless Chrome: et <script> med ordet gjorde
   // ellers ordet «paa siden», og <body> - hvis textContent ogsaa rummer scriptets tekst - blev regnet for synlig.
@@ -3106,8 +3129,19 @@ function ventMaal(sel, tekst, wantTag) {
     let ud = '';
     const w = document.createTreeWalker(rod, NodeFilter.SHOW_TEXT);
     for (let t = w.nextNode(); t; t = w.nextNode()) {
-      const ejer = t.parentElement || (t.parentNode && t.parentNode.host) || null;   // tekst direkte i en shadow root
-      if (ejer && !IKKE_VIST.has(ejer.nodeName) && vises(ejer)) ud += t.data;
+      let ejer = t.parentElement || (t.parentNode && t.parentNode.host) || null;   // tekst direkte i en shadow root
+      if (!ejer || IKKE_VIST.has(ejer.nodeName)) continue;
+      // R173 (Opus, MAALT i Chrome): to steder tegnes teksten i en forfaders boks. Tekst direkte i et display:contents-element
+      // (fx et #root) har ingen egen boks; den valgte <option> i en lukket <select> staar i select-feltet.
+      for (let i = 0; i < 50 && ejer.parentElement && getComputedStyle(ejer).display === 'contents'; i++) {
+        if (getComputedStyle(ejer).visibility !== 'visible') break;   // en skjult contents-forfader skjuler ogsaa teksten
+        ejer = ejer.parentElement;
+      }
+      if (ejer.nodeName === 'OPTION') {
+        const valg = ejer.closest ? ejer.closest('select') : null;
+        if (valg && !valg.multiple && !(valg.size > 1) && ejer.selected) ejer = valg;
+      }
+      if (vises(ejer)) ud += t.data;
     }
     return ud;
   };
@@ -4536,6 +4570,9 @@ chrome.tabs.onCreated.addListener(async (tab) => {
         if (tab.openerTabId && session.tabIds.has(tab.openerTabId)) {
           await addTabToSession(port, tab.id);
           session.activeTabId = tab.id;
+          // R173 (Opus, MAALT i modellen): skiftet til popuppen er udvidelsens eget. Lukker popuppen sig selv (et vellykket
+          // login), gaar sessionen tilbage til aabneren - se onRemoved. Uden det stod agenten uden aktiv fane (no-active-tab).
+          session.tilbageTil = { popup: tab.id, aabner: tab.openerTabId };
           persistSessions();
           break;
         }
@@ -7040,6 +7077,12 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const timeout = params.timeout || 10000;
       const sel = params.selector;
       // 1.33 (privat rapport 2.1): standard er «synlig»; state: 'attached' venter som foer kun paa, at det findes paa siden.
+      // R173 (Opus): en ukendt state (fx Playwrights 'hidden' eller 'detached') betoed stille «visible» - en agent, der ventede
+      // paa, at en spinner forsvandt, fik found:true, mens den snurrede.
+      if (params.state != null && params.state !== 'visible' && params.state !== 'attached') {
+        throw new Error(`state must be "visible" or "attached", not ${JSON.stringify(params.state)}. browser_wait waits for ` +
+          'something to appear; to wait for something to go away, poll browser_get_page_content or browser_execute_script.');
+      }
       const kunPaaSiden = params.state === 'attached';
       const p = parseSelector(sel);
       const start = Date.now();
@@ -7713,14 +7756,15 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const levetid = Math.min(oensket, DIALOG_ARMERING.loft);
       const forlad = params.leave_page === true;
       const s = dialogFane(tab.id);
+      const svarAaben = (boks) => besvarAabenBoks(tab.id, boks, action, promptText, forlad);
 
       // #69 (1.30.3): en SET boks, der staar aaben, besvares straks gennem koordinatoren - uden Page.enable, som haenger,
       // mens en boks staar aaben (maalt F4). Dommen kommer fra Closed.
-      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (s.boks) return await svarAaben(s.boks);
 
       await debuggerAttach(tab.id);
       // R108 (Astra 5): en boks, koordinatoren saa aabne under tilknytningen, besvares nu - porten ville haenge bag den.
-      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (s.boks) return await svarAaben(s.boks);
       // #69 (MAALT 13/10 i headless Chrome): staar en boks allerede aaben, svarer fanen ikke, og her kom Chromes noegne
       // «CDP did not respond within 8000 ms: Page.enable». En boks, der kom frem foer nogen lyttede, kan ikke besvares
       // gennem CDP - svaret siger det, og hvad der kan goeres.
@@ -7734,7 +7778,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         portFejl = e;
       }
       // R108 (Astra 5): ogsaa naar porten loeb ud - en boks, der blev kendt imens, er grunden, og den kan besvares.
-      if (portFejl && s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (portFejl && s.boks) return await svarAaben(s.boks);
       if (portFejl) {
         const e = portFejl;
         return { ok: false, error: 'tab-not-responding', detail: e.message,
@@ -7745,7 +7789,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }
       // Astra R107 (maalt i model): en boks, der aabnede, mens Page.enable ventede, gav armed:true med 0 svar. Tilstanden
       // tjekkes derfor IGEN efter porten, foer der armeres.
-      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (s.boks) return await svarAaben(s.boks);
       // R173 (Astra): et nyt dokument, mens tilknytningen og porten ventede, ses ikke af afvaebningen (der var intet at
       // afvaebne). Skiftede adressen imens, armeres der ikke.
       const nu = await chrome.tabs.get(tab.id).catch(() => null);
@@ -8409,7 +8453,9 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         const fane = await chrome.tabs.get(tabId);
         const iVinduet = await chrome.tabs.query({ windowId: fane.windowId });
         if (iVinduet.length <= 1) {
-          const vinduer = await chrome.windows.getAll({ windowTypes: ['normal'] });
+          // R173 (Opus, MAALT i rigtig Chrome): kun 'normal' talt gav en unoedig tom fane i brugerens vindue, naar fanen var
+          // den eneste i et popup-vindue - et popup- eller app-vindue holder ogsaa Chrome i live.
+          const vinduer = await chrome.windows.getAll({ windowTypes: ['normal', 'popup', 'app'] });
           if (vinduer.length <= 1) {
             await chrome.tabs.create({ windowId: fane.windowId, url: 'about:blank', active: false });
             holdtAaben = true;
@@ -8418,9 +8464,14 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         agentLukkedeFaner.add(tabId);
         await chrome.tabs.remove(tabId);
         session.tabIds.delete(tabId);
-        if (session.activeTabId === tabId) session.activeTabId = null;
+        const varAktiv = session.activeTabId === tabId;
+        if (varAktiv) session.activeTabId = null;
         persistSessions();
-        return { ok: true, remaining: session.tabIds.size, ...(holdtAaben ? { kept_window_open: true,
+        // R173 (Opus): efter at agenten lukkede sin aktive fane, svarer naeste kald no-active-tab - det skal staa i svaret.
+        return { ok: true, remaining: session.tabIds.size, ...(varAktiv && session.tabIds.size ? { active_tab: null,
+          active_note: 'This was the session\'s active tab, so the session has no active tab now: call browser_switch_tab ' +
+            'with the tab to continue in (browser_list_tabs lists them) before the next call.' } : {}),
+          ...(holdtAaben ? { kept_window_open: true,
           note: 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
             'have closed Chrome and disconnected the extension.' } : {}) };
       };

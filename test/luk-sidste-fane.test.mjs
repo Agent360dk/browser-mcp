@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 // vinduer: { vinduesId: [faneId, ...] }
-function chrome(vinduer, fejl = {}) {
+function chrome(vinduer, fejl = {}, typer = {}) {
   const log = [];
   const fanensVindue = (id) => Number(Object.keys(vinduer).find((w) => vinduer[w].includes(id)));
   const u = indlaesUdvidelse({ svar: {
@@ -22,7 +22,9 @@ function chrome(vinduer, fejl = {}) {
       await new Promise((r) => setTimeout(r, 5));
       return nu;
     },
-    'windows.getAll': () => Object.keys(vinduer).map((w) => ({ id: Number(w), type: 'normal' })),
+    // Som Chrome: windowTypes filtrerer (popup-vinduer m.fl. er ikke 'normal').
+    'windows.getAll': (q) => Object.keys(vinduer).map((w) => ({ id: Number(w), type: typer[w] || 'normal' }))
+      .filter((v) => !q || !q.windowTypes || q.windowTypes.includes(v.type)),
     'tabs.create': (o) => { if (fejl.create) throw new Error('create afvist'); log.push(['create', o.windowId, o.url, o.active]); const id = 900 + log.length; vinduer[o.windowId].push(id); return { id, windowId: o.windowId, url: o.url }; },
     'tabs.remove': (id) => { log.push(['remove', id]); const w = fanensVindue(id); vinduer[w] = vinduer[w].filter((x) => x !== id); },
   } });
@@ -80,4 +82,24 @@ test('R173: to samtidige lukninger i det sidste vindue efterlader en tom fane - 
   const [a, b] = await Promise.all([d(9876, 'close_tab', { tab_id: 11 }), d(9877, 'close_tab', { tab_id: 12 })]);
   assert.equal(vinduer[1].length, 1, `vinduet skal have én tom fane tilbage: ${JSON.stringify(vinduer)}`);
   assert.equal([a, b].filter((r) => r.kept_window_open).length, 1);
+});
+
+test('R173 (Opus L5, MAALT i Chrome): et popup-vindue holder ogsaa Chrome i live - ingen unoedig tom fane', async () => {
+  // Den eneste fane i et popup-vindue, mens et normalt vindue findes: Chrome lukker ikke, og en tom fane ville lande i
+  // brugerens normale vindue.
+  const c = chrome({ 1: [11], 2: [21] }, {}, { 2: 'popup' });
+  const r = await c.luk(21, [21]);
+  assert.equal(r.kept_window_open, undefined, JSON.stringify(r));
+  assert.deepEqual(c.log, [['remove', 21]]);
+  const d = chrome({ 1: [11], 2: [21] }, {}, { 2: 'popup' });
+  assert.equal((await d.luk(11, [11])).kept_window_open, undefined, 'popup-vinduet holder Chrome, saa det normale vindue maa lukke');
+});
+
+test('R173 (Opus): lukker agenten sin aktive fane, siger svaret, at sessionen nu ikke har en aktiv fane', async () => {
+  const c = chrome({ 1: [11, 12, 13] });
+  const r = await c.luk(11, [11, 12]);           // 11 er aktiv (foerste i listen)
+  assert.equal(r.active_tab, null, JSON.stringify(r));
+  assert.match(r.active_note, /browser_switch_tab/);
+  const ikkeAktiv = await chrome({ 1: [11, 12, 13] }).luk(12, [11, 12]);
+  assert.equal(ikkeAktiv.active_note, undefined, 'en anden fane end den aktive giver ingen note');
 });

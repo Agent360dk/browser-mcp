@@ -609,7 +609,8 @@ test('handle_dialog: dommen kommer fra Closed - kvitteret uden lukning er dialog
   await m.enable();
   m.sidenNavigerer('https://siden-selv.example/');
   await sov(20);
-  const h = await fang(m.dialog({ action: 'accept' }));
+  // R173: accept af en aaben «Leave site?» kraever leave_page - proeven maaler svarvejen, saa den beder om det.
+  const h = await fang(m.dialog({ action: 'accept', leave_page: true }));
   assert.equal(h.ok, false, vis(h));
   assert.equal(h.error, 'dialog-unconfirmed', vis(h));
 });
@@ -1373,11 +1374,13 @@ test('4.2: med leave_page svarer den armerede accept ogsaa en «Leave site?», s
   assert.deepEqual(m.svar().map((x) => x[2]), [true]);
 });
 
-test('4.2: armeringen varer 10 s som standard og hoejst 30 s - svaret siger det', async () => {
+test('4.2 / R173: armeringen varer 30 s som standard og hoejst 30 s; en kortere timeout gaelder - svaret siger det', async () => {
   const m = model({ beskyt: false });
   const std = await m.dialog({ action: 'dismiss' });
-  assert.equal(std.expires_in_ms, 10000, vis(std));
+  assert.equal(std.expires_in_ms, 30000, vis(std));
   assert.equal(std.timeout_capped_from, undefined);
+  const kort = await m.dialog({ action: 'dismiss', timeout: 5000 });
+  assert.equal(kort.expires_in_ms, 5000, vis(kort));
   const lang = await m.dialog({ action: 'dismiss', timeout: 120000 });
   assert.equal(lang.expires_in_ms, 30000, vis(lang));
   assert.equal(lang.timeout_capped_from, 120000);
@@ -1470,4 +1473,44 @@ test('R173: skifter adressen, mens armeringen bliver sat, armeres der ikke - pag
   assert.equal(r.error, 'page-changed', vis(r));
   assert.equal(r.armed, false);
   assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+// R173 (Opus D7: overlevede): T7's «Leave site?» holdes nu ogsaa tilbage af filtret fra 4.2, saa den proeve isolerer ikke
+// laengere udloebet. Med en alert er udloebet den ENESTE regel, der holder armeringen fra at svare.
+test('R173: en udloebet armering svarer heller ikke en alert', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.enable();
+  m.u.hent('armeredeDialoger').set(1, { timer: null, action: 'accept', accept: true, text: '', udloeb: Date.now() - 1, opfyld: () => {} });
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'en udloebet armering svarede alerten');
+});
+
+// R173 (Opus H1, MAALT): en aaben «Leave site?» blev besvaret accept uden leave_page, og siden blev forladt.
+test('R173: en aaben «Leave site?» besvares ikke accept uden leave_page - leave-page-required, intet sendt', async () => {
+  const m = model();
+  await m.enable();
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const h = await fang(m.dialog({}));                        // standard: accept
+  assert.equal(h.error, 'leave-page-required', vis(h));
+  assert.equal(h.sent, false);
+  assert.equal(m.svar().length, 0, 'siden blev forladt uden leave_page');
+});
+
+test('R173: med leave_page forlades siden; dismiss bliver - begge besvares straks', async () => {
+  const ja = model();
+  await ja.enable();
+  ja.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const r = await fang(ja.dialog({ action: 'accept', leave_page: true }));
+  assert.equal(r.ok, true, vis(r));
+  assert.deepEqual(ja.svar().map((x) => x[2]), [true]);
+  const nej = model();
+  await nej.enable();
+  nej.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const d = await fang(nej.dialog({ action: 'dismiss' }));
+  assert.equal(d.ok, true, vis(d));
+  assert.deepEqual(nej.svar().map((x) => x[2]), [false]);
 });

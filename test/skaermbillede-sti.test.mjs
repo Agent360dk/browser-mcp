@@ -180,13 +180,17 @@ test('1.33: en sti uden billedendelse afvises - projektets filer roeres ikke', {
   writeFileSync(join(arbejd, 'package.json'), '{"name":"brugerens"}');
   mkdirSync(join(arbejd, '.vscode'), { recursive: true });
   writeFileSync(join(arbejd, '.vscode', 'tasks.json'), '{"tasks":[]}');
-  for (const sti of ['package.json', '.vscode/tasks.json', 'ny.txt']) {
+  // R173 (Opus S1): 'billede.png.json' fanger en endelsesregel uden $-anker.
+  // R173 (Opus S3): en afvist sti maa heller ikke efterlade en ny mappe ('nymappe/x.json').
+  for (const sti of ['package.json', '.vscode/tasks.json', 'ny.txt', 'billede.png.json', 'nymappe/x.json']) {
     const svar = await skaermbillede(sti);
     assert.match(JSON.stringify(svar), /must end in \.png/, `${sti}: ${JSON.stringify(svar).slice(0, 200)}`);
   }
   assert.equal(readFileSync(join(arbejd, 'package.json'), 'utf8'), '{"name":"brugerens"}');
   assert.equal(readFileSync(join(arbejd, '.vscode', 'tasks.json'), 'utf8'), '{"tasks":[]}');
   assert.ok(!existsSync(join(arbejd, 'ny.txt')));
+  assert.ok(!existsSync(join(arbejd, 'billede.png.json')));
+  assert.ok(!existsSync(join(arbejd, 'nymappe')), 'en afvist sti oprettede en mappe');
 });
 
 test('1.33: et billede, der findes, overskrives kun med overwrite: true', { timeout: 45000 }, async () => {
@@ -205,4 +209,11 @@ test('R173: overwrite skal vaere true - en sandhedsvaerdi som "yes" erstatter ik
   const svar = await skaermbillede('inde/ja.png', arbejd, { overwrite: 'yes' });
   assert.match(JSON.stringify(svar), /already exists/, JSON.stringify(svar).slice(0, 200));
   assert.equal(readFileSync(join(arbejd, 'inde', 'ja.png'), 'utf8'), 'BEHOLD');
+});
+
+test('R173 (Opus S4): en billedendelse med store bogstaver godtages', { timeout: 45000 }, async () => {
+  // Et navn ingen anden proeve bruger: macOS skelner ikke store og smaa bogstaver, og 'inde/stor.png' skrives ovenfor.
+  const svar = await skaermbillede('inde/STORE-BOGSTAVER.PNG');
+  assert.match(JSON.stringify(svar), /successfully saved/, JSON.stringify(svar).slice(0, 200));
+  assert.ok(existsSync(join(arbejd, 'inde', 'STORE-BOGSTAVER.PNG')));
 });
