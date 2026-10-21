@@ -40,6 +40,40 @@ const repoDir = dirname(__dirname); // parent of mcp-server/
 let extensionUpdated = false;
 // #69 (1.30.3): fejlkoderne fra navigate i en eksisterende fane og fra handle_dialog. Udvidelsen svarer dem som ok:false;
 // her bliver de til isError, saa klienten ser dem som fejl.
+// Skaermbilledets sti skal ligge i arbejdsmappen - ogsaa set gennem links (se kommentarerne). R175 (Astra, MAALT): tjekket
+// koerte foerst efter optagelsen, saa ../ude.png kostede et billede, og siden lovede noget andet. Det koeres nu foer optagelsen
+// og igen lige foer skrivningen (stien kan aendre sig imellem).
+function skaermStiInde(sti) {
+  const rod = resolve(process.cwd());
+  const targetPath = resolve(rod, sti);
+  // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside»,
+  // fordi et tekst-tjek her afgjorde sagen. R93 (Opus, maalt paa GitHubs Windows): ogsaa et 8.3-kortnavn (RUNNER~1 mod
+  // runneradmin) er samme mappe stavet anderledes. Afgoerelsen tages derfor KUN paa operativsystemets kanoniske stier
+  // nedenfor (realpath af arbejdsmappen og af den dybeste del af stien, der findes); teksten vaelger kun fejlbeskeden.
+  const tekstInde = targetPath === rod || targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep);   // "/" giver ikke "//" (R5 F10)
+  // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
+  // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
+  // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
+  // skabe filen i den anden ende), og den dybeste del af stien der findes skal ligge inde.
+  // lstat - ikke exists - saa et dinglende link taeller som "findes" og derfor bliver undersoegt.
+  const findes = (x) => { try { lstatSync(x); return true; } catch { return false; } };
+  let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
+  let forfader = dirname(targetPath);
+  while (!findes(forfader) && dirname(forfader) !== forfader) forfader = dirname(forfader);
+  let forfaderReel = null; try { forfaderReel = realpathSync.native(forfader); } catch {}
+  // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men skrivningen trunkerer den faelles fil.
+  let erLink = false, flereNavne = false;
+  try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
+  if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
+    throw new Error(
+      `path must be inside the working directory (${rod}). ` +
+      (tekstInde
+        ? `"${sti}" points outside (through a link). Use a plain directory inside the working directory.`
+        : `"${sti}" points outside. Use a relative path without ../.`),
+    );
+  }  return targetPath;
+}
+
 const NAV_DIALOG_FEJL = new Set(['navigation-in-progress', 'dialog-open', 'tab-not-responding', 'navigation-failed',
   'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed',
   'session-changed', 'no-active-tab', 'page-changed', 'leave-page-required', 'tab-not-closed']);
@@ -1549,6 +1583,7 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
       let st = null; try { st = lstatSync(oensket); } catch {}
       // R174 (Opus): en MAPPE ved navn x.png fik teksten «points outside (through a link)» (en mappe har nlink > 1).
       if (st && st.isDirectory()) throw new Error(`${oensket} is a folder, not a file, and no screenshot was taken. Choose a file name.`);
+      skaermStiInde(args.path);   // arbejdsmappen og links - foer optagelsen
       if (args.overwrite !== true) {
         if (st && st.isFile() && st.nlink === 1) {
           throw new Error(`A file already exists at ${oensket}, and no screenshot was taken. Pass overwrite: true to replace it, or ` +
@@ -1593,34 +1628,7 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
         // /private/tmp/a360-udenfor/x.png. Argumenterne kommer fra en model der laeser
         // FREMMEDE websider, saa en prompt-injektion paa en vilkaarlig side kunne
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
-        const rod = resolve(process.cwd());
-        const targetPath = resolve(rod, args.path);
-        // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside»,
-        // fordi et tekst-tjek her afgjorde sagen. R93 (Opus, maalt paa GitHubs Windows): ogsaa et 8.3-kortnavn (RUNNER~1 mod
-        // runneradmin) er samme mappe stavet anderledes. Afgoerelsen tages derfor KUN paa operativsystemets kanoniske stier
-        // nedenfor (realpath af arbejdsmappen og af den dybeste del af stien, der findes); teksten vaelger kun fejlbeskeden.
-        const tekstInde = targetPath === rod || targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep);   // "/" giver ikke "//" (R5 F10)
-        // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
-        // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
-        // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
-        // skabe filen i den anden ende), og den dybeste del af stien der findes skal ligge inde.
-        // lstat - ikke exists - saa et dinglende link taeller som "findes" og derfor bliver undersoegt.
-        const findes = (x) => { try { lstatSync(x); return true; } catch { return false; } };
-        let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
-        let forfader = dirname(targetPath);
-        while (!findes(forfader) && dirname(forfader) !== forfader) forfader = dirname(forfader);
-        let forfaderReel = null; try { forfaderReel = realpathSync.native(forfader); } catch {}
-        // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men skrivningen trunkerer den faelles fil.
-        let erLink = false, flereNavne = false;
-        try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
-        if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
-          throw new Error(
-            `path must be inside the working directory (${rod}). ` +
-            (tekstInde
-              ? `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`
-              : `"${args.path}" points outside. Use a relative path without ../.`),
-          );
-        }
+        const targetPath = skaermStiInde(args.path);
         // 1.33 (privat rapport, fund i R172; MAALT af begge bedoemmere paa d002938): stien kunne vaere enhver fil i
         // arbejdsmappen, og package.json og .vscode/tasks.json blev overskrevet med PNG-bytes. Stien kommer fra en model, der
         // laeser fremmede sider. Nu: kun en billedendelse, og en fil, der findes, overskrives kun med overwrite: true.

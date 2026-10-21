@@ -232,3 +232,12 @@ test('R174 (Opus): en mappe ved navn x.png afvises som mappe - uden optagelse', 
   assert.match(JSON.stringify(svar), /is a folder, not a file/, JSON.stringify(svar).slice(0, 200));
   assert.equal(billederTaget, foer);
 });
+
+test('R175 (Astra): en sti uden for arbejdsmappen afvises foer optagelsen - ogsaa gennem et link', { timeout: 45000 }, async () => {
+  const foer = billederTaget;
+  for (const sti of ['../ude.png', 'ud/x.png', 'haard.png']) {
+    const svar = await skaermbillede(sti);
+    assert.match(JSON.stringify(svar), /points outside/, `${sti}: ${JSON.stringify(svar).slice(0, 200)}`);
+  }
+  assert.equal(billederTaget, foer, 'et skaermbillede blev taget til en sti, der blev afvist');
+});

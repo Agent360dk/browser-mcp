@@ -1578,3 +1578,30 @@ test('R174 (Opus G3): armeringen hoerer til fanens EGEN session, ogsaa naar en a
   await sov(80);
   assert.equal(m.svar().length, 1, 'armeringen blev holdt tilbage af en anden sessions aktive fane');
 });
+
+// ── R175 (Astra, MAALT): bindingen skal gaelde hele kaldet ──────────────────────────────────────────────
+test('R175: en genindlaesning, mens det foerste faneopslag venter, giver page-changed - ingen armering', async () => {
+  const m = model({ boksType: 'alert', getMs: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);                                              // getSessionTab venter paa tabs.get
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R175: et skift vaek og tilbage, mens Page.enable venter, giver session-changed - ingen armering', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2);
+  m.u.hent('skiftAktiv')(sess, 2);
+  m.u.hent('skiftAktiv')(sess, 1);
+  const r = await p;
+  assert.equal(r.error, 'session-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0);
+});

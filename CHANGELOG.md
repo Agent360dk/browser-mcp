@@ -38,8 +38,8 @@ and does not hold up the closes of other chats.
 
 **A screenshot path is a .png file and never replaces a file by accident.** With `path` set to a file in the working
 folder, `browser_screenshot` overwrote it with PNG bytes - `package.json` and `.vscode/tasks.json` included. Now the path
-must end in `.png` (the screenshot is PNG data), and an existing file is replaced only with `overwrite: true`; both are
-checked before the screenshot is taken.
+must end in `.png` (the screenshot is PNG data), and an existing file is replaced only with `overwrite: true`; these and
+the working-directory check are done before the screenshot is taken.
 
 **An invisible reCAPTCHA is reported, not flagged.** A page with only the invisible reCAPTCHA badge made
 `browser_navigate` report `captcha_detected: recaptcha_v2_checkbox` and ask for `browser_solve_captcha`, so an agent that

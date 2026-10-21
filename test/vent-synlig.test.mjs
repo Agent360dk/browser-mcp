@@ -32,12 +32,13 @@ function lavSide() {
       this.r = o.rect || [10, 10, 100, 20];   // [x, y, bredde, hoejde]
       this.selected = !!o.selected; this.multiple = !!o.multiple; this.size = o.size || 0;
       this.attrs = { ...(o.attrs || {}) };
+      if ('offsetParent' in o) this.opTvang = o.offsetParent;   // fixed inde i en transform-forfader har en offsetParent
     }
     closest(sel) { for (let n = this; n && n.nodeType === 1; n = n.parentNode) if (n.tagName === sel.toUpperCase()) return n; return null; }
     getAttribute(n) { return this.attrs && n in this.attrs ? this.attrs[n] : null; }
     get options() { return this.kids.filter((k) => k.nodeType === 1 && k.tagName === 'OPTION'); }
     // Som i Chrome: et fast element (uden transform-forfader) har ingen offsetParent.
-    get offsetParent() { return this.stil.position === 'fixed' ? null : this.parentNode; }
+    get offsetParent() { if (this.opTvang !== undefined) return this.opTvang; return this.stil.position === 'fixed' ? null : this.parentNode; }
     get selectedIndex() { return this.options.findIndex((o) => o.selected); }
     add(...boern) {
       for (const c of boern) { const n = typeof c === 'string' ? new Tekst(c) : c; n.parentNode = this; this.kids.push(n); }
@@ -45,6 +46,7 @@ function lavSide() {
     }
     get parentElement() { return this.parentNode && this.parentNode.nodeType === 1 ? this.parentNode : null; }
     get textContent() { return this.kids.map((k) => (k.nodeType === 3 ? k.data : k.textContent)).join(''); }
+    get childNodes() { return this.kids; }
     querySelectorAll(sel) {
       const ud = [];
       const gaa = (n) => { for (const c of n.kids) if (c.nodeType === 1) { if (sel === '*' || passer(c, sel)) ud.push(c); gaa(c); } };
@@ -76,6 +78,7 @@ function lavSide() {
   };
   const document = {
     kids: [html],
+    childNodes: [html],
     querySelectorAll: (sel) => [...(sel === '*' || passer(html, sel) ? [html] : []), ...html.querySelectorAll(sel)],
     createTreeWalker: (rod) => {
       const tekster = [];
@@ -87,6 +90,8 @@ function lavSide() {
   };
   const getComputedStyle = (el) => ({ ...el.stil, visibility: synlighed(el) });
   const vindue = { scrollX: 0, scrollY: 0, innerWidth: 1280, innerHeight: 800 };
+  // Den synlige flade er uden rullebjaelke (clientWidth), innerWidth med (Chrome 155: 1265 mod 1280).
+  document.documentElement = { clientWidth: 1265, clientHeight: 800 };
   const koer = (kilde, sel, tekst, tag = null) => new Function('document', 'window', 'getComputedStyle', 'NodeFilter',
     `return (${kilde})(${JSON.stringify(sel)}, ${JSON.stringify(tekst)}, ${JSON.stringify(tag)});`)(
     document, vindue, getComputedStyle, { SHOW_TEXT: 4 });
@@ -391,4 +396,47 @@ test('R174: afskaering vurderes pr. akse - overflow-x hidden med overflow-y auto
     .add(new El('p', { rect: child }).add('Gemt'))))(null, 'Gemt').synlig;
   assert.equal(boks([10, 500, 100, 20]), true, 'under boksen: man ruller ned til den');
   assert.equal(boks([400, 20, 100, 20]), false, 'til hoejre for boksen: skaaret af');
+});
+
+// ── R175 (Astra, MAALT i modellen) ───────────────────────────────────────────────────────────────────
+test('R175: den inderste faste boks afgoer - en fast skuffe uden for vinduet i en synlig, rullebar fast ramme er skjult', () => {
+  const s = lavSide();
+  const ramme = new s.El('div', { stil: { position: 'fixed', overflowY: 'auto' }, rect: [0, 0, 1265, 800] });
+  const skuffe = new s.El('aside', { stil: { position: 'fixed' }, rect: [1300, 0, 300, 800] });
+  s.body.add(ramme.add(skuffe.add(new s.El('p', { rect: [1310, 10, 100, 20] }).add('Skuffe'))));
+  assert.equal(s.koer(KILDE, null, 'Skuffe').synlig, false);
+});
+
+test('R175: et fixed inde i en transform-forfader (offsetParent) behandles som almindeligt indhold paa siden', () => {
+  const s = lavSide(); s.vindue.scrollY = 1000;
+  const t = new s.El('div', { rect: [0, 0, 1265, 4000] });
+  s.body.add(t.add(new s.El('div', { stil: { position: 'fixed' }, offsetParent: t, rect: [10, 1200, 200, 20] }).add('Nede')));
+  assert.equal(s.koer(KILDE, null, 'Nede').synlig, true, 'det ruller med siden - det er paa siden, under vinduet');
+});
+
+test('R175: vinduet er uden rullebjaelke - en fast skuffe paa x=1265 ligger under rullebjaelken', () => {
+  const s = lavSide();
+  s.body.add(new s.El('aside', { stil: { position: 'fixed' }, rect: [1265, 0, 300, 800] }).add('Skuffe'));
+  assert.equal(s.koer(KILDE, null, 'Skuffe').synlig, false);
+});
+
+test('R175 (Opus W2): browserens checkVisibility med opacity-indstillingerne afgoer slottet tekst under en skygge med opacity 0', () => {
+  // I Chrome ser kun checkVisibility({opacityProperty}) en opacity paa en forfader i det flade trae (slots). Modellen tager
+  // det som givet: elementet ser synligt ud ad forfaderkaeden, men checkVisibility med opacity-indstillingen siger nej.
+  const v = side((b, El) => { const p = new El('p').add('Gemt'); p.checkVisibility = (o) => !(o && (o.opacityProperty || o.checkOpacity)); b.add(p); });
+  assert.equal(v(null, 'Gemt').synlig, false);
+});
+
+test('R175 (Astra): en lukket <select> bidrager paa sin egen plads - «Sa<select>…</select>ved» er ikke «Saved»', () => {
+  const v = side((b, El) => b.add(new El('p').add('Sa', new El('select', { rect: [30, 10, 80, 20] }).add(
+    new El('option', { rect: [0, 0, 0, 0], selected: true, attrs: { label: 'X' } }).add('X')), 'ved')));
+  assert.equal(v(null, 'Saved').synlig, false);
+  assert.equal(v(null, 'X').synlig, true, 'etiketten staar i feltet');
+});
+
+test('R175: en lukket <select>s tekst smelter ikke sammen med naboteksten («Sa[ve]d» er ikke «Saved»)', () => {
+  const v = side((b, El) => b.add(new El('p').add('Sa', new El('select', { rect: [30, 10, 80, 20] }).add(
+    new El('option', { rect: [0, 0, 0, 0], selected: true }).add('ve')), 'd')));
+  assert.equal(v(null, 'Saved').synlig, false);
+  assert.equal(v(null, 've').synlig, true);
 });

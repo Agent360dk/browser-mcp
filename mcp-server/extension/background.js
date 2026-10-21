@@ -950,6 +950,7 @@ function skiftAktiv(session, id) {
     afvaebnDialog(gammel, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
   }
   if (session.tilbageTil && id !== session.tilbageTil.popup) session.tilbageTil = null;
+  if (id !== gammel) session.skiftNr = (session.skiftNr || 0) + 1;   // R175: et kald kan se, om der blev skiftet undervejs
   session.activeTabId = id;
 }
 // R173 (Opus, MAALT i egen session): mellemrummet mellem to af en agents kald var 20-108 s - 10 s brod forloebet «armer, klik».
@@ -3121,7 +3122,9 @@ function ventMaal(sel, tekst, wantTag) {
       const s = getComputedStyle(n);
       const ruller = /(auto|scroll)/.test(s.overflowX + ' ' + s.overflowY);
       if (n !== el && ruller) rul = true;
-      if (s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
+      // R175 (Astra, MAALT i modellen): den YDRE faste ramme overskrev den indre - en fast skuffe uden for vinduet i en synlig,
+      // rullebar fast ramme blev «synlig». Den inderste faste boks afgoer: den er placeret efter vinduet, ikke efter rammen.
+      if (!fast && s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
       if (parseFloat(s.opacity) === 0) return false;
       if (n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
         const b = n.getBoundingClientRect();
@@ -3165,31 +3168,43 @@ function ventMaal(sel, tekst, wantTag) {
   const vises = (el) => { if (!kendt.has(el)) kendt.set(el, synligt(el)); return kendt.get(el); };
   const synligTekst = (rod) => {
     let ud = '';
-    const w = document.createTreeWalker(rod, NodeFilter.SHOW_TEXT);
-    for (let t = w.nextNode(); t; t = w.nextNode()) {
-      let ejer = t.parentElement || (t.parentNode && t.parentNode.host) || null;   // tekst direkte i en shadow root
-      if (!ejer || IKKE_VIST.has(ejer.nodeName)) continue;
-      // R173 (Opus, MAALT i Chrome): to steder tegnes teksten i en forfaders boks. Tekst direkte i et display:contents-element
-      // (fx et #root) har ingen egen boks; den valgte <option> i en lukket <select> staar i select-feltet.
+    // R175 (Astra, MAALT i modellen): en TreeWalker over tekst lagde en <select>s etiket EFTER al den oevrige tekst, saa
+    // «Sa<select>…</select>ved» blev til «Saved». Traeet gaas nu igennem i tegnet raekkefoelge, og en lukket <select>
+    // bidrager paa sin egen plads med det, den viser - adskilt fra naboerne.
+    const tekst = (t, ejer) => {
+      // R173 (Opus, MAALT i Chrome): tekst direkte i et display:contents-element (fx et #root) tegnes i en forfaders boks.
       for (let i = 0; i < 50 && ejer.parentElement && getComputedStyle(ejer).display === 'contents'; i++) {
         if (getComputedStyle(ejer).visibility !== 'visible') break;   // en skjult contents-forfader skjuler ogsaa teksten
         ejer = ejer.parentElement;
       }
-      if (ejer.nodeName === 'OPTION') {
-        // R174 (Astra, MAALT i modellen): en ikke-tom label er det, der vises (HTML-standarden) - ikke optionens tekst.
-        if (ejer.getAttribute && ejer.getAttribute('label')) continue;
-        const valg = ejer.closest ? ejer.closest('select') : null;
-        if (valg && !valg.multiple && !(valg.size > 1) && ejer.selected) ejer = valg;
-      }
       if (vises(ejer)) ud += t.data;
-    }
-    // ... og den valgte options label staar i den lukkede <select>.
-    const valgte = [...(rod.nodeName === 'SELECT' ? [rod] : []), ...(rod.querySelectorAll ? rod.querySelectorAll('select') : [])];
-    for (const v of valgte) {
-      if (v.multiple || v.size > 1) continue;
-      const o = v.options && v.options[v.selectedIndex];
-      const etiket = o && o.getAttribute && o.getAttribute('label');
-      if (etiket && vises(v)) ud += '\n' + etiket + '\n';
+    };
+    const gaa = (n, ejer) => {
+      for (const c of n.childNodes || []) {
+        if (c.nodeType === 3) { if (ejer) tekst(c, ejer); continue; }
+        if (c.nodeType !== 1 || IKKE_VIST.has(c.nodeName)) continue;
+        if (c.nodeName === 'SELECT' && !c.multiple && !(c.size > 1)) {
+          // En lukket <select> viser den valgte options etiket - en ikke-tom label, ellers optionens tekst (HTML-standarden).
+          const o = c.options && c.options[c.selectedIndex];
+          const vist = o ? ((o.getAttribute && o.getAttribute('label')) || o.textContent || '') : '';
+          if (vist && vises(c)) ud += '\n' + vist + '\n';
+          continue;
+        }
+        if (c.nodeName === 'OPTION' && c.getAttribute && c.getAttribute('label')) {
+          // R174 (Astra): i en aaben liste viser en option med label sin label, ikke sin tekst.
+          if (vises(c)) ud += '\n' + c.getAttribute('label') + '\n';
+          continue;
+        }
+        gaa(c, c);
+      }
+    };
+    // Tekst direkte i en shadow root tegnes i vaertens boks.
+    gaa(rod, rod.nodeType === 1 ? rod : (rod.host || null));
+    if (rod.nodeType === 1 && rod.nodeName === 'SELECT') {
+      // select:text(...): selve feltet er roden.
+      const o = rod.options && rod.options[rod.selectedIndex];
+      const vist = o ? ((o.getAttribute && o.getAttribute('label')) || o.textContent || '') : '';
+      if (!rod.multiple && !(rod.size > 1) && vist && vises(rod)) ud = '\n' + vist + '\n';
     }
     return ud;
   };
@@ -7799,7 +7814,14 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
     }
 
     case 'handle_dialog': {
+      // R175 (Astra, MAALT): bindingen gjaldt fra efter faneopslaget - en genindlaesning, mens det foerste opslag ventede, og et
+      // skift vaek og tilbage, mens Page.enable ventede, slap igennem. Fanens dokumentgeneration tages nu FOER foerste ventetid,
+      // og sessionens skifttaeller skal vaere uaendret, naar der armeres eller svares.
+      const sessFoer = getSession(port);
+      const aktivFoer = sessFoer.activeTabId;
+      const genFoer = aktivFoer != null ? (dialogFaner.get(aktivFoer)?.dokGen || 0) : null;
       const tab = await getSessionTab(port);
+      const skiftEfterOpslag = sessFoer.skiftNr || 0;
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const action = params.action === 'dismiss' ? 'dismiss' : 'accept';
       const promptText = params.text || '';
@@ -7812,11 +7834,16 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const s = dialogFane(tab.id);
       // R174 (Astra, MAALT): et nyt dokument, der aabnede en confirm, mens dette kald ventede paa tilknytning og port, blev
       // besvaret direkte med accept. Dokumentgenerationen fra kaldets start afgoer: er den skiftet, svares og armeres der ikke.
-      const startGen = s.dokGen || 0;
-      const sideSkiftet = () => (s.dokGen || 0) !== startGen;
-      const sideSvar = (nu) => ({ ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
-        note: 'The page in this tab changed while this call waited, so nothing was answered or armed. Read the tab, then ' +
-          'arm again right before the action that opens the dialog.' });
+      const startGen = tab.id === aktivFoer ? genFoer : (s.dokGen || 0);
+      const fanenSkiftet = () => (sessFoer.skiftNr || 0) !== skiftEfterOpslag;
+      const sideSkiftet = () => (s.dokGen || 0) !== startGen || fanenSkiftet();
+      const sideSvar = (nu) => (fanenSkiftet()
+        ? { ok: false, error: 'session-changed', armed: false,
+            note: 'The session\'s active tab changed while this call waited (another call switched tabs), so nothing was ' +
+              'answered or armed. Check the tabs with browser_list_tabs, then arm again right before the action that opens the dialog.' }
+        : { ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
+            note: 'The page in this tab changed while this call waited, so nothing was answered or armed. Read the tab, then ' +
+              'arm again right before the action that opens the dialog.' });
       const foerKendt = s.boks;   // en boks, der stod aaben, da kaldet kom, hoerer til den side, agenten saa
       const svarAaben = (boks) => (boks !== foerKendt && sideSkiftet() ? sideSvar(null) : besvarAabenBoks(tab.id, boks, action, promptText, forlad));
 

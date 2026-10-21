@@ -58,7 +58,7 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'File path inside the working directory to save the screenshot to (e.g. screenshots/page.png). It must end in .png (the screenshot is PNG data), and an existing file is not replaced unless overwrite is true; both are checked before the screenshot is taken.' },
+        path: { type: 'string', description: 'File path inside the working directory to save the screenshot to (e.g. screenshots/page.png). It must end in .png (the screenshot is PNG data) and stay inside the working directory (also through links), and an existing file is not replaced unless overwrite is true; all of it is checked before the screenshot is taken.' },
         overwrite: { type: 'boolean', description: 'Replace an existing image file at path (default: false)' },
         bring_to_front: { type: 'boolean', description: 'Raise Chrome in front of the user if its window is covered, and leave it there. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
