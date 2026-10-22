@@ -49,7 +49,7 @@ function model(opt = {}) {
     loaderNr: 1, traeMs: 0, traeUdenId: false,
     // R177: rammeId (hovedrammens id - en prerender-aktivering giver et nyt), boern (iframes), dialogRamme (rammen, en dialog
     // kommer fra; ellers hovedrammen).
-    rammeId: 'top', boern: [], dialogRamme: null, ...opt };
+    rammeId: 'top', boern: [], dialogRamme: null, barnLoaderNr: 1, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -168,7 +168,7 @@ function model(opt = {}) {
       }
       if (metode === 'Page.getFrameTree' && !t.boks) {
         const r = () => ({ frameTree: { frame: { id: t.rammeId, ...(t.traeUdenId ? {} : { loaderId: 'L' + t.loaderNr }) },
-          childFrames: t.boern.map((id) => ({ frame: { id, parentId: t.rammeId } })) } });
+          childFrames: t.boern.map((id) => ({ frame: { id, parentId: t.rammeId, loaderId: 'B' + t.barnLoaderNr } })) } });
         const ms = t.traeKoe && t.traeKoe.length ? t.traeKoe.shift() : t.traeMs;   // traeKoe: ventetid pr. kald, i raekkefoelge
         return ms ? sov(ms).then(r) : r();
       }
@@ -1759,4 +1759,27 @@ test('R177 (Astra): et nyt dokument, mens armeringen spoerger Chrome om dokument
   const r = await p;
   assert.equal(r.error, 'page-changed', vis(r));
   assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+// ── R177 (Opus): proevehullerne D2 og N6 ─────────────────────────────────────────────────────────────
+test('R177 (Opus D2): en iframe, der navigerer, afvaebner ikke - dokument-id er hovedrammens', async () => {
+  const m = model({ boksType: 'confirm', boern: ['annonce'] });
+  await m.dialog({ action: 'accept' });
+  m.t.barnLoaderNr++;                                         // iframen faar et nyt dokument; hovedrammen er den samme
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  await sov(20);
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'en iframes nye dokument afvaebnede armeringen');
+  m.t.dialogRamme = 'annonce';
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R177 (Opus N6): uden aktiv fane er opslagets eget fanevalg ikke et skift under kaldet', async () => {
+  const m = model({ boksType: 'confirm' });
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds = new Set(); sess.activeTabId = null;
+  const r = await m.dialog({ action: 'accept' });
+  assert.notEqual(r.error, 'session-changed', vis(r));
+  assert.equal(r.armed, true, vis(r));
 });

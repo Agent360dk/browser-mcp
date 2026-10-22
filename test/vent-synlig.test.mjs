@@ -655,3 +655,10 @@ test('R177: et relativt eller sticky element ruller med sin boks - det slipper i
     assert.equal(s.koer(KILDE, null, 'Spring').synlig, false, position);
   }
 });
+
+test('R177 (Opus D3): rtl med row-reverse begynder til venstre - overloeb til hoejre kan naas', () => {
+  const s = lavSide();
+  s.body.add(boks(s, { direction: 'rtl', display: 'flex', flexDirection: 'row-reverse' }, [100, 260, 300, 60])
+    .add(new s.El('span', { rect: [600, 260, 100, 40] }).add('Hoejre')));
+  assert.equal(s.koer(KILDE, null, 'Hoejre').synlig, true);
+});
