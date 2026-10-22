@@ -3217,6 +3217,41 @@ function parseSelector(selector) {
   return { type: 'css', selector };
 }
 
+// MEASURED 2026-10-22 (login.yahoo.com; demo/invalid-selector): an agent wrote
+// `input[name="appName"], input[placeholder="App name"], text=App name`. That is no CSS selector - the browser throws
+// on it - and no text selector either, since text= is one only as the whole string. fill answered a bare null, click
+// "Element not found" and wait waited out its timeout with found:false: three answers that send the agent looking for
+// an element that is there. The page is asked whether the selector is valid only after a lookup came back empty, so
+// a valid selector costs nothing extra.
+async function ugyldigSelector(tabId, selector) {
+  if (typeof selector !== 'string' || parseSelector(selector).type !== 'css') return null;
+  try {
+    const fejl = await debuggerEval(tabId,
+      `(() => { try { document.createDocumentFragment().querySelector(${JSON.stringify(selector)}); return null; } ` +
+      `catch (e) { return String((e && e.message) || e); } })()`);
+    return typeof fejl === 'string' ? fejl : null;
+  } catch {
+    return null;   // the check itself failed: answer as before rather than guess
+  }
+}
+
+function ugyldigSvar(selector, detalje) {
+  const tekstDel = /(^|,)\s*text=|:text\(/.test(selector);
+  return {
+    ok: false, error: 'invalid-selector', selector, detail: detalje,
+    note: tekstDel
+      ? 'text= and tag:text(...) work only as the whole selector, not as one entry in a comma-separated list. ' +
+        'Nothing was looked up. Try each alternative in its own call.'
+      : 'This is not a valid CSS selector, so nothing on the page was looked up.',
+  };
+}
+
+// The answer for a lookup that came back empty: invalid-selector when that is the reason, the caller's answer otherwise.
+async function ikkeFundet(tabId, selector, svar = { ok: false, error: 'Element not found: ' + selector }) {
+  const fejl = await ugyldigSelector(tabId, selector);
+  return fejl ? ugyldigSvar(selector, fejl) : svar;
+}
+
 // R64 (Opus' hop.html, maalt i Chrome 9/10): en header, der bliver position:fixed, naar siden rulles, flyttede alt 140 px op
 // EFTER at maalet var maalt. Koden foer klikkede saa raekken nedenunder med ok:true; maalvagten afviser det sikkert. Er maalet
 // blevet rullet frem, maales det derfor igen, til to maalinger med 100 ms imellem er ens (hoejst tre gange).
@@ -5795,7 +5830,7 @@ async function dispatch(port, method, params) {
       // leaving text-selector clicks unrecoverable when debugger was user-blocked.
       try {
         let el = await resolveElement(tab.id, params.selector);
-        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+        if (!el) return await ikkeFundet(tab.id, params.selector);
         // Elementet findes, men har ingen udstraekning — at klikke ville ramme (0,0),
         // altsaa et HELT andet element end det der blev bedt om. Sig det i stedet.
         if (el.hidden) {
@@ -5973,6 +6008,11 @@ async function dispatch(port, method, params) {
         // svarede ok:true. To regler: er vaerdien der allerede efter en frist, er vi faerdige;
         // og efter reserveloesningen laeses feltet igen, saa en fordobling ses i stedet for
         // at blive meldt som succes.
+        // An invalid selector made both paths throw, and the answer was a bare null (2026-10-22, see ugyldigSelector).
+        if (!erCdpFrist(e)) {
+          const fejl = await ugyldigSelector(tab.id, parsed.selector);
+          if (fejl) return ugyldigSvar(parsed.selector, fejl);
+        }
         const laesFelt = async () => {
           const r = await safeExecuteScript(tab.id, (sel) => {
             const el = document.querySelector(sel);
@@ -6007,7 +6047,10 @@ async function dispatch(port, method, params) {
         }, [parsed.selector, params.value]);
         if (scriptResult.cspBlocked) return { ok: false, error: e.message, method: 'debugger' };
         if (scriptResult.result?.blocked) return fieldBlockedAnswer(scriptResult.result.blocked, 'fallback');
-        if (!scriptResult.result?.ok) return scriptResult.result;
+        // Never a bare null: a fallback that threw has no result at all.
+        if (!scriptResult.result?.ok) {
+          return scriptResult.result || { ok: false, error: 'fill failed on both paths: ' + (e?.message || e), method: 'fallback' };
+        }
         await new Promise((r) => setTimeout(r, 300));
         const endelig = await laesFelt();
         // Kun to sluttilstande er fejl. FORDOBLET: et forsinket Input.insertText landede efter
@@ -6069,8 +6112,16 @@ async function dispatch(port, method, params) {
         return { ok: false, error: 'date must be ISO format YYYY-MM-DD, got: ' + params.date };
       }
 
-      const info = await getDateInputInfo(tab.id, params.selector);
-      if (!info.found) return { ok: false, error: 'Element not found: ' + params.selector };
+      // An invalid selector made the lookup itself throw, and the answer was a bare "Uncaught" (2026-10-22).
+      let info;
+      try {
+        info = await getDateInputInfo(tab.id, params.selector);
+      } catch (e) {
+        const fejl = await ugyldigSelector(tab.id, params.selector);
+        if (fejl) return ugyldigSvar(params.selector, fejl);
+        throw e;
+      }
+      if (!info.found) return await ikkeFundet(tab.id, params.selector);
 
       const tried = [];
       const iso = params.date;
@@ -6194,6 +6245,7 @@ async function dispatch(port, method, params) {
       const timeout = params.timeout || 10000;
       const sel = params.selector;
       const start = Date.now();
+      let geprueft = false;   // an invalid selector is answered at once, not after the whole timeout (ugyldigSelector)
       while (Date.now() - start < timeout) {
         // Text-based selectors use debugger directly
         if (sel.startsWith('text=') || sel.match(/^\w+:text\(/)) {
@@ -6202,10 +6254,22 @@ async function dispatch(port, method, params) {
         } else {
           const scriptResult = await safeExecuteScript(tab.id, (s) => !!document.querySelector(s), [sel]);
           if (scriptResult.cspBlocked) {
-            const found = await debuggerEval(tab.id, `!!document.querySelector(${JSON.stringify(sel)})`);
+            let found;
+            try {
+              found = await debuggerEval(tab.id, `!!document.querySelector(${JSON.stringify(sel)})`);
+            } catch (e) {
+              const fejl = await ugyldigSelector(tab.id, sel);
+              if (fejl) return { found: false, ...ugyldigSvar(sel, fejl) };
+              throw e;
+            }
             if (found) return { found: true, method: 'debugger' };
           } else if (scriptResult.result) {
             return { found: true };
+          }
+          if (!geprueft) {
+            geprueft = true;
+            const fejl = await ugyldigSelector(tab.id, sel);
+            if (fejl) return { found: false, ...ugyldigSvar(sel, fejl) };
           }
         }
         await new Promise(r => setTimeout(r, 500));
@@ -6315,7 +6379,7 @@ async function dispatch(port, method, params) {
       // Scroll to element
       if (params.selector) {
         const el = await resolveElement(tab.id, params.selector);
-        if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+        if (!el) return await ikkeFundet(tab.id, params.selector);
         return { ok: true, scrolled_to: params.selector };
       }
       // Scroll by pixels using CDP mouseWheel — split into smaller steps so IntersectionObservers fire.
@@ -6467,7 +6531,7 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
-      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (!el) return await ikkeFundet(tab.id, params.selector);
       if (el.covered) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
       const { x, y } = el;
@@ -6500,7 +6564,7 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
-      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (!el) return await ikkeFundet(tab.id, params.selector);
       // R66 (Opus, maalt i Chrome): et hoejreklik klikker ikke en kontrol inde i maalet - contextmenu bobler gennem maalet.
       if (el.covered && !el.covered.inside) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
       await debuggerAttach(tab.id);
@@ -6585,7 +6649,7 @@ async function dispatch(port, method, params) {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       let el = await resolveElement(tab.id, params.selector);
-      if (!el) return { ok: false, error: 'Element not found: ' + params.selector };
+      if (!el) return await ikkeFundet(tab.id, params.selector);
       // R66 (Opus, maalt i Chrome): hover klikker ikke en kontrol inde i maalet (en menu-li med sit link, et kort med et
       // billedlink) - mouseover og :hover gaelder ogsaa maalet. Kun noget foran maalet er en daekning.
       if (el.covered && !el.covered.inside) return daekketSvar(params.selector, el);   // R57: musen ville ramme det der ligger oeverst
