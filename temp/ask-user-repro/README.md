@@ -20,13 +20,26 @@ The black log box shows what the page can see of the events aimed at the card.
 
 ## Run it
 
-Needs the extension from this repo loaded unpacked (`chrome://extensions` → Load unpacked →
-`extension/`, the store copy disabled, ↻ after every change) and `npm install` in `mcp-server/`.
+Needs `npm install` in `mcp-server/`, and the extension you want to test loaded unpacked in
+Chrome (`chrome://extensions` → Load unpacked, the store copy disabled, ↻ after every change).
 
 ```bash
 node temp/ask-user-repro/serve.mjs     # http://127.0.0.1:8765/
 node temp/ask-user-repro/drive.mjs     # every scenario; or: drive.mjs dialog,ariakit
 ```
+
+**To see the bug**, keep this branch checked out (this folder is not on `main`), and load the
+extension from `main` instead:
+
+```bash
+git worktree add ../browser-mcp-main main   # then Load unpacked -> ../browser-mcp-main/extension
+```
+
+`drive.mjs` then prints `FAIL` for `dialog`, `popover` and `ariakit` (`timeout`, expected `done`)
+and exits 1. By hand: open `?s=ariakit`, have an agent call `browser_ask_user`. When the grey
+modal opens 1.5 s later, Done can no longer be clicked, and the call ends with `timeout`.
+
+**To see the fix**, load this branch's `extension/` again: every line is `OK`, exit 0.
 
 `drive.mjs` starts its own `mcp-server/index.js` (a separate session in Chrome), calls
 `browser_ask_user`, and while the card is up clicks its Done button with `browser_click_xy` - CDP
