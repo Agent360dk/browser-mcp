@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Submit | click repro</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+  form { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; max-width: 480px; }
+  textarea { width: 100%; box-sizing: border-box; font: inherit; }
+  #contactForm_saveButton { margin-top: 12px; padding: 8px 18px; font: inherit; cursor: pointer; }
+  #status { margin-top: 12px; min-height: 22px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #94a3b8; border-top-color: transparent;
+             border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #sent { font-weight: 700; }
+  #log { font: 12px/1.4 ui-monospace, monospace; background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px;
+         white-space: pre-wrap; max-width: 760px; margin-top: 12px; min-height: 60px; }
+</style>
+</head>
+<body>
+<!--
+  Like the form on developer.apple.com/contact/app-store/?topic=expedite (2026-10-22): the submit button sends the
+  request from its click handler, and the page shows that it is working a moment later, not inside the click. The
+  button is NOT disabled while the request runs - a second click sends a second request, as on a page without
+  double-submit protection. "Requests sent" counts what the server would receive.
+
+  ?show=<when> - when the page shows its spinner after the click:
+    sync       inside the click handler (the control: a script click sees it at once)
+    microtask  right after the handler returns (a framework batching its state update)
+    50         50 ms later (default)
+    300        300 ms later
+
+  The bug needs the tab in the BACKGROUND (Chrome behind another window, or another tab active in its window): only
+  then does the click go through the script fallback. In front, the CDP click proves itself and all is well.
+-->
+<form id="contactForm" onsubmit="return false">
+  <b>Request an expedited review</b>
+  <p><textarea rows="3">Critical bug fix for version 2.1.0</textarea></p>
+  <input type="submit" id="contactForm_saveButton" value="Send">
+  <div id="status"></div>
+</form>
+<p>Requests sent: <span id="sent">0</span></p>
+<div id="log"></div>
+
+<script>
+(() => {
+  const show = new URLSearchParams(location.search).get('show') || '50';
+  const status = document.getElementById('status');
+  const sentEl = document.getElementById('sent');
+  const logEl = document.getElementById('log');
+  const t0 = performance.now();
+  // The log is written to the page later, never inside the click: a change during the click is what a script click
+  // takes as proof that it worked, and the real form changes nothing there.
+  const log = (m) => {
+    const line = ((performance.now() - t0) / 1000).toFixed(2) + 's  ' + m + '\n';
+    setTimeout(() => { logEl.textContent += line; }, 500);
+  };
+  let sent = 0;
+  const spinner = () => {
+    status.innerHTML = '<span class="spinner"></span>Sending…';
+    sentEl.textContent = String(sent);
+  };
+  document.getElementById('contactForm_saveButton').addEventListener('click', (e) => {
+    e.preventDefault();
+    sent++;
+    log(`click (trusted=${e.isTrusted}) -> request #${sent} sent`);
+    if (show === 'sync') spinner();
+    else if (show === 'microtask') queueMicrotask(spinner);
+    else setTimeout(spinner, Number(show) || 50);
+    // The server answers after 3 s.
+    const n = sent;
+    setTimeout(() => { status.textContent = `Thanks - request #${n} received. We'll expedite the review.`; log(`request #${n} answered`); }, 3000);
+  });
+  log('ready, spinner shown: ' + show);
+})();
+</script>
+</body>
+</html>
