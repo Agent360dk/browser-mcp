@@ -83,6 +83,15 @@ export function lavKlikDom() {
     documentElement: html, body, URL: 'https://x.example/side', baseURI: 'https://x.example/side',
     querySelectorAll: (s) => (s === '*' ? [body, ...body.querySelectorAll('*')] : html.querySelectorAll(s)),
     querySelector: (s) => html.querySelector(s),
+    // Text nodes as the model has them: each element's own text, before its children's, in tree order. Enough for
+    // klikMaal's walk over the text of an element that holds a <script> (2026-10-22).
+    createTreeWalker(rod) {
+      const noder = [];
+      const gaa = (e) => { if (e.egenTekst) noder.push({ data: e.egenTekst, parentElement: e }); for (const c of e.children) gaa(c); };
+      gaa(rod);
+      let i = 0;
+      return { nextNode: () => noder[i++] || null };
+    },
     // Som i en browser: kun dokumentets eget traer, ikke shadow roots.
     getElementById: (id) => html.querySelectorAll('*').find((e) => e.id === id) || null,
     // Det oeverste element ved punktet: hoejeste lag, saa senest i DOM. En modal dialog daekker alt uden for sig selv
@@ -116,7 +125,8 @@ export function lavKlikDom() {
     koer(kilde, ...args) {
       const window = { innerWidth: 1200, innerHeight: 800 };
       const getComputedStyle = (e) => e.stil;
-      const fn = new Function('document', 'window', 'getComputedStyle', 'return (' + kilde + ')')(document, window, getComputedStyle);
+      const NodeFilter = { SHOW_TEXT: 4 };
+      const fn = new Function('document', 'window', 'getComputedStyle', 'NodeFilter', 'return (' + kilde + ')')(document, window, getComputedStyle, NodeFilter);
       return { svar: fn(...args), window };
     },
   };
