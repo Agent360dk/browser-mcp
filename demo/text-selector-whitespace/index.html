@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>text= and whitespace | demo</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+  .row { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; max-width: 640px; margin-bottom: 10px; }
+  .row code { font-size: 13px; color: #475569; }
+  button { font: inherit; padding: 6px 14px; border-radius: 999px; border: 1px solid #6001d2; color: #6001d2; background: #fff; cursor: pointer; }
+  #log { font: 12px/1.4 ui-monospace, monospace; background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px;
+         white-space: pre-wrap; max-width: 640px; min-height: 60px; }
+</style>
+</head>
+<body>
+<!--
+  Every button label below looks like plain words separated by single spaces. Only the first one is.
+  The second and third are written the way login.yahoo.com writes its English labels (measured 2026-10-22):
+  a no-break space (U+00A0, &nbsp;) between the last two words, so the last word never wraps alone.
+  `text=Create app password`, typed with a normal space, did not find them.
+  Keep the labels out of everything else on the page - the hints, the <script> - or a text= search that misses the
+  button finds that text instead (measured on main: it clicked the hint).
+  The selectors to try are in README.md and check.mjs.
+-->
+<h1 style="font-size:20px">Security</h1>
+
+<div class="row"><button id="plain" type="button">Change password</button>
+  <br><code>control: plain spaces</code></div>
+
+<div class="row"><button id="nbsp" type="button">Create app&nbsp;password</button>
+  <br><code>no-break space before the last word (Yahoo)</code></div>
+
+<div class="row"><button id="nbsp-dialog" type="button">Generate&nbsp;password</button>
+  <br><code>no-break space, in a button (Yahoo's dialog)</code></div>
+
+<div class="row"><button id="newline" type="button">Save
+            changes</button>
+  <br><code>the label is broken over two lines in the HTML source</code></div>
+
+<div class="row"><button id="tab" type="button">Open&#9;file</button>
+  <br><code>a tab between the words</code></div>
+
+<div id="log"></div>
+
+<script>
+  const logEl = document.getElementById('log');
+  for (const b of document.querySelectorAll('button')) {
+    b.addEventListener('click', () => { logEl.textContent += 'clicked #' + b.id + '\n'; });
+  }
+</script>
+</body>
+</html>
