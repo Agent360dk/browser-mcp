@@ -2726,6 +2726,12 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     const all = collectAll(document, []);
     const tag = wantTag ? String(wantTag).toUpperCase() : null;
     const tagOk = (el) => !tag || el.tagName === tag;
+    // MEASURED 2026-10-22 (login.yahoo.com, English UI; demo/text-selector-whitespace): Yahoo writes its labels with a
+    // no-break space before the last word ("Create app password"), so `text=Create app password` found nothing.
+    // Any run of whitespace - no-break spaces, tabs, line breaks, double spaces - now counts as one space, on both
+    // sides. The test before the replace keeps the common case (plain single spaces) from copying every element's text.
+    const enRum = (s) => (/[^\S ]| {2}/.test(s) ? s.replace(/\s+/g, ' ') : s);
+    const soeg = enRum(String(tekst).trim());
     // Map a matched element to the ACTIONABLE control: itself if clickable, else the
     // nearest clickable ancestor (only if its own text isn't much larger than the match,
     // so we don't grab a whole toolbar), else a clickable descendant.
@@ -2737,7 +2743,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // Slet-knap - og slettede med ok:true. Et barn vaelges nu kun, naar teksten staar i det; ellers er maalet elementet
       // med teksten, og en handling inde i det er en daekning.
       const desc = el.querySelector && el.querySelector(CLICKABLE);
-      if (desc && (desc.textContent || '').includes(tekst)) return desc;
+      if (desc && enRum(desc.textContent || '').includes(soeg)) return desc;
       return el;
     }
     // #70 (arasmileska; Search Console og Facebook har skjulte kopier af knapper): `text=Request indexing` stoppede ved en
@@ -2749,7 +2755,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
     };
     function pick(kandidater, test, kunSynlige) {
-      const matches = kandidater.filter((el) => tagOk(el) && test((el.textContent || '').trim()));
+      const matches = kandidater.filter((el) => tagOk(el) && test(enRum((el.textContent || '').trim())));
       if (!matches.length) return null;
       // Prefer the INNERMOST matches (an element that is not an ancestor of another match).
       const inner = matches.filter((el) => !matches.some((o) => o !== el && el.contains && el.contains(o)));
@@ -2763,8 +2769,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // overskriften med ok:true. Foerste gennemgang tager derfor kun synlige KLIKBARE maal; ellers som foer.
       return kunSynlige ? null : toClickable(pool[0]);
     }
-    const eksakt = (t) => t === tekst;
-    const delvis = (t) => t && t.includes(tekst);
+    const eksakt = (t) => t === soeg;
+    const delvis = (t) => t && t.includes(soeg);
     const dlg = aabenDialog(all);
     const iDlg = dlg ? all.filter((el) => inde(el, dlg)) : null;
     const kaede = (s) => dlg
