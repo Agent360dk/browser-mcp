@@ -5766,8 +5766,16 @@ async function dispatch(port, method, params) {
           break;   // tomt svar efter afsendelse: scriptet kan have koert — gentag ikke
         } catch (e) {
           const m = String(e?.message || e);
+          // MEASURED 2026-10-22 (login.yahoo.com; demo/execute-script-error): the code ran here and threw a plain TypeError,
+          // and the answer buried it under scripting-diag - two CSP 'unsafe-eval' refusals from the paths that did not
+          // run it. That read as the cause. The code ran; its own error is the answer, as in the scripting worlds.
           if (m.startsWith('__SCRIPT_EX__')) {
-            throw new Error(m.slice('__SCRIPT_EX__'.length) + ' | scripting-diag: ' + JSON.stringify(diag));
+            const besked = m.slice('__SCRIPT_EX__'.length);
+            return {
+              ok: false, error: besked, name: (besked.match(/^([A-Za-z]*Error)\b/) || [])[1],
+              method: 'debugger',
+              note: 'The code RAN and threw this error. It is not run again.',
+            };
           }
           dbgErr = m;
           if (sendt) break;   // sendt = maaske koert — se kommentaren ved afsendelsen

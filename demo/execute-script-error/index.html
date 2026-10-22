@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>execute_script error | demo</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+  [role=dialog] { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; width: 380px; }
+  .w-full { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 999px; background: #6001d2; color: #fff; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<!--
+  Served by serve.mjs with a Content-Security-Policy like login.yahoo.com's: inline scripts allowed, 'unsafe-eval'
+  not. On such a page browser_execute_script cannot compile the code in either scripting world, so it runs it
+  through the debugger. /no-csp serves the same page without the header, as a control.
+
+  The button label has a no-break space, as Yahoo writes it ("Generate password"), so the code an agent wrote
+  there - find(x => x.innerText.trim() === 'Generate password') - finds nothing and throws a TypeError. The TypeError
+  is the agent's own; what this demo is about is how the tool reports it.
+-->
+<div role="dialog" aria-label="Generate an app password">
+  <b>Generate an app password</b>
+  <p>Some apps require a separate, one-time password to sign in.</p>
+  <button id="generate" class="w-full" type="button">Generate&nbsp;password</button>
+</div>
+</body>
+</html>
