@@ -1717,17 +1717,15 @@ test('R176: en armering, der forbruges eller afloeses mens Chrome svarer, roeres
 
 // ── R177 (Astra, MAALT i modellen): kapløbet mellem den nye sides dialog og Chromes svar ─────────────────
 // MAALT i Chrome 155 22/10: mens en dialog staar aaben, svarer Page.getFrameTree ikke; dialogen baerer sin rammes frameId.
-test('R177: den nye sides confirm, der aabner foer Chromes svar paa dokumentet, besvares ikke (ny hovedramme)', async () => {
-  const m = model({ boksType: 'confirm' });
-  const r0 = await m.dialog({ action: 'accept' });
-  assert.equal(r0.armed, true, vis(r0));
-  m.t.rammeId = 'forhaand'; m.t.loaderNr++;                  // aktiveringen: ny hovedramme, kun «loading»
-  m.t.traeKoe = [300];                                        // Chromes svar kommer foerst efter dialogen
-  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: 'https://forhaand.example/', status: 'loading' });
-  m.sidenNavigerer('https://forhaand.example/');              // den nye side spoerger straks
+test('R178 (Opus, MAALT i Chrome): en iframe fra et andet site staar ikke i getFrameTree - dens dialog besvares stadig', async () => {
+  // En binding til sidens ramme-id'er lukkede prerender-kapløbet, men afviste dialoger fra rammer i en anden proces (en regression
+  // mod 1.32). Kapløbet er kendt rest; denne proeve holder bindingen ude.
+  const m = model({ boksType: 'confirm', boern: ['samme-site'] });
+  await m.dialog({ action: 'accept' });
+  m.t.dialogRamme = 'andet-site';                             // ikke i traeet, som Chrome svarede ved armeringen
+  m.sidenNavigerer('https://alert.example/');
   await sov(80);
-  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
-  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+  assert.equal(m.svar().length, 1);
 });
 
 test('R177: en iframes dialog paa siden, der blev armeret, besvares stadig', async () => {

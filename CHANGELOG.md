@@ -24,13 +24,12 @@ hidden matches exist when the time is up, the answer is `found: false` with `on_
 keeps the old wait for existence (for example a hidden file input before `browser_upload_file`); any other `state` is an
 error. The page is no longer scrolled while waiting, and the timeout is at most 60 seconds - the server now waits as long.
 
-**`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any
-dialog, "Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, and it is
-dropped when a new document loads or becomes active in the tab (a reload or a prerendered page too - not an address
-change within the same page, and not a frame; a dialog from a frame that was not on the page when it was armed is not
-answered) or the session moves to another tab. A page that changes while the arming is being set answers `page-changed`,
-and a tab switch meanwhile `session-changed`. An accept answers "Leave site?" - armed or already open - only with
-`leave_page: true` (otherwise `leave-page-required`); a dismiss is unchanged.
+**`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any dialog,
+"Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, and it is dropped when a new
+document loads or becomes active in the tab (a reload or a prerendered page too - not an address change within the same page, and not a frame) or the session moves
+to another tab. A page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile
+`session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
+(otherwise `leave-page-required`); a dismiss is unchanged.
 
 **Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the
 window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left

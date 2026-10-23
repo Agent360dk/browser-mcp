@@ -1047,8 +1047,7 @@ function dialogKoordinator(source, method, p) {
     let ejer = null;
     for (const [, sess] of sessions) if (sess.tabIds.has(tabId)) { ejer = sess; break; }
     const flyttet = !!a && !!ejer && ejer.activeTabId !== tabId;
-    const fremmed = !!a && !!a.rammer && !!p?.frameId && !a.rammer.has(p.frameId);   // se hovedTrae
-    const gyldig = !!a && !udloebet && !forbeholdt && !flyttet && !fremmed;
+    const gyldig = !!a && !udloebet && !forbeholdt && !flyttet;
     if (gyldig) {
       afvaebnDialog(tabId);   // forbruges - uden grund, for vi svarer selv lige her
       boks.armering = a;
@@ -1059,7 +1058,6 @@ function dialogKoordinator(source, method, p) {
     } else {
       if (udloebet) afvaebnDialog(tabId, 'the arming expired before a dialog appeared');
       else if (flyttet) afvaebnDialog(tabId, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
-      else if (fremmed) afvaebnDialog(tabId, 'a dialog came from a document that was not in the tab when it was armed (a new page became active), so it was not answered and the arming was dropped');
       if (s.ejer && s.ejer.sent && boks.type === 'beforeunload') dialogSvar(tabId, boks, s.ejer.leave === true, '', 'navigate');
     }
     vaekDialogVentere(s, null);
@@ -1104,21 +1102,17 @@ chrome.debugger.onEvent.addListener(dialogKoordinator);
 // «loading» og en ny loaderId i hovedrammen. Armeringen svarede den nye sides confirm (9/9). En armering baerer derfor
 // hovedrammens loaderId, og ved «loading» spoerges Chrome: er det et andet dokument, afvaebnes den. Kan det ikke afgoeres
 // (intet svar, intet id), afvaebnes den ogsaa - den sikre retning.
-// R177 (Astra, MAALT i modellen): aabnede den nye sides confirm, foer Chromes svar kom, blev den besvaret. Svaret kan heller
-// ikke ventes paa: mens en dialog staar aaben, svarer Page.getFrameTree ikke (MAALT i Chrome 155 22/10, intet svar paa 3 s). Men
-// dialogen siger selv, hvilken ramme den kommer fra (frameId, MAALT), og en prerender-aktivering giver hovedrammen et nyt id
-// (Opus R176, MAALT). Armeringen husker derfor sidens rammer, og en dialog fra en anden ramme besvares ikke.
-const hovedTrae = async (tabId) => {
+// Kendt rest (R177-R178, begge konsulenter): aabner den nye sides dialog inden for ca. 10 ms efter en prerender-aktivering, foer
+// Chromes svar kommer, besvares den stadig. Svaret kan ikke ventes paa - mens en dialog staar aaben, svarer Page.getFrameTree ikke
+// (MAALT i Chrome 155, intet svar paa 3 s), og at vente ville faa en SPA-confirm til at haenge (R175). At binde armeringen til
+// sidens ramme-id'er lukkede kapløbet, men en iframe fra et andet site (en anden proces) staar ikke i getFrameTree, saa dens
+// dialoger blev ikke besvaret (Opus R178, MAALT i Chrome: en regression mod 1.32) - den binding er derfor ikke med.
+const hovedLoader = async (tabId) => {
   const t = await venteMedFrist(cdpSend(tabId, 'Page.getFrameTree', {}), NAV_FRISTER.port).catch(() => null);
-  const rod = t && t !== FRIST_UDLOEB && t.frameTree;
-  if (!rod || !rod.frame) return { loader: null, rammer: null };
-  const rammer = new Set();
-  const gaa = (n) => { if (n.frame) rammer.add(n.frame.id); for (const b of n.childFrames || []) gaa(b); };
-  gaa(rod);
-  return { loader: rod.frame.loaderId || null, rammer };
+  return (t && t !== FRIST_UDLOEB && t.frameTree && t.frameTree.frame && t.frameTree.frame.loaderId) || null;
 };
 async function loaderTjek(tabId, a) {
-  const nu = a.loader ? (await hovedTrae(tabId)).loader : null;
+  const nu = a.loader ? await hovedLoader(tabId) : null;
   if (armeredeDialoger.get(tabId) !== a) return;   // forbrugt eller afloest imens
   if (!nu || nu !== a.loader) afvaebnDialog(tabId, 'the page changed (a new document became active) before a dialog appeared, so the arming was dropped');
 }
@@ -3154,8 +3148,8 @@ function ventMaal(sel, tekst, wantTag) {
     // indholdet synligt, naar den faste boks selv er i vinduet.
     let fast = null, rul = false, rulVedFast = false, hopTil = null;
     // R177 (Astra, MAALT i modellen): tekst i en rullet INDRE rulleboks blev holdt op mod den ydre boks' begyndelse og meldt
-    // skjult - men den indre boks kan rulles tilbage. For forfaedrene over en rulleboks taeller boksens plads, ikke elementets
-    // (en akse, der skaerer, har allerede kraevet overlap med boksen).
+    // skjult - men den indre boks kan rulles tilbage. For forfaedrene over en rulleboks taeller boksens plads paa de akser, den kan
+    // rulles paa, ikke elementets.
     let m = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
     // R176 (Opus, MAALT i Chrome 155): begyndelsen af en rulleboks er ikke altid oeverst til venstre. I rtl, row-reverse,
     // column-reverse og vertical-rl ligger den til hoejre eller nederst, og rulningen er negativ.
@@ -3191,7 +3185,11 @@ function ventMaal(sel, tekst, wantTag) {
         const foerX = o.x ? m.left >= sb.right - (n.scrollLeft || 0) : m.right <= sb.left - (n.scrollLeft || 0);
         const foerY = o.y ? m.top >= sb.bottom - (n.scrollTop || 0) : m.bottom <= sb.top - (n.scrollTop || 0);
         if (foerX || foerY) return false;
-        naeste = { left: sb.left, right: sb.right, top: sb.top, bottom: sb.bottom };
+        // R178 (Astra, MAALT i modellen): kun de akser, boksen kan rulles paa - ellers mistede en ydre, afskaerende boks tekstens
+        // plads paa den akse, der ikke kan rulles frem, og gav en falsk «found».
+        naeste = { ...m };
+        if (/(auto|scroll)/.test(s.overflowX)) { naeste.left = sb.left; naeste.right = sb.right; }
+        if (/(auto|scroll)/.test(s.overflowY)) { naeste.top = sb.top; naeste.bottom = sb.bottom; }
       }
       // R175 (Astra, MAALT i modellen): den YDRE faste ramme overskrev den indre - en fast skuffe uden for vinduet i en synlig,
       // rullebar fast ramme blev «synlig». Den inderste faste boks afgoer: den er placeret efter vinduet, ikke efter rammen.
@@ -7969,7 +7967,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
                 'the tab. Next time, arm browser_handle_dialog before the action that opens it.' };
       }
       // R176 (Opus): armeringen bindes til hovedrammens dokument (loaderId), se loaderTjek.
-      const { loader, rammer } = await hovedTrae(tab.id);
+      const loader = await hovedLoader(tab.id);
       // Astra R107 (maalt i model): en boks, der aabnede, mens Page.enable ventede, gav armed:true med 0 svar. Tilstanden
       // tjekkes derfor IGEN efter porten, foer der armeres.
       if (s.boks) return await svarAaben(s.boks);
@@ -7989,7 +7987,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
 
       // Koordinatoren forbruger armeringen, naar boksen aabner, og opfylder loeftet, naar Chrome melder boksen lukket.
       armeredeDialoger.set(tab.id, { timer, action, accept: action === 'accept', text: promptText, leave: forlad,
-        udloeb: Date.now() + levetid, opfyld, loader, rammer });
+        udloeb: Date.now() + levetid, opfyld, loader });
       dialogLoefter.set(tab.id, svar);
 
       if (vent) return await svar;

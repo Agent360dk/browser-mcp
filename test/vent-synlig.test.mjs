@@ -662,3 +662,22 @@ test('R177 (Opus D3): rtl med row-reverse begynder til venstre - overloeb til ho
     .add(new s.El('span', { rect: [600, 260, 100, 40] }).add('Hoejre')));
   assert.equal(s.koer(KILDE, null, 'Hoejre').synlig, true);
 });
+
+// ── R178 (Astra, MAALT i modellen): kun de akser, en indre boks kan rulles paa ─────────────────────────
+test('R178: en ydre boks, der klipper paa den akse, den indre ikke ruller paa, klipper stadig teksten', () => {
+  const v = lavSide();
+  const ydreV = new v.El('div', { stil: { overflowX: 'hidden', overflowY: 'hidden' }, rect: [20, 20, 200, 300] });
+  v.body.add(ydreV.add(boks(v, { overflowX: 'hidden' }, [20, 20, 400, 200]).add(new v.El('span', { rect: [320, 50, 70, 18] }).add('Vandret'))));
+  assert.equal(v.koer(KILDE, null, 'Vandret').synlig, false, 'lodret rulning flytter ikke teksten vandret');
+  const l = lavSide();
+  const ydreL = new l.El('div', { stil: { overflowX: 'hidden', overflowY: 'hidden' }, rect: [20, 20, 400, 100] });
+  l.body.add(ydreL.add(boks(l, { overflowY: 'hidden' }, [20, 20, 300, 300]).add(new l.El('span', { rect: [40, 200, 70, 18] }).add('Lodret'))));
+  assert.equal(l.koer(KILDE, null, 'Lodret').synlig, false, 'vandret rulning flytter ikke teksten lodret');
+});
+
+test('R178 (Astra): en vandret rullet indre boks i en afskaerende forfader - teksten kan rulles frem', () => {
+  const s = lavSide();
+  const klip = new s.El('div', { stil: { overflowX: 'hidden', overflowY: 'hidden' }, rect: [0, 0, 400, 300] });
+  s.body.add(klip.add(boks(s, { overflowY: 'hidden' }, [10, 10, 300, 200], { scrollLeft: 600 }).add(new s.El('span', { rect: [-400, 50, 100, 18] }).add('Rullet'))));
+  assert.equal(s.koer(KILDE, null, 'Rullet').synlig, true);
+});
