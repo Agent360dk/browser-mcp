@@ -58,7 +58,7 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | Wall | State | Note |
 |---|---|---|
 | Content Security Policy blocks injected script | **By design** | The debugger path does not go through `eval`, so CSP-strict pages (Google Cloud, Stripe, Angular Material) work where script injection is refused. |
-| Content inside an iframe | **By design** | `browser_list_frames` and `browser_select_frame`. |
+| Content inside an iframe | **By design** | `browser_list_frames` and `browser_select_frame`, also in a frame from another site. |
 | Shadow DOM | **By design** | The click path resolves through shadow roots before dispatching. |
 | React / Vue controlled input that "resets itself" | **Fixed in 1.29.1** | In v1.29.0 `browser_fill` could append instead of replacing. Fixed 2026-09-08: it now reads the field back after clearing it. |
 | Native `<select>` | **Measured** | `browser_select_option`, 9 ms, 2026-09-09. |
@@ -89,12 +89,12 @@ third one is the agent saying what it cannot do instead of failing quietly.
 | Bot-detection systems (Cloudflare, DataDome, fingerprinting) | Browser MCP works because it **is** your browser, not because anything is being circumvented. That sentence is the whole product. Selling evasion would delete it, and it would be an arms race we would lose while promising otherwise. |
 | Accounts that are not yours | The one-time code still lands in an inbox only you control. That boundary is not a technical one. |
 | `chrome://` pages, the extension gallery, `data:` URLs | Chrome forbids scripting them. Not a gap we can close; the tools say so explicitly rather than failing vaguely. |
-| A second Chrome profile | Not supported today: with the extension enabled in more than one profile, every command goes to one of them, and the server cannot tell which. Since 1.30.2 it says so in the next tool answer and in `browser_provide_feedback`. Keep the extension enabled in one profile. Routing to a chosen profile is tracked as issue #58. |
+| A second Chrome profile | **From 1.31, by name.** Give each profile a name in the extension popup ("This Chrome profile") and set `BROWSER_MCP_PROFILE=<name>` in the client's MCP config; that client then drives that profile and stays with it. Two profiles with the same name give `profile-ambiguous`, a profile that is not connected `profile-not-connected`, and nothing is sent in either case. If the profile the chat was driving closes, the next call answers `profile-disconnected` instead of moving to another profile. Extensions before 1.31 report no name: with one of those in more than one profile, every command goes to one of them, and the server cannot tell which. The name is a label to choose by, not a password. Tracked in issue #58. |
 
 ## Frequently asked questions
 
 **Does Browser MCP work on sites with a strict Content Security Policy?**
-Partly. The Chrome Debugger API carries most of the work, but `browser_execute_script` cannot run on pages with a strict CSP when the debugger is also unavailable - both string-evaluation paths are blocked, one by the page and one by the extension's own policy. It is written down rather than hidden.
+Yes, as long as Chrome lets the extension use its debugger. The Chrome Debugger API carries most of the work, and from 1.31.0 `browser_execute_script` and `browser_select_frame` run JavaScript only through it, which a page's CSP does not stop. When Chrome refuses the debugger (an enterprise policy, or the debugging notice was cancelled), those two tools fail with an error that says the code was not run. It is written down rather than hidden.
 
 **Does it work headless, or in CI?**
 No, and it never will. The extension drives a real Chrome on a real desktop. For CI, use Playwright MCP - that is what it was built for.

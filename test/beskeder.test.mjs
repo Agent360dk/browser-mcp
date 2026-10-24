@@ -40,6 +40,9 @@ async function send(besked, { dispatchSvar = { ok: true }, dispatchFejler = null
   const fn = new Function(
     'restoreSessions', 'adoptOrphanedSession', 'getSession', 'dispatch',
     'logAction', 'releaseSession', 'chrome', 'console',
+    // 1.31 (R134): lytteren lægger én ydre frist om agentkodens to vaerktoejer.
+    'AGENTKODE_METODER', 'agentKodeSlut',
+    'fraLukketForbindelse', 'forbindelsenLukket', 'LUKKET_SVAR', 'kommandoFraDokument',   // R138: kald fra lukkede forbindelser
     `return (${udklipLytter(0)});`,
   )(
     async () => {},
@@ -50,6 +53,12 @@ async function send(besked, { dispatchSvar = { ok: true }, dispatchFejler = null
     () => {},
     { runtime: { lastError: null } },
     { log() {}, warn() {}, error() {} },
+    new Set(['execute_script', 'select_frame']),
+    (start) => start + 29500,
+    () => false,
+    () => {},
+    { ok: false, error: 'connection-closed', sent: false },
+    () => {},
   );
 
   const retur = fn(besked, {}, sendResponse);

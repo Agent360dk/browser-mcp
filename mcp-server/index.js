@@ -14,11 +14,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ledErDoedt, forfaedreKaede } from './vagt.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { WebSocketServer } from 'ws';
-import { execSync, execFile } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import { dirname, join, resolve, sep, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, realpathSync, lstatSync, statSync, existsSync } from 'fs';
 import { TOOLS, PROVIDER_PAGES } from './tools.js';
 
 // Read version from package.json - single source of truth, never drifts
@@ -40,9 +40,43 @@ const repoDir = dirname(__dirname); // parent of mcp-server/
 let extensionUpdated = false;
 // #69 (1.30.3): fejlkoderne fra navigate i en eksisterende fane og fra handle_dialog. Udvidelsen svarer dem som ok:false;
 // her bliver de til isError, saa klienten ser dem som fejl.
+// Skaermbilledets sti skal ligge i arbejdsmappen - ogsaa set gennem links (se kommentarerne). R175 (Astra, MAALT): tjekket
+// koerte foerst efter optagelsen, saa ../ude.png kostede et billede, og siden lovede noget andet. Det koeres nu foer optagelsen
+// og igen lige foer skrivningen (stien kan aendre sig imellem).
+function skaermStiInde(sti) {
+  const rod = resolve(process.cwd());
+  const targetPath = resolve(rod, sti);
+  // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside»,
+  // fordi et tekst-tjek her afgjorde sagen. R93 (Opus, maalt paa GitHubs Windows): ogsaa et 8.3-kortnavn (RUNNER~1 mod
+  // runneradmin) er samme mappe stavet anderledes. Afgoerelsen tages derfor KUN paa operativsystemets kanoniske stier
+  // nedenfor (realpath af arbejdsmappen og af den dybeste del af stien, der findes); teksten vaelger kun fejlbeskeden.
+  const tekstInde = targetPath === rod || targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep);   // "/" giver ikke "//" (R5 F10)
+  // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
+  // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
+  // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
+  // skabe filen i den anden ende), og den dybeste del af stien der findes skal ligge inde.
+  // lstat - ikke exists - saa et dinglende link taeller som "findes" og derfor bliver undersoegt.
+  const findes = (x) => { try { lstatSync(x); return true; } catch { return false; } };
+  let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
+  let forfader = dirname(targetPath);
+  while (!findes(forfader) && dirname(forfader) !== forfader) forfader = dirname(forfader);
+  let forfaderReel = null; try { forfaderReel = realpathSync.native(forfader); } catch {}
+  // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men skrivningen trunkerer den faelles fil.
+  let erLink = false, flereNavne = false;
+  try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
+  if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
+    throw new Error(
+      `path must be inside the working directory (${rod}). ` +
+      (tekstInde
+        ? `"${sti}" points outside (through a link). Use a plain directory inside the working directory.`
+        : `"${sti}" points outside. Use a relative path without ../.`),
+    );
+  }  return targetPath;
+}
+
 const NAV_DIALOG_FEJL = new Set(['navigation-in-progress', 'dialog-open', 'tab-not-responding', 'navigation-failed',
   'beforeunload-blocked', 'dialog-unconfirmed', 'navigation-unconfirmed', 'dialog-being-answered', 'tab-closed',
-  'session-changed']);
+  'session-changed', 'no-active-tab', 'page-changed', 'leave-page-required', 'tab-not-closed']);
 
 // Spaendet kan flyttes med env - ellers ville en test af port-udsultning skulle
 // beslaglaegge de RIGTIGE porte og dermed sulte brugerens oevrige chats imens.
@@ -62,12 +96,71 @@ const MAX_PORT = Number(process.env.BROWSER_MCP_MAX_PORT) || 9895; // 20 ports i
 // Nu holdes alle forbindelser med deres identitet, kommandoer sendes kun til den
 // nyeste udgave, og konflikten kan ses (browser_provide_feedback) i stedet for at
 // vise sig som faner der "forsvinder".
-const connections = new Set(); // { ws, seq, extensionId, version, name, since }
+//
+// ── Baner (1.31, #58 og #20) ──────────────────────────────────────────────────
+// En BANE er én lytterport med sine egne forbindelser og sit eget valg af forbindelse. Standardbanen er den dovne port
+// nedenfor (sikrePort). Ekstra baner (partitioner, #20) skal bruge SAMME kode - createWSS, svar-tjekket, null-vaernet,
+// afvisVentende - og ikke en kopi: PR #20's egen lytter manglede de vaern, main fik efter dens base, og R106 MAALTE
+// fem fejl i den (T1-T5, test/baner.test.mjs). Alle ventende kald ligger i ét kort (`pending`), og hvert er bundet til den
+// forbindelse, det blev sendt til - saa et svar fra en anden banes sokkel afvises ligesom et fra en anden udvidelse.
+function lavBane(navn, medPid = true) {
+  return {
+    navn,
+    // Standardbanen sender Claude Code-processens pid; en partition skal sende null (R106/R107, MAALT: med samme pid
+    // adopterede en partitions port standardbanens efterladte faner).
+    medPid,
+    connections: new Set(),        // { ws, seq, extensionId, version, name, since }
+    wss: null,
+    activePort: null,
+    heartbeat: null,
+    alleePorteOptaget: false,      // hele spaendet i brug - se createWSS
+    bindFejl: null,                // bind fejlede af en ANDEN grund end optaget port
+    portBundetTid: 0,              // hvornaar porten sidst blev aaben - se sendToExtension
+    portResolver: null,
+    bindLoefte: null,
+    laastForbindelse: null,        // se activeConnection
+    // 1.31 (S3, #58): banens valg af installation. `vaelger` er en betegnelse (BROWSER_MCP_PROFILE for standardbanen);
+    // `laas` er den installation banen er laast til efter foerste kommando: { instans, conn } - instans er null for en
+    // udvidelse fra foer 1.31, og saa ER forbindelsen identiteten. `valgNote` siges én gang i naeste svar.
+    vaelger: null,
+    vaelgerUgyldig: false,
+    laas: null,
+    valgNote: '',
+    // R115 (Astra 1): hver gang en laast installation erklaeres mistet, taelles generationen op. Et kald, der allerede
+    // ventede, da det skete, faar samme fejl - det maa ikke vaelge en ny installation, foer klienten har set fejlen.
+    laasGen: 0,
+    sidsteMistet: null,
+    sidsteVisteForbindelsesAdvarsel: '',
+    sidsteKonfliktNoegle: '',
+    sidsteProfilAdvarsel: '',
+    // 1.32 (R121): en partitions bane lukkes for altid (lukPartition). `vaekkere` er de kald, der venter paa banen (genforsoeg,
+    // ventetiden foer foerste valg); lukningen vaekker dem, saa de faar partition-closed straks og ikke binder porten igen.
+    lukket: false,
+    vaekkere: new Set(),
+  };
+}
+const standardBane = lavBane('default');
+const baner = new Set([standardBane]);
+
+// 1.31 (S2, #58): installationens identitet i hilsenen - `instance` (16 hex, lavet én gang pr. installation, altsaa pr.
+// Chrome-profil) og `profile` (brugerens betegnelse fra popuppen). Kun gyldige vaerdier tages; alt andet bliver null.
+// Betegnelsen er fri tekst, som serveren gentager i vaerktoejssvar, saa moenstret er ogsaa vaernet mod at et lokalt program
+// laegger instruktioner i agentens kontekst (R106). Hilsenen er usigneret: betegnelsen er et VALG, ikke adgang (README).
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+const gyldigInstans = (v) => (typeof v === 'string' && /^[0-9a-f]{16}$/.test(v) ? v : null);
+const gyldigProfil = (v) => (typeof v === 'string' && PROFIL_MOENSTER.test(v) ? v : null);
+
+// 1.31 (S3, #58): BROWSER_MCP_PROFILE vaelger installationen (Chrome-profilen) ud fra betegnelsen i udvidelsens popup. Den
+// gaelder sammen med BROWSER_MCP_EXTENSION_ID (begge skal passe). En ugyldig vaerdi ignoreres IKKE stille - saa ville
+// serveren styre en tilfaeldig profil, praecis det vaelgeren skal forhindre: hvert kald svarer profile-invalid.
+const PROFIL_RAA = (process.env.BROWSER_MCP_PROFILE || '').trim();
+standardBane.vaelger = gyldigProfil(PROFIL_RAA);
+standardBane.vaelgerUgyldig = PROFIL_RAA !== '' && !standardBane.vaelger;
+if (standardBane.vaelgerUgyldig) {
+  process.stderr.write('[MCP] BROWSER_MCP_PROFILE is not a valid profile name (letters, digits, dot, dash, underscore; ' +
+    '1-32 characters) - every browser call answers profile-invalid until it is fixed\n');
+}
 let connSeq = 0;
-let activePort = null;
-let alleePorteOptaget = false;   // hele spaendet i brug - se createWSS
-let bindFejl = null;             // bind fejlede af en ANDEN grund end optaget port
-let portBundetTid = 0;           // hvornaar porten sidst blev aaben - se sendToExtension
 
 function cmpVersion(a, b) {
   const pa = String(a || '0.0.0').split('.').map(n => parseInt(n, 10) || 0);
@@ -83,12 +176,17 @@ function cmpVersion(a, b) {
 // saa tre profiler talte som én, og ingen advarsel kom - mens kommandoerne gik til én af dem, og hvilken profil det var,
 // skiftede naar de andre genindlaeste. Serveren kan ikke se hvilken profil en forbindelse kommer fra, kun hvor mange der er
 // aabne, saa det er det advarslen siger.
-function forbindelsesAdvarsel() {
-  const live = liveConnections();
+function forbindelsesAdvarsel(bane = standardBane) {
+  const live = liveConnections(bane);
   if (live.length < 2) return null;
   const prId = new Map();
   for (const c of live) if (c.extensionId) prId.set(c.extensionId, (prId.get(c.extensionId) || 0) + 1);
-  const dubletter = [...prId].filter(([, n]) => n > 1);
+  // 1.31 (S3): melder hver forbindelse i dubletten sin installation (instance), kan serveren skelne profilerne - valget,
+  // laasen og noten ved foerste kommando klarer det (se sendTilBane). Advarslen gaelder kun, naar én af dem ikke kan skelnes.
+  // R117 (Astra): en forbindelse, der lige er aabnet og endnu ikke har hilst, mangler sin instans, fordi hilsenen ikke er
+  // kommet - den taeller foerst som «uden installation», naar den har hilst uden, eller efter 3 s uden hilsen (foer 1.28).
+  const udenInstallation = (c) => !c.instance && (c.harHilst || Date.now() - c.since > 3000);
+  const dubletter = [...prId].filter(([id, n]) => n > 1 && live.some((c) => c.extensionId === id && udenInstallation(c)));
   if (!dubletter.length) return null;   // forskellige udvidelser: dem daekker advarOmKonflikt og provide_feedback
   return `${live.length} Browser MCP extension connections are open to this server, ` +
     dubletter.map(([id, n]) => `${n} of them from the same extension (${id})`).join(' and ') +
@@ -98,35 +196,35 @@ function forbindelsesAdvarsel() {
 }
 
 // Det agenten ser: stderr naar ingen agent. Advarslen lægges i det naeste vaerktoejssvar, én gang pr. aendring.
-let sidsteVisteForbindelsesAdvarsel = '';
-let forbindelseSkiftet = false;
-function medForbindelsesNote(svar) {
-  if (forbindelseSkiftet && liveConnections().length) {
-    forbindelseSkiftet = false;
-    svar.content.push({ type: 'text', text: '\n⚠️ The extension connection this server was driving has closed, and commands now ' +
-      'go to another one - possibly another Chrome profile or browser. Tabs opened before are not in it.' });
+function medForbindelsesNote(svar, bane = standardBane) {
+  // 1.31 (S3): her stod en note om at kommandoerne «nu gaar til en anden» forbindelse - sagt EFTER at kommandoen var koert
+  // i den anden profil. Nu skifter banen aldrig stille (se vaelgForbindelse); noten her siger kun, hvilken installation der
+  // blev valgt, naar der var flere at vaelge imellem.
+  if (bane.valgNote) {
+    svar.content.push({ type: 'text', text: '\n⚠️ ' + bane.valgNote });
+    bane.valgNote = '';
   }
-  const a = forbindelsesAdvarsel();
-  if (!a) { sidsteVisteForbindelsesAdvarsel = ''; return svar; }
-  if (a === sidsteVisteForbindelsesAdvarsel) return svar;
-  sidsteVisteForbindelsesAdvarsel = a;
+  const a = forbindelsesAdvarsel(bane);
+  if (!a) { bane.sidsteVisteForbindelsesAdvarsel = ''; return svar; }
+  if (a === bane.sidsteVisteForbindelsesAdvarsel) return svar;
+  bane.sidsteVisteForbindelsesAdvarsel = a;
   svar.content.push({ type: 'text', text: '\n⚠️ ' + a });
   return svar;
 }
 
-let sidsteKonfliktNoegle = '';
-let sidsteProfilAdvarsel = '';
-function advarOmKonflikt(conn) {
-  const profiler = forbindelsesAdvarsel();
-  if (profiler && profiler !== sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
-  sidsteProfilAdvarsel = profiler || '';
-  const alle = distinctExtensions();
+function advarOmKonflikt(conn, bane = standardBane) {
+  // R115 (Opus 2) / R117: en forbindelse, der lige er aabnet og ikke har hilst, taeller ikke som «uden installation» i
+  // forbindelsesAdvarsel (se udenInstallation) - saa profiladvarslen kommer ikke falsk, foer hilsenen er naaet frem.
+  const profiler = forbindelsesAdvarsel(bane);
+  if (profiler && profiler !== bane.sidsteProfilAdvarsel) process.stderr.write(`[MCP] WARNING: ${profiler}\n`);
+  bane.sidsteProfilAdvarsel = profiler || '';
+  const alle = distinctExtensions(bane);
   if (alle.length < 2) return;
   // Samme konflikt maa ikke skrige ved hver eneste hello - kun naar billedet aendrer sig.
   const noegle = alle.map(c => `${c.extensionId || 'unknown'}@${c.version || '?'}`).sort().join('|');
-  if (noegle === sidsteKonfliktNoegle) return;
-  sidsteKonfliktNoegle = noegle;
-  const aktiv = activeConnection();
+  if (noegle === bane.sidsteKonfliktNoegle) return;
+  bane.sidsteKonfliktNoegle = noegle;
+  const aktiv = activeConnection(bane);
   // Oplyser INGEN af dem en version (alle udgivne udgaver er fra foer haandtrykket),
   // er der intet grundlag for at vaelge. Det skal staa der - ellers laeser man
   // "kommandoer sendes kun til X" som om X var det rigtige valg.
@@ -154,8 +252,8 @@ function advarOmKonflikt(conn) {
 //
 // ⛔ 26/9: parringen er trukket tilbage i 1.30.1 (se PARRING_TRUKKET_TILBAGE nedenfor), og med
 // den filtret paa `parret`. Broen er igen lokal og uautentificeret for alle - det staar i README.
-function liveConnections() {
-  return [...connections].filter(c => c.ws.readyState === 1);
+function liveConnections(bane = standardBane) {
+  return [...bane.connections].filter(c => c.ws.readyState === 1);
 }
 
 // Valget LAASES for serverens levetid.
@@ -170,8 +268,8 @@ function liveConnections() {
 // Faner hoerer til den udvidelse der aabnede dem. Skifter man udvidelse, strander de.
 // Derfor: vaelg én gang, og bliv ved den saa laenge dens forbindelse lever. Doer den,
 // vaelges der forfra - det er en aegte genopretning, ikke et vilkaarligt skift.
-let laastForbindelse = null;
-let harSendtKommando = false;
+// (Laasen bor paa banen - se lavBane. R115: flaget `harSendtKommando` er erstattet af banens installationslaas, `bane.laas`,
+// som saettes ved praecis samme lejlighed - foerste kommando - og ogsaa overlever en sluppet port.)
 const PINNET_UDVIDELSE = (process.env.BROWSER_MCP_EXTENSION_ID || '').trim() || null;
 
 // ⛔ 26/9: PARRINGEN ER TRUKKET TILBAGE I 1.30.1 (issue #10 genaabnes til et redesign).
@@ -190,39 +288,237 @@ if (PARRING_TRUKKET_TILBAGE) {
   );
 }
 
-function activeConnection() {
-  if (laastForbindelse && laastForbindelse.ws.readyState === 1) return laastForbindelse;
+function activeConnection(bane = standardBane) {
+  // 1.31 (S3, #58): er banen laast til en installation, er det KUN den - ogsaa naar dens forbindelse er vaek. Saa svarer
+  // activeConnection null, og kaldet faar profile-disconnected i stedet for at gaa stille videre til en anden profil
+  // (1.30.2 advarede foerst EFTER kommandoen). Samme instans paa en ny forbindelse er samme installation.
+  if (bane.laas) {
+    if (bane.laas.instans === null) return bane.laas.conn.ws.readyState === 1 ? bane.laas.conn : null;
+    const samme = liveConnections(bane).filter((c) => c.instance === bane.laas.instans);
+    if (samme.length !== 1) return null;
+    bane.laastForbindelse = bane.laas.conn = samme[0];
+    return samme[0];
+  }
+  // Med en vaelger: praecis én forbindelse med betegnelsen. Udregnes hver gang foer laasen - en hilsen med samme betegnelse
+  // kan komme efter valget, og saa skal det give profile-ambiguous, ikke den foerste.
+  if (bane.vaelger) {
+    const k = profilKandidater(bane);
+    bane.laastForbindelse = k.length === 1 ? k[0] : null;
+    return bane.laastForbindelse;
+  }
+  if (bane.laastForbindelse && bane.laastForbindelse.ws.readyState === 1) return bane.laastForbindelse;
 
   // Nyeste udvidelse vinder. Ved uafgjort: den der forbandt sidst. En udvidelse fra
   // foer haandtrykket har ingen version og taber til en der har én - haandtrykket kom
   // med den nyere udgave.
+  // R122 (Astra, MAALT): «forbandt sidst» afgoeres af forbindelsestaelleren `seq`, ikke af `since` - to forbindelser i samme
+  // millisekund gav ellers den foerste. `since` saettes kun ved forbindelsen, saa `seq` er samme raekkefoelge, uden uafgjort.
   let best = null;
-  for (const c of liveConnections()) {
+  for (const c of liveConnections(bane)) {
     if (!best) { best = c; continue; }
     const d = cmpVersion(c.version, best.version);
-    if (d > 0 || (d === 0 && c.since > best.since)) best = c;
+    if (d > 0 || (d === 0 && c.seq > best.seq)) best = c;
   }
-  laastForbindelse = best;
+  bane.laastForbindelse = best;
   return best;
 }
 
 // Én post pr. udvidelse. En udvidelse uden identitet taelles for sig selv (dens
 // socket er noeglen), saa to gamle kopier stadig ses som to.
-function distinctExtensions() {
+function distinctExtensions(bane = standardBane) {
   const byKey = new Map();
-  for (const c of liveConnections()) {
+  for (const c of liveConnections(bane)) {
     const key = c.extensionId || `legacy:${c.seq}`;
     if (!byKey.has(key)) byKey.set(key, c);
   }
   return [...byKey.values()];
 }
-let wss = null; // Track WSS for graceful shutdown
+// 1.31 (S2, #58): de Browser MCP-installationer, der er forbundet til denne chat, som browser_about og valgets fejlsvar viser. Én post pr.
+// forbindelse, der har hilst; en udvidelse fra foer 1.31 har hverken id eller betegnelse. Listen er kort (hoejst 10): en
+// betegnelse er fri tekst fra en lokal sokkel, og selv efter moenstret skal den ikke gentages i det uendelige.
+const MAKS_VISTE_INSTALLATIONER = 10;
+function installationer(bane = standardBane) {
+  const live = liveConnections(bane).filter((c) => c.harHilst);
+  return live.slice(0, MAKS_VISTE_INSTALLATIONER).map((c) => ({
+    profile: c.profile ?? null,
+    instance: c.instance ?? null,
+    version: c.version ?? null,
+    // Laesning uden bivirkning: den forbindelse banen allerede styrer (activeConnection() ville vaelge én). Efter foerste
+    // kommando er det laasens forbindelse - ikke en midlertidig forbindelseslaas, som en ny forbindelse kan nulstille.
+    // R117 (Opus B): uden laas er en forbindelse, hvis installation er forbundet flere gange (en kopi), aldrig styret.
+    driven: bane.laas ? c === bane.laas.conn
+      : c === bane.laastForbindelse && !(c.instance && live.filter((x) => x.instance === c.instance).length > 1),
+  }));
+}
+
+// ── 1.31 (S3, #58): valg af installation pr. bane ─────────────────────────────
+// Forbindelser, der har hilst med en gyldig instans og banens betegnelse.
+function profilKandidater(bane) {
+  return liveConnections(bane).filter((c) => c.harHilst && c.instance && c.profile === bane.vaelger);
+}
+
+// Antal installationer paa banen: én pr. instans; en forbindelse uden instans (foer 1.31) taeller for sig selv.
+function antalInstallationer(bane) {
+  return new Set(liveConnections(bane).map((c) => c.instance || `forbindelse:${c.seq}`)).size;
+}
+
+function beskrivInstallation(c) {
+  if (!c || !c.instance) return 'an extension from before 1.31 (it reports no installation)';
+  return c.profile ? `profile "${c.profile}" (instance ${c.instance})` : `instance ${c.instance} (no profile name)`;
+}
+
+// Et fejlsvar fra valget. Intet er sendt til nogen udvidelse; `connected` er hvad banen kan se lige nu (hoejst 10).
+class ProfilFejl extends Error {
+  constructor(svar) { super(`${svar.error}: ${svar.note}`); this.svar = svar; }
+}
+function profilFejl(bane, error, felter, note) {
+  return new ProfilFejl({ ok: false, error, sent: false, ...felter, connected: installationer(bane), note });
+}
+
+// Hvad kaldet skal goere, naar activeConnection(bane) ikke gav en forbindelse. `straks` = fejl uden at vente (flere
+// kandidater, eller en laast udvidelse fra foer 1.31, der aldrig kan komme tilbage); ellers kan der ventes inden for budgettet.
+// R115 (Astra 4): hvad browser_provide_feedback skal sige, naar der ER forbindelser, men ingen kan bruges. Uden
+// bivirkninger: laasen roeres ikke (mistetFejl ville slippe den).
+function profilDiagnose(bane, aktiv = null) {
+  const live = liveConnections(bane);
+  // R117 (Astra 2, Opus A): en kopieret profil (samme installation paa flere forbindelser) for den installation, chatten
+  // styrer eller ville vaelge. Raadet er at lukke kopien - en ny betegnelse hjaelper ikke, kopien har samme id (Opus maalte).
+  // R119 (rest E): uden laas og aktiv forbindelse men med en vaelger afgoer vaelgerFlertydighed - den samme opgoerelse som
+  // vaerktoejets fejlsvar - hvilket raad der gives. Her stod den foerste kandidats instans, saa raadet afhang af raekkefoelgen.
+  const f = !bane.laas && !aktiv && bane.vaelger ? vaelgerFlertydighed(bane) : null;
+  if (f && f.art !== 'navn') {
+    return { error: 'profile-ambiguous',
+      finding: f.art === 'kopi'
+        ? `The installation with the profile name "${bane.vaelger}" (instance ${f.kopier[0]}) is connected ${f.k.length} times at once - probably a copied Chrome profile. Browser calls answer profile-ambiguous and send nothing.`
+        : `${f.k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE), from ${f.installationer} installations, and instance ${f.kopier.join(', ')} is connected more than once - probably a copied Chrome profile. Browser calls answer profile-ambiguous and send nothing.`,
+      fix: f.art === 'kopi' ? RAAD_KOPI : `${RAAD_KOPI} ${RAAD_NAVN}` };
+  }
+  const valgt = bane.laas ? bane.laas.instans : aktiv ? aktiv.instance : null;
+  const kopier = valgt ? live.filter((c) => c.instance === valgt) : [];
+  if (kopier.length > 1) {
+    return { error: 'profile-ambiguous', finding: `The installation this chat ${bane.laas ? 'drives' : 'would drive'} (instance ${valgt}) is connected ${kopier.length} times at once - probably a copied Chrome profile. Browser calls answer profile-ambiguous and send nothing.`,
+      fix: RAAD_KOPI };
+  }
+  if (aktiv) return null;
+  if (bane.laas) {
+    return { error: 'profile-disconnected', finding: `The installation this chat was driving (${beskrivInstallation(bane.laas.instans ? bane.laas.conn : null)}) is not connected; ${live.length} other connection(s) are open, and the server does not move to them on its own.`,
+      fix: 'Reopen that Chrome profile, or call a browser tool again: after one profile-disconnected answer the next call picks an installation anew.' };
+  }
+  if (bane.vaelger) {
+    const k = profilKandidater(bane);
+    if (k.length > 1) {
+      return { error: 'profile-ambiguous', finding: `${k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE).`,
+        fix: RAAD_NAVN };
+    }
+    if (live.every((c) => !c.instance)) {
+      return { error: 'profile-routing-unsupported', finding: `BROWSER_MCP_PROFILE is set, but all ${live.length} connected extension(s) are older than 1.31 and report no profile name.`,
+        fix: 'Update the extension (from the Chrome Web Store it can take 1-3 days after a release), or remove BROWSER_MCP_PROFILE.' };
+    }
+    return { error: 'profile-not-connected', finding: `${live.length} extension connection(s) are open, but none has the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE).`,
+      fix: 'Open Chrome in that profile, and check that the name in the extension popup ("This Chrome profile") is exactly the same.' };
+  }
+  return null;
+}
+
+// R119 (Opus rest E): flere kandidater til BROWSER_MCP_PROFILE - hvilken slags flertydighed? Én opgoerelse, som baade
+// vaerktoejets fejlsvar og browser_provide_feedback bruger, saa de altid siger det samme, uanset forbindelsernes raekkefoelge.
+//   kopi:    én installation, forbundet flere gange (en kopieret profil) - raadet er at lukke/geninstallere kopien
+//   navn:    flere installationer, ingen forbundet to gange - raadet er et navn til hver
+//   blandet: flere installationer, og mindst én af dem forbundet flere gange - begge raad
+function vaelgerFlertydighed(bane) {
+  const k = profilKandidater(bane);
+  if (k.length < 2) return null;
+  const tal = new Map();
+  for (const c of k) tal.set(c.instance, (tal.get(c.instance) || 0) + 1);
+  const kopier = [...tal].filter(([, n]) => n > 1).map(([i]) => i).sort();
+  const art = tal.size === 1 ? 'kopi' : kopier.length ? 'blandet' : 'navn';
+  return { k, art, installationer: tal.size, kopier };
+}
+const RAAD_KOPI = 'Close the copied Chrome profile, or reinstall the extension in it so it gets its own installation id. Renaming it does not help: the copy keeps the same id.';
+const RAAD_NAVN = 'Give each Chrome profile its own name in the extension popup ("This Chrome profile").';
+
+// Samme installation paa flere forbindelser paa én gang: en kopieret Chrome-profil (samme lager, samme instans).
+function kopiFejl(bane, instans, samme, hvem) {
+  return profilFejl(bane, 'profile-ambiguous', { candidates: samme.map((c) => ({ instance: c.instance, profile: c.profile ?? null, version: c.version ?? null })).slice(0, 10) },
+    `${hvem} (instance ${instans}) is connected ${samme.length} times at once - ` +
+    'probably a copied Chrome profile. Nothing was sent: the server does not guess between them. Close the copy, or ' +
+    'reinstall the extension in it so it gets its own instance.');
+}
+
+function valgUdenForbindelse(bane) {
+  if (bane.laas) {
+    const samme = bane.laas.instans ? liveConnections(bane).filter((c) => c.instance === bane.laas.instans) : [];
+    if (samme.length > 1) return { straks: kopiFejl(bane, bane.laas.instans, samme, 'The installation this chat is driving') };
+    return { mistet: true, straks: bane.laas.instans === null ? mistetFejl(bane) : null };
+  }
+  if (bane.vaelger) {
+    // R118 (Opus rest D): bærer alle kandidaterne samme instans, er det én installation forbundet flere gange - en kopieret
+    // profil. Saa er raadet kopiens (luk den eller geninstallér), ikke et nyt navn: kopien beholder samme id.
+    // R119 (rest E): er der baade en kopi og en anden installation med navnet, gives begge raad (se vaelgerFlertydighed).
+    const f = vaelgerFlertydighed(bane);
+    if (f && f.art === 'kopi') {
+      return { straks: kopiFejl(bane, f.k[0].instance, f.k, `The installation with the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE)`) };
+    }
+    if (f && f.art === 'blandet') {
+      return { straks: profilFejl(bane, 'profile-ambiguous',
+        { profile: bane.vaelger, candidates: f.k.map((c) => ({ instance: c.instance, version: c.version ?? null })).slice(0, 10) },
+        `${f.k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE), from ${f.installationer} ` +
+        `installations, and ${f.kopier.length === 1 ? 'one of them' : 'some of them'} (instance ${f.kopier.join(', ')}) is ` +
+        'connected more than once - probably a copied Chrome profile. Nothing was sent: the server does not guess between ' +
+        `them. ${RAAD_KOPI} ${RAAD_NAVN}`) };
+    }
+    const k = profilKandidater(bane);
+    if (k.length > 1) {
+      return { straks: profilFejl(bane, 'profile-ambiguous',
+        { profile: bane.vaelger, candidates: k.map((c) => ({ instance: c.instance, version: c.version ?? null })).slice(0, 10) },
+        `${k.length} connections carry the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE). Nothing was sent: the server ` +
+        'does not guess between them. Give each Chrome profile its own name in the extension popup ("This Chrome profile").') };
+    }
+    return { vaelger: true };
+  }
+  return {};
+}
+
+// Den laaste installation er vaek. Laasen slippes, saa KALDET DEREFTER vaelger forfra - ikke dette.
+function mistetFejl(bane) {
+  const laas = bane.laas;
+  bane.laas = null;
+  bane.laastForbindelse = null;
+  bane.laasGen++;
+  const tabt = laas.conn && laas.conn.instance === laas.instans ? laas.conn : { instance: laas.instans, profile: null };
+  const fejl = profilFejl(bane, 'profile-disconnected', { lost: { profile: tabt.profile ?? null, instance: laas.instans } },
+    `The Browser MCP installation this chat was driving (${beskrivInstallation(laas.instans ? tabt : null)}) is no longer ` +
+    'connected: its Chrome profile or Chrome may have closed, or the extension reloaded. Nothing was sent, and the server ' +
+    'did not move to another installation on its own. ' +
+    (laas.instans === null ? 'An extension from before 1.31 cannot be recognised when it reconnects. ' : '') +
+    'Calling again picks an installation anew' + (bane.vaelger ? ` by BROWSER_MCP_PROFILE ("${bane.vaelger}")` : '') +
+    '; tabs opened before are not in another installation. connected lists what is connected now.');
+  bane.sidsteMistet = fejl.svar;
+  return fejl;
+}
+
+function ingenProfilFejl(bane) {
+  const live = liveConnections(bane).filter((c) => c.harHilst);
+  if (live.length && live.every((c) => !c.instance)) {
+    return profilFejl(bane, 'profile-routing-unsupported', { profile: bane.vaelger },
+      'BROWSER_MCP_PROFILE is set, but every connected extension is older than 1.31 and reports no profile name, so the ' +
+      'server cannot choose by it. Nothing was sent. Update the extension (from the Chrome Web Store it can take 1-3 days ' +
+      'after a release), or remove BROWSER_MCP_PROFILE.');
+  }
+  return profilFejl(bane, 'profile-not-connected', { profile: bane.vaelger },
+    `No connected Browser MCP installation has the profile name "${bane.vaelger}" (BROWSER_MCP_PROFILE). Nothing was sent. ` +
+    'Check that Chrome is open in that profile and that the name in the extension popup ("This Chrome profile") is exactly ' +
+    'the same. connected lists what this server can see; an extension before 1.31 reports no name.');
+}
+
 let cmdId = 0;
 let lastActivity = Date.now();
+// Ét kort for ALLE baner: id -> { id, bane, conn, timer, resolve, reject }. Id'erne er faelles, saa et id aldrig peger paa
+// to kald, og svaret tjekkes mod `conn` - den forbindelse kaldet blev sendt til (se 'message' i createWSS).
 const pending = new Map();
 
 // Timers hoisted to module scope so gracefulShutdown can clear them deterministically.
-let heartbeat = null;
+// (Hjerteslaget bor paa banen - bane.heartbeat.)
 let parentCheck = null;
 let tomgangsvagt = null;
 
@@ -243,7 +539,7 @@ tomgangsvagt = setInterval(() => {
 
 // ── WebSocket Server ───────────────────────────────────────────────────────
 
-function createWSS(port = BASE_PORT) {
+function createWSS(bane, port = BASE_PORT) {
   const server = new WebSocketServer({
     host: '127.0.0.1',
     port,
@@ -264,13 +560,13 @@ function createWSS(port = BASE_PORT) {
       godkend(false, 401, 'only chrome extensions may connect');
     },
   });
-  wss = server;
+  bane.wss = server;
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       if (port < MAX_PORT) {
         process.stderr.write(`[MCP] Port ${port} in use, trying ${port + 1}...\n`);
-        createWSS(port + 1);
+        createWSS(bane, port + 1);
       } else {
           // MAALT 22/8: her stod KUN denne stderr-linje. Ingen laeser stderr fra en
           // MCP-server, saa udtoemte porte var en helt tavs fejl. Hvert vaerktoejskald
@@ -278,9 +574,9 @@ function createWSS(port = BASE_PORT) {
           // siger at serveren koerer og sender brugeren til Chrome Web Store. Begge dele
           // er forkerte naar sandheden er at vi aldrig fik en port. Flaget laeses i
           // sendToExtension, saa agenten kan give brugeren den rigtige forklaring.
-          alleePorteOptaget = true;
+          bane.alleePorteOptaget = true;
         process.stderr.write(`[MCP] All ports ${BASE_PORT}-${MAX_PORT} in use. Cannot start.\n`);
-        loesPortLoefte(false);
+        loesPortLoefte(bane, false);
       }
     } else {
       // FUNDET AF REVIEW 7/9. Her stod KUN stderr-linjen. Foer porten blev doven, var
@@ -290,9 +586,9 @@ function createWSS(port = BASE_PORT) {
       // (EACCES paa en privilegeret port, EADDRNOTAVAIL, en restriktiv firewall)
       // ville derfor faa hvert eneste browser-kald til at haenge tavst for evigt.
       // At haenge uden besked er vaerre end den fejl vi rettede.
-      bindFejl = err.message;
+      bane.bindFejl = err.message;
       process.stderr.write(`[MCP] WebSocket error: ${err.message}\n`);
-      loesPortLoefte(false);
+      loesPortLoefte(bane, false);
     }
   });
 
@@ -340,20 +636,25 @@ function createWSS(port = BASE_PORT) {
     }
 
     const conn = { ws, seq: ++connSeq, extensionId: fraOrigin, version: null, name: null,
-      harHilst: false, helloId: null, since: Date.now() };
-    connections.add(conn);
-    // Har vi endnu ikke sendt en eneste kommando, er ingen faner i spil, og en
-    // nytilkommen udvidelse maa gerne komme i betragtning igen.
-    if (!harSendtKommando) laastForbindelse = null;
+      harHilst: false, helloId: null, since: Date.now(), instance: null, profile: null };
+    bane.connections.add(conn);
+    // En nytilkommen udvidelse maa gerne komme i betragtning igen, saa laenge ingen kommando er sendt. Er der sendt én, er
+    // banen laast til installationen (bane.laas), og den afgoer valget i activeConnection - saa nulstillingen er altid sikker.
+    // (R115: her stod `if (!harSendtKommando)`; flaget var en kopi af laasen og er fjernet.)
+    bane.laastForbindelse = null;
     process.stderr.write(`[MCP] Chrome extension connected on port ${port}${fraOrigin ? ` (${fraOrigin})` : ''}\n`);
-    advarOmKonflikt(conn);
+    advarOmKonflikt(conn, bane);
 
     // If extension was auto-updated, trigger reload
-    if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1') {
+    // R123 (Astra, MAALT): kun paa en bane, der kan bruges. Kom foerste forbindelse til en partition under oprettelse, gik
+    // reload-kaldet uden om baneForKald; opgav new, bandt det den opgivne partitions port igen og sendte. Opdateringen
+    // gemmes saa til naeste forbindelse paa en bane, der kan bruges - ogsaa hvis banen er lukket, foer sekundet er gaaet.
+    if (process.env.BROWSER_MCP_EXTENSION_UPDATED === '1' && baneKanBruges(bane)) {
       process.env.BROWSER_MCP_EXTENSION_UPDATED = '';
       process.stderr.write('[MCP] Extension files updated - triggering auto-reload\n');
       setTimeout(() => {
-        sendToExtension('reload_extension', {}, 5000).catch(() => {});
+        if (!baneKanBruges(bane)) { process.env.BROWSER_MCP_EXTENSION_UPDATED = '1'; return; }
+        sendToExtension('reload_extension', {}, 5000, bane).catch(() => {});
       }, 1000);
     }
 
@@ -366,6 +667,16 @@ function createWSS(port = BASE_PORT) {
 
       // Identitets-haandtryk fra offscreen-dokumentet (v1.28+).
       if (msg.type === 'hello') {
+        // 1.31 (S2): en ny hilsen paa en sokkel, der allerede har hilst, er en OMDOEBNING (popuppen). Kun betegnelsen
+        // opdateres; et andet installations-id paa samme sokkel ignoreres og logges - id'et er sat for soklens levetid.
+        if (conn.harHilst) {
+          const nyInstans = gyldigInstans(msg.instance);
+          if (nyInstans !== conn.instance) {
+            process.stderr.write(`[MCP] Ignored a change of installation id on an open connection (${conn.instance || 'none'} -> ${nyInstans || 'none'})\n`);
+          }
+          conn.profile = gyldigProfil(msg.profile);
+          return;
+        }
         // MAALT 23/8: her stod `conn.extensionId = msg.extensionId` - altsaa lod
         // haandtrykket afsenderen OVERSKRIVE sin egen identitet med hvad som helst.
         // Origin-headeren er den eneste kilde Chrome selv saetter og som afsenderen
@@ -385,7 +696,13 @@ function createWSS(port = BASE_PORT) {
         // koerer. Udgivelsens flowtest sammenligner det med repoets fil, saa en gammel kopi med samme nummer ikke kan
         // passere som kandidaten.
         conn.kode = typeof msg.kode === 'string' ? msg.kode : null;
-        advarOmKonflikt(conn);
+        conn.instance = gyldigInstans(msg.instance);
+        conn.profile = gyldigProfil(msg.profile);
+        // R115 (Astra 2): blev forbindelsen valgt og laast, foer dens foerste hilsen kom, blev laasen sat uden instans
+        // (som for en udvidelse fra foer 1.31). Den foerste hilsen fra NETOP den forbindelse faerdiggoer bindingen; senere
+        // hilsner kan ikke skifte den (se grenen for conn.harHilst ovenfor).
+        if (bane.laas && bane.laas.conn === conn && bane.laas.instans === null && conn.instance) bane.laas.instans = conn.instance;
+        advarOmKonflikt(conn, bane);
         return;
       }
 
@@ -419,7 +736,7 @@ function createWSS(port = BASE_PORT) {
           process.stderr.write('[MCP] terminate ignored - no valid handshake\n');
           return;
           }
-        if (activeConnection() !== conn) {
+        if (activeConnection(bane) !== conn) {
           process.stderr.write('[MCP] terminate ignoreret - kom fra en inaktiv udvidelses-forbindelse\n');
           return;
         }
@@ -427,7 +744,7 @@ function createWSS(port = BASE_PORT) {
         // mistede altsaa browseren HELT - og porten blev alligevel hverken frigivet hurtigt
         // nok til andre (processen doede foerst efter oprydning) eller genvundet af chatten
         // selv. Nu slippes kun porten; naeste browser-kald tager en ny (se sikrePort).
-        frigivPort('udvidelsen meldte: sidste fane lukket');
+        frigivPort(bane, 'udvidelsen meldte: sidste fane lukket');
         return;
       }
 
@@ -436,7 +753,9 @@ function createWSS(port = BASE_PORT) {
       if (!p) return;
       // ⛔ Kun den forbindelse kommandoen blev sendt til maa besvare den. Uden dette kunne
       // enhver sokkel paa broen gaette et id og forfalske svaret - ogsaa en uparret.
-      if (p.conn && p.conn !== conn) {
+      // 1.31 (S1a): tjekket er STRENGT - uden `p.conn &&`. Et kald uden en bundet forbindelse kan ingen besvare, saa en
+      // fremtidig vej, der glemmer at binde, fejler lukket i stedet for at tage imod svar fra enhver sokkel (R106).
+      if (p.conn !== conn) {
         process.stderr.write(
           `[MCP] Ignored a reply to command ${id} from a connection it was not sent to.\n`);
         return;
@@ -463,6 +782,14 @@ function createWSS(port = BASE_PORT) {
       for (const [id, p] of mine) {
         clearTimeout(p.timer);
         pending.delete(id);
+        // R122 (Opus): blev forbindelsen lukket, fordi partitionen blev lukket, er det svaret - ikke «start Chrome igen».
+        if (p.bane && p.bane.lukket) {
+          p.reject(new ProfilFejl({ ok: false, error: 'partition-closed', sent: true, partition: p.bane.navn,
+            note: `Partition ${p.bane.navn} was closed while this command was running. The command was sent and may have ` +
+              'been carried out. Whether the partition\'s tabs were closed is in close\'s answer (tabs_closed). Ids are not reused ' +
+              'while this server runs.' }));
+          continue;
+        }
         p.reject(new Error(
           `The connection to the Chrome extension disappeared while the command was running (${grund}). ` +
           'The command may have been carried out in the browser - check the state before you ' +
@@ -482,29 +809,28 @@ function createWSS(port = BASE_PORT) {
     });
 
     ws.on('close', () => {
-      connections.delete(conn);
+      bane.connections.delete(conn);
       afvisVentende('the extension disconnected');
-      process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections().length} tilbage)\n`);
+      process.stderr.write(`[MCP] Chrome extension disconnected (${liveConnections(bane).length} tilbage)\n`);
       // R62 (Opus, maalt mod den aegte server): efter en lukning og en ny forbindelse tav stderr, fordi den samme tekst var
       // skrevet foer. Og lukkede den forbindelse serveren STYREDE, gik kommandoerne stille videre til en anden profil.
-      if (!forbindelsesAdvarsel()) sidsteProfilAdvarsel = '';
-      if (conn === laastForbindelse && harSendtKommando) forbindelseSkiftet = true;
+      if (!forbindelsesAdvarsel(bane)) bane.sidsteProfilAdvarsel = '';
     });
   });
 
   server.on('listening', () => {
-    activePort = port;
-    portBundetTid = Date.now();
+    bane.activePort = port;
+    bane.portBundetTid = Date.now();
     process.stderr.write(`[MCP] WebSocket server listening on ws://127.0.0.1:${port}\n`);
-    loesPortLoefte(true);
+    loesPortLoefte(bane, true);
   });
 
   // Heartbeat + idle timeout (4 hours) - hoisted to module scope so gracefulShutdown can clear it
   // Ryddes foerst: porten kan bindes flere gange i samme proces (se sikrePort), og uden
   // det her ville hver ny binding efterlade en ekstra timer der aldrig blev stoppet.
-  if (heartbeat) clearInterval(heartbeat);
-  heartbeat = setInterval(() => {
-    for (const c of liveConnections()) c.ws.ping();
+  if (bane.heartbeat) clearInterval(bane.heartbeat);
+  bane.heartbeat = setInterval(() => {
+    for (const c of liveConnections(bane)) c.ws.ping();
   }, 20000);
 }
 
@@ -527,14 +853,12 @@ function createWSS(port = BASE_PORT) {
 // Bemaerk hvorfor det ikke er en 5-minutters timer der draeber processen: en chat der
 // foerst skal bruge browseren efter en halv time ville saa staa uden. Processen lever
 // videre - det er kun PORTEN der ikke holdes reserveret til noget der ikke sker.
-let portResolver = null;
-let bindLoefte = null;
-
-function loesPortLoefte(fik) {
-  if (!portResolver) return;
-  const r = portResolver;
-  portResolver = null;
-  bindLoefte = null;
+// (Loeftet og dets resolver bor paa banen - bane.portResolver, bane.bindLoefte.)
+function loesPortLoefte(bane, fik) {
+  if (!bane.portResolver) return;
+  const r = bane.portResolver;
+  bane.portResolver = null;
+  bane.bindLoefte = null;
   r(fik);
 }
 
@@ -550,60 +874,145 @@ function loesPortLoefte(fik) {
 // Klienten genstarter altsaa. Argumentet for at blive i live staar stadig - en genstart
 // koster tid og en ny session - men det maa hvile paa det, ikke paa en paastand ingen
 // havde maalt.
-function frigivPort(grund) {
-  if (activePort === null) return;
-  process.stderr.write(`[MCP] frigiver port ${activePort} - ${grund}\n`);
-  if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
-  const gammel = wss;
-  wss = null;
-  activePort = null;
-  laastForbindelse = null;
-  harSendtKommando = false;          // naeste binding vaelger udvidelse forfra
-  for (const c of connections) { try { c.ws.close(); } catch {} }
-  connections.clear();
+function frigivPort(bane, grund) {
+  if (bane.activePort === null) return;
+  process.stderr.write(`[MCP] frigiver port ${bane.activePort} - ${grund}\n`);
+  if (bane.heartbeat) { clearInterval(bane.heartbeat); bane.heartbeat = null; }
+  const gammel = bane.wss;
+  bane.wss = null;
+  bane.activePort = null;
+  bane.laastForbindelse = null;           // naeste binding vaelger forbindelse forfra
+  // 1.31 (S3): men en laas til en INSTALLATION overlever: chatten er den samme, og naeste binding venter paa samme
+  // installation i stedet for at tage en anden profil. En udvidelse fra foer 1.31 kan ikke genkendes, saa dens laas slippes
+  // (som i 1.30.2) - porten blev sluppet, fordi dens sidste fane lukkede, ikke fordi forbindelsen forsvandt.
+  if (bane.laas && bane.laas.instans === null) bane.laas = null;
+  for (const c of bane.connections) { try { c.ws.close(); } catch {} }
+  bane.connections.clear();
   try { gammel?.close(); } catch {}
 }
 
-function sikrePort() {
-  if (activePort !== null) return Promise.resolve(true);
-  if (bindLoefte) return bindLoefte;              // en binding er allerede i gang
-  alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
-  bindFejl = null;
-  portBundetTid = 0;   // nulstilles her; saettes naar 'listening' faktisk kommer
-  bindLoefte = new Promise((res) => { portResolver = res; });
+function sikrePort(bane = standardBane) {
+  if (bane.activePort !== null) return Promise.resolve(true);
+  if (bane.bindLoefte) return bane.bindLoefte;              // en binding er allerede i gang
+  bane.alleePorteOptaget = false;                      // hvert forsoeg starter paa en frisk
+  bane.bindFejl = null;
+  bane.portBundetTid = 0;   // nulstilles her; saettes naar 'listening' faktisk kommer
+  const bindLoefte = bane.bindLoefte = new Promise((res) => { bane.portResolver = res; });
   // Vagthund. F8 var ét konkret hul hvor loeftet aldrig blev indfriet; det her lukker
   // KLASSEN. Emitter en fremtidig fejlsti hverken 'listening' eller 'error', svarer
   // kaldet nu med en fejl i stedet for at haenge tavst for evigt. 10 s er rigeligt:
   // en loopback-binding tager millisekunder, og hele spaendet naas paa under ét.
   const vagthund = setTimeout(() => {
-    if (!portResolver) return;
-    bindFejl = bindFejl || 'the bind did not answer within 10 seconds';
+    if (!bane.portResolver) return;
+    bane.bindFejl = bane.bindFejl || 'the bind did not answer within 10 seconds';
     process.stderr.write('[MCP] port-bindingen svarede aldrig - opgiver dette forsoeg\n');
-    loesPortLoefte(false);
+    loesPortLoefte(bane, false);
   }, 10000);
   bindLoefte.finally(() => clearTimeout(vagthund));
-  createWSS();
+  createWSS(bane);
   return bindLoefte;
 }
 
 // ── Send command to extension ───────────────────────────────────────────────
 
-async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null) {
+function sendToExtension(method, params = {}, timeoutMs = 30000, bane = standardBane) {
+  return sendTilBane(bane, method, params, timeoutMs);
+}
+
+// R115 (Opus 1, MAALT i Chrome 7/20): porten bindes foerst ved chattens foerste kald, og udvidelserne skanner hver for sig
+// hvert 2. sekund. Blev der laast til den foerste kandidat, der var forbundet, naaede en anden profil med samme betegnelse
+// (eller en kopi) ikke at blive set - og chatten koerte stille i den profil, der forbandt foerst. Foerste valg venter derfor,
+// til porten har vaeret aaben i ét skanningsinterval plus en margen. (`let`: model-proeverne korter den.)
+let FOERSTE_VALG_MS = 2500;
+
+// Vaerktoejskaldets standardfrist hos serveren (udvidelsens SERVER_FRIST_MS i background.js er den samme). `let` + miljoe:
+// proever, der starter den aegte server, korter den med BROWSER_MCP_TEST_CALL_TIMEOUT_MS; kun et positivt tal tages.
+function proeveFrist(navn, standard) {
+  const v = Number(process.env[navn]);
+  return Number.isFinite(v) && v > 0 ? v : standard;
+}
+let KALD_FRIST_MS = proeveFrist('BROWSER_MCP_TEST_CALL_TIMEOUT_MS', 30000);
+
+// R137 (maalt 19/10, ogsaa paa 1.30.3): paa en side med 50-200 navigationer i sekundet lammes Chromes browsertraad. Udvidelsen
+// svarer agentkodens to vaerktoejer til tiden (budgettet SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS = 29,5 s efter at den modtog
+// kaldet), men svaret naaede ikke serveren inden dens 30 s, og agenten fik «Command timed out», som ikke siger, om koden kan
+// have koert. Serveren venter derfor margenen laengere paa netop de to, saa udvidelsens sande svar (call-timeout med sent, eller
+// «MAY already have run») naar frem. Udvidelsens budget er uaendret. Fyrer serverens ur alligevel, svares der struktureret
+// (no-answer, sent:'unknown') - se sendTilBane. (`let` + miljoe som KALD_FRIST_MS: BROWSER_MCP_TEST_AGENTCODE_MARGIN_MS.)
+let AGENTKODE_MARGEN_MS = proeveFrist('BROWSER_MCP_TEST_AGENTCODE_MARGIN_MS', 15000);
+const AGENTKODE_SERVER = new Set(['execute_script', 'select_frame']);
+
+// R121 (Astra, MAALT i model): close stoppede ikke et kald, der ventede paa forbindelse. Naar installationen kom tilbage, bandt
+// kaldet den lukkede partitions port igen og sendte sin kommando - efter at close havde svaret port_released: true. Et kald paa
+// en lukket bane stoppes derfor ved indgangen (foer porten bindes) og efter hver ventetid (foer det sendes). Var lukningen
+// allerede faerdig, da en binding, kaldet startede, blev faerdig, slippes porten her: lukPartition kunne ikke slippe en port,
+// der endnu ikke var aaben. Lukningens egne kald (fanerne lukkes gennem partitionens forbindelse) er undtaget - men kun i
+// deres foerste forsoeg: forsvinder forbindelsen midt i lukningen, venter lukningen ikke paa den, og svaret er "unknown".
+function stopHvisLukket(bane, lukning) {
+  if (!bane.lukket || lukning) return;
+  if (!baner.has(bane)) frigivPort(bane, `partition ${bane.navn} is closed`);
+  throw partitionFejl('partition-closed', { partition: bane.navn },
+    `Partition ${bane.navn} was closed while this call was waiting. Nothing was sent; ids are not reused while this server runs.`);
+}
+
+// En ventetid, lukningen kan afbryde (se stopHvisLukket).
+function ventPaaBane(bane, ms) {
+  return new Promise((ok) => {
+    const faerdig = () => { clearTimeout(t); bane.vaekkere.delete(faerdig); ok(); };
+    const t = setTimeout(faerdig, ms);
+    bane.vaekkere.add(faerdig);
+  });
+}
+
+async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstraRunde = false, _doerAabnetNu = null, _gen = null, _lukning = false) {
+  // R115 (Astra 1) / R117 (Astra 1): kaldets generation registreres SYNKRONT ved indgangen - foer foerste await. Stod den efter
+  // `await sikrePort`, kunne et samtidigt kald naa at erklaere laasen mistet imens, og saa registrerede dette kald den NYE
+  // generation og valgte en anden installation (maalt med en laast udvidelse fra foer 1.31).
+  const gen = _gen === null ? bane.laasGen : _gen;
+  if (bane.vaelgerUgyldig) {
+    throw new ProfilFejl({ ok: false, error: 'profile-invalid', sent: false,
+      note: 'BROWSER_MCP_PROFILE is set, but it is not a valid profile name (letters, digits, dot, dash and underscore, ' +
+        '1-32 characters). Nothing was sent: without a valid name the server would drive whichever Chrome profile it ' +
+        'found. Fix or remove it in the MCP client configuration, then restart the client.' });
+  }
+  stopHvisLukket(bane, _lukning);   // R121: en lukket partition binder ikke sin port igen
   // Skaf en port hvis vi ikke har en. Foerste kald binder; senere kald er en no-op.
   // Fik vi ingen (hele spaendet optaget), proever naeste kald igen - derfor ingen kast her.
-  await sikrePort();
+  await sikrePort(bane);
+  stopHvisLukket(bane, _lukning);   // R121: lukket, mens porten blev bundet (eller i samme oejeblik)
   // Spoergsmaalet er om doeren var NYAABNET da kaldet begyndte - ikke om den stadig er
   // "ny" efter at vi selv har brugt femten sekunder paa at proeve igen. Derfor maales det
   // ved indgangen og baeres med gennem gentagelserne.
   const doerAabnetNu = _doerAabnetNu !== null
     ? _doerAabnetNu
-    : Boolean(portBundetTid && (Date.now() - portBundetTid) < 10000);
+    : Boolean(bane.portBundetTid && (Date.now() - bane.portBundetTid) < 10000);
+  // Er en laast installation erklaeret mistet, siden kaldet begyndte, faar det samme fejl - ogsaa selv om et andet kalds
+  // fejlsvar allerede har sluppet laasen.
+  if (gen !== bane.laasGen && bane.sidsteMistet) throw new ProfilFejl(bane.sidsteMistet);
+  // R115 (Opus 1): foerste valg venter, til alle profiler har kunnet naa at forbinde til den nye port.
+  if (!bane.laas && bane.portBundetTid) {
+    const rest = bane.portBundetTid + FOERSTE_VALG_MS - Date.now();
+    if (rest > 0) await ventPaaBane(bane, rest);
+    stopHvisLukket(bane, _lukning);   // R121: lukket i ventetiden
+    if (gen !== bane.laasGen && bane.sidsteMistet) throw new ProfilFejl(bane.sidsteMistet);
+  }
   // Retry if extension is temporarily disconnected (reconnects every 2s)
-  const conn = activeConnection();
+  const conn = activeConnection(bane);
+  // R115 (Astra 3): ogsaa foer foerste laas - den valgte installation maa ikke vaere forbundet mere end én gang.
+  if (conn && !bane.laas && conn.instance) {
+    const samme = liveConnections(bane).filter((c) => c.instance === conn.instance);
+    if (samme.length > 1) {
+      bane.laastForbindelse = null;   // R117 (Opus B): intet er valgt - browser_about maa ikke vise kopien som styret
+      throw kopiFejl(bane, conn.instance, samme, 'The installation this chat would drive');
+    }
+  }
+  // 1.31 (S3): uden forbindelse kan valget selv vaere svaret - flere kandidater, eller en laast installation der er vaek.
+  const valg = conn ? null : valgUdenForbindelse(bane);
+  if (valg && valg.straks) throw valg.straks;
   if (!conn) {
     if (_retries > 0) {
-      await new Promise(r => setTimeout(r, 1500));
-      return sendToExtension(method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu);
+      await ventPaaBane(bane, 1500);   // R121: lukningen afbryder ventetiden; indgangen stopper saa kaldet
+      return sendTilBane(bane, method, params, timeoutMs, _retries - 1, _ekstraRunde, doerAabnetNu, gen);
     }
     // ── Har vi lige aabnet doeren selv? (MAALT 8/9, #16) ─────────────────────
     //
@@ -617,11 +1026,15 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // virker. Derfor: er porten aabnet inden for de sidste 15 sekunder, giver vi den ét
     // ekstra budget, og siger sandheden hvis den stadig er tom.
     if (doerAabnetNu && !_ekstraRunde) {
-      return sendToExtension(method, params, timeoutMs, 5, true, doerAabnetNu);
+      return sendTilBane(bane, method, params, timeoutMs, 5, true, doerAabnetNu, gen);
     }
+    // Budgettet er brugt. Den laaste installation kom ikke tilbage: profile-disconnected - ikke en anden installation.
+    if (valg.mistet && !bane.bindFejl && !bane.alleePorteOptaget) throw mistetFejl(bane);
+    // En vaelger uden match, naar der ER en port (ellers siger fejlene nedenfor hvorfor ingen kunne forbinde).
+    if (valg.vaelger && !bane.bindFejl && !bane.alleePorteOptaget) throw ingenProfilFejl(bane);
     if (doerAabnetNu) {
       throw new Error(
-        `Port ${activePort} was opened ${Math.round((Date.now() - portBundetTid) / 1000)} ` +
+        `Port ${bane.activePort} was opened ${Math.round((Date.now() - bane.portBundetTid) / 1000)} ` +
         'seconds ago, and the extension has not connected yet. It scans every ' +
         '2 seconds, so it normally takes under five.\n' +
         'This is probably NOT a missing installation - try the command again in a ' +
@@ -632,15 +1045,15 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // This is the other half of the two-part setup: the server is clearly running (it is
     // throwing this), so what is missing is the extension, Chrome itself, or the connection
     // between them. Say which, and where to get it - the agent relays this text to the user.
-    if (bindFejl) {
+    if (bane.bindFejl) {
       throw new Error(
-        `The server could not open a port on 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bindFejl}\n` +
+        `The server could not open a port on 127.0.0.1 (${BASE_PORT}-${MAX_PORT}): ${bane.bindFejl}\n` +
         'This is NOT Chrome or the extension - it is the operating system or a firewall ' +
         'refusing the bind. Check whether something is blocking loopback ports.\n' +
         'Tell the user exactly that. Do NOT say the extension is missing.',
       );
     }
-    if (alleePorteOptaget) {
+    if (bane.alleePorteOptaget) {
       throw new Error(
         `All ports ${BASE_PORT}-${MAX_PORT} are taken right now, so this call got no port. ` +
         'This is NOT a problem with Chrome or the extension - they are working fine.\n' +
@@ -655,9 +1068,13 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
       'Browser MCP needs BOTH halves: this MCP server (running) and the Agent360 Browser MCP ' +
       'Chrome extension (apparently not reachable).\n' +
       'Check, in order:\n' +
-      '  1. Chrome is actually open and running.\n' +
-      '  2. The extension is installed and enabled at chrome://extensions - install it from\n' +
-      '     https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n' +
+      // 1.33 (privat rapport 3.3): Chrome kan vaere aaben med kun en ANDEN profils vinduer - saa koerer udvidelsen ikke. Det
+      // var hver gang den rigtige aarsag i rapportoerens tilfaelde, og teksten sendte agenten til «not installed».
+      '  1. Chrome is open with at least one window in the profile where the extension is installed\n' +
+      '     (Chrome can be open with only another profile\'s windows; then the extension is not running).\n' +
+      '  2. The extension is installed and enabled at chrome://extensions in that profile - from the Chrome Web Store\n' +
+      '     (https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)\n' +
+      '     or loaded unpacked (Load unpacked; its id is then not the store\'s).\n' +
       '  3. Click the extension icon -> Reconnect, and wait 2-3 seconds.\n' +
       'Still stuck: https://browsermcp.dev/docs/troubleshooting/'
     );
@@ -666,6 +1083,13 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     const id = ++cmdId;
     const timer = setTimeout(() => {
       pending.delete(id);
+      // R137: for agentkodens to vaerktoejer ved serveren ikke, om koden blev sendt til siden - og det skal agenten vide.
+      if (AGENTKODE_SERVER.has(method)) {
+        reject(new ProfilFejl({ ok: false, error: 'no-answer', sent: 'unknown',
+          note: `No answer reached the server within ${Math.round(timeoutMs / 1000)} seconds, so it cannot tell whether the code ` +
+            'was sent to the page: it MAY have run. It is not repeated automatically - call again only if it is safe to run twice.' }));
+        return;
+      }
       reject(new Error(`Command timed out after ${timeoutMs}ms: ${method}`));
     }, timeoutMs);
     // ⛔ MAALT 21/9 af en konsulent-model: parringsgaten afgoer hvem der FAAR en kommando,
@@ -677,12 +1101,210 @@ async function sendToExtension(method, params = {}, timeoutMs = 30000, _retries 
     // browseren. Jeg meldte selv «gaten daekker alle veje paa én gang» - det gjorde den ikke.
     //
     // Kommandoen bindes til den forbindelse den blev sendt til, og svaret tjekkes mod den.
-    pending.set(id, { resolve, reject, timer, conn });
+    pending.set(id, { id, bane, conn, timer, resolve, reject });
     // pid = Claude Code-processen der ejer denne server. Udvidelsen bruger den til at
     // skelne 'samme chat, ny forbindelse' fra 'en anden chat' naar den adopterer sessioner.
-    harSendtKommando = true;
-    conn.ws.send(JSON.stringify({ id, method, params, pid: process.ppid }));
+    // 1.31 (S3): foerste kommando laaser banen til INSTALLATIONEN (ikke betegnelsen, ikke forbindelsen). Var der flere at
+    // vaelge imellem uden en vaelger, siger naeste svar hvilken - og at den bliver ved den.
+    if (!bane.laas) {
+      bane.laas = { instans: conn.instance || null, conn };
+      if (!bane.vaelger && antalInstallationer(bane) > 1) {
+        bane.valgNote = `${antalInstallationer(bane)} Browser MCP installations are connected to this chat (browser_about ` +
+          `lists them). It now drives ${beskrivInstallation(conn)} and stays with it: the server never moves to another ` +
+          'installation on its own. To choose, name each Chrome profile in the extension popup and set BROWSER_MCP_PROFILE.';
+      }
+    }
+    conn.ws.send(JSON.stringify({ id, method, params, pid: bane.medPid ? process.ppid : null }));
   });
+}
+
+// ── 1.32 (S5, #20): partitioner ─────────────────────────────────────────────
+// Idéen er ugbodagadave's (PR #20): en ekstra lytter pr. partition, saa udvidelsen giver hver partition sin egen fanegruppe og
+// sin egen aktive fane, og en `partition`-parameter paa hvert browservaerktoej. PR'ens egen lytter manglede de vaern, main fik
+// efter dens base (R106 MAALTE fem fejl, test/baner.test.mjs), saa en partition er her en BANE: samme createWSS, samme
+// svar-tjek, samme profilvalg og laas (1.31) - med pid null, saa udvidelsen aldrig adopterer en anden banes faner.
+// Id'erne er p1, p2, ... og genbruges aldrig i serverens levetid: et id fra en lukket partition svarer partition-closed, ikke
+// en ny partitions faner. Hoejst MAKS_PARTITIONER aabne pr. server - portene er faelles for alle chats paa maskinen.
+const MAKS_PARTITIONER = 4;
+let partitionNr = 0;
+const partitioner = new Map();   // 'p1' -> { id, label, profil, bane, lukket, brugt }
+
+function partitionFejl(error, felter, note) {
+  return new ProfilFejl({ ok: false, error, sent: false, ...felter, note });
+}
+
+// Banen et browserkald skal til. Uden `partition` (eller "default"): standardbanen. Et ukendt eller lukket id faar en fejl og
+// ALDRIG standardbanen i stedet: et kald ment for en partition maa ikke lande i en anden agents faner.
+function baneForKald(partition) {
+  if (partition === undefined || partition === null || partition === '' || partition === 'default') return standardBane;
+  const p = typeof partition === 'string' ? partitioner.get(partition) : undefined;
+  if (!p) {
+    throw partitionFejl('partition-not-found', { partition: String(partition).slice(0, 40) },
+      'This server has no partition with that id. Partition ids look like "p1" and come from browser_partition with ' +
+      'action "new"; browser_about lists them. Nothing was sent, and the call did not go to the default partition instead.');
+  }
+  if (p.lukket) {
+    throw partitionFejl('partition-closed', { partition: p.id },
+      `Partition ${p.id} was closed. Ids are not reused while this server runs, so nothing was sent. Create a new one with browser_partition ` +
+      '(action "new"), or leave out partition to use the default one.');
+  }
+  // R122 (Opus, MAALT i ægte Chrome): id'erne kan forudsiges, og et kald til en partition, som new stadig opretter, fik
+  // banen. Opgav new, ventede kaldet videre, bandt porten igen og sendte, da profilen kom tilbage. Banen er derfor new's
+  // alene, til new har svaret: saa kan intet kald binde eller sende paa en partition, der aldrig blev til.
+  if (!p.klar) {
+    throw partitionFejl('partition-not-found', { partition: p.id },
+      `Partition ${p.id} is still being created: its id can be used once browser_partition (action "new") has answered ` +
+      'with it. Nothing was sent, and the call did not go to the default partition instead.');
+  }
+  p.brugt = true;   // et vaerktoejskald er rettet hertil: partitionen kan have faner (se lukPartition)
+  return p.bane;
+}
+
+// R123: en bane, som en intern afsender (auto-reload) maa bruge: standardbanen, eller en aaben partition, som new har svaret
+// paa. Vaerktoejskald faar samme graense gennem baneForKald.
+function baneKanBruges(bane) {
+  if (bane === standardBane) return true;
+  const p = partitioner.get(bane.navn);
+  return Boolean(p && p.bane === bane && p.klar && !p.lukket && !bane.lukket);
+}
+
+function partitionsListe() {
+  return [...partitioner.values()].map((p) => ({
+    partition: p.id,
+    label: p.label,
+    state: p.lukket ? 'closed' : (p.klar ? 'open' : 'creating'),
+    port: p.lukket ? null : p.bane.activePort,
+    profile: p.profil,
+    installation: p.bane.laas ? { profile: p.bane.laas.conn?.profile ?? null, instance: p.bane.laas.instans } : null,
+  }));
+}
+
+async function nyPartition({ profile, label } = {}) {
+  const aabne = [...partitioner.values()].filter((p) => !p.lukket).length;
+  if (aabne >= MAKS_PARTITIONER) {
+    throw partitionFejl('partition-limit', { limit: MAKS_PARTITIONER, open: aabne },
+      `This server already has ${aabne} open partitions, the most it allows: the ports are shared by every chat on this ` +
+      'machine. Close one with browser_partition (action "close") first.');
+  }
+  // `profile` er BROWSER_MCP_PROFILE for netop denne bane. Uden den arver partitionen klientens BROWSER_MCP_PROFILE.
+  let vaelger = standardBane.vaelger, ugyldig = standardBane.vaelgerUgyldig;
+  if (profile !== undefined && profile !== null && profile !== '') {
+    vaelger = gyldigProfil(profile);
+    if (!vaelger) {
+      throw new ProfilFejl({ ok: false, error: 'profile-invalid', sent: false, partition_created: false,
+        note: 'profile is not a valid profile name (letters, digits, dot, dash and underscore, 1-32 characters). No ' +
+          'partition was created.' });
+    }
+    ugyldig = false;
+  }
+  const navn = label === undefined || label === null ? null
+    : (String(label).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 64) || null);
+  const id = 'p' + (++partitionNr);
+  const bane = lavBane(id, false);
+  bane.vaelger = vaelger;
+  bane.vaelgerUgyldig = ugyldig;
+  const p = { id, label: navn, profil: vaelger, bane, lukket: false, brugt: false, klar: false };
+  partitioner.set(id, p);
+  baner.add(bane);
+  // Blev partitionen ikke til, forsvinder den helt: dens port slippes, og id'et bliver aldrig udleveret (eller genbrugt).
+  // R123 (Astra): banen markeres lukket: intet kald - heller ikke en intern afsender uden om baneForKald - kan binde dens port
+  // igen eller sende, efter at new har opgivet (stopHvisLukket ved hver indgang og efter hver ventetid). De ventende vaekkes
+  // ikke: et kald, der venter, stoppes ved sin naeste kontrol (hoejst ét genforsoeg senere), og foer den binder og sender det
+  // intet. Opgiv sker kun, naar new's eget kald er afgjort, og ingen vaerktoejskald kan naa banen (baneForKald).
+  const opgiv = () => {
+    bane.lukket = true;
+    frigivPort(bane, `partition ${id} was not created`); baner.delete(bane); partitioner.delete(id);
+  };
+  const lukketUndervejs = () => partitionFejl('partition-closed', { partition: id },
+    `Partition ${id} was closed while it was being created. Ids are not reused while this server runs.`);
+  const fik = await sikrePort(bane);
+  // Lukket, mens porten blev bundet: lukPartition kunne ikke slippe en port, der endnu ikke var aaben - det goeres her.
+  if (p.lukket) { frigivPort(bane, `partition ${id} was closed while it was created`); throw lukketUndervejs(); }
+  if (!fik) {
+    const optaget = bane.alleePorteOptaget, bindFejl = bane.bindFejl;
+    opgiv();
+    if (optaget) {
+      throw partitionFejl('port-capacity-exhausted', { ports: `${BASE_PORT}-${MAX_PORT}`, partition_created: false },
+        `Every port in ${BASE_PORT}-${MAX_PORT} is taken, by this and other chats' servers and partitions, so no partition ` +
+        'was created. Close a partition you no longer need, or wait until another chat is done with the browser.');
+    }
+    throw new Error(`The server could not open a port for the partition on 127.0.0.1: ${bindFejl}. No partition was created.`);
+  }
+  // Valget af installation sker med det samme, efter 1.31-reglerne for netop denne bane: det foerste kald laaser banen til
+  // en installation. Et harmloest list_tabs (kun partitionens egen session; den er tom) er det kald - saa en profil, der ikke
+  // er forbundet, siges nu og ikke ved agentens foerste rigtige kald.
+  try {
+    await sendTilBane(bane, 'list_tabs', {}, 5000);
+  } catch (e) {
+    if (p.lukket) throw lukketUndervejs();
+    opgiv();
+    if (e && e.svar) {
+      throw new ProfilFejl({ ...e.svar, partition_created: false,
+        note: `${e.svar.note} No partition was created, and its port was released.` });
+    }
+    throw new Error(`${e?.message || e}\nNo partition was created, and its port was released.`);
+  }
+  if (p.lukket) throw lukketUndervejs();
+  const inst = bane.laas?.conn;
+  // Var der flere installationer at vaelge imellem, siges valget her - i svaret paa new - og ikke foerst ved naeste kald.
+  const valgt = bane.valgNote;
+  bane.valgNote = '';
+  p.klar = true;   // R122: foerst nu kan vaerktoejskald bruge id'et (se baneForKald)
+  return {
+    ok: true,
+    partition: id,
+    label: navn,
+    port: bane.activePort,
+    profile: vaelger,
+    installation: inst ? { profile: inst.profile ?? null, instance: inst.instance ?? null } : null,
+    note: `Pass partition: "${id}" to every browser tool this agent calls; calls without it go to the default partition. ` +
+      `The partition has its own tab group and its own active tab. Close it with browser_partition (action "close") when ` +
+      'the agent is done: that closes its tabs and gives its port back.' + (valgt ? ` ${valgt}` : ''),
+  };
+}
+
+async function lukPartition(id) {
+  const p = typeof id === 'string' ? partitioner.get(id) : undefined;
+  if (!p) {
+    throw partitionFejl('partition-not-found', { partition: String(id ?? '').slice(0, 40) },
+      'This server has no partition with that id. browser_about lists the partitions; the default partition cannot be closed.');
+  }
+  if (p.lukket) throw partitionFejl('partition-closed', { partition: p.id }, `Partition ${p.id} is already closed.`);
+  p.lukket = true;   // fra nu: partition-closed for hvert nyt kald
+  const bane = p.bane;
+  // R121: ogsaa for kald, der allerede er paa vej - de vaekkes nu og faar partition-closed (stopHvisLukket).
+  bane.lukket = true;
+  for (const v of [...bane.vaekkere]) v();
+  // Fanerne lukkes gennem partitionens egen forbindelse, og kun det, udvidelsen bekraefter, giver tabs_closed: true. Kan det
+  // ikke bekraeftes (forbindelsen er vaek, et kald fejler), er svaret "unknown": naar porten slippes nedenfor, lukker
+  // udvidelsen den afbrudte sessions faner selv (som naar en chat forsvinder), men det kan serveren ikke se.
+  let tabsLukket = 'unknown';
+  if (!p.brugt) {
+    // Intet vaerktoejskald er rettet til partitionen (new's eget list_tabs aabner ingen fane): den har ingen faner.
+    tabsLukket = true;
+  } else if (activeConnection(bane)) {
+    try {
+      const lukning = (method, params) => sendTilBane(bane, method, params, 5000, 5, false, null, null, true);
+      const { tabs = [] } = (await lukning('list_tabs', {})) || {};
+      for (const t of tabs) await lukning('close_tab', { tab_id: t.id });
+      const efter = (await lukning('list_tabs', {})) || {};
+      if (Array.isArray(efter.tabs) && efter.tabs.length === 0) tabsLukket = true;
+    } catch {}
+  }
+  const havdePort = bane.activePort;
+  frigivPort(bane, `partition ${p.id} closed`);
+  baner.delete(bane);
+  return {
+    ok: true,
+    partition: p.id,
+    port_released: havdePort !== null,
+    tabs_closed: tabsLukket,
+    note: tabsLukket === true
+      ? `Partition ${p.id} is closed: its tabs are closed and its port is free. The id is not reused while this server runs.`
+      : `Partition ${p.id} is closed and its port is free, but the extension did not confirm that its tabs were closed ` +
+        '(the connection was gone, or a call failed). The extension closes them by itself when the connection ends, ' +
+        'but the server cannot see that happen; look in Chrome if it matters. The id is not reused while this server runs.',
+  };
 }
 
 // ── MCP Server ──────────────────────────────────────────────────────────────
@@ -745,8 +1367,8 @@ browser_solve_captcha runs one action per call; it does not solve a CAPTCHA on i
 For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher.
 
 ## OAuth popups
-- OAuth popups (Google, Microsoft, GitHub, Slack, HubSpot) are automatically intercepted and added to your session's tab group
-- Use browser_get_new_tab to access them, or they'll become your active tab automatically
+- A popup or new tab that one of your session's tabs opens (an OAuth login, a target=_blank link) belongs to your session: browser_get_new_tab finds it, and browser_switch_tab makes it your active tab
+- When it closes itself after the login, your session has no active tab: call browser_switch_tab back to the tab you came from
 
 ## Shadow DOM (Shopify, Salesforce, etc.)
 - CSS selectors automatically search inside shadow DOM
@@ -768,11 +1390,16 @@ For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 
 - Since 1.29.2 the tools that send mouse, keyboard or file input measure whether the page actually received it. An error of key-not-delivered, hover-not-delivered, double-click-not-delivered, right-click-not-delivered, field-is-empty, search-text-not-delivered or file-not-attached is a measurement, not a guess: nothing reached the page. Almost always the tab is in the background - call browser_switch_tab to it and repeat the one action. If it still fails, ask the user before browser_switch_tab with bring_to_front: true, which puts Chrome in front of them. browser_upload_file and browser_drop_file also report attached (the file names actually on the field) and differs: true when the field took fewer files than you sent.
 - browser_fill with differs: true means the field shows something other than what you typed; read actual. unchanged: true means the field showed the same before and after, either because the value was already there in the page's own format or because the page refused it. Check actual before moving on
 - CAPTCHA blocks page → use browser_ask_user, let human solve it
+- An error profile-not-connected, profile-ambiguous, profile-disconnected, profile-routing-unsupported or profile-invalid → nothing was sent to Chrome (sent: false). It is about which Chrome profile this chat drives (BROWSER_MCP_PROFILE, the name in the extension popup); read note and tell the user. After profile-disconnected the next call picks a profile anew, so check with browser_about which one before acting on logged-in pages
 - browser_fill seemingly succeeds but value reverts → switch to browser_set_date or browser_set_combobox (most reverts are React-controlled validators)
 - **If the thing being asked for is not in a web page at all** - a desktop application, an OS-level dialog, the native file picker, a menu bar - then no browser tool can reach it, and neither can this one. Say so plainly. If you also have desktop-level tools available in this session (for example an OS automation MCP server such as computer-mcp), that is the right tool for that step; hand it over instead of retrying here. Do not claim this applies to an ordinary page problem: a background tab, a React-controlled field or a CAPTCHA are all solved by the tools above
 
+## Parallel agents (partitions)
+- Agents that share this chat also share its tab group and its active tab, so they take over each other's tabs. Give each parallel agent its own partition: browser_partition with action "new" answers an id like "p1", and that agent passes partition: "p1" to every browser tool it calls. Close it with action "close" when the agent is done; that closes its tabs and frees its port
+- partition-not-found, or partition-closed with sent: false, means nothing was sent; the call never falls back to the default partition. partition-closed with sent: true means the command was sent and was still waiting for its answer when the partition was closed: it may have been carried out. browser_about lists the partitions
+
 ## Extension updates
-The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the connected extension to reload itself. Chrome Web Store installs update through the store.
+The server updates through npm: clients configured with @agent360/browser-mcp@latest get the newest version when a session starts. When that version carries newer extension files, the server copies them into ~/.browser-mcp/extension and tells the extension to reload itself on its next connection to the default partition or to an open partition (never while a partition is still being created). Chrome Web Store installs update through the store.
 If browser_provide_feedback reports that the extension is older than this server, or that more than one Browser MCP extension is connected, ask the user:
 "Please go to chrome://extensions, find 'Agent360 Browser MCP', and click the reload icon (🔄). If two Browser MCP extensions are listed, turn one of them off."
 You cannot navigate to chrome:// pages - the user must do this manually.
@@ -806,10 +1433,15 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 // R63 (Astra, maalt): #58-advarslen manglede paa de tidlige svar (en afvist upload, et ukendt vaerktoej, browser_about), fordi
 // hver svarvej selv skulle huske den. Nu gaar ALLE svar gennem én indpakning.
-mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => medForbindelsesNote(await kaldVaerktoej(request)));
+// 1.32 (S5): et kald paa en partition faar partitionens noter (dens bane), ikke standardbanens - kaldVaerktoej siger hvilken.
+mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const kald = { bane: standardBane };
+  return medForbindelsesNote(await kaldVaerktoej(request, kald), kald.bane);
+});
 
-async function kaldVaerktoej(request) {
-  const { name, arguments: args } = request.params;
+async function kaldVaerktoej(request, kald = { bane: standardBane }) {
+  const { name } = request.params;
+  let args = request.params.arguments;
   lastActivity = Date.now();
 
   try {
@@ -861,8 +1493,21 @@ async function kaldVaerktoej(request) {
       return await handleProvideFeedback(args);
     }
 
+    if (name === 'browser_partition') {
+      return await handlePartition(args);
+    }
+
+    // 1.32 (S5, #20): `partition` vaelger banen og sendes ikke videre til udvidelsen. Et ukendt eller lukket id kaster
+    // partition-not-found / partition-closed (sent:false) - kaldet gaar aldrig til standardbanen i stedet.
+    const bane = baneForKald(args?.partition);
+    kald.bane = bane;
+    if (args && Object.hasOwn(args, 'partition')) {
+      args = { ...args };
+      delete args.partition;
+    }
+
     if (name === 'browser_extract_token') {
-      return await handleExtractToken(args);
+      return await handleExtractToken(args, bane);
     }
 
     // Kun methodMap's egne noegler (samme fejlklasse som extract_token, R53-Opus): «constructor» fandtes paa prototypen.
@@ -927,12 +1572,35 @@ async function kaldVaerktoej(request) {
       }
     }
 
+    // R173 (Opus, MAALT gennem den aegte server): stien blev foerst kontrolleret EFTER optagelsen, og billedet blev smidt vaek
+    // ved afvisning. Navnet og en almindelig fil, der findes, afgoeres nu, foer der tages et billede. Links og hardlinks gaar
+    // videre til sikkerhedstjekket nedenfor. Billedet er altid PNG (udvidelsen laver intet andet), saa kun .png.
+    if (name === 'browser_screenshot' && args && args.path) {
+      const oensket = resolve(process.cwd(), String(args.path));
+      if (!/\.png$/i.test(oensket)) {
+        throw new Error(`path must end in .png ("${args.path}"): a screenshot is PNG data, and it is only saved as a .png file. No screenshot was taken.`);
+      }
+      let st = null; try { st = lstatSync(oensket); } catch {}
+      // R174 (Opus): en MAPPE ved navn x.png fik teksten «points outside (through a link)» (en mappe har nlink > 1).
+      if (st && st.isDirectory()) throw new Error(`${oensket} is a folder, not a file, and no screenshot was taken. Choose a file name.`);
+      skaermStiInde(args.path);   // arbejdsmappen og links - foer optagelsen
+      if (args.overwrite !== true) {
+        if (st && st.isFile() && st.nlink === 1) {
+          throw new Error(`A file already exists at ${oensket}, and no screenshot was taken. Pass overwrite: true to replace it, or ` +
+            'choose another name.');
+        }
+      }
+    }
+
     // extract_list scrolls a container in a loop (up to 300 rounds × wait_ms), so the 30 s
     // default would kill a long mail list mid-walk and report a partial set as complete.
+    // R173 (Opus): wait med en timeout over 30 s ramte serverens frist foer sin egen; fristen foelger nu timeout (hoejst 60 s).
     const timeout = method === 'ask_user' ? (args?.timeout || 120000) + 5000 :
+                    method === 'wait' ? Math.max(KALD_FRIST_MS, Math.min(Number(args?.timeout) || 10000, 60000) + 5000) :
                     method === 'solve_captcha' ? 60000 :
-                    method === 'extract_list' ? 180000 : 30000;
-    const result = await sendToExtension(method, args || {}, timeout);
+                    method === 'extract_list' ? 180000 :
+                    AGENTKODE_SERVER.has(method) ? KALD_FRIST_MS + AGENTKODE_MARGEN_MS : KALD_FRIST_MS;
+    const result = await sendToExtension(method, args || {}, timeout, bane);
 
     if (name === 'browser_screenshot' && result?.image) {
       const isJpeg = result.image.startsWith('data:image/jpeg');
@@ -949,52 +1617,47 @@ async function kaldVaerktoej(request) {
             `browser_click_xy takes CSS pixels: for a point at (x, y) in an image shown W pixels wide, ` +
             `click (x / W × ${vp.css_width}, y / W × ${vp.css_width}).` }]
         : [];
+      // R127 (Astra, MAALT i model): udvidelsen markerer et billede fra foer vinduet blev haevet med stale + en note - men
+      // serveren smed begge vaek, saa agenten aldrig saa advarslen. De gaar nu med ud i begge returveje.
+      const staleNote = result.stale
+        ? [{ type: 'text', text: `stale: true - ${result.note || 'This picture is older than the request; the page may have changed since.'}` }]
+        : [];
 
       if (args && args.path) {
         // MAALT 23/8: ingen indeslutning. En sti med ../../.. skrev til
         // /private/tmp/a360-udenfor/x.png. Argumenterne kommer fra en model der laeser
         // FREMMEDE websider, saa en prompt-injektion paa en vilkaarlig side kunne
         // overskrive en fil i brugerens hjemmemappe med PNG-bytes.
-        const rod = resolve(process.cwd());
-        const targetPath = resolve(rod, args.path);
-        // #70 (arasmileska): VS Code starter serveren i c:\Projects\X, og C:\Projects\X\shot.png blev afvist som «outside»,
-        // fordi et tekst-tjek her afgjorde sagen. R93 (Opus, maalt paa GitHubs Windows): ogsaa et 8.3-kortnavn (RUNNER~1 mod
-        // runneradmin) er samme mappe stavet anderledes. Afgoerelsen tages derfor KUN paa operativsystemets kanoniske stier
-        // nedenfor (realpath af arbejdsmappen og af den dybeste del af stien, der findes); teksten vaelger kun fejlbeskeden.
-        const tekstInde = targetPath === rod || targetPath.startsWith(rod.endsWith(sep) ? rod : rod + sep);   // "/" giver ikke "//" (R5 F10)
-        // MAALT 10/9 af Astra (anden runde): tjekket ovenfor er kun tekst. "ud/x.png" med ud -> en mappe
-        // udenfor passerede, og PNG-bytes blev skrevet udenfor. Nu tjekkes det operativsystemet faktisk
-        // ville skrive til: stien maa ikke selv vaere et symlink (heller ikke et dinglende, som ville
-        // skabe filen i den anden ende), og den dybeste del af stien der findes skal ligge inde.
-        // lstat - ikke exists - saa et dinglende link taeller som "findes" og derfor bliver undersoegt.
-        const findes = (x) => { try { lstatSync(x); return true; } catch { return false; } };
-        let rodReel = rod; try { rodReel = realpathSync.native(rod); } catch {}
-        let forfader = dirname(targetPath);
-        while (!findes(forfader) && dirname(forfader) !== forfader) forfader = dirname(forfader);
-        let forfaderReel = null; try { forfaderReel = realpathSync.native(forfader); } catch {}
-        // Astra, tredje runde: en eksisterende HARDLINK er ikke et symlink, men skrivningen trunkerer den faelles fil.
-        let erLink = false, flereNavne = false;
-        try { const st = lstatSync(targetPath); erLink = st.isSymbolicLink(); flereNavne = st.nlink > 1; } catch {}
-        if (erLink || flereNavne || !forfaderReel || (forfaderReel !== rodReel && !forfaderReel.startsWith(rodReel.endsWith(sep) ? rodReel : rodReel + sep))) {
-          throw new Error(
-            `path must be inside the working directory (${rod}). ` +
-            (tekstInde
-              ? `"${args.path}" points outside (through a link). Use a plain directory inside the working directory.`
-              : `"${args.path}" points outside. Use a relative path without ../.`),
-          );
+        const targetPath = skaermStiInde(args.path);
+        // 1.33 (privat rapport, fund i R172; MAALT af begge bedoemmere paa d002938): stien kunne vaere enhver fil i
+        // arbejdsmappen, og package.json og .vscode/tasks.json blev overskrevet med PNG-bytes. Stien kommer fra en model, der
+        // laeser fremmede sider. Nu: kun en billedendelse, og en fil, der findes, overskrives kun med overwrite: true.
+        if (!/\.png$/i.test(targetPath)) {
+          throw new Error(`path must end in .png ("${args.path}"): a screenshot is PNG data, and it is only saved as a .png file.`);
         }
+        const erstat = args.overwrite === true;
         mkdirSync(dirname(targetPath), { recursive: true });
-        writeFileSync(targetPath, Buffer.from(base64, 'base64'));
+        // wx er atomisk: findes filen, skrives der intet - ogsaa hvis den blev oprettet lige foer.
+        try {
+          writeFileSync(targetPath, Buffer.from(base64, 'base64'), { flag: erstat ? 'w' : 'wx' });
+        } catch (e) {
+          if (e && e.code === 'EEXIST') {
+            throw new Error(`A file already exists at ${targetPath}, and nothing was written. Pass overwrite: true to replace ` +
+              'it, or choose another name.');
+          }
+          throw e;
+        }
         return {
           content: [
             { type: 'text', text: `Screenshot successfully saved to: ${targetPath}` },
             { type: 'image', data: base64, mimeType },
+            ...staleNote,
             ...viewportNote,
           ]
         };
       }
 
-      return { content: [{ type: 'image', data: base64, mimeType }, ...viewportNote] };
+      return { content: [{ type: 'image', data: base64, mimeType }, ...staleNote, ...viewportNote] };
     }
 
     const response = {
@@ -1015,6 +1678,8 @@ async function kaldVaerktoej(request) {
 
     return response;
   } catch (err) {
+    // 1.31 (S3): valget af installation svarer med et JSON-fejlsvar (error, sent:false, note), ligesom navigate's fejlkoder.
+    if (err && err.svar) return { content: [{ type: 'text', text: JSON.stringify(err.svar, null, 2) }], isError: true };
     // R62 (Astra): advarslen kom ikke med, naar det naeste kald fejlede - nu faar ogsaa fejlsvaret den via indpakningen.
     return {
       content: [{ type: 'text', text: forklarSkaevhed(err.message) }],
@@ -1074,11 +1739,23 @@ function forklarSkaevhed(besked) {
     'release - the server updates immediately via npm. Everything else works meanwhile.\n' +
     (alt ? `\nUntil then: ${alt}.\n` : '') +
     '\nCheck whether an update is waiting: chrome://extensions → Agent360 Browser MCP. ' +
-    'If it is loaded as "unpacked", run `npx @agent360/browser-mcp install`.';
+    `If it is loaded as "unpacked", run \`npx @agent360/browser-mcp@${PKG_VERSION} install\` (this server's version, so ` +
+    'the extension matches it and a version you pinned stays pinned).';
 }
 
 const REPO_URL = 'https://github.com/Agent360dk/browser-mcp';
 const ISSUE_TEMPLATES = { wish: 'wish.yml', use_case: 'use-case.yml', bug: 'bug.yml' };
+
+function installationsNote(bane = standardBane) {
+  if (bane.activePort === null) {
+    return 'The browser has not been used in this chat yet, so no extension is connected to it. Any browser tool connects it.';
+  }
+  const n = liveConnections(bane).filter((c) => c.harHilst).length;
+  return `${n} Browser MCP extension connection${n === 1 ? '' : 's'} on port ${bane.activePort}` +
+    (n > MAKS_VISTE_INSTALLATIONER ? ` (the first ${MAKS_VISTE_INSTALLATIONER} are listed)` : '') + '. ' +
+    'profile is the name given in the extension popup (null when none is set, or before 1.31), instance identifies the ' +
+    'installation (one per Chrome profile). The name is a label the server can choose by, not a password.';
+}
 
 function handleAbout(args) {
   const intent = args?.intent || 'info';
@@ -1111,6 +1788,10 @@ function handleAbout(args) {
         use_cases: `${REPO_URL}/blob/main/USE_CASES.md`,
         submit_url,
         instruction,
+        installations: installationer(),
+        installations_note: installationsNote(),
+        // 1.32 (S5): partitionerne i denne chat (aabne og lukkede - id'erne genbruges aldrig).
+        partitions: partitionsListe(),
       }, null, 2),
     }],
   };
@@ -1143,10 +1824,20 @@ function npmLatestVersion() {
   return new Promise((resolve) => {
     // Offline, bag proxy, eller npm mangler paa PATH: svar null i stedet for at fejle.
     // En friskheds-kontrol maa aldrig vaere det der braekker vaerktoejet.
-    execFile('npm', ['view', '@agent360/browser-mcp', 'version'], { timeout: 6000 }, (err, stdout) => {
+    // SIKKERHED (20/10, privat rapport): paa Windows soeger CreateProcess ogsaa i arbejdsmappen, saa en npm.exe dér koerte, og
+    // npm.cmd kan slet ikke startes uden skal. Paa Windows koeres derfor npm-cli.js ved siden af node selv, ved absolut sti.
+    let kommando = 'npm', foer = [];
+    if (process.platform === 'win32') {
+      const cli = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+      if (!existsSync(cli)) return resolve(null);
+      kommando = process.execPath; foer = [cli];
+    }
+    // R164 (Opus): npm laeser .npmrc i arbejdsmappen, og en fremmed mappe kan dermed pege paa sit eget register og svare med
+    // fritekst. Opslaget koeres derfor fra hjemmemappen, og kun et rent versionsnummer godtages.
+    execFile(kommando, [...foer, 'view', '@agent360/browser-mcp', 'version'], { timeout: 6000, cwd: homedir() }, (err, stdout) => {
       if (err) return resolve(null);
       const v = String(stdout).trim();
-      const ok = /^\d+\.\d+\.\d+/.test(v) ? v : null;
+      const ok = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v) ? v : null;
       if (ok) npmLatestCache = { version: ok, at: Date.now() };
       resolve(ok);
     });
@@ -1269,17 +1960,27 @@ async function handleProvideFeedback(args) {
       'The user has to do it - chrome:// cannot be driven from here.',
     );
   }
-  if (!active && activePort === null) {
+  // R115 (Astra 4): er der forbindelser, men ingen kan bruges, er det VALGET af installation, ikke forbindelsen, der
+  // mangler. Diagnosen siger det samme som kaldets fejlsvar ville sige - ikke «No Chrome extension is connected».
+  const valgProblem = liveConnections().length ? profilDiagnose(standardBane, active) : null;
+  if (valgProblem) {
+    findings.push(valgProblem.finding);
+    fix_steps.push(valgProblem.fix);
+  } else if (!active && standardBane.activePort === null) {
     // Ingen port taget endnu = browseren er ikke brugt i denne chat. Der er intet
     // i stykker, og et fix-skridt her ville vaere en falsk alarm - se verdict 'idle'.
     findings.push('The browser has not been used in this chat yet, so there is no connection to measure. That is not an error.');
   } else if (!active) {
     findings.push('No Chrome extension is connected to this MCP server right now.');
-    fix_steps.push('Check that Chrome is running and the extension is enabled on chrome://extensions, then click the icon → Reconnect.');
+    // R174 (Opus): samme profilraad som «not connected» (3.3) - Chrome kan vaere aaben med kun en anden profils vinduer.
+    fix_steps.push('Check that Chrome has a window open in the profile where the extension is installed (Chrome can be open with ' +
+      'only another profile\'s windows), and that the extension is enabled there on chrome://extensions, then click the icon → Reconnect.');
   }
   if (serverOutdated) {
     findings.push(`The MCP server is running v${PKG_VERSION}, but npm has v${npmLatest}. The error may already be fixed.`);
-    fix_steps.push(`Restart the client - it fetches @agent360/browser-mcp@latest by itself (v${npmLatest}).`);
+    // R174 (Opus, 4.1): kun en klient, der er sat op med @latest, henter den nye version ved en genstart.
+    fix_steps.push(`If the client runs @agent360/browser-mcp@latest, restarting it fetches v${npmLatest}. If you pinned a version, ` +
+      `move the pin to ${npmLatest} once you have reviewed it.`);
   }
   if (extOutdated) {
     findings.push(
@@ -1297,12 +1998,13 @@ async function handleProvideFeedback(args) {
         ? 'If the extension came from the Chrome Web Store: there is probably a newer version in review ' +
           '(1-3 days after a release). ↻ reload does NOT fetch it before Google has approved - ' +
           'that is expected and passes by itself. Everything else works meanwhile. ' +
-          'If it is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload.'
+          `If it is loaded as "unpacked": run \`npx @agent360/browser-mcp@${PKG_VERSION} install\` (this server's version) ` +
+          'and then chrome://extensions → Agent360 Browser MCP → ↻ reload.'
         // MAALT 11/9 af Fable (e2e-review): ogsaa med kendt version kan det vaere en Chrome Web Store-installation, og saa
         // henter reload ingenting foer Google har godkendt. Begge tilfaelde skal staa der, ellers foerer raadet i ring.
-        : 'If the extension is loaded as "unpacked": run `npx @agent360/browser-mcp install` and then ' +
-          'chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome Web Store: the new version ' +
+        : `If the extension is loaded as "unpacked": run \`npx @agent360/browser-mcp@${PKG_VERSION} install\` (this ` +
+          'server\'s version) and then chrome://extensions → Agent360 Browser MCP → ↻ reload. If it came from the Chrome ' +
+          'Web Store: the new version ' +
           'is probably in review (1-3 days after a release), and ↻ reload does NOT fetch it before Google has ' +
           'approved - that is expected and passes by itself. Everything else works meanwhile.',
     );
@@ -1321,9 +2023,9 @@ async function handleProvideFeedback(args) {
   //
   // Loesningen er ikke at binde en port her (et diagnose-vaerktoej skal ikke aendre
   // tilstand for at kunne maale den) - det er at sige praecis hvad der er tilfaeldet.
-  const ingenPortEndnu = activePort === null;
+  const ingenPortEndnu = standardBane.activePort === null;
   const verdict =
-    (exts.length > 1 || profilAdvarsel) ? 'conflict'
+    (exts.length > 1 || profilAdvarsel || valgProblem?.error === 'profile-ambiguous') ? 'conflict'
     : (serverOutdated || extOutdated) ? 'outdated'
     : (!active && ingenPortEndnu) ? 'idle'
     : !active ? 'disconnected'
@@ -1344,7 +2046,7 @@ async function handleProvideFeedback(args) {
     extension_up_to_date: extOutdated === null ? null : !extOutdated,
     // #58: aabne forbindelser, ikke udvidelser - samme udvidelse i flere profiler giver flere forbindelser.
     extension_connections: liveConnections().length,
-    ws_port: activePort,
+    ws_port: standardBane.activePort,
     node: process.version,
     platform: `${process.platform} ${process.arch}`,
   };
@@ -1408,7 +2110,21 @@ async function handleProvideFeedback(args) {
   };
 }
 
-async function handleExtractToken(args) {
+// 1.32 (S5, #20): browser_partition({action:'new', profile?, label?} | {action:'close', partition}). Logikken bor i broen
+// (nyPartition/lukPartition), saa model-proeverne koerer den samme kode; her er kun svaret.
+async function handlePartition(args) {
+  const action = args?.action;
+  let svar;
+  if (action === 'new') svar = await nyPartition({ profile: args.profile, label: args.label });
+  else if (action === 'close') svar = await lukPartition(args.partition);
+  else {
+    return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: 'action-invalid', sent: false,
+      note: 'action must be "new" or "close". browser_about lists the partitions.' }, null, 2) }], isError: true };
+  }
+  return { content: [{ type: 'text', text: JSON.stringify(svar, null, 2) }] };
+}
+
+async function handleExtractToken(args, bane) {   // bane: den bane kaldet er rettet til (undefined = standardbanen)
   const { provider } = args;
   // R52 (Astra, MAALT): «constructor», «toString» og «__proto__» findes paa objektets prototype og gik uden om
   // «Unknown provider» - handleren navigerede til url undefined. Kun udbyderens egne noegler taeller.
@@ -1423,7 +2139,7 @@ async function handleExtractToken(args) {
     };
   }
 
-  const nav = await sendToExtension('navigate', { url: info.url });
+  const nav = await sendToExtension('navigate', { url: info.url }, 30000, bane);
   return {
     content: [
       { type: 'text', text: `Navigated to ${info.url} (${nav.title})\n\nInstructions: ${info.instructions}\n\nUse browser_get_page_content or browser_screenshot to find the token, then use browser_execute_script to extract it.` },
@@ -1444,14 +2160,16 @@ function gracefulShutdown(reason, code = 0) {
 
   // Stop timers so they can't re-enter gracefulShutdown
   if (parentCheck) clearInterval(parentCheck);
-  if (heartbeat) clearInterval(heartbeat);
   if (tomgangsvagt) clearInterval(tomgangsvagt);
 
   // Close WS with explicit close-frame so extension's onclose handler fires
-  for (const c of liveConnections()) {
-    try { c.ws.close(1000, 'mcp-shutdown'); } catch {}
+  for (const bane of baner) {
+    if (bane.heartbeat) clearInterval(bane.heartbeat);
+    for (const c of liveConnections(bane)) {
+      try { c.ws.close(1000, 'mcp-shutdown'); } catch {}
+    }
+    if (bane.wss) try { bane.wss.close(); } catch {}
   }
-  if (wss) try { wss.close(); } catch {}
 
   // 300ms grace for FIN-flush + extension session_disconnect cleanup
   setTimeout(() => process.exit(code), 300);
@@ -1461,8 +2179,10 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('exit', () => {
   // Safety net for direct process.exit calls that bypass gracefulShutdown
-  if (wss) try { wss.close(); } catch {}
-  for (const c of connections) try { c.ws.close(); } catch {}
+  for (const bane of baner) {
+    if (bane.wss) try { bane.wss.close(); } catch {}
+    for (const c of bane.connections) try { c.ws.close(); } catch {}
+  }
 });
 
 // ── Naar lukker serveren sin port? (MAALT 22/8) ──────────────────────────────
@@ -1488,9 +2208,16 @@ process.on('exit', () => {
 
 // ps-opslaget bor her (det er en sideeffekt); selve kaede-logikken og doeds-dommen
 // ligger i vagt.js, saa de kan koeres i en test uden at starte en server.
+// SIKKERHED (20/10, privat rapport): her stod execSync(`ps -o ppid= -p ${pid}`) - en tekststreng gennem en skal. Paa Windows
+// leder cmd.exe i arbejdsmappen foer PATH, saa en ps.bat/ps.cmd/ps.exe i den mappe, brugeren aabnede, koerte ved opstart.
+// Windows har ingen ps: opslaget springes over (vagten vogter saa kun den naermeste foraelder, plus idle-graensen, som foer).
+// Ellers koeres ps ved absolut sti og uden skal. R164 (Opus): NixOS har hverken /bin/ps eller /usr/bin/ps, kun systemprofilens.
 function laesPpid(pid) {
+  if (process.platform === 'win32') return null;
+  const ps = ['/bin/ps', '/usr/bin/ps', '/run/current-system/sw/bin/ps'].find((sti) => existsSync(sti));
+  if (!ps) return null;
   try {
-    const ud = execSync(`ps -o ppid= -p ${pid}`, {
+    const ud = execFileSync(ps, ['-o', 'ppid=', '-p', String(pid)], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 2000,   // et haengende ps ville ellers blokere hele opstarten synkront

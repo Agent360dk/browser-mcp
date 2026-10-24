@@ -67,7 +67,34 @@ function portOmraade() {
   return [9876, 9895];
 }
 const [BASE_PORT, MAX_PORT] = portOmraade();
+
+// 1.31 (#58): installationens id (&i=) og betegnelse (&p=) kommer ogsaa fra adressen, sat af background.js, som har lageret
+// (et offscreen-dokument har kun chrome.runtime). Id'et aendres aldrig i dokumentets levetid; betegnelsen kan omdoebes med
+// en runtime-besked (se bmcp_profil nederst), og saa faar serveren en ny hilsen. En ugyldig vaerdi sendes som null.
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+function fraAdressen(navn, moenster) {
+  try {
+    const v = new URLSearchParams(location.search).get(navn);
+    return v && moenster.test(v) ? v : null;
+  } catch { return null; }
+}
+const MIN_INSTANS = fraAdressen('i', /^[0-9a-f]{16}$/);
+let minProfil = fraAdressen('p', PROFIL_MOENSTER);
 const connections = new Map(); // port → WebSocket
+
+// 1.32 (S4): hver forbindelse faar en GENERATION. Sessionerne i background.js er noeglet paa porten, og Astra MAALTE (R107), at
+// en forsinket frigivelse fra en lukket forbindelse lukkede fanen i en NY session paa samme port. Med generationen paa hver
+// kommando og hver frigivelse (session_disconnect, terminate_mcp_session) gaelder en frigivelse kun den forbindelse, den blev
+// bestilt for. Dokumentets tilfaeldige del goer, at et genskabt offscreen-dokument ikke genbruger et gammelt dokuments numre.
+const DOKUMENT_GEN = (() => {
+  try {
+    const b = new Uint8Array(4);
+    crypto.getRandomValues(b);
+    return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  } catch { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+})();
+let forbindelsesNr = 0;
+const genAf = new WeakMap();   // WebSocket -> generation
 
 // ── Hvorfor porte foerst PROBES med fetch, og ikke bare aabnes (MAALT 22/8) ──────
 //
@@ -204,6 +231,8 @@ function tryConnect(port) {
   // blev forældreloes: aldrig lukket, aldrig i kortet, men fuldt aaben.
   // Registrering med det samme lukker vinduet.
   connections.set(port, ws);
+  const gen = `${DOKUMENT_GEN}-${++forbindelsesNr}`;
+  genAf.set(ws, gen);
 
   // 8000, ikke 2000: Chromes bremse kan lovligt holde et haandtryk i op til 5000 ms,
   // og at lukke ned foer det taeller som en fejl der goer bremsen haardere. Se blokken
@@ -238,9 +267,10 @@ function tryConnect(port) {
     // og udgivelsens gate afviste sin EGEN kandidat - et langsomt svar er ikke et forkert svar. Hilsenen sendes derfor
     // med det aftryk der allerede ER beregnet (som regel intet ved foerste forbindelse), og aftrykket EFTERSENDES.
     const kode = kodeAftrykCache;
-    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode };
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode, instance: MIN_INSTANS, profile: minProfil };
     try {
-      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode };
+      hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode,
+        instance: MIN_INSTANS, profile: minProfil };
     } catch (e) {
       console.warn('[Offscreen] could not build the handshake:', e?.message || e);
     }
@@ -279,6 +309,7 @@ function tryConnect(port) {
         type: 'mcp_command',
         port,
         pid,
+        gen,
         method,
         params: params || {},
       });
@@ -300,7 +331,7 @@ function tryConnect(port) {
       console.log(`[Offscreen] Disconnected from port ${port} (${connections.size} remaining)`);
       updateStatus();
       // Notify background to release tabs for this session
-      chrome.runtime.sendMessage({ type: 'session_disconnect', port }).catch(() => {});
+      chrome.runtime.sendMessage({ type: 'session_disconnect', port, gen }).catch(() => {});
     }
   };
 
@@ -340,6 +371,9 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type !== 'terminate_mcp_session' || typeof msg.port !== 'number') return;
   const ws = connections.get(msg.port);
   if (!ws) return;
+  // 1.32 (S4): bestilt for en anden forbindelse (den, der havde porten, da sessionen blev tom)? Saa lukkes ikke den forbindelse,
+  // der har porten nu. Uden generation (en baggrund fra foer 1.32) som foer.
+  if (typeof msg.gen === 'string' && msg.gen !== genAf.get(ws)) return;
   try {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'terminate' }));
@@ -347,6 +381,23 @@ chrome.runtime.onMessage.addListener((msg) => {
   } catch {}
   try { ws.close(); } catch {}
   // ws.onclose handler removes from connections + notifies background
+});
+
+// 1.31 (#58): omdoebning fra popuppen. Den nye betegnelse sendes som en ny hilsen paa ALLE aabne forbindelser - med samme
+// instans - og serveren opdaterer kun betegnelsen. Forbindelserne roeres ikke, saa ingen chats igangvaerende kald afbrydes.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type !== 'bmcp_profil') return;
+  const ny = typeof msg.profile === 'string' && PROFIL_MOENSTER.test(msg.profile) ? msg.profile : null;
+  if (ny === minProfil) return;
+  minProfil = ny;
+  let id = null;
+  try { id = chrome.runtime.id; } catch {}
+  const hilsen = JSON.stringify({ type: 'hello', extensionId: id, version: minVersion(), name: null, kode: kodeAftrykCache,
+    instance: MIN_INSTANS, profile: minProfil });
+  for (const ws of connections.values()) {
+    if (ws.readyState !== WebSocket.OPEN) continue;
+    try { ws.send(hilsen); } catch (e) { console.warn('[Offscreen] kunne ikke sende den nye hilsen:', e?.message || e); }
+  }
 });
 
 // Initial scan + frequent rescan for new servers

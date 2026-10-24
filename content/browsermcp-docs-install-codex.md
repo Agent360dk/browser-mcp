@@ -105,7 +105,7 @@ The pattern: **many of the browser tasks you would do yourself, on sites you are
 
 This is what a fresh headless browser without your login can't do: Codex hits a login wall, reads the one-time code out of your own logged-in Gmail, and continues the sign-in - because it's driving *your* browser, not a fresh anonymous one. There is no email API to set up. Use it to operate platforms with no API, QA your own web app end-to-end against real auth, or work dashboards at human pace with you approving the sensitive steps.
 
-### 40 tools, no server-side moving parts
+### 41 tools, no server-side moving parts
 
 | Category | What it gives your agent |
 |---|---|
@@ -116,6 +116,7 @@ This is what a fresh headless browser without your login can't do: Codex hits a 
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox, click reCAPTCHA grid cells it chooses, or ask you to solve it with `browser_ask_user`, one step per call. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - a card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
+| **Parallel agents** | `browser_partition` - from 1.32, gives a parallel agent its own tab group and active tab; every tool then takes `partition` |
 
 `browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Mailchimp, Pipedrive, Calendly, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. Any other provider answers `Unknown provider`, and the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 

@@ -57,6 +57,14 @@
     .try .prompt { display: block; background: #0f172a; border-radius: 6px; padding: 8px; font-size: 11px; color: #e2e8f0; margin-bottom: 6px; font-style: italic; }
     .try a { display: block; text-align: center; padding: 6px; border-radius: 6px; background: #334155; color: #e2e8f0; font-size: 11px; text-decoration: none; }
     .try a:hover { background: #475569; }
+    /* 1.31 (#58): the name a server can choose this Chrome profile by (BROWSER_MCP_PROFILE). */
+    .ident { background: #1e293b; border-radius: 8px; padding: 8px 10px; }
+    .ident .row { display: flex; gap: 6px; }
+    .ident input { flex: 1; min-width: 0; padding: 6px; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: #e2e8f0; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .ident button { width: auto; margin: 0; padding: 6px 10px; background: #334155; color: #e2e8f0; }
+    .ident p { font-size: 10px; line-height: 1.5; color: #94a3b8; margin-top: 6px; }
+    .ident code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #e2e8f0; }
+    .ident .fejl { color: #f59e0b; }
     </style>
 </head>
 <body>
@@ -84,6 +92,16 @@
     <span class="prompt">"Open example.com and take a screenshot."</span>
     <span class="prompt">"Open Gmail and tell me who sent my last 3 emails."</span>
     <a href="https://browsermcp.dev/#try" target="_blank" rel="noopener">More things to try</a>
+  </div>
+
+  <div class="section-title">This Chrome profile</div>
+  <div class="ident">
+    <div class="row">
+      <input id="profileName" maxlength="32" placeholder="Name, e.g. work" spellcheck="false" autocomplete="off" aria-label="Profile name">
+      <button id="saveProfile">Save</button>
+    </div>
+    <p id="profileNote">Give this profile a name, then set <code>BROWSER_MCP_PROFILE</code> to it in your agent's MCP config, and that agent drives this profile only. Letters, digits, dot, dash and underscore, up to 32. The name is a choice, not a password: any program on this computer can claim it.</p>
+    <p>Installation: <code id="instanceId">…</code></p>
   </div>
 
   <div class="section-title">Sessions</div>

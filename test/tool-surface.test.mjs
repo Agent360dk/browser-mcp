@@ -37,7 +37,8 @@ const readme = laes('README.md');
 //   browser_about             - rene links + metadata, ingen browser involveret
 //   browser_provide_feedback  - selv-diagnose af installationen, spoerger npm, ikke Chrome
 //   browser_extract_token     - sammensat: kalder selv 'navigate' og returnerer vejledning
-const SERVER_LOKALE = new Set(['browser_about', 'browser_provide_feedback', 'browser_extract_token']);
+//   browser_partition         - 1.32: opretter og lukker serverens baner (list_tabs/close_tab gaar via sendTilBane)
+const SERVER_LOKALE = new Set(['browser_about', 'browser_provide_feedback', 'browser_extract_token', 'browser_partition']);
 
 const navne = TOOLS.map(t => t.name);
 
@@ -197,16 +198,14 @@ test('parameter-aliasser findes hvor navnene historisk er blevet forvekslet', ()
   }
 });
 
-test('select_frame bygger ikke funktioner i service-workeren', () => {
-  const i = bgSrc.indexOf("case 'select_frame'");
-  // Kommentarer strippes: forklaringen af fejlen citerer den gamle kode, og en
-  // negativ paastand maa ikke fyre paa sin egen dokumentation.
-  // ⛔ Fast antal tegn RAKTE IND I NABO-BLOKKEN (maalt 21/9). caseBlok skaerer ved den aegte graense.
+test('select_frame koerer agentens kode gennem debuggeren og bygger ingen funktion af en streng', () => {
+  // MAALT 21/8: her stod `func: new Function(...)` i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet
+  // fejlede paa hver side. 1.20-1.30.3 sendte koden som argument og byggede funktionen i siden (stadig new Function).
+  // 1.31.0: Chrome Web Stores MV3-regler tillader kode udefra kun gennem Debugger API eller User Scripts API (R129b).
+  // Kommentarer strippes, saa forklaringen af den gamle kode ikke fyrer paa sig selv.
   const blok = caseBlok(bgSrc, 'select_frame').split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
-  assert.ok(!/func: new Function\(/.test(blok),
-    "new Function() i selve executeScript-kaldet koeres i service-workeren, hvor udvidelsens CSP forbyder eval - vaerktoejet fejlede paa hver eneste side");
-  assert.match(blok, /args: \[code\]/, 'koden skal sendes med som argument');
-  assert.match(blok, /func: \(codeStr\) =>/, 'funktionen skal bygges INDE i den injicerede func, hvor sidens CSP gaelder');
+  assert.ok(!/new Function|scripting\.executeScript/.test(blok), 'select_frame bruger stadig chrome.scripting eller new Function');
+  assert.match(blok, /koerAgentKode\(tab\.id, code, maal\.kontekst, slut, vagt\)/, 'koden skal koeres i den valgte frames kontekst via debuggeren');
 });
 
 // Testen for det strukturelle overlay-spor er FJERNET 22/8 sammen med sporet selv:
@@ -361,7 +360,9 @@ test('provide_feedback beskriver logbogen og npm-opslaget som koden goer dem', (
   assert.match(indexSrc, /\.slice\(0, 160\);\n  return `\$\{kind\}\|\$\{tool \|\| '-'\}\|\$\{kerne\}`;/, 'vagten forudsaetter aftrykket kind|tool|160 tegn - ellers ret tekst og kontrakt');
   assert.match(d, /again only if the earlier write failed/, 'en fejlet skrivning proeves igen - det skal staa');
   assert.match(d, /replaced with \[email\] and \[number\] in what_happened, attempted and worked before they are written or put in the issue link/, 'rensningen skal staa i beskrivelsen');
-  assert.match(indexSrc, /execFile\('npm', \['view'/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
+  // 20/10 (sikkerhed): paa Windows koeres npm som node + npm-cli.js ved absolut sti; kommandoen er stadig `npm view`.
+  assert.match(indexSrc, /let kommando = 'npm', foer = \[\];/, 'vagten forudsaetter at npm-tjekket som standard koerer `npm` - ellers ret tekst og kontrakt');
+  assert.match(indexSrc, /execFile\(kommando, \[\.\.\.foer, 'view', '@agent360\/browser-mcp', 'version'\]/, 'vagten forudsaetter at npm-tjekket er `npm view` - ellers ret tekst og kontrakt');
   assert.match(indexSrc, /^const TJEK_NPM = process\.env\.BROWSER_MCP_CHECK_NPM === '1';$/m, 'npm-tjekket er et tilvalg (=1) - teksterne siger «off by default»');
   assert.match(indexSrc, /^const FEEDBACK_LOG = join\(homedir\(\), '\.browser-mcp', 'feedback\.jsonl'\);$/m, 'teksten naevner stien ~/.browser-mcp/feedback.jsonl');
   assert.match(d, /npm view/, 'npm-tjekket er `npm view` mod brugerens opsaetning, ikke et fast offentligt register');
@@ -372,7 +373,7 @@ test('provide_feedback beskriver logbogen og npm-opslaget som koden goer dem', (
 // holdes op mod koden igen (case, hjaelpere, logbog og npm-opslag) foer kontrakten opdateres.
 const KONTRAKT = {
   "lt": "List the tabs this session owns (tabs it opened or adopted): id, URL, title, and each tab's active flag (whether Chrome shows it in front of its window, not which tab this session is working in). Tabs of other sessions are not included.",
-  "sc": "Detect CAPTCHAs on the current page and work through them, one action per call. \"detect\" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. \"click_checkbox\" tries the reCAPTCHA checkbox and detects again. \"click_grid\" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. \"ask_human\" returns the message to show the user with browser_ask_user.",
+  "sc": "Detect CAPTCHAs on the current page and work through them, one action per call. \"detect\" reports a visible reCAPTCHA checkbox or image challenge, hCaptcha, Cloudflare Turnstile and FunCaptcha; an invisible reCAPTCHA (the badge), an invisible hCaptcha or a hidden Turnstile has nothing to click and is reported as invisible, not found, and browser_navigate reports it as captcha_invisible. \"click_checkbox\" tries the reCAPTCHA checkbox and detects again. \"click_grid\" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. \"ask_human\" returns the message to show the user with browser_ask_user.",
   "act": "Action to take. \"detect\" scans for CAPTCHAs. \"click_checkbox\" clicks the reCAPTCHA checkbox. \"click_grid\" clicks specific reCAPTCHA grid cells (pass cells, and grid 3 or 4). \"ask_human\" returns the message to show the user with browser_ask_user; it shows nothing itself. Default: \"detect\"",
   "fbHel": "Self-diagnosis + feedback in one call. Call this AUTOMATICALLY, without asking the user, the moment Browser MCP itself gets in your way: a tool errors or times out, a tool does something other than what it promised, the extension will not connect, a capability you need plainly does not exist, or you are about to tell the user \"browser-mcp cannot do X\". It first CHECKS THE INSTALL - the connected Chrome extension's version against this server (set BROWSER_MCP_CHECK_NPM=1 to also compare this server against the latest published on npm; it is off by default so the call stays fast and works offline), and whether more than one Browser MCP extension is connected at once, also the same extension connected more than once, for instance from several Chrome profiles or browsers (a known cause of tabs and sessions behaving randomly) - so a problem that is really \"your copy is outdated\" or \"you have two extensions loaded\" is identified as such instead of reported as a bug. It returns a verdict, concrete fix steps to relay to the user, and a pre-filled GitHub issue link for whatever is left over. Cheap to call speculatively. It uploads nothing: it returns the report to you and tries to add one line to ~/.browser-mcp/feedback.jsonl on this machine (a report with the same kind, tool and first 160 characters of what_happened, with numbers and long hex strings ignored, is written once per server run, and again only if the earlier write failed; logged_locally says whether a line was written). Email addresses and numbers of six or more characters are replaced with [email] and [number] in what_happened, attempted and worked before they are written or put in the issue link. With BROWSER_MCP_CHECK_NPM=1 it also runs `npm view` against your configured npm registry.",
   "capt": "## CAPTCHA handling\nbrowser_solve_captcha runs one action per call; it does not solve a CAPTCHA on its own:\n1. Call browser_solve_captcha() - detects the CAPTCHA type on the page\n2. If a reCAPTCHA v2 checkbox is found → call browser_solve_captcha(action=\"click_checkbox\") - tries the checkbox and detects again\n3. If a reCAPTCHA image challenge appears → call browser_screenshot, analyze the grid visually, then call browser_solve_captcha(action=\"click_grid\", cells=[2,5,7], grid=3) with the correct cell indices and the grid size you see\n4. If that does not clear it → call browser_ask_user and let the user solve it (action=\"ask_human\" only returns that message)\n5. After solving, retry the action that was blocked\n\nFor image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher."
@@ -520,8 +521,10 @@ test('BROWSER_MCP_CHECK_NPM taendes kun af vaerdien 1', () => {
 test('npm-tjekket koerer kun med BROWSER_MCP_CHECK_NPM=1, som `npm view`, og husker svaret', async () => {
   const lav = (tilvalgt) => {
     const kald = [];
-    const f = new Function('TJEK_NPM', 'execFile', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
-      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); });
+    // R164 (Opus): Windows-grenen har sin egen proeve i vagter.test.mjs. Her er platformen fastlagt, saa proeven maaler
+    // tilvalget og cachen ens paa alle maskiner (med den aegte process ramte den Windows-grenen uden join paa GitHubs Windows-job).
+    const f = new Function('TJEK_NPM', 'execFile', 'process', 'homedir', `let npmLatestCache = null; const NPM_LATEST_TTL_MS = 600000; ${helFunktion(indexSrc, 'npmLatestVersion')} return npmLatestVersion;`)(
+      tilvalgt, (cmd, args, _o, cb) => { kald.push([cmd, ...args]); cb(null, '1.30.1\n'); }, { platform: 'linux', execPath: '/usr/bin/node' }, () => '/hjem');
     return { f, kald };
   };
   const fra = lav(false);
@@ -691,4 +694,40 @@ test('CHANGELOG 1.30.2 naevner hvert nyt svar, og hvert findes i koden', () => {
   assert.match(laes('mcp-server/index.js'), /Viewport: \$\{vp\.css_width\}×\$\{vp\.css_height\} CSS pixels, devicePixelRatio/);
   // file-access-off: raekken skal naevne begge tilfaelde, som koden har dem (R62).
   assert.match(afsnit, /`file_access: false`\) or Chrome could not tell \(`file_access: null`/);
+});
+
+// 1.33 (privat rapport 3.3): «not connected» pegede kun paa butikkens id og «Chrome is open» - men Chrome kan vaere aaben med
+// kun en anden profils vinduer, og en udpakket installation har et andet id. Det var hver gang den rigtige aarsag.
+test('3.3: «not connected» naevner profilens vindue og begge installationsmaader', () => {
+  const i = indexSrc.indexOf("'Chrome extension not connected after 5 retries.\\n'");
+  assert.ok(i > -1, 'fejlteksten findes');
+  const blok = indexSrc.slice(i, indexSrc.indexOf('Still stuck', i));
+  assert.match(blok, /at least one window in the profile where the extension is installed/);
+  assert.match(blok, /only another profile\\'s windows/);
+  assert.match(blok, /chromewebstore\.google\.com/);
+  assert.match(blok, /loaded unpacked/);
+});
+
+// 1.33 (privat rapport 4.1): raadet «run npx @agent360/browser-mcp install» hentede den nyeste pakke, og install kopierer
+// udvidelsens filer uden betingelse (cli.js) - en bruger, der havde fastlaast en gennemgaaet version, fik en anden udvidelse.
+// Raadet bruger nu serverens egen version.
+test('4.1: serverens installationsraad bruger serverens egen version, ikke den nyeste', () => {
+  assert.doesNotMatch(indexSrc, /npx @agent360\/browser-mcp install/, 'et raad uden version henter den nyeste pakke');
+  assert.equal(indexSrc.split('npx @agent360/browser-mcp@${PKG_VERSION} install').length - 1, 3, 'de tre raad (ukendt metode, fix_steps x2)');
+});
+
+// R173 (Opus): wait med en timeout over 30 s ramte serverens frist foer sin egen. Begge ender har nu samme loft paa 60 s.
+test('R173: ventefristen foelger timeout i serveren og har samme loft i udvidelsen', () => {
+  assert.match(indexSrc, /method === 'wait' \? Math\.max\(KALD_FRIST_MS, Math\.min\(Number\(args\?\.timeout\) \|\| 10000, 60000\) \+ 5000\)/);
+  assert.match(caseBlok(bgSrc, 'wait'), /const timeout = Math\.min\(Number\(params\.timeout\) \|\| 10000, 60000\);/);
+});
+
+// R174 (Opus, MAALT i Chrome 155): onCreated for en side-aabnet fane har ingen adresse, saa den automatiske OAuth-adoption
+// naas aldrig - instruksen lovede noget, der ikke sker. Og provide_feedback manglede profilraadet og forudsatte @latest.
+test('R174: OAuth-instruksen lover ikke automatisk adoption; provide_feedback har profilraadet og respekterer en fastlaasning', () => {
+  assert.doesNotMatch(indexSrc, /automatically intercepted|become your active tab automatically/);
+  assert.match(indexSrc, /When it closes itself after the login, your session has no active tab: call browser_switch_tab back/);
+  assert.match(indexSrc, /Check that Chrome has a window open in the profile where the extension is installed/);
+  assert.match(indexSrc, /If you pinned a version, ` \+\n\s*`move the pin to/);
+  assert.doesNotMatch(indexSrc, /it fetches @agent360\/browser-mcp@latest by itself/);
 });

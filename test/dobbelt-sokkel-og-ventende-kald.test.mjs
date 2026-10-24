@@ -184,8 +184,11 @@ test('modsat: doer en ANDEN forbindelse end kaldets ejer, roeres kaldet ikke', a
     assert.equal(s.ud.find((m) => m.id === 9), undefined,
       'et kald blev afvist fordi en ANDEN forbindelse doede - et normalt skift mellem to udvidelser afbryder fuldt gyldige kald');
     // og ejeren kan stadig besvare det
-    const kald = ejer.modtaget.find((m) => typeof m?.method === 'string');
-    ejer.ws.send(JSON.stringify({ id: kald.id, result: { tabs: [] } }));
+    // R115: foerste valg venter nu ~2,5 s efter bindingen, saa bindings-kaldet (id 2) og kald 9 kan begge naa ejeren. Ejeren
+    // besvarer hver kommando, den har faaet - ellers maaler proeven, hvilken af de to der kom foerst, ikke svarbindingen.
+    for (const kald of ejer.modtaget.filter((m) => typeof m?.method === 'string')) {
+      ejer.ws.send(JSON.stringify({ id: kald.id, result: { tabs: [] } }));
+    }
     let svar = null;
     for (let i = 0; i < 40 && !svar; i++) {
       svar = s.ud.find((m) => m.id === 9) || null;

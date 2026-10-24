@@ -83,6 +83,9 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       lastError: null,
       getManifest: (...a) => { optager.kald.push({ sti: 'runtime.getManifest', args: a }); return svar['runtime.getManifest'] ?? { version: '1.28.1' }; },
       sendMessage: kald('runtime.sendMessage'),
+      // R143/R144: broenErVaek spoerger ogsaa Chromes kontekster. Uden svar i proeven findes broens offscreen-kontekst (som i Chrome,
+      // naar en bro sender kommandoer); en proeve, der vil vise en LUKKET bro, angiver den tomme liste selv.
+      getContexts: async (...a) => { optager.kald.push({ sti: 'runtime.getContexts', args: a }); const v = svar['runtime.getContexts']; return typeof v === 'function' ? v(...a) : (v ?? [{ contextType: 'OFFSCREEN_DOCUMENT' }]); },
       reload: kald('runtime.reload'),
       getURL: (p) => 'chrome-extension://test/' + p,
       onMessage: haendelse('runtime.onMessage'),
@@ -97,7 +100,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       onUpdated: haendelse('tabs.onUpdated'),
     },
     tabGroups: { update: kald('tabGroups.update'), query: kald('tabGroups.query') },
-    windows: { update: kald('windows.update'), get: kald('windows.get'), getLastFocused: kald('windows.getLastFocused'), create: kald('windows.create') },
+    windows: { update: kald('windows.update'), get: kald('windows.get'), getLastFocused: kald('windows.getLastFocused'), create: kald('windows.create'), getAll: kald('windows.getAll') },
     debugger: {
       attach: kald('debugger.attach'), detach: kald('debugger.detach'),
       sendCommand: kald('debugger.sendCommand'), getTargets: kald('debugger.getTargets'),
@@ -138,7 +141,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       get: (navn, cb) => { optager.kald.push({ sti: 'alarms.get', args: [navn] }); if (cb) cb(svar['alarms.get']); },
       onAlarm: haendelse('alarms.onAlarm'),
     },
-    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
+    webNavigation: { getAllFrames: kald('webNavigation.getAllFrames'), getFrame: kald('webNavigation.getFrame'), onDOMContentLoaded: haendelse('webNavigation.onDOMContentLoaded'), onCompleted: haendelse('webNavigation.onCompleted') },
     notifications: { create: kald('notifications.create'), clear: kald('notifications.clear') },
     cookies: { getAll: kald('cookies.getAll'), set: kald('cookies.set'), getAllCookieStores: kald('cookies.getAllCookieStores') },
     permissions: { contains: kald('permissions.contains'), request: kald('permissions.request') },
@@ -155,7 +158,9 @@ export function byggChrome(svar = {}, optager = new Optager()) {
  *   u.optager.sidste('tabs.update')     -> hvad der blev sendt til Chrome
  *   u.fyr('tabs.onRemoved', 42)         -> fyr en registreret lytter
  */
-export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' } = {}) {
+// ur (R133): en funktion, der giver «nu» i ms. Saa bruger udvidelsens Date.now et virtuelt ur, og en proeve kan lade et
+// kald tage 1 s uden at vente 1 s. setTimeout er stadig det rigtige.
+export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js', ur = null } = {}) {
   const { chrome, optager, lyttere } = byggChrome(svar);
   const src = readFileSync(join(ROD, kilde), 'utf8');
 
@@ -168,6 +173,8 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
       return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(''), json: () => Promise.resolve({}) });
     },
     URL, TextEncoder, TextDecoder, atob, btoa, structuredClone,
+    // 1.31: installationens id laves med crypto.getRandomValues, som en service worker har.
+    crypto: globalThis.crypto,
     // background.js laeser navigator.userAgent ved indlaesning (linje 14) for at
     // afgoere om "vaelg alt" er Cmd eller Ctrl. Uden den kaster hele filen.
     navigator: { userAgent: svar['navigator.userAgent'] ?? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
@@ -186,10 +193,11 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js' 
   const loeft = [
     'armeredeDialoger', 'dialogLoefter', 'sessions', 'debuggerAttached',
     'agentLukkedeFaner', 'SELECT_ALL_MODS', 'CDP_CHAR_CODES', 'RETRYABLE_CDP_METHODS',
-    'pendingAsks', 'NAV_FRISTER', 'dialogFaner',
+    'pendingAsks', 'NAV_FRISTER', 'dialogFaner', 'AGENTKODE_FRIST', 'LUK_FANE',
   ];
   const hale = '\n;' + loeft.map((n) => `try { globalThis.__t_${n} = ${n}; } catch (e) {}`).join('\n');
 
+  if (ur) { ctx.__ur = ur; vm.runInContext('Date.now = () => __ur();', ctx); }
   vm.runInContext(src + hale, ctx, { filename: kilde });
 
   for (const n of loeft) {

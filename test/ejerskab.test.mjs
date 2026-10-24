@@ -255,11 +255,76 @@ test('upload-stien er indesluttet i arbejdsmappen - samme vagt som skaermbillede
   const i = srv.indexOf("if (method === 'upload_file' || method === 'drop_file')");
   assert.ok(i > -1, 'vagten mod stier uden for arbejdsmappen er vaek fra upload');
   // Astra 10/9: ordenen blev sammenlignet med methodMap, ikke med afsendelsen. Nu med afsendelsen.
-  const slut = srv.indexOf('await sendToExtension(method, args || {}, timeout)');
+  const slut = srv.indexOf('await sendToExtension(method, args || {}, timeout, bane)');   // 1.32: kaldet baerer sin bane
   assert.ok(slut > i, 'vagten skal ligge FOER kaldet sendes til udvidelsen');
   const blok = srv.slice(i, slut);
   assert.match(blok, /resolve\(process\.cwd\(\)\)/, 'roden skal vaere arbejdsmappen');
   assert.match(blok, /realpathSync\.native\(raaSti\)/, 'stien skal loeses af operativsystemet (links foer ".."), ikke som tekst');
   assert.match(blok, /args\.files = kanoniske/, 'det er den LOESTE sti der sendes videre - ellers er det godkendte og det aabnede to filer');
   assert.match(blok, /homedir\(\)/, '~ skal foldes ud, ellers slipper ~/.ssh/id_rsa forbi som relativ sti');
+});
+
+// R173 (Opus, MAALT i modellen): udvidelsen adopterer selv en OAuth-popup og goer den aktiv. Lukkede den sig selv efter et
+// vellykket login, stod agenten uden aktiv fane (no-active-tab), selv om hverken agenten eller brugeren havde lukket noget.
+// d002938 gik tilbage til aabneren. Nu goer 1.33 det samme - kun for netop det skift, udvidelsen selv lavede.
+test('R173: en OAuth-popup, der lukker sig selv, giver sessionen aabneren tilbage', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  assert.equal(s.activeTabId, 50, 'popuppen skal vaere adopteret og aktiv');
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(s.activeTabId, 1, 'sessionen skal tilbage til aabneren');
+});
+
+test('R173: har agenten selv skiftet vaek fra popuppen, roeres den aktive fane ikke', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  s.tabIds.add(60); s.activeTabId = 60;                 // agenten skiftede selv til fane 60
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(s.activeTabId, 60);
+});
+
+test('R173: en almindelig fane, brugeren lukker, giver ikke en anden fane tilbage', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  const s = u.hent('sessions').get(9876);
+  s.tabIds.add(2); s.activeTabId = 2;
+  await u.fyr('tabs.onRemoved', 2);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.notEqual(s.activeTabId, 1, 'kun udvidelsens eget popup-skift rulles tilbage');
+});
+
+test('R173: er aabneren selv lukket, peger sessionen ikke paa en doed fane', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  s.tabIds.delete(1);                                    // aabneren er lukket
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.notEqual(s.activeTabId, 1);
+});
+
+// R174 (Astra, MAALT): tilbagevenden skete ogsaa ved agentens egen close_tab og efter et skift vaek og tilbage.
+test('R174: lukker agenten selv popuppen, gaar sessionen ikke tilbage til aabneren', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  u.hent('agentLukkedeFaner').add(50);
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.notEqual(s.activeTabId, 1);
+});
+
+test('R174: efter et skift vaek fra popuppen og tilbage giver dens lukning ikke aabneren tilbage', async () => {
+  const u = sele({ id: 1, url: 'https://vores.example', windowId: 1 });
+  await u.fyr('tabs.onCreated', { id: 50, pendingUrl: 'https://accounts.google.com/o/oauth2/auth', windowId: 1, openerTabId: 1 });
+  const s = u.hent('sessions').get(9876);
+  s.tabIds.add(60);
+  u.hent('skiftAktiv')(s, 60);
+  u.hent('skiftAktiv')(s, 50);
+  await u.fyr('tabs.onRemoved', 50);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.notEqual(s.activeTabId, 1, 'agenten har selv styret fanerne siden popuppen kom');
 });
