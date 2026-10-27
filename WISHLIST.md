@@ -494,6 +494,10 @@ Et klik der ikke virker, maa ikke svare ok.
 
 ### S2. `browser_execute_script` doer paa CSP-straenge sites · **hoej**
 
+**LUKKET i 1.31.0-kandidaten (feat/1.31-profiler, 19/10; ikke udgivet endnu).** Begge vaerktoejer (`execute_script`, `select_frame`) koerer agentens kode KUN gennem
+debuggeren (Runtime.evaluate); scripting-stierne og `new Function` er fjernet (Chrome Web Stores MV3-regler, R129b).
+Resten: naar Chrome naegter debuggeren, fejler kaldet med «not run». Teksten nedenfor er historik.
+
 Stripe saetter `script-src` uden `unsafe-eval`. Baade ISOLATED og MAIN fejler med
 *"Evaluating a string as JavaScript violates the following Content Security Policy"*.
 

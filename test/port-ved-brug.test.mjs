@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 const SRV = fileURLToPath(new URL('../mcp-server/index.js', import.meta.url));
 // MAALT 19/9: spaendet var fast paa 19876-19880, og to samtidige suite-koersler tog
@@ -93,12 +94,36 @@ async function optagne() {
   return ude;
 }
 
+// R156 (Astra): at tilskrive porte ud fra spaendet (eller ud fra hvad der slipper, naar serveren draebes) kan forveksles med en
+// anden proces' porte - prøvefilerne koerer parallelt. Serverbarnet faar derfor en proevekrog, der melder hver
+// `net.Server.prototype.listen` i serverens hovedtraad (ogsaa http- og WebSocket-servere, som bygger paa den). Det virker ens paa
+// macOS, Linux og Windows og maaler ogsaa, at serveren kun aabner én port.
+// R157 (Opus): krogen ser IKKE en binding via worker_threads, dgram eller process.binding('tcp_wrap'). Serveren bruger ingen af
+// dem - det haandhaeves af proeven «serveren binder kun gennem WebSocketServer» nedenfor; en ny bindingsvej skal udvide krogen.
+const KROG = 'data:text/javascript,' + encodeURIComponent(`
+import net from 'node:net';
+const listen = net.Server.prototype.listen;
+net.Server.prototype.listen = function (...a) {
+  // R157 (Astra): én varig lytter pr. serverobjekt, sat FORREST - et fejlet forsoeg efterfulgt af succes taeller én gang, og en
+  // anden lytter, der lukker serveren straks, kan ikke naa at goere address() tom foer krogen har set porten.
+  if (!this.__proeveKrog) {
+    this.__proeveKrog = true;
+    this.prependListener('listening', () => { const ad = this.address(); process.stderr.write('[PROEVE-LISTEN] ' + (ad && typeof ad === 'object' ? ad.port : String(ad)) + '\\n'); });
+  }
+  return listen.apply(this, a);
+};`);
+
 function start() {
-  const p = spawn(process.execPath, [SRV], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });
-  p.stderr.on('data', () => {});   // serveren skriver diagnostik; testen laeser svarene paa stdout
+  const p = spawn(process.execPath, ['--import', KROG, SRV], { stdio: ['pipe', 'pipe', 'pipe'], env: ENV });
+  p.log = '';
+  p.stderr.on('data', (d) => { p.log += d; });   // serverens diagnostik; svarene laeses paa stdout
   boerneprocesser.push(p);
   return p;
 }
+
+const meldtPort = (p) => Number((p.log.match(/listening on ws:\/\/127\.0\.0\.1:(\d+)/) || [])[1]) || null;
+/** ALLE porte, som NETOP denne serverproces har aabnet (fra proevekrogen) - ogsaa uden for spaendet (R157, Astra). */
+const egnePorte = (p) => [...p.log.matchAll(/\[PROEVE-LISTEN\] (\S+)/g)].map((m) => (/^\d+$/.test(m[1]) ? Number(m[1]) : m[1]));
 
 let n = 0;
 function send(p, method, params) {
@@ -135,26 +160,30 @@ async function haandtryk(p) {
 }
 
 test('en server der aldrig bruger browseren tager ingen port', async () => {
-  const foer = await optagne();
   const p = start();
   await haandtryk(p);
   await vent(2500);                       // rigeligt: den gamle kode bandt inden for ~50 ms
-  assert.deepEqual(await optagne(), foer,
-    'serveren tog en port uden at et eneste browser-vaerktoej var kaldt');
+  assert.ok(p.log.includes('server running'), 'serveren startede ikke (proevekrogen eller serveren fejlede): ' + p.log.slice(0, 300));
+  assert.deepEqual(egnePorte(p), [], 'serveren tog en port uden at et eneste browser-vaerktoej var kaldt');
 });
 
 test('foerste browser-kald tager porten', async () => {
-  const foer = await optagne();
   const p = start();
   await haandtryk(p);
   // Skal stadig staa uden port PAA DETTE TIDSPUNKT - ellers maaler resten ingenting.
   await vent(1500);
-  assert.deepEqual(await optagne(), foer, 'porten var taget allerede foer kaldet');
+  assert.deepEqual(egnePorte(p), [], 'porten var taget allerede foer kaldet');
 
   browserKald(p);                         // svaret er ligegyldigt - der er ingen udvidelse
-  let efter = foer;
-  for (let i = 0; i < 30 && efter.length === foer.length; i++) { await vent(200); efter = await optagne(); }
-  assert.equal(efter.length, foer.length + 1, 'foerste browser-kald bandt ingen port');
+  // 20/10 (GitHub, static (20) paa 0c91f85): «2 porte optaget, ventede 1». Proevefilerne koerer parallelt, og en anden fil kan
+  // ramme samme tilfaeldige spaend. Proeven binder sig derfor til den port, SERVEREN melder, og kraever at netop den er ny og optaget.
+  for (let i = 0; i < 30 && !egnePorte(p).length; i++) await vent(200);
+  await vent(1500);                       // en eventuel ekstra binding skal naa at vise sig (R157: 400 ms var for kort)
+  const egne = egnePorte(p);
+  assert.equal(egne.length, 1, `foerste browser-kald skulle binde praecis én port, bandt: [${egne.join(', ')}]`);
+  assert.ok(egne[0] >= BASE && egne[0] <= MAX, `serveren lyttede paa ${egne[0]}, uden for spaendet ${BASE}-${MAX}`);
+  assert.equal(meldtPort(p), egne[0], `serveren meldte ${meldtPort(p)}, men lyttede paa ${egne[0]}`);
+  assert.ok((await optagne()).includes(egne[0]), `port ${egne[0]} er ikke optaget`);
 });
 
 test('en sultet server faar en port naar en bliver fri - uden genstart', async () => {
@@ -217,7 +246,6 @@ test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller
   // Sultnings-testen ovenfor fylder spaendet og frigiver kun én. Uden det her maalte
   // denne test "alle porte optaget" i stedet for beskeden efter en vellykket binding.
   while (blokke.length) await new Promise((r) => blokke.pop().close(r));
-  const foer = await optagne();
   const p = start();
   await haandtryk(p);
   const svar = await browserKald(p, 60000);
@@ -226,7 +254,10 @@ test('lige aabnet port uden udvidelse giver en aerlig besked, ikke "geninstaller
     'brugeren sendes hen for at geninstallere en udvidelse der ikke naaede at forbinde: ' + svar.slice(0, 240));
   assert.match(svar, /has not connected yet|scans every/,
     'beskeden forklarer ikke at doeren lige er aabnet: ' + svar.slice(0, 240));
-  assert.equal((await optagne()).length, foer.length + 1, 'porten blev ikke bundet');
+  const egne = egnePorte(p);
+  assert.equal(egne.length, 1, `porten blev ikke bundet som én port: [${egne.join(', ')}]`);
+  assert.ok(egne[0] >= BASE && egne[0] <= MAX, `serveren lyttede paa ${egne[0]}, uden for spaendet`);
+  assert.ok((await optagne()).includes(egne[0]), `porten ${egne[0]} blev ikke bundet`);   // R157 (Opus): krogen beviser ejerskabet; et foer-tjek gav kun falsk roedt
 });
 
 // ── #14: den paastand fejlbeskeden faktisk giver ────────────────────────────
@@ -262,4 +293,14 @@ test('kald 1 fejler paa fuldt spaend, kald 2 lykkes - uden genstart', async () =
   assert.ok(!/All ports/.test(andet),
     'kald 2 gav ogsaa op - saa er "denne chat skal ikke genstartes" en tom paastand: ' + andet.slice(0, 220));
   assert.ok(await erOptaget(friPort), 'den frigivne port blev ikke taget af naeste kald');
+});
+
+// R157 (Opus): proevekrogen ser kun net.Server.listen i hovedtraaden. Den daekker serveren, saa laenge serveren ikke binder ad andre veje.
+test('serveren binder kun gennem WebSocketServer (det proevekrogen kan se)', () => {
+  const kilde = readFileSync(SRV, 'utf8');
+  for (const [moenster, hvad] of [[/\bworker_threads\b/, 'worker_threads'], [/\bnode:dgram\b|\bdgram\b/, 'dgram'],
+    [/process\.binding\s*\(/, 'process.binding'], [/\.listen\s*\(/, 'en direkte .listen(']]) {
+    assert.doesNotMatch(kilde, moenster, `index.js bruger ${hvad} - proevekrogen i port-ved-brug ser ikke den binding; udvid krogen`);
+  }
+  assert.equal((kilde.match(/new\s+WebSocketServer\s*\(/g) || []).length, 1, 'serveren skal have netop ét WebSocketServer-sted');
 });

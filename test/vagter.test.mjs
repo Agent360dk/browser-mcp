@@ -57,8 +57,8 @@ test('select_option melder sandt paa BEGGE grene', () => {
 test('terminate er gated paa den aktive forbindelse', () => {
   const blok = blokFor(srv, 'terminate');
   assert.ok(blok, 'terminate-haandteringen findes');
-  assert.match(blok, /activeConnection\(\)/,
-    'terminate skal sammenholdes med den aktive forbindelse, ikke tages fra hvem som helst');
+  assert.match(blok, /activeConnection\(bane\)/,
+    'terminate skal sammenholdes med den aktive forbindelse paa sin egen bane, ikke tages fra hvem som helst');
 });
 
 // ── Laasen findes for at 21 af 43 vaerktoejer ikke faldt paa at to udvidelser
@@ -66,11 +66,16 @@ test('terminate er gated paa den aktive forbindelse', () => {
 //    saa laenge intet arbejde er i gang - ellers kan en fejlagtig foerste-forbindelse
 //    spaerre for den rigtige udvidelse resten af sessionen.
 test('forbindelses-laasen gives fri saa laenge ingen kommando er sendt', () => {
-  assert.match(srv, /let harSendtKommando = false;/, 'flaget skal findes');
-  assert.match(srv, /if \(!harSendtKommando\) laastForbindelse = null;/,
+  // R115: flaget harSendtKommando er erstattet af banens installationslaas (bane.laas), som saettes ved foerste kommando.
+  // Flaget var blevet en kopi af laasen (Astra/Opus R115): to tilstande for én kendsgerning kan kun komme ud af trit.
+  assert.match(srv, /laas: null,/, 'laasen skal findes (paa banen, lavBane)');
+  const tilslut = srv.slice(srv.indexOf('bane.connections.add(conn);'), srv.indexOf('bane.connections.add(conn);') + 700);
+  assert.match(tilslut, /\n    bane\.laastForbindelse = null;/,
     'uden den her linje kan en tilfaeldig foerste forbindelse spaerre for den rigtige');
-  assert.match(srv, /harSendtKommando = true/,
-    'flaget skal saettes naar der faktisk sendes en kommando');
+  assert.match(srv, /bane\.laas = \{ instans: conn\.instance \|\| null, conn \};/,
+    'laasen skal saettes naar der faktisk sendes en kommando');
+  const kode = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.doesNotMatch(kode, /harSendtKommando/, 'flaget er tilbage ved siden af laasen');
 });
 
 // ── Naar udvidelsen er ny og serveren er gammel - eller omvendt i butikkens
@@ -151,6 +156,99 @@ test('ps-opslaget har en frist', () => {
   assert.match(blok, /timeout: \d+/,
     'et haengende ps ville blokere hele opstarten synkront - serveren naaede aldrig ' +
     'at printe noget, heller ikke MCP-haandtrykket. Maalt 22/8.');
+});
+
+// ── SIKKERHED (20/10, privat rapport): intet kald i serveren maa koere en fil fra arbejdsmappen ──────────────
+// `execSync` med en tekststreng gaar gennem en skal, og paa Windows leder cmd.exe i arbejdsmappen FOER PATH: en ps.bat,
+// ps.cmd eller ps.exe i den mappe, brugeren aabnede, koerte, saa snart serveren startede. npm-tjekket (BROWSER_MCP_CHECK_NPM=1)
+// havde samme moenster: CreateProcess soeger ogsaa i arbejdsmappen. Proeverne koerer de to funktioner fra index.js med falske
+// procesfunktioner og en falsk platform.
+function funktionsKilde(kilde, navn) {
+  const i = kilde.indexOf(`function ${navn}(`);
+  assert.ok(i >= 0, `fandt ikke function ${navn} i index.js`);
+  let d = 0;
+  for (let k = kilde.indexOf('{', i); k < kilde.length; k++) {
+    if (kilde[k] === '{') d++;
+    else if (kilde[k] === '}' && --d === 0) return kilde.slice(i, k + 1);
+  }
+  throw new Error(`function ${navn}: ingen afsluttende krølparentes`);
+}
+
+test('SIKKERHED: ps-opslaget koerer ingen fil fra arbejdsmappen - Windows starter intet, ellers absolut sti uden skal', () => {
+  const kilde = funktionsKilde(srv, 'laesPpid');
+  const lav = (platform, findes = () => true) => {
+    const kald = [];
+    const execSync = (...a) => { kald.push(['execSync', ...a]); return '42\n'; };
+    const execFileSync = (...a) => { kald.push(['execFileSync', ...a]); return '42\n'; };
+    const fn = new Function('execSync', 'execFileSync', 'existsSync', 'process', `${kilde}; return laesPpid;`)(
+      execSync, execFileSync, findes, { platform });
+    return { fn, kald };
+  };
+  const w = lav('win32');
+  assert.equal(w.fn(1234), null);
+  assert.deepEqual(w.kald.map((k) => k[0]), [], 'paa Windows startede ps-opslaget en proces - cmd.exe finder en ps.bat i arbejdsmappen foer PATH');
+  const m = lav('darwin');
+  assert.equal(m.fn(1234), 42);
+  assert.equal(m.kald.length, 1, 'ét opslag');
+  const [hvem, kommando, args, valg] = m.kald[0];
+  assert.equal(hvem, 'execFileSync', 'ps skal startes uden skal (execFileSync), ikke som tekststreng gennem en skal');
+  assert.ok(typeof kommando === 'string' && kommando.startsWith('/'), `ps skal have en absolut sti, fik ${kommando}`);
+  assert.deepEqual(args, ['-o', 'ppid=', '-p', '1234']);
+  assert.ok(!valg || !valg.shell, 'ingen shell-indstilling');
+  // R164 (Astra): ogsaa Linux-grenen, hvor ps ligger i /usr/bin.
+  const lin = lav('linux', (sti) => sti === '/usr/bin/ps');
+  assert.equal(lin.fn(1234), 42);
+  assert.equal(lin.kald[0][1], '/usr/bin/ps', `paa Linux uden /bin/ps skal /usr/bin/ps bruges, fik ${lin.kald[0][1]}`);
+  // R165 (Astra): heller ikke paa Linux gennem en skal.
+  assert.ok(!lin.kald[0][3] || !lin.kald[0][3].shell, 'ps paa Linux startes gennem en skal');
+  // R164 (Opus): NixOS har kun systemprofilens ps.
+  const nix = lav('linux', (sti) => sti === '/run/current-system/sw/bin/ps');
+  assert.equal(nix.fn(1234), 42);
+  assert.equal(nix.kald[0][1], '/run/current-system/sw/bin/ps', `paa NixOS skal systemprofilens ps bruges, fik ${nix.kald[0][1]}`);
+  const intet = lav('linux', () => false);
+  assert.equal(intet.fn(1234), null, 'findes ps ikke, er svaret null');
+  assert.deepEqual(intet.kald, [], 'og intet startes');
+});
+
+test('SIKKERHED: npm-tjekket starter paa Windows aldrig «npm» fra arbejdsmappen', async () => {
+  const kilde = funktionsKilde(srv, 'npmLatestVersion');
+  const { win32, posix } = await import('node:path');
+  const HJEM = '/hjem/bruger';
+  const lav = (platform, findes, svar = '9.9.9\n') => {
+    const kald = [];
+    const execFile = (kommando, args, valg, cb) => { kald.push([kommando, args, valg]); cb(null, svar); };
+    const sti = platform === 'win32' ? win32 : posix;
+    const proc = { platform, execPath: platform === 'win32' ? 'C:\\Program Files\\nodejs\\node.exe' : '/usr/local/bin/node' };
+    const fn = new Function('execFile', 'existsSync', 'process', 'join', 'dirname', 'homedir', 'TJEK_NPM', 'NPM_LATEST_TTL_MS',
+      `let npmLatestCache = null; ${kilde}; return npmLatestVersion;`)(execFile, findes, proc, sti.join, sti.dirname, () => HJEM, true, 0);
+    return { fn, kald, proc };
+  };
+  const w = lav('win32', () => true);
+  assert.equal(await w.fn(), '9.9.9');
+  assert.equal(w.kald.length, 1);
+  assert.equal(w.kald[0][0], w.proc.execPath, `paa Windows skal npm koeres som node + npm-cli.js ved absolut sti, ikke «${w.kald[0][0]}»`);
+  // R164 (Astra): den praecise, absolutte sti ved siden af node - ikke blot et navn, der ender paa npm-cli.js.
+  assert.equal(w.kald[0][1][0], win32.join('C:\\Program Files\\nodejs', 'node_modules', 'npm', 'bin', 'npm-cli.js'));
+  assert.ok(!w.kald[0][2] || !w.kald[0][2].shell, 'ingen skal');
+  const mangler = lav('win32', () => false);
+  assert.equal(await mangler.fn(), null, 'uden npm-cli.js ved siden af node er svaret ukendt');
+  assert.deepEqual(mangler.kald, [], 'og intet startes');
+  const mac = lav('darwin', () => true);
+  assert.equal(await mac.fn(), '9.9.9');
+  assert.equal(mac.kald[0][0], 'npm', 'paa macOS og Linux er npm-opslaget uaendret');
+  // R166 (Astra): ogsaa Linux maales for sig - en mutant der kun aendrer Linux-grenen, skal fanges.
+  const lin = lav('linux', () => true);
+  assert.equal(await lin.fn(), '9.9.9');
+  // R165 (Astra): uden skal og med en tidsgraense paa alle platforme - et haengende npm maa ikke holde provide_feedback.
+  for (const k of [w, mac, lin]) {
+    assert.ok(!k.kald[0][2].shell, 'npm-opslaget startes gennem en skal');
+    assert.ok(k.kald[0][2].timeout > 0 && k.kald[0][2].timeout <= 10000, `npm-opslaget har ingen fornuftig tidsgraense: ${k.kald[0][2].timeout}`);
+  }
+  // R164 (Opus): npm laeser .npmrc i arbejdsmappen. Opslaget koeres fra hjemmemappen paa alle platforme.
+  for (const k of [w, mac, lin]) assert.equal(k.kald[0][2] && k.kald[0][2].cwd, HJEM, 'npm-opslaget skal koeres fra hjemmemappen, ikke fra arbejdsmappen');
+  // Et fremmed register kan svare med fritekst efter tallet; kun et rent versionsnummer naar videre til agenten.
+  assert.equal(await lav('darwin', () => true, '1.99.0 - INDSAT TEKST til agenten\n').fn(), null, 'fritekst efter versionsnummeret slap igennem');
+  assert.equal(await lav('darwin', () => true, '1.31.0-beta.1\n').fn(), '1.31.0-beta.1', 'en forhaandsudgave er stadig et versionsnummer');
 });
 
 test('idle-graensen er en bagstopper, ikke den primaere vagt', () => {

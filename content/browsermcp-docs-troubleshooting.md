@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** the five issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.29.1** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → prefer the dedicated tools (`fill`, `click`, `set_combobox`) over raw scripts. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
+**Short answer:** the five issues you are most likely to hit, with the fastest fix for each: **(0)** brand-new install that never connects → you are missing the MCP server half; register it with your agent (`claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest` for Claude Code); **(1)** "Chrome extension not connected" on a setup that used to work → kill stale server processes and reload the extension; **(2)** debugger detaches after 2-3 actions on one tab → continue in a fresh tab, or lean on `navigate`/`screenshot` which survive it; **(3)** text *appends* instead of replacing in React/Angular forms on macOS → **fixed in v1.29.1** - upgrade and reload the extension; **(4)** `execute_script` blocked on strict-CSP sites → **fixed in 1.31.0**: scripts run only through the Chrome debugger, which the page's CSP does not stop; the dedicated tools (`fill`, `click`, `set_combobox`) are still the better first choice. Details, causes and fix status below - we found every one of these using the tool on our own work, and we would rather publish them than have you discover them.
 
 ## First: is it actually installed?
 
@@ -117,6 +117,20 @@ Nothing listed means no server, which means nothing for the extension to find. (
 2. If calls still fail: open `chrome://extensions` and hit the reload icon on Browser MCP - this restarts the extension's service worker and its reconnect loop
 3. Retry the tool call
 
+## `profile-not-connected`, `profile-ambiguous` or `profile-disconnected` (1.31)
+
+**Symptom:** a tool call answers one of these, with `sent: false`.
+
+**Cause:** the client has `BROWSER_MCP_PROFILE` set, or the chat was already driving one Chrome profile. Nothing was sent to Chrome:
+
+- `profile-not-connected`: no connected profile has that name. Check that Chrome is open in that profile and that the name in the extension popup ("This Chrome profile") is exactly the same. `connected` in the answer lists what the server can see.
+- `profile-routing-unsupported`: every connected extension is older than 1.31 and reports no name. Update the extension (from the Chrome Web Store it can take 1-3 days after a release), or remove `BROWSER_MCP_PROFILE`.
+- `profile-ambiguous`: two profiles carry the same name - give each its own name - or one profile is connected twice (a copied Chrome profile). A copy keeps the same installation id, so renaming it does not help: close the copy, or reinstall the extension in it. When a copy and another profile both carry the name, the answer gives both pieces of advice: close or reinstall the copy, and give the profiles their own names. The answer's note says which case it is, and `browser_provide_feedback` says the same.
+- `profile-disconnected`: the profile the chat was driving closed, or its extension reloaded. The server does not move to another profile on its own. Call again: that call picks a profile anew.
+- `profile-invalid`: `BROWSER_MCP_PROFILE` is not a valid name (letters, digits, dot, dash and underscore, up to 32). Fix it and restart the client.
+
+`browser_about` lists the connected installations.
+
 ## The debugger detaches after 2-3 actions on one tab
 
 **Symptom:** a sequence of clicks/fills on the same tab works, then actions silently stop landing; `browser_navigate` and `browser_screenshot` keep working.
@@ -143,9 +157,9 @@ So v1.25.0 does both: `fill` now sends one `Input.insertText`, verifies the fiel
 
 **Symptom:** raw script execution returns errors (or nothing) on hardened sites - Google properties, Stripe-class dashboards.
 
-**Cause:** layered content-security-policy restrictions: the isolated-world path is constrained by the extension's own CSP, the main-world path by the site's, and the debugger fallback inherits the detach quirk above.
+**Cause (up to 1.30.3):** the first two attempts went through script injection, where the isolated-world path is constrained by the extension's own CSP and the main-world path by the site's, before the debugger was tried.
 
-**Workaround (and honestly, the better pattern):** use the purpose-built tools - `fill`, `click`, `set_date`, `set_combobox`, `get_page_content` run through the debugger/trusted-event layer and work on CSP-strict and React/Angular sites. Reach for `execute_script` last, not first. A hardened fallback chain shipped in v1.24.0.
+**Status: fixed in 1.31.0.** `browser_execute_script` and `browser_select_frame` run your agent's JavaScript only through the Chrome debugger (`Runtime.evaluate`), in the page's or frame's own context, and a page's CSP does not stop that. What is left: when Chrome refuses the debugger (an enterprise policy, or the debugging notice was cancelled), the call fails with an error that says the code was not run. The purpose-built tools - `fill`, `click`, `set_date`, `set_combobox`, `get_page_content` - are still the better first choice, because they check what happened on the page.
 
 ## Why publish our own bug list?
 

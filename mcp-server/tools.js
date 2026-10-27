@@ -65,7 +65,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_execute_script',
-    description: 'Execute JavaScript in the current page. IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
+    description: 'Execute JavaScript in the current page, through the Chrome debugger (Runtime.evaluate) in the page\'s own context: the page\'s globals are visible and its Content Security Policy does not block it. A returned promise is awaited. If the code throws, the answer is ok:false with error and name, and the code is not run again. The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran). IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -392,12 +392,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_frame',
-    description: 'Execute JavaScript in a specific iframe by frame index. Use browser_list_frames first to find the right index.',
+    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by a one-time mark the extension puts in that frame\'s document, not by its address or position; if the mark is not found, nothing is run (error frame-not-reachable, and retry says whether calling again can help; a frame whose document is replaced while the call looks for it gives retry: true). The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran).',
     inputSchema: {
       type: 'object',
       properties: {
         frame_index: { type: 'number', description: 'Frame index from browser_list_frames (0 = main frame)' },
-        code: { type: 'string', description: 'JavaScript to execute in the frame (default: returns text content)' },
+        code: { type: 'string', description: 'JavaScript EXPRESSION to evaluate in the frame (default: returns its text content)' },
       },
       required: ['frame_index'],
     },
@@ -476,7 +476,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_about',
-    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped - this tool is how the user contributes back.',
+    description: 'Returns Browser MCP info and pre-filled URLs the user can click to submit feature wishes, share use-cases, or report bugs. Call this PROACTIVELY whenever the user (a) mentions a feature they wish existed ("I wish browser-mcp could...", "it would be nice if..."), (b) says something is missing, broken, or unexpected, (c) asks how Browser MCP works or who maintains it, or (d) describes something cool they built with browser-mcp. Pass intent="wish" | "use_case" | "bug" | "info" plus an optional title and body, and offer the returned submit_url to the user. Browser MCP is community-shaped - this tool is how the user contributes back. It also lists the Browser MCP installations connected to this chat (installations: the profile name set in the extension popup, the installation id, the version), so you can see which names BROWSER_MCP_PROFILE can choose; it lists nothing before the browser has been used in the chat.',
     inputSchema: {
       type: 'object',
       properties: {
