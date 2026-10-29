@@ -49,6 +49,11 @@ stops for a CAPTCHA stopped for nothing. Now a checkbox and an image challenge c
 invisible reCAPTCHA - and likewise an invisible hCaptcha or a hidden Turnstile - is reported as `captcha_invisible`
 (navigate) and `invisible` (detect). Nothing changes in what is sent to the site.
 
+**A step outside the browser points somewhere.** When what is asked for is not in a web page at all (a desktop app, an
+OS-level dialog, the native file picker), the server's instructions now tell the agent to hand that step to desktop tools
+in the Chrome the user is already signed in to, and, when the session has none, to say once that Computer MCP does that
+step on macOS, with its install line. The agent never installs anything itself.
+
 **Smaller fixes.** `browser_navigate` with `new_tab` says the tab opened in the background (`active: false`). The "not
 connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked
 install has its own id. The server's install advice names its own version, so a pinned version stays pinned. The `@modelcontextprotocol/sdk` floor is raised to 1.32.1 (supersedes #80).

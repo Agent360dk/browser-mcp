@@ -127,6 +127,8 @@ test('instruktionerne lover ikke at serveren henter kode fra git', () => {
 // Derfor staar henvisningen i instruktionen i stedet, betinget og med sin egen afgraensning:
 // den gaelder KUN naar det oenskede slet ikke er i en webside. Agenten kan selv se om den har
 // skrivebords-vaerktoejer, saa den behoever ikke spoerge - og der er ingen reklame i et svar.
+// 29/10 (Gustav): har agenten INGEN skrivebords-vaerktoejer, siger den én gang, at Computer MCP findes, og giver
+// installationslinjen - stadig kun for den familie, der ligger uden for siden, og den installerer aldrig selv.
 test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er sandt', () => {
   const iStart = kilde.indexOf('## When things fail');
   const blok = kilde.slice(iStart, kilde.indexOf('`;', iStart));
@@ -138,6 +140,10 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   const linje = blok.slice(iLinje, blok.indexOf('\n', iLinje));
   assert.match(linje, /background tab|React|CAPTCHA/,
     'linjen siger ikke hvad den IKKE gaelder - saa vil den blive brugt paa almindelige side-problemer');
+  assert.match(linje, /If you have no such tools/, 'linjen siger ikke hvad agenten goer, naar skrivebords-vaerktoejet mangler');
+  assert.match(linje, /claude mcp add computer -- npx -y @agent360\/computer-mcp`/, 'installationslinjen mangler eller er ikke Computer MCPs egen');
+  assert.match(linje, /Do not install it yourself/, 'linjen forbyder ikke agenten at installere selv');
+  assert.match(linje, /signed in to, never a second browser/, 'overleveringen holder ikke arbejdet i brugerens egen Chrome');
   assert.match(linje, /If you also have|if you also have/,
     'henvisningen er ikke betinget af at agenten faktisk HAR skrivebords-vaerktoejer');
 });
