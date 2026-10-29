@@ -9,6 +9,8 @@
 // ── Session Tab Management ─────────────────────────────────────────────────
 
 const SESSION_COLORS = ['blue', 'green', 'yellow', 'red', 'pink', 'purple', 'cyan', 'orange'];
+// #91 (1.34): de farver chrome.tabGroups kender - browser_set_group_label afviser alt andet.
+const GRUPPE_FARVER = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 // Select-all modifier is platform-dependent: Cmd (meta=4) on macOS, Ctrl (2) elsewhere.
 // Get this wrong and the field isn't selected — Backspace no-ops and new text concatenates onto the old.
 const SELECT_ALL_MODS = /Mac/i.test(navigator.userAgent) ? 4 : 2;
@@ -52,8 +54,10 @@ function restoreSessions() {
           // gendannet ordret fra lageret. To sessioner kunne saa have hvert sit
           // nummer og stadig begge hedde "Claude 1" i samme farve. Og navnet er
           // praecis dét brugeren ser paa fanegruppen.
-          color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
-          label: `Claude ${nummer}`,
+          // #91 (1.34): et navn agenten selv har sat (browser_set_group_label), gendannes som det er - kun standardnavne foelger nummeret.
+          color: data.egetNavn === true && GRUPPE_FARVER.includes(data.color) ? data.color : SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
+          label: data.egetNavn === true && typeof data.label === 'string' && data.label ? data.label : `Claude ${nummer}`,
+          egetNavn: data.egetNavn === true,
           pid: typeof data.pid === 'number' ? data.pid : null,
           ...generationFraLager(data),
         });
@@ -407,6 +411,7 @@ function persistSessions() {
       groupId: session.groupId,
       color: session.color,
       label: session.label,
+      egetNavn: session.egetNavn === true,   // #91: uden maerket skriver gendannelsen navnet om til Claude N
       nummer: session.nummer ?? null,   // uden denne mister en gendannet session sin plads og kan kollidere
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
       // 1.32 (S4): uden disse kan en frigivelse fra en gammel forbindelse efter en genstart ikke kende sine egne faner
@@ -8589,6 +8594,34 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           'it a moment later, call again (wait_ms waits up to 10 s). A popup blocker can stop a tab when the click went ' +
           'through a script. earlier_new_tabs are tabs your tabs opened before that; pass one as tab_id if it is the one you meant.',
       };
+    }
+
+    case 'set_group_label': {
+      // #91 (1.34): agenten navngiver sin fanegruppe, saa brugeren kan se hvilken gruppe der hoerer til hvilken opgave. Navnet staar
+      // paa sessionen (som gruppen tegnes ud fra), og maerket egetNavn faar gendannelsen til at beholde det. Tomt navn = standard.
+      const session = getSession(port);
+      const farve = params.color == null || params.color === '' ? null : String(params.color).toLowerCase();
+      if (farve != null && !GRUPPE_FARVER.includes(farve)) {
+        return { error: 'bad-color', colors: GRUPPE_FARVER, note: 'Chrome tab groups only have these colours. Nothing was changed.' };
+      }
+      const navn = String(params.label ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 30).trim();
+      if (navn) {
+        session.label = navn;
+        session.egetNavn = true;
+        if (farve) session.color = farve;
+      } else {
+        session.label = `Claude ${session.nummer}`;
+        session.egetNavn = false;
+        session.color = farve || SESSION_COLORS[((session.nummer || 1) - 1) % SESSION_COLORS.length];
+      }
+      let anvendt = false;
+      if (session.groupId != null) {
+        try { await chrome.tabGroups.update(session.groupId, { title: session.label, color: session.color }); anvendt = true; }
+        catch { /* gruppen er vaek; naeste gruppe tegnes med navnet */ }
+      }
+      persistSessions();
+      return { ok: true, label: session.label, color: session.color, applied: anvendt,
+        ...(anvendt ? {} : { note: 'Your session has no tab group yet; the name is used when its first tab is grouped.' }) };
     }
 
     case 'switch_tab': {

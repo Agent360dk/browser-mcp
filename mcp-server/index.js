@@ -1323,6 +1323,7 @@ const INSTRUCTIONS = `You control the user's real Chrome browser via this MCP se
 - list_tabs only shows YOUR session's tabs - other Claude sessions have their own
 - switch_tab lets you jump between your tabs
 - close_tab cleans up when you're done
+- browser_set_group_label names your tab group after the task ("Invoices - March"), so the user can tell several agents' groups apart
 
 ## Authentication flows
 1. Navigate to login page
@@ -1469,6 +1470,7 @@ async function kaldVaerktoej(request, kald = { bane: standardBane }) {
       browser_get_new_tab: 'get_new_tab',
       browser_switch_tab: 'switch_tab',
       browser_close_tab: 'close_tab',
+      browser_set_group_label: 'set_group_label',
       browser_upload_file: 'upload_file',
       browser_set_cookies: 'set_cookies',
       browser_set_local_storage: 'set_local_storage',

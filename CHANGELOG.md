@@ -6,6 +6,12 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 ## 1.34.0 (not released yet)
 
+**`browser_set_group_label`: the agent names its tab group (#91).** With several agents working, every group said `Claude 1`,
+`Claude 2`, and the title was written back to `Claude N` whenever Chrome restarted the extension in the background, so a
+rename in Chrome did not last. The new tool sets the group's title, up to 30 characters, and optionally its colour; the name
+is saved and kept on restore, and an empty name gives `Claude N` back. Default names are still rebuilt from the session
+number, as since 22/8. That makes 42 tools.
+
 **`browser_get_new_tab` returns the tab your click opened (#89).** It looked up the most recent tab anywhere in Chrome, with
 no link to the agent's input. When a page opened its tab a moment after the click, the agent got an older tab with fields that
 looked like success, or "Tab no longer exists" if that older tab had closed. Now only a tab that one of the session's own tabs

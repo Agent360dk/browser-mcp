@@ -440,6 +440,18 @@ export const TOOLS = [
     },
   },
   {
+    name: 'browser_set_group_label',
+    description: 'Name your session\'s Chrome tab group (and optionally pick its colour), so the user can see which group belongs to which task - "Claude 1" says nothing when several agents are working. The name is kept when Chrome restarts the extension in the background. Up to 30 characters; an empty label gives the default "Claude N" back.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        label: { type: 'string', description: 'The group\'s title, up to 30 characters. Empty resets it to "Claude N".' },
+        color: { type: 'string', enum: ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'], description: 'Optional colour of the group.' },
+      },
+      required: ['label'],
+    },
+  },
+  {
     name: 'browser_upload_file',
     description: 'Handing a file to the page needs "Allow access to file URLs" for the Agent360 Browser MCP extension (off by default for Chrome Web Store installs); that switch also lets the extension open any local file as a page, so whether to turn it on is the user\'s call. A "Not allowed" error from the handoff is reported as file-access-off unless Chrome confirms that file access is on. Upload a file to a <input type="file"> element on the page. Uses Chrome Debugger API to set files programmatically - no dialog needed. For drag-drop zones without visible file input use browser_drop_file. If the field is empty afterwards although the page\'s change handler saw the file in it, the answer is ok with cleared_by_page: true and seen_in_field - X and Facebook empty the field after reading the file, and a page that rejects the file can do the same, so check the page before attaching again. Files must be regular files inside the working directory the MCP server runs in - folders, symlinks and hardlinks that point outside it are refused.',
     inputSchema: {
