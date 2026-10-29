@@ -8556,7 +8556,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (params.tab_id != null) {
         const e = nyeFaner.get(params.tab_id);
         if (!e || e.session !== session) {
-          return { error: 'not-a-new-tab-of-yours', note: 'Only a tab that one of your own tabs opened, and that has not been ' +
+          return { error: 'not-a-new-tab-of-yours', note: 'Only a tab that one of your own tabs opened, that is still open and has not been ' +
             'handed to you yet, can be chosen here. A tab the user opened is theirs. Use browser_navigate(new_tab: true) to open one.' };
         }
         const svar = await giv(params.tab_id);
