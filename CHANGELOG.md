@@ -190,7 +190,7 @@ the click); target the segment button itself. Other versions of these libraries 
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
 | `error: "no-answer"`, `sent: "unknown"` | `browser_execute_script`, `browser_select_frame` | No answer reached the server within 45 seconds. The code MAY have run; it is not repeated automatically, so call again only if it is safe to run twice |
 
-## 1.31.0 (not released yet)
+## 1.31.0 (2026-10-28)
 
 **Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
 servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the
