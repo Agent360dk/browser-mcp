@@ -4,7 +4,7 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
-## 1.31.0 (2026-10-28)
+## 1.31.0 (2026-10-29)
 
 **Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
 servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the
