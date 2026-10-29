@@ -53,7 +53,7 @@ invisible reCAPTCHA - and likewise an invisible hCaptcha or a hidden Turnstile -
 connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked
 install has its own id. The server's install advice names its own version, so a pinned version stays pinned. The `@modelcontextprotocol/sdk` floor is raised to 1.32.1 (supersedes #80).
 
-## 1.32.0 (not released yet)
+### Also in 1.33.0: the 1.32 work (prepared as 1.32.0, never released on its own)
 
 **Partitions for parallel agents (#20).** Thanks to [@ugbodagadave](https://github.com/ugbodagadave), whose PR #20 had the
 idea and the first version: an extra listener per partition, and a `partition` parameter on the browser tools. It is built
