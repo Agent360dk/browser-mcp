@@ -65,13 +65,20 @@ test('en fane i baggrunden: udloeber musebevaegelsen FOER trykket, klikkes der v
 
 // MAALT 11/9 i sign-off (Astra og Fable, begge reproduceret): knappens handler kraever et aegte klik (isTrusted), eller
 // den lytter kun paa pointerdown. Script-klikket gjorde intet, og svaret var ok:true. 1.29.0 svarede med en fejl.
-test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen succes, men "kan vaere landet"', { timeout: 20000 }, async () => {
+// MEASURED 2026-10-22 (developer.apple.com expedite form; demo/click-background-submit): the opposite case looks the same
+// at the moment of the click - the script click DID submit the form, and the page showed its spinner a moment later.
+// This test then pinned ok:false, landed:false and an error saying "try again"; clicking again sent the form twice.
+// The fingerprint cannot tell the two cases apart, so the answer is the third outcome, as in the debugger-blocked
+// branch: not a bare success (the 11/9 concern), not a failure that asks to be repeated.
+test('en baggrundsfane hvor siden ikke reagerede paa script-klikket: ingen bar succes og ingen fejl, men "kan vaere landet"', { timeout: 20000 }, async () => {
   const { u, scriptKlik } = baggrundsSele('mouseMoved', { landed: false });
   const svar = await u.hent('dispatch')(9876, 'click', { selector: '#knap' }).catch((e) => ({ kastet: e.message }));
   assert.equal(scriptKlik(), 1);
-  assert.equal(svar.ok, false, `et script-klik uden virkning blev meldt som succes: ${JSON.stringify(svar)}`);
-  assert.equal(svar.landed, false);
+  assert.notEqual(svar.landed, true, `an unproven script click claimed to have landed: ${JSON.stringify(svar)}`);
+  assert.equal(svar.landed, null, 'no change at the moment of the click is no proof either way');
   assert.equal(svar.maybe_landed, true, 'klikket blev sendt - kalderen skal vide at det ikke maa gentages blindt');
+  assert.notEqual(svar.ok, false, 'ok:false makes the agent click again - a form without double-submit protection is sent twice');
+  assert.equal(svar.error, undefined, 'an error text saying "try again" invites the second click');
   assert.match(JSON.stringify(svar), /switch_tab/, 'svaret skal give agenten en vej ud');
 });
 
