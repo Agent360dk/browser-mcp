@@ -18,9 +18,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const kilde = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
+
+// 29/10: instruktionerne staar i en skabelonstreng; en uescapet backtick i teksten lukker den, og serveren starter ikke.
+// Proeverne herunder laeser kilden som tekst og ser det ikke - derfor skal filen ogsaa kunne indlaeses som kode.
+test('serverens kilde kan indlaeses som kode (instruktionsteksten lukker ikke sin skabelonstreng)', () => {
+  const r = spawnSync(process.execPath, ['--check', join(rod, 'mcp-server/index.js')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `node --check fejlede: ${(r.stderr || '').split('\n').slice(0, 6).join(' | ')}`);
+});
 
 // node_modules ligger i mcp-server/, ikke i roden, saa et bart pakkenavn ikke kan
 // resolves herfra. Vi importerer den SAMME SDK som serveren selv bruger.
@@ -141,7 +149,9 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   assert.match(linje, /background tab|React|CAPTCHA/,
     'linjen siger ikke hvad den IKKE gaelder - saa vil den blive brugt paa almindelige side-problemer');
   assert.match(linje, /If you have no such tools/, 'linjen siger ikke hvad agenten goer, naar skrivebords-vaerktoejet mangler');
-  assert.match(linje, /claude mcp add computer -- npx -y @agent360\/computer-mcp`/, 'installationslinjen mangler eller er ikke Computer MCPs egen');
+  assert.match(linje, /claude mcp add computer -- npx -y @agent360\/computer-mcp\\`/, 'installationslinjen mangler eller er ikke Computer MCPs egen');
+  // 29/10: linjen stod foerst med uescapede backticks og lukkede skabelonstrengen - serveren startede ikke, og denne
+  // proeve (der laeser kilden som tekst) saa det ikke. Derfor ogsaa: instruktionen skal kunne indlaeses som kode.
   assert.match(linje, /Do not install it yourself/, 'linjen forbyder ikke agenten at installere selv');
   assert.match(linje, /signed in to, never a second browser/, 'overleveringen holder ikke arbejdet i brugerens egen Chrome');
   assert.match(linje, /If you also have|if you also have/,
