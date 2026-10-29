@@ -6,7 +6,7 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 ## 1.33.0 (not released yet)
 
-Most of this release answers a private report (thank you), checked item by item and reviewed in several rounds.
+Most of the 1.33 work in this first part answers a private report (thank you), checked item by item and reviewed in several rounds. The 1.32 work, never released on its own, follows below.
 
 **No call guesses another tab.** When the session's active tab was its own blank `about:blank`, a call skipped it and
 silently used another of the session's tabs - `browser_navigate` then loaded the address into a page the user was working
@@ -190,7 +190,7 @@ the click); target the segment button itself. Other versions of these libraries 
 | `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
 | `error: "no-answer"`, `sent: "unknown"` | `browser_execute_script`, `browser_select_frame` | No answer reached the server within 45 seconds. The code MAY have run; it is not repeated automatically, so call again only if it is safe to run twice |
 
-## 1.31.0 (2026-10-28)
+## 1.31.0 (2026-10-29)
 
 **Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
 servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the

@@ -158,7 +158,7 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox, click reCAPTCHA grid cells it chooses, or ask you to solve it with `browser_ask_user`, one step per call. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - a card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
-| **Parallel agents** | `browser_partition` - from 1.32, gives a parallel agent its own tab group and active tab; every tool then takes `partition` |
+| **Parallel agents** | `browser_partition` - from 1.33, gives a parallel agent its own tab group and active tab; every tool then takes `partition` |
 
 `browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. Any other provider answers `Unknown provider`, and the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 

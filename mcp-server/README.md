@@ -247,7 +247,7 @@ All four are optional. None is needed for normal use.
 |------|-------------|
 | `browser_click` | Click via CSS or text selector (`text=Submit`, `button:text(Next)`); a text selector looks in an open modal dialog first, and it answers `covered` instead of clicking when the mouse would not reach the target |
 | `browser_fill` | Fill input fields (works on CSP-strict sites); with a text selector, nothing is typed (`covered`) when the mouse would not reach the field |
-| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). From 1.32 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea; Space types a space, presses a focused button and ticks a checkbox (before, neither key did any of these). Key codes follow the US layout ("," is 188 `Comma`); shifted characters such as `<` are sent with Shift, capital letters without. With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
+| `browser_press_key` | Keyboard events (Enter, Tab, Escape, modifiers). From 1.33 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea; Space types a space, presses a focused button and ticks a checkbox (before, neither key did any of these). Key codes follow the US layout ("," is 188 `Comma`); shifted characters such as `<` are sent with Shift, capital letters without. With ctrl or meta: a, c, x, v, z, y are sent as Chrome's select all, copy, cut, paste, undo, redo commands |
 | `browser_scroll` | Scroll to element or by pixels |
 | `browser_wait` | Wait for an element or text to be visible: a match that is hidden, closed, clipped or off the page does not count (`on_page_but_hidden`); `state: "attached"` waits for it to exist |
 | `browser_hover` | Hover for tooltips/dropdowns; answers `covered` when the mouse would not reach it |
@@ -303,12 +303,12 @@ All four are optional. None is needed for normal use.
 | Tool | Description |
 |------|-------------|
 | `browser_provide_feedback` | Self-check + report in one call. Compares the connected extension against this server and detects **more than one Browser MCP extension connected at once**, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict (`current` / `outdated` / `conflict` / `disconnected` / `idle` / `unknown`), concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. Your agent calls it on its own whenever a tool blocks it |
-| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the popup, the installation id and the version. From 1.32 it also lists the chat's partitions |
+| `browser_about` | Project info + pre-filled links to submit a wish, use-case, or bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the popup, the installation id and the version. From 1.33 it also lists the chat's partitions |
 
 ### Parallel agents
 | Tool | Description |
 |------|-------------|
-| `browser_partition` | From 1.32: `action: "new"` gives a parallel agent its own partition (own port, tab group and active tab) and answers an id like `p1`; `action: "close"` closes its tabs and frees its port. Every tool that reaches the browser takes `partition` - see [Parallel agents in one chat](#parallel-agents-in-one-chat) |
+| `browser_partition` | From 1.33: `action: "new"` gives a parallel agent its own partition (own port, tab group and active tab) and answers an id like `p1`; `action: "close"` closes its tabs and frees its port. Every tool that reaches the browser takes `partition` - see [Parallel agents in one chat](#parallel-agents-in-one-chat) |
 
 ## Multi-Session Support
 
@@ -360,7 +360,7 @@ is not signed, and another program on your machine can claim any name (see Secur
 
 ### Parallel agents in one chat
 
-From 1.32 (the idea and the first version are [@ugbodagadave](https://github.com/ugbodagadave)'s, [#20](https://github.com/Agent360dk/browser-mcp/pull/20)).
+From 1.33 (the idea and the first version are [@ugbodagadave](https://github.com/ugbodagadave)'s, [#20](https://github.com/Agent360dk/browser-mcp/pull/20)).
 Agents that share one chat - a coordinator and its subagents - also share that chat's tab group and active tab, so they take
 over each other's tabs. `browser_partition` with `action: "new"` gives each of them its own partition: the server opens one
 more port in the same range, the extension connects to it like to any other, and the partition gets its own tab group and
@@ -377,7 +377,7 @@ active tab. It answers an id like `p1`, and that agent passes `partition: "p1"` 
 
 A partition's commands carry no process id, so the extension never hands one partition's tabs to another. `browser_about`
 lists the partitions. The extension keeps each partition's tabs apart from a new connection on the same port: a late clean-up
-for a connection that has gone closes only that connection's tabs (1.32).
+for a connection that has gone closes only that connection's tabs (1.33).
 
 ### Running the agent on another machine
 
