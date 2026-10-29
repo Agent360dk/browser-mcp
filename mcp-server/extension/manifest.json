@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Agent360 Browser MCP",
-  "version": "1.30.3",
+  "version": "1.31.0",
   "description": "Your agent works in the Chrome you're signed into and can ask you for a 2FA code or a decision. 40 tools, MCP clients, MIT.",
   "permissions": [
     "tabs",
