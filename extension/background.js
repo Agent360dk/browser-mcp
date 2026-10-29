@@ -4690,7 +4690,15 @@ const OAUTH_DOMAINS = ['accounts.google.com', 'login.microsoftonline.com', 'gith
 // En ny fane hoerer til en session naar den er aabnet FRA en af dens faner (klik paa et
 // link med target=_blank, en OAuth-popup). Det staar i openerTabId. Er der ingen opener,
 // var det brugeren, og saa er den ikke vores.
-let lastCreatedTabId = null;
+// 1.34 (#89): `lastCreatedTabId` var den SENESTE fane i hele Chrome, uden forbindelse til agentens klik. Kom sidens fane et oejeblik
+// efter klikket, fik agenten en gammel fane (med ok-lignende felter) eller «Tab no longer exists». Nu huskes nye faner PR. SESSION
+// med det input-nummer, sessionen havde, da fanen blev aabnet; get_new_tab svarer kun med en fane fra sessionens egne faner siden
+// dens sidste input, venter ellers kort og siger no-new-tab-yet. Brugerens og andre sessioners faner kommer aldrig med.
+const nyeFaner = new Map();   // fane-id -> { port, input }
+const inputNr = new Map();    // port -> antal input-kald fra sessionen
+const INPUT_METODER = new Set(['click', 'click_xy', 'double_click', 'press_key', 'execute_script', 'select_option']);
+function erInput(metode) { return INPUT_METODER.has(metode); }
+function noterInput(port) { inputNr.set(port, (inputNr.get(port) || 0) + 1); }
 // Aabneren huskes PR. FANE. En global "seneste aabner" blev 10/9 (Astra, reproduceret) laant af
 // den forkerte fane, naar to faner blev aabnet mens get_new_tab ventede paa tabs.get.
 const openerForFane = new Map();
@@ -4701,7 +4709,6 @@ const openerForFane = new Map();
 const ejerForFane = new Map();
 
 chrome.tabs.onCreated.addListener(async (tab) => {
-  lastCreatedTabId = tab.id;
   openerForFane.set(tab.id, tab.openerTabId ?? null);
   if (openerForFane.size > 500) openerForFane.delete(openerForFane.keys().next().value);
   let ejer = null;
@@ -4710,6 +4717,10 @@ chrome.tabs.onCreated.addListener(async (tab) => {
   }
   ejerForFane.set(tab.id, ejer);
   if (ejerForFane.size > 500) ejerForFane.delete(ejerForFane.keys().next().value);
+  if (ejer != null) {
+    nyeFaner.set(tab.id, { port: ejer, input: inputNr.get(ejer) || 0 });
+    if (nyeFaner.size > 500) nyeFaner.delete(nyeFaner.keys().next().value);
+  }
 
   // Auto-claim OAuth popups for the session that opened them
   if (tab.pendingUrl || tab.url) {
@@ -4730,6 +4741,9 @@ chrome.tabs.onCreated.addListener(async (tab) => {
     }
   }
 });
+
+// 1.34 (#89): en lukket ny fane er ikke laengere et svar.
+chrome.tabs.onRemoved.addListener((tabId) => { nyeFaner.delete(tabId); });
 
 // ── Deep Shadow DOM Query ────────────────────────────────────────────────────
 // querySelectorDeep: finds elements inside shadow DOMs (Shopify, Salesforce, etc.)
@@ -6148,6 +6162,7 @@ async function findFrameKontekst(tabId, frames, valgt, slut = null) {
 }
 
 async function dispatch(port, method, params, modtaget = Date.now(), vagt = null) {
+  if (erInput(method)) noterInput(port);   // 1.34 (#89): foer kaldet koerer - en fane, det aabner, er «ny» for get_new_tab
   switch (method) {
     case 'navigate': {
       const session = getSession(port);
@@ -8532,31 +8547,52 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
     }
 
     case 'get_new_tab': {
-      if (!lastCreatedTabId) return { error: 'No new tab detected' };
-      try {
-        const tab = await chrome.tabs.get(lastCreatedTabId);
-        // Kun faner der er aabnet FRA en af sessionens egne faner. Uden det her overtog
-        // agenten enhver fane brugeren selv havde aabnet — se kommentaren ved onCreated.
-        const session = getSession(port);
-        const opener = tab.openerTabId ?? openerForFane.get(tab.id) ?? null;
-        // Aabneren i sessionen NU, eller sessionen der ejede aabneren da fanen blev oprettet
-        // (aabneren kan vaere lukket siden - se ejerForFane ved onCreated).
-        const voresNu = opener != null && session.tabIds.has(opener);
-        const voresDaDenBlevAabnet = opener != null && ejerForFane.get(tab.id) === port;
-        if (!voresNu && !voresDaDenBlevAabnet) {
-          return {
-            error: 'not-ours',
-            hint: 'The most recent new tab was not opened from one of your own tabs, so it ' +
-                  'belongs to the user. Use browser_navigate(new_tab: true) if you need to ' +
-                  'open a new tab.',
-            tab_id: tab.id,
-          };
-        }
-        await addTabToSession(port, tab.id);
+      // 1.34 (#89): se nyeFaner ved onCreated. Kun faner aabnet fra sessionens egne faner, og - uden tab_id - kun siden dens sidste
+      // input. Brugerens faner og andre sessioners kommer aldrig i betragtning, saa der er intet not-ours-svar med et fremmed fane-id.
+      const vent = Math.min(Math.max(Number(params.wait_ms ?? 3000) || 0, 0), 10000);
+      const giv = async (id) => {
+        let tab;
+        try { tab = await chrome.tabs.get(id); } catch { nyeFaner.delete(id); return null; }
+        await addTabToSession(port, id);
+        nyeFaner.delete(id);
         return { id: tab.id, url: tab.url, title: tab.title };
-      } catch {
-        return { error: 'Tab no longer exists' };
+      };
+      if (params.tab_id != null) {
+        const e = nyeFaner.get(params.tab_id);
+        if (!e || e.port !== port) {
+          return { error: 'not-a-new-tab-of-yours', note: 'Only a tab that one of your own tabs opened, and that has not been ' +
+            'handed to you yet, can be chosen here. A tab the user opened is theirs. Use browser_navigate(new_tab: true) to open one.' };
+        }
+        const svar = await giv(params.tab_id);
+        if (svar) return svar;
       }
+      const sidenInput = () => {
+        const nr = inputNr.get(port) || 0;
+        let id = null;
+        for (const [t, e] of nyeFaner) if (e.port === port && e.input === nr) id = t;   // den nyeste
+        return id;
+      };
+      const slut = Date.now() + vent;
+      if (params.tab_id == null) {
+        for (;;) {
+          const id = sidenInput();
+          if (id != null) { const svar = await giv(id); if (svar) return svar; continue; }
+          if (Date.now() >= slut) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      }
+      const tidligere = [];
+      for (const [t, e] of [...nyeFaner]) {
+        if (e.port !== port) continue;
+        try { const tab = await chrome.tabs.get(t); tidligere.push({ id: tab.id, url: tab.url, title: tab.title }); }
+        catch { nyeFaner.delete(t); }
+      }
+      return {
+        error: 'no-new-tab-yet', waited_ms: params.tab_id == null ? vent : 0, earlier_new_tabs: tidligere.slice(-5),
+        note: 'No tab has opened from your tabs since your last click, key press, script or list choice. If the page opens ' +
+          'it a moment later, call again (wait_ms waits up to 10 s). A popup blocker can stop a tab when the click went ' +
+          'through a script. earlier_new_tabs are tabs your tabs opened before that; pass one as tab_id if it is the one you meant.',
+      };
     }
 
     case 'switch_tab': {

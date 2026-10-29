@@ -25,18 +25,17 @@ function sele() {
   return { u, styr };
 }
 
-test('en agent-fane der aabnes MENS get_new_tab venter, giver ikke brugerens fane dens aabner', async () => {
-  const { u, styr } = sele();
+// 1.34 (#89): get_new_tab slaar ikke laengere den seneste fane i hele Chrome op, saa kaploebet om tabs.get(99) findes ikke.
+// Det der skal holde, er det samme: brugerens fane kommer aldrig ind, og agentens egen fane, der aabnes mens kaldet venter, er svaret.
+test('en agent-fane der aabnes MENS get_new_tab venter, er svaret - brugerens fane kommer aldrig ind', async () => {
+  const { u } = sele();
   await u.fyr('tabs.onCreated', { id: 99, url: 'https://private.example', windowId: 1 });
-  styr.armeret = true;
-  const p = u.hent('dispatch')(9876, 'get_new_tab', {});
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(styr.ventende.length, 1, 'testen naaede ikke ind i kaploebet - den tester ikke det den paastaar');
+  const p = u.hent('dispatch')(9876, 'get_new_tab', { wait_ms: 2000 });
+  await new Promise((r) => setTimeout(r, 150));
   await u.fyr('tabs.onCreated', { id: 100, url: 'https://vores.example', windowId: 1, openerTabId: 1 });
-  styr.ventende.forEach((f) => f());
   const svar = await p;
-  assert.equal(svar.error, 'not-ours', `brugerens fane blev adopteret: ${JSON.stringify(svar)}`);
-  assert.ok(!u.hent('sessions').get(9876).tabIds.has(99));
+  assert.equal(svar.id, 100, `agentens egen fane blev ikke svaret: ${JSON.stringify(svar)}`);
+  assert.ok(!u.hent('sessions').get(9876).tabIds.has(99), 'brugerens fane blev adopteret');
 });
 
 // MAALT 11/9 af Astra (R5 F9), reproduceret: sessionen har fanerne 1 og 3. Fane 1 aabner
@@ -67,8 +66,9 @@ test('en popup fra en ANDEN sessions lukkede fane bliver ikke vores', async () =
   const u = seleMedToFaner();
   await u.fyr('tabs.onCreated', { id: 5, url: 'https://fane5.example', windowId: 1, openerTabId: 7 });
   u.hent('sessions').get(9877).tabIds.delete(7);
-  const svar = await u.hent('dispatch')(9876, 'get_new_tab', {});
-  assert.equal(svar.error, 'not-ours', `en anden sessions popup blev adopteret: ${JSON.stringify(svar)}`);
+  const svar = await u.hent('dispatch')(9876, 'get_new_tab', { wait_ms: 0 });
+  assert.equal(svar.error, 'no-new-tab-yet', `en anden sessions popup blev adopteret: ${JSON.stringify(svar)}`);
+  assert.ok(!u.hent('sessions').get(9876).tabIds.has(5));
 });
 
 test('aabneren huskes fra onCreated, ogsaa naar tabs.get ikke oplyser den', async () => {
