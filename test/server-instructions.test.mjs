@@ -154,6 +154,13 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   // proeve (der laeser kilden som tekst) saa det ikke. Derfor ogsaa: instruktionen skal kunne indlaeses som kode.
   assert.match(linje, /Do not install it yourself/, 'linjen forbyder ikke agenten at installere selv');
   assert.match(linje, /signed in to, never a second browser/, 'overleveringen holder ikke arbejdet i brugerens egen Chrome');
+  // P183: Computer MCP maa kun naevnes i den ene afgraensede linje - ellers kan henvisningen fyre paa almindelige side-problemer.
+  const iInstr = kilde.indexOf('const INSTRUCTIONS = `');
+  const instr = kilde.slice(iInstr, kilde.indexOf('`;', iInstr));
+  const navn = /Computer MCP|computer-mcp|computermcp/g;
+  assert.equal((instr.match(navn) || []).length, (linje.match(navn) || []).length,
+    'Computer MCP naevnes uden for den afgraensede linje - saa kan henvisningen fyre paa almindelige side-problemer');
+  assert.match(linje, /file picker once it has opened as an OS dialog/, 'filvaelgeren er ikke afgraenset til OS-dialogen');
   assert.match(linje, /If you also have|if you also have/,
     'henvisningen er ikke betinget af at agenten faktisk HAR skrivebords-vaerktoejer');
 });
