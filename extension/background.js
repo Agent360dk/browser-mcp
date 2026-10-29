@@ -2749,6 +2749,20 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
     const all = collectAll(document, []);
     const tag = wantTag ? String(wantTag).toUpperCase() : null;
     const tagOk = (el) => !tag || el.tagName === tag;
+    // MEASURED 2026-10-22 (demo/text-selector-script): the source of a <script> - or <style>, <noscript>, <template> - is
+    // no text on the page, but textContent includes it. A <script> that mentioned a label was picked, and the answer was
+    // "Element found but not visible (0x0)" with tag SCRIPT, when the honest answer was "not found". Such an element is
+    // no candidate, and its source does not count in the text of the elements around it either.
+    const IKKE_TEKST = 'script,style,noscript,template';
+    const tekstAf = (el) => {
+      if (!el.querySelector || !el.querySelector(IKKE_TEKST)) return el.textContent || '';
+      let ud = '';
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (!n.parentElement || !n.parentElement.closest(IKKE_TEKST)) ud += n.data;
+      }
+      return ud;
+    };
     // Map a matched element to the ACTIONABLE control: itself if clickable, else the
     // nearest clickable ancestor (only if its own text isn't much larger than the match,
     // so we don't grab a whole toolbar), else a clickable descendant.
@@ -2760,7 +2774,7 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       // Slet-knap - og slettede med ok:true. Et barn vaelges nu kun, naar teksten staar i det; ellers er maalet elementet
       // med teksten, og en handling inde i det er en daekning.
       const desc = el.querySelector && el.querySelector(CLICKABLE);
-      if (desc && (desc.textContent || '').includes(tekst)) return desc;
+      if (desc && tekstAf(desc).includes(tekst)) return desc;
       return el;
     }
     // #70 (arasmileska; Search Console og Facebook har skjulte kopier af knapper): `text=Request indexing` stoppede ved en
@@ -2772,7 +2786,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
     };
     function pick(kandidater, test, kunSynlige) {
-      const matches = kandidater.filter((el) => tagOk(el) && test((el.textContent || '').trim()));
+      const matches = kandidater.filter((el) => tagOk(el) && !(el.matches && el.matches(IKKE_TEKST)) &&
+        test(tekstAf(el).trim()));
       if (!matches.length) return null;
       // Prefer the INNERMOST matches (an element that is not an ancestor of another match).
       const inner = matches.filter((el) => !matches.some((o) => o !== el && el.contains && el.contains(o)));
