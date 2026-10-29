@@ -37,6 +37,38 @@ class Node {
     this.textContent = '';
     this.value = '';
     this.id = '';
+    this.attrs = new Map();
+    this.popover = null;
+  }
+  get parentNode() { return this.parent; }
+  // Attributes, inert and the top layer: what a page's modal does to the rest of the page (2026-10-22).
+  setAttribute(navn, v) { this.attrs.set(navn, String(v)); if (this.isConnected) mutation(); }
+  getAttribute(navn) { return this.attrs.has(navn) ? this.attrs.get(navn) : null; }
+  hasAttribute(navn) { return this.attrs.has(navn); }
+  removeAttribute(navn) { if (this.attrs.delete(navn) && this.isConnected) mutation(); }
+  get inert() { return this.attrs.has('inert'); }
+  set inert(v) { if (v) this.setAttribute('inert', ''); else this.removeAttribute('inert'); }
+  showPopover() {
+    if (!this.popover || !this.isConnected) throw new Error('InvalidStateError');
+    const lag = this.dom.document.topLayer;
+    if (!lag.includes(this)) lag.push(this);
+  }
+  hidePopover() { this.forlad(); }
+  forlad() {
+    const lag = this.dom.document.topLayer;
+    if (lag.includes(this)) lag.splice(lag.indexOf(this), 1);
+  }
+  showModal() {
+    this.modal = true;
+    this.setAttribute('open', '');
+    this.dom.document.topLayer.push(this);
+    this.dom.fyrVindue('toggle', this);
+  }
+  close() {
+    this.modal = false;
+    this.removeAttribute('open');
+    this.forlad();
+    this.dom.fyrVindue('close', this);
   }
   get isConnected() {
     let n = this;
@@ -59,6 +91,8 @@ class Node {
   remove() {
     if (!this.parent) return;
     const forbundet = this.isConnected;
+    // A node leaving the document leaves the top layer too - a popover is hidden when it is removed.
+    for (const n of [this, ...this.alle()]) n.forlad?.();
     this.parent.children = this.parent.children.filter((c) => c !== this);
     this.parent = null;
     if (forbundet) mutation();
@@ -75,6 +109,9 @@ class Node {
     if (!this.lyttere.has(type)) this.lyttere.set(type, []);
     this.lyttere.get(type).push(fn);
   }
+  removeEventListener(type, fn) {
+    this.lyttere.set(type, (this.lyttere.get(type) || []).filter((f) => f !== fn));
+  }
   /** Boblende haendelse fra dette element og op gennem shadow root til vaerten og videre. */
   fyr(type, init = {}) {
     const sti = [];
@@ -89,7 +126,7 @@ class Node {
     return e;
   }
   focus() { this.dom.document.activeElement = this; }
-  matches() { return false; }
+  matches(sel) { return sel === ':popover-open' ? this.dom.document.topLayer.includes(this) : false; }
   getBoundingClientRect() { return { left: 16, top: 600, width: 320, height: 160 }; }
   get offsetWidth() { return 320; }
   get offsetHeight() { return 160; }
@@ -125,6 +162,12 @@ export function lavDom({ origin = 'https://bank.example', href = origin + '/side
     activeElement: body,
     createElement: lav,
     getElementById: (id) => html.alle().find((n) => n.id === id && !erISkygge(n)) || null,
+    // Only the one selector the prompt asks with. Document order, like the browser.
+    querySelectorAll: (sel) => {
+      if (sel !== 'dialog:modal') throw new Error(`the test DOM does not know ${sel}`);
+      return html.alle().filter((n) => n.tagName === 'DIALOG' && n.modal && !erISkygge(n));
+    },
+    topLayer: [],
   };
   const erISkygge = (n) => { for (let p = n.parent; p; p = p.parent) if (p.tagName === '#SHADOW-ROOT') return true; return false; };
   class MutationObserver {
@@ -134,7 +177,14 @@ export function lavDom({ origin = 'https://bank.example', href = origin + '/side
   }
   const beskeder = [];
   const chrome = { runtime: { sendMessage: (m) => { beskeder.push(JSON.parse(JSON.stringify(m))); return Promise.resolve(); } } };
-  const window = { innerWidth: 1280, innerHeight: 800 };
+  const vindueLyttere = new Map();
+  const window = {
+    innerWidth: 1280, innerHeight: 800,
+    addEventListener: (type, fn) => { if (!vindueLyttere.has(type)) vindueLyttere.set(type, []); vindueLyttere.get(type).push(fn); },
+    removeEventListener: (type, fn) => vindueLyttere.set(type, (vindueLyttere.get(type) || []).filter((f) => f !== fn)),
+  };
+  // A toggle or close event from the page reaches capture listeners on window, as in the browser.
+  dom.fyrVindue = (type, target) => { for (const fn of vindueLyttere.get(type) || []) fn({ type, target }); };
   Object.assign(dom, { document, window, chrome, MutationObserver, HTMLButtonElement, HTMLInputElement,
     beskeder, global: {}, leveringer: () => leveringer, LOEBSK, Date,
     location: { origin, href, protocol: new URL(href).protocol, host: new URL(href).host, pathname: new URL(href).pathname } });

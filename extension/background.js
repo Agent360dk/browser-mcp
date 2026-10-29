@@ -3738,7 +3738,24 @@ function renderAskPrompt(spec, replay) {
   const host = document.createElement('div');
   host.id = 'a360-overlay';
   host.dataset.askId = spec.askId;
-  host.style.cssText = 'all:initial';
+  // A zero-size box at the viewport's corner: the card and the dialog inside are position:fixed,
+  // so the host only has to exist. Spelled out, because as a popover (below) the browser's own
+  // [popover] style would otherwise centre it, give it a border and padding, and clip it.
+  host.style.cssText = 'all:initial;display:block;position:fixed;top:0;left:0;width:0;height:0;margin:0;padding:0;border:0;overflow:visible';
+  const hostStyle = host.style.cssText;
+  // MEASURED 2026-10-22 (login.yahoo.com, app passwords; test page in temp/ask-user-repro): the
+  // card sat on the page, but Done could not be clicked, and the call ran to its timeout. Three
+  // ways a page shuts the prompt out without touching it, all three measured in Chrome:
+  //  - a modal that marks the rest of the page inert. Yahoo's Ariakit dialog sets
+  //    element.inert = true on every <body> child that is there when it opens - the prompt
+  //    was drawn first, on DOMContentLoaded, and got it too. A click went to the backdrop.
+  //  - a native <dialog> opened with showModal(): everything outside it is inert, with no
+  //    attribute to take off.
+  //  - an element in the top layer (a popover, a modal dialog) is drawn over any z-index.
+  // So the prompt lives in the top layer itself, moves inside the page's open modal dialog (the
+  // only part of the page a modal leaves alive), and takes inert off its own host.
+  const topLayer = typeof host.showPopover === 'function';
+  if (topLayer) host.popover = 'manual';
   const root = host.attachShadow({ mode: 'closed' });
   // Keystrokes in the prompt would still bubble out of the shadow root to the
   // page's document listeners. Stop them at the host.
@@ -3749,6 +3766,10 @@ function renderAskPrompt(spec, replay) {
   style.textContent = `
     @keyframes a360-fade-in { from { opacity: 0; } to { opacity: 1; } }
     @keyframes a360-slide-up { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
+    /* MEASURED 2026-10-22: a page rule "::backdrop { background: ... }" (sites style their dialogs
+       that way) also tints the backdrop of the prompt's popover, over the whole page. An !important
+       declaration from the shadow tree beats the page's, even the page's own !important. */
+    :host::backdrop { background: transparent !important; }
   `;
   root.appendChild(style);
 
@@ -3806,9 +3827,16 @@ function renderAskPrompt(spec, replay) {
   doneBtn.style.cssText = 'flex:1;padding:10px;background:#3b82f6;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500';
   let closed = false;
   let observer = null;
+  let guard = null;
+  let onTopLayerChange = null;
   const close = () => {
     closed = true;
     if (observer) observer.disconnect();
+    if (guard) guard.disconnect();
+    if (onTopLayerChange) {
+      window.removeEventListener('toggle', onTopLayerChange, true);
+      window.removeEventListener('close', onTopLayerChange, true);
+    }
     host.remove();
     reg.delete(spec.askId);
   };
@@ -3831,7 +3859,54 @@ function renderAskPrompt(spec, replay) {
   btnRow.appendChild(skipBtn);
   card.appendChild(btnRow);
   card.addEventListener('keydown', (e) => { if (e.isTrusted && e.key === 'Enter') answer('done'); });
-  (document.body || document.documentElement).appendChild(host);
+  // The last modal dialog the page has open, in document order. Nested modals are nearly always
+  // opened later and placed later; when they are not, the prompt lands in one that is blocked.
+  const blockingModal = () => {
+    const open = document.querySelectorAll('dialog:modal');
+    return open.length ? open[open.length - 1] : null;
+  };
+  // Showing the popover again puts it last in the top layer, above whatever the page opened since.
+  // Hiding it moves focus out of a field the user is typing in, so put focus back.
+  const raise = () => {
+    if (!topLayer || closed || !host.isConnected) return;
+    const typing = root.activeElement;
+    try {
+      if (host.matches(':popover-open')) host.hidePopover();
+      host.showPopover();
+    } catch {}
+    if (typing && typing.isConnected && root.activeElement !== typing) typing.focus();
+  };
+  const mount = () => {
+    const parent = blockingModal() || document.body || document.documentElement;
+    if (host.parentNode !== parent) parent.appendChild(host);
+    raise();
+  };
+  mount();
+  // The page opened or closed a dialog or a popover. Our own toggles (raise) are not news.
+  onTopLayerChange = (e) => { if (!closed && e.target !== host) mount(); };
+  window.addEventListener('toggle', onTopLayerChange, true);
+  window.addEventListener('close', onTopLayerChange, true);
+  // Take back what a modal does to the rest of the page: inert, and - where inert is missing -
+  // aria-hidden and a style with pointer-events:none. A page that puts it back every time (or a
+  // second script fighting this one) would make the two loop; after 20 in 2 s the prompt gives
+  // up the same way as when the page keeps removing it.
+  let unblocks = [];
+  guard = new MutationObserver(() => {
+    if (closed) return;
+    if (!host.inert && !host.hasAttribute('aria-hidden') && host.style.cssText === hostStyle) return;
+    const nu = Date.now();
+    unblocks = unblocks.filter((t) => nu - t < 2000);
+    unblocks.push(nu);
+    if (unblocks.length > 20) {
+      close();
+      send({ type: 'ask_user_lost' });
+      return;
+    }
+    host.inert = false;
+    host.removeAttribute('aria-hidden');
+    host.style.cssText = hostStyle;
+  });
+  guard.observe(host, { attributes: true, attributeFilter: ['inert', 'aria-hidden', 'style'] });
   // MEASURED 2026-10-08: Chrome's JSON viewer rebuilds <body> by script after
   // DOMContentLoaded, and the prompt went with it - the form had posted to a JSON endpoint.
   // Pages that re-render their whole body do the same. Put the prompt back until it is
@@ -3841,8 +3916,13 @@ function renderAskPrompt(spec, replay) {
   // life of the prompt also stopped a page that only rewrites its body every 300 ms. After the
   // 21st put-back within 2 s the prompt stays gone, and the background is told.
   let reinserts = [];
-  observer = new MutationObserver(() => {
-    if (closed || host.isConnected) return;
+  observer = new MutationObserver((records) => {
+    if (closed) return;
+    if (host.isConnected) {
+      // A dialog's open attribute changed. Chrome before 132 fires no toggle event for a dialog.
+      if (records.some((r) => r.type === 'attributes')) mount();
+      return;
+    }
     const nu = Date.now();
     reinserts = reinserts.filter((t) => nu - t < 2000);
     reinserts.push(nu);
@@ -3851,9 +3931,9 @@ function renderAskPrompt(spec, replay) {
       send({ type: 'ask_user_lost' });
       return;
     }
-    (document.body || document.documentElement).appendChild(host);
+    mount();
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['open'] });
   if (Number.isFinite(spec.deadline)) setTimeout(close, Math.max(0, spec.deadline - Date.now()));
 
   if (!spec.hasFields) {
