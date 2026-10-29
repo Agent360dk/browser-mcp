@@ -267,7 +267,7 @@ All four are optional. None is needed for normal use.
 | `browser_list_tabs` | List session's tabs only |
 | `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
 | `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open; a tab Chrome does not close within 4 s (a "Leave site?" prompt) answers `tab-not-closed` |
-| `browser_get_new_tab` | Get the tab your last click opened (OAuth popups, target=_blank) - waits briefly, never a tab the user opened |
+| `browser_get_new_tab` | Get the tab one of your tabs opened since your last click, key press, script or list choice (OAuth popups, target=_blank) - waits briefly; the user's own new tabs are never returned |
 | `browser_list_frames` | List iframes on page |
 | `browser_select_frame` | Run JavaScript in a specific iframe, also one from another site, through the Chrome debugger |
 

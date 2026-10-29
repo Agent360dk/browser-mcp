@@ -1367,7 +1367,7 @@ browser_solve_captcha runs one action per call; it does not solve a CAPTCHA on i
 For image grid challenges: cells are 0-indexed, left-to-right, top-to-bottom. A 3x3 grid has cells 0-8. A 4x4 grid has cells 0-15. Pass grid=3 or grid=4 to say which you see; without it, click_grid reads the grid as 4x4 only when an index is 9 or higher.
 
 ## OAuth popups
-- A popup or new tab that one of your session's tabs opens (an OAuth login, a target=_blank link) belongs to your session: browser_get_new_tab finds it (the tab opened since your last click, key press or script; it waits up to wait_ms and answers no-new-tab-yet if none came), and browser_switch_tab makes it your active tab
+- A popup or new tab that one of your session's tabs opens (an OAuth login, a target=_blank link) belongs to your session: browser_get_new_tab finds it (the tab opened since your last click, key press, script or list choice; it waits up to wait_ms and answers no-new-tab-yet if none came), and browser_switch_tab makes it your active tab
 - When it closes itself after the login, your session has no active tab: call browser_switch_tab back to the tab you came from
 
 ## Shadow DOM (Shopify, Salesforce, etc.)

@@ -95,11 +95,11 @@ test('tab_id vaelger en tidligere ny fane fra sessionen - men aldrig brugerens e
   assert.equal(igen.earlier_new_tabs.length, 0, 'en fane der er givet til agenten, staar stadig som ny');
 });
 
-test('kun klik, taster, script og valg i en liste taeller som input - ikke at laese siden', async () => {
+test('kun klik, taster, script, valg i en liste og skift af ramme taeller som input - ikke at laese siden', async () => {
   const u = sele();
   await nyFane(u, 10, 1);
   for (const m of ['get_page_content', 'screenshot', 'list_tabs', 'hover', 'fill', 'get_new_tab']) assert.equal(u.hent('erInput')(m), false, m);
-  for (const m of ['click', 'click_xy', 'double_click', 'press_key', 'execute_script', 'select_option']) assert.equal(u.hent('erInput')(m), true, m);
+  for (const m of ['click', 'click_xy', 'double_click', 'press_key', 'execute_script', 'select_option', 'select_frame', 'set_combobox']) assert.equal(u.hent('erInput')(m), true, m);
   const r = await hent(u);
   assert.equal(r.id, 10, 'en fane aabnet uden input siden (fx af siden selv efter navigate) blev ikke svaret');
 });

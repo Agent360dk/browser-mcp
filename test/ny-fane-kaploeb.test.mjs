@@ -1,6 +1,9 @@
 /**
  * get_new_tab maa ikke tage brugerens fane, heller ikke naar to faner aabnes naesten samtidig.
  *
+ * 1.34 (#89): get_new_tab slaar ikke laengere den seneste fane i hele Chrome op, saa kaploebet nedenfor (10/9) kan ikke ske mere.
+ * Prøverne staar, fordi det de vogter, stadig skal holde: brugerens fane kommer aldrig ind.
+ *
  * MAALT 10/9 af Astra (anden runde), reproduceret: aabneren blev gemt i EN global variabel for
  * "den seneste nye fane". Aabnede brugeren fane 99 (ingen aabner), og agenten fik fane 100 fra sin
  * egen fane mens get_new_tab ventede paa tabs.get(99), blev 100's aabner brugt som 99's - og
@@ -11,18 +14,13 @@ import assert from 'node:assert/strict';
 import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
 
 function sele() {
-  const styr = { armeret: false, ventende: [] };
   const u = indlaesUdvidelse({ svar: {
-    'tabs.get': (id) => {
-      const fane = id === 99 ? { id: 99, url: 'https://private.example', windowId: 1 }
-                             : { id, url: 'https://vores.example', windowId: 1 };   // bevidst uden openerTabId
-      if (styr.armeret && id === 99) { styr.armeret = false; return new Promise((r) => styr.ventende.push(() => r(fane))); }
-      return fane;
-    },
+    'tabs.get': (id) => (id === 99 ? { id: 99, url: 'https://private.example', windowId: 1 }
+                                   : { id, url: 'https://vores.example', windowId: 1 }),   // bevidst uden openerTabId
     'tabs.group': 1, 'tabGroups.update': {}, 'tabGroups.get': { id: 1 }, 'tabs.ungroup': undefined,
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue', windowId: 1 });
-  return { u, styr };
+  return { u };
 }
 
 // 1.34 (#89): get_new_tab slaar ikke laengere den seneste fane i hele Chrome op, saa kaploebet om tabs.get(99) findes ikke.
