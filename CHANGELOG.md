@@ -4,7 +4,199 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
-## 1.31.0 (2026-10-28)
+## 1.33.0 (not released yet)
+
+Most of the 1.33 work in this first part answers a private report (thank you), checked item by item and reviewed in several rounds. The 1.32 work, never released on its own, follows below.
+
+**No call guesses another tab.** When the session's active tab was its own blank `about:blank`, a call skipped it and
+silently used another of the session's tabs - `browser_navigate` then loaded the address into a page the user was working
+in. The same happened after the active tab was closed. Now the active blank tab is used, and with no active tab and other
+tabs that have content, the call answers `no-active-tab` (nothing sent, the session's tabs listed) instead of choosing:
+call `browser_switch_tab`, or `browser_navigate` with `new_tab: true`. When a login popup the agent switched to closes
+itself, the session has no active tab: switch back to the tab you came from. Closing the active tab with
+`browser_close_tab` says that there is no active tab now.
+
+**`browser_wait` waits for something you can see.** `found: true` came back for text inside `display:none`,
+`visibility:hidden`, `opacity:0` and off-page elements, and the CSS path accepted `display:none`. Now only visible text
+counts: text whose own element can be seen (also through a closed `<details>`, `content-visibility`, a box with
+`overflow: hidden`, a fixed element outside the window, or an `<option>` with a `label`), in the order it is drawn. If only
+hidden matches exist when the time is up, the answer is `found: false` with `on_page_but_hidden: true`. `state: "attached"`
+keeps the old wait for existence (for example a hidden file input before `browser_upload_file`); any other `state` is an
+error. The page is no longer scrolled while waiting, and the timeout is at most 60 seconds - the server now waits as long.
+
+**`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any dialog,
+"Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, and it is dropped when a new
+document loads or becomes active in the tab (a reload or a prerendered page too - not an address change within the same page, and not a frame) or the session moves
+to another tab. A page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile
+`session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
+(otherwise `leave-page-required`); a dismiss is unchanged.
+
+**Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the
+window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left
+in that window (`kept_window_open: true`). A check that fails stops the close. A close that Chrome does not complete within
+4 seconds - while "Leave site?" is open, or on a busy page, `chrome.tabs.remove` never answers - answers `tab-not-closed`
+and does not hold up the closes of other chats; such a tab still counts as closing, so a later close of the window's other
+tab leaves an empty tab rather than risk Chrome closing.
+
+**A screenshot path is a .png file and never replaces a file by accident.** With `path` set to a file in the working
+folder, `browser_screenshot` overwrote it with PNG bytes - `package.json` and `.vscode/tasks.json` included. Now the path
+must end in `.png` (the screenshot is PNG data), and an existing file is replaced only with `overwrite: true`; these and
+the working-directory check are done before the screenshot is taken.
+
+**An invisible reCAPTCHA is reported, not flagged.** A page with only the invisible reCAPTCHA badge made
+`browser_navigate` report `captcha_detected: recaptcha_v2_checkbox` and ask for `browser_solve_captcha`, so an agent that
+stops for a CAPTCHA stopped for nothing. Now a checkbox and an image challenge count only when they can be seen; an
+invisible reCAPTCHA - and likewise an invisible hCaptcha or a hidden Turnstile - is reported as `captcha_invisible`
+(navigate) and `invisible` (detect). Nothing changes in what is sent to the site.
+
+**A step outside the browser points somewhere.** When what is asked for is not in a web page at all (a desktop app, an
+OS-level dialog, the native file picker once it has opened as an OS dialog), the server's instructions now tell the agent
+to hand that step to desktop tools when the session has them, and to keep the web part in the Chrome the user already
+uses and is signed in to, never a second browser. When the session has none and the user is on macOS, the agent says
+once that Computer MCP does that step, with its install line. The agent never installs anything itself.
+
+**Smaller fixes.** `browser_navigate` with `new_tab` says the tab opened in the background (`active: false`). The "not
+connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked
+install has its own id. The server's install advice names its own version, so a pinned version stays pinned. The `@modelcontextprotocol/sdk` floor is raised to 1.32.1 (supersedes #80).
+
+### Also in 1.33.0: the 1.32 work (prepared as 1.32.0, never released on its own)
+
+**Partitions for parallel agents (#20).** Thanks to [@ugbodagadave](https://github.com/ugbodagadave), whose PR #20 had the
+idea and the first version: an extra listener per partition, and a `partition` parameter on the browser tools. It is built
+here on the lanes 1.31 laid down, and #20 is superseded with credit. Agents that share one chat (a coordinator and its
+subagents) also share its tab group and active tab, so they took over each other's tabs. `browser_partition` with
+`action: "new"` gives an agent its own partition: one more port in the same range, which the extension connects to like
+any other, so the partition gets its own tab group and active tab. It chooses its Chrome profile right away by the 1.31
+rules (`profile` in the call, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused while the server runs (after a restart, numbering starts at `p1` again). Every
+tool that reaches the browser takes `partition`, `browser_extract_token` too; calls without it go to the default partition
+as before, and a call with an unknown or closed id is never sent there instead. `action: "close"` closes the partition's
+tabs through its own connection and releases its port. A partition's commands carry no process id, so the extension never
+hands its tabs to another partition. At most 4 partitions are open per server, because the ports are shared by every chat
+on the machine.
+
+**A late clean-up no longer closes a new connection's tab.** The extension keys a chat's session on the port. Measured in
+review: after a new session was created on the same port with a tab, a clean-up still on its way from the connection that
+had closed closed that tab and deleted the session. With partitions, ports are reused more often. Now every connection
+between the extension and a server has its own generation, and a clean-up applies only to the connection it was ordered
+for: a session taken over by a new connection keeps its new tabs, and only the old connection's tabs are closed. A command
+that arrives while a session is being cleaned up gets a fresh session.
+
+**`browser_press_key`: Enter and punctuation as on a real keyboard (#76).** Thanks to [@arasmileska](https://github.com/arasmileska),
+who measured it and named the cause. Enter was sent without text, so the page got keydown and keyup 13 but no keypress, and
+punctuation got key code 0 and a `code` Chrome does not know (`","`). Tag and chip inputs that commit on Enter or comma, by
+keypress or by `keyCode === 188`, never made the tag. Now Enter carries its line break (keydown, keypress and keyup 13, not
+with ctrl, meta or alt), punctuation is sent as the key it sits on in the US layout (`,` 188 `Comma`, `.` 190 `Period` and
+so on), and a shifted character such as `<` or `@` is that key with Shift held, as on a real keyboard. An explicit `code`
+still wins (it changes only the `code`, not the key code); a character that is not on a US keyboard, an emoji too, gets no
+`code` instead of itself. A capital letter is still sent without Shift, and `shift: true` does not change the character.
+The most noticeable change: Enter now acts like the real key. In a text field it submits the form, on a focused button it
+presses it, and in a textarea it adds a line break - before, it did none of these, so an agent that pressed Enter without
+effect can now submit a form. `browser_press_key("Space")` is now the space bar (key `" "`): in a field it types a space,
+on a focused button it presses it, and on a checkbox it ticks it - before, it did none of these; the page got `e.key ""`,
+and the answer said `key-not-delivered` although the key had landed.
+`browser_fill` had the same gap where it types character by character (a text selector, or a field that does not take
+the value directly): the keys now carry the same key codes and Shift, and the text that is typed is the same as before.
+A line break, carriage return or tab in the value is no longer sent as a key: before, `"\t"` moved focus (and the answer
+read another field), `"\r"` submitted the form, and `"\n"` was lost in a textarea. A tab is inserted as text. Line breaks
+follow one rule on every path `browser_fill` writes by, checked in the element that has focus: once when the value is
+inserted at once, and at each line break when it is typed character by character. `"\r\n"` and `"\r"` are one line break, written as a line break only
+in a textarea or a contenteditable field (also on an XHTML page). In a single-line text input (type text, search, email, url,
+tel, password or number, or no or an unknown type, which the browser treats as text) it is typed as one space instead - a line break inserted into an input submits the form, and leaving
+it out glued the words together - and the answer says so (`line_breaks_as_spaces`, and `differs` and `actual` when the field
+could be read back; when it could not, the answer has `unknown: true` and the count, but no value it did not see). When the tool does
+not recognise the focused element as one of those text fields - a button, a submit button, a checkbox, a frame, a closed
+shadow root, or an element it cannot read - the line break is left out, because the space key would press the button or tick
+the box, and the answer says that too (`line_breaks_left_out`). A text field the tool cannot see into (in a frame or a closed
+shadow root) therefore loses its line breaks. Focus is read just before each line break is written; a page that moves focus
+in the moment between that check and the key gets the space like any other typed character. When a value of only line
+breaks leaves the field empty, the answer says how they were sent and that the field did not take them. An emoji is typed whole,
+one key per code point, where it used to become two broken halves. When the field is empty after typing, `browser_fill`
+says what the tool saw: `keys_delivered: true` (it saw keys arrive - the page either turned the text into something, such as
+a tag, or rejected the keys), `false` (it saw no key arrive) or `null` (it could not tell, or the page navigated). In every
+case it says to check the page before typing again; the advice to switch tabs and try again is given only when the tool saw
+no key arrive. It counts only the browser's own key events, so a key the page fires itself does not count, and an editor
+that stops every key event before the tool's listener can make it see no key although the keys arrived.
+`browser_set_date`'s masked path now clears a prefilled field on macOS too (Chrome's select-all command, as in #68), so the
+field holds exactly the new date. Before each step that writes (select all, delete, typing) it checks that focus is still on
+the field, and stops at once when it is not: `focus-moved` names where focus went, `focus-unknown` says it could not be read,
+and the answer lists what had been changed by then and where (`value_before`, `field_changed`, `changed` - each field compared
+with itself, so a page that reorders its fields does not show up as a change). The field is
+found in the main document; a field inside a shadow root or a frame is not reached by this path. When every path fails
+after a path wrote to the field, the answer says so (`value_before`, `field_changed`) instead of ending as a bare error.
+
+**`browser_screenshot`: an older picture says so.** When the raised round's own capture does not arrive in time and an
+earlier capture is delivered instead, the answer now says `stale: true` with a note, next to the picture (also when it is
+saved to a file): the page may have changed since.
+
+**`browser_execute_script` and `browser_select_frame`: the server waits for the extension's answer.** On a page that
+navigates 50-200 times a second, Chrome's browser thread stalls. The extension still answered these two tools within its
+29.5 seconds, but the answer did not reach the server before the server's own 30-second limit, and the agent got the
+general "Command timed out after 30000ms", which does not say whether the code may have run (measured on 1.30.3 too). The
+server now waits 45 seconds for these two tools (its 30 seconds plus 15), which gives the extension's answer 15 more seconds
+to arrive: `call-timeout` with `sent: false` when nothing was run, or "MAY already have run". The extension's own 29.5 seconds are unchanged. If no
+answer arrives within the 45 seconds, the server answers `no-answer` with `sent: "unknown"`: the code MAY have run, it is
+not repeated, and the agent should call again only if the code is safe to run twice. Every other tool keeps its limit and
+its message.
+
+**A call from a closed connection runs nothing.** When a connection to the extension closes, the extension remembers it
+(the last 16 per port). A call from that connection that was still waiting inside the extension, for instance while the
+extension looked for a session to take over after a restart, now stops before it touches a session or a tab. The takeover
+checks again after its last wait, right before it changes anything, that the call's connection is still open, that the port
+still owns no tabs, and that the session it would take over is still orphaned: the same session, with the same connection, on a
+port the bridge has not reported as connected - by the latest status the extension has received, or, after the extension
+restarted and until the bridge next reports, by the stored list. It errs on the safe side: a port the bridge lists while it is
+still connecting counts as connected, so such a session is not taken over. Before, a waiting call could run its code in a tab of
+the connection that took the port next (another partition or chat), or move another session onto that port, so that the new
+connection's next call ran in the wrong tab.
+
+The same holds when the bridge (the offscreen document) goes away, whether the extension replaces it or it closes by itself.
+Its connections count as closed as soon as one of these is true: the extension's close call succeeded; the close call failed,
+but Chrome reports no offscreen document and, where Chrome can list contexts (Chrome 116 and later), no offscreen context
+either; a later heartbeat (scheduled once a minute, though Chrome may run it later) finds no bridge and the same sources
+confirm it; or a call arrives from the new bridge. If Chrome cannot confirm that the old bridge is gone, it is treated as still
+open. A call from a closed connection gets `connection-closed`, `sent: false`; the answer goes back over the closed connection,
+so no agent sees it - what changes is that nothing runs.
+
+**The extension's bridge is not torn down for one late answer.** The extension checks that its bridge (the offscreen
+document that holds the connection to the server) answers, and replaced it when one question got no answer within 1.5
+seconds. On the same kind of page that happened, and replacing the bridge also closes its connection to the server. Now a
+question without an answer is followed by a second one, and the bridge is replaced only when neither is answered within
+3 seconds of the first. A bridge that is gone or outdated is still replaced at once.
+
+**Click proof: precisions to the 1.30.2 notes (not new behaviour).** When the target itself is
+`input`, `select`, `textarea`, `button` or a custom element (a tag name with a hyphen), only a click that reaches that element
+counts as proof; display elements such as `output`, `meter` and `progress` as the target count as content inside a control frame.
+(When the target is a `label` and the action is a click, the proof is its associated control's own activation click or a click
+on the control itself, whatever that control is.)
+Measured in Shoelace 2.20.1 with its default styling: the custom `sl-icon` element in an `sl-button`'s prefix slot never gets
+the click itself (the library sets `pointer-events: none` there), so clicking that `sl-icon` answers `maybe_landed` - target the
+button. A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the
+button got the click (inside an `sl-button` it is unmeasured in Chrome).
+Measured in Ionic 8.8.19: an `ion-segment-button`'s icon or label as the target answers `covered` before the press (the host takes
+the click); target the segment button itself. Other versions of these libraries are unmeasured.
+
+**New answers an agent can see:**
+
+| Answer | Where | Means |
+|---|---|---|
+| `partition`, `port`, `profile`, `installation` | `browser_partition` `new` | The partition is open and drives that installation |
+| `port_released`, `tabs_closed: true` or `"unknown"` | `browser_partition` `close` | `true` only when the extension confirmed the tabs were closed (or no call ever used the partition) |
+| `error: "partition-limit"` | `browser_partition` `new` | 4 partitions are already open on this server |
+| `error: "port-capacity-exhausted"` | `browser_partition` `new` | Every port in the range is taken; no partition was created |
+| `error: "profile-*"`, `partition_created: false` | `browser_partition` `new` | The partition's profile choice failed; no partition was created and its port was released |
+| `error: "partition-not-found"` | every browser tool, `close` | No partition with that id, or `new` is still creating it (every browser tool). Nothing was sent |
+| `error: "partition-closed"` | every browser tool, `close`, `new` | The partition was closed (from `new`: while it was being created). With `sent: false` nothing was sent. With `sent: true` the command was sent and was still waiting for its answer when close released the port, so it may have been carried out; a command the extension answers before that gets its normal answer |
+| `error: "action-invalid"` | `browser_partition` | `action` is neither `new` nor `close` |
+| `partitions` | `browser_about` | The chat's partitions: `partition`, `label`, `state` (`creating`, `open` or `closed`), `port`, `profile`, `installation` |
+| `keys_delivered: true`, `false` or `null` | `browser_fill` (empty field after typing) | The tool saw keys arrive / saw none / could not tell. Not proof of what the page did with them: check the page before typing again |
+| `line_breaks_as_spaces` | `browser_fill` | That many line breaks were typed as spaces, because the field is a single-line text input |
+| `line_breaks_left_out` | `browser_fill` | That many line breaks were left out, because the tool did not recognise the focused element as a text field (a button, a checkbox, a frame, a closed shadow root, or an element it could not read) |
+| `error: "focus-moved"` or `"focus-unknown"`, `step`, `focused`, `changed` | `browser_set_date` | Before a writing step focus was no longer on the field (or could not be read); the tool stopped there, and `changed` lists what had been changed by then |
+| `value_before`, `field_changed: true` | `browser_set_date` (all paths failed) | The field was written to on the way and no longer holds what it did before |
+| `stale: true` | `browser_screenshot` | The picture was taken before the window was raised; the page may have changed since |
+| `error: "no-answer"`, `sent: "unknown"` | `browser_execute_script`, `browser_select_frame` | No answer reached the server within 45 seconds. The code MAY have run; it is not repeated automatically, so call again only if it is safe to run twice |
+
+## 1.31.0 (2026-10-29)
 
 **Security (Windows): the server no longer runs a program from the folder it was started in.** To guard against orphaned
 servers, the server read its parent process chain with `ps`, as a text command through a shell. On Windows cmd.exe searches the

@@ -7,7 +7,7 @@
 export const TOOLS = [
   {
     name: 'browser_navigate',
-    description: 'Navigate the active browser tab to a URL. Reuses the current tab by default (no tab spam). Pass new_tab=true only when you need to keep the current page open. In the current tab the answer is ok:true only when Chrome took the address and the new page is proven loaded within about 25 s (the wait ends half a second before that limit). If the page asks "Leave site?", the default answer is Stay (an armed browser_handle_dialog answers instead) and the reply is error beforeunload-blocked with the tab\'s actual url: the page may hold unsaved work, so ask the user (browser_ask_user) before you call again with leave_page:true. Other errors, each with sent (was the address sent to Chrome?) and a note on what to do: navigation-in-progress (another navigate is working in this tab, or - with op_id null - an earlier answer to a dialog on the tab is not confirmed yet; wait a moment), dialog-open (a dialog is on screen - answer it with browser_handle_dialog), tab-not-responding (busy page, or a dialog Chrome does not show us), navigation-failed, dialog-unconfirmed, navigation-unconfirmed (no load proven in time; may_complete_later and pending_url say it can still happen - read the tab before sending it again; a download or a 204 answer never loads a page and ends here too), tab-closed (Chrome no longer has the tab), session-changed (another call changed the session\'s active tab while this one waited; nothing was sent).',
+    description: 'Navigate the active browser tab to a URL. Reuses the current tab by default (no tab spam). Pass new_tab=true only when you need to keep the current page open; the new tab opens in the background, and the answer then says active: false. In the current tab the answer is ok:true only when Chrome took the address and the new page is proven loaded within about 25 s (the wait ends half a second before that limit). If the page asks "Leave site?", the default answer is Stay (an armed browser_handle_dialog answers instead only if it is a dismiss, or an accept armed with leave_page: true) and the reply is error beforeunload-blocked with the tab\'s actual url: the page may hold unsaved work, so ask the user (browser_ask_user) before you call again with leave_page:true. Other errors, each with sent (was the address sent to Chrome?) and a note on what to do: navigation-in-progress (another navigate is working in this tab, or - with op_id null - an earlier answer to a dialog on the tab is not confirmed yet; wait a moment), dialog-open (a dialog is on screen - answer it with browser_handle_dialog), tab-not-responding (busy page, or a dialog Chrome does not show us), navigation-failed, dialog-unconfirmed, navigation-unconfirmed (no load proven in time; may_complete_later and pending_url say it can still happen - read the tab before sending it again; a download or a 204 answer never loads a page and ends here too), tab-closed (Chrome no longer has the tab), session-changed (another call changed the session\'s active tab while this one waited; nothing was sent), no-active-tab (the session\'s active tab was closed, so the call did not guess another one and nothing was sent; detail lists the session\'s tabs - use browser_switch_tab, or new_tab: true).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -58,14 +58,15 @@ export const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'File path to save the screenshot to (e.g. /path/to/screenshot.png)' },
+        path: { type: 'string', description: 'File path inside the working directory to save the screenshot to (e.g. screenshots/page.png). It must end in .png (the screenshot is PNG data) and stay inside the working directory (also through links), and an existing file is not replaced unless overwrite is true; all of it is checked before the screenshot is taken.' },
+        overwrite: { type: 'boolean', description: 'Replace an existing image file at path (default: false)' },
         bring_to_front: { type: 'boolean', description: 'Raise Chrome in front of the user if its window is covered, and leave it there. Takes the user\'s screen: only after the user agreed (browser_ask_user). Default false.' },
       },
     },
   },
   {
     name: 'browser_execute_script',
-    description: 'Execute JavaScript in the current page, through the Chrome debugger (Runtime.evaluate) in the page\'s own context: the page\'s globals are visible and its Content Security Policy does not block it. A returned promise is awaited. If the code throws, the answer is ok:false with error and name, and the code is not run again. The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran). IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
+    description: 'Execute JavaScript in the current page, through the Chrome debugger (Runtime.evaluate) in the page\'s own context: the page\'s globals are visible and its Content Security Policy does not block it. A returned promise is awaited. If the code throws, the answer is ok:false with error and name, and the code is not run again. The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran). If no answer reaches the server within 45 s (Chrome itself stalled), the answer is error no-answer with sent:"unknown": the code MAY have run, it is not repeated, and you should call again only if it is safe to run twice. IMPORTANT: the parameter is `code` (NOT `script` - though that alias is accepted), and it must be an EXPRESSION, not statements: use an IIFE `(() => { ...; return x; })()`. Top-level `return` is a syntax error (the handler wraps code in parentheses).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -138,12 +139,12 @@ export const TOOLS = [
   },
   {
     name: 'browser_press_key',
-    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
+    description: 'Press a keyboard key (Enter, Tab, Escape, ArrowDown, etc.). Useful for submitting forms, navigating dropdowns, closing dialogs. Supports modifier keys (ctrl, alt, shift, meta). Enter acts like the real key (the page gets keydown, keypress and keyup 13): in a text field it submits the form, on a focused button it presses it, and in a textarea it adds a line break - from 1.32; before, it did none of these, so press Enter only when that is what you want. "Space" is the space bar: in a field it types a space, on a focused button it presses it, and on a checkbox it ticks it (from 1.32; before, it did none of these). Key codes follow the US layout: punctuation is sent as the key it sits on ("," is keyCode 188, code "Comma"), and a shifted character such as "<" or "@" is that key with Shift held; a capital letter is sent without Shift. shift does not change the character ("," with shift is still a comma). While ctrl, meta or alt is held, no character is typed. With ctrl or meta (and no shift), the letters a, c, x, v, z and y are sent with Chrome\'s own editing command - select all, copy, cut, paste, undo, redo; z with shift is redo - including on macOS, where Chrome runs no shortcut for a synthetic key without it. The answer names the command that was sent in `shortcut`; `landed` says the page received the key, not what the command did. Paste inserts the user\'s real clipboard into the page, and copy and cut replace what is on it.',
     inputSchema: {
       type: 'object',
       properties: {
         key: { type: 'string', description: 'Key to press: "Enter", "Tab", "Escape", "ArrowDown", "ArrowUp", "Backspace", "a", "1", etc.' },
-        code: { type: 'string', description: 'Key code (optional, defaults to key name). E.g. "KeyA" for "a"' },
+        code: { type: 'string', description: 'Physical key code (optional). Without it, the key it sits on in the US layout: "KeyA" for "a", "Comma" for ",", "Digit2" for "@"; a character not on a US keyboard gets none. Setting it changes only the code, not the key code' },
         ctrl: { type: 'boolean', description: 'Hold Ctrl/Cmd key' },
         alt: { type: 'boolean', description: 'Hold Alt key' },
         shift: { type: 'boolean', description: 'Hold Shift key' },
@@ -166,12 +167,13 @@ export const TOOLS = [
   },
   {
     name: 'browser_wait',
-    description: 'Wait for an element to appear on the page. Supports CSS and text-based selectors.',
+    description: 'Wait for an element or a text to be visible on the page. Supports CSS and text-based selectors. found is true only for a match that can be seen: one that is display:none, visibility:hidden, opacity 0 (itself or a parent), smaller than 2 px, inside a closed box, or moved outside the page does not count, and the page is not scrolled. If only such matches exist when the time is up, the answer is found:false with on_page_but_hidden:true. Pass state: "attached" to wait only for the match to exist; visible then says whether it can be seen - for example a hidden file input (input[type=file]) before browser_upload_file, an <option>, or a hidden token field. A fixed element counts only inside the window.',
     inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector or text selector (e.g. "text=Success", "button:text(Next)") to wait for' },
-        timeout: { type: 'number', description: 'Max wait time in ms (default: 10000)' },
+        timeout: { type: 'number', description: 'Max wait time in ms (default: 10000, at most 60000)' },
+        state: { type: 'string', enum: ['visible', 'attached'], description: 'visible (default): wait until a match can be seen. attached: wait until a match exists on the page, seen or not.' },
       },
       required: ['selector'],
     },
@@ -256,13 +258,14 @@ export const TOOLS = [
   },
   {
     name: 'browser_handle_dialog',
-    description: 'Answer a JavaScript alert/confirm/prompt or "Leave site?" on the active tab. If a dialog this extension saw open is on screen and nobody is answering it, it is answered now, and the reply says what Chrome reports happened (action accept or dismiss). Otherwise this arms automatic handling of the next dialog on the tab and returns immediately - call it BEFORE the click that opens the dialog, because a dialog freezes the tab. Pass wait=true only when the dialog is already opening. Errors: dialog-being-answered (browser_navigate or an earlier call is answering it - wait), dialog-unconfirmed (answered, but Chrome did not confirm it closed), tab-not-responding (a dialog that opened before anything listened, or a busy page; the note says what to do).',
+    description: 'Answer a JavaScript alert/confirm/prompt or "Leave site?" on the active tab. If a dialog this extension saw open is on screen and nobody is answering it, it is answered now, and the reply says what Chrome reports happened (action accept or dismiss). Otherwise this arms automatic handling of the next dialog on the tab and returns immediately - call it BEFORE the click that opens the dialog, because a dialog freezes the tab. Pass wait=true only when the dialog is already opening. An armed accept never answers "Leave site?" unless leave_page is true; the arming lasts at most 30 s. A "Leave site?" that is already open is accepted only with leave_page: true too (error leave-page-required). Errors: dialog-being-answered (browser_navigate or an earlier call is answering it - wait), dialog-unconfirmed (answered, but Chrome did not confirm it closed), tab-not-responding (a dialog that opened before anything listened, or a busy page; the note says what to do), page-changed (the page changed while arming; nothing was armed), session-changed (the session switched tabs while arming). An arming is dropped when a new document loads or becomes active in the tab (a reload or a prerendered page too; not an address change within the page) or the session moves to another tab.',
     inputSchema: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['accept', 'dismiss'], description: 'Accept or dismiss the dialog (default: accept)' },
         text: { type: 'string', description: 'Text to enter for prompt() dialogs' },
-        timeout: { type: 'number', description: 'How long the arming stays active in ms (default: 60000)' },
+        timeout: { type: 'number', description: 'How long the arming stays active in ms (default and at most 30000)' },
+        leave_page: { type: 'boolean', description: 'With action accept: also accept a "Leave site?" (beforeunload), which leaves the page and loses anything unsaved on it. Default false: an armed accept answers alerts, confirms and prompts only. Ask the user first.' },
         wait: { type: 'boolean', description: 'Block until a dialog appears instead of arming and returning (default: false). Only use when the dialog is already on its way.' },
       },
     },
@@ -392,7 +395,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_select_frame',
-    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by a one-time mark the extension puts in that frame\'s document, not by its address or position; if the mark is not found, nothing is run (error frame-not-reachable, and retry says whether calling again can help; a frame whose document is replaced while the call looks for it gives retry: true). The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran).',
+    description: 'Execute JavaScript in a specific frame by frame index, through the Chrome debugger in that frame\'s own context - also a frame from another site. Use browser_list_frames first to find the right index. A returned promise is awaited; without code it returns the frame\'s text (first 5000 characters). The frame is identified by a one-time mark the extension puts in that frame\'s document, not by its address or position; if the mark is not found, nothing is run (error frame-not-reachable, and retry says whether calling again can help; a frame whose document is replaced while the call looks for it gives retry: true). The call answers within 29.5 s; if the time runs out before the code is sent, the answer is error call-timeout with sent:false (nothing ran). If no answer reaches the server within 45 s (Chrome itself stalled), the answer is error no-answer with sent:"unknown": the code MAY have run, it is not repeated, and you should call again only if it is safe to run twice.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -421,7 +424,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_close_tab',
-    description: 'Close a browser tab by ID. Only tabs owned by the current session can be closed.',
+    description: 'Close a browser tab by ID. Only tabs owned by the current session can be closed. If it is the last tab in Chrome\'s last window, an empty tab is left in that window (kept_window_open: true), because closing the window would close Chrome and disconnect the extension. If Chrome does not close the tab within 4 s (a "Leave site?" prompt or a busy page), the answer is tab-not-closed and the tab stays in the session.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -456,7 +459,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_solve_captcha',
-    description: 'Detect CAPTCHAs on the current page and work through them, one action per call. "detect" reports reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile and FunCaptcha. "click_checkbox" tries the reCAPTCHA checkbox and detects again. "click_grid" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. "ask_human" returns the message to show the user with browser_ask_user.',
+    description: 'Detect CAPTCHAs on the current page and work through them, one action per call. "detect" reports a visible reCAPTCHA checkbox or image challenge, hCaptcha, Cloudflare Turnstile and FunCaptcha; an invisible reCAPTCHA (the badge), an invisible hCaptcha or a hidden Turnstile has nothing to click and is reported as invisible, not found, and browser_navigate reports it as captcha_invisible. "click_checkbox" tries the reCAPTCHA checkbox and detects again. "click_grid" clicks the reCAPTCHA image-challenge cells you choose; this tool returns no image, so take one with browser_screenshot first. "ask_human" returns the message to show the user with browser_ask_user.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -531,7 +534,33 @@ export const TOOLS = [
       required: ['what_happened'],
     },
   },
+  // 1.32 (#20, idéen er ugbodagadave's): én partition pr. parallel agent - sin egen fanegruppe og sin egen aktive fane.
+  {
+    name: 'browser_partition',
+    description: 'Give a parallel agent its own part of the browser. action "new" opens a partition: its own listener port, so the extension gives it its own tab group and its own active tab, and agents that share this chat no longer take over each other\'s tabs. It answers an id like "p1"; pass partition: "p1" to every browser tool that agent calls (calls without partition go to the default partition). Ids are never reused while the server runs (when the MCP client restarts the server, numbering starts at p1 again). "new" chooses the Chrome profile right away by the same rules as BROWSER_MCP_PROFILE: pass profile to choose by the name in the extension popup, otherwise the partition uses BROWSER_MCP_PROFILE (or, without it, the same choice as the default partition: it waits about 2.5 seconds for the installations to connect, then takes the newest extension version, on a tie the one that connected last, and the answer says which one it took). It takes a few seconds, because the extension scans for new ports every 2 seconds. Errors: partition-limit (4 open partitions per server), port-capacity-exhausted (every port in the range is taken), the profile-* answers (profile-not-connected and the others; no partition is created and its port is released), and partition-closed when the partition is closed while "new" is still creating it. action "close" closes the partition\'s tabs through its own connection and releases its port: port_released, and tabs_closed true only when the extension confirmed it or when no tool call ever used the partition (it then has no tabs, and the extension is not asked), otherwise "unknown". Calls with a closed id answer partition-closed with sent: false. A command that is still waiting for the extension\'s answer when close releases the port answers partition-closed with sent: true (it may have been carried out); one answered before that gets its normal answer. An unknown id, or the id of a partition "new" is still creating, answers partition-not-found. Nothing is sent to the default partition instead. browser_about lists the partitions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['new', 'close'], description: '"new" opens a partition, "close" closes one.' },
+        profile: { type: 'string', description: 'With new: the name of the Chrome profile in the extension popup ("This Chrome profile") the partition drives. Default: BROWSER_MCP_PROFILE.' },
+        label: { type: 'string', description: 'With new: an optional label for your own overview, shown in browser_about (up to 64 characters).' },
+        partition: { type: 'string', description: 'With close: the id of the partition to close, e.g. "p1". The default partition cannot be closed.' },
+      },
+      required: ['action'],
+    },
+  },
 ];
+
+// 1.32 (#20): `partition` paa hvert vaerktoej, der naar browseren - ogsaa browser_extract_token, som selv navigerer. De
+// server-lokale (about, provide_feedback) og partitionsvaerktoejet selv har den ikke.
+const PARTITION_PARAM = {
+  type: 'string',
+  description: 'Run this call in a partition from browser_partition (an id like "p1"). Leave it out for the default partition. An unknown or closed id is an error; the call is never sent to the default partition instead.',
+};
+for (const t of TOOLS) {
+  if (['browser_about', 'browser_provide_feedback', 'browser_partition'].includes(t.name)) continue;
+  t.inputSchema.properties.partition = PARTITION_PARAM;
+}
 
 // Known provider token pages for browser_extract_token
 export const PROVIDER_PAGES = {

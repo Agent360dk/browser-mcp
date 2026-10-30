@@ -35,10 +35,14 @@ export function broKilde() {
 export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = {}) {
   const log = [];
   const timere = new Set();
+  // R122: hver lytter broen opretter, ogsaa én paa en bane, der ikke laengere findes i `baner` eller `partitioner` (fx en
+  // port, et kald bandt igen efter at banen var opgivet, under en mutant eller paa en kilde foer rettelsen). luk() lukker dem.
+  const lyttere = new Set();
+  const WSS = krav('ws').WebSocketServer;
   const engang = new Set();
   const ctx = {
     process: { env: { ...env }, ppid: 4242, stderr: { write: (t) => { log.push(String(t)); return true; } } },
-    WebSocketServer: krav('ws').WebSocketServer,
+    WebSocketServer: class extends WSS { constructor(...a) { super(...a); lyttere.add(this); } },
     setTimeout: (f, ms, ...a) => { const t = setTimeout((...x) => { engang.delete(t); f(...x); }, genforsoegMs && ms === 1500 ? genforsoegMs : ms, ...a); engang.add(t); return t; },
     clearTimeout: (t) => { engang.delete(t); clearTimeout(t); },
     // Broens egne intervaller (tomgangsvagten, hjerteslaget) maa ikke holde proeveprocessen i live.
@@ -61,17 +65,27 @@ export function broModel(env = {}, { genforsoegMs = null, foersteValgMs = 0 } = 
     // mutant B10). Bindingen slaas fra foerst.
     try { k('sikrePort = async () => false;'); } catch {}
     try { k('for (const p of pending.values()) clearTimeout(p.timer); pending.clear()'); } catch {}
+    // 1.32: ogsaa partitionernes baner - en bane, der er taget ud af `baner` (lukket), men alligevel har bundet en port (fx
+    // under en mutant), maa ikke holde proeveprocessen i live (maalt: mutant P2 gav TIDSUDLOEB).
+    try { k('if (typeof partitioner !== "undefined") for (const p of partitioner.values()) frigivPort(p.bane, "proeven er slut")'); } catch {}
     try { k('for (const b of baner) frigivPort(b, "proeven er slut")'); } catch {
       // En kilde uden baner (fx 07f01ef, naar en proeve skal ses roed foer rettelsen): den gamle frigivPort(grund).
       try { k('frigivPort("proeven er slut")'); } catch {}
     }
+    for (const s of lyttere) { try { s.close(); } catch {} }
+    lyttere.clear();
     for (const t of timere) clearInterval(t);
     for (const t of engang) clearTimeout(t);
     for (const u of klienter) u.luk();
     klienter.clear();
     modeller.delete(model);
   };
-  const model = { ctx, k, log, luk };
+  // R121: genforsoeget kan aendres undervejs (en proeve kan oprette en partition hurtigt og saa goere ventetiden lang).
+  const saetGenforsoeg = (ms) => { genforsoegMs = ms; };
+  // R123: lytter broen i DENNE proces paa porten? (En proeve, der skanner en sluppet port, maa ikke forbinde til en anden
+  // proeveprocess' server, der har faaet samme portnummer - suiten koerer filerne parallelt.)
+  const lytterPaa = (port) => [...lyttere].some((sv) => { try { return sv.address()?.port === port; } catch { return false; } });
+  const model = { ctx, k, log, luk, saetGenforsoeg, lytterPaa };
   modeller.add(model);
   return model;
 }

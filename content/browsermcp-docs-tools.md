@@ -1,6 +1,6 @@
 # Tools
 
-Browser MCP exposes **40 tools** to the connected agent. Page and tab tools act on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. `browser_fetch` sends its request from the extension in the background, without a tab, and `browser_about` and `browser_provide_feedback` are answered by the local server. The browser work runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
+Browser MCP exposes **41 tools** to the connected agent. Page and tab tools act on the session's own tabs, inside its own tab group: the tab it last used, or a tab or frame it targets explicitly. `browser_fetch` sends its request from the extension in the background, without a tab, and `browser_about` and `browser_provide_feedback` are answered by the local server. From 1.33 every tool that reaches the browser also takes `partition`, the id of a partition from `browser_partition`, so parallel agents in one chat each work in their own tab group. The browser work runs in your Chrome through the Browser MCP extension - no headless browser, no Playwright binary.
 
 ---
 
@@ -19,10 +19,10 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. In the current tab, `ok: true` means Chrome took the address and the new page was proven loaded within about 25 seconds (the wait ends half a second before that limit, so the answer fits inside it). If the page asks "Leave site?", the answer is Stay (or whatever an armed `browser_handle_dialog` says) and the error `beforeunload-blocked` says so - the page may hold unsaved work, so the agent should ask you before calling again with `leave_page: true`. Other outcomes are errors that say whether the address was sent: `navigation-in-progress`, `dialog-open`, `tab-not-responding`, `navigation-failed`, `dialog-unconfirmed`, `navigation-unconfirmed` (may still complete later; a download or a 204 answer never loads a page and ends here too), `tab-closed`, `session-changed` (another call changed the session's active tab meanwhile; nothing was sent). |
+| `browser_navigate` | Navigate the active tab to a URL; reuses the current tab unless `new_tab=true`. In the current tab, `ok: true` means Chrome took the address and the new page was proven loaded within about 25 seconds (the wait ends half a second before that limit, so the answer fits inside it). If the page asks "Leave site?", the answer is Stay (or an armed `browser_handle_dialog`'s dismiss, or its accept if it was armed with `leave_page: true`) and the error `beforeunload-blocked` says so - the page may hold unsaved work, so the agent should ask you before calling again with `leave_page: true`. Other outcomes are errors that say whether the address was sent: `navigation-in-progress`, `dialog-open`, `tab-not-responding`, `navigation-failed`, `dialog-unconfirmed`, `navigation-unconfirmed` (may still complete later; a download or a 204 answer never loads a page and ends here too), `tab-closed`, `session-changed` (another call changed the session's active tab meanwhile; nothing was sent), `no-active-tab` (the session's active tab was closed; the call does not guess another tab, nothing was sent). A tab opened with `new_tab` opens in the background, and the answer says `active: false`. |
 | `browser_get_page_content` | Return the current page's content as `text` or `html`. |
-| `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. A window covered by other windows answers `window-covered`; Chrome is raised only with `bring_to_front: true`. |
-| `browser_execute_script` | Run arbitrary JavaScript in the page's own context and return the result. It runs through the Chrome debugger, so a page's CSP does not block it; a promise is awaited, and code that throws is not run again. The call answers within 29.5 seconds; if the time runs out before the code is sent, the answer is `call-timeout` with `sent: false` (nothing ran). |
+| `browser_screenshot` | Screenshot the visible viewport; returns base64 PNG or saves to a given path. A path must end in `.png` and stay inside the working directory (also through links), and an existing file is replaced only with `overwrite: true`; all of it is checked before the screenshot is taken. A window covered by other windows answers `window-covered`; Chrome is raised only with `bring_to_front: true`. |
+| `browser_execute_script` | Run arbitrary JavaScript in the page's own context and return the result. It runs through the Chrome debugger, so a page's CSP does not block it; a promise is awaited, and code that throws is not run again. The call answers within 29.5 seconds; if the time runs out before the code is sent, the answer is `call-timeout` with `sent: false` (nothing ran). If no answer reaches the server within 45 seconds (Chrome itself stalled), the answer is `no-answer` with `sent: "unknown"`: the code MAY have run, and it is not repeated. |
 | `browser_extract_list` | Read the rows of a long or virtualised list by scrolling its container until nothing new appears - mail lists, invoice tables, transaction histories. Those UIs keep only a handful of rows in the DOM, so a single page read returns a sliver and looks complete. In the active tab it scrolls with real wheel events, also at the bottom, so feeds that load on wheel (Threads, X) load; a hidden page (a background tab) gets no scroll events, so there a list that loads or renders while scrolling stops at what is already there, and `reached_end` is false. `reached_end` is true only when the list stood at its bottom with nothing new for several rounds. Rows with the same text come back once, so compare the count with what the page says. |
 
 ## Interaction - 14 tools
@@ -34,15 +34,15 @@ The list below is what the client has to choose from.
 | `browser_right_click` | Right-click an element to open its context menu. Answers `covered` when the mouse would not reach it. |
 | `browser_click_xy` | Click at absolute viewport coordinates. Last resort for canvas, maps, and custom-rendered UI where no element can be selected. |
 | `browser_fill` | Fill a form input via CSS or text selector; works on CSP-strict sites via the Chrome Debugger API. With a text selector, nothing is typed (`covered`) when the mouse would not reach the field. |
-| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. With ctrl or meta (no shift), a, c, x, v, z and y are sent as Chrome's own select all, copy, cut, paste, undo and redo commands, so they also work on macOS; z with shift is redo. |
+| `browser_press_key` | Send a keyboard key press (Enter, Tab, Escape, arrows, letters...) with optional ctrl/alt/shift/meta modifiers. From 1.33 Enter acts like the real key: it submits the form from a text field, presses a focused button and adds a line break in a textarea (before, it did none of these). `Space` is the space bar: it types a space, presses a focused button and ticks a checkbox (before 1.33 it did none of these). Key codes follow the US layout: punctuation has its key code (`,` is 188, code `Comma`), shifted characters such as `<` or `@` are sent with Shift, capital letters without. With ctrl or meta (no shift), a, c, x, v, z and y are sent as Chrome's own select all, copy, cut, paste, undo and redo commands, so they also work on macOS; z with shift is redo. |
 | `browser_scroll` | Scroll to a matched element, or by a pixel offset. |
-| `browser_wait` | Wait for an element matching a CSS or text selector to appear. |
+| `browser_wait` | Wait for an element matching a CSS or text selector to be visible. A match that is `display:none`, `visibility:hidden`, opacity 0, smaller than 2 px, inside a closed box or `<details>`, or outside the page does not count; when only such matches exist, the answer is `found: false` with `on_page_but_hidden: true`. `state: "attached"` waits only for the match to exist. The page is not scrolled; the timeout is at most 60 seconds. |
 | `browser_hover` | Hover an element to trigger tooltips, dropdowns, or hover states. Answers `covered` when the mouse would not reach it. |
 | `browser_select_option` | Select an option from a native `<select>` or a custom dropdown (Angular Material, React Select, etc.). A custom trigger or option the mouse would not reach is not clicked (`covered`). |
 | `browser_set_combobox` | Drive an autocomplete/combobox: click, type filter query, wait for the listbox, click the option(s); supports multi-select chips. |
 | `browser_set_date` | Set a date input robustly - native value-set, masked-text typing, or calendar-picker navigation (MUI/AntD/react-datepicker/Lexical), with read-back verification. |
 | `browser_dismiss_overlays` | Bulk-dismiss popups, modals, tooltips, and banners via heuristics on close affordances (aria-label, "Skip"/"Ikke nu"/"Got it", × button). |
-| `browser_handle_dialog` | Accept or dismiss a native `alert()`/`confirm()`/`prompt()` or "Leave site?" dialog. A dialog the extension saw open is answered at once, and the answer says what Chrome reported; otherwise it arms for the next dialog, so call it before the action that triggers it. A dialog that opened before anything listened cannot be answered from here (`tab-not-responding`). |
+| `browser_handle_dialog` | Accept or dismiss a native `alert()`/`confirm()`/`prompt()` or "Leave site?" dialog. A dialog the extension saw open is answered at once, and the answer says what Chrome reported; otherwise it arms for the next dialog, so call it before the action that triggers it. A dialog that opened before anything listened cannot be answered from here (`tab-not-responding`). An arming lasts at most 30 seconds, and it is dropped when a new document loads or becomes active in the tab (a reload or a prerendered page too - not an address change within the same page, and not a frame) or the session moves to another tab; a page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile `session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true` (otherwise `leave-page-required`). |
 
 ## Tabs & Frames - 6 tools
 
@@ -50,10 +50,10 @@ The list below is what the client has to choose from.
 |---|---|
 | `browser_list_tabs` | List the current session's own open tabs (URL + title) - each concurrent session has its own tab group and can't see another session's tabs. |
 | `browser_switch_tab` | Activate a specific tab by ID, without bringing Chrome in front of you (only `bring_to_front: true` does). |
-| `browser_close_tab` | Close a tab by ID (session-owned tabs only). |
+| `browser_close_tab` | Close a tab by ID (session-owned tabs only). If it is the last tab in Chrome's last window, an empty tab is left in that window (`kept_window_open`), because Chrome would otherwise close. Closing the session's active tab says so (`active_tab: null`). If Chrome does not close the tab within 4 seconds (a "Leave site?" prompt or a busy page), the answer is `tab-not-closed`, and other closes are not held up; that tab still counts as closing, so closing the window's other tab leaves an empty tab. |
 | `browser_get_new_tab` | Return the most recently opened tab - useful after a link opens a new tab or an OAuth popup. |
 | `browser_list_frames` | List all iframes on the current page with URL and index. |
-| `browser_select_frame` | Execute JavaScript inside a specific iframe, targeted by index - also a frame from another site. Like `browser_execute_script` it runs through the Chrome debugger; the frame is identified by a one-time mark the extension puts in that frame's document, not by its address or position, and if the mark is not found, nothing is run (`frame-not-reachable`, with `retry` saying whether calling again can help; a frame whose document is replaced while the call looks for it gives `retry: true`). Like `browser_execute_script`, it answers within 29.5 seconds and says whether the code was sent. |
+| `browser_select_frame` | Execute JavaScript inside a specific iframe, targeted by index - also a frame from another site. Like `browser_execute_script` it runs through the Chrome debugger; the frame is identified by a one-time mark the extension puts in that frame's document, not by its address or position, and if the mark is not found, nothing is run (`frame-not-reachable`, with `retry` saying whether calling again can help; a frame whose document is replaced while the call looks for it gives `retry: true`). Like `browser_execute_script`, it answers within 29.5 seconds and says whether the code was sent. If no answer reaches the server within 45 seconds (Chrome itself stalled), the answer is `no-answer` with `sent: "unknown"`: the code MAY have run, and it is not repeated. |
 
 ## Data & Storage - 5 tools
 
@@ -84,7 +84,7 @@ The list below is what the client has to choose from.
 
 | Tool | Description |
 |---|---|
-| `browser_solve_captcha` | Detect reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile or FunCaptcha and work through it one step per call: try the reCAPTCHA checkbox, click the reCAPTCHA image-challenge cells the agent picks from a screenshot it takes first, or hand it to you through `browser_ask_user`. |
+| `browser_solve_captcha` | Detect a visible reCAPTCHA checkbox or image challenge, hCaptcha, Cloudflare Turnstile or FunCaptcha (an invisible reCAPTCHA or hCaptcha and a hidden Turnstile are reported as `invisible`) and work through it one step per call: try the reCAPTCHA checkbox, click the reCAPTCHA image-challenge cells the agent picks from a screenshot it takes first, or hand it to you through `browser_ask_user`. |
 
 ## Human-in-the-Loop - 1 tool
 
@@ -95,7 +95,7 @@ The list below is what the client has to choose from.
 ## Frequently asked questions
 
 **How many tools are there?**
-40. A check on every release counts the tool definitions in the server and compares them with every "N tools" claim on the site and in the README.
+41. A check on every release counts the tool definitions in the server and compares them with every "N tools" claim on the site and in the README.
 
 **What does it mean when a tool answers "unverified"?**
 That the action was sent and the effect could not be read back. It is not a failure and not a success. Repeating the action blindly is the one thing you should not do - read the page instead. Nine tools were changed in 1.29.2 to be able to give this answer rather than a false yes.
@@ -111,9 +111,15 @@ Yes. `browser_ask_user` pauses, asks you on your own screen - a 2FA code, a CAPT
 | Tool | Description |
 |---|---|
 | `browser_provide_feedback` | Self-check plus report in one call. Compares the connected extension against this server and detects more than one Browser MCP extension connected at once, also the same extension connected more than once (for instance from several Chrome profiles or browsers); with `BROWSER_MCP_CHECK_NPM=1` it also compares this server against the latest on npm - the three things that explain most "it just stopped working" moments. Returns a verdict, concrete fix steps, and a pre-filled issue link for whatever is genuinely missing. The agent calls it on its own whenever a tool blocks it. |
-| `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the extension popup, the installation id and the version. |
+| `browser_about` | Return Browser MCP info plus pre-filled links for the user to submit a feature wish, share a use-case, or report a bug. From 1.31 it also lists the Browser MCP installations connected to the chat: the profile name from the extension popup, the installation id and the version. From 1.33 it also lists the chat's partitions. |
 | `browser_reattach_debugger` | Force-detach and re-attach the Chrome debugger on the current tab. Use when click/fill/press_key start timing out or report a ghost attach while `browser_list_tabs` still works - faster than reloading the extension. |
 
 ---
 
-**Total: 40 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3), verified against `mcp-server/tools.js` line-by-line - no invented tools.
+## Parallel agents - 1 tool
+
+| Tool | Description |
+|---|---|
+| `browser_partition` | From 1.33 (idea and first version: [@ugbodagadave](https://github.com/ugbodagadave), [#20](https://github.com/Agent360dk/browser-mcp/pull/20)). `action: "new"` opens a partition with its own port, tab group and active tab, chooses its Chrome profile right away (`profile`, otherwise `BROWSER_MCP_PROFILE`) and answers an id like `p1`; ids are never reused while the server runs (after a restart of the server, numbering starts at `p1` again). Pass `partition: "p1"` to every tool that agent calls. `action: "close"` closes its tabs through its own connection and frees its port: `port_released`, and `tabs_closed` is `true` only when the extension confirmed it, or when no tool call ever used the partition (it then has no tabs, and the extension is not asked), otherwise `"unknown"`. Errors: `partition-limit` (4 open per server), `port-capacity-exhausted`, the `profile-*` answers (no partition is created), `partition-closed` from `new` when the partition is closed while it is being created, and `partition-not-found` / `partition-closed` on a call with an unknown or closed id (also `partition-not-found` while `new` is still creating the partition) - such a call is never sent to the default partition instead. |
+
+**Total: 41 tools** (5 + 14 + 6 + 5 + 2 + 3 + 1 + 1 + 3 + 1), verified against `mcp-server/tools.js` line-by-line - no invented tools.

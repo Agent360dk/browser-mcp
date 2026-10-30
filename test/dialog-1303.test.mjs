@@ -43,7 +43,13 @@ function model(opt = {}) {
     getMs: 0, attachMs: 0, navMs: 3, updAfvisMs: 0, gammelComplete: null, svarMs: 0, captchaMs: 0, fjernet: false,
     naesteId: 9, nyeFaner: new Map(), createMs: 0, groupMs: 0,
     // R112: fjernedeFaner (fanen er lukket), nyGetMs (opslag af en oprettet, indlaest fane er langsomme efter det foerste).
-    fjernedeFaner: new Set(), nyGetMs: 0, ...opt };
+    fjernedeFaner: new Set(), nyGetMs: 0,
+    // R176: loaderNr (hovedrammens dokument; et nyt dokument faar et nyt), traeMs (Page.getFrameTree svarer langsomt),
+    // traeUdenId (svaret mangler loaderId).
+    loaderNr: 1, traeMs: 0, traeUdenId: false,
+    // R177: rammeId (hovedrammens id - en prerender-aktivering giver et nyt), boern (iframes), dialogRamme (rammen, en dialog
+    // kommer fra; ellers hovedrammen).
+    rammeId: 'top', boern: [], dialogRamme: null, barnLoaderNr: 1, ...opt };
   let u;
   const snap = () => ({ id: 1, url: t.url, title: t.title, status: t.status, windowId: 1, active: true });
   const emit = (m, p) => { log.push(['ev', m, p.type ?? p.result]); u.fyr('debugger.onEvent', { tabId: 1 }, m, p); };
@@ -52,12 +58,13 @@ function model(opt = {}) {
     if (t.haengNav) return;
     // Et fragment paa samme side: ingen 'loading', kun den nye adresse (som Chrome).
     if (url.split('#')[0] === t.url.split('#')[0] && url.includes('#')) { t.url = url; status('complete'); return; }
-    t.url = (t.omdiriger && t.omdiriger[url]) || url; t.title = t.url; t.beskyt = false;
+    t.url = (t.omdiriger && t.omdiriger[url]) || url; t.title = t.url; t.beskyt = false; t.loaderNr++;
     status('loading'); setTimeout(() => status('complete'), 30);
   };
   const aabnBoks = (url) => {
     t.boks = { navs: [url], set: t.pageOn, type: t.boksType };
-    if (t.boks.set) emit('Page.javascriptDialogOpening', { type: t.boksType, message: t.boksType === 'beforeunload' ? '' : 'Hej' });
+    if (t.boks.set) emit('Page.javascriptDialogOpening', { type: t.boksType, message: t.boksType === 'beforeunload' ? '' : 'Hej',
+      frameId: t.dialogRamme || t.rammeId });
   };
   const forlad = (url) => {
     if (t.boks) return new Promise((r) => t.boks.navs.push([url, r]));
@@ -159,6 +166,14 @@ function model(opt = {}) {
         if (t.kvitterFoerst) { setTimeout(() => { if (t.boks === b) luk(t.lukResultat ?? p.accept); }, t.lukMs); return {}; }
         return sov(t.lukMs).then(() => { if (t.boks === b) luk(p.accept); return {}; });
       }
+      if (metode === 'Page.getFrameTree' && !t.boks) {
+        const r = () => ({ frameTree: { frame: { id: t.rammeId, ...(t.traeUdenId ? {} : { loaderId: 'L' + t.loaderNr }) },
+          childFrames: t.boern.map((id) => ({ frame: { id, parentId: t.rammeId, loaderId: 'B' + t.barnLoaderNr } })) } });
+        const ms = t.traeKoe && t.traeKoe.length ? t.traeKoe.shift() : t.traeMs;   // traeKoe: ventetid pr. kald, i raekkefoelge
+        return ms ? sov(ms).then(r) : r();
+      }
+      // 1.33 (2.2): captchaSvar er det, CAPTCHA-finderen svarer i siden.
+      if (metode === 'Runtime.evaluate' && t.captchaSvar && String(p.expression || '').includes('captchaFund')) return { result: { value: t.captchaSvar } };
       if (metode === 'Runtime.evaluate' && t.captchaMs && !t.boks) return sov(t.captchaMs).then(() => ({ result: { value: { found: false, types: [] } } }));
       return t.boks ? new Promise(() => {}) : {};
     },
@@ -233,9 +248,9 @@ test('S4a: en armeret dismiss vinder over leave_page - ét svar, og dommen er bl
   assert.equal(m.t.url, GAMMEL);
 });
 
-test('S4b: en armeret accept forlader siden - ok:true, ét svar, og armeringens loefte siger accept fra Closed', async () => {
+test('S4b: en armeret accept med leave_page forlader siden - ok:true, ét svar, og armeringens loefte siger accept fra Closed', async () => {
   const m = model();
-  await m.dialog({ action: 'accept' });
+  await m.dialog({ action: 'accept', leave_page: true });
   const loefte = m.u.hent('dialogLoefter').get(1);
   const r = await fang(m.nav());
   assert.equal(r.ok, true, vis(r));
@@ -607,7 +622,8 @@ test('handle_dialog: dommen kommer fra Closed - kvitteret uden lukning er dialog
   await m.enable();
   m.sidenNavigerer('https://siden-selv.example/');
   await sov(20);
-  const h = await fang(m.dialog({ action: 'accept' }));
+  // R173: accept af en aaben «Leave site?» kraever leave_page - proeven maaler svarvejen, saa den beder om det.
+  const h = await fang(m.dialog({ action: 'accept', leave_page: true }));
   assert.equal(h.ok, false, vis(h));
   assert.equal(h.error, 'dialog-unconfirmed', vis(h));
 });
@@ -702,14 +718,43 @@ test('R108-A3a: loftet er samlet - en boks lige foer loftet forlaenger ikke kald
   assert.ok(brugt < FRISTER.loft + MARGEN, `loftet ${FRISTER.loft} ms holdt ikke: ${brugt} ms (${vis(r)})`);
 });
 
+// 20/10 (R161, Astra): en fast tidsmargen kan ikke baade taale belastning og fange en mutant, der er 1,5 gange for langsom.
+// Tidsproeverne beholder derfor den stramme graense og koerer bedste af tre forsoeg: en rigtig fejl er roed i alle tre,
+// en forbigaaende forsinkelse paa en belastet maskine rammer ét.
+async function bedsteAfTre(forsoeg) {
+  let sidste;
+  for (let i = 0; i < 3; i++) { try { return await forsoeg(i); } catch (e) { sidste = e; } }
+  throw sidste;
+}
+
 test('R108-A3b: CAPTCHA-kontrollen ligger inden for loftet; springes den over, siger svaret det', async () => {
-  const m = model({ beskyt: false, captchaMs: 3000 });
-  const t0 = Date.now();
-  const r = await fang(m.nav());
-  const brugt = Date.now() - t0;
-  assert.equal(r.ok, true, vis(r));
-  assert.ok(brugt < FRISTER.loft + MARGEN, `CAPTCHA-kontrollen gik ud over loftet: ${brugt} ms`);
-  assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
+  // 20/10 (D19, R161 Opus): vægurets tid kan ikke både tåle belastning og fange en kontrol, der får lidt for lang tid. Den
+  // bærende måling er derfor i kodens eget ur: den frist, CAPTCHA-kontrollen faktisk får, skal ende inden for loftet regnet fra
+  // navigationens start (navigerSomEjer). Vægurets grænse står kun som grov ydergrænse mod en kontrol helt uden loft.
+  await bedsteAfTre(async () => {
+    // R162 (Astra): navMs 200 - navigationen bruger en maerkbar del af budgettet, saa ogsaa et nyt, fuldt loft til CAPTCHA-kontrollen
+    // (i stedet for resttiden) ender over loftet.
+    const m = model({ beskyt: false, captchaMs: 3000, navMs: 200 });
+    const ctx = m.u.ctx;
+    const [naviger, detect, vente] = [ctx.navigerSomEjer, ctx.detectCaptcha, ctx.venteMedFrist];
+    let start = null, captchaLoefte = null;
+    const captchaFrister = [];
+    ctx.navigerSomEjer = (...a) => { if (start === null) start = Date.now(); return naviger(...a); };
+    ctx.detectCaptcha = (...a) => (captchaLoefte = detect(...a));
+    ctx.venteMedFrist = (loefte, ms) => { if (loefte && loefte === captchaLoefte) captchaFrister.push(Date.now() + ms); return vente(loefte, ms); };
+    const t0 = Date.now();
+    const r = await fang(m.nav());
+    const brugt = Date.now() - t0;
+    assert.equal(r.ok, true, vis(r));
+    assert.ok(start !== null, 'navigationen gik ikke gennem navigerSomEjer - proeven maaler en anden vej');
+    assert.equal(captchaFrister.length, 1, `CAPTCHA-kontrollen kom ikke under én frist: ${captchaFrister.length}`);
+    assert.ok(captchaFrister[0] <= start + FRISTER.loft + 50,
+      `CAPTCHA-kontrollens frist sluttede ${captchaFrister[0] - start - FRISTER.loft} ms efter loftet`);
+    // R162 (Opus): ydergrænsen loft + 500 fanger ventetid uden for den indpakkede frist (fx et genforsøg eller en pause efter kontrollen).
+    // Målt: korrekt kode 912-953 ms ved load 124; værste fulde suite (D19) 1212 ms.
+    assert.ok(brugt < FRISTER.loft + 500, `navigationen gik ud over loftet: ${brugt} ms`);
+    assert.equal(r.captcha_checked, false, `en oversprunget kontrol skal ikke ligne «ingen CAPTCHA»: ${vis(r)}`);
+  });
 });
 
 test('R108-A4: reattach_debugger glemmer en boks, den ikke kan se laengere - naeste kald spoerger porten', async () => {
@@ -1278,6 +1323,461 @@ test('serveren: navigate- og dialogfejl er isError:true, et bevist ok:true er de
   assert.equal(igang.isError, true, vis(igang));
   const skiftet = await kald('browser_navigate', { ok: false, error: 'session-changed', sent: false });
   assert.equal(skiftet.isError, true, `session-changed er en fejl for klienten (R113): ${vis(skiftet)}`);
+  // 1.33 / R173 (Opus F5: overlevede): de to nye fejlkoder skal ogsaa vaere fejl for klienten.
+  const ingenAktiv = await kald('browser_navigate', { ok: false, error: 'no-active-tab', sent: false });
+  assert.equal(ingenAktiv.isError, true, `no-active-tab er en fejl for klienten: ${vis(ingenAktiv)}`);
+  const sideSkiftet = await kald('browser_handle_dialog', { ok: false, error: 'page-changed', armed: false });
+  assert.equal(sideSkiftet.isError, true, `page-changed er en fejl for klienten: ${vis(sideSkiftet)}`);
   const ok = await kald('browser_navigate', { ok: true, url: NY, tab_id: 1 });
   assert.notEqual(ok.isError, true, vis(ok));
+});
+
+// 1.33 (privat rapport 3.2): efter at den aktive fane er lukket, skrev navigate uden new_tab stille i sessionens foerste
+// resterende fane - en side, brugeren arbejdede i (MAALT paa 1.27.1). Nu sendes intet, og svaret siger hvorfor.
+test('1.33 3.2: uden aktiv fane sender navigate intet til sessionens anden fane - no-active-tab, sent:false', async () => {
+  const m = model({ beskyt: false });
+  m.u.hent('sessions').get(9876).activeTabId = null;          // den aktive fane er lukket; fane 1 (kladde) er tilbage
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'no-active-tab', vis(r));
+  assert.equal(r.sent, false);
+  assert.equal(m.adresser(), 0, 'adressen blev sendt til fane 1 alligevel');
+  assert.equal(m.log.filter((x) => x[0] === 'tabs.create').length, 0, 'en ny fane blev oprettet i stedet for at svare');
+  assert.equal(m.t.url, GAMMEL, 'fane 1 skal staa, hvor den stod');
+  assert.match(r.detail, /\b1 "kladde"/, 'svaret skal liste sessionens faner');
+  assert.equal(m.u.hent('sessions').get(9876).activeTabId, null, 'fane 1 maa ikke goeres aktiv bag kalderens ryg');
+});
+
+test('1.33 3.2: uden aktiv fane aabner navigate med new_tab en ny fane - og fane 1 roeres ikke', async () => {
+  const m = model({ beskyt: false });
+  m.u.hent('sessions').get(9876).activeTabId = null;
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(m.log.filter((x) => x[0] === 'tabs.create' && x[1] === NY).length, 1, `ingen ny fane med adressen: ${vis(r)}`);
+  assert.equal(m.adresser(), 0, 'fane 1 fik adressen');
+  assert.equal(m.t.url, GAMMEL);
+  assert.notEqual(r.error, 'no-active-tab', vis(r));
+});
+
+// 1.33 (privat rapport 4.2): en glemt armering (60 s, intet loft, alle bokstyper) kunne svare «Leave site?» med accept og
+// forlade en side med ugemt arbejde. Nu svarer en armeret accept kun alert/confirm/prompt, medmindre leave_page er sat.
+test('4.2: en armeret accept uden leave_page svarer ikke «Leave site?» - navigates Stay svarer, og armeringen bliver', async () => {
+  const m = model();
+  await m.dialog({ action: 'accept' });
+  const r = await fang(m.nav());
+  assert.equal(r.error, 'beforeunload-blocked', vis(r));
+  assert.equal(r.answered_by, 'navigate');
+  assert.deepEqual(m.svar().map((x) => x[2]), [false], 'armeringen svarede accept paa «Leave site?»');
+  assert.equal(m.t.url, GAMMEL, 'siden blev forladt');
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'armeringen skal staa til naeste alert/confirm/prompt');
+});
+
+test('4.2: en armeret accept uden leave_page svarer ikke en «Leave site?», siden selv aabner - boksen bliver til brugeren', async () => {
+  const m = model();
+  await m.dialog({ action: 'accept' });
+  await m.sidenNavigerer(NY);
+  await sov(120);
+  assert.equal(m.svar().length, 0, 'armeringen svarede «Leave site?»');
+  assert.ok(m.u.hent('dialogFaner').get(1)?.boks, 'boksen skal staa aaben til brugeren');
+});
+
+test('4.2: med leave_page svarer den armerede accept ogsaa en «Leave site?», siden selv aabner', async () => {
+  const m = model();
+  await m.dialog({ action: 'accept', leave_page: true });
+  await m.sidenNavigerer(NY);
+  await sov(120);
+  assert.deepEqual(m.svar().map((x) => x[2]), [true]);
+});
+
+test('4.2 / R173: armeringen varer 30 s som standard og hoejst 30 s; en kortere timeout gaelder - svaret siger det', async () => {
+  const m = model({ beskyt: false });
+  const std = await m.dialog({ action: 'dismiss' });
+  assert.equal(std.expires_in_ms, 30000, vis(std));
+  assert.equal(std.timeout_capped_from, undefined);
+  const kort = await m.dialog({ action: 'dismiss', timeout: 5000 });
+  assert.equal(kort.expires_in_ms, 5000, vis(kort));
+  const lang = await m.dialog({ action: 'dismiss', timeout: 120000 });
+  assert.equal(lang.expires_in_ms, 30000, vis(lang));
+  assert.equal(lang.timeout_capped_from, 120000);
+  const a = m.u.hent('armeredeDialoger').get(1);
+  assert.ok(a.udloeb - Date.now() <= 30000, 'udloebet skal foelge loftet, ikke det oenskede');
+  clearTimeout(a.timer);
+});
+
+test('1.33 2.2: et usynligt reCAPTCHA meldes som oplysning paa navigate - ingen captcha_detected og intet raad om at loese', async () => {
+  const m = model({ beskyt: false, captchaSvar: { found: false, types: [], invisible: ['recaptcha'] } });
+  const r = await fang(m.nav());
+  assert.equal(r.ok, true, vis(r));
+  assert.equal(r.captcha_invisible, 'recaptcha');
+  assert.equal(r.captcha_detected, undefined, 'navigate bad om browser_solve_captcha paa en side uden noget at loese');
+  assert.equal(r.hint, undefined);
+});
+
+test('1.33 2.2: et synligt afkrydsningsfelt meldes stadig som fund paa navigate', async () => {
+  const m = model({ beskyt: false, captchaSvar: { found: true, types: ['recaptcha_v2_checkbox'] } });
+  const r = await fang(m.nav());
+  assert.equal(r.captcha_detected, 'recaptcha_v2_checkbox', vis(r));
+  assert.match(r.hint, /browser_solve_captcha/);
+  assert.equal(r.captcha_invisible, undefined);
+});
+
+test('1.33 2.2: ogsaa i en ny fane (new_tab) meldes et usynligt reCAPTCHA som oplysning', async () => {
+  const m = model({ beskyt: false, captchaSvar: { found: false, types: [], invisible: ['recaptcha'] } });
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(r.captcha_invisible, 'recaptcha', vis(r));
+  assert.equal(r.captcha_detected, undefined);
+});
+
+// 1.33 (privat rapport 5.9): navigate(new_tab) aabner fanen i baggrunden; svaret sagde det ikke.
+test('1.33 5.9: en ny fane i baggrunden - svaret siger active:false og raader til browser_switch_tab', async () => {
+  const m = model({ beskyt: false });
+  const r = await fang(m.nav({ new_tab: true }));
+  assert.equal(r.tab_id, 10, vis(r));
+  assert.equal(r.active, false);
+  assert.match(r.active_note, /browser_switch_tab/);
+});
+
+test('1.33 5.9: navigate i den aktive fane faar ingen active-note', async () => {
+  const m = model({ beskyt: false });
+  const r = await fang(m.nav());
+  assert.equal(r.active, undefined, vis(r));
+  assert.equal(r.active_note, undefined);
+});
+
+// R173 (Astra, MAALT): armeringen overlevede dokument- og faneskift og svarede accept paa senere dialoger.
+test('R173: et nyt dokument i hovedrammen afvaebner - den nye sides alert besvares ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const loefte = m.u.hent('dialogLoefter').get(1);
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'top', url: 'https://ny-side.example/' } });
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'armeringen skal vaere vaek efter dokumentskiftet');
+  const r = await loefte;
+  assert.match(String(r.error), /page changed/, vis(r));
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den nye sides alert blev besvaret af den gamle armering');
+});
+
+test('R173: en ny ramme INDE i siden afvaebner ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'barn', parentId: 'top', url: 'https://annonce.example/' } });
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'en iframe, der indlaeses, er ikke et nyt dokument i fanen');
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R173: efter et faneskift i sessionen besvares den gamle fanes dialog ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2); sess.activeTabId = 2;                  // switch_tab til fane 2
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'armeringen svarede paa en fane, sessionen ikke laengere arbejder i');
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'og den skal vaere afvaebnet');
+});
+
+test('R173: skifter adressen, mens armeringen bliver sat, armeres der ikke - page-changed', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.t.url = 'https://anden-side.example/';                  // siden skifter, mens Page.enable venter
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.equal(r.armed, false);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+// R173 (Opus D7: overlevede): T7's «Leave site?» holdes nu ogsaa tilbage af filtret fra 4.2, saa den proeve isolerer ikke
+// laengere udloebet. Med en alert er udloebet den ENESTE regel, der holder armeringen fra at svare.
+test('R173: en udloebet armering svarer heller ikke en alert', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.enable();
+  m.u.hent('armeredeDialoger').set(1, { timer: null, action: 'accept', accept: true, text: '', udloeb: Date.now() - 1, opfyld: () => {} });
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'en udloebet armering svarede alerten');
+});
+
+// R173 (Opus H1, MAALT): en aaben «Leave site?» blev besvaret accept uden leave_page, og siden blev forladt.
+test('R173: en aaben «Leave site?» besvares ikke accept uden leave_page - leave-page-required, intet sendt', async () => {
+  const m = model();
+  await m.enable();
+  m.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const h = await fang(m.dialog({}));                        // standard: accept
+  assert.equal(h.error, 'leave-page-required', vis(h));
+  assert.equal(h.sent, false);
+  assert.equal(m.svar().length, 0, 'siden blev forladt uden leave_page');
+});
+
+test('R173: med leave_page forlades siden; dismiss bliver - begge besvares straks', async () => {
+  const ja = model();
+  await ja.enable();
+  ja.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const r = await fang(ja.dialog({ action: 'accept', leave_page: true }));
+  assert.equal(r.ok, true, vis(r));
+  assert.deepEqual(ja.svar().map((x) => x[2]), [true]);
+  const nej = model();
+  await nej.enable();
+  nej.sidenNavigerer('https://siden-selv.example/');
+  await sov(20);
+  const d = await fang(nej.dialog({ action: 'dismiss' }));
+  assert.equal(d.ok, true, vis(d));
+  assert.deepEqual(nej.svar().map((x) => x[2]), [false]);
+});
+
+// ── R174 (Astra, MAALT): armeringen var ikke bundet til dokument og fane ──────────────────────────────
+test('R174: alle skift af sessionens aktive fane gaar gennem skiftAktiv - ingen sidevej uden om afvaebningen', () => {
+  const kilde = readFileSync(new URL('../extension/background.js', import.meta.url), 'utf8');
+  const sideveje = kilde.split('\n').filter((l) => /\.activeTabId = (?!null\b)/.test(l) && !/^\s*session\.activeTabId = id;$/.test(l));
+  assert.deepEqual(sideveje, [], 'en tildeling uden om skiftAktiv kan skifte fane uden at afvaebne');
+});
+
+test('R174: skift vaek og tilbage afvaebner - den gamle fanes naeste alert besvares ikke', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2);
+  m.u.hent('skiftAktiv')(sess, 2);
+  m.u.hent('skiftAktiv')(sess, 1);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'armeringen skal vaere vaek efter skiftet vaek');
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0);
+});
+
+test('R174: et nyt dokument paa samme adresse (genindlaesning) afvaebner', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  // R175: en genindlaesning giver hovedrammens frameNavigated (MAALT i Chrome) - det er den, der afvaebner en sat armering.
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'top', url: GAMMEL } });
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den genindlaeste sides alert blev besvaret af armeringen fra foer');
+});
+
+test('R174: et nyt dokument, mens armeringen bliver sat, giver page-changed - ogsaa paa samme adresse', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });   // adressen er den samme
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R174: en dialog fra et nyt dokument, der aabnede mens kaldet ventede, besvares ikke', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message: 'Ny side' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
+});
+
+test('R174 (Opus G3): armeringen hoerer til fanens EGEN session, ogsaa naar en anden session staar foerst', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  const sessions = m.u.hent('sessions');
+  const egen = sessions.get(9876);
+  sessions.delete(9876);
+  sessions.set(9875, { tabIds: new Set([7]), activeTabId: 7, groupId: 2, label: 'Claude 2', color: 'red' });   // staar nu foerst
+  sessions.set(9876, egen);
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1, 'armeringen blev holdt tilbage af en anden sessions aktive fane');
+});
+
+// ── R175 (Astra, MAALT): bindingen skal gaelde hele kaldet ──────────────────────────────────────────────
+test('R175: en genindlaesning, mens det foerste faneopslag venter, giver page-changed - ingen armering', async () => {
+  const m = model({ boksType: 'alert', getMs: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);                                              // getSessionTab venter paa tabs.get
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R175: et skift vaek og tilbage, mens Page.enable venter, giver session-changed - ingen armering', async () => {
+  const m = model({ boksType: 'alert', enableForsinkelse: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2);
+  m.u.hent('skiftAktiv')(sess, 2);
+  m.u.hent('skiftAktiv')(sess, 1);
+  const r = await p;
+  assert.equal(r.error, 'session-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0);
+});
+
+// R175 (Opus, MAALT i Chrome 155): «loading» kommer ogsaa ved pushState/replaceState/hash og en iframe, der skifter adresse.
+test('R175: et «loading» uden nyt dokument (SPA-skift, iframe) afvaebner ikke en sat armering', async () => {
+  const m = model({ boksType: 'alert' });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL + '#ny', status: 'loading' });
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'et SPA-skift er ikke et nyt dokument');
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1, 'alerten efter SPA-skiftet skal besvares');
+});
+
+// ── R176 (Astra, MAALT): bindingen tages foer foerste ventetid ─────────────────────────────────────────
+test('R176: et skift vaek og tilbage, mens det foerste faneopslag venter, giver session-changed', async () => {
+  const m = model({ boksType: 'alert', getMs: 60 });
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds.add(2);
+  m.u.hent('skiftAktiv')(sess, 2);
+  m.u.hent('skiftAktiv')(sess, 1);
+  const r = await p;
+  assert.equal(r.error, 'session-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+test('R176: en ny sides boks, der aabner mens det foerste opslag venter, besvares ikke', async () => {
+  const m = model({ boksType: 'alert', getMs: 60 });
+  await m.enable();
+  const p = m.dialog({ action: 'accept' });
+  await sov(10);
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.frameNavigated', { frame: { id: 'top', url: GAMMEL } });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message: 'Ny side' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret');
+});
+
+// ── R176 (Opus, MAALT i Chrome 155): prerender-aktivering skifter dokument uden frameNavigated ─────────────────────
+test('R176: et nyt dokument uden frameNavigated (prerender-aktivering) afvaebner - den nye sides confirm besvares ikke', async () => {
+  const m = model({ boksType: 'confirm' });
+  const r0 = await m.dialog({ action: 'accept' });
+  assert.equal(r0.armed, true, vis(r0));
+  m.t.loaderNr++;                                             // aktiveringen: ny loaderId, kun «loading»
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: 'https://forhaand.example/', status: 'loading' });
+  await sov(20);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'armeringen stod efter et nyt dokument');
+  m.sidenNavigerer('https://forhaand.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 0, 'den nye sides confirm blev besvaret accept');
+});
+
+test('R176: «loading» med samme dokument (SPA-skift) lader armeringen staa - ogsaa naar Chrome svarer langsomt', async () => {
+  const m = model({ boksType: 'confirm', traeMs: 40 });
+  await m.dialog({ action: 'accept' });
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL + 'spa', status: 'loading' });
+  await sov(80);
+  assert.ok(m.u.hent('armeredeDialoger').has(1));
+  m.sidenNavigerer('https://spa.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1, 'confirmen efter SPA-skiftet skal besvares');
+});
+
+test('R176: kan dokumentet ikke afgoeres ved «loading», afvaebnes armeringen (den sikre retning)', async () => {
+  for (const [navn, opt] of [['intet id ved armeringen', { traeUdenId: true }]]) {
+    const m = model({ boksType: 'confirm', ...opt });
+    const r0 = await m.dialog({ action: 'accept' });
+    assert.equal(r0.armed, true, navn + ' ' + vis(r0));
+    m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+    await sov(20);
+    assert.ok(!m.u.hent('armeredeDialoger').has(1), navn);
+  }
+  const m = model({ boksType: 'confirm' });
+  await m.dialog({ action: 'accept' });
+  m.t.traeUdenId = true;                                      // svaret ved «loading» mangler id
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  await sov(20);
+  assert.ok(!m.u.hent('armeredeDialoger').has(1), 'intet id ved «loading»');
+});
+
+test('R176: en armering, der forbruges eller afloeses mens Chrome svarer, roeres ikke af det gamle svar', async () => {
+  const m = model({ boksType: 'confirm' });
+  await m.dialog({ action: 'accept' });
+  m.t.traeKoe = [200];                                        // Chromes svar paa det gamle tjek kommer sent ...
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL + 'spa', status: 'loading' });
+  m.t.loaderNr++;                                             // ... siden skifter imens ...
+  const t0 = Date.now();
+  const r1 = await m.dialog({ action: 'dismiss' });           // ... og en ny armering saettes paa det nye dokument
+  assert.equal(r1.armed, true, vis(r1));
+  assert.ok(Date.now() - t0 < 150, 'den nye armering skal staa, foer det gamle svar kommer');
+  const ny = m.u.hent('armeredeDialoger').get(1);
+  await sov(300);
+  assert.equal(m.u.hent('armeredeDialoger').get(1), ny, 'det gamle tjek afvaebnede den nye armering');
+});
+
+// ── R177 (Astra, MAALT i modellen): kapløbet mellem den nye sides dialog og Chromes svar ─────────────────
+// MAALT i Chrome 155 22/10: mens en dialog staar aaben, svarer Page.getFrameTree ikke; dialogen baerer sin rammes frameId.
+test('R178 (Opus, MAALT i Chrome): en iframe fra et andet site staar ikke i getFrameTree - dens dialog besvares stadig', async () => {
+  // En binding til sidens ramme-id'er lukkede prerender-kapløbet, men afviste dialoger fra rammer i en anden proces (en regression
+  // mod 1.32). Kapløbet er kendt rest; denne proeve holder bindingen ude.
+  const m = model({ boksType: 'confirm', boern: ['samme-site'] });
+  await m.dialog({ action: 'accept' });
+  m.t.dialogRamme = 'andet-site';                             // ikke i traeet, som Chrome svarede ved armeringen
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R177: en iframes dialog paa siden, der blev armeret, besvares stadig', async () => {
+  const m = model({ boksType: 'confirm', boern: ['annonce'] });
+  await m.dialog({ action: 'accept' });
+  m.t.dialogRamme = 'annonce';
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R177 (Astra 3A-6): uden dokument-id ved armeringen afvaebner «loading» straks - en dialog lige efter besvares ikke', async () => {
+  const m = model({ boksType: 'confirm', traeUdenId: true });
+  const r0 = await m.dialog({ action: 'accept' });
+  assert.equal(r0.armed, true, vis(r0));
+  m.t.traeMs = 200;
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  m.u.fyr('debugger.onEvent', { tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message: 'Ny side', frameId: 'top' });
+  await sov(20);
+  assert.equal(m.svar().length, 0, 'dialogen kom, mens tjekket ventede, og blev besvaret');
+});
+
+test('R177 (Astra): et nyt dokument, mens armeringen spoerger Chrome om dokumentet, giver page-changed', async () => {
+  const m = model({ boksType: 'confirm', traeKoe: [150] });
+  const p = m.dialog({ action: 'accept' });
+  for (let i = 0; i < 100 && !m.log.some((x) => x[0] === 'cdp' && x[1] === 'Page.getFrameTree'); i++) await sov(2);
+  m.t.loaderNr++;
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  const r = await p;
+  assert.equal(r.error, 'page-changed', vis(r));
+  assert.ok(!m.u.hent('armeredeDialoger').has(1));
+});
+
+// ── R177 (Opus): proevehullerne D2 og N6 ─────────────────────────────────────────────────────────────
+test('R177 (Opus D2): en iframe, der navigerer, afvaebner ikke - dokument-id er hovedrammens', async () => {
+  const m = model({ boksType: 'confirm', boern: ['annonce'] });
+  await m.dialog({ action: 'accept' });
+  m.t.barnLoaderNr++;                                         // iframen faar et nyt dokument; hovedrammen er den samme
+  m.u.fyr('tabs.onUpdated', 1, { status: 'loading' }, { id: 1, url: GAMMEL, status: 'loading' });
+  await sov(20);
+  assert.ok(m.u.hent('armeredeDialoger').has(1), 'en iframes nye dokument afvaebnede armeringen');
+  m.t.dialogRamme = 'annonce';
+  m.sidenNavigerer('https://alert.example/');
+  await sov(80);
+  assert.equal(m.svar().length, 1);
+});
+
+test('R177 (Opus N6): uden aktiv fane er opslagets eget fanevalg ikke et skift under kaldet', async () => {
+  const m = model({ boksType: 'confirm' });
+  const sess = m.u.hent('sessions').get(9876);
+  sess.tabIds = new Set(); sess.activeTabId = null;
+  const r = await m.dialog({ action: 'accept' });
+  assert.notEqual(r.error, 'session-changed', vis(r));
+  assert.equal(r.armed, true, vis(r));
 });

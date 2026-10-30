@@ -18,9 +18,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const rod = dirname(dirname(fileURLToPath(import.meta.url)));
 const kilde = readFileSync(join(rod, 'mcp-server/index.js'), 'utf8');
+
+// 29/10: instruktionerne staar i en skabelonstreng; en uescapet backtick i teksten lukker den, og serveren starter ikke.
+// Proeverne herunder laeser kilden som tekst og ser det ikke - derfor skal filen ogsaa kunne indlaeses som kode.
+test('serverens kilde kan indlaeses som kode (instruktionsteksten lukker ikke sin skabelonstreng)', () => {
+  const r = spawnSync(process.execPath, ['--check', join(rod, 'mcp-server/index.js')], { encoding: 'utf8' });
+  assert.equal(r.status, 0, `node --check fejlede: ${(r.stderr || '').split('\n').slice(0, 6).join(' | ')}`);
+});
 
 // node_modules ligger i mcp-server/, ikke i roden, saa et bart pakkenavn ikke kan
 // resolves herfra. Vi importerer den SAMME SDK som serveren selv bruger.
@@ -127,6 +135,8 @@ test('instruktionerne lover ikke at serveren henter kode fra git', () => {
 // Derfor staar henvisningen i instruktionen i stedet, betinget og med sin egen afgraensning:
 // den gaelder KUN naar det oenskede slet ikke er i en webside. Agenten kan selv se om den har
 // skrivebords-vaerktoejer, saa den behoever ikke spoerge - og der er ingen reklame i et svar.
+// 29/10 (Gustav): har agenten INGEN skrivebords-vaerktoejer, siger den én gang, at Computer MCP findes, og giver
+// installationslinjen - stadig kun for den familie, der ligger uden for siden, og den installerer aldrig selv.
 test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er sandt', () => {
   const iStart = kilde.indexOf('## When things fail');
   const blok = kilde.slice(iStart, kilde.indexOf('`;', iStart));
@@ -138,6 +148,19 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   const linje = blok.slice(iLinje, blok.indexOf('\n', iLinje));
   assert.match(linje, /background tab|React|CAPTCHA/,
     'linjen siger ikke hvad den IKKE gaelder - saa vil den blive brugt paa almindelige side-problemer');
+  assert.match(linje, /If you have no such tools/, 'linjen siger ikke hvad agenten goer, naar skrivebords-vaerktoejet mangler');
+  assert.match(linje, /claude mcp add computer -- npx -y @agent360\/computer-mcp\\`/, 'installationslinjen mangler eller er ikke Computer MCPs egen');
+  // 29/10: linjen stod foerst med uescapede backticks og lukkede skabelonstrengen - serveren startede ikke, og denne
+  // proeve (der laeser kilden som tekst) saa det ikke. Derfor ogsaa: instruktionen skal kunne indlaeses som kode.
+  assert.match(linje, /Do not install it yourself/, 'linjen forbyder ikke agenten at installere selv');
+  assert.match(linje, /signed in to, never a second browser/, 'overleveringen holder ikke arbejdet i brugerens egen Chrome');
+  // P183: Computer MCP maa kun naevnes i den ene afgraensede linje - ellers kan henvisningen fyre paa almindelige side-problemer.
+  const iInstr = kilde.indexOf('const INSTRUCTIONS = `');
+  const instr = kilde.slice(iInstr, kilde.indexOf('`;', iInstr));
+  const navn = /Computer MCP|computer-mcp|computermcp/g;
+  assert.equal((instr.match(navn) || []).length, (linje.match(navn) || []).length,
+    'Computer MCP naevnes uden for den afgraensede linje - saa kan henvisningen fyre paa almindelige side-problemer');
+  assert.match(linje, /file picker once it has opened as an OS dialog/, 'filvaelgeren er ikke afgraenset til OS-dialogen');
   assert.match(linje, /If you also have|if you also have/,
     'henvisningen er ikke betinget af at agenten faktisk HAR skrivebords-vaerktoejer');
 });
@@ -151,6 +174,36 @@ test('When things fail: spoerg brugeren foer bring_to_front, i begge input-punkt
   assert.match(afsnit, /If it still fails, ask the user before browser_switch_tab with bring_to_front: true/);
 });
 
+// R154 (Opus): ogsaa «active app», «on top» og «verified/confirmed/tested/proven» som maaleord.
+const FOKUS_ORD = /\b(?:(?:un)?focus(?:s?ed)?|foreground|frontmost|in front|on top|active app)\b/i;   // R155 (Opus): «unfocused», «focussed»
+const MAALE_ORD = /measur|\bverif|\bconfirm|\bproven\b|\btested\b/i;
+// R155 (Opus): en falsk saetning lige EFTER en godkendt saetning («… decides. Since 20 Oct that is settled by measurement: it does not.»)
+// har intet fokusord og slap igennem. Fokusafsnittet fryses derfor ordret paa hver flade, inklusive starten af saetningen efter -
+// ogsaa en indsat saetning midt i eller lige efter er dermed roed.
+const FROSNE_FOKUS_AFSNIT = {
+  'README.md': "Chrome delivers no mouse or keyboard input to a tab that is not the visible one in its window (measured). Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement. Some of it cannot be solved at all:",
+  'content/browsermcp-docs-troubleshooting.md': "Input - typing, hover, coordinate clicks - does not reach a tab that is not the visible one in its window (measured). Whether it reaches the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides. One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement. When input does not land, the agent has to ask you, and you decide. **Fix status:",
+};
+FROSNE_FOKUS_AFSNIT['mcp-server/README.md'] = FROSNE_FOKUS_AFSNIT['README.md'];
+
+const GODKENDTE_FOKUS_SAETNINGER = new Set([
+  "Up to 1.30.1 the agent then called `browser_switch_tab`, which brought Chrome in front of you every time, and a screenshot of a covered window raised Chrome and left it there.",
+  "Whether it does to the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
+  "Whether it reaches the active tab of a window without the operating system's focus is unmeasured in desktop Chrome, so the tools' `landed` answer decides.",
+  "One observation on macOS (Chrome for Testing on GitHub's runner, 14 Oct 2026) saw a key press land in the active tab while another app (TextEdit) was in front; that is one platform and one input type, not a general measurement.",
+  "When Chrome gives no picture in time, or the picture cannot be read back - usually because its window is covered by other windows or minimized - the answer is `window-covered`, and Chrome is not pulled in front; other errors are reported as they are.",
+]);
+
+const GODKENDTE_IKON_SAETNINGER = new Set([
+  "(When the target is a `label` and the action is a click, the proof is its associated control's own activation click or a click on the control itself, whatever that control is.) Measured in Shoelace 2.20.1 with its default styling: the custom `sl-icon` element in an `sl-button`'s prefix slot never gets the click itself (the library sets `pointer-events: none` there), so clicking that `sl-icon` answers `maybe_landed` - target the button.",
+  "A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click (inside an `sl-button` it is unmeasured in Chrome).",
+  "Measured in Ionic 8.8.19: an `ion-segment-button`'s icon or label as the target answers `covered` before the press (the host takes the click); target the segment button itself.",
+  "The mouse events are bound to the target that was found: each one at the click point is judged on the element that gets it, and only that very event reaching the target counts as proof (for a field clicked through its label, the field's own click, only when the label's click was not cancelled, and once; around the target, only its own control frame (a button, link or summary, or an element with a button, link, menu item, option, tab, checkbox, radio or switch role), not a container that listens for its children, and for a field, a button or any custom element (a tag name with a hyphen, as every form-associated custom field has) as the target, not even its own box: only an event that reaches the target itself, so a custom icon whose click only reaches the button around it is `maybe_landed`); a click stopped on the way, a target the page replaces during the click, a dialog that holds the page while the click is read, or no event at all gives `maybe_landed`, not a yes.",
+  "A text selector picks a clickable child only when the text is in it, so `text=Ordre 7` on a card no longer picks the card's first button (1.30.1 did, and a delete ran); a text next to an icon button with no text of its own now clicks the row, not the button.",
+  "- \"Restart your agent and the extension icon turns green\" was wrong in sixteen places, and had been since 1.29.0 changed the server to take a port on first use rather than at startup.",
+  "Worse, the icon never turns green at all: there is one icon and nothing changes its colour.",
+]);
+
 // R103 (Astra + Opus): README og fejlfindingssiden kaldte et fokuskrav «measured», mens tools.js siger at input til den aktive
 // fane i et ufokuseret vindue er umaalt. Ingen flade maa igen paastaa det som maalt.
 test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er umaalt', () => {
@@ -159,5 +212,46 @@ test('ingen flade kalder et fokuskrav maalt: input til et ufokuseret vindue er u
     assert.doesNotMatch(t, /operating system's focus \(both measured/, `${f} kalder fokuskravet maalt`);
     assert.doesNotMatch(t, /needs the tab to be the visible one in a window that has the operating system's focus/, `${f} gør OS-fokus til et krav`);
     assert.match(t, /without the operating system's focus is unmeasured in desktop Chrome/, `${f} siger ikke at fokus-tilfaeldet er umaalt`);
+    // R104 Opus forslag 1: vagten var bundet til ordlyden - en omskrivning som «… operating system's focus (measured)» slap igennem.
+    assert.doesNotMatch(t, /operating system's focus[^.]{0,80}\(measured/, `${f} kalder fokuskravet maalt (omskrevet)`);
+    // C11 (14/10-maalingen): én observation paa macOS naevnes - som én observation, ikke som en generel maaling
+    // R152 (Astra + Opus): vagten var bundet til ordstumper - «did not see a key press land» og «was not in front» slap igennem.
+    assert.match(t, /One observation on macOS \(Chrome for Testing on GitHub's runner, 14 Oct 2026\) saw a key press land in the active tab while another app \(TextEdit\) was in front; that is one platform and one input type, not a general measurement\./, `${f} naevner ikke 14/10-observationen ordret med sin graense`);
+    // R153-R154 (Astra + Opus): regex-vagter mod «maalt»-formuleringer blev ved med at slippe nye omskrivninger igennem og gav
+    // falsk roedt paa sande saetninger. Reglen er nu et GODKENDT SAET: enhver saetning, der naevner fokus eller forgrund, og som selv
+    // eller i saetningen efter taler om maaling, skal vaere én af de reviewede saetninger herunder. En ny formulering - ogsaa en sand -
+    // er roed med vilje: den skal reviewes og tilfoejes her, foer den maa staa paa en flade.
+    // R155 (Astra): ogsaa maaleord i saetningen FOER taeller, og markdown-fremhaevning (**in** front) fjernes foer ordene soeges.
+    assert.ok(t.includes(FROSNE_FOKUS_AFSNIT[f]), `${f}: fokusafsnittet er aendret - en reviewet tekst skal ind i FROSNE_FOKUS_AFSNIT, foer den maa staa paa fladen`);
+    // R156 (Astra): ogsaa understregnings-fremhaevning (__in__ front) fjernes; en understregning MELLEM to ordtegn (browser_fill) bliver.
+    const saetninger = t.replace(/\*+/g, '').replace(/(?<!\w)_+|_+(?!\w)/g, '').split(/(?<=[.!?])\s+/);
+    const nye = saetninger.filter((x, i) => FOKUS_ORD.test(x)
+      && (MAALE_ORD.test(x) || MAALE_ORD.test(saetninger[i + 1] || '') || MAALE_ORD.test(saetninger[i - 1] || '')))
+      .filter((x) => !GODKENDTE_FOKUS_SAETNINGER.has(x));
+    assert.deepEqual(nye, [], `${f} har en ureviewet saetning om fokus/forgrund og maaling - review den og tilfoej den til GODKENDTE_FOKUS_SAETNINGER`);
   }
+});
+
+// R153 (Opus): R152's afvisning (CHANGELOG generaliserede et maalt sl-icon til «an icon» paa «Shoelace 2.x») havde ingen proeve -
+// teksten kunne falde tilbage, eller afsnittet forsvinde, uden at noget blev roedt.
+test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte versioner', () => {
+  const t = readFileSync(join(rod, 'CHANGELOG.md'), 'utf8').replace(/\s+/g, ' ');
+  assert.match(t, /Measured in Shoelace 2\.20\.1 with its default styling: the custom `sl-icon` element in an `sl-button`'s prefix slot never gets the click itself/);
+  assert.match(t, /Measured in Ionic 8\.8\.19: an `ion-segment-button`'s icon or label as the target answers `covered`/);
+  assert.match(t, /Other versions of these libraries are unmeasured\./);
+  assert.match(t, /inside an `sl-button` it is unmeasured in Chrome/);
+  // R154 (Astra): maaleplaceringen og svarene skal ogsaa vaere bundet, ikke kun versionerne.
+  assert.match(t, /never gets the click itself \(the library sets `pointer-events: none` there\), so clicking that `sl-icon` answers `maybe_landed` - target the button\./);
+  assert.match(t, /A native `svg` or `i` icon is not a field: measured inside a native `button`, clicking it answered `landed: true` when the button got the click/);
+  assert.doesNotMatch(t, /In Shoelace 2\.x, an icon/, 'CHANGELOG generaliserer igen et maalt sl-icon til ethvert ikon');
+  // R155-R159: regex-regler mod ikon-generaliseringer svingede mellem falsk groent og falsk roedt (ordstilling, «e.g.», «button palette»).
+  // Reglen er nu den samme som for fokus: hver CHANGELOG-saetning, der naevner et ikon, skal vaere én af de reviewede herunder.
+  // En ny saetning om ikoner - ogsaa en sand - er roed med vilje, indtil den er reviewet og tilfoejet. Markdown-fremhaevning
+  // (*icon*, _icon_, __icon__) fjernes foerst, som i fokusvagten (R159, Astra).
+  const udenFremhaevning = (x) => x.replace(/\*+/g, '').replace(/(?<!\w)_+|_+(?!\w)/g, '');
+  const godkendte = new Set([...GODKENDTE_IKON_SAETNINGER].map(udenFremhaevning));
+  const nyeIkonSaetninger = udenFremhaevning(t).split(/(?<=[.!?])\s+/).filter((x) => /\bicons?\b/i.test(x) && !godkendte.has(x));
+  assert.deepEqual(nyeIkonSaetninger, [], 'CHANGELOG har en ureviewet saetning om ikoner - review den og tilfoej den til GODKENDTE_IKON_SAETNINGER');
+  // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
+  assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
 });

@@ -542,35 +542,54 @@ async function aegteServer(env) {
   }));
   let fejl = ''; const ud = []; let rest = '';
   srv.stderr.on('data', (d) => { fejl += d; });
-  srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { ud.push(JSON.parse(l)); } catch {} } });
+  // R162 (Astra): hvert svar stemples, naar det ANKOMMER - en tidsmaaling efter aflaesningen kan medregne forsinkelse.
+  const modtaget = new Map();
+  srv.stdout.on('data', (d) => { rest += d; let i; while ((i = rest.indexOf('\n')) > -1) { const l = rest.slice(0, i); rest = rest.slice(i + 1); try { const o = JSON.parse(l); if (o.id != null && !modtaget.has(o.id)) modtaget.set(o.id, Date.now()); ud.push(o); } catch {} } });
   const skriv = (o) => srv.stdin.write(JSON.stringify(o) + '\n');
   skriv({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'p', version: '0' } } });
-  assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 5000));
+  assert.ok(await venteTil(() => ud.find((x) => x.id === 1), 15000));   // R161 (Opus): 5 s var for lidt under fuld belastning (D19)
   skriv({ jsonrpc: '2.0', method: 'notifications/initialized' });
   let n = 10;
   const send = (name, args = {}) => { const id = ++n; skriv({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }); return id; };
   const svar = (id, ms = 25000) => venteTil(() => ud.find((x) => x.id === id), ms);
   const lytter = async () => Number((await venteTil(() => /listening on ws:\/\/127\.0\.0\.1:(\d+)/.exec(fejl), 5000))[1]);
-  return { srv, send, svar, lytter, fejl: () => fejl };
+  return { srv, send, svar, lytter, fejl: () => fejl, modtagetTid: (id) => modtaget.get(id) };
 }
 
-test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,5 s efter listening -> profile-ambiguous', async () => {
-  const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
-  try {
-    const id = s.send('browser_list_tabs');
-    const p = await s.lytter();
-    const t0 = Date.now();
-    const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
-    // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
-    // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
-    await vent(Math.max(0, 1500 - (Date.now() - t0)));
-    const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
-    const r = await s.svar(id);
-    assert.ok(r, 'intet svar');
-    const j = JSON.parse(r.result.content[0].text);
-    assert.equal(j.error, 'profile-ambiguous', `foerste kald laaste sig stille: ${r.result.content[0].text.slice(0, 200)}`);
-    assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
-  } finally { s.srv.kill(); }
+// 20/10 (R161, Astra): en fast tidsmargen kan ikke baade taale belastning og fange en mutant, der er 1,5 gange for langsom.
+// Tidsproeverne beholder derfor den stramme graense og koerer bedste af tre forsoeg: en rigtig fejl er roed i alle tre,
+// en forbigaaende forsinkelse paa en belastet maskine rammer ét.
+async function bedsteAfTre(forsoeg) {
+  let sidste;
+  for (let i = 0; i < 3; i++) { try { return await forsoeg(i); } catch (e) { sidste = e; } }
+  throw sidste;
+}
+
+test('R115 Opus 1 (aegte server): anden profil med samme navn hilser ~1,0 s efter listening -> profile-ambiguous', async () => {
+  // R118: i den fulde suite (belastning ~6) naaede B af og til foerst frem efter vinduet paa 2,5 s med maalet 1,8 s - det
+  // er den dokumenterede graense, ikke en fejl. 1,5 s efter `listening` er stadig senere end A og laeser det samme kapløb.
+  // 20/10 (D19, R161 Opus): den røde D19-kørsel fejlede på ventetiden til `initialize` (5 s), ikke på B. B hilser efter 1,0 s,
+  // og vinduet vogtes af en NEDRE grænse, som belastning ikke kan bryde: svaret må tidligst komme 2450 ms efter kaldet
+  // (serverens vindue er 2500 ms fra porten bandt). Uden vinduet svarer serveren efter ~1,5 s og er rød.
+  await bedsteAfTre(async () => {
+    const s = await aegteServer({ BROWSER_MCP_PROFILE: 'arbejde' });
+    try {
+      const tKald = Date.now();
+      const id = s.send('browser_list_tabs');
+      const p = await s.lytter();
+      const t0 = Date.now();
+      const a = await installation(p, 'A', { instance: I1, profile: 'arbejde' });
+      await vent(Math.max(0, 1000 - (Date.now() - t0)));
+      const b = await installation(p, 'B', { instance: I2, profile: 'arbejde' });
+      const r = await s.svar(id);
+      const svartid = s.modtagetTid(id) - tKald;
+      assert.ok(svartid >= 2450, `svaret kom efter ${svartid} ms - serveren ventede ikke vinduet ud, før den valgte`);
+      assert.ok(r, 'intet svar');
+      const j = JSON.parse(r.result.content[0].text);
+      assert.equal(j.error, 'profile-ambiguous', `foerste kald laaste sig stille: ${r.result.content[0].text.slice(0, 200)}`);
+      assert.deepEqual([a.kom.length, b.kom.length], [0, 0]);
+    } finally { s.srv.kill(); }
+  });
 });
 
 test('R115 Astra 4 (aegte server): browser_provide_feedback kalder to profiler med samme navn en konflikt - ikke «no extension connected»', async () => {
