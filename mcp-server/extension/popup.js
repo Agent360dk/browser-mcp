@@ -28,7 +28,7 @@ refreshStatus();
 
 // ── Sessions with tabs ─────────────────────────────────────────────────────
 
-// R186: sessionens navn er agentens tekst (browser_set_group_label, #91), og fanernes titler kommer fra websider - intet af det
+// R186: sessionens navn er agentens tekst (browser_set_group_label, #91), og fanernes adresser kommer fra websider - intet af det
 // maa tolkes som HTML i popuppen.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 

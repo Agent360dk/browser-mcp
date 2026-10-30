@@ -143,3 +143,23 @@ test('en ukendt farve svarer ok:false', async () => {
   const u = sele();
   assert.equal((await saet(u, { label: 'X', color: 'magenta' })).ok, false);
 });
+
+// R187: sessionens eget «Claude N» blev gemt som EGET navn og gendannet ordret - ogsaa efter en omnummerering.
+test('sessionens eget «Claude N» gemmes som standardnavn - ellers hedder to grupper det samme efter en omnummerering', async () => {
+  const lager = {};
+  const u = indlaesUdvidelse({ svar: husk(lager) });
+  u.hent('sessions').set(9876, { tabIds: new Set([1, 2]), activeTabId: 1, groupId: 5, nummer: 1, label: 'Claude 1', color: 'blue', pid: 111, faneGen: new Map() });
+  assert.equal((await saet(u, { label: 'claude 1' })).ok, true);
+  const v = indlaesUdvidelse({ svar: husk(lager) });
+  await v.fyr('tabs.onRemoved', 2);              // mennesket lukker en fane, mens workeren sover (raa hydrering)
+  await new Promise((r) => setTimeout(r, 20));
+  await v.hent('restoreSessions')();             // giver i dag sessionen nummer 2 (foerstaaende P1)
+  v.hent('getSession')(9877, 222);               // en ny chat faar Claude 1
+  const [a, b] = [9876, 9877].map((p) => v.hent('sessions').get(p));
+  assert.notEqual(a.label.replace(/\s+/g, '').toLowerCase(), b.label.replace(/\s+/g, '').toLowerCase(), `${a.label}/${a.color} og ${b.label}/${b.color}`);
+});
+
+test('et ensomt surrogat i selve navnet sendes ikke til Chrome', async () => {
+  const r = await saet(sele(), { label: 'Faktura \ud83d' });
+  assert.ok(r.label.isWellFormed(), JSON.stringify(r.label));
+});

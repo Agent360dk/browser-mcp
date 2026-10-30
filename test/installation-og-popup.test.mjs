@@ -6,6 +6,7 @@
  * MAALT samme dag i Chrome for Testing: popuppen uden server viser kun Claude Code-kommandoen, selvom `install` nu
  * registrerer hos Codex, VS Code og Cursor, og guiderne naevner alle fire.
  */
+import vm from 'node:vm';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -43,6 +44,25 @@ test('popuppen tolker aldrig sessionens navn, en fanetitel eller loggen som HTML
   const js = laes('extension/popup.js');
   assert.doesNotMatch(js, /\$\{\s*session\.label\s*\}/, 'session.label indsaettes raat i innerHTML');
   assert.doesNotMatch(js, /\$\{\s*entry\.(session|method)\b/, 'handlingslogens felter indsaettes raat i innerHTML');
-  assert.doesNotMatch(js, /\$\{\s*u\s*\}/, 'fanernes titler indsaettes raat i innerHTML');
+  assert.doesNotMatch(js, /\$\{\s*u\s*\}/, 'fanernes adresser indsaettes raat i innerHTML');
   assert.match(js, /const esc = /, 'popuppen har ingen escape-funktion');
+});
+
+// R187: proeven ovenfor laeser kun kildeteksten - en esc der intet goer, eller `${(session.label)}`, slap igennem. Her koeres popuppen.
+test('popuppen viser sessionens navn, fanens adresse og loggen som tekst - koert, ikke kun laest', async () => {
+  const ondt = '<img src=//x.example/p>';
+  const el = {};
+  const node = (id) => (el[id] ??= { innerHTML: '', textContent: '', className: '', value: '', classList: { toggle() {} }, addEventListener() {} });
+  const chrome = {
+    storage: { local: { get: (d, cb) => cb({ ...d, sessions: { 9876: { label: ondt, color: 'blue"><style>', tabIds: [1] } },
+      actionLog: [{ time: 0, method: ondt, session: ondt }] }) } },
+    tabs: { get: async () => ({ url: 'data:text/html,<style>' }) },
+    runtime: { sendMessage: () => Promise.resolve() },
+  };
+  vm.runInNewContext(laes('extension/popup.js'), { chrome, document: { getElementById: node }, setTimeout });
+  await new Promise((r) => setTimeout(r, 20));
+  for (const id of ['sessions', 'log']) {
+    assert.doesNotMatch(el[id].innerHTML, /<img|<style/, `${id} indsaetter agentens eller sidens tekst som HTML: ${el[id].innerHTML}`);
+    assert.match(el[id].innerHTML, /&lt;img src=\/\/x\.example\/p&gt;/, `${id} viser ikke teksten`);
+  }
 });

@@ -8613,12 +8613,16 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }
       // R186: formattegn (retningsskift, nulbredde) fjernes, styretegn og blanktegn bliver ét mellemrum, og der klippes efter 30 TEGN -
       // ikke 30 UTF-16-enheder, saa en emoji aldrig deles midt over.
-      const navn = Array.from(String(params.label ?? '').replace(/\p{Cf}+/gu, '').replace(/[\p{Cc}\s]+/gu, ' ').trim()).slice(0, 30).join('').trim();
+      const renset = Array.from(String(params.label ?? '').replace(/[\p{Cf}\p{Cs}]+/gu, '').replace(/[\p{Cc}\s]+/gu, ' ').trim()).slice(0, 30).join('').trim();
+      const standardform = /^claude\s*\d+$/i.test(renset);
       // R186: «Claude N» er standardnavnene, brugeren skelner sessionerne paa - et eget navn maa ikke ligne en anden sessions.
-      if (/^claude\s*\d+$/i.test(navn) && navn.replace(/\s+/g, '').toLowerCase() !== `claude${session.nummer}`) {
+      if (standardform && renset.replace(/\s+/g, '').toLowerCase() !== `claude${session.nummer}`) {
         return { ok: false, error: 'reserved-label', note: '"Claude N" is how the user tells sessions apart. Name the group after the task, ' +
           'or send an empty label to get your own default back. Nothing was changed.' };
       }
+      // R187: sessionens eget «Claude N» er standardnavnet, ikke et eget navn. Gemt som eget navn gendannes det ordret, ogsaa naar
+      // gendannelsen giver sessionen et andet nummer - og saa hedder to grupper «Claude 1» i samme farve igen (22/8).
+      const navn = standardform ? '' : renset;
       if (navn) {
         session.label = navn;
         session.egetNavn = true;

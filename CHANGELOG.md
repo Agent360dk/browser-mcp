@@ -11,7 +11,7 @@ Dates are when the version was published on GitHub. The full notes for each rele
 which it named `Claude N` again. The new tool sets the group's title, up to 30 characters (format and control characters
 removed), and optionally its colour; the name is saved and kept on restore once the session has a tab, a name like another
 session's `Claude N` is refused, and an empty name gives `Claude N` and its colour back. The popup now escapes session names
-and tab titles. Default names are still rebuilt from the session number, as since 22/8. That makes 42 tools.
+and tab addresses. Default names are still rebuilt from the session number, as since 22/8. That makes 42 tools.
 
 **`browser_get_new_tab` returns the tab your click opened (#89).** It looked up the most recent tab anywhere in Chrome, with
 no link to the agent's input. When a page opened its tab a moment after the click, the agent got an older tab with fields that
