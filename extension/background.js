@@ -54,12 +54,11 @@ function restoreSessions() {
           // gendannet ordret fra lageret. To sessioner kunne saa have hvert sit
           // nummer og stadig begge hedde "Claude 1" i samme farve. Og navnet er
           // praecis dét brugeren ser paa fanegruppen.
-          // #91 (1.34): et navn agenten selv har sat (browser_set_group_label), gendannes som det er - kun standardnavne foelger nummeret.
-          color: data.egetNavn === true && GRUPPE_FARVER.includes(data.color) ? data.color : SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
-          label: data.egetNavn === true && typeof data.label === 'string' && data.label ? data.label : `Claude ${nummer}`,
-          egetNavn: data.egetNavn === true,
+          color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
+          label: `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
           ...generationFraLager(data),
+          ...egetNavnFraLager(data),   // #91 (1.34): kun et navn agenten selv har sat, overskriver standardnavnet
         });
       }
     }
@@ -74,6 +73,13 @@ function restoreSessions() {
 // Derfor: broen (offscreen.js) giver hver forbindelse en generation, som foelger med hver kommando og hver frigivelse.
 // Sessionen husker den generation, der ejer den nu (`gen`), og hver fane den generation, der aabnede den (`faneGen`).
 // En frigivelse for en anden generation end sessionens roerer kun sin egen generations faner (se releaseSession).
+// #91 (1.34): et navn agenten selv har sat med browser_set_group_label, gendannes som det er. Standardnavne foelger fortsat
+// nummeret (22/8: ellers kunne to gendannede sessioner hedde «Claude 1» i samme farve).
+function egetNavnFraLager(d) {
+  if (d?.egetNavn !== true || typeof d.label !== 'string' || !d.label) return {};
+  return { label: d.label, egetNavn: true, ...(GRUPPE_FARVER.includes(d.color) ? { color: d.color } : {}) };
+}
+
 function generationFraLager(d) {
   const faneGen = new Map();
   for (const [t, g] of Object.entries(d?.faneGen || {})) if (typeof g === 'string') faneGen.set(Number(t), g);
