@@ -4,7 +4,7 @@
 *Suggested meta description: "Four steps. Your agent works in your real, already-logged-in Chrome instead of a separate browser, so nothing needs logging in twice."*
 
 
-**Give your ZCode agent control of your real, already-logged-in Chrome in four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give your ZCode agent control of your real, already-logged-in Chrome in four steps.** 42 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 **You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
 
@@ -147,13 +147,13 @@ This is the reason people install Browser MCP: your ZCode agent hits a login wal
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 41 tools
+### 42 tools
 
 | Category | Tools |
 |---|---|
 | **Navigation & content** | `browser_navigate`, `browser_get_page_content`, `browser_screenshot`, `browser_execute_script`, `browser_extract_list` |
 | **Interaction** | `browser_click`, `browser_double_click`, `browser_right_click`, `browser_click_xy`, `browser_fill`, `browser_press_key`, `browser_scroll`, `browser_wait`, `browser_hover`, `browser_select_option`, `browser_set_combobox`, `browser_set_date`, `browser_dismiss_overlays`, `browser_handle_dialog` |
-| **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_list_frames`, `browser_select_frame` |
+| **Tabs & frames** | `browser_list_tabs`, `browser_switch_tab`, `browser_close_tab`, `browser_get_new_tab`, `browser_set_group_label`, `browser_list_frames`, `browser_select_frame` |
 | **Data & network** | `browser_get_cookies`, `browser_set_cookies`, `browser_get_local_storage`, `browser_set_local_storage`, `browser_fetch`, `browser_wait_for_network`, `browser_extract_token`, `browser_console_logs`, `browser_upload_file`, `browser_drop_file` |
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox, click reCAPTCHA grid cells it chooses, or ask you to solve it with `browser_ask_user`, one step per call. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - a card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code, right inside the page |
@@ -186,7 +186,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 
 ### Works with any MCP client
 
-Browser MCP is a standard stdio MCP server - it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 41 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 - how each client's UI registers a stdio server.
+Browser MCP is a standard stdio MCP server - it has no idea which agent is driving it, and doesn't need to. The setup is identical for Cursor, VS Code agent mode, Claude Code, or anything else that speaks MCP: point the client at `npx @agent360/browser-mcp` with no arguments, and the 42 tools show up. This ZCode guide and the [Claude Code guide](/docs/install-claude-code) differ only in Step 2 - how each client's UI registers a stdio server.
 
 ### Running more than one agent session at once
 
@@ -200,7 +200,7 @@ Each session gets its own MCP server on its own port (9876-9895), and the extens
 Run `npx @agent360/browser-mcp install` to fetch the extension files, then in ZCode go to Settings → MCP Servers → New MCP Server, set type `stdio`, command `npx`, argument `@agent360/browser-mcp@latest`. Load the Chrome extension once (Step 3), confirm `browser-mcp` shows Enabled, and restart ZCode if the tools don't appear immediately.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives ZCode - or any MCP client that can run local stdio servers, including Claude Code, Cursor, and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 41 tools, MIT-licensed, runs on your own machine.
+An MCP (Model Context Protocol) server that gives ZCode - or any MCP client that can run local stdio servers, including Claude Code, Cursor, and VS Code agent mode - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 42 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier.

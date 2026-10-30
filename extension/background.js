@@ -9,6 +9,8 @@
 // ── Session Tab Management ─────────────────────────────────────────────────
 
 const SESSION_COLORS = ['blue', 'green', 'yellow', 'red', 'pink', 'purple', 'cyan', 'orange'];
+// #91 (1.34): de farver chrome.tabGroups kender - browser_set_group_label afviser alt andet.
+const GRUPPE_FARVER = ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'];
 // Select-all modifier is platform-dependent: Cmd (meta=4) on macOS, Ctrl (2) elsewhere.
 // Get this wrong and the field isn't selected — Backspace no-ops and new text concatenates onto the old.
 const SELECT_ALL_MODS = /Mac/i.test(navigator.userAgent) ? 4 : 2;
@@ -56,6 +58,7 @@ function restoreSessions() {
           label: `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
           ...generationFraLager(data),
+          ...egetNavnFraLager(data),   // #91 (1.34): kun et navn agenten selv har sat, overskriver standardnavnet
         });
       }
     }
@@ -70,6 +73,13 @@ function restoreSessions() {
 // Derfor: broen (offscreen.js) giver hver forbindelse en generation, som foelger med hver kommando og hver frigivelse.
 // Sessionen husker den generation, der ejer den nu (`gen`), og hver fane den generation, der aabnede den (`faneGen`).
 // En frigivelse for en anden generation end sessionens roerer kun sin egen generations faner (se releaseSession).
+// #91 (1.34): et navn agenten selv har sat med browser_set_group_label, gendannes som det er. Standardnavne foelger fortsat
+// nummeret (22/8: ellers kunne to gendannede sessioner hedde «Claude 1» i samme farve).
+function egetNavnFraLager(d) {
+  if (d?.egetNavn !== true || typeof d.label !== 'string' || !d.label) return {};
+  return { label: d.label, egetNavn: true, ...(GRUPPE_FARVER.includes(d.color) ? { color: d.color } : {}) };
+}
+
 function generationFraLager(d) {
   const faneGen = new Map();
   for (const [t, g] of Object.entries(d?.faneGen || {})) if (typeof g === 'string') faneGen.set(Number(t), g);
@@ -407,6 +417,7 @@ function persistSessions() {
       groupId: session.groupId,
       color: session.color,
       label: session.label,
+      egetNavn: session.egetNavn === true,   // #91: uden maerket skriver gendannelsen navnet om til Claude N
       nummer: session.nummer ?? null,   // uden denne mister en gendannet session sin plads og kan kollidere
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
       // 1.32 (S4): uden disse kan en frigivelse fra en gammel forbindelse efter en genstart ikke kende sine egne faner
@@ -1465,6 +1476,7 @@ async function hydrerSessionerRaat() {
       groupId: d.groupId ?? null,
       color: d.color,
       label: d.label,
+      egetNavn: d.egetNavn === true,   // #91 (R186): uden den skriver naeste persistSessions maerket som false
       nummer: d.nummer ?? null,
       pid: d.pid ?? null,
       ...generationFraLager(d),
@@ -8589,6 +8601,46 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           'it a moment later, call again (wait_ms waits up to 10 s). A popup blocker can stop a tab when the click went ' +
           'through a script. earlier_new_tabs are tabs your tabs opened before that; pass one as tab_id if it is the one you meant.',
       };
+    }
+
+    case 'set_group_label': {
+      // #91 (1.34): agenten navngiver sin fanegruppe, saa brugeren kan se hvilken gruppe der hoerer til hvilken opgave. Navnet staar
+      // paa sessionen (som gruppen tegnes ud fra), og maerket egetNavn faar gendannelsen til at beholde det. Tomt navn = standard.
+      const session = getSession(port);
+      const farve = params.color == null || params.color === '' ? null : String(params.color).toLowerCase();
+      if (farve != null && !GRUPPE_FARVER.includes(farve)) {
+        return { ok: false, error: 'bad-color', colors: GRUPPE_FARVER, note: 'Chrome tab groups only have these colours. Nothing was changed.' };
+      }
+      // R186: formattegn (retningsskift, nulbredde) fjernes, styretegn og blanktegn bliver ét mellemrum, og der klippes efter 30 TEGN -
+      // ikke 30 UTF-16-enheder, saa en emoji aldrig deles midt over.
+      const renset = Array.from(String(params.label ?? '').replace(/[\p{Cf}\p{Cs}]+/gu, '').replace(/[\p{Cc}\s]+/gu, ' ').trim()).slice(0, 30).join('').trim();
+      const standardform = /^claude\s*\d+$/i.test(renset);
+      // R186: «Claude N» er standardnavnene, brugeren skelner sessionerne paa - et eget navn maa ikke ligne en anden sessions.
+      if (standardform && renset.replace(/\s+/g, '').toLowerCase() !== `claude${session.nummer}`) {
+        return { ok: false, error: 'reserved-label', note: '"Claude N" is how the user tells sessions apart. Name the group after the task, ' +
+          'or send an empty label to get your own default back. Nothing was changed.' };
+      }
+      // R187: sessionens eget «Claude N» er standardnavnet, ikke et eget navn. Gemt som eget navn gendannes det ordret, ogsaa naar
+      // gendannelsen giver sessionen et andet nummer - og saa hedder to grupper «Claude 1» i samme farve igen (22/8).
+      const navn = standardform ? '' : renset;
+      if (navn) {
+        session.label = navn;
+        session.egetNavn = true;
+        if (farve) session.color = farve;
+      } else {
+        session.label = `Claude ${session.nummer}`;
+        session.egetNavn = false;
+        session.color = SESSION_COLORS[((session.nummer || 1) - 1) % SESSION_COLORS.length];
+      }
+      let anvendt = false;
+      if (session.groupId != null) {
+        try { await chrome.tabGroups.update(session.groupId, { title: session.label, color: session.color }); anvendt = true; }
+        catch { /* gruppen er vaek; naeste gruppe tegnes med navnet */ }
+      }
+      persistSessions();
+      return { ok: true, label: session.label, color: session.color, applied: anvendt,
+        ...(anvendt ? {} : { note: 'Your session has no tab group yet. The name is used when its first tab is grouped - open a tab first ' +
+          '(browser_navigate), because a session without tabs is not kept when Chrome restarts the extension.' }) };
     }
 
     case 'switch_tab': {

@@ -67,7 +67,7 @@ export const Social: React.FC<{ bredde?: number }> = ({ bredde = 1200 }) => {
       </div>
 
       <div style={{ display: "flex", gap: 14 * skala, flexWrap: "wrap" }}>
-        <Chip skala={skala}>41 tools</Chip>
+        <Chip skala={skala}>42 tools</Chip>
         <Chip skala={skala}>Up to 20 sessions</Chip>
         <Chip skala={skala}>Your logins &amp; 2FA</Chip>
         <Chip skala={skala}>Asks before it guesses</Chip>
