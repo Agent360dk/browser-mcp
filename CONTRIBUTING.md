@@ -84,7 +84,7 @@ extension/           # Chrome extension (Manifest V3)
 
 mcp-server/          # MCP server (Node.js)
   index.js           # MCP server + WebSocket client
-  tools.js           # 41 tool definitions
+  tools.js           # 42 tool definitions
   bin/cli.js         # CLI installer
   package.json       # npm config
 

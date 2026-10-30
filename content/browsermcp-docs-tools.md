@@ -96,7 +96,7 @@ The list below is what the client has to choose from.
 ## Frequently asked questions
 
 **How many tools are there?**
-41. A check on every release counts the tool definitions in the server and compares them with every "N tools" claim on the site and in the README.
+42 tools. A check on every release counts the tool definitions in the server and compares them with every "N tools" claim on the site and in the README.
 
 **What does it mean when a tool answers "unverified"?**
 That the action was sent and the effect could not be read back. It is not a failure and not a success. Repeating the action blindly is the one thing you should not do - read the page instead. Nine tools were changed in 1.29.2 to be able to give this answer rather than a false yes.

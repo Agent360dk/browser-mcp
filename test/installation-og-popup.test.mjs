@@ -37,3 +37,12 @@ test('popuppens kopiknap kopierer den kommando der staar i popuppen', () => {
   const js = laes('extension/popup.js');
   assert.match(js, /setupCmd/, 'kopiknappen laeser ikke kommandoen fra popuppen');
 });
+
+// R186 (#91): sessionens navn er agentens tekst, og fanernes titler kommer fra websider - popuppen maa aldrig tolke dem som HTML.
+test('popuppen tolker aldrig sessionens navn, en fanetitel eller loggen som HTML', () => {
+  const js = laes('extension/popup.js');
+  assert.doesNotMatch(js, /\$\{\s*session\.label\s*\}/, 'session.label indsaettes raat i innerHTML');
+  assert.doesNotMatch(js, /\$\{\s*entry\.(session|method)\b/, 'handlingslogens felter indsaettes raat i innerHTML');
+  assert.doesNotMatch(js, /\$\{\s*u\s*\}/, 'fanernes titler indsaettes raat i innerHTML');
+  assert.match(js, /const esc = /, 'popuppen har ingen escape-funktion');
+});

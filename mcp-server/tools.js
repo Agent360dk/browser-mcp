@@ -441,7 +441,7 @@ export const TOOLS = [
   },
   {
     name: 'browser_set_group_label',
-    description: 'Name your session\'s Chrome tab group (and optionally pick its colour), so the user can see which group belongs to which task - "Claude 1" says nothing when several agents are working. The name is kept when Chrome restarts the extension in the background. Up to 30 characters; an empty label gives the default "Claude N" back.',
+    description: 'Name your session\'s Chrome tab group (and optionally pick its colour), so the user can see which group belongs to which task - "Claude 1" says nothing when several agents are working. Call it once your first tab is open: the name is kept when Chrome restarts the extension in the background, but a session without tabs is not kept. Up to 30 characters. An empty label gives the default "Claude N" and its colour back. Errors: bad-color, reserved-label (a name like "Claude 2"); nothing is changed on an error.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -24,7 +24,7 @@ Every number below was measured on 2026-09-18, both columns on the same day, fro
 | Chrome Web Store rating | 4.8 / 5 (718 ratings) | no ratings yet |
 | Open GitHub issues | 130 | 4 |
 | License | Apache-2.0 | MIT |
-| Tools exposed | Not publicly documented (not audited here) | 41, all listed at [`/docs/tools`](/docs/tools) |
+| Tools exposed | Not publicly documented (not audited here) | 42 tools, all listed at [`/docs/tools`](/docs/tools) |
 | Install | `npx @browsermcp/mcp` (npm) or Chrome Web Store | Chrome Web Store extension + `claude mcp add` |
 
 *All figures above were re-pulled live on 2026-09-18. npm's public download API reports some days as zero for every package, including both of these, so the 30-day totals understate both projects equally. Originally pulled via the GitHub REST API, the public npm registry API, and the Chrome Web Store listing pages for both extensions (`bjfgambnhccakkhmkepdoekmckoijdlc` and `jdehgalffmffhfhmmhaokfbfnafnmgcl`). See "How we verified this" below.*

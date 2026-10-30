@@ -28,6 +28,10 @@ refreshStatus();
 
 // ── Sessions with tabs ─────────────────────────────────────────────────────
 
+// R186: sessionens navn er agentens tekst (browser_set_group_label, #91), og fanernes titler kommer fra websider - intet af det
+// maa tolkes som HTML i popuppen.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
 function renderSessions() {
   chrome.storage.local.get({ sessions: {} }, ({ sessions }) => {
     const container = document.getElementById('sessions');
@@ -56,11 +60,11 @@ function renderSessions() {
       container.innerHTML = results.map(({ port, session, tabInfos }) => {
         const color = session.color || 'blue';
         const tabHtml = tabInfos.length
-          ? tabInfos.map(u => `<div>• ${u}</div>`).join('')
+          ? tabInfos.map(u => `<div>• ${esc(u)}</div>`).join('')
           : '<div>No tabs</div>';
         return `
-          <div class="session-card color-${color}">
-            <div class="session-header">${session.label} <span style="font-weight:normal;font-size:10px;color:#64748b">port ${port}</span></div>
+          <div class="session-card color-${esc(color)}">
+            <div class="session-header">${esc(session.label)} <span style="font-weight:normal;font-size:10px;color:#64748b">port ${port}</span></div>
             <div class="session-tabs">${tabHtml}</div>
           </div>`;
       }).join('');
@@ -83,7 +87,7 @@ function renderLog() {
       const time = new Date(entry.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const cat = entry.category || 'safe';
       const cls = cat === 'sensitive' ? 'log-sensitive' : 'log-safe';
-      return `<div class="log-entry"><span class="log-time">${time}</span><span class="log-method ${cls}">${entry.method}</span><span class="log-session">${entry.session || ''}</span></div>`;
+      return `<div class="log-entry"><span class="log-time">${time}</span><span class="log-method ${cls}">${esc(entry.method)}</span><span class="log-session">${esc(entry.session)}</span></div>`;
     }).join('');
   });
 }

@@ -1476,6 +1476,7 @@ async function hydrerSessionerRaat() {
       groupId: d.groupId ?? null,
       color: d.color,
       label: d.label,
+      egetNavn: d.egetNavn === true,   // #91 (R186): uden den skriver naeste persistSessions maerket som false
       nummer: d.nummer ?? null,
       pid: d.pid ?? null,
       ...generationFraLager(d),
@@ -8608,9 +8609,16 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       const session = getSession(port);
       const farve = params.color == null || params.color === '' ? null : String(params.color).toLowerCase();
       if (farve != null && !GRUPPE_FARVER.includes(farve)) {
-        return { error: 'bad-color', colors: GRUPPE_FARVER, note: 'Chrome tab groups only have these colours. Nothing was changed.' };
+        return { ok: false, error: 'bad-color', colors: GRUPPE_FARVER, note: 'Chrome tab groups only have these colours. Nothing was changed.' };
       }
-      const navn = String(params.label ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 30).trim();
+      // R186: formattegn (retningsskift, nulbredde) fjernes, styretegn og blanktegn bliver ét mellemrum, og der klippes efter 30 TEGN -
+      // ikke 30 UTF-16-enheder, saa en emoji aldrig deles midt over.
+      const navn = Array.from(String(params.label ?? '').replace(/\p{Cf}+/gu, '').replace(/[\p{Cc}\s]+/gu, ' ').trim()).slice(0, 30).join('').trim();
+      // R186: «Claude N» er standardnavnene, brugeren skelner sessionerne paa - et eget navn maa ikke ligne en anden sessions.
+      if (/^claude\s*\d+$/i.test(navn) && navn.replace(/\s+/g, '').toLowerCase() !== `claude${session.nummer}`) {
+        return { ok: false, error: 'reserved-label', note: '"Claude N" is how the user tells sessions apart. Name the group after the task, ' +
+          'or send an empty label to get your own default back. Nothing was changed.' };
+      }
       if (navn) {
         session.label = navn;
         session.egetNavn = true;
@@ -8618,7 +8626,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       } else {
         session.label = `Claude ${session.nummer}`;
         session.egetNavn = false;
-        session.color = farve || SESSION_COLORS[((session.nummer || 1) - 1) % SESSION_COLORS.length];
+        session.color = SESSION_COLORS[((session.nummer || 1) - 1) % SESSION_COLORS.length];
       }
       let anvendt = false;
       if (session.groupId != null) {
@@ -8627,7 +8635,8 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }
       persistSessions();
       return { ok: true, label: session.label, color: session.color, applied: anvendt,
-        ...(anvendt ? {} : { note: 'Your session has no tab group yet; the name is used when its first tab is grouped.' }) };
+        ...(anvendt ? {} : { note: 'Your session has no tab group yet. The name is used when its first tab is grouped - open a tab first ' +
+          '(browser_navigate), because a session without tabs is not kept when Chrome restarts the extension.' }) };
     }
 
     case 'switch_tab': {

@@ -88,3 +88,58 @@ test('et eget navn holder ved en genstart - et standardnavn gendannes som foer',
   assert.equal(v.hent('sessions').get(9876).color, 'cyan');
   assert.match(v.hent('sessions').get(9877).label, /^Claude \d+$/, 'et standardnavn blev gendannet ordret fra lageret (22/8-fejlen)');
 });
+
+// R186 (Opus): navnet holdt kun, fordi prøven selv gemte og kun genstartede én gang. Her gemmer vaerktoejet selv, en fane lukkes,
+// mens workeren sover (raa hydrering), og der genstartes to gange.
+function husk(lager) {
+  return {
+    'storage.local.get': (arg) => Object.fromEntries(Object.entries(arg || {}).map(([k, v]) => [k, k in lager ? structuredClone(lager[k]) : v])),
+    'storage.local.set': (o) => { Object.assign(lager, structuredClone(o)); },
+    'tabs.get': (id) => ({ id, url: `https://fane${id}.example`, windowId: 1 }), 'tabs.query': [], 'tabs.group': 5, 'tabGroups.update': {},
+  };
+}
+test('navnet holder over to genstarter og over en fane, mennesket lukker mens workeren sover', async () => {
+  const lager = {};
+  const u = indlaesUdvidelse({ svar: husk(lager) });
+  u.hent('sessions').set(9876, { tabIds: new Set([1, 2]), activeTabId: 1, groupId: 5, nummer: 1, label: 'Claude 1', color: 'blue', pid: 111, faneGen: new Map() });
+  await saet(u, { label: 'Fakturaer', color: 'cyan' });   // ingen persistSessions() her: vaerktoejet skal selv gemme
+  const v = indlaesUdvidelse({ svar: husk(lager) });
+  await v.fyr('tabs.onRemoved', 2);
+  await new Promise((r) => setTimeout(r, 20));
+  await v.hent('restoreSessions')();
+  v.hent('persistSessions')();
+  const w = indlaesUdvidelse({ svar: husk(lager) });
+  await w.hent('restoreSessions')();
+  const s = w.hent('sessions').get(9876);
+  assert.equal(s?.label, 'Fakturaer'); assert.equal(s?.color, 'cyan');
+});
+
+test('formattegn forsvinder, styretegn bliver mellemrum, og der klippes efter tegn - aldrig midt i en emoji', async () => {
+  const u = sele();
+  const r = await saet(u, { label: 'a\u202eb\u2066c\u200bd\u0085e\u009bf\u061cg' });
+  assert.equal(r.label, 'abcd e fg', JSON.stringify(r.label));
+  const r2 = await saet(u, { label: 'x'.repeat(29) + '\u{1F4C4}' });
+  assert.equal(Array.from(r2.label).length, 30);
+  assert.ok(r2.label.isWellFormed(), 'et ensomt surrogat blev sendt til Chrome');
+});
+
+test('et eget navn maa ikke ligne en anden sessions standardnavn - intet aendres', async () => {
+  const u = sele();
+  const r = await saet(u, { label: 'Claude 2' });
+  assert.equal(r.ok, false); assert.equal(r.error, 'reserved-label', JSON.stringify(r));
+  assert.equal(u.hent('sessions').get(9876).label, 'Claude 1');
+  assert.equal(u.optager.sidste('tabGroups.update'), undefined, 'gruppen blev omdoebt trods afvisningen');
+  const egen = await saet(u, { label: 'Claude 1' });
+  assert.equal(egen.ok, true, 'sessionens eget standardnavn blev afvist');
+});
+
+test('et tomt navn giver standardfarven tilbage, ogsaa naar der er bedt om en farve', async () => {
+  const u = sele();
+  await saet(u, { label: '', color: 'red' });
+  assert.equal(u.hent('sessions').get(9876).color, 'blue');
+});
+
+test('en ukendt farve svarer ok:false', async () => {
+  const u = sele();
+  assert.equal((await saet(u, { label: 'X', color: 'magenta' })).ok, false);
+});
