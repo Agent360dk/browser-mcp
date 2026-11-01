@@ -30,9 +30,9 @@ document loads or becomes active in the tab (a reload or a prerendered page too 
 to another tab. A page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile
 `session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
 (otherwise `leave-page-required`); a dismiss is unchanged. The new server reaches npm days before the extension clears
-the Chrome Web Store review, and an older extension cannot tell "Leave site?" from other dialogs. So until the extension
-is 1.33.0, the server does not send it an accept without `leave_page: true` (`extension-too-old-for-leave-page`, nothing
-sent) and caps its arming at 30 seconds.
+the Chrome Web Store review, and an older extension does not enforce `leave_page` when accepting dialogs. So until the
+extension is 1.33.0, the server does not send it an accept without `leave_page: true` (`extension-too-old-for-leave-page`,
+nothing sent) and caps its arming at 30 seconds; on the older extension that arming still survives a page or tab change.
 
 **Closing the last tab no longer closes Chrome.** `browser_close_tab` on the last tab of Chrome's last window closed the
 window - and on Windows and Linux Chrome, so the next call failed with "extension not connected". Now an empty tab is left

@@ -172,6 +172,7 @@ function cmpVersion(a, b) {
   return 0;
 }
 // R189: foerste udvidelse, der selv afviser en accept af «Leave site?» uden leave_page og loefter armeringen til 30 s.
+// R190: den melder det i hilsenen (dialog_leave_page: true); nummeret er kun reserve for en udvidelse, der ikke melder.
 const DIALOG_VAERN_FRA = '1.33.0';
 
 // #58 (1.30.2): Web Store-udvidelsen har SAMME id i alle Chrome-profiler og browsere. distinctExtensions() grupperer paa id,
@@ -693,6 +694,8 @@ function createWSS(bane, port = BASE_PORT) {
           );
         }
         conn.version = typeof msg.version === 'string' ? msg.version : null;
+        // R190 (Opus): evnen, ikke nummeret - en 1.33-udvidelse fra grenen hedder 1.31.0, til --prepare haever manifestet.
+        conn.dialogVaern = msg.dialog_leave_page === true;
         conn.name = typeof msg.name === 'string' ? msg.name : null;
         // Fingeraftryk af udvidelsens egen background.js (plan 1.10 / R2): versionsnummeret siger ikke hvilken KODE der
         // koerer. Udgivelsens flowtest sammenligner det med repoets fil, saa en gammel kopi med samme nummer ikke kan
@@ -1082,17 +1085,17 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     );
   }
   // R189 (Astra + Opus): en udvidelse fra foer 1.33 svarer accept paa ENHVER dialog, ogsaa «Leave site?», og holder en
-  // armering 60 s - ogsaa hen over et sideskift (v1.30.3:background.js:6846-6848). Butikken er dage bagud, npm minutter,
+  // armering 60 s - ogsaa hen over et sideskift (v1.30.3:background.js:6846-6849). Butikken er dage bagud, npm minutter,
   // saa serveren holder vaerktoejstekstens loefte, til udvidelsen kan: accept uden leave_page:true sendes ikke, og
   // armeringen er hoejst 30 s. test/dialog-gammel-udvidelse.test.mjs
-  if (method === 'handle_dialog' && (!conn.version || cmpVersion(conn.version, DIALOG_VAERN_FRA) < 0)) {
+  if (method === 'handle_dialog' && !conn.dialogVaern && (!conn.version || cmpVersion(conn.version, DIALOG_VAERN_FRA) < 0)) {
     params = params || {};
     if (params.action !== 'dismiss' && params.leave_page !== true) {
       throw new ProfilFejl({ ok: false, error: 'extension-too-old-for-leave-page', sent: false,
         extension_version: conn.version || null, needs: DIALOG_VAERN_FRA,
-        note: `The connected extension (${conn.version ? 'v' + conn.version : 'too old to report its version'}) cannot ` +
-          'tell "Leave site?" from other dialogs: its accept also leaves a page and loses unsaved work, and its arming ' +
-          'outlives a page change. Nothing was sent. Ask the user first, and call again with leave_page: true only if ' +
+        note: `The connected extension (${conn.version ? 'v' + conn.version : 'version not reported'}) does not enforce ` +
+          'leave_page when accepting dialogs: an accept can also answer "Leave site?" and discard unsaved work, and its ' +
+          'arming survives a page or tab change. Nothing was sent. Ask the user first, and call again with leave_page: true only if ' +
           `leaving the page is OK too. The extension's update to ${DIALOG_VAERN_FRA} (Chrome Web Store) removes this check.` });
     }
     params = { ...params, timeout: Math.min(Number(params.timeout) > 0 ? Number(params.timeout) : 30000, 30000) };

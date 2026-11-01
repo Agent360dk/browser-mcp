@@ -267,10 +267,11 @@ function tryConnect(port) {
     // og udgivelsens gate afviste sin EGEN kandidat - et langsomt svar er ikke et forkert svar. Hilsenen sendes derfor
     // med det aftryk der allerede ER beregnet (som regel intet ved foerste forbindelse), og aftrykket EFTERSENDES.
     const kode = kodeAftrykCache;
-    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode, instance: MIN_INSTANS, profile: minProfil };
+    let hilsen = { type: 'hello', extensionId: null, version: minVersion(), name: null, kode, instance: MIN_INSTANS, profile: minProfil,
+      dialog_leave_page: true };
     try {
       hilsen = { type: 'hello', extensionId: chrome.runtime.id, version: minVersion(), name: null, kode,
-        instance: MIN_INSTANS, profile: minProfil };
+        instance: MIN_INSTANS, profile: minProfil, dialog_leave_page: true };
     } catch (e) {
       console.warn('[Offscreen] could not build the handshake:', e?.message || e);
     }
@@ -393,7 +394,7 @@ chrome.runtime.onMessage.addListener((msg) => {
   let id = null;
   try { id = chrome.runtime.id; } catch {}
   const hilsen = JSON.stringify({ type: 'hello', extensionId: id, version: minVersion(), name: null, kode: kodeAftrykCache,
-    instance: MIN_INSTANS, profile: minProfil });
+    instance: MIN_INSTANS, profile: minProfil, dialog_leave_page: true });
   for (const ws of connections.values()) {
     if (ws.readyState !== WebSocket.OPEN) continue;
     try { ws.send(hilsen); } catch (e) { console.warn('[Offscreen] kunne ikke sende den nye hilsen:', e?.message || e); }
