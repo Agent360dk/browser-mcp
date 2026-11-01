@@ -435,6 +435,14 @@ try {
     skalVaere(/\d/.test(r.tekst), 'ingen faner i svaret');
     hovedFane = r.data?.tabs?.[0]?.id ?? null;
   });
+  await proev('browser_set_group_label', 'navngiver sessionens fanegruppe og giver standardnavnet tilbage', async () => {
+    const r = await kald('browser_set_group_label', { label: 'Flow - gruppenavn', color: 'cyan' });
+    skalVaere(r.data?.applied === true, `gruppen i Chrome blev ikke opdateret: ${r.tekst.slice(0, 200)}`);
+    const l = await kald('browser_list_tabs', {});
+    skalVaere(l.data?.session === 'Flow - gruppenavn' && l.data?.color === 'cyan', `list_tabs siger ${l.data?.session}/${l.data?.color}`);
+    const t = await kald('browser_set_group_label', { label: '' });
+    skalVaere(/^Claude \d+$/.test(t.data?.label || ''), `et tomt navn gav ikke standardnavnet: ${t.tekst.slice(0, 200)}`);
+  });
   await proev('browser_get_new_tab', 'finder en nyaabnet fane', async () => {
     await kald('browser_navigate', { url: BASE + '/#to', new_tab: true });
     const r = await kald('browser_get_new_tab', {});

@@ -5,7 +5,7 @@ make: it asks on your own screen, then carries on in the same signed-in Chrome.
 
 It drives the Chrome you are already signed into: no login step to fail, no API key to wire
 up, no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
-in its own colour-coded tab group. 41 tools, MIT, runs on your machine.
+in its own colour-coded tab group. 42 tools, MIT, runs on your machine.
 
 → **[What it can and cannot get past](https://browsermcp.dev/docs/capability-matrix/)** - every
 wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones we have not fixed.
@@ -30,7 +30,7 @@ Browser MCP gives Claude Code (and MCP clients that run local servers, such as C
 
 The killer move: it hits a login wall, opens your Gmail, reads the verification code, and continues the sign-in. There is no email API to set up. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
 
-41 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and it runs on your machine - no account, no telemetry, nothing sent to us.**
+42 tools. Auto-clicks the reCAPTCHA v2 checkbox, with a human fallback for the rest. Multi-session color-coded tab groups. **MIT, free, and it runs on your machine - no account, no telemetry, nothing sent to us.**
 
 ## The whole thing, in four steps
 
@@ -93,7 +93,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 41 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 42 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 
@@ -166,7 +166,7 @@ there is nothing to slip past: it is your Chrome, your session, your consent. Wh
 is the hard part - pages that fight *any* automation because of how they are built.
 
 Every release is gated on a flow test against a real Chrome that has to survive exactly
-those: all 41 tools are exercised, and the gate also checks that the extension Chrome is
+those: all 42 tools are exercised, and the gate also checks that the extension Chrome is
 running is the one being released - not another copy with the same version number. The
 failures that do show up are honest ones: mouse events are not delivered to a tab that is
 not in front, and the tools say so instead of reporting success. What the test covers
@@ -231,7 +231,7 @@ All four are optional. None is needed for normal use.
 | `BROWSER_MCP_PROFILE=<name>` | From 1.31: drive the Chrome profile whose extension popup carries this name ("This Chrome profile"). Letters, digits, dot, dash and underscore, up to 32. Works together with `BROWSER_MCP_EXTENSION_ID` (both must match). An invalid value is not ignored: every browser call answers `profile-invalid`. See [Several Chrome profiles](#several-chrome-profiles). |
 | `BROWSER_MCP_TOKEN` | **Withdrawn in 1.30.1 and ignored** - the server says so when it starts. Pairing shipped in 1.30.0 but kept nobody out, so it was taken back rather than left as false protection. It will return redesigned. |
 
-## 41 Tools
+## 42 Tools
 
 ### Navigation & Content
 | Tool | Description |
@@ -268,6 +268,7 @@ All four are optional. None is needed for normal use.
 | `browser_switch_tab` | Switch to tab by ID; Chrome stays where it is unless `bring_to_front: true` |
 | `browser_close_tab` | Close tab (session-owned only). The last tab in Chrome's last window leaves an empty tab, so Chrome stays open; a tab Chrome does not close within 4 s (a "Leave site?" prompt) answers `tab-not-closed` |
 | `browser_get_new_tab` | Get the tab one of your tabs opened since your last click, key press, script or list choice (OAuth popups, target=_blank) - waits briefly; a new tab the user opens with Ctrl/Cmd+T is never returned |
+| `browser_set_group_label` | Name your session's tab group (and its colour), kept when Chrome restarts the extension |
 | `browser_list_frames` | List iframes on page |
 | `browser_select_frame` | Run JavaScript in a specific iframe, also one from another site, through the Chrome debugger |
 
@@ -444,7 +445,7 @@ extension/
 
 mcp-server/
   index.js            # MCP server (stdio) + WebSocket client
-  tools.js            # 41 tool definitions
+  tools.js            # 42 tool definitions
   bin/cli.js          # Install CLI
 ```
 

@@ -296,7 +296,7 @@ const Trust: React.FC = () => (
 const What: React.FC = () => (
   <Frame>
     <Eyebrow color={GREEN}>Free forever · MIT · open source</Eyebrow>
-    <H>Your real Chrome. 41 tools.</H>
+    <H>Your real Chrome. 42 tools.</H>
     <Sub>
       Navigate, click, fill, read, screenshot - plus the things headless browsers cannot
       do, because it is the browser you are already signed into.
@@ -373,7 +373,7 @@ export const PromoTile: React.FC = () => (
       Your AI drives your<br />real, signed-in Chrome.
     </div>
     <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-      {["41 tools", "Multi-session", "MIT · local"].map((t) => (
+      {["42 tools", "Multi-session", "MIT · local"].map((t) => (
         <div key={t} style={{
           background: "rgba(124,107,255,0.14)", border: "1px solid rgba(124,107,255,0.4)",
           borderRadius: 99, padding: "5px 12px", fontSize: 12.5, color: "#C4BAFF", fontWeight: 600,
@@ -398,7 +398,7 @@ export const MarqueeTile: React.FC = () => (
         Your AI drives your real,<br />signed-in Chrome.
       </div>
       <div style={{ fontSize: 22, color: DIM, marginTop: 20 }}>
-        Twenty agents, one browser. 41 tools. MIT, runs on your machine.
+        Twenty agents, one browser. 42 tools. MIT, runs on your machine.
       </div>
     </div>
     <div style={{ display: "flex", flexDirection: "column", gap: 12, width: 330 }}>

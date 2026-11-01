@@ -3,7 +3,7 @@
   "name": "browser-mcp",
   "display_name": "Browser MCP by Agent360",
   "description": "Drive your real, signed-in Chrome from any AI agent. When it hits a 2FA code, a CAPTCHA or a choice only you can make, it asks on your screen and carries on in the same tab.",
-  "long_description": "Browser MCP gives your agent the Chrome you already use - your sessions, your cookies, your logins - instead of a fresh headless browser that hits a login wall on the first page. 41 tools.\n\nIMPORTANT - this is half of Browser MCP. The other half is a Chrome extension, and Chrome does not allow an extension to be installed from a bundle. Without it the server sits on \"Not connected\" forever.\n\nInstall it from the Chrome Web Store:\nhttps://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n\nNothing is sent to us: the extension talks to a server on 127.0.0.1 that you started. No account, no telemetry, no API key. MIT.",
+  "long_description": "Browser MCP gives your agent the Chrome you already use - your sessions, your cookies, your logins - instead of a fresh headless browser that hits a login wall on the first page. 42 tools.\n\nIMPORTANT - this is half of Browser MCP. The other half is a Chrome extension, and Chrome does not allow an extension to be installed from a bundle. Without it the server sits on \"Not connected\" forever.\n\nInstall it from the Chrome Web Store:\nhttps://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl\n\nNothing is sent to us: the extension talks to a server on 127.0.0.1 that you started. No account, no telemetry, no API key. MIT.",
   "author": {
     "name": "Agent360",
     "email": "hello@agent360.dk",
