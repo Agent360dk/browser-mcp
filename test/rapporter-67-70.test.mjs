@@ -323,6 +323,8 @@ test('#69: handle_dialog paa en fane med en aaben boks siger hvad der er galt, i
   const svar = await u.hent('dispatch')(9876, 'handle_dialog', { wait: true });
   assert.equal(svar.error, 'tab-not-responding', JSON.stringify(svar));
   assert.match(svar.note, /browser_close_tab/);
+  // R174 (Opus, MAALT i Chrome 155): «Leave site?» kommer man ikke forbi ved at lukke fanen - det skal noten sige.
+  assert.match(svar.note, /while "Leave site\?" is open, Chrome does not close the tab/);
 });
 
 test('#69: en anden Page.enable-fejl end fristen meldes som den er, ikke som tab-not-responding (R99, Opus)', async () => {

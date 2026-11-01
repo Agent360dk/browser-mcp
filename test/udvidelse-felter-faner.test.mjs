@@ -142,7 +142,9 @@ test('tegn-til-tastekode rammer den fysiske tast, ikke "Key@"', () => {
   const koder = u.hent('CDP_CHAR_CODES');
   if (!koder) return;
   assert.equal(koder[' '], 'Space');
-  assert.equal(koder['\n'], 'Enter');
+  // R125 (Astra/Opus): et linjeskift i en vaerdi er tekst, ikke Enter-tasten - ingen code "Enter" (en side, der lytter paa
+  // e.code === 'Enter', maa ikke udloeses af fill). Se tast-76.test.mjs.
+  assert.equal(koder['\n'], undefined);
   assert.equal(koder['-'], 'Minus');
   assert.equal(koder['@'] ?? 'Digit2', 'Digit2', 'shiftede tegn melder tasten de sidder paa');
 });

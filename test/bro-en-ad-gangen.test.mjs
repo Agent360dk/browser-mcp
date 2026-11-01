@@ -104,6 +104,12 @@ function broModel({ levende = false } = {}) {
       }
       await chrome.offscreen.createDocument();
     }
+    // R138: genopbygningen goer den gamle bros forbindelser lukkede - de aegte hjaelpere skal med.
+    let broensDokument = null;
+    const doedeDokumenter = new Set();
+    ${udklip('dokumentDoedt')}
+    ${udklip('broenErstattes')}
+    ${udklip('broenErVaek')}
     ${udklip('iOffscreenKoe')}
     ${udklip('ensureOffscreen')}
     ${udklip('genbygOffscreen')}

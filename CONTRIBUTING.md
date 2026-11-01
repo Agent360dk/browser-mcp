@@ -51,7 +51,7 @@ touch a tool that builds a non-trivial page expression, and it is the only layer
 prove a fix without a browser. An outside contributor reproduced a real bug that way in
 September 2026, with no Chrome, no React and nothing installed.
 
-`npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 40 tools
+`npm run flow` drives an actual Chrome against `test/flow/fixture.html` and calls all 41 tools
 for real, reporting OK / FEJL / SPRUNGET per tool. It cannot run in CI. Run it before a release
 and whenever you touch `extension/background.js` - it is the only layer that catches a tool that
 answers `ok: true` while the page did nothing.
@@ -84,7 +84,7 @@ extension/           # Chrome extension (Manifest V3)
 
 mcp-server/          # MCP server (Node.js)
   index.js           # MCP server + WebSocket client
-  tools.js           # 40 tool definitions
+  tools.js           # 41 tool definitions
   bin/cli.js         # CLI installer
   package.json       # npm config
 

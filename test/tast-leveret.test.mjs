@@ -130,7 +130,8 @@ test('en tast der landede meldes ikke som fejl fordi brugeren skrev bagefter', a
   } });
   u.hent('sessions').set(9876, { tabIds: new Set([1]), activeTabId: 1, groupId: 1, label: 't', color: 'blue' });
 
-  // Vi koerer den RIGTIGE lytter-funktion fra udvidelsen mod en simuleret hændelsesraekke,
+  // Vi koerer den RIGTIGE lytter-funktion fra udvidelsen mod en simuleret hændelsesraekke (R126: browserens egne
+  // haendelser, isTrusted: true - kun de taeller),
   // i stedet for at plante svaret. Ellers proever vi vores egen antagelse, ikke koden.
   let p = null;
   u.ctx.chrome.scripting.executeScript = async ({ func, args }) => {
@@ -143,8 +144,8 @@ test('en tast der landede meldes ikke som fejl fordi brugeren skrev bagefter', a
       return [{ result: undefined }];
     }
     if (kilde.includes('removeEventListener')) {
-      p.fn({ key: 'Enter' });   // agentens tast landede
-      p.fn({ key: 'g' });       // brugeren skrev et tegn bagefter, i samme fane
+      p.fn({ key: 'Enter', isTrusted: true });   // agentens tast landede
+      p.fn({ key: 'g', isTrusted: true });       // brugeren skrev et tegn bagefter, i samme fane
       const f = new Function('window', `return (${kilde})`)({ __bmcpTast: p, removeEventListener: () => {} });
       return [{ result: f(args[0]) }];
     }

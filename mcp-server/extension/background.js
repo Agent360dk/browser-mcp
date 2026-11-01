@@ -55,6 +55,7 @@ function restoreSessions() {
           color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
           label: `Claude ${nummer}`,
           pid: typeof data.pid === 'number' ? data.pid : null,
+          ...generationFraLager(data),
         });
       }
     }
@@ -62,7 +63,20 @@ function restoreSessions() {
   return restorePromise;
 }
 
-function getSession(port, pid) {
+// ── 1.32 (S4): sessionsgeneration ─────────────────────────────────────────────
+// Astra MAALTE (R107): efter at en ny session var oprettet paa samme port med fane 99, lukkede et forsinket
+// releaseSession(port) - bestilt af den GAMLE forbindelses lukning - fane 99 og slettede sessionen. Kortet er noeglet paa
+// porten, og portnummeret siger ikke, hvilken forbindelse der ejer sessionen. Med partitioner (#20) genbruges porte oftere.
+// Derfor: broen (offscreen.js) giver hver forbindelse en generation, som foelger med hver kommando og hver frigivelse.
+// Sessionen husker den generation, der ejer den nu (`gen`), og hver fane den generation, der aabnede den (`faneGen`).
+// En frigivelse for en anden generation end sessionens roerer kun sin egen generations faner (se releaseSession).
+function generationFraLager(d) {
+  const faneGen = new Map();
+  for (const [t, g] of Object.entries(d?.faneGen || {})) if (typeof g === 'string') faneGen.set(Number(t), g);
+  return { gen: typeof d?.gen === 'string' ? d.gen : null, faneGen };
+}
+
+function getSession(port, pid, gen = null) {
   if (!sessions.has(port)) {
     // ── Hvorfor det laveste LEDIGE nummer, og ikke sessions.size + 1 (MAALT 22/8) ──
     // Med `size + 1` genbruges et nummer der allerede er i brug, saa snart en chat
@@ -97,11 +111,18 @@ function getSession(port, pid) {
       color: SESSION_COLORS[(nummer - 1) % SESSION_COLORS.length],
       label: `Claude ${nummer}`,
       pid: typeof pid === 'number' ? pid : null,
+      gen: typeof gen === 'string' ? gen : null,
+      faneGen: new Map(),
     });
   }
   const s = sessions.get(port);
   // Foerste kald fra en genstartet server kan baere pid'en foer sessionen har den.
   if (s.pid == null && typeof pid === 'number') { s.pid = pid; husketPlads(pid, s.nummer); }
+  // 1.32 (S4): en kommando fra en ny forbindelse paa porten overtager sessionen (samme chat efter et genskabt offscreen-
+  // dokument, eller efter at den slap og fik porten igen). Fanerne beholder den generation, der aabnede dem, saa en sen
+  // frigivelse fra den gamle forbindelse stadig kan rydde netop dem - og kun dem.
+  if (typeof gen === 'string' && s.gen !== gen) s.gen = gen;
+  if (!s.faneGen) s.faneGen = new Map();
   return s;
 }
 
@@ -117,7 +138,7 @@ function getSession(port, pid) {
 // Fix: before serving an unknown port, hand over the tabs of the largest session whose port
 // is no longer in mcpPorts (the live-connection list the offscreen bridge keeps in storage).
 // Keeps label/color so the user sees continuity instead of a renumbered session.
-async function adoptOrphanedSession(port, pid) {
+async function adoptOrphanedSession(port, pid, gen = null) {
   // Only ever fires for a session that OWNS NOTHING — a session with tabs is left alone.
   if (sessions.has(port) && sessions.get(port).tabIds.size) return null;
 
@@ -148,8 +169,14 @@ async function adoptOrphanedSession(port, pid) {
   // fra en session hvis port IKKE laengere er forbundet. Er donorens port stadig i
   // live, er det en anden chat der arbejder lige nu — ikke en genstartet server.
   // Listen vedligeholdes af broen (ws_status → mcpPorts) ved hver til- og frakobling.
-  const { mcpPorts = [] } = await chrome.storage.local.get({ mcpPorts: [] });
-  const levendePorte = new Set(mcpPorts.map(Number));
+  // R139 (Astra, MAALT i model): adoptionen venter (mcpPorts, tabs.get) og skrev derefter sessionskortet uden at se efter igen.
+  // Et kald fra en forbindelse, der lukkede imens, adopterede donorens session INDOVER den nye forbindelses session, og den nye
+  // forbindelses naeste kald koerte i donorens fane. Efter hver ventetid: er kaldets forbindelse lukket, ejer porten nu faner,
+  // eller er donoren aendret, adopteres intet (kontrollen staar efter den sidste ventetid, lige foer kortet skrives).
+  const portenEjerFaner = () => sessions.has(port) && sessions.get(port).tabIds.size > 0;
+  // R141 (Opus): kender udvidelsen broens status, er den nyere end lageret - ogsaa i det foerste filter.
+  const levendePorte = broensPorte !== null ? new Set(broensPorte)
+    : new Set(((await chrome.storage.local.get({ mcpPorts: [] })).mcpPorts || []).map(Number));
 
   let best = null;
   for (const [p, session] of sessions) {
@@ -159,6 +186,9 @@ async function adoptOrphanedSession(port, pid) {
     if (!best || session.tabIds.size > best.session.tabIds.size) best = { port: p, session };
   }
   if (!best) return null;
+  // R140 (Astra, MAALT i model): kom donorens forbindelse tilbage under ventetiden, skiftede getSession generationen paa SAMME
+  // objekt, og identitetstjekket bestod. Donoren er kun forældreløs, hvis dens generation er den samme, og dens port stadig er doed.
+  const donorGen = best.session.gen;
 
   // Verify at least one tab survives — an orphan whose tabs the user already closed is
   // worthless, and adopting it would mask a genuinely fresh start.
@@ -166,6 +196,12 @@ async function adoptOrphanedSession(port, pid) {
   for (const tabId of best.session.tabIds) {
     try { await chrome.tabs.get(tabId); alive.add(tabId); } catch {}
   }
+  // Den sidste ventetid: kender udvidelsen broens portliste (ws_status siden start), bruges den - uden at vente. Ellers laeses lageret,
+  // og en status, der kom imens, taeller ogsaa: donoren lever, hvis EN af kilderne siger det.
+  const lagerPorte = broensPorte ? [] : ((await chrome.storage.local.get({ mcpPorts: [] })).mcpPorts || []);
+  const donorLever = (broensPorte !== null && broensPorte.has(Number(best.port))) || lagerPorte.map(Number).includes(Number(best.port));
+  if (fraLukketForbindelse(port, gen) || portenEjerFaner() || sessions.get(best.port) !== best.session
+    || best.session.gen !== donorGen || donorLever) return null;
   if (!alive.size) {
     sessions.delete(best.port);
     persistSessions();
@@ -226,6 +262,8 @@ async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   if (session.tabIds.size > MAX_TABS_PER_SESSION) {
     await evictOldestTabs(session, tabId);
   }
+  // 1.32 (S4): fanen hoerer til den forbindelse (generation), der aabnede den - se releaseSession.
+  if (session.gen && session.tabIds.has(tabId)) session.faneGen.set(tabId, session.gen);
 
   // R57 (Opus, maalt i Chrome): chrome.tabs.group flytter fanen ind i gruppens vindue. For en fane i sit eget vindue
   // (navigate eget_vindue) betoed det, at fanen blev flyttet tilbage til sessionens foerste vindue, og det nye vindue
@@ -263,9 +301,31 @@ async function addTabToSession(port, tabId, { gruppe = true } = {}) {
   persistSessions();
 }
 
-async function releaseSession(port) {
+async function releaseSession(port, gen = null) {
   const session = sessions.get(port);
   if (!session) return;
+  // 1.32 (S4): frigivelsen er bestilt for forbindelsen `gen`. Ejer en NYERE forbindelse sessionen nu, gaelder den kun de
+  // faner, den gamle forbindelse aabnede - aldrig sessionen, dens frist eller den nye forbindelses faner (Astra, MAALT).
+  // Uden generation (en bro fra foer 1.32) som foer.
+  const bestiltFor = typeof gen === 'string' ? gen : null;
+  if (bestiltFor && session.gen && session.gen !== bestiltFor) {
+    if (frivilligtFrigivet.get(port) === bestiltFor) { frivilligtFrigivet.delete(port); return; }
+    for (const tabId of [...session.tabIds]) {
+      if (session.faneGen.get(tabId) !== bestiltFor) continue;
+      debuggerForceDetach(tabId);
+      try { await chrome.tabs.remove(tabId); } catch {
+        try { await chrome.tabs.get(tabId); continue; } catch {}   // findes den stadig, beholdes den (#13)
+      }
+      session.tabIds.delete(tabId);
+      session.faneGen.delete(tabId);
+      if (session.activeTabId === tabId) session.activeTabId = null;
+    }
+    persistSessions();
+    return;
+  }
+  // Frigivelsen gaelder sessionen. En frivillig bestilling taeller kun, hvis den blev bestilt for netop denne forbindelse.
+  const frivillig = frivilligtFrigivet.has(port)
+    && (!bestiltFor || frivilligtFrigivet.get(port) === null || frivilligtFrigivet.get(port) === bestiltFor);
 
   // ── Bad vi selv om frigivelsen? (FUNDET AF REVIEW 7/9) ────────────────────
   //
@@ -281,7 +341,8 @@ async function releaseSession(port) {
   // #12: sessionen forsvinder her — dens frist skal med, uanset hvilken vej vi gaar ud.
   chrome.alarms.clear(`frigiv-${port}`).catch(() => {});
 
-  if (frivilligtFrigivet.delete(port)) {
+  if (frivillig) {
+    frivilligtFrigivet.delete(port);
     if (session.tabIds.size) {
       // Sessionen arbejder igen. Behold den, saa naeste binding kan adoptere den
       // (adoptOrphanedSession finder donorer med samme pid OG faner).
@@ -299,6 +360,11 @@ async function releaseSession(port) {
   // ikke KUNNE lukkes blev dermed foraeldreloes: stadig aaben, stadig i en farvet gruppe,
   // men uden for enhver session — usynlig for list_tabs og aldrig ryddet op. Praeeksisterende,
   // men v1.29 slipper porte langt oftere, saa stien koeres langt hyppigere end foer.
+  frivilligtFrigivet.delete(port);   // en bestilling for en anden forbindelse maa ikke overleve til den naeste
+  // 1.32 (S4): sessionen tages ud af kortet FOER foerste await. En kommando fra en ny forbindelse paa porten, der kommer imens
+  // fanerne lukkes, faar en frisk session i stedet for den, der ryddes - og som ellers blev slettet bagefter med den nye
+  // forbindelses fane i.
+  sessions.delete(port);
   const stadigAabne = new Set();
   for (const tabId of [...session.tabIds]) {
     debuggerForceDetach(tabId);
@@ -319,13 +385,16 @@ async function releaseSession(port) {
   }
 
   if (stadigAabne.size) {
-    console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
     session.tabIds = stadigAabne;
-    persistSessions();
-    return;
+    // 1.32 (S4): tog en ny forbindelse porten imens, ejer den pladsen; de faner, der ikke kunne lukkes, beholder vi ikke
+    // under dens session (den nye forbindelse maa ikke arve en doed forbindelses faner).
+    if (!sessions.has(port)) {
+      console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— sessionen beholdes saa fanerne ikke strander');
+      sessions.set(port, session);
+    } else {
+      console.warn('[BG] kunne ikke lukke', [...stadigAabne], '— og porten har allerede en ny session; fanerne er ikke laengere i en session');
+    }
   }
-
-  sessions.delete(port);
   persistSessions();
 }
 
@@ -340,6 +409,9 @@ function persistSessions() {
       label: session.label,
       nummer: session.nummer ?? null,   // uden denne mister en gendannet session sin plads og kan kollidere
       pid: session.pid ?? null,   // uden denne adopterer en genstartet service worker paa tvaers af chats igen
+      // 1.32 (S4): uden disse kan en frigivelse fra en gammel forbindelse efter en genstart ikke kende sine egne faner
+      gen: session.gen ?? null,
+      faneGen: Object.fromEntries([...(session.faneGen || [])].filter(([t]) => session.tabIds.has(t))),
     };
   }
   chrome.storage.local.set({ sessions: data });
@@ -375,14 +447,18 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     }
   };
 
-  // Prefer the active (last navigated) tab
+  // Prefer the active (last navigated) tab.
+  // 1.33 (privat rapport 2.4): ogsaa naar den aktive fane er sessionens egen tomme about:-side. Foer blev den sprunget over,
+  // og kaldet tog stille en anden af sessionens faner - navigate skrev i fane A, mens B = about:blank var aktiv (MAALT).
+  let aktivChrome = false;
   if (session.activeTabId) {
     const aktiv = session.activeTabId;   // FIX-17 / R112: det id, der faktisk slaas op - laest FOER opslaget
     try {
       const tab = await chrome.tabs.get(aktiv);
       // R113: ogsaa et vellykket, men sent opslag - ellers sendte et gammelt kald sin adresse eller sit script til den gamle fane.
       sessionUroert();
-      if (consider(tab)) target = tab;
+      if (tab.url.startsWith('chrome://')) aktivChrome = true;
+      else target = tab;
     } catch (e) {
       if (e && e.sessionSkiftet) throw e;
       sessionUroert();
@@ -392,18 +468,34 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     }
   }
 
-  // Fallback: any usable session tab
+  // Ingen aktiv fane: den blev lukket (af agenten eller brugeren), eller den blev aldrig valgt.
+  // 1.33 (privat rapport 3.2): foer valgtes stille den foerste brugbare af sessionens oevrige faner, og navigate skrev hen over
+  // en side, brugeren arbejdede i (MAALT paa 1.27.1). Nu gaettes der ikke: har sessionen en fane med indhold, svarer kaldet med
+  // listen og sender intet. Doede faner ryddes og egne tomme faner genbruges som foer. Er den aktive fane en chrome://-side, faar
+  // kaldet som foer en ny fane - den skriver ikke hen over noget.
   if (!target) {
+    const medIndhold = [];
     for (const tabId of [...session.tabIds]) {
       try {
         const tab = await chrome.tabs.get(tabId);
         sessionUroert();
-        if (consider(tab)) { session.activeTabId = tabId; forventetAktiv = tabId; target = tab; break; }
+        if (consider(tab)) medIndhold.push(tab);
       } catch (e) {
         if (e && e.sessionSkiftet) throw e;
         sessionUroert();
         session.tabIds.delete(tabId);
       }
+    }
+    if (medIndhold.length && !aktivChrome) {
+      persistSessions();
+      const liste = medIndhold.slice(0, 10)
+        .map((t) => `${t.id} ${JSON.stringify(String(t.title || '').slice(0, 60))} ${String(t.url).slice(0, 100)}`).join('; ');
+      const e = new Error('This session has no active tab (the tab it worked in was closed, by the agent or the user), so ' +
+        'this call did not guess which of the session\'s other tabs to use: nothing was sent, and no tab was changed. The ' +
+        `session's tabs: ${liste}${medIndhold.length > 10 ? ` (and ${medIndhold.length - 10} more)` : ''}. Call ` +
+        'browser_switch_tab with the tab you mean, or browser_navigate with new_tab: true.');
+      e.ingenAktiv = true;
+      throw e;
     }
   }
 
@@ -411,7 +503,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
   if (!target && blankFallback) {
     sessionUroert();
     target = blankFallback;
-    session.activeTabId = target.id;
+    skiftAktiv(session, target.id);
     persistSessions();
   }
 
@@ -426,7 +518,7 @@ async function getSessionTab(port, activate = false, opretMed = null) {
     // R111: feltet fortaeller navigate, at adressen ER sendt (fanen blev oprettet med den).
     if (opretMed) target.oprettetMedUrl = true;
     await addTabToSession(port, target.id);
-    session.activeTabId = target.id;
+    skiftAktiv(session, target.id);
     persistSessions();
     // fall through to the activate branch (SC-3: previously returned early, skipping it)
   }
@@ -616,7 +708,8 @@ function cdpFrist(method, params) {
   const m = String(method);
   // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte". R131 (Opus, maalt i Chrome): 20 s skar et
   // loefte paa 21 s over, som 1.30.3 besvarede (MAIN-vejen havde ingen frist under serverens). Fristen foelger derfor
-  // serverens egen frist minus hjemrejsen - samme udledning som skaermbilledets budget. Kun koerAgentKode bruger awaitPromise.
+  // serverens standardfrist minus hjemrejsen - samme udledning som skaermbilledets budget. Kun koerAgentKode bruger awaitPromise.
+  // R137: for agentkodens to vaerktoejer venter serveren selv laengere end det (se AGENTKODE_FRIST); budgettet her er uaendret.
   if (m === 'Runtime.evaluate' && params && params.awaitPromise) return SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS;
   if (m === 'Page.captureScreenshot' || m === 'Network.getResponseBody') return CDP_FRIST_TUNG_MS;
   return m.startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
@@ -633,9 +726,11 @@ function cdpFrist(method, params) {
 // MAALT 12/9 af Astra (tredje runde paa samme sted): en gentilslutning paa 12,5 s betoed at kandidaten opgav efter 26,9 s,
 // hvor 1.29.0 leverede et billede efter 29,2 s. Aarsagen var ikke logikken, men TALLET: 26 s var valgt frit, ikke udledt.
 // Hver runde fandt et nyt scenarie i de 4 sekunder vi gav bort. Budgettet er derfor nu udledt af det eneste tal der
-// betyder noget - serverens egen frist pr. kald (sendToExtension i mcp-server/index.js) - minus den tid svaret skal
-// bruge paa at komme tilbage gennem broen. Aendrer serverens frist sig, foelger budgettet med.
-const SERVER_FRIST_MS = 30000;      // sendToExtension(..., timeoutMs = 30000) i mcp-server/index.js
+// betyder noget - serverens standardfrist pr. kald (KALD_FRIST_MS i mcp-server/index.js) - minus den tid svaret skal
+// bruge paa at komme tilbage gennem broen. Aendres serverens standardfrist, skal tallet her aendres med (det er ikke koblet).
+// R137: for execute_script og select_frame venter serveren KALD_FRIST_MS + AGENTKODE_MARGEN_MS (30 + 15 s), altsaa laengere
+// end budgettet her, saa svaret naar frem, ogsaa naar Chromes browsertraad er lammet. Budgettet her er det samme for alle.
+const SERVER_FRIST_MS = 30000;      // KALD_FRIST_MS i mcp-server/index.js (serverens standardfrist pr. vaerktoejskald)
 // MAALT 12/9 af Astra: hjemrejsen for en skaermbillede-stor nyttelast over den lokale WebSocket er 84-154 ms
 // (0,5 / 2 / 8 MB, tre maalinger hver). 1500 ms var 10x det - altsaa endnu et frit valgt tal i den regel der lige var
 // lukket. 500 ms er tre gange det maalte og krymper baandet, hvor 1.29.0 leverer og vi ikke goer, fra ~1,35 s til ~0,35 s.
@@ -758,10 +853,66 @@ async function cdpSend(tabId, method, params = {}, sessionId = null, slut = null
 // Faner agenten selv lukkede via close_tab. En tom session betyder kun "arbejdet er slut"
 // hvis det var BRUGEREN der lukkede den sidste fane.
 const agentLukkedeFaner = new Set();
+// R173: close_tab-handleren koerer lukningerne én ad gangen gennem denne kaede.
+let fanelukninger = Promise.resolve();
+const fanerUnderLukning = new Set();   // R174: fjernelsen er sendt, Chrome har ikke svaret endnu
+// R175 (Opus): serverens partitionslukning giver hver close_tab 5 s - udvidelsens frist skal ligge inden for, ellers giver
+// serveren op foerst og ser aldrig tab-not-closed.
+const LUK_FANE = { ms: 4000 };
 // Porte hvor VI selv har bedt serveren slippe porten, fordi sessionen var tom.
 // Skelnen betyder alt i releaseSession: en frivillig frigivelse maa aldrig lukke
 // faner, mens en uventet afbrydelse (chatten er vaek) netop skal rydde op.
-const frivilligtFrigivet = new Set();
+// 1.32 (S4): port -> den generation (forbindelse), frigivelsen blev bestilt for (null for en session uden generation).
+const frivilligtFrigivet = new Map();
+// R138 (Astra, MAALT i model): et kald fra en forbindelse, der er lukket, ventede i sessionsgendannelsen, mens en ny forbindelse
+// tog porten; bagefter koerte det sin kode i den nye forbindelses fane og stemplede sessionen tilbage. Broen sender
+// session_disconnect med forbindelsens generation, naar den lukker; de generationer huskes her pr. port (de seneste 16), og et kald
+// fra en af dem koerer intet. Kun i hukommelsen: en genstartet service worker har ingen ventende kald fra foer genstarten.
+const lukkedeGen = new Map();   // port -> Set af generationer, hvis forbindelse er lukket
+// R141 (Astra, MAALT i model): et lagersvar kan vaere AELDRE end en ws_status, udvidelsen allerede har faaet. Broens seneste portliste
+// holdes derfor ogsaa i hukommelsen, sat synkront i lytteren. null = ingen status siden service workeren startede.
+let broensPorte = null;
+function forbindelsenLukket(port, gen) {
+  if (typeof gen !== 'string') return;
+  const saet = lukkedeGen.get(port) || new Set();
+  saet.add(gen);
+  while (saet.size > 16) saet.delete(saet.values().next().value);
+  lukkedeGen.set(port, saet);
+}
+// R138 (Opus, LAEST): erstatter udvidelsen selv broen (closeDocument), faar det gamle dokuments forbindelser ingen
+// session_disconnect. En generation er `<dokument>-<nr>` (offscreen.js), og der findes kun ét offscreen-dokument ad gangen: kommer
+// en kommando fra et NYT dokument, eller genopbygges broen, er alle det gamle dokuments forbindelser lukkede.
+let broensDokument = null;
+const doedeDokumenter = new Set();   // hoejst 16
+function dokumentAf(gen) {
+  const i = typeof gen === 'string' ? gen.lastIndexOf('-') : -1;
+  return i > 0 ? gen.slice(0, i) : null;
+}
+function dokumentDoedt(dok) {
+  if (!dok) return;
+  doedeDokumenter.add(dok);
+  while (doedeDokumenter.size > 16) doedeDokumenter.delete(doedeDokumenter.values().next().value);
+}
+function kommandoFraDokument(gen) {
+  const dok = dokumentAf(gen);
+  if (!dok || doedeDokumenter.has(dok)) return;
+  if (broensDokument && broensDokument !== dok) dokumentDoedt(broensDokument);
+  broensDokument = dok;
+}
+function broenErstattes() { dokumentDoedt(broensDokument); broensDokument = null; }
+// R141 (Opus H3): kastede closeDocument, er broen kun vaek, hvis Chrome siger, at dokumentet ikke findes. Kan det ikke afgoeres: ikke vaek.
+// R143 (Opus, MAALT med injektion): et enkelt falsk hasDocument-svar markerede en levende bro doed. Broen er kun vaek, naar Chromes
+// kontekstliste OGSAA er tom - to uafhaengige kilder. Findes getContexts ikke (Chrome foer 116), gaelder hasDocument alene.
+async function broenErVaek() {
+  if (await chrome.offscreen.hasDocument().catch(() => true)) return false;
+  if (typeof chrome.runtime.getContexts !== 'function') return true;
+  const kontekster = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] }).catch(() => null);
+  return Array.isArray(kontekster) && kontekster.length === 0;
+}
+const fraLukketForbindelse = (port, gen) => typeof gen === 'string'
+  && (!!lukkedeGen.get(port)?.has(gen) || doedeDokumenter.has(dokumentAf(gen)));
+const LUKKET_SVAR = { ok: false, error: 'connection-closed', sent: false,
+  note: 'This call came from a connection to the extension that has closed since; nothing was run.' };
 // Hvilken plads en chat sidst havde, husket paa dens pid — ikke paa porten.
 //
 // MAALT 8/9 (#17): siden porten slippes naar en session er faerdig, slettes sessionen.
@@ -793,6 +944,21 @@ function husketPlads(pid, nummer) {
 // den naeste dialog paa fanen. `wait: true` giver den gamle blokerende adfaerd for
 // de tilfaelde hvor dialogen allerede er undervejs.
 const armeredeDialoger = new Map();
+// R174 (Astra, MAALT): armeringen fulgte kun fanen i det oejeblik, dialogen kom - et skift vaek og tilbage slap igennem. Et
+// skift af sessionens aktive fane afvaebner nu straks den gamle fanes armering. Samme skift glemmer en OAuth-tilbagevenden
+// (R173), medmindre det er popuppen selv, der bliver aktiv. ALLE skift af sessionens aktive fane til en fane gaar herigennem.
+function skiftAktiv(session, id) {
+  const gammel = session.activeTabId;
+  if (gammel != null && gammel !== id && armeredeDialoger.has(gammel)) {
+    afvaebnDialog(gammel, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
+  }
+  if (session.tilbageTil && id !== session.tilbageTil.popup) session.tilbageTil = null;
+  if (id !== gammel) session.skiftNr = (session.skiftNr || 0) + 1;   // R175: et kald kan se, om der blev skiftet undervejs
+  session.activeTabId = id;
+}
+// R173 (Opus, MAALT i egen session): mellemrummet mellem to af en agents kald var 20-108 s - 10 s brod forloebet «armer, klik».
+// Beskyttelsen ligger i typefiltret, afvaebningen ved side- og faneskift og loftet; standarden er derfor loftet.
+const DIALOG_ARMERING = { standard: 30000, loft: 30000 };
 // Loeftet for den senest armerede dialog pr. fane. Ligger UDEN for armeredeDialoger,
 // fordi lytteren afvaebner i samme oejeblik dialogen aabner — og klikket skal kunne
 // vente paa svaret BAGEFTER.
@@ -870,7 +1036,18 @@ function dialogKoordinator(source, method, p) {
     // R109 (Astra 3): kun bokse, der aabner EFTER adressen er sendt - et Stay fra sidens egen navigation foer det er ikke vores.
     if (s.ejer && s.ejer.sent) s.ejer.bokse.push(boks);
     const a = armeredeDialoger.get(tabId);
-    const gyldig = !!a && (a.udloeb == null || Date.now() < a.udloeb);
+    const udloebet = !!a && a.udloeb != null && Date.now() >= a.udloeb;
+    // 1.33 (privat rapport 4.2): en armeret accept svarede ogsaa «Leave site?» - en glemt armering kunne forlade en side med
+    // ugemt arbejde. Accept af beforeunload kraever nu leave_page: true ved armeringen; ellers bliver armeringen staaende til
+    // naeste alert/confirm/prompt, og boksen gaar til navigates eget svar (Stay) eller bliver staaende til brugeren.
+    // En armeret dismiss (Stay) kan ikke miste noget og svarer som foer.
+    const forbeholdt = !!a && boks.type === 'beforeunload' && a.action === 'accept' && a.leave !== true;
+    // R173 (Astra, MAALT): efter switch_tab til en anden fane svarede armeringen stadig den gamle fanes naeste confirm. En
+    // armering gaelder kun, mens fanen er sin sessions aktive fane - ogsaa naar skiftet skete, mens armeringen blev sat.
+    let ejer = null;
+    for (const [, sess] of sessions) if (sess.tabIds.has(tabId)) { ejer = sess; break; }
+    const flyttet = !!a && !!ejer && ejer.activeTabId !== tabId;
+    const gyldig = !!a && !udloebet && !forbeholdt && !flyttet;
     if (gyldig) {
       afvaebnDialog(tabId);   // forbruges - uden grund, for vi svarer selv lige her
       boks.armering = a;
@@ -879,10 +1056,19 @@ function dialogKoordinator(source, method, p) {
         if (!boks.lukket && a.opfyld) a.opfyld(dialogUbekraeftet(boks));
       }, NAV_FRISTER.luk);
     } else {
-      if (a) afvaebnDialog(tabId, 'the arming expired before a dialog appeared');
+      if (udloebet) afvaebnDialog(tabId, 'the arming expired before a dialog appeared');
+      else if (flyttet) afvaebnDialog(tabId, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
       if (s.ejer && s.ejer.sent && boks.type === 'beforeunload') dialogSvar(tabId, boks, s.ejer.leave === true, '', 'navigate');
     }
     vaekDialogVentere(s, null);
+  } else if (method === 'Page.frameNavigated') {
+    // R173 (Astra, MAALT): efter et dokumentskift i fanen svarede armeringen den nye sides confirm (og med leave_page dens
+    // «Leave site?»). Samtykket gjaldt den side, agenten saa - et nyt dokument i hovedrammen afvaebner.
+    if (p && p.frame && !p.frame.parentId) {
+      const s = dialogFane(tabId);
+      s.dokGen = (s.dokGen || 0) + 1;
+      if (armeredeDialoger.has(tabId)) afvaebnDialog(tabId, 'the page changed (a new document loaded) before a dialog appeared, so the arming was dropped');
+    }
   } else if (method === 'Page.javascriptDialogClosed') {
     const s = dialogFaner.get(tabId);
     const boks = s && s.boks;
@@ -900,6 +1086,43 @@ function dialogKoordinator(source, method, p) {
   }
 }
 chrome.debugger.onEvent.addListener(dialogKoordinator);
+
+// R174 (Astra, MAALT): en URL-sammenligning baerer ikke dokumentbindingen - samme adresse genindlaest, eller en ny adresse
+// efter det sidste opslag, slap igennem. Hver fane har en dokumentgeneration, som taelles op, naar Chrome begynder at indlaese
+// et dokument i den. En armering gaelder kun i den generation, den blev sat i, og den afvaebnes straks. Fejler reglen, er det
+// i den sikre retning (en armering droppes, en dialog besvares ikke) - aldrig et svar paa en side, agenten ikke saa.
+// R175 (Opus, MAALT i Chrome 155): «loading» kommer ogsaa ved pushState, replaceState, hash og en iframe, der skifter adresse -
+// ikke kun ved et nyt dokument. Det afvaebnede en armering, saa en confirm efter et SPA-skift stod ubesvaret og klikket hang.
+// «loading» bruges derfor til at se, om noget skiftede, mens et handle_dialog-kald koerer (den sikre retning: page-changed),
+// og til at spoerge, om hovedrammen har faaet et nyt dokument (loaderTjek nedenfor).
+// En sat armering afvaebnes af hovedrammens Page.frameNavigated (et nyt dokument, ogsaa en genindlaesning; aldrig et SPA-skift
+// eller en iframe). Opus maalte: «loading» kommer aldrig foer «Leave site?» (0/9), og frameNavigated kommer foer en ny sides
+// straks-confirm (12/12).
+// R176 (Opus, MAALT i Chrome 155): en prerender-aktivering (speculation rules) skifter dokument UDEN frameNavigated - kun
+// «loading» og en ny loaderId i hovedrammen. Armeringen svarede den nye sides confirm (9/9). En armering baerer derfor
+// hovedrammens loaderId, og ved «loading» spoerges Chrome: er det et andet dokument, afvaebnes den. Kan det ikke afgoeres
+// (intet svar, intet id), afvaebnes den ogsaa - den sikre retning.
+// Kendt rest (R177-R178, begge konsulenter): aabner den nye sides dialog inden for ca. 10 ms efter en prerender-aktivering, foer
+// Chromes svar kommer, besvares den stadig. Svaret kan ikke ventes paa - mens en dialog staar aaben, svarer Page.getFrameTree ikke
+// (MAALT i Chrome 155, intet svar paa 3 s), og at vente ville faa en SPA-confirm til at haenge (R175). At binde armeringen til
+// sidens ramme-id'er lukkede kapløbet, men en iframe fra et andet site (en anden proces) staar ikke i getFrameTree, saa dens
+// dialoger blev ikke besvaret (Opus R178, MAALT i Chrome: en regression mod 1.32) - den binding er derfor ikke med.
+const hovedLoader = async (tabId) => {
+  const t = await venteMedFrist(cdpSend(tabId, 'Page.getFrameTree', {}), NAV_FRISTER.port).catch(() => null);
+  return (t && t !== FRIST_UDLOEB && t.frameTree && t.frameTree.frame && t.frameTree.frame.loaderId) || null;
+};
+async function loaderTjek(tabId, a) {
+  const nu = a.loader ? await hovedLoader(tabId) : null;
+  if (armeredeDialoger.get(tabId) !== a) return;   // forbrugt eller afloest imens
+  if (!nu || nu !== a.loader) afvaebnDialog(tabId, 'the page changed (a new document became active) before a dialog appeared, so the arming was dropped');
+}
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!info || info.status !== 'loading') return;
+  const s = dialogFane(tabId);
+  s.dokGen = (s.dokGen || 0) + 1;
+  const a = armeredeDialoger.get(tabId);
+  if (a) loaderTjek(tabId, a);
+});
 
 // Debuggeren faldt af, eller fanen lukkede: en boks, vi kendte, er nu ukendt. Intet sendes igen; Page.enable-porten
 // afgoer naeste kald (en aaben boks faar den til at haenge, maalt F4).
@@ -934,7 +1157,7 @@ function venteMedFrist(loefte, ms) {
 }
 
 // handle_dialog paa en set, aaben boks: svar nu gennem koordinatoren og vent paa Chromes Closed (5 s).
-async function besvarAabenBoks(tabId, boks, action, promptText) {
+async function besvarAabenBoks(tabId, boks, action, promptText, forlad = false) {
   const sf = dialogFaner.get(tabId);
   if (!boks.besvaretAf && sf && sf.udestaaende.size) {
     return { ok: false, error: 'dialog-being-answered', ...dialogFelter(boks), answered_by: 'an earlier answer',
@@ -948,6 +1171,14 @@ async function besvarAabenBoks(tabId, boks, action, promptText) {
       note: boks.besvaretAf === 'navigate'
         ? 'browser_navigate is answering this dialog (Stay, or Leave with leave_page:true). Wait for its answer; it says what happened.'
         : 'An earlier browser_handle_dialog is answering this dialog. Wait a moment, then look at the tab before you act again.' };
+  }
+  // R173 (Opus H1, MAALT): en AABEN «Leave site?» blev besvaret accept af et handle_dialog() uden argumenter - siden blev
+  // forladt uden leave_page, mod reglen for en armering. Samme regel her, lige foer der ville blive sendt.
+  if (boks.type === 'beforeunload' && action === 'accept' && forlad !== true) {
+    return { ok: false, error: 'leave-page-required', ...dialogFelter(boks), sent: false,
+      note: 'A "Leave site?" is open on this tab, and accepting it leaves the page and loses anything unsaved on it. Nothing ' +
+        'was answered. Ask the user (browser_ask_user); if they agree, call again with leave_page: true, or pass action: ' +
+        '"dismiss" to stay.' };
   }
   const lukket = new Promise((r) => { boks.vedLukket = r; });
   dialogSvar(tabId, boks, action === 'accept', promptText, 'handle_dialog');
@@ -972,7 +1203,8 @@ const NAV_NOTER = {
     'detaches or the tab closes; browser_reattach_debugger releases it.',
   'dialog-open': 'A dialog is open on this tab, and nothing was sent. For "Leave site?" (dialog_type beforeunload) the page ' +
     'may hold unsaved work: ask the user with browser_ask_user before leaving. Then answer it with browser_handle_dialog - ' +
-    'accept leaves the page (pending_url, if any, may then load), dismiss stays - and navigate again if you still need to.',
+    'accept with leave_page: true leaves the page (pending_url, if any, may then load), dismiss stays - and navigate again if ' +
+    'you still need to.',
   'dialog-open-sent': 'The address was sent, and the page then opened a dialog that is not "Leave site?" (dialog_type). It ' +
     'was not answered. Answer it with browser_handle_dialog, then read the tab before you navigate again.',
   'tab-not-responding': 'Chrome did not answer on this tab within the time limit: a busy page, or a dialog Chrome does not ' +
@@ -981,6 +1213,9 @@ const NAV_NOTER = {
   'navigation-failed': 'Chrome refused the navigation (detail), and the tab is where it was.',
   'session-changed': 'Another call changed this session\'s active tab while this one waited for Chrome (it switched to, ' +
     'opened or closed a tab), so nothing was sent. Check the tabs with browser_list_tabs, then call again if you still need to.',
+  'no-active-tab': 'This session has no active tab (the tab it worked in was closed), and nothing was sent: the call did not ' +
+    'guess which of the session\'s other tabs to use (detail lists them). Call browser_switch_tab with the tab you mean and ' +
+    'navigate again, or pass new_tab: true.',
   'session-langsom': 'Chrome took longer than the time limit to report this session\'s tabs, and nothing was sent. Try ' +
     'again in a moment; if it keeps happening, ask the user (browser_ask_user) to look at Chrome.',
   'beforeunload-blocked': 'The page asked "Leave site?" and the answer was Stay (answered_by), so the tab is still on url. ' +
@@ -1185,7 +1420,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar, navSlut) {
 
   // Bevist: samme svar som foer, nu med ok:true og - hvis en boks blev besvaret undervejs - hvem der svarede.
   s.pendingUrl = null;
-  session.activeTabId = tab.id;
+  skiftAktiv(session, tab.id);
   persistSessions();
   // R109: fanen, som beviset saa den - intet nyt, ubegraenset opslag efter fristen.
   const updated = bevisFane;
@@ -1198,7 +1433,7 @@ async function navigerSomEjer(port, session, tab, url, s, ejer, svar, navSlut) {
   if (captcha && captcha.found) {
     result.captcha_detected = captcha.types.join(', ');
     result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;
-  }
+  } else if (captcha && captcha.invisible) result.captcha_invisible = captcha.invisible.join(', ');
   return result;
 }
 
@@ -1232,6 +1467,7 @@ async function hydrerSessionerRaat() {
       label: d.label,
       nummer: d.nummer ?? null,
       pid: d.pid ?? null,
+      ...generationFraLager(d),
     });
   }
 }
@@ -1251,11 +1487,19 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   for (const [port, session] of sessions) {
     if (!session.tabIds.has(tabId)) continue;
     session.tabIds.delete(tabId);
+    // R173: en OAuth-popup, udvidelsen selv gjorde aktiv, lukkede sig selv - tilbage til aabneren, hvis den stadig er
+    // sessionens og popuppen stadig var den aktive fane (agenten havde ikke selv skiftet).
+    // R174 (Astra): ikke naar agenten selv lukkede popuppen - saa gaelder no-active-tab som ved enhver anden af dens lukninger.
+    if (session.tilbageTil && session.tilbageTil.popup === tabId) {
+      const aabner = session.tilbageTil.aabner;
+      session.tilbageTil = null;
+      if (!lukketAfAgenten && session.activeTabId === tabId && session.tabIds.has(aabner)) { skiftAktiv(session, aabner); persistSessions(); }
+    }
     if (session.tabIds.size === 0 && !lukketAfAgenten) {
       // Last tab closed — tell offscreen to terminate the MCP server.
       // Resulting WS-close triggers the existing session_disconnect → releaseSession path.
-      frivilligtFrigivet.add(port);
-      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      frivilligtFrigivet.set(port, session.gen ?? null);
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port, gen: session.gen ?? null }).catch(() => {});
     } else if (session.tabIds.size === 0) {
       // ── Agenten lukkede selv sin sidste fane (MAALT 7/9-2026) ────────────────
       // Her stod der intet, og det var med vilje: en agent der lukker en fane midt i
@@ -1287,7 +1531,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // code and drop the keystroke, so typing an email or URL misbehaved on strict SPAs.
 // Shifted symbols report the code of the physical key they sit on ("@" is Digit2).
 const CDP_CHAR_CODES = {
-  ' ': 'Space', '\n': 'Enter', '\t': 'Tab',
+  // R125 (Astra/Opus): "\n" og "\t" har ingen code - de er ikke Enter- eller Tab-tasten (se fysiskTast og typeCharsAttached,
+  // der indsaetter kontroltegn som tekst), og en side, der lytter paa e.code === 'Enter', maa ikke udloeses af en vaerdi.
+  ' ': 'Space',
   '-': 'Minus', '_': 'Minus', '=': 'Equal', '+': 'Equal',
   '[': 'BracketLeft', '{': 'BracketLeft', ']': 'BracketRight', '}': 'BracketRight',
   '\\': 'Backslash', '|': 'Backslash', ';': 'Semicolon', ':': 'Semicolon',
@@ -1306,30 +1552,197 @@ function cdpCodeForChar(ch) {
   return CDP_CHAR_CODES[ch] || '';
 }
 
+// #76 (arasmileska): den fysiske tast for en tast eller et tegn - code, tastkode (keyCode) og om Shift holdes nede. Brugt
+// af ALLE steder, der sender et tastetryk over CDP (press_key, fill's tegn-for-tegn-skrivning, rydning, Tab, PageUp/Down),
+// saa siden ser det samme som fra et rigtigt US-tastatur. Uden tastkode faar keydown keyCode 0, og et tag-felt, der lytter
+// paa keyCode 188, faar aldrig sit komma. Et skiftet tegn ("<", "@") er samme tast med Shift holdt nede. Store bogstaver
+// faar IKKE Shift her (det har press_key aldrig givet dem). "\n", "\r" og "\t" faar ingen tastkode og ingen code - og fill
+// sender dem slet ikke som taster, men som indsat tekst (typeCharsAttached, R126): som taster sendte "\r" formularen, "\t"
+// flyttede fokus, og "\n" forsvandt (MAALT i Chrome).
+const NAVNGIVNE_TASTKODER = {
+  Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18, Escape: 27, Space: 32,
+  PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46,
+};
+const TEGN_TASTKODER = { Space: 32, Comma: 188, Period: 190, Minus: 189, Equal: 187, Semicolon: 186, Quote: 222,
+  Slash: 191, Backslash: 220, BracketLeft: 219, BracketRight: 221, Backquote: 192 };
+const SKIFTEDE_TEGN = '<>?:"{}|_+~!@#$%^&*()';
+function fysiskTast(key) {
+  // R125 (Astra): et tegn er ét kodepunkt - ogsaa et uden for BMP ("😀" er to UTF-16-enheder). Kun et navn som "Enter",
+  // "ArrowDown" eller "F5" er sin egen code; alt andet uden for US-tabellen faar ingen code, aldrig sig selv.
+  if (typeof key !== 'string' || [...key].length !== 1) {
+    const navn = typeof key === 'string' && /^[A-Za-z][A-Za-z0-9]*$/.test(key);
+    return { code: navn ? key : '', vk: navn ? NAVNGIVNE_TASTKODER[key] : undefined, shift: false };
+  }
+  const code = cdpCodeForChar(key);
+  const vk = /^Key[A-Z]$/.test(code) ? code.charCodeAt(3)
+    : /^Digit\d$/.test(code) ? code.charCodeAt(5)
+    : TEGN_TASTKODER[code];
+  return { code, vk, shift: SKIFTEDE_TEGN.includes(key) };
+}
+// CDP-felterne for tastkoden (tomt, naar tasten ingen har).
+function tastkodeFelter(vk) { return vk ? { windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk } : {}; }
+
 // Types text as individual key events. Assumes the debugger is already attached —
 // debuggerType() is the public wrapper that manages attach/detach.
+// R127: hvilket slags felt har fokus lige nu? 'tekst' (textarea eller contenteditable: et linjeskift er tekst), 'linje'
+// (et <input>: et linjeskift sender formularen) eller 'ukendt' (en iframe, intet felt, eller kunne ikke laeses). Gennem aabne
+// shadow roots til det element, der faktisk har fokus. Et linjeskift skrives kun ved 'tekst'.
+async function linjeFelt(tabId) {
+  const svar = await evalAttached(tabId, `(() => { /* bmcpLinjeFelt */
+    let a = document.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    // R130 (Opus, MAALT i Chrome): paa en XHTML-side er tagName "textarea" med smaa bogstaver - navnet sammenlignes derfor
+    // uden hensyn til store og smaa bogstaver (localName, ellers tagName).
+    const navn = a ? String(a.localName || a.tagName || '').toLowerCase() : '';
+    if (!a || navn === 'iframe' || navn === 'frame') return 'ukendt';
+    if (navn === 'textarea' || a.isContentEditable) return 'tekst';
+    // R138 (Opus, MAALT i Chrome): mellemrumstasten klikker en knap, sender med en submit-knap og saetter et kryds. Kun et
+    // tekst-input faar linjeskiftet som mellemrum ('linje'); alt andet ('ukendt') faar intet.
+    if (navn === 'input') {
+      const type = String(a.type || 'text').toLowerCase();
+      return ['text', 'search', 'email', 'url', 'tel', 'password', 'number'].includes(type) ? 'linje' : 'ukendt';
+    }
+    return 'ukendt';
+  })()`).catch(() => 'ukendt');
+  return svar === 'tekst' || svar === 'linje' ? svar : 'ukendt';
+}
+
 async function typeCharsAttached(tabId, text) {
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const code = cdpCodeForChar(char);
+  const linjeskift = { somTekst: 0, somMellemrum: 0, udeladt: 0 };   // R130/R138: hvordan linjeskiftene blev skrevet (svaret siger det)
+  // MAALT i aegte headless Chrome (4044388): "hej 😀 👍🏽 é" endte som "hej �� ���� é" - hver UTF-16-halvdel blev sendt som
+  // sit eget tegn. Ét tastetryk pr. KODEPUNKT; "👍🏽" (to kodepunkter) og "👩‍💻" (tre) bliver til det rigtige i feltet.
+  const tegn = [...String(text)];
+  // #76: tastkode og Shift fra den fysiske tast (fysiskTast) - teksten er stadig tegnet selv.
+  const tastTegn = async (char) => {
+    const { code, vk, shift } = fysiskTast(char);
+    const mods = shift ? { modifiers: 8 } : {};
     await tastParAttached(tabId,
-      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char },
-      { key: char, ...(code ? { code } : {}) });
+      { text: char, key: char, ...(code ? { code } : {}), unmodifiedText: char, ...tastkodeFelter(vk), ...mods },
+      { key: char, ...(code ? { code } : {}), ...tastkodeFelter(vk), ...mods });
+  };
+  for (let i = 0; i < tegn.length; i++) {
+    const char = tegn[i];
+    // R126 (Opus, MAALT i Chrome): "\t" kom frem som Tab og flyttede fokus, "\r" sendte formularen, og "\n" forsvandt i en
+    // textarea. Et kontroltegn er tekst i vaerdien, ikke en tast: det indsaettes som tekst og kan hverken sende eller flytte.
+    if (char < ' ') {
+      if (char === '\r' || char === '\n') {
+        // MAALT i Chrome (R126): et ENKELT "\n" eller "\r" indsat i et <input> sender formularen (som Enter), og "\r" + "\n"
+        // hver for sig giver to linjeskift i en textarea. Et linjeskift er ét: "\r\n" og "\r" bliver "\n". R127 (Astra): det
+        // aktive felt laeses ved HVERT linjeskift (fokus kan skifte undervejs), og linjeskiftet skrives kun i en textarea eller
+        // et contenteditable-felt; i et enkeltlinje-input, i en iframe eller naar feltet ikke kan laeses, udelades det.
+        if (char === '\r' && tegn[i + 1] === '\n') continue;
+        // R130 (Opus): udeladt limede det ord sammen ("a\nb" -> "ab"); et mellemrum holder dem adskilt og sender ingen formular.
+        // MAALT i Chrome (R130): et felt, der kun tager tastet input, afviste et INDSAT mellemrum - her tastes det som
+        // mellemrumstasten, ligesom de andre tegn (et mellemrum sender ingen formular).
+        // R138 (Opus): kun i et tekst-input - fokus kan hoppe til en knap eller et afkrydsningsfelt midt i skrivningen, og der
+        // trykker mellemrumstasten paa det. Andre steder (knap, afkrydsning, ramme, ukendt) udelades linjeskiftet, og svaret siger det.
+        const felt = await linjeFelt(tabId);
+        if (felt === 'linje') {
+          await tastTegn(' ');
+          linjeskift.somMellemrum++;
+          continue;
+        }
+        if (felt !== 'tekst') { linjeskift.udeladt++; continue; }
+        await cdpSend(tabId, 'Input.insertText', { text: '\n' });
+        linjeskift.somTekst++;
+        continue;
+      }
+      await cdpSend(tabId, 'Input.insertText', { text: char });
+      continue;
+    }
+    await tastTegn(char);
     // Human-like typing: random 30-120ms, occasional longer pause
     const pause = (i > 0 && i % (7 + Math.floor(Math.random() * 5)) === 0)
       ? 150 + Math.random() * 200  // thinking pause every ~10 chars
       : 30 + Math.random() * 90;   // normal keystroke
     await new Promise(r => setTimeout(r, pause));
   }
+  return linjeskift;
+}
+
+// R125 (Astra, MAALT i model; Opus i Chrome): skrives der tegn for tegn, maales ogsaa om tasterne NAAEDE siden (samme
+// lytter som press_key, i udvidelsens egen verden). Et tomt felt bagefter er ikke bevis for at intet kom frem: et tag-felt
+// goer teksten til et tag og tommer feltet. Uden beviset raadede svaret agenten til at proeve igen - og saa kom tagget to gange.
+async function skrivTegnMedBevis(tabId, text) {
+  const forventet = [...String(text)].find((c) => c >= ' ');
+  const bevis = forventet ? await armerTastBevis(tabId, forventet).catch(() => null) : null;
+  const linjeskift = await typeCharsAttached(tabId, text);
+  const levering = bevis ? await laesTastBevis(tabId, bevis, { enhverTast: true }) : { landed: null };
+  return { ...levering, linjeskift };
 }
 
 async function debuggerType(tabId, text) {
   await debuggerAttach(tabId);
   try {
-    await typeCharsAttached(tabId, text);
+    return await skrivTegnMedBevis(tabId, text);
   } finally {
     await debuggerDetach(tabId);
   }
+}
+
+// Svaret naar feltet er tomt efter en skrivning. `landed`: naaede tasterne siden (true), ikke (false), uvist (null).
+// Raadet om at proeve igen gives KUN, naar intet naaede frem.
+// R127 (MAALT i Chrome): en vaerdi af KUN linjeskift i et felt, der ikke tager linjeskift (linjeFelt), skrives slet ikke - saa
+// er et tomt felt det rigtige udfald, ikke en fejl, og intet blev sendt, der kunne sende formularen.
+// R130 (Opus i Chrome, Astra i model): noten sagde «this field takes none ... left out ... Nothing was sent» - ogsaa i en
+// textarea, hvor "\n" BLEV sendt, og siden afviste det. Noten siger nu, hvordan linjeskiftene faktisk blev sendt (som linjeskift
+// i et tekstfelt, som mellemrum i et felt uden linjeskift), og at feltet ikke tog dem.
+function kunLinjeskiftSvar(ekstra, ls) {
+  const somMellemrum = !!(ls && ls.somMellemrum && !ls.somTekst);
+  const udeladt = ls && ls.udeladt ? ls.udeladt : 0;
+  // R138: blev de alle udeladt, er intet sendt - og et tomt felt er netop det.
+  if (udeladt && !(ls.somMellemrum || ls.somTekst)) {
+    return { ok: true, ...ekstra, differs: true, value: '', actual: '', line_breaks_left_out: udeladt,
+      note: 'The value holds only line breaks, and they were left out: the tool did not recognise the focused element as a text ' +
+        'field (a button, a checkbox, a frame, or an element it could not read), so nothing was sent.' };
+  }
+  return { ok: true, ...ekstra, differs: true, value: '', actual: '',
+    ...(somMellemrum ? { line_breaks_as_spaces: ls.somMellemrum } : {}),
+    ...(udeladt ? { line_breaks_left_out: udeladt } : {}),
+    note: 'The value holds only line breaks. They were sent ' +
+      (somMellemrum ? 'as spaces (this field takes no line breaks: a single-line text input)'
+        : 'as line breaks') + ', but the field is empty afterwards: the field did not take them.' };
+}
+
+// R130: blev linjeskift skrevet som mellemrum, siger svaret det - og er det den eneste forskel, skyder noten ikke aendringen
+// paa siden («formatted»): det var vaerktoejet, der skrev mellemrummet.
+function medLinjeskift(svar, oensket, ls) {
+  if (!svar || !ls || (!ls.somMellemrum && !ls.udeladt) || svar.line_breaks_as_spaces || svar.line_breaks_left_out) return svar;
+  const n = ls.somMellemrum || 0;
+  const u = ls.udeladt || 0;
+  const saetninger = [];
+  if (n) saetninger.push((n === 1 ? 'A line break was typed as a space' : `${n} line breaks were typed as spaces`) +
+    ': this field is a single-line text input, and a line break there could submit the form.');
+  // R138 (Opus): en knap, et afkrydsningsfelt eller en ramme faar hverken linjeskift eller mellemrum - mellemrumstasten ville trykke paa dem.
+  if (u) saetninger.push((u === 1 ? 'A line break was left out' : `${u} line breaks were left out`) +
+    ': the tool did not recognise the focused element as a text field (a button, a checkbox, a frame, or an element it could ' +
+    'not read), and a ' +
+    'key there could press it.');
+  const saetning = saetninger.join(' ');
+  const normal = String(oensket).replace(/\r\n?/g, '\n');
+  const forventet = u && !n ? normal.replace(/\n/g, '') : normal.replace(/\n/g, ' ');
+  const kunDet = !ls.somTekst && !(n && u) && typeof svar.actual === 'string' && svar.actual === forventet;
+  return { ...svar, ...(n ? { line_breaks_as_spaces: n } : {}), ...(u ? { line_breaks_left_out: u } : {}),
+    note: kunDet || !svar.note ? saetning : `${svar.note} ${saetning}` };
+}
+const kunLinjeskift = (v) => /[\r\n]/.test(String(v)) && String(v).replace(/[\r\n]/g, '') === '';
+
+function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
+  if (landed === true) {
+    return { ok: true, ...ekstra, differs: true, keys_delivered: true, value: '', actual: '',
+      note: 'The tool saw keys arrive, but the field is empty afterwards. Either the page turned the text into something ' +
+            'else - a tag or chip input makes it a tag and clears the field - or it rejected the keys (a field that blocks ' +
+            'typing, a length limit, a field that takes only digits). Check the page before typing it again: repeating it ' +
+            'may add it twice.' };
+  }
+  if (landed === null) {
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: null,
+      note: 'The field was empty after the write, and whether the keys arrived could not be measured (the page may also ' +
+            'have navigated). Check the page first: it may have handled the text (a tag or chip input turns it into a tag ' +
+            'and clears the field) or rejected it. Only if nothing happened there: the tab may be in the background - call ' +
+            'browser_switch_tab, then type it again.' };
+  }
+  return { ok: false, ...ekstra, error: 'field-is-empty', value: '', actual: '', keys_delivered: false, note: ikkeLeveretNote };
 }
 
 // ── Naar en dialog kan aabne midt i klikket (MAALT 24/8) ─────────────────────
@@ -1777,8 +2190,18 @@ async function tastParAttached(tabId, ned, op) {
 
 // Select-all + Backspace. Assumes the debugger is already attached.
 async function clearFieldAttached(tabId) {
-  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS }, { key: 'a', code: 'KeyA' });
-  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace' }, { key: 'Backspace', code: 'Backspace' });
+  await markerAltAttached(tabId);
+  await sletMarkeretAttached(tabId);
+}
+async function markerAltAttached(tabId) {
+  // R125 (Opus, MAALT i Chrome paa macOS): cmd+a markerede ikke alt, og set_date's maskerede vej skrev datoen bag den
+  // gamle ("16/10/202601/01/2000"). #68's laere: kun Chromes egen kommando markerer paa macOS.
+  await tastParAttached(tabId, { key: 'a', code: 'KeyA', modifiers: SELECT_ALL_MODS, ...tastkodeFelter(65), commands: ['selectAll'] },
+    { key: 'a', code: 'KeyA', ...tastkodeFelter(65) });
+}
+async function sletMarkeretAttached(tabId) {
+  await tastParAttached(tabId, { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) },
+    { key: 'Backspace', code: 'Backspace', ...tastkodeFelter(8) });
 }
 
 // Clear only when the focused field has something in it. Backspace in an EMPTY
@@ -1810,17 +2233,24 @@ async function clearFieldIfFilledAttached(tabId) {
 // raadet pegede paa noget der ikke fandtes. Samme vaerdi, to navne, saa ingen af de to
 // kodestier kraever at agenten ved hvilken den ramte. Fjern ikke `vaerdi`: det er
 // API-overflade nogen kan laese i dag.
-function fyldSvar(laest, oensket, ekstra, rammeHoerte) {
+function fyldSvar(laest, oensket, ekstra, rammeHoerte, tasterLanded, linjeskift) {
   if (laest === undefined || laest === null) {
     return { ok: true, ...ekstra, unknown: true,
       note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
             'it landed. Read the field with browser_execute_script if it matters.' };
   }
+  const ikkeLeveret = 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
+    'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
+    'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.';
+  if (laest === '' && kunLinjeskift(oensket)) return kunLinjeskiftSvar(ekstra, linjeskift);
   if (laest === '') {
-    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest,
-      note: 'The field was empty after the write. Chrome acknowledged both the insertion and ' +
-            'the keystrokes, but the field did not take them. The tab is probably in the background, where ' +
-            'Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+    // R125: blev der skrevet tegn for tegn, afgoer leveringen raadet (tomtFeltSvar); ellers som foer.
+    if (tasterLanded !== undefined) {
+      return tomtFeltSvar(ekstra, tasterLanded, 'The field was empty after the write, and the tool saw no key arrive. ' +
+        'The tab is probably in the background, where Chrome does not deliver keystrokes. Check the page before typing ' +
+        'again (an editor can hide keys from the tool); if nothing happened there, call browser_switch_tab and try again.');
+    }
+    return { ok: false, ...ekstra, error: 'field-is-empty', value: laest, actual: laest, note: ikkeLeveret };
   }
   if (laest === String(oensket)) {
     // FUNDET 19/9 (issue #19): her stoppede vi. DOM-vaerdien var rigtig, saa vi svarede ja -
@@ -2035,7 +2465,20 @@ async function debuggerFill(tabId, selector, value) {
     // mapping entirely, and it turns a 40-character value from ~3 seconds of
     // keystrokes into a single call — which also shrinks the window in which the
     // debugger can detach mid-fill.
-    await cdpSend(tabId, 'Input.insertText', { text: value });
+    // R127 (Astra): ogsaa her gaelder linjeskiftreglen (linjeFelt) - et "\n" indsat i et enkeltlinje-input sender formularen.
+    let indsaet = String(value);
+    const linjeskift = { somTekst: 0, somMellemrum: 0, udeladt: 0 };
+    if (/[\r\n]/.test(indsaet)) {
+      indsaet = indsaet.replace(/\r\n?/g, '\n');
+      const antal = (indsaet.match(/\n/g) || []).length;
+      // R130: i et felt uden linjeskift bliver hvert til ét mellemrum (ikke udeladt: ordene limes ellers sammen).
+      // R138: mellemrum kun i et tekst-input; ellers udelades de (samme regel som tegn for tegn).
+      const felt = await linjeFelt(tabId);
+      if (felt === 'tekst') linjeskift.somTekst = antal;
+      else if (felt === 'linje') { indsaet = indsaet.replace(/\n/g, ' '); linjeskift.somMellemrum = antal; }
+      else { indsaet = indsaet.replace(/\n/g, ''); linjeskift.udeladt = antal; }
+    }
+    if (indsaet) await cdpSend(tabId, 'Input.insertText', { text: indsaet });
 
     // Verify something actually landed. Masked inputs, maxlength enforcement and
     // autocompletes that filter per keydown can swallow an inserted string, and
@@ -2069,13 +2512,20 @@ async function debuggerFill(tabId, selector, value) {
     `);
     let landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
     let rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
+    let tasterLanded;   // R125: kun sat, naar der blev skrevet tegn for tegn (se skrivTegnMedBevis)
     if (landed !== String(value)) {
       const nu = await evalAttached(tabId, fieldBlockedExpression(null)).catch(() => null);
       if (nu === 'readonly' || nu === 'disabled') return { value: null, blocked: nu };
     }
     if (!landed) {
       await clearFieldIfFilledAttached(tabId);
-      await typeCharsAttached(tabId, value);
+      const skrevet = await skrivTegnMedBevis(tabId, value);
+      tasterLanded = skrevet.landed;
+      // MAALT i Chrome (R130): hurtigvejens tal blev lagt til ("4 mellemrum" for 2 linjeskift); feltet holder nu kun
+      // reservens skrivning, saa det er dens tal der gaelder.
+      linjeskift.somTekst = skrevet.linjeskift.somTekst;
+      linjeskift.somMellemrum = skrevet.linjeskift.somMellemrum;
+      linjeskift.udeladt = skrevet.linjeskift.udeladt;
       // FUNDET 13/9 af Astra: her stoppede vi. `typeCharsAttached` sender
       // Input.dispatchKeyEvent-par - praecis den kommando der blev maalt i at lyve samme dag.
       // Leveres tasterne heller ikke, kastes intet, og kalderen fik ok:true paa et tomt felt.
@@ -2095,7 +2545,7 @@ async function debuggerFill(tabId, selector, value) {
       landed = laesning && typeof laesning === 'object' ? laesning.v : laesning;
       rammeHoerte = laesning && typeof laesning === 'object' ? laesning.ramme : null;
     }
-    return { value: landed, rammeHoerte: rammeHoerte };
+    return { value: landed, rammeHoerte: rammeHoerte, tasterLanded, linjeskift };
   } finally {
     await debuggerDetach(tabId);
   }
@@ -2168,8 +2618,8 @@ async function filAdgangsSvar(besked) {
   };
 }
 
-// #67 (arasmileska; X og 37 af 37 Facebook-gruppeopslag): siden laeste filen i sin change-lytter og ryddede feltet
-// (input.value = ''), og saa var svaret file-not-attached - en agent, der troede paa det, vedhaeftede igen og postede to
+// #67 (37 af 37 uploads paa sider, der rydder feltet): siden laeste filen i sin change-lytter og ryddede feltet
+// (input.value = ''), og saa var svaret file-not-attached - en agent, der troede paa det, vedhaeftede igen og sendte to
 // gange. En lytter i fangstfasen, sat FOER filen afleveres, ser feltet i det oejeblik siden faar det: paa window for et
 // felt i dokumentet (window kommer foer alle sidens egne lyttere), paa feltet selv for et felt uden for dokumentet.
 // Svaret er { antal, navne } eller null (ingen change). Selvstaendig, saa den kan koere i siden.
@@ -2521,7 +2971,8 @@ async function armerTastBevis(tabId, forventet) {
       const p = (window.__bmcpTast ||= {});
       if (p.fn) window.removeEventListener('keydown', p.fn, true);
       p.id = nyId; p.antal = 0; p.traf = false;
-      p.fn = (e) => { p.antal++; if (e.key === vent) p.traf = true; };
+      // R126 (Astra): kun browserens egne haendelser taeller - et keydown, siden selv udsender (isTrusted: false), er intet bevis.
+      p.fn = (e) => { if (!e.isTrusted) return; p.antal++; if (e.key === vent) p.traf = true; };
       window.addEventListener('keydown', p.fn, true);
     },
     args: [id, forventet],
@@ -2529,7 +2980,10 @@ async function armerTastBevis(tabId, forventet) {
   return { id, rammer: armet.length };
 }
 
-async function laesTastBevis(tabId, bevis) {
+// `enhverTast` (fill, R126): leveret = NOGEN ægte tast set, ikke kun den forventede, og en udskiftet hovedramme er uvist -
+// en navigation beviser ikke, at tasterne kom frem. press_key beholder sin dom (den ventede tast; en navigation paa tasten
+// er dens virkning).
+async function laesTastBevis(tabId, bevis, { enhverTast = false } = {}) {
   const { id, rammer } = bevis;
   let svar;
   try {
@@ -2548,6 +3002,10 @@ async function laesTastBevis(tabId, bevis) {
     });
   } catch { return { landed: null }; }     // kunne ikke laeses: unknown, ikke nej
   const r = svar.filter((x) => x && x.result).map((x) => ({ frameId: x.frameId, ...x.result }));
+  if (enhverTast) {
+    if (r.some((x) => x.antal > 0)) return { landed: true };
+    if (r.some((x) => x.udskiftet && x.frameId === 0)) return { landed: null, navigeret: true };
+  }
   if (r.some((x) => x.antal > 0 && x.traf)) return { landed: true };
   // Samme regel som for musen: kun hovedrammens udskiftning er en navigation.
   if (r.some((x) => x.udskiftet && x.frameId === 0)) return { landed: true, navigeret: true };
@@ -2654,6 +3112,203 @@ async function safeExecuteScript(tabId, func, args = [], world = 'MAIN') {
 // Funktionen er selvstaendig, saa den kan sendes som `func` til chrome.scripting OG som tekst til Runtime.evaluate.
 // `gem` lægger elementet paa window.__bmcpMaal og dets daekningsregel paa window.__bmcpMaalTjek (til script-klikket og
 // vagten i armerMaalVagt); `kunElement` returnerer selve elementet.
+// 1.33 (privat rapport 2.1, MAALT i headless Chrome af to bedoemmere): browser_wait meldte found:true for tekst, ingen kan
+// se. display:none gav finderens {found:false, hidden:true}, og wait tjekkede kun, at der kom et svar; visibility:hidden,
+// opacity:0 og en tekst flyttet ud af siden (left:-9999px) faldt tilbage til et skjult match. CSS-vejen svarede ja til et
+// element med display:none. Ét kriterium for begge veje: et match er synligt, naar det har en boks paa mindst 2 x 2 px, der
+// ikke ligger helt foran sidens begyndelse, ikke er visibility:hidden/collapse, og hverken det eller en forfader har opacity 0
+// eller er en lukket boks (hoejde eller bredde under 2 px med overflow skaaret af). Siden rulles ikke.
+function ventMaal(sel, tekst, wantTag) {
+  function collectAll(root, results) {
+    for (const el of root.querySelectorAll('*')) {
+      results.push(el);
+      if (el.shadowRoot) collectAll(el.shadowRoot, results);
+    }
+    return results;
+  }
+  function alleDybt(root, s, ud) {
+    for (const el of root.querySelectorAll(s)) ud.push(el);
+    for (const n of root.querySelectorAll('*')) if (n.shadowRoot) alleDybt(n.shadowRoot, s, ud);
+    return ud;
+  }
+  const forfader = (n) => n.parentElement || (n.parentNode && n.parentNode.host) || null;
+  const synligt = (el) => {
+    // display:none (ogsaa paa en forfader) og display:contents giver en boks paa 0 x 0 - stoerrelsen fanger dem.
+    if (!el || !el.getBoundingClientRect) return false;
+    // R173 (MAALT i headless Chrome 155): indhold i en lukket <details> og under content-visibility:hidden har en boks paa
+    // 740 x 18 og ingen af stilene nedenfor - kun browserens egen checkVisibility ved, at det ikke tegnes.
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true })) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false;
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return false;
+    // R174 (Opus, MAALT i Chrome 155): fast-reglen fra R173 gjorde indhold under folden i en FAST boks, der kan rulles (en lang
+    // <dialog>.showModal(), en modal, en app-skal), «usynligt». Kun et aegte fast element taeller (offsetParent er null - et
+    // fixed inde i en transform-forfader opfoerer sig som absolute), og kan der rulles mellem elementet og den faste boks, er
+    // indholdet synligt, naar den faste boks selv er i vinduet.
+    let fast = null, rul = false, rulVedFast = false, hopTil = null;
+    // R177 (Astra, MAALT i modellen): tekst i en rullet INDRE rulleboks blev holdt op mod den ydre boks' begyndelse og meldt
+    // skjult - men den indre boks kan rulles tilbage. For forfaedrene over en rulleboks taeller boksens plads paa de akser, den kan
+    // rulles paa, ikke elementets.
+    let m = { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    // R176 (Opus, MAALT i Chrome 155): begyndelsen af en rulleboks er ikke altid oeverst til venstre. I rtl, row-reverse,
+    // column-reverse og vertical-rl ligger den til hoejre eller nederst, og rulningen er negativ.
+    const omvendt = (st, n) => {
+      const wm = st.writingMode || 'horizontal-tb';
+      const lodretSkrift = /^(vertical|sideways)/.test(wm);
+      let x = lodretSkrift ? /-rl$/.test(wm) : st.direction === 'rtl';
+      let y = false;
+      if (/flex/.test(st.display || '') && !lodretSkrift) {
+        if (st.flexDirection === 'row-reverse') x = !x;
+        if (st.flexDirection === 'column-reverse') y = true;
+      }
+      if ((n.scrollLeft || 0) < 0) x = true;
+      if ((n.scrollTop || 0) < 0) y = true;
+      return { x, y };
+    };
+    for (let n = el, i = 0; n && i < 1000; n = forfader(n), i++) {
+      const s = getComputedStyle(n);
+      // R176 (Astra, MAALT i modellen): et fast element undslipper rulning og afskaering hos forfaedrene OVER sig - kun deres
+      // opacity gaelder stadig. Et synligt fast barn uden for sin rulleforfaders boks blev ellers afvist. R176 (Opus, MAALT i
+      // Chrome): det samme gaelder et absolut element og forfaedrene MELLEM det og dets indeholdende blok (offsetParent).
+      const overFast = !!fast;
+      if (hopTil && n === hopTil) hopTil = null;
+      const sprunget = overFast || !!hopTil;
+      const ruller = /(auto|scroll)/.test(s.overflowX + ' ' + s.overflowY);
+      let naeste = null;
+      if (!sprunget && n !== el && ruller) {
+        rul = true;
+        // R175 (Opus, MAALT i Chrome 155): «kan rulles» er ikke «kan naas». Indhold foer en rulleboks' begyndelse (en menu
+        // skubbet ud med translateX(-100%), et link paa left:-9999px) kan aldrig rulles frem - begyndelsen pr. akse, se omvendt.
+        const sb = n.getBoundingClientRect();
+        const o = omvendt(s, n);
+        const foerX = o.x ? m.left >= sb.right - (n.scrollLeft || 0) : m.right <= sb.left - (n.scrollLeft || 0);
+        const foerY = o.y ? m.top >= sb.bottom - (n.scrollTop || 0) : m.bottom <= sb.top - (n.scrollTop || 0);
+        if (foerX || foerY) return false;
+        // R178 (Astra, MAALT i modellen): kun de akser, boksen kan rulles paa - ellers mistede en ydre, afskaerende boks tekstens
+        // plads paa den akse, der ikke kan rulles frem, og gav en falsk «found».
+        naeste = { ...m };
+        if (/(auto|scroll)/.test(s.overflowX)) { naeste.left = sb.left; naeste.right = sb.right; }
+        if (/(auto|scroll)/.test(s.overflowY)) { naeste.top = sb.top; naeste.bottom = sb.bottom; }
+      }
+      // R175 (Astra, MAALT i modellen): den YDRE faste ramme overskrev den indre - en fast skuffe uden for vinduet i en synlig,
+      // rullebar fast ramme blev «synlig». Den inderste faste boks afgoer: den er placeret efter vinduet, ikke efter rammen.
+      if (!fast && s.position === 'fixed' && n.offsetParent === null) { fast = n; rulVedFast = rul || (n !== el && ruller); }
+      if (parseFloat(s.opacity) === 0) return false;
+      if (!sprunget && n !== el && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
+        const b = n.getBoundingClientRect();
+        if (b.width < 2 || b.height < 2) return false;
+        // R173 (Astra, MAALT): tekst helt uden for en boks, der skaerer af (hidden/clip), talte som synlig. En boks, der kan
+        // rulles (auto/scroll), skjuler ikke - som siden under folden.
+        const skaerer = (v) => v === 'hidden' || v === 'clip';
+        // Pr. akse (R174): overflow-x: hidden med overflow-y: auto skaerer kun vandret - lodret kan der rulles.
+        if ((skaerer(s.overflowX) && (m.right <= b.left || m.left >= b.right))
+          || (skaerer(s.overflowY) && (m.bottom <= b.top || m.top >= b.bottom))) return false;
+      }
+      if (naeste) m = naeste;
+      // R177 (Astra, MAALT i Chrome 155 22/10): et fixed element under en transform-forfader opfoerer sig som absolute (det har en
+      // offsetParent) - samme spring op til den indeholdende blok.
+      if (!fast && !hopTil && (s.position === 'absolute' || s.position === 'fixed')) hopTil = n.offsetParent || null;
+    }
+    // R173 (Opus, MAALT i Chrome): et fast element (position:fixed, ogsaa via en forfader) ruller ikke med siden - det er kun
+    // synligt i vinduet. En topbjaelke skubbet op med translateY(-100%) paa en rullet side og en skuffe skubbet ud til hoejre
+    // med translateX(100%) talte som synlige.
+    // Vinduets synlige flade er uden rullebjaelke (MAALT i Chrome 155: en skuffe skubbet ud med translateX(100%) stod paa x=1265
+    // under en rullebjaelke paa 15 px, og innerWidth paa 1280 regnede den som i vinduet). R176 (Opus, MAALT): i quirks-tilstand
+    // med vandret rullebjaelke giver document.scrollingElement fladen; documentElement giver hele dokumentet.
+    const rod = document.scrollingElement || document.documentElement;
+    // R175 (Opus, MAALT): i quirks-tilstand er documentElement.clientHeight hele dokumentets hoejde (4333 mod 713) - den mindste
+    // af de to er vinduet.
+    const bredde = Math.min(window.innerWidth, (rod && rod.clientWidth) || window.innerWidth);
+    const hoejde = Math.min(window.innerHeight, (rod && rod.clientHeight) || window.innerHeight);
+    const iVindue = (b) => b.right > 0 && b.bottom > 0 && b.left < bredde && b.top < hoejde;
+    if (fast) return iVindue(r) || (rulVedFast && iVindue(fast.getBoundingClientRect()));
+    // Sidens begyndelse. R176 (Opus, MAALT i Chrome): indhold rullet forbi i en rulleboks har negative sidekoordinater, men kan
+    // naas ved at rulle boksen - for indhold i en rulleboks afgoer den yderste rulleboks' plads (m). Paa en rtl-side ligger
+    // sidens vandrette begyndelse til hoejre; der gaelder kun den lodrette.
+    const b = m;
+    const sideRtl = getComputedStyle(document.documentElement || document.body || el).direction === 'rtl';
+    return (sideRtl || b.right + window.scrollX > 0) && b.bottom + window.scrollY > 0;
+  };
+  // Tekst i script, style, template, noscript og title vises aldrig. MAALT i headless Chrome: et <script> med ordet gjorde
+  // ellers ordet «paa siden», og <body> - hvis textContent ogsaa rummer scriptets tekst - blev regnet for synlig.
+  const IKKE_VIST = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'NOSCRIPT', 'TITLE']);
+  const vistTekst = (el) => {
+    let ud = '';
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let t = w.nextNode(); t; t = w.nextNode()) {
+      let skjult = false;
+      for (let n = t.parentNode; n && n !== el.parentNode; n = n.parentNode) if (IKKE_VIST.has(n.nodeName)) { skjult = true; break; }
+      if (!skjult) ud += t.data;
+    }
+    return ud;
+  };
+  // R173 (Astra, MAALT i side-modellen): det inderste match afgjorde sagen - en synlig knap med en skjult <span>Saved</span>
+  // blev godkendt, «Sa<span skjult>ved</span>» ogsaa, og et synligt «Saved» med en skjult kopi inden i blev overset. Nu
+  // afgoer den SYNLIGE tekst: tekstnoder, hvis eget element kan ses, i dokumentets raekkefoelge.
+  const kendt = new Map();
+  const vises = (el) => { if (!kendt.has(el)) kendt.set(el, synligt(el)); return kendt.get(el); };
+  const synligTekst = (rod) => {
+    let ud = '';
+    // R175 (Astra, MAALT i modellen): en TreeWalker over tekst lagde en <select>s etiket EFTER al den oevrige tekst, saa
+    // «Sa<select>…</select>ved» blev til «Saved». Traeet gaas nu igennem i tegnet raekkefoelge, og en lukket <select>
+    // bidrager paa sin egen plads med det, den viser - adskilt fra naboerne.
+    const tekstNode = (t, ejer) => {
+      // R173 (Opus, MAALT i Chrome): tekst direkte i et display:contents-element (fx et #root) tegnes i en forfaders boks.
+      for (let i = 0; i < 50 && ejer.parentElement && getComputedStyle(ejer).display === 'contents'; i++) {
+        if (getComputedStyle(ejer).visibility !== 'visible') break;   // en skjult contents-forfader skjuler ogsaa teksten
+        ejer = ejer.parentElement;
+      }
+      if (vises(ejer)) ud += t.data;
+    };
+    // Et element bidrager efter samme regler, hvad enten det er roden eller et barn. R176 (Astra, MAALT i modellen): en
+    // <option label> som SOEGEROD (option:text(...)) fik sin tekst talt - kun et barn fik label-reglen.
+    const element = (c) => {
+      if (IKKE_VIST.has(c.nodeName)) return;
+      if (c.nodeName === 'SELECT' && !c.multiple && !(c.size > 1)) {
+        // En lukket <select> viser den valgte options etiket - en ikke-tom label, ellers optionens tekst (HTML-standarden).
+        const o = c.options && c.options[c.selectedIndex];
+        const vist = o ? ((o.getAttribute && o.getAttribute('label')) || o.textContent || '') : '';
+        if (vist && vises(c)) ud += '\n' + vist + '\n';
+        return;
+      }
+      if (c.nodeName === 'OPTION' && c.getAttribute && c.getAttribute('label')) {
+        // R174 (Astra): i en aaben liste viser en option med label sin label, ikke sin tekst.
+        if (vises(c)) ud += '\n' + c.getAttribute('label') + '\n';
+        return;
+      }
+      gaa(c, c);
+    };
+    const gaa = (n, ejer) => {
+      for (const c of n.childNodes || []) {
+        if (c.nodeType === 3) { if (ejer) tekstNode(c, ejer); continue; }
+        if (c.nodeType === 1) element(c);
+      }
+    };
+    // Tekst direkte i en shadow root tegnes i vaertens boks.
+    if (rod.nodeType === 1) element(rod);
+    else gaa(rod, rod.host || null);
+    return ud;
+  };
+  if (tekst != null) {
+    const tag = wantTag ? String(wantTag).toUpperCase() : null;
+    const alle = collectAll(document, []);
+    const m = alle.filter((el) => (!tag || el.tagName === tag) && !IKKE_VIST.has(el.tagName)
+      && (el.textContent || '').includes(tekst) && vistTekst(el).includes(tekst));
+    // Uden tag: den synlige tekst i dokumentet og i hver shadow root (tekst over en skyggegraense laeses ikke som én).
+    // Med tag: den synlige tekst i hvert element af den slags. R174 (Astra): her filtreredes foerst paa den raa textContent,
+    // saa «Sa<span skjult>X</span>ved» blev fundet som text=Saved, men overset som button:text(Saved).
+    const roedder = [document, ...alle.filter((el) => el.shadowRoot).map((el) => el.shadowRoot)];
+    const synlig = tag
+      ? alle.some((el) => el.tagName === tag && synligTekst(el).includes(tekst))
+      : roedder.some((rod) => synligTekst(rod).includes(tekst));
+    // Det, der kan ses, findes ogsaa paa siden (R174, Astra: tekst direkte i en shadow root gav synlig:true, paaSiden:false).
+    return { synlig, paaSiden: m.length > 0 || synlig };
+  }
+  const matches = alleDybt(document, sel, []);
+  return { synlig: matches.some(synligt), paaSiden: matches.length > 0 };
+}
+
 function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
   // Interactive controls we prefer to actually click. Fixes the class of bug where a
   // text match lands on a large CONTAINER (e.g. Angular Material <mat-nav-list>,
@@ -2763,8 +3418,8 @@ function klikMaal(sel, tekst, wantTag, gem, kunElement, ingenRul) {
       if (desc && (desc.textContent || '').includes(tekst)) return desc;
       return el;
     }
-    // #70 (arasmileska; Search Console og Facebook har skjulte kopier af knapper): `text=Request indexing` stoppede ved en
-    // skjult foerste «Request indexing» og meldte «not visible», skoent en synlig knap med samme tekst fandtes. Et maal
+    // #70 (sider med skjulte kopier af knapper): `text=Send` stoppede ved en skjult foerste «Send» og meldte
+    // «not visible», skoent en synlig knap med samme tekst fandtes. Et maal
     // med en boks og uden visibility:hidden foretraekkes nu; findes der kun skjulte, vaelges som foer, og svaret siger det.
     const synlig = (el) => {
       if (!el || !el.getBoundingClientRect) return false;
@@ -3294,12 +3949,24 @@ async function findElement(tabId, selectorStr, ingenRul = false) {
 // ud var ↻ i haanden.
 //
 // Nu spoerges dokumentet om det er der. Svarer det ikke, erstattes det.
+//
+// R137 (maalt 19/10 paa en side med 50-200 navigationer i sekundet): under en lammet browsertraad kom ét svar for sent, og
+// broen blev revet ned - med WebSocket-forbindelsen og de svar, der var paa vej. Broen erstattes derfor kun efter to mistede
+// svar i traek: svarer den foerste ping ikke inden 1,5 s, sendes en til, og et svar paa en af dem inden for 1,5 s mere taeller.
+// Et afslag (ingen modtager) er et svar: det er der ingen grund til at vente paa.
 async function offscreenSvarer() {
+  const ping = () => chrome.runtime.sendMessage({ type: 'bmcp_ping' });
+  const frist = () => new Promise((_, afvis) => setTimeout(() => afvis(new Error('no answer')), 1500));
   try {
-    const svar = await Promise.race([
-      chrome.runtime.sendMessage({ type: 'bmcp_ping' }),
-      new Promise((_, afvis) => setTimeout(() => afvis(new Error('no answer')), 1500)),
-    ]);
+    const foerste = ping();
+    foerste.catch(() => {});
+    let svar;
+    try {
+      svar = await Promise.race([foerste, frist()]);
+    } catch (e) {
+      if (e?.message !== 'no answer') throw e;
+      svar = await Promise.race([Promise.any([foerste, ping()]), frist()]);
+    }
     if (svar?.ok !== true) return false;
     // "Svarer den?" er ikke nok — den skal ogsaa vaere den udgave vi koerer nu.
     // En bro fra en aeldre udgave svarer lige saa villigt, og saa blev den aldrig
@@ -3396,9 +4063,12 @@ function ensureOffscreen() {
 function genbygOffscreen() {
   return iOffscreenKoe(async () => {
     try {
-      if (await chrome.offscreen.hasDocument()) await chrome.offscreen.closeDocument();
+      // R139 (Astra): erstattet er broen foerst, naar lukningen er lykkedes - en afvist lukning efterlader en levende bro.
+      if (await chrome.offscreen.hasDocument()) { await chrome.offscreen.closeDocument(); broenErstattes(); }
     } catch (e) {
       console.warn('[BG] kunne ikke lukke broen foer genopbygning:', e?.message || e);
+      // R141 (Opus H3): lukkede Chrome dokumentet, men kastede bagefter, er broen alligevel erstattet.
+      if (await broenErVaek()) broenErstattes();
     }
     await ensureOffscreenIndre();
   });
@@ -3497,9 +4167,15 @@ async function ensureOffscreenIndre() {
     await chrome.storage.local.set({ offscreenGenskabt: offscreenGenskabt + 1 });
     try { await chrome.offscreen.closeDocument(); } catch (e) {
       console.warn('[BG] kunne ikke lukke det doede dokument:', e?.message || e);
-      return;                                      // proev igen ved naeste hjerteslag
+      // R141 (Opus H3): lukkede Chrome dokumentet, men kastede bagefter, gaelder det som lukket; ellers proeves igen senere.
+      if (!(await broenErVaek())) return;          // proev igen ved naeste hjerteslag
     }
+    // R138/R139: lukket - det gamle dokuments forbindelser er lukkede, ogsaa hvis det ikke naaede at sige det selv.
+    broenErstattes();
   }
+  // R144 (Astra, model): fandt hjerteslaget INGEN bro, og bekræfter begge kilder, at den er vaek, er den forrige bro erstattet - ogsaa
+  // naar en tidligere lukning efterlod den umarkeret (H3 med en kontekstliste, der endnu viste den).
+  if (!findes && broensDokument !== null && await broenErVaek()) broenErstattes();
 
   // Versionen foelger med i URL'en. Et offscreen-dokument har IKKE
   // chrome.runtime.getManifest() — kaldet kaster "is not a function", saa dokumentet
@@ -3582,6 +4258,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const port = msg.port;
     // R133 (Astra): kaldets ur starter HER, naar udvidelsen modtager det - foer sessionsgendannelse og adoption.
     const modtaget = Date.now();
+    kommandoFraDokument(msg.gen);   // R138: en kommando fra et nyt bro-dokument goer det gamle dokuments forbindelser lukkede
     logAction(port, msg.method);
     // R134: agentkodens to vaerktoejer svarer altid inden for budgettet (se AGENTKODE_FRIST). Kun det foerste svar sendes.
     const vagt = AGENTKODE_METODER.has(msg.method) ? { sendt: false, lukket: false } : null;
@@ -3589,12 +4266,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const svar = (r) => { if (svaret) return; svaret = true; sendResponse(r); };
     // Restore sessions from storage (service worker may have restarted), then take over any
     // session orphaned by an unclean disconnect so navigate→click keeps hitting the same tab.
+    // R138: et kald fra en lukket forbindelse koerer intet - tjekket efter hver ventetid (gendannelse, adoption), foer sessionen roeres.
     const arbejde = restoreSessions()
-      .then(() => adoptOrphanedSession(port, msg.pid).catch(() => null)) // adoption is best-effort, never fatal
+      .then(() => adoptOrphanedSession(port, msg.pid, msg.gen).catch(() => null)) // adoption is best-effort, never fatal; R139: it checks the connection itself
       .then(() => {
+        if (fraLukketForbindelse(port, msg.gen)) return { ...LUKKET_SVAR };
         // Stempl pid'en ÉT sted, foer dispatch. De fem nedstroems getSession(port)-kald
         // arver den derfra, saa ingen af dem behoever at kende til pid-begrebet.
-        getSession(port, msg.pid);
+        getSession(port, msg.pid, msg.gen);
         return dispatch(port, msg.method, msg.params, modtaget, vagt);
       });
     arbejde.then((r) => svar(r)).catch((err) => svar({ __error: err.message || String(err) })); // ogsaa en afvist sessionsgendannelse svares
@@ -3613,7 +4292,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === 'session_disconnect') {
-    releaseSession(msg.port);
+    forbindelsenLukket(msg.port, msg.gen);
+    releaseSession(msg.port, msg.gen);
     return;
   }
 
@@ -3657,6 +4337,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (count > 0) {
       chrome.action.setBadgeBackgroundColor({ color: '#22c55e' });
     }
+    broensPorte = new Set((msg.ports || []).map(Number));   // R141: synkront, foer lagret skrives
     chrome.storage.local.set({
       mcpConnected: msg.connected,
       mcpCount: count,
@@ -4038,7 +4719,10 @@ chrome.tabs.onCreated.addListener(async (tab) => {
       for (const [port, session] of sessions) {
         if (tab.openerTabId && session.tabIds.has(tab.openerTabId)) {
           await addTabToSession(port, tab.id);
-          session.activeTabId = tab.id;
+          skiftAktiv(session, tab.id);
+          // R173 (Opus, MAALT i modellen): skiftet til popuppen er udvidelsens eget. Lukker popuppen sig selv (et vellykket
+          // login), gaar sessionen tilbage til aabneren - se onRemoved. Uden det stod agenten uden aktiv fane (no-active-tab).
+          session.tilbageTil = { popup: tab.id, aabner: tab.openerTabId };
           persistSessions();
           break;
         }
@@ -4229,15 +4913,79 @@ async function setDateNative(tabId, selector, iso) {
   return r.result || { ok: false, error: 'no-result' };
 }
 
+// R127 (Astra, model): har fokus feltet? { status: 'ja' | 'nej' | 'ukendt', tag, id }. Kun hoveddokumentets
+// document.activeElement sammenlignes med feltet (feltet findes med document.querySelector, saa et felt i en shadow root
+// findes slet ikke); navnet paa det element, der har fokus, foelger aabne shadow roots. En fejl er 'ukendt', ikke 'nej'.
+async function fokusPaaFelt(tabId, selector) {
+  const f = await evalAttached(tabId, `(() => { /* bmcpFokusPaaMaal */
+    const el = document.querySelector(${JSON.stringify(selector)});
+    let a = document.activeElement;
+    const paaMaal = !!el && a === el;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+    return { paaMaal, tag: a ? a.tagName : null, id: a && a.id ? a.id : null };
+  })()`).catch(() => null);
+  if (!f || typeof f.paaMaal !== 'boolean') return { status: 'ukendt' };
+  return { status: f.paaMaal ? 'ja' : 'nej', tag: f.tag, id: f.id };
+}
+
+// Vaerdierne i alle felter i hoveddokumentet (input, textarea, contenteditable), saa et fejlsvar kan sige, hvad der naaede at
+// blive aendret - og hvor. R130 (Astra, model): felterne parres paa IDENTITET, ikke paa plads: elementerne gemmes i siden (under
+// en tilfaeldig noegle) og sammenlignes med sig selv bagefter. Bytter siden om paa raekkefoelgen, er det ingen aendring.
+async function feltFoer(tabId) {
+  const noegle = '__bmcpFelt' + Math.random().toString(36).slice(2, 10);
+  const ok = await evalAttached(tabId, `(() => { /* bmcpFeltFoer */
+    window[${JSON.stringify(noegle)}] = Array.from(document.querySelectorAll('input, textarea, [contenteditable]'))
+      .map((e) => ({ e: e, v: 'value' in e ? String(e.value) : String(e.textContent || '') }));
+    return true;
+  })()`).catch(() => false);
+  return ok === true ? noegle : null;
+}
+async function feltAendringer(tabId, selector, noegle) {
+  if (!noegle) return null;
+  const r = await evalAttached(tabId, `(() => { /* bmcpFeltDiff */
+    const foer = window[${JSON.stringify(noegle)}];
+    if (!Array.isArray(foer)) return null;
+    const maal = document.querySelector(${JSON.stringify(selector)});
+    const ud = [];
+    for (const x of foer) {
+      const nu = 'value' in x.e ? String(x.e.value) : String(x.e.textContent || '');
+      if (nu !== x.v) ud.push({ tag: x.e.tagName, id: x.e.id || null, target: x.e === maal, value_before: x.v, value: nu });
+    }
+    return ud;
+  })()`).catch(() => null);
+  return Array.isArray(r) ? r : null;
+}
+
 async function setDateMaskedTyping(tabId, selector, iso, format) {
   const formatted = isoToFormat(iso, format);
   await debuggerFocus(tabId, selector);
   await debuggerAttach(tabId);
+  let noegle = null;
   try {
-    await clearFieldAttached(tabId);
+    // R126 + R127 (Astra i model, Opus i Chrome): et datofelt, hvis fokushaandtering flytter fokus til et andet felt, fik det
+    // andet felts tekst slettet og datoen skrevet dér. Fokus tjekkes nu foer HVER skrivende handling (marker alt, slet,
+    // indsaet); er det flyttet eller ukendt, stoppes der straks, og svaret siger hvad der naaede at blive aendret og hvor.
+    noegle = await feltFoer(tabId);
+    const stop = async (trin) => {
+      const f = await fokusPaaFelt(tabId, selector);
+      if (f.status === 'ja') return null;
+      const aendret = await feltAendringer(tabId, selector, noegle);
+      return { ok: false, focusMoved: f.status === 'nej', focusUnknown: f.status === 'ukendt', step: trin,
+        focused: f.status === 'nej' ? { tag: f.tag, id: f.id } : null, changed: aendret };
+    };
+    let s;
+    if ((s = await stop('select-all'))) return s;
+    await markerAltAttached(tabId);
+    if ((s = await stop('delete'))) return s;
+    await sletMarkeretAttached(tabId);
+    if ((s = await stop('typing'))) return s;
     await cdpSend(tabId, 'Input.insertText', { text: formatted });
-    await tastParAttached(tabId, { key: 'Tab', code: 'Tab' }, { key: 'Tab', code: 'Tab' });
+    // Tab flytter blot fokus videre. Har siden selv flyttet fokus efter datoen (et felt, der hopper videre), sendes den ikke.
+    if ((await fokusPaaFelt(tabId, selector)).status === 'ja') {
+      await tastParAttached(tabId, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) }, { key: 'Tab', code: 'Tab', ...tastkodeFelter(9) });
+    }
   } finally {
+    if (noegle) await evalAttached(tabId, `delete window[${JSON.stringify(noegle)}]`).catch(() => {});
     await debuggerDetach(tabId);
   }
   return { ok: true, formatted };
@@ -4404,7 +5152,7 @@ async function setDatePicker(tabId, selector, iso) {
       await debuggerAttach(tabId);
       try {
         const key = delta > 0 ? 'PageDown' : 'PageUp';
-        await tastParAttached(tabId, { key, code: key }, { key, code: key });
+        await tastParAttached(tabId, { key, code: key, ...tastkodeFelter(fysiskTast(key).vk) }, { key, code: key, ...tastkodeFelter(fysiskTast(key).vk) });
       } finally {
         await debuggerDetach(tabId);
       }
@@ -5160,7 +5908,10 @@ function agentKodeFejl(ex) {
   return { besked: (ex && ex.text) || 'Script exception', navn };
 }
 
-// Hele vaerktoejskaldet har serverens budget (SERVER_FRIST_MS minus svarets hjemrejse), regnet fra udvidelsen MODTOG kaldet
+// R137: serveren venter selv 15 s laengere end dette budget paa de to vaerktoejer (KALD_FRIST_MS + AGENTKODE_MARGEN_MS i
+// mcp-server/index.js): maalt 19/10 naaede svaret ved budgettet ikke serveren inden 30 s, naar en side navigerede 50-200
+// gange i sekundet. Faar serveren alligevel intet svar, svarer den selv no-answer med sent:'unknown'.
+// Hele vaerktoejskaldet har serverens standardbudget (SERVER_FRIST_MS minus svarets hjemrejse), regnet fra udvidelsen MODTOG kaldet
 // (onMessage, foer sessionsgendannelse og adoption). R132/R133 (Astra): fristen gaelder forarbejdet, den sidste
 // afsendelseskontrol (efter tilslutningen i cdpSend) og svaret; oprydningen koerer videre efter svaret uden at holde det.
 // R134 (Astra): trin-for-trin-fristerne kunne ikke holde svaret inden for budgettet - tilslutning, gentilslutning,
@@ -5417,7 +6168,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
             return { ok: false, error: 'session-changed', sent: false, requested_url: String(params.url), detail: e.message,
               note: NAV_NOTER['session-changed'] };
           }
-          throw e;
+          if (!(e && e.ingenAktiv)) throw e;
+          // 1.33 (privat rapport 3.2): uden en aktiv fane vaelges der ikke en anden. new_tab beholder alle sessionens sider og
+          // aabner bare en ny - den gaar videre med tab = null.
+          if (!params.new_tab) {
+            return { ok: false, error: 'no-active-tab', sent: false, requested_url: String(params.url), detail: e.message,
+              note: NAV_NOTER['no-active-tab'] };
+          }
         }
       }
       // R111 (b): brugte opslaget fristen, og er intet sendt endnu, svares der nu - med en kendt boks, hvis der er en.
@@ -5486,7 +6243,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           tab = vindue.tabs && vindue.tabs[0];
           if (!tab) return { ok: false, error: 'eget_vindue: Chrome created a window with no tab' };
           await addTabToSession(port, tab.id, { gruppe: false });
-          getSession(port).activeTabId = tab.id;
+          skiftAktiv(getSession(port), tab.id);
           persistSessions();
 
           // ⛔ MAALT 21/9 mod rigtig Chrome: her stod `placeret: { left: spec.left }` og
@@ -5614,7 +6371,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       });
 
       // Set as active tab for this session
-      session.activeTabId = tab.id;
+      skiftAktiv(session, tab.id);
       persistSessions();
       // R112 (Astra 1, Opus N-a): et EKSPLICIT tjek af fristen foer succes - et bevis, der vandt over en udloebet timer (fordi
       // sessionsarbejdet brugte fristen), er stadig efter loftet.
@@ -5635,6 +6392,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (captcha && captcha.found) {
         result.captcha_detected = captcha.types.join(', ');
         result.hint = `CAPTCHA detected: ${captcha.types.join(', ')}. Use browser_solve_captcha to handle it.`;
+      } else if (captcha && captcha.invisible) result.captcha_invisible = captcha.invisible.join(', ');
+      // 1.33 (privat rapport 5.9): en ny fane aabnes i baggrunden, og svaret sagde det ikke - som switch_tab siger synligheden.
+      // (Hertil naar kun en ny fane: navigate i den aktive fane svarer fra navigerIFanen.)
+      if (updated && updated.active === false) {
+        result.active = false;
+        result.active_note = 'The new tab opened in the background: it is not the active tab in its window. Call ' +
+          'browser_switch_tab before key presses, hover, the mouse wheel or coordinate clicks; read landed in their answers.';
       }
       return result;
     }
@@ -5925,6 +6689,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
             // foer haevningen kunne svare foerst og vinde - selv om siden havde aendret sig imens. Rundens EGNE optagelser
             // afgoer nu svaret; de aeldre taeller stadig med, men kun hvis rundens egne ikke naar frem.
             let shot;
+            let aeldreBillede = false;
             try {
               shot = await medFrist(Promise.any(denneRunde), budgetSlut - reserveret - Date.now());
             } catch (rundeFejl) {
@@ -5932,8 +6697,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
               if (!aeldre.length) throw rundeFejl;
               // Et aeldre billede der ALLEREDE er kommet, svarer i samme oejeblik - ogsaa naar budgettet er brugt op.
               shot = await medFrist(Promise.any(aeldre), budgetSlut - Date.now());
+              aeldreBillede = true;   // kun den haevede runde har aeldre optagelser at falde tilbage paa
             }
-            return { image: 'data:image/png;base64,' + shot.data };
+            // R126 (Opus): reserven leverede det aeldre billede uden at sige det. Det kan vise siden, som den var foer
+            // vinduet blev haevet - agenten skal vide det, foer den handler paa det.
+            return { image: 'data:image/png;base64,' + shot.data,
+              ...(aeldreBillede ? { stale: true, note: 'This picture was taken before the window was raised, because a new ' +
+                'one did not arrive in time. The page may have changed since; take another screenshot if it matters.' } : {}) };
           } catch (andenFejl) {
             const fejl = andenFejl instanceof AggregateError ? andenFejl.errors[andenFejl.errors.length - 1] : andenFejl;
             if (foersteFejl?.ingenNyRunde && fejl && typeof fejl === 'object') fejl.ingenNyRunde = true;
@@ -6164,7 +6934,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         await new Promise(r => setTimeout(r, 100));
         // R50: kun disabled foer skrivningen; readonly kan forsvinde ved fokus (se debuggerFill).
         if (await fieldBlocked(tab.id, null) === 'disabled') return fieldBlockedAnswer('disabled', 'debugger');
-        await debuggerType(tab.id, params.value);
+        const levering = await debuggerType(tab.id, params.value);
         // MAALT 13/9 (Astras hul-audit): her stod `ok:true` uden at nogen havde set feltet.
         // Css-grenen laeser allerede vaerdien tilbage og skelner tomt fra fordoblet fra
         // formateret; tekst-grenen gjorde ikke. Et klik der landede paa noget andet end et
@@ -6173,29 +6943,33 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           '(() => { const a = document.activeElement; return a && "value" in a ? String(a.value) : null; })()')
           .catch(() => undefined);
         if (efterTekst === undefined || efterTekst === null) {
-          return { ok: true, method: 'debugger', unknown: true,
+          // R139 (Opus, MAALT): ogsaa et ulaeseligt felt faar at vide, hvordan linjeskiftene blev skrevet (udeladt eller mellemrum).
+          return medLinjeskift({ ok: true, method: 'debugger', unknown: true,
             note: 'The text was written, but the field could not be read afterwards, so it is unknown whether ' +
-                  'it landed. Read the field with browser_execute_script if it matters.' };
+                  'it landed. Read the field with browser_execute_script if it matters.' }, params.value, levering ? levering.linjeskift : null);
         }
         if (efterTekst === String(params.value)) return { ok: true, method: 'debugger', value: efterTekst, actual: efterTekst };
         const spaerret = await fieldBlocked(tab.id, null);
         if (spaerret) return fieldBlockedAnswer(spaerret, 'debugger');
+        const ls = levering ? levering.linjeskift : null;
+        if (efterTekst === '' && kunLinjeskift(params.value)) return kunLinjeskiftSvar({ method: 'debugger' }, ls);
         if (efterTekst === '') {
-          return { ok: false, method: 'debugger', error: 'field-is-empty', value: efterTekst, actual: efterTekst,
-            note: 'The field was empty after the write. The click may not have hit a field, or the tab ' +
-                  'is in the background, where Chrome does not deliver keystrokes. Call browser_switch_tab and try again.' };
+          return medLinjeskift(tomtFeltSvar({ method: 'debugger' }, levering ? levering.landed : null,
+            'The field was empty after the write, and the tool saw no key arrive. The click may not have hit a field, or the ' +
+            'tab is in the background, where Chrome does not deliver keystrokes. Check the page before typing again (an ' +
+            'editor can hide keys from the tool); if nothing happened there, call browser_switch_tab and try again.'), params.value, ls);
         }
-        return { ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
+        return medLinjeskift({ ok: true, method: 'debugger', differs: true, value: efterTekst, actual: efterTekst,
           note: 'The field contains something other than what was typed. The page has probably formatted ' +
-                'the value - or something was already there.' };
+                'the value - or something was already there.' }, params.value, ls);
       }
 
       // Always use debugger for input/textarea — React/Angular/Vue need real keyboard events
       try {
         const efterFyld = await debuggerFill(tab.id, parsed.selector, params.value);
         if (efterFyld?.blocked) return fieldBlockedAnswer(efterFyld.blocked, 'debugger');
-        return fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
-                        efterFyld?.rammeHoerte);
+        return medLinjeskift(fyldSvar(efterFyld?.value, params.value, { method: 'debugger' },
+                        efterFyld?.rammeHoerte, efterFyld?.tasterLanded, efterFyld?.linjeskift), params.value, efterFyld?.linjeskift);
       } catch (e) {
         // MAALT 10/9 af Astra: debugger-vejen timede ud, og reserveloesningen skrev saa hele
         // vaerdien med den native setter. Men Promise.race afbryder ikke — tastetrykkene fra
@@ -6319,7 +7093,27 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         const fmt = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
         if (fmt) {
           try {
-            await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
+            const maskeret = await setDateMaskedTyping(tab.id, params.selector, iso, fmt);
+            if (maskeret && (maskeret.focusMoved || maskeret.focusUnknown)) {
+              const v0 = await readBackValue(tab.id, params.selector).catch(() => null);
+              const trin = { 'select-all': 'selecting the field\'s text', delete: 'deleting it', typing: 'typing the date' }[maskeret.step] || maskeret.step;
+              const aendret = maskeret.changed;
+              // Foer den foerste skrivende handling har vaerktoejet intet skrevet - uanset om felterne kunne laeses.
+              const hvad = maskeret.step === 'select-all' ? 'Nothing was cleared or typed.'
+                : aendret === null || aendret === undefined ? 'What had been changed by then could not be read.'
+                : aendret.length === 0 ? 'Nothing was cleared or typed.'
+                  : 'Changed so far: ' + aendret.map((c) => `${c.target ? 'the date field' : (c.tag + (c.id ? '#' + c.id : ''))} ` +
+                    `(before ${JSON.stringify(c.value_before)}, now ${JSON.stringify(c.value)})`).join('; ') + '.';
+              const hvor = maskeret.focused ? ` (${maskeret.focused.tag}${maskeret.focused.id ? '#' + maskeret.focused.id : ''})` : '';
+              return { ok: false, error: maskeret.focusMoved ? 'focus-moved' : 'focus-unknown', step: maskeret.step,
+                current_value: v0, value_before: info.value, field_changed: v0 !== null && v0 !== info.value,
+                ...(maskeret.focused ? { focused: maskeret.focused } : {}), ...(aendret ? { changed: aendret } : {}),
+                note: (maskeret.focusMoved
+                  ? `Before ${trin}, focus was no longer on the field: the page moved it to another element${hvor}. `
+                  : `Before ${trin}, where focus is could not be read. `) +
+                  `The tool stopped there, so nothing more was typed. ${hvad} Check how the page wants the date entered ` +
+                  '(a date picker, perhaps), and use browser_click or browser_fill on that.' };
+            }
             await new Promise(r => setTimeout(r, 250));
             const v = await readBackValue(tab.id, params.selector);
             tried.push({ path: 'masked', format: fmt.order.join(fmt.sep), value: v });
@@ -6355,20 +7149,29 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (!params.skip_picker) {
         // Fjerde runde (Astra): kalender-grenen glemte feltets format, saa 01/12/2026 blev godkendt som 12. januar.
         const kendtFormat = parsePlaceholderFormat(info.placeholder) || parsePlaceholderFormat(info.ariaLabel);
-        const r = await setDatePicker(tab.id, params.selector, iso);
+        // R125 (Opus, MAALT i Chrome): kalenderens klik kunne kaste (frist paa en skjult fane), og kaldet endte som en raa
+        // fejl - mens den maskerede vej allerede havde skrevet i feltet. Fejlen er nu et svar, der siger hvad feltet indeholder.
+        let r;
+        try { r = await setDatePicker(tab.id, params.selector, iso); } catch (e) { r = { ok: false, error: e.message }; }
         await new Promise(r2 => setTimeout(r2, 200));
-        const v = await readBackValue(tab.id, params.selector);
+        const v = await readBackValue(tab.id, params.selector).catch(() => null);
         tried.push({ path: 'picker', ...r, value: v });
         if (r.ok && valueLooksLikeIso(v, iso, kendtFormat)) return { ok: true, method: 'picker', value: v, navAttempts: r.navAttempts };
       }
 
-      const visibleErrors = await collectVisibleErrors(tab.id, params.selector);
-      const finalValue = await readBackValue(tab.id, params.selector);
+      const visibleErrors = await collectVisibleErrors(tab.id, params.selector).catch(() => []);
+      const finalValue = await readBackValue(tab.id, params.selector).catch(() => null);
+      // R125: et fejlsvar maa ikke efterlade en halvt skrevet vaerdi uden at sige det.
+      const aendret = finalValue !== null && finalValue !== info.value;
       return {
         ok: false,
         error: 'all-paths-failed',
         tried,
         current_value: finalValue,
+        value_before: info.value,
+        ...(aendret ? { field_changed: true,
+          note: `No path set the date, but the field no longer holds what it did before (before: ${JSON.stringify(info.value)}, ` +
+                `now: ${JSON.stringify(finalValue)}): a path wrote part of a value. Correct the field before trying again.` } : {}),
         visible_errors: visibleErrors,
         input_info: info,
       };
@@ -6421,24 +7224,43 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
     case 'wait': {
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const timeout = params.timeout || 10000;
+      // R173: hoejst 60 s - serveren venter tilsvarende (se index.js).
+      const timeout = Math.min(Number(params.timeout) || 10000, 60000);
       const sel = params.selector;
+      // 1.33 (privat rapport 2.1): standard er «synlig»; state: 'attached' venter som foer kun paa, at det findes paa siden.
+      // R173 (Opus): en ukendt state (fx Playwrights 'hidden' eller 'detached') betoed stille «visible» - en agent, der ventede
+      // paa, at en spinner forsvandt, fik found:true, mens den snurrede.
+      if (params.state != null && params.state !== 'visible' && params.state !== 'attached') {
+        throw new Error(`state must be "visible" or "attached", not ${JSON.stringify(params.state)}. browser_wait waits for ` +
+          'something to appear; to wait for something to go away, poll browser_get_page_content or browser_execute_script.');
+      }
+      const kunPaaSiden = params.state === 'attached';
+      const p = parseSelector(sel);
       const start = Date.now();
+      let sidst = null;
       while (Date.now() - start < timeout) {
         // Text-based selectors use debugger directly
-        if (sel.startsWith('text=') || sel.match(/^\w+:text\(/)) {
-          const el = await resolveElement(tab.id, sel);
-          if (el) return { found: true, method: 'debugger' };
+        let r, method;
+        if (p.type === 'text') {
+          r = await debuggerEval(tab.id, `(${ventMaal})(null, ${JSON.stringify(p.text)}, ${JSON.stringify(p.tag)})`);
+          method = 'debugger';
         } else {
-          const scriptResult = await safeExecuteScript(tab.id, (s) => !!document.querySelector(s), [sel]);
+          const scriptResult = await safeExecuteScript(tab.id, ventMaal, [p.selector, null, null]);
           if (scriptResult.cspBlocked) {
-            const found = await debuggerEval(tab.id, `!!document.querySelector(${JSON.stringify(sel)})`);
-            if (found) return { found: true, method: 'debugger' };
-          } else if (scriptResult.result) {
-            return { found: true };
-          }
+            r = await debuggerEval(tab.id, `(${ventMaal})(${JSON.stringify(p.selector)}, null, null)`);
+            method = 'debugger';
+          } else r = scriptResult.result;
+        }
+        if (r) sidst = r;
+        if (r && (kunPaaSiden ? r.paaSiden : r.synlig)) {
+          return { found: true, visible: !!r.synlig, ...(method ? { method } : {}) };
         }
         await new Promise(r => setTimeout(r, 500));
+      }
+      if (sidst && sidst.paaSiden && !kunPaaSiden) {
+        return { found: false, on_page_but_hidden: true, note: 'The selector matches something on the page, but nothing ' +
+          'that can be seen: it is display:none, visibility:hidden, opacity 0, smaller than 2 px, or moved outside the page. ' +
+          'Pass state: "attached" to wait only for it to exist.' };
       }
       return { found: false };
     }
@@ -6448,30 +7270,32 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       // sender tastetrykket til den aktive fane — det maales nu i stedet for at antages.
       const tab = await getSessionTab(port, false);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
-      const key = params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
-      const modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
+      // R125 (Opus, MAALT i Chrome): "Space" er ikke en DOM-key - siden fik e.key "", leveringsbeviset ventede paa "Space", og
+      // svaret var key-not-delivered, selv om keydown 32 landede. Mellemrumstasten er " " (code "Space"), som paa et tastatur:
+      // i et felt skriver den et mellemrum.
+      const key = params.key === 'Space' ? ' ' : params.key; // e.g. "Enter", "Tab", "Escape", "ArrowDown"
+      let modifiers = (params.ctrl ? 2 : 0) | (params.alt ? 1 : 0) | (params.shift ? 8 : 0) | (params.meta ? 4 : 0);
 
-      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger
-      // scroll/form-submit behavior. Without these, key-event is dispatched but page doesn't react.
-      const VK_CODES = {
-        'Backspace': 8, 'Tab': 9, 'Enter': 13, 'Shift': 16, 'Control': 17, 'Alt': 18,
-        'Escape': 27, 'Space': 32, ' ': 32,
-        'PageUp': 33, 'PageDown': 34, 'End': 35, 'Home': 36,
-        'ArrowLeft': 37, 'ArrowUp': 38, 'ArrowRight': 39, 'ArrowDown': 40,
-        'Delete': 46,
-      };
+      // v1.22: Chrome requires windowsVirtualKeyCode for navigation/system keys to trigger scroll/form-submit behavior.
+      // #76: tastkode, code og Shift kommer fra den faelles fysiskTast (samme regel som fill's tegn-for-tegn-skrivning).
       // #68 (arasmileska, MAALT 13/10 i headless Chrome paa macOS): ctrl/meta+a sendte `text: 'a'` og ingen tastkode. Paa
       // Windows indsatte Chrome et «a»; paa macOS skete intet - og svaret var landed:true begge steder. En genvej har ingen
       // tekst, bogstaver og cifre faar deres tastkode, og de fem redigeringsgenveje sendes som Chromes egen kommando:
       // kun `commands` udloeste markeringen paa macOS (uden: markering 3-3, med: 0-3, baade med Cmd og Ctrl).
       const genvej = !!(params.ctrl || params.meta || params.alt);
-      const etTegn = typeof key === 'string' && key.length === 1;
+      const etTegn = typeof key === 'string' && [...key].length === 1;   // R125: ét kodepunkt - ogsaa "😀"
       const stort = etTegn ? key.toUpperCase() : '';
       const bogstav = etTegn && stort >= 'A' && stort <= 'Z';
       const ciffer = etTegn && key >= '0' && key <= '9';
-      const vkCode = VK_CODES[key] || (bogstav || ciffer ? stort.charCodeAt(0) : undefined);
-      const vkParams = vkCode ? { windowsVirtualKeyCode: vkCode, nativeVirtualKeyCode: vkCode } : {};
-      const kode = params.code || (bogstav ? 'Key' + stort : ciffer ? 'Digit' + key : key);
+      // #76 (arasmileska, MAALT i aegte headless Chrome): tegnsaetning fik ingen tastkode (keyCode 0) og code = selve tegnet,
+      // som Chrome ikke kender - et tag-felt, der lytter paa keyCode 188, fik aldrig sit komma. Se fysiskTast. En eksplicit
+      // code vinder; et tegn uden for US-layoutet faar ingen code.
+      const fysisk = fysiskTast(key);
+      const vkParams = tastkodeFelter(fysisk.vk);
+      const kode = params.code || fysisk.code;
+      if (fysisk.shift) modifiers |= 8;   // #76: det skiftede tegn holder Shift nede
+      // #76: Chromes egen Enter baerer text "\r" - uden den kommer intet keypress (13). En genvej faar stadig ingen tekst (#68).
+      const tekst = genvej ? '' : key === 'Enter' ? '\r' : etTegn ? key : '';
       const REDIGERING = { A: 'selectAll', C: 'copy', X: 'cut', V: 'paste', Z: 'undo', Y: 'redo' };
       // R93 (Astra, laest i Chromium): med Shift er det en anden genvej (Ctrl+Shift+V = indsaet uden formatering). Kun
       // Shift+Z (redo) faar en kommando; andre Shift-kombinationer gaar til Chromes egen tastbinding (paa Windows/Linux).
@@ -6494,7 +7318,8 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
             key,
             code: kode,
             modifiers,
-            text: etTegn && !genvej ? key : '',
+            text: tekst,
+            ...(key === 'Enter' && tekst ? { unmodifiedText: tekst } : {}),
             ...vkParams,
             ...(kommando ? { commands: [kommando] } : {}),
           });
@@ -7071,21 +7896,51 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
     }
 
     case 'handle_dialog': {
+      // R175 (Astra, MAALT): bindingen gjaldt fra efter faneopslaget - en genindlaesning, mens det foerste opslag ventede, og et
+      // skift vaek og tilbage, mens Page.enable ventede, slap igennem. Fanens dokumentgeneration tages nu FOER foerste ventetid,
+      // og sessionens skifttaeller skal vaere uaendret, naar der armeres eller svares.
+      // R176 (Astra, MAALT): skifttaelleren og «den kendte boks» blev ogsaa taget efter opslaget - et skift vaek og tilbage under
+      // det foerste opslag, og en ny sides boks, der kom imens, slap igennem. Alt tages nu foer foerste ventetid.
+      const sessFoer = getSession(port);
+      const aktivFoer = sessFoer.activeTabId;
+      const genFoer = aktivFoer != null ? (dialogFaner.get(aktivFoer)?.dokGen || 0) : null;
+      const kendtFoer = aktivFoer != null ? (dialogFaner.get(aktivFoer)?.boks || null) : null;
+      const skiftFoer = sessFoer.skiftNr || 0;
       const tab = await getSessionTab(port);
+      // Har opslaget selv valgt fanen (ingen aktiv fane foer kaldet), er dets eget skift ikke et skift under kaldet.
+      const skiftEfterOpslag = tab.id === aktivFoer ? skiftFoer : (sessFoer.skiftNr || 0);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot interact with chrome:// pages');
       const action = params.action === 'dismiss' ? 'dismiss' : 'accept';
       const promptText = params.text || '';
       const vent = params.wait === true;              // gammel, blokerende adfaerd
-      const levetid = params.timeout || 60000;
+      // 1.33 (privat rapport 4.2): 60 s uden loft blev til 10 s som standard og hoejst 30 s. En armering er til klikket lige
+      // efter - ikke en staaende regel paa fanen.
+      const oensket = Number(params.timeout) > 0 ? Number(params.timeout) : DIALOG_ARMERING.standard;
+      const levetid = Math.min(oensket, DIALOG_ARMERING.loft);
+      const forlad = params.leave_page === true;
       const s = dialogFane(tab.id);
+      // R174 (Astra, MAALT): et nyt dokument, der aabnede en confirm, mens dette kald ventede paa tilknytning og port, blev
+      // besvaret direkte med accept. Dokumentgenerationen fra kaldets start afgoer: er den skiftet, svares og armeres der ikke.
+      const startGen = tab.id === aktivFoer ? genFoer : (s.dokGen || 0);
+      const fanenSkiftet = () => (sessFoer.skiftNr || 0) !== skiftEfterOpslag;
+      const sideSkiftet = () => (s.dokGen || 0) !== startGen || fanenSkiftet();
+      const sideSvar = (nu) => (fanenSkiftet()
+        ? { ok: false, error: 'session-changed', armed: false,
+            note: 'The session\'s active tab changed while this call waited (another call switched tabs), so nothing was ' +
+              'answered or armed. Check the tabs with browser_list_tabs, then arm again right before the action that opens the dialog.' }
+        : { ok: false, error: 'page-changed', armed: false, url: nu ? nu.url : null,
+            note: 'The page in this tab changed while this call waited, so nothing was answered or armed. Read the tab, then ' +
+              'arm again right before the action that opens the dialog.' });
+      const foerKendt = tab.id === aktivFoer ? kendtFoer : null;   // en boks, der stod aaben, da kaldet kom, hoerer til siden, agenten saa
+      const svarAaben = (boks) => (boks !== foerKendt && sideSkiftet() ? sideSvar(null) : besvarAabenBoks(tab.id, boks, action, promptText, forlad));
 
       // #69 (1.30.3): en SET boks, der staar aaben, besvares straks gennem koordinatoren - uden Page.enable, som haenger,
       // mens en boks staar aaben (maalt F4). Dommen kommer fra Closed.
-      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (s.boks) return await svarAaben(s.boks);
 
       await debuggerAttach(tab.id);
       // R108 (Astra 5): en boks, koordinatoren saa aabne under tilknytningen, besvares nu - porten ville haenge bag den.
-      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (s.boks) return await svarAaben(s.boks);
       // #69 (MAALT 13/10 i headless Chrome): staar en boks allerede aaben, svarer fanen ikke, og her kom Chromes noegne
       // «CDP did not respond within 8000 ms: Page.enable». En boks, der kom frem foer nogen lyttede, kan ikke besvares
       // gennem CDP - svaret siger det, og hvad der kan goeres.
@@ -7099,18 +7954,28 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         portFejl = e;
       }
       // R108 (Astra 5): ogsaa naar porten loeb ud - en boks, der blev kendt imens, er grunden, og den kan besvares.
-      if (portFejl && s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (portFejl && s.boks) return await svarAaben(s.boks);
       if (portFejl) {
         const e = portFejl;
+        // R174 (Opus, MAALT i Chrome 155): raadet her sagde, at browser_close_tab springer prompten over. Det holder for en alert
+        // og en confirm, men mens «Leave site?» staar aaben, lukker Chrome ikke fanen.
         return { ok: false, error: 'tab-not-responding', detail: e.message,
           note: 'Chrome did not answer on this tab. A common cause is a dialog that is already open - an alert, a confirm or ' +
                 'a "Leave site?" prompt that appeared before anything was listening. Such a dialog cannot be answered from ' +
-                'here: ask the user to answer it in Chrome, or close the tab with browser_close_tab, which skips the prompt ' +
-                'but loses anything unsaved on the page. Next time, arm browser_handle_dialog before the action that opens it.' };
+                'here: ask the user to answer it in Chrome. An alert or a confirm also goes away if the tab is closed with ' +
+                'browser_close_tab (anything unsaved on the page is lost); while "Leave site?" is open, Chrome does not close ' +
+                'the tab. Next time, arm browser_handle_dialog before the action that opens it.' };
       }
+      // R176 (Opus): armeringen bindes til hovedrammens dokument (loaderId), se loaderTjek.
+      const loader = await hovedLoader(tab.id);
       // Astra R107 (maalt i model): en boks, der aabnede, mens Page.enable ventede, gav armed:true med 0 svar. Tilstanden
       // tjekkes derfor IGEN efter porten, foer der armeres.
-      if (s.boks) return await besvarAabenBoks(tab.id, s.boks, action, promptText);
+      if (s.boks) return await svarAaben(s.boks);
+      // R173 (Astra): et nyt dokument, mens tilknytningen og porten ventede, ses ikke af afvaebningen (der var intet at
+      // afvaebne). Skiftede adressen imens, armeres der ikke.
+      const nu = await chrome.tabs.get(tab.id).catch(() => null);
+      const uden = (u) => String(u || '').split('#')[0];
+      if (!nu || uden(nu.url) !== uden(tab.url) || sideSkiftet()) return sideSvar(nu);
       afvaebnDialog(tab.id, 'a new arming took over this tab');   // kun én ad gangen
 
       let opfyld;
@@ -7121,8 +7986,8 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }, levetid);
 
       // Koordinatoren forbruger armeringen, naar boksen aabner, og opfylder loeftet, naar Chrome melder boksen lukket.
-      armeredeDialoger.set(tab.id, { timer, action, accept: action === 'accept', text: promptText,
-        udloeb: Date.now() + levetid, opfyld });
+      armeredeDialoger.set(tab.id, { timer, action, accept: action === 'accept', text: promptText, leave: forlad,
+        udloeb: Date.now() + levetid, opfyld, loader });
       dialogLoefter.set(tab.id, svar);
 
       if (vent) return await svar;
@@ -7133,7 +7998,13 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
         armed: true,
         action,
         expires_in_ms: levetid,
-        note: 'The next dialog on this tab is handled automatically. Now click whatever opens it.',
+        ...(oensket > levetid ? { timeout_capped_from: oensket } : {}),
+        ...(action === 'accept' ? { leave_page: forlad } : {}),
+        note: (action === 'accept' && !forlad
+          ? 'The next alert, confirm or prompt on this tab is accepted automatically. A "Leave site?" is not: the page may ' +
+            'hold unsaved work, so ask the user (browser_ask_user) and arm again with leave_page: true if they agree. '
+          : 'The next dialog on this tab is handled automatically. ') +
+          (oensket > levetid ? `The arming lasts at most ${DIALOG_ARMERING.loft} ms. ` : '') + 'Now click whatever opens it.',
       };
     }
 
@@ -7714,7 +8585,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           vinduesFokus = false;
         }
       }
-      session.activeTabId = tab.id;
+      skiftAktiv(session, tab.id);
       persistSessions();
       let synlighed = null;
       try {
@@ -7748,12 +8619,64 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       }
       // Maerk lukningen som agentens egen. Ellers laeser onRemoved den tomme session som
       // "brugeren er faerdig" og lukker serveren ned midt i samtalen (MAALT 22/8).
-      agentLukkedeFaner.add(tabId);
-      await chrome.tabs.remove(tabId);
+      // 1.33 (privat rapport 3.1, MAALT paa 1.30.1): var fanen den sidste i Chromes sidste vindue, lukkede vinduet - og paa
+      // Windows og Linux hele Chrome, saa naeste kald fik «extension not connected». Nu bliver en tom fane staaende i vinduet,
+      // og svaret siger det. Lukningen afvises ikke: serveren lukker selv en partitions faner gennem close_tab.
+      // R173 (Astra, MAALT): et afvist opslag eller en afvist oprettelse blev slugt, og fanen blev lukket alligevel; og to
+      // samtidige lukninger saa begge to faner og lukkede dem begge. Nu standser en fejl lukningen (intet lukkes), og
+      // lukningerne koerer én ad gangen, saa den anden ser vinduet, som det er efter den foerste.
+      // R174 (Opus, MAALT i Chrome 155): chrome.tabs.remove svarer aldrig, naar siden viser «Leave site?» eller er travl - og med
+      // én faelles koe stoppede én saadan lukning alle close_tab i alle sessioner. Koeen daekker nu kun tjekket af vinduet og den
+      // tomme fane og slippes, saa snart fjernelsen er SENDT; faner under lukning taelles ikke med som tilbage i vinduet.
+      const forbered = async () => {
+        let holdtAaben = false;
+        const fane = await chrome.tabs.get(tabId);
+        // R173 (Opus, MAALT i rigtig Chrome): et popup- eller app-vindue holder ogsaa Chrome i live, ikke kun et normalt.
+        const vinduer = await chrome.windows.getAll({ populate: true, windowTypes: ['normal', 'popup', 'app'] });
+        const andre = (w) => (w.tabs || []).some((t) => t.id !== tabId && !fanerUnderLukning.has(t.id));
+        const mit = vinduer.find((w) => w.id === fane.windowId);
+        if (!(mit && andre(mit)) && !vinduer.some((w) => w.id !== fane.windowId && andre(w))) {
+          await chrome.tabs.create({ windowId: fane.windowId, url: 'about:blank', active: false });
+          // Staar en anden fane i vinduet stadig og venter paa at blive lukket, er det ikke sikkert, at denne var den sidste.
+          holdtAaben = (mit && (mit.tabs || []).some((t) => t.id !== tabId && fanerUnderLukning.has(t.id))) ? 'ventende' : true;
+        }
+        agentLukkedeFaner.add(tabId);
+        fanerUnderLukning.add(tabId);
+        const fjern = chrome.tabs.remove(tabId);
+        const ryd = () => fanerUnderLukning.delete(tabId);
+        fjern.then(ryd, ryd);
+        return { holdtAaben, fjern };
+      };
+      // R176 (Astra, MAALT): fristen begyndte efter forberedelsen, saa et kald kunne vare laengere end serverens 5 s.
+      const slut = Date.now() + LUK_FANE.ms;
+      const tur = fanelukninger.then(forbered);
+      fanelukninger = tur.catch(() => {});
+      const { holdtAaben, fjern } = await tur;
+      if (await venteMedFrist(fjern, Math.max(0, slut - Date.now())) === FRIST_UDLOEB) {
+        // R176 (Astra, MAALT i modellen): en udloebet frist er ikke bevis for, at lukningen er opgivet - fjernelsen gik igennem
+        // 400 ms senere, og en lukning af den anden fane imens havde regnet med, at denne holdt vinduet aabent: nul faner.
+        // Fanen bliver derfor «under lukning», til Chrome svarer. Prisen er i hoejst en unoedig tom fane (R175, Opus), aldrig et
+        // lukket Chrome.
+        return { ok: false, error: 'tab-not-closed', tab_id: tabId, ...(holdtAaben ? { kept_window_open: true } : {}),
+          note: `Chrome did not close the tab within ${LUK_FANE.ms} ms: the page may be asking "Leave site?" (it may hold ` +
+            'unsaved work) or be busy, and the tab is still open. The close may still happen later, if the prompt is answered ' +
+            'with Leave. Ask the user (browser_ask_user) to look at the tab.' +
+            (holdtAaben ? ' An empty tab was already left in the window, because this looked like the last tab.' : '') };
+      }
       session.tabIds.delete(tabId);
-      if (session.activeTabId === tabId) session.activeTabId = null;
+      const varAktiv = session.activeTabId === tabId;
+      if (varAktiv) session.activeTabId = null;
       persistSessions();
-      return { ok: true, remaining: session.tabIds.size };
+      // R173 (Opus): efter at agenten lukkede sin aktive fane, svarer naeste kald no-active-tab - det skal staa i svaret.
+      return { ok: true, remaining: session.tabIds.size, ...(varAktiv && session.tabIds.size ? { active_tab: null,
+        active_note: 'This was the session\'s active tab, so the session has no active tab now: call browser_switch_tab ' +
+          'with the tab to continue in (browser_list_tabs lists them) before the next call.' } : {}),
+        ...(holdtAaben ? { kept_window_open: true,
+        note: holdtAaben === 'ventende'
+          ? 'An empty tab was left in this window: the only other tab in Chrome is still being closed (its close has not ' +
+            'finished), and if it goes, Chrome would close and disconnect the extension.'
+          : 'This was the last tab in Chrome\'s last window, so an empty tab was left in that window: closing it would ' +
+            'have closed Chrome and disconnected the extension.' } : {}) };
     }
 
     case 'solve_captcha': {
@@ -7881,81 +8804,107 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
 
 // ── CAPTCHA Detection & Solving Helpers ─────────────────────────────────────
 
+// Koeres i siden (se detectCaptcha). Selvstaendig, saa den kan proeves uden en browser (test/captcha-fund.test.mjs).
+function captchaFund() {
+  const res = { found: false, types: [] };
+
+  // 1.33 (privat rapport 2.2, MAALT af begge bedoemmere): en anchor-ramme med size=invisible (det usynlige maerke) blev
+  // meldt som recaptcha_v2_checkbox, og navigate bad om browser_solve_captcha paa en side uden noget at loese. Nu er en
+  // usynlig reCAPTCHA en oplysning (invisible), ikke et fund; et afkrydsningsfelt og en billedudfordring taeller kun,
+  // naar de kan ses - reCAPTCHA indlaeser udfordringens ramme skjult paa forhaand.
+  const kanSes = (el) => {
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true })) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 10 || r.height < 10 || r.right + window.scrollX <= 0 || r.bottom + window.scrollY <= 0) return false;
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      const st = getComputedStyle(n);
+      if (st.visibility === 'hidden' || st.visibility === 'collapse' || parseFloat(st.opacity) === 0) return false;
+    }
+    return true;
+  };
+  const ankre = [...document.querySelectorAll('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]')];
+  const usynligt = (f) => /[?&]size=invisible(&|$)/.test(f.getAttribute('src') || '');
+  const recaptchaAnchor = ankre.find((f) => !usynligt(f) && kanSes(f));
+  if (recaptchaAnchor) {
+    res.found = true;
+    res.types.push('recaptcha_v2_checkbox');
+    const container = document.querySelector('.g-recaptcha');
+    if (container) res.sitekey = container.getAttribute('data-sitekey');
+  }
+
+  // reCAPTCHA v2 — image challenge iframe
+  const recaptchaChallenge = [...document.querySelectorAll('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]')].find(kanSes);
+  if (recaptchaChallenge) {
+    res.found = true;
+    if (!res.types.includes('recaptcha_v2_checkbox')) res.types.push('recaptcha_v2_image');
+    res.types.push('recaptcha_v2_challenge_visible');
+    // Get iframe dimensions for grid clicking
+    const rect = recaptchaChallenge.getBoundingClientRect();
+    res.challengeFrame = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  }
+
+  // Usynlig reCAPTCHA (maerket eller en anchor med size=invisible): meldes, saa tilstedevaerelsen ikke skjules, men er
+  // ikke et fund - der er intet at klikke.
+  const usynlige = [];
+  if (!recaptchaAnchor && !recaptchaChallenge && (document.querySelector('.grecaptcha-badge') || ankre.some(usynligt))) {
+    usynlige.push('recaptcha');
+  }
+
+  // hCaptcha. R174 (Opus, MAALT i Chrome): et usynligt hCaptcha (data-size=invisible) gav found:true - samme klasse som 2.2.
+  // Et fund kraever en ramme eller et felt, der kan ses; et usynligt felt taeller ikke.
+  const hc = [...document.querySelectorAll('iframe[src*="hcaptcha.com"], .h-captcha')];
+  if (hc.length) {
+    if (hc.some((el) => kanSes(el) && el.getAttribute('data-size') !== 'invisible')) {
+      res.found = true;
+      res.types.push('hcaptcha');
+      const container = document.querySelector('.h-captcha');
+      if (container) res.sitekey = container.getAttribute('data-sitekey');
+    } else usynlige.push('hcaptcha');
+  }
+
+  // Cloudflare Turnstile. R174 (Opus, MAALT i Chrome): et skjult Turnstile (appearance interaction-only) gav found:true.
+  const ts = [...document.querySelectorAll('iframe[src*="challenges.cloudflare.com"], .cf-turnstile')];
+  if (ts.length) {
+    if (ts.some(kanSes)) {
+      res.found = true;
+      res.types.push('cloudflare_turnstile');
+      const container = document.querySelector('.cf-turnstile');
+      if (container) res.sitekey = container.getAttribute('data-sitekey');
+    } else usynlige.push('turnstile');
+  }
+  if (usynlige.length) {
+    res.invisible = usynlige;
+    res.invisible_note = 'An invisible CAPTCHA (' + usynlige.join(', ') + ') is on this page: there is nothing to click, it checks the visit in the background. If the page still blocks you, ask the user with browser_ask_user.';
+  }
+
+  // Cloudflare challenge page (5-second interstitial)
+  if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
+    res.found = true;
+    res.types.push('cloudflare_challenge_page');
+    res.note = 'Cloudflare challenge page. It may clear by itself: wait 5-10 seconds with browser_wait and detect again, and if it does not clear, ask the user with browser_ask_user.';
+  }
+
+  // FunCaptcha / Arkose Labs
+  const funcaptcha = document.querySelector('#FunCaptcha, iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
+  if (funcaptcha) {
+    res.found = true;
+    res.types.push('funcaptcha');
+  }
+
+  if (!res.found) res.note = res.invisible ? 'No CAPTCHA to solve on this page.' : 'No CAPTCHA detected on this page.';
+  res.pageUrl = window.location.href;
+  return res;
+}
+
 async function detectCaptcha(tabId) {
   try {
     await debuggerAttach(tabId);
     const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
-      expression: `(() => {
-        const res = { found: false, types: [] };
-
-        // reCAPTCHA v2 — checkbox iframe
-        const recaptchaAnchor = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
-        if (recaptchaAnchor) {
-          res.found = true;
-          res.types.push('recaptcha_v2_checkbox');
-          const container = document.querySelector('.g-recaptcha');
-          if (container) res.sitekey = container.getAttribute('data-sitekey');
-        }
-
-        // reCAPTCHA v2 — image challenge iframe
-        const recaptchaChallenge = document.querySelector('iframe[src*="recaptcha/api2/bframe"], iframe[src*="recaptcha/enterprise/bframe"]');
-        if (recaptchaChallenge) {
-          res.found = true;
-          if (!res.types.includes('recaptcha_v2_checkbox')) res.types.push('recaptcha_v2_image');
-          res.types.push('recaptcha_v2_challenge_visible');
-          // Get iframe dimensions for grid clicking
-          const rect = recaptchaChallenge.getBoundingClientRect();
-          res.challengeFrame = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        }
-
-        // reCAPTCHA v3 — invisible badge
-        const recaptchaV3 = document.querySelector('.grecaptcha-badge');
-        if (recaptchaV3 && !recaptchaAnchor) {
-          res.found = true;
-          res.types.push('recaptcha_v3_invisible');
-          res.note = 'reCAPTCHA v3 is invisible and score-based: there is nothing to click. If the page still blocks you, ask the user with browser_ask_user.';
-        }
-
-        // hCaptcha
-        const hcaptcha = document.querySelector('iframe[src*="hcaptcha.com"], .h-captcha');
-        if (hcaptcha) {
-          res.found = true;
-          res.types.push('hcaptcha');
-          const container = document.querySelector('.h-captcha');
-          if (container) res.sitekey = container.getAttribute('data-sitekey');
-        }
-
-        // Cloudflare Turnstile
-        const turnstile = document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile');
-        if (turnstile) {
-          res.found = true;
-          res.types.push('cloudflare_turnstile');
-          const container = document.querySelector('.cf-turnstile');
-          if (container) res.sitekey = container.getAttribute('data-sitekey');
-        }
-
-        // Cloudflare challenge page (5-second interstitial)
-        if (document.title.includes('Just a moment') || document.querySelector('#challenge-running')) {
-          res.found = true;
-          res.types.push('cloudflare_challenge_page');
-          res.note = 'Cloudflare challenge page. It may clear by itself: wait 5-10 seconds with browser_wait and detect again, and if it does not clear, ask the user with browser_ask_user.';
-        }
-
-        // FunCaptcha / Arkose Labs
-        const funcaptcha = document.querySelector('#FunCaptcha, iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
-        if (funcaptcha) {
-          res.found = true;
-          res.types.push('funcaptcha');
-        }
-
-        if (!res.found) res.note = 'No CAPTCHA detected on this page.';
-        res.pageUrl = window.location.href;
-        return JSON.stringify(res);
-      })()`,
+      expression: `(${captchaFund})()`,
       returnByValue: true,
     });
     await debuggerDetach(tabId);
-    return JSON.parse(result.value);
+    return result.value;
   } catch (e) {
     try { await debuggerDetach(tabId); } catch {}
     return { found: false, error: e.message };
@@ -7968,7 +8917,9 @@ async function clickRecaptchaCheckbox(tabId) {
     // Find the reCAPTCHA anchor iframe position
     const { result } = await cdpSend(tabId, 'Runtime.evaluate', {
       expression: `(() => {
-        const iframe = document.querySelector('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]');
+        // 1.33 (2.2): aldrig det usynlige maerkes anchor - det er intet afkrydsningsfelt.
+        const iframe = [...document.querySelectorAll('iframe[src*="recaptcha/api2/anchor"], iframe[src*="recaptcha/enterprise/anchor"]')]
+          .find((f) => !/[?&]size=invisible(&|$)/.test(f.getAttribute('src') || ''));
         if (!iframe) return JSON.stringify({ found: false });
         const rect = iframe.getBoundingClientRect();
         // Checkbox is roughly at 27,30 inside the iframe (standard reCAPTCHA layout)
@@ -8158,16 +9109,20 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // kaldere vil ikke arve faner der ikke findes). Derfor rettes det HER.
     (async () => {
       const iHukommelsen = sessions.get(port);
+      let gen = null;
       if (iHukommelsen) {
         if (iHukommelsen.tabIds.size > 0) return;   // den arbejder igen — lad den vaere
+        gen = iHukommelsen.gen ?? null;
       } else {
         const { sessions: gemte } = await chrome.storage.local.get({ sessions: {} });
         const gemt = gemte[String(port)];
         if (!gemt) return;                          // sessionen er reelt vaek
         if ((gemt.tabIds || []).length > 0) return; // den arbejder igen
+        gen = typeof gemt.gen === 'string' ? gemt.gen : null;
       }
-      frivilligtFrigivet.add(port);
-      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port }).catch(() => {});
+      // 1.32 (S4): bestillingen gaelder den forbindelse, der ejede sessionen - ikke den, der har porten, naar beskeden naar frem.
+      frivilligtFrigivet.set(port, gen);
+      chrome.runtime.sendMessage({ type: 'terminate_mcp_session', port, gen }).catch(() => {});
     })().catch(() => {});
   }
 });
