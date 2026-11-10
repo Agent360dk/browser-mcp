@@ -151,10 +151,12 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   assert.match(linje, /If you have no such tools/, 'linjen siger ikke hvad agenten goer, naar skrivebords-vaerktoejet mangler');
   // 10/11 (Gustav, «ja D»): npm udleverer kun computer-mcp 0.1.0, som GHSA-pc3h gaelder (< 0.4.1). Saa laenge maa
   // instruktionen ikke give en installationskommando - agenten ville sende brugeren til den saarbare version. Den peger paa
-  // computermcp.dev, som selv siger hvad der er udgivet. Kommandoen kommer foerst tilbage, naar 0.4.1 er paa npm.
-  assert.match(linje, /how to install it is at https:\/\/computermcp\.dev/, 'linjen peger ikke paa computermcp.dev for installationen');
-  assert.doesNotMatch(linje, /npx[^\n]*@agent360\/computer-mcp|claude mcp add computer/,
-    'linjen giver en installationskommando for computer-mcp - npm har kun den saarbare 0.1.0');
+  // computermcp.dev som afsender, ikke som installationsvejledning. Kommandoen kommer foerst tilbage, naar 0.4.1 er paa npm.
+  // Review 10/11: et regex over npx alene lod `npm i -g`, bunx og pnpm dlx slippe igennem - derfor pakkenavnet selv.
+  assert.match(linje, /https:\/\/computermcp\.dev/, 'linjen peger ikke paa computermcp.dev');
+  assert.doesNotMatch(linje, /@agent360\/computer-mcp|claude mcp add computer|how to install/i,
+    'linjen giver en installationsvej for computer-mcp - npm har kun den saarbare 0.1.0');
+  assert.match(linje, /do not give the user an install command for it/, 'linjen forbyder ikke agenten at give en installationskommando');
   // 29/10: linjen stod foerst med uescapede backticks og lukkede skabelonstrengen - serveren startede ikke, og denne
   // proeve (der laeser kilden som tekst) saa det ikke. Derfor ogsaa: instruktionen skal kunne indlaeses som kode.
   assert.match(linje, /Do not install it yourself/, 'linjen forbyder ikke agenten at installere selv');
@@ -259,4 +261,17 @@ test('CHANGELOG: klikbevisets bibliotekstilfaelde staar afgraenset til de maalte
   assert.deepEqual(nyeIkonSaetninger, [], 'CHANGELOG har en ureviewet saetning om ikoner - review den og tilfoej den til GODKENDTE_IKON_SAETNINGER');
   // R154 (Opus): feltreglen skal staa som koden har den (background.js maalFelt: input/select/textarea/button eller bindestreg).
   assert.match(t, /When the target itself is `input`, `select`, `textarea`, `button` or a custom element \(a tag name with a hyphen\), only a click that reaches that element counts as proof/);
+});
+
+// 10/11 (Gustav «ja D» + review): npm har kun computer-mcp 0.1.0 (GHSA-pc3h, < 0.4.1). Ingen fil, vi sender ud - README,
+// npm-README, CHANGELOG, siderne, llms-filerne, udvidelsen, serveren - maa naevne pakkenavnet, for saa kan en bruger eller
+// en agent installere den saarbare version. Proeven skanner ALLE sporede tekstfiler uden for test/, saa en tilbagerulning
+// af README eller CHANGELOG ogsaa fanges. Fjernes naar 0.4.1 er paa npm (og kommandoen maa komme tilbage).
+test('intet vi sender ud naevner npm-pakken @agent360/computer-mcp, saa laenge kun den saarbare 0.1.0 er udgivet', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const filer = execFileSync('git', ['ls-files'], { cwd: rod, encoding: 'utf8' }).split('\n')
+    .filter((f) => f && !f.startsWith('test/') && /\.(md|txt|html|js|mjs|json|xml|py|sh|yml)$/.test(f));
+  assert.ok(filer.length > 50, 'git ls-files fandt for faa filer - proeven maaler intet');
+  const traef = filer.filter((f) => readFileSync(join(rod, f), 'utf8').includes('@agent360/computer-mcp'));
+  assert.deepEqual(traef, [], 'pakkenavnet staar i: ' + traef.join(', '));
 });
