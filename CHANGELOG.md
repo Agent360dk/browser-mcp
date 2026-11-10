@@ -56,7 +56,8 @@ invisible reCAPTCHA - and likewise an invisible hCaptcha or a hidden Turnstile -
 OS-level dialog, the native file picker once it has opened as an OS dialog), the server's instructions now tell the agent
 to hand that step to desktop tools when the session has them, and to keep the web part in the Chrome the user already
 uses and is signed in to, never a second browser. When the session has none and the user is on macOS, the agent says
-once that Computer MCP does that step, with its install line. The agent never installs anything itself.
+once that Computer MCP does that step, and points to computermcp.dev for how to install it. The agent never installs
+anything itself.
 
 **Smaller fixes.** `browser_navigate` with `new_tab` says the tab opened in the background (`active: false`). The "not
 connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked

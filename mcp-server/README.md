@@ -526,7 +526,7 @@ go through a consent gate, and every action lands in an append-only log. It runs
 background by default: the tools that could take over your screen are not offered unless
 you ask for them.
 
-`npx @agent360/computer-mcp` · MIT · macOS.
+How to install it: [computermcp.dev](https://computermcp.dev) · MIT · macOS.
 
 ## Privacy
 

@@ -135,8 +135,8 @@ test('instruktionerne lover ikke at serveren henter kode fra git', () => {
 // Derfor staar henvisningen i instruktionen i stedet, betinget og med sin egen afgraensning:
 // den gaelder KUN naar det oenskede slet ikke er i en webside. Agenten kan selv se om den har
 // skrivebords-vaerktoejer, saa den behoever ikke spoerge - og der er ingen reklame i et svar.
-// 29/10 (Gustav): har agenten INGEN skrivebords-vaerktoejer, siger den én gang, at Computer MCP findes, og giver
-// installationslinjen - stadig kun for den familie, der ligger uden for siden, og den installerer aldrig selv.
+// 29/10 (Gustav): har agenten INGEN skrivebords-vaerktoejer, siger den én gang, at Computer MCP findes, og hvor den
+// installeres (10/11: computermcp.dev, ikke en npx-linje) - stadig kun for den familie, der ligger uden for siden, og den installerer aldrig selv.
 test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er sandt', () => {
   const iStart = kilde.indexOf('## When things fail');
   const blok = kilde.slice(iStart, kilde.indexOf('`;', iStart));
@@ -149,7 +149,12 @@ test('instruktionen henviser til et skrivebords-vaerktoej - og kun hvor det er s
   assert.match(linje, /background tab|React|CAPTCHA/,
     'linjen siger ikke hvad den IKKE gaelder - saa vil den blive brugt paa almindelige side-problemer');
   assert.match(linje, /If you have no such tools/, 'linjen siger ikke hvad agenten goer, naar skrivebords-vaerktoejet mangler');
-  assert.match(linje, /claude mcp add computer -- npx -y @agent360\/computer-mcp\\`/, 'installationslinjen mangler eller er ikke Computer MCPs egen');
+  // 10/11 (Gustav, «ja D»): npm udleverer kun computer-mcp 0.1.0, som GHSA-pc3h gaelder (< 0.4.1). Saa laenge maa
+  // instruktionen ikke give en installationskommando - agenten ville sende brugeren til den saarbare version. Den peger paa
+  // computermcp.dev, som selv siger hvad der er udgivet. Kommandoen kommer foerst tilbage, naar 0.4.1 er paa npm.
+  assert.match(linje, /how to install it is at https:\/\/computermcp\.dev/, 'linjen peger ikke paa computermcp.dev for installationen');
+  assert.doesNotMatch(linje, /npx[^\n]*@agent360\/computer-mcp|claude mcp add computer/,
+    'linjen giver en installationskommando for computer-mcp - npm har kun den saarbare 0.1.0');
   // 29/10: linjen stod foerst med uescapede backticks og lukkede skabelonstrengen - serveren startede ikke, og denne
   // proeve (der laeser kilden som tekst) saa det ikke. Derfor ogsaa: instruktionen skal kunne indlaeses som kode.
   assert.match(linje, /Do not install it yourself/, 'linjen forbyder ikke agenten at installere selv');
