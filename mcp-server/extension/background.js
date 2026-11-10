@@ -631,6 +631,7 @@ function debuggerForceDetach(tabId) {
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (source.tabId) {
     debuggerAttached.delete(source.tabId);
+    sideDomaene.delete(source.tabId);
     // #69 (1.30.3): en boks, koordinatoren kendte, er nu ukendt - ingen Closed kommer herfra.
     // R108 (Opus, maalt i Chrome): target_closed kommer OGSAA, naar fanen navigerer til chrome:// eller Chrome-butikken,
     // og fanen lever. Chrome spoerges, foer fanen regnes som lukket.
@@ -1754,16 +1755,46 @@ function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
 //
 // Er der armeret en dialog paa fanen, venter vi derfor kun kort. Kommer der intet
 // svar, ER klikket leveret — det er jo netop dét der aabnede dialogen.
+// #100 (Aras, 7/11; MAALT 10/11 i 1.33: laast i 4 af 4): uden armering ventede afsendelsen paa et svar, Chrome aldrig
+// giver, mens en confirm() holder rendereren - og alt efter klikket haengte. Nu ses en NY, ubesvaret boks paa fanen
+// (dialogKoordinator saetter den, naar Page-domaenet er slaaet til - se sikrSideDomaene), og afsendelsen svarer straks.
+function nyUbesvaretBoks(tabId, foer) {
+  const b = dialogFaner.get(tabId)?.boks;
+  return b && b !== foer && !b.lukket && !b.armering && !b.besvaretAf ? b : null;
+}
 async function dispatchTaalmodigt(tabId, params) {
-  if (!armeredeDialoger.has(tabId)) {
-    return cdpSend(tabId, 'Input.dispatchMouseEvent', params);
-  }
-  let faerdig = false;
+  const foer = dialogFaner.get(tabId)?.boks || null;
+  const armeret = armeredeDialoger.has(tabId);
+  let faerdig = false, svar, fejl;
   const kald = cdpSend(tabId, 'Input.dispatchMouseEvent', params)
-    .then((r) => { faerdig = true; return r; })
-    .catch(() => { faerdig = true; });
-  await Promise.race([kald, new Promise((r) => setTimeout(r, 1200))]);
-  return faerdig ? kald : { __dialogBlokerede: true };
+    .then((r) => { faerdig = true; svar = r; }, (e) => { faerdig = true; fejl = e; });
+  const t0 = Date.now();
+  while (!faerdig) {
+    const b = nyUbesvaretBoks(tabId, foer);
+    if (b) return { __dialogBlokerede: true, boks: b };
+    if (armeret && Date.now() - t0 >= 1200) return { __dialogBlokerede: true };
+    await Promise.race([kald, new Promise((r) => setTimeout(r, 40))]);
+  }
+  const b = nyUbesvaretBoks(tabId, foer);
+  if (b) return { __dialogBlokerede: true, boks: b };
+  if (fejl) { if (armeret) return undefined; throw fejl; }
+  return svar;
+}
+
+// #100: Page-domaenet skal vaere slaaet til, FOER et input kan aabne en dialog - ellers kommer
+// Page.javascriptDialogOpening aldrig, og boksen kan ikke besvares (se :7945). Huskes pr. fane og glemmes ved frakobling.
+// Svarer Page.enable ikke inden for fristen, staar der allerede en boks; saa sendes intet nyt, og klikket gaar som foer.
+const sideDomaene = new Set();
+async function sikrSideDomaene(tabId) {
+  if (sideDomaene.has(tabId)) return true;
+  // B-07: staar der allerede en ubesvaret boks, svarer Page.enable foerst naar den er
+  // besvaret. Saa brugte hvert kald hele fristen paa et svar vi kender paa forhaand.
+  // Svaret er det samme (false = gaa videre som foer), men nu uden 3 sekunders ophold.
+  const staaende = dialogFaner.get(tabId)?.boks;
+  if (staaende && !staaende.lukket && !staaende.besvaretAf && !staaende.mistet) return false;
+  const r = await venteMedFrist(cdpSend(tabId, 'Page.enable', {}).then(() => true, () => false), 3000);
+  if (r === true) { sideDomaene.add(tabId); return true; }
+  return false;
 }
 
 // MAALT 28/8: `dispatchTaalmodigt` ovenfor lukkede deadlocken paa museklikket, men
@@ -1817,6 +1848,8 @@ function uvisVurdering(r, egenNote) {
   if (!r || r.landed !== null) return null;
   if (egenNote) return { maybe_landed: true, note: egenNote };
   if (r.unknown) return { maybe_landed: true, note: UVIST_NOTE };
+  if (r.unverified && r.dialog && r.dialogInfo) return { maybe_landed: true, dialog_open: { type: r.dialogInfo.type, message: r.dialogInfo.message }, note: 'A ' + (r.dialogInfo.type ? r.dialogInfo.type + ' ' : '') + 'dialog opened from the click and is waiting for an answer. The page is paused until it is answered: call browser_handle_dialog (accept or dismiss) now, then check the state before clicking again.' };
+  if (r.unverified && r.dialog && r.dialogLukket) return { maybe_landed: true, note: 'A ' + (r.dialogType ? r.dialogType + ' ' : '') + 'dialog opened from the click and was already closed or answered before this reply was written, so whether the target got the click cannot be told. It is gone - do not answer it again; read the state before clicking again.' };
   if (r.unverified && r.dialog) return { maybe_landed: true, note: 'A dialog opened during the click, and the page could not be read while it was open, so whether the target got the click cannot be told. Answer the dialog with browser_handle_dialog, then check the state before clicking again.' };
   if (r.unverified) return { maybe_landed: true, note: UVERIFICERET_NOTE };
   if (r.iRamme) return { maybe_landed: true, note: IRAMME_NOTE };
@@ -1875,6 +1908,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     }
     // Adressen foer klikket - et skift bagefter er bevis for en virkning (se tolkManglendeSettle).
     const urlFoer = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
+    await sikrSideDomaene(tabId);
     // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
     //    Web-components (Google Ads <button-panel>, Material Web) keep their real
     //    <button> inside an (open) shadow root, so we pierce shadow roots to reach
@@ -1909,9 +1943,11 @@ async function debuggerClick(tabId, x, y, bundet = false) {
       })()`,
     });
     // 1. mouseMoved first (triggers hover state, required by some frameworks)
-    await dispatchTaalmodigt(tabId, {
+    let dialogBoks = null;
+    const saaDialog = (r) => { if (!dialogBoks && r && r.__dialogBlokerede && r.boks) dialogBoks = r.boks; return r; };
+    saaDialog(await dispatchTaalmodigt(tabId, {
       type: 'mouseMoved', x, y,
-    });
+    }));
     await new Promise(r => setTimeout(r, 30));
     // 2. mousePressed + mouseReleased. The `buttons` bitmask (1 while pressed,
     //    0 on release) plus a small press→release gap are REQUIRED for Chrome to
@@ -1922,16 +1958,31 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // og siden stod tilbage med knappen nede (drag-tilstand). Knappen slippes nu altid.
     let trykFejl = null;
     try {
-      await dispatchTaalmodigt(tabId, {
+      saaDialog(await dispatchTaalmodigt(tabId, {
         type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
-      });
+      }));
       await new Promise(r => setTimeout(r, 30));
     } catch (e) { trykFejl = e; }
     try {
-      await dispatchTaalmodigt(tabId, {
+      saaDialog(await dispatchTaalmodigt(tabId, {
         type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
-      });
+      }));
     } catch (e) { trykFejl = trykFejl || e; }
+    // #100: en dialog, klikket aabnede, holder siden. Ingen opslag i siden nu (de haenger til den er besvaret), og ingen
+    // reserve. Svaret er uvist med dialogen navngivet, saa agenten kalder browser_handle_dialog i stedet for at vente.
+    if (dialogBoks) {
+      vagtArmet = false;
+      // #100 (Astra, runde 2): boksen kan vaere LUKKET, besvaret, armeret eller mistet igen midt i klikket.
+      // Hidtil tjekkede vi kun at referencen fandtes, saa et svar om en forsvundet dialog sagde alligevel
+      // "besvar den nu" - og foelger agenten det raad, armerer den et nyt 30-sekunders vindue, som kan
+      // auto-besvare den NAESTE dialog paa fanen. Staar boksen -> nutid med dialog_open. Staar den ikke
+      // laengere -> datid uden raad (se uvisVurdering). `mistet` daekker fane lukket / fejlfinder afkoblet.
+      const staarAaben = !dialogBoks.lukket && !dialogBoks.besvaretAf && !dialogBoks.armering && !dialogBoks.mistet;
+      return { landed: null, fallbackFired: false, unverified: true, dialog: true,
+        ...(staarAaben
+          ? { dialogInfo: { type: dialogBoks.type, message: dialogBoks.message } }
+          : { dialogLukket: true, dialogType: dialogBoks.type }) };
+    }
     if (trykFejl) throw trykFejl;
     // 3. Framework fallback — only if the captured target is STILL connected (i.e.
     //    the trusted click in step 2 did not already handle it). Settle delay lets
@@ -2182,6 +2233,10 @@ async function screenshotViewport(tabId, image, maxMs = 1500) {
 // keyDown ud efter at det VAR landet, forlod hjaelperen funktionen foer sit keyUp, og tasten sad fast
 // for siden. Et fastsiddende Cmd goer det naeste tastetryk til en genvej.
 async function tastParAttached(tabId, ned, op) {
+  // B-02 (#100): et tastetryk kan aabne en dialog praecis som et klik - Enter paa en
+  // formular, en genvej der kalder confirm(). Uden Page-domaenet opdages boksen aldrig,
+  // og fanen kiler. Fejler enable, gaar tastetrykket som foer (fail-open).
+  await sikrSideDomaene(tabId);
   let fejl = null;
   try { await cdpSend(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...ned }); } catch (e) { fejl = e; }
   try { await cdpSend(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...op }); } catch (e) { fejl = fejl || e; }
@@ -7533,6 +7588,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (!vagtD || !vagtD.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
       let laestD = null;
       try {
+        await sikrSideDomaene(tab.id);   // B-02 (#100): ellers opdages en dialog fra dobbeltklikket aldrig
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         await new Promise(r => setTimeout(r, 30));
         // Proper dblclick: two press/release pairs with escalating clickCount.
@@ -7566,6 +7622,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (!vagtR || !vagtR.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
       let laestR = null;
       try {
+        await sikrSideDomaene(tab.id);   // B-02 (#100): en kontekstmenu-handling kan ogsaa aabne en dialog
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         await new Promise(r => setTimeout(r, 30));
         await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });

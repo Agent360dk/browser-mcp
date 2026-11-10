@@ -994,3 +994,33 @@ test('en button og et form-associeret custom-felt som maal i en rolle-boks: et k
     assert.ok(!b.side.includes('click:cb'), String(b.side));
   }
 });
+
+// ── #100 / B-01: boksens tilstand NAAR svaret skrives ──────────────────────
+// dispatchTaalmodigt fanger kun en AABEN boks (nyUbesvaretBoks kraever det), men
+// mellem fangsten og svaret kan brugeren naa at besvare den. Sagde vi alligevel
+// "besvar den nu", armerede agenten et nyt 30-sekunders vindue, der kunne
+// auto-besvare den NAESTE dialog paa fanen. Denne proeve koerer det ægte
+// klik-forloeb og lukker boksen midtvejs.
+test('#100: en dialog, der lukkes MENS klikket koerer, meldes i datid og uden raad om at besvare den', async () => {
+  const d = knapside();
+  const b = browser(d);
+  const dialogFaner = b.u.hent('dialogFaner');
+  const boks = { type: 'confirm', message: 'Delete this order?' };
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  let trin = 0;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent') {
+      trin += 1;
+      if (trin === 1) dialogFaner.set(1, { boks });        // dialogen aabner under klikket
+      if (trin === 3) boks.lukket = { result: true };      // og er besvaret foer svaret skrives
+    }
+    return send(m, metode, p);
+  };
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
+  assert.equal(svar.dialog_open, undefined,
+    'boksen er vaek - dialog_open paastaar at den staar NU: ' + JSON.stringify(svar));
+  assert.doesNotMatch(svar.note, /browser_handle_dialog/,
+    'raadet armerer et nyt 30-sekunders vindue: ' + svar.note);
+  assert.match(svar.note, /already closed or answered/, svar.note);
+});
