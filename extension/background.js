@@ -585,6 +585,11 @@ async function debuggerAttach(tabId) {
       await chrome.debugger.attach({ tabId }, '1.3');
       if (await verifyAttachedWithChrome(tabId)) {
         debuggerAttached.add(tabId);
+        // #100: Page-domaenet slaas til paa den session, der lige er oprettet - se slaaSideDomaeneTil.
+        // Uden await: CDP behandler kommandoer i raekkefoelge paa samme session, saa enable naar frem
+        // foer det naeste kald. Ventede vi, laante vi tid fra kaldets egen frist - og en side, der er
+        // travl laengere end porten, ville se fri ud, naar porten endelig maalte (dialog-1303 S7+T4).
+        slaaSideDomaeneTil(tabId).catch(() => {});
         return;
       }
       // Ghost — detach cleanly so the next attempt starts fresh, then retry.
@@ -600,6 +605,8 @@ async function debuggerAttach(tabId) {
       if (/already attached/i.test(e.message || '')) {
         // Chrome side has session — sync local cache
         debuggerAttached.add(tabId);
+        // #100: ogsaa her - det er en session, VI ikke har sat op, saa Page kan sagtens vaere slaaet fra.
+        slaaSideDomaeneTil(tabId).catch(() => {});
         return;
       }
       // "Cannot attach"/"canceled" can also be transient during navigation — retry too.
@@ -631,7 +638,6 @@ function debuggerForceDetach(tabId) {
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (source.tabId) {
     debuggerAttached.delete(source.tabId);
-    sideDomaene.delete(source.tabId);
     // #69 (1.30.3): en boks, koordinatoren kendte, er nu ukendt - ingen Closed kommer herfra.
     // R108 (Opus, maalt i Chrome): target_closed kommer OGSAA, naar fanen navigerer til chrome:// eller Chrome-butikken,
     // og fanen lever. Chrome spoerges, foer fanen regnes som lukket.
@@ -1757,7 +1763,7 @@ function tomtFeltSvar(ekstra, landed, ikkeLeveretNote) {
 // svar, ER klikket leveret — det er jo netop dét der aabnede dialogen.
 // #100 (Aras, 7/11; MAALT 10/11 i 1.33: laast i 4 af 4): uden armering ventede afsendelsen paa et svar, Chrome aldrig
 // giver, mens en confirm() holder rendereren - og alt efter klikket haengte. Nu ses en NY, ubesvaret boks paa fanen
-// (dialogKoordinator saetter den, naar Page-domaenet er slaaet til - se sikrSideDomaene), og afsendelsen svarer straks.
+// (dialogKoordinator saetter den, naar Page-domaenet er slaaet til - se slaaSideDomaeneTil), og afsendelsen svarer straks.
 function nyUbesvaretBoks(tabId, foer) {
   const b = dialogFaner.get(tabId)?.boks;
   return b && b !== foer && !b.lukket && !b.armering && !b.besvaretAf ? b : null;
@@ -1782,19 +1788,34 @@ async function dispatchTaalmodigt(tabId, params) {
 }
 
 // #100: Page-domaenet skal vaere slaaet til, FOER et input kan aabne en dialog - ellers kommer
-// Page.javascriptDialogOpening aldrig, og boksen kan ikke besvares (se :7945). Huskes pr. fane og glemmes ved frakobling.
-// Svarer Page.enable ikke inden for fristen, staar der allerede en boks; saa sendes intet nyt, og klikket gaar som foer.
-const sideDomaene = new Set();
-async function sikrSideDomaene(tabId) {
-  if (sideDomaene.has(tabId)) return true;
-  // B-07: staar der allerede en ubesvaret boks, svarer Page.enable foerst naar den er
-  // besvaret. Saa brugte hvert kald hele fristen paa et svar vi kender paa forhaand.
-  // Svaret er det samme (false = gaa videre som foer), men nu uden 3 sekunders ophold.
+// Page.javascriptDialogOpening aldrig, og boksen kan ikke besvares (se :7945).
+//
+// Det slaas til i debuggerAttach, paa den session der lige er oprettet. Her stod foer et Set pr. fane plus
+// et kald paa hvert inputsted, og panelet MAALTE hullet: Chrome sender intet onDetach for VORES egen
+// frakobling (R108), saa efter browser_reattach_debugger sagde cachen «slaaet til», mens den nye CDP-session
+// havde domaenet slaaet fra. Dialogopdagelsen var dermed blind praecis naar en agent havde kaldt reattach for
+// at komme fri af en kilet fane - altsaa #100 igen, i den sti man griber efter som udvej.
+// Uden cache kan det ikke ske. Det er ogsaa ordret det sted, rapportoeren bad om: «when the debugger attaches».
+// #100 (panelet, runde 1b): da en dialog holdt siden under efterkontrollen, svarede vi bart `dialog: true`.
+// Det faldt igennem til den gamle tekst «Answer the dialog with browser_handle_dialog» - netop det raad, der paa
+// en fane, hvor vi IKKE kan se nogen boks, armerer et nyt 30-sekunders vindue og dermed kan auto-besvare den
+// NAESTE dialog. Kender koordinatoren boksen, navngives den; goer den ikke, siger svaret rent ud, at dialogen
+// ikke kan identificeres - saa agenten beder brugeren i stedet for at svare i blinde.
+function dialogHolderSiden(tabId) {
+  const b = dialogFaner.get(tabId)?.boks || null;
+  const staar = b && !b.lukket && !b.besvaretAf && !b.mistet ? b : null;
+  return { landed: null, fallbackFired: false, unverified: true, dialog: true,
+    ...(staar ? { dialogInfo: { type: staar.type, message: staar.message } } : { dialogUkendt: true }) };
+}
+
+async function slaaSideDomaeneTil(tabId) {
+  // Staar der allerede en ubesvaret boks, svarer Page.enable foerst naar den er besvaret. Saa ville hver
+  // tilslutning bruge hele fristen paa et svar vi kender paa forhaand. Udfaldet er det samme: gaa videre som foer.
   const staaende = dialogFaner.get(tabId)?.boks;
   if (staaende && !staaende.lukket && !staaende.besvaretAf && !staaende.mistet) return false;
-  const r = await venteMedFrist(cdpSend(tabId, 'Page.enable', {}).then(() => true, () => false), 3000);
-  if (r === true) { sideDomaene.add(tabId); return true; }
-  return false;
+  // cdpMedFrist, ikke cdpSend: cdpSend kalder debuggerAttach, og vi staar inde i den.
+  const r = await venteMedFrist(cdpMedFrist(tabId, 'Page.enable', {}).then(() => true, () => false), 3000);
+  return r === true;
 }
 
 // MAALT 28/8: `dispatchTaalmodigt` ovenfor lukkede deadlocken paa museklikket, men
@@ -1850,6 +1871,8 @@ function uvisVurdering(r, egenNote) {
   if (r.unknown) return { maybe_landed: true, note: UVIST_NOTE };
   if (r.unverified && r.dialog && r.dialogInfo) return { maybe_landed: true, dialog_open: { type: r.dialogInfo.type, message: r.dialogInfo.message }, note: 'A ' + (r.dialogInfo.type ? r.dialogInfo.type + ' ' : '') + 'dialog opened from the click and is waiting for an answer. The page is paused until it is answered: call browser_handle_dialog (accept or dismiss) now, then check the state before clicking again.' };
   if (r.unverified && r.dialog && r.dialogLukket) return { maybe_landed: true, note: 'A ' + (r.dialogType ? r.dialogType + ' ' : '') + 'dialog opened from the click and was already closed or answered before this reply was written, so whether the target got the click cannot be told. It is gone - do not answer it again; read the state before clicking again.' };
+  if (r.unverified && r.dialog && r.dialogUafgjort) return { maybe_landed: true, note: 'A ' + (r.dialogType ? r.dialogType + ' ' : '') + 'dialog opened from the click, and whether it is still on screen cannot be told: the answer sent for it was never confirmed, or the debugger came off the tab. If the page is still frozen, these tools cannot reach that dialog - ask the user (browser_ask_user) to answer it in Chrome. Do not arm browser_handle_dialog blindly: on a tab with no dialog it arms the NEXT one.' };
+  if (r.unverified && r.dialog && r.dialogUkendt) return { maybe_landed: true, note: 'A dialog is holding the page, but which one could not be read, so it cannot be answered safely: calling browser_handle_dialog now would arm it for the NEXT dialog instead of answering this one. Ask the user (browser_ask_user) to answer it in Chrome, then check the state before clicking again.' };
   if (r.unverified && r.dialog) return { maybe_landed: true, note: 'A dialog opened during the click, and the page could not be read while it was open, so whether the target got the click cannot be told. Answer the dialog with browser_handle_dialog, then check the state before clicking again.' };
   if (r.unverified) return { maybe_landed: true, note: UVERIFICERET_NOTE };
   if (r.iRamme) return { maybe_landed: true, note: IRAMME_NOTE };
@@ -1908,7 +1931,6 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     }
     // Adressen foer klikket - et skift bagefter er bevis for en virkning (se tolkManglendeSettle).
     const urlFoer = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? null;
-    await sikrSideDomaene(tabId);
     // 0. Capture the DEEPEST target element under the point BEFORE dispatching.
     //    Web-components (Google Ads <button-panel>, Material Web) keep their real
     //    <button> inside an (open) shadow root, so we pierce shadow roots to reach
@@ -1972,16 +1994,25 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // reserve. Svaret er uvist med dialogen navngivet, saa agenten kalder browser_handle_dialog i stedet for at vente.
     if (dialogBoks) {
       vagtArmet = false;
-      // #100 (Astra, runde 2): boksen kan vaere LUKKET, besvaret, armeret eller mistet igen midt i klikket.
-      // Hidtil tjekkede vi kun at referencen fandtes, saa et svar om en forsvundet dialog sagde alligevel
-      // "besvar den nu" - og foelger agenten det raad, armerer den et nyt 30-sekunders vindue, som kan
-      // auto-besvare den NAESTE dialog paa fanen. Staar boksen -> nutid med dialog_open. Staar den ikke
-      // laengere -> datid uden raad (se uvisVurdering). `mistet` daekker fane lukket / fejlfinder afkoblet.
-      const staarAaben = !dialogBoks.lukket && !dialogBoks.besvaretAf && !dialogBoks.armering && !dialogBoks.mistet;
+      // #100: svaret skal beskrive boksen som den staar NAAR svaret skrives - ikke som den saa ud, da vi fangede den.
+      // TRE udfald, ikke to (panelet, runde 1b):
+      //   staar     -> nutid med dialog_open, saa agenten kan besvare den.
+      //   uafgjort  -> vi har SENDT et svar, som Chrome ikke har bekraeftet (besvaretAf uden lukket), eller
+      //                fejlfinderen faldt af (mistet === 'debugger-detached'). Dialogen kan stadig staa paa
+      //                skaermen, og vores vaerktoejer kan ikke naa den - samme sandhed som reattach_debugger
+      //                selv skriver. At kalde det «vaek» var en loegn i den dyre retning.
+      //   vaek      -> lukket, eller fanen lukket: datid, uden raad.
+      // Og boksen laeses FORFRA: lukkes boks1 midt i klikket, mens siden aabner boks2, er det boks2 der staar nu.
+      // Foer svarede vi paa den gamle reference - «den er vaek, svar den ikke igen» - mens boks2 holdt fanen.
+      const nu = dialogFaner.get(tabId)?.boks || null;
+      const aaben = nu && !nu.lukket && !nu.besvaretAf && !nu.mistet ? nu : null;
+      const uafgjort = !aaben && ((dialogBoks.besvaretAf && !dialogBoks.lukket) || dialogBoks.mistet === 'debugger-detached');
       return { landed: null, fallbackFired: false, unverified: true, dialog: true,
-        ...(staarAaben
-          ? { dialogInfo: { type: dialogBoks.type, message: dialogBoks.message } }
-          : { dialogLukket: true, dialogType: dialogBoks.type }) };
+        ...(aaben
+          ? { dialogInfo: { type: aaben.type, message: aaben.message } }
+          : uafgjort
+            ? { dialogUafgjort: true, dialogType: dialogBoks.type }
+            : { dialogLukket: true, dialogType: dialogBoks.type }) };
     }
     if (trykFejl) throw trykFejl;
     // 3. Framework fallback — only if the captured target is STILL connected (i.e.
@@ -2140,7 +2171,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // R67 (Opus, maalt i Chrome): et slip, siden flyttede, aabnede en alert; efterkontrollen kunne ikke laese vagten, mens
     // dialogen holdt siden, og faldt tilbage til landed:true - selv om klikket aldrig naaede maalet. Med vagten armet er det
     // nu uvist.
-    if (vagtArmet && vaerdi && vaerdi.rendererSvarede === false) return { landed: null, fallbackFired: false, unverified: true, dialog: true };
+    if (vagtArmet && vaerdi && vaerdi.rendererSvarede === false) return dialogHolderSiden(tabId);
     return vaerdi ?? await tolkManglendeSettle(tabId, settle, urlFoer);
   } catch (e) {
     if (trykSendt && e && typeof e === 'object') e.trykSendt = true;
@@ -2233,10 +2264,6 @@ async function screenshotViewport(tabId, image, maxMs = 1500) {
 // keyDown ud efter at det VAR landet, forlod hjaelperen funktionen foer sit keyUp, og tasten sad fast
 // for siden. Et fastsiddende Cmd goer det naeste tastetryk til en genvej.
 async function tastParAttached(tabId, ned, op) {
-  // B-02 (#100): et tastetryk kan aabne en dialog praecis som et klik - Enter paa en
-  // formular, en genvej der kalder confirm(). Uden Page-domaenet opdages boksen aldrig,
-  // og fanen kiler. Fejler enable, gaar tastetrykket som foer (fail-open).
-  await sikrSideDomaene(tabId);
   let fejl = null;
   try { await cdpSend(tabId, 'Input.dispatchKeyEvent', { type: 'keyDown', ...ned }); } catch (e) { fejl = e; }
   try { await cdpSend(tabId, 'Input.dispatchKeyEvent', { type: 'keyUp', ...op }); } catch (e) { fejl = fejl || e; }
@@ -7588,7 +7615,6 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (!vagtD || !vagtD.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
       let laestD = null;
       try {
-        await sikrSideDomaene(tab.id);   // B-02 (#100): ellers opdages en dialog fra dobbeltklikket aldrig
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         await new Promise(r => setTimeout(r, 30));
         // Proper dblclick: two press/release pairs with escalating clickCount.
@@ -7622,7 +7648,6 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
       if (!vagtR || !vagtR.armet) { await debuggerDetach(tab.id); return ikkeArmeretSvar(params.selector, el); }
       let laestR = null;
       try {
-        await sikrSideDomaene(tab.id);   // B-02 (#100): en kontekstmenu-handling kan ogsaa aabne en dialog
         await cdpSend(tab.id, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
         await new Promise(r => setTimeout(r, 30));
         await dispatchTaalmodigt(tab.id, { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });

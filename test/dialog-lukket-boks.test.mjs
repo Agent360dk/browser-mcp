@@ -74,3 +74,106 @@ test('en dialog uden kendt type falder tilbage paa ordet dialog', () => {
   assert.match(svar.note, /A dialog opened/, svar.note);
   assert.doesNotMatch(svar.note, /browser_handle_dialog/, svar.note);
 });
+
+// ── Runde 1b: dommen er TREVEJS, ikke tovejs ──────────────────────────────
+// Panelet maalte, at «besvaretAf uden lukket» og «debugger-detached» blev kaldt
+// «vaek». Begge betyder i virkeligheden: dialogen kan stadig staa paa skaermen,
+// og vores vaerktoejer kan ikke naa den. At sige «den er vaek, svar den ikke
+// igen» om en dialog, der holder fanen, lukker agentens eneste udvej.
+test('en dialog, hvis svar Chrome ikke har bekraeftet, meldes UAFGJORT - ikke vaek', () => {
+  const uvisVurdering = indlaesUdvidelse({ kilde: KOPIER[0] }).hent('uvisVurdering');
+  const svar = uvisVurdering({ landed: null, unverified: true, dialog: true,
+    dialogUafgjort: true, dialogType: 'confirm' });
+
+  assert.equal(svar.maybe_landed, true);
+  assert.equal(svar.dialog_open, undefined, 'vi ved ikke at den staar: ' + JSON.stringify(svar));
+  assert.doesNotMatch(svar.note, /It is gone/,
+    'den kan stadig staa paa skaermen: ' + svar.note);
+  assert.match(svar.note, /browser_ask_user/,
+    'brugeren er den eneste, der kan naa den: ' + svar.note);
+  assert.match(svar.note, /confirm/, svar.note);
+});
+
+test('en dialog vi ikke kan identificere, maa ikke faa agenten til at arme blindt', () => {
+  const uvisVurdering = indlaesUdvidelse({ kilde: KOPIER[0] }).hent('uvisVurdering');
+  const svar = uvisVurdering({ landed: null, unverified: true, dialog: true, dialogUkendt: true });
+
+  assert.equal(svar.maybe_landed, true);
+  assert.match(svar.note, /NEXT dialog/,
+    'agenten skal vide, at et blindt kald armerer den naeste: ' + svar.note);
+  assert.match(svar.note, /browser_ask_user/, svar.note);
+  assert.doesNotMatch(svar.note, /It is gone/, svar.note);
+});
+
+// ── Runde 1b, det hul ingen proeve kunne se ───────────────────────────────
+// Dialogopdagelsen virker kun, naar Page-domaenet er slaaet til paa fanens CDP-session.
+// Det laa foer i et Set, der kun blev ryddet i chrome.debugger.onDetach - og Chrome sender
+// INTET onDetach, naar vi selv kobler fra (R108). Efter browser_reattach_debugger sagde
+// cachen derfor «slaaet til», mens den nye session havde domaenet slaaet fra: #100 var
+// tilbage, usynligt, i netop det vaerktoej man griber efter, naar en fane virker laast.
+// Prøven maaler kommandoen, ikke en intern variabel - saa den kan se hullet udefra.
+test('Page-domaenet slaas til ved HVER tilkobling - ogsaa efter en genkobling', async () => {
+  const u = indlaesUdvidelse({ kilde: KOPIER[0], svar: {
+    'debugger.attach': undefined,
+    'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+  } });
+  const sendt = [];
+  const send = u.ctx.chrome.debugger.sendCommand;
+  u.ctx.chrome.debugger.sendCommand = (m, metode, p) => { sendt.push(metode); return send(m, metode, p); };
+  const attach = u.hent('debuggerAttach');
+  const taelPage = () => sendt.filter((k) => k === 'Page.enable').length;
+
+  await attach(1);
+  assert.equal(taelPage(), 1, 'Page.enable skal sendes ved tilkoblingen: ' + sendt.join(','));
+
+  await attach(1);
+  assert.equal(taelPage(), 1, 'en fane der allerede er tilkoblet skal ikke faa en til');
+
+  // Praecis det reattach_debugger goer: kobl fra i haanden, glem fanen, kobl til igen.
+  u.hent('debuggerAttached').delete(1);
+  await attach(1);
+  assert.equal(taelPage(), 2,
+    'efter en genkobling er Page slaaet FRA paa den nye session - domaenet skal slaas til igen, '
+    + 'ellers er dialogopdagelsen blind: ' + sendt.join(','));
+});
+
+// B-07, nu med et bevis: staar der allerede en ubesvaret boks, svarer Page.enable
+// foerst naar den er besvaret - den HAENGER bag boksen. At sende den alligevel ville
+// binde tilkoblingen til fristen paa et svar, vi kender paa forhaand. Mutanten, der
+// fjerner kortslutningen, overlevede foer denne proeve.
+test('staar der allerede en ubesvaret dialog, sendes Page.enable ikke', async () => {
+  const u = indlaesUdvidelse({ kilde: KOPIER[0], svar: {
+    'debugger.attach': undefined,
+    'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+  } });
+  const sendt = [];
+  const send = u.ctx.chrome.debugger.sendCommand;
+  u.ctx.chrome.debugger.sendCommand = (m, metode, p) => { sendt.push(metode); return send(m, metode, p); };
+
+  // En boks staar og holder fanen, foer vi overhovedet kobler til.
+  u.hent('dialogFaner').set(1, { boks: { type: 'confirm', message: 'Delete this order?' } });
+  await u.hent('debuggerAttach')(1);
+
+  assert.equal(sendt.filter((k) => k === 'Page.enable').length, 0,
+    'Page.enable haenger bag en aaben boks - den maa ikke sendes: ' + sendt.join(','));
+});
+
+test('er boksen besvaret, sendes Page.enable igen', async () => {
+  const u = indlaesUdvidelse({ kilde: KOPIER[0], svar: {
+    'debugger.attach': undefined,
+    'debugger.detach': undefined,
+    'debugger.getTargets': [{ tabId: 1, attached: true }],
+  } });
+  const sendt = [];
+  const send = u.ctx.chrome.debugger.sendCommand;
+  u.ctx.chrome.debugger.sendCommand = (m, metode, p) => { sendt.push(metode); return send(m, metode, p); };
+
+  // Samme boks, men lukket: den holder ikke siden laengere.
+  u.hent('dialogFaner').set(1, { boks: { type: 'confirm', message: 'x', lukket: { result: true } } });
+  await u.hent('debuggerAttach')(1);
+
+  assert.equal(sendt.filter((k) => k === 'Page.enable').length, 1,
+    'en lukket boks maa ikke blokere domaenet for altid: ' + sendt.join(','));
+});
