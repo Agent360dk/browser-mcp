@@ -8,9 +8,10 @@ Dates are when the version was published on GitHub. The full notes for each rele
 
 Most of the 1.33 work in this first part answers a private report (thank you), checked item by item and reviewed in several rounds. The 1.32 work, never released on its own, follows below.
 
-**A dialog opened by a click no longer wedges the tab (#100).** On a fresh tab, the `Page` domain was only
-ever enabled as a side effect of `browser_handle_dialog`, so when a click opened an `alert`, `confirm` or
-`prompt`, nothing was listening: the call ran into its timeout and the tab stayed frozen. The domain is now
+**A dialog opened by a click no longer wedges the tab (#100).** A click never enabled the `Page` domain; only
+`browser_handle_dialog` (and a navigation within an existing tab, or a file upload) turned it on. So on a fresh tab,
+when a click opened an `alert`, `confirm` or `prompt`, nothing was listening: the call ran into its timeout and
+the tab stayed frozen. The domain is now
 enabled when the debugger attaches, so every input path sees the dialog - click, key press, double-click,
 right-click and hover alike. `browser_click` answers `maybe_landed: true` with `dialog_open` naming the
 dialog's type and message, so you can call `browser_handle_dialog` instead of waiting. If the dialog was
@@ -20,7 +21,8 @@ answer we sent was never confirmed, or the debugger came off the tab, the answer
 claiming the dialog is gone: it may still be on screen, and only you can answer it in Chrome.
 Reported by [@arasmileska](https://github.com/arasmileska), with a control experiment that pinned the cause
 to per-tab state - thank you. The other input paths see the dialog now but do not yet name it in their own
-answers; that is still open.
+answers; that is still open. The fix is in the extension: until the Chrome Web Store serves 1.33.0, an install
+from the store still runs into the timeout, so load the extension zip from the release to have it now.
 
 **No call guesses another tab.** When the session's active tab was its own blank `about:blank`, a call skipped it and
 silently used another of the session's tabs - `browser_navigate` then loaded the address into a page the user was working
