@@ -1809,10 +1809,18 @@ function dialogHolderSiden(tabId) {
 }
 
 async function slaaSideDomaeneTil(tabId) {
-  // Staar der allerede en ubesvaret boks, svarer Page.enable foerst naar den er besvaret. Saa ville hver
-  // tilslutning bruge hele fristen paa et svar vi kender paa forhaand. Udfaldet er det samme: gaa videre som foer.
-  const staaende = dialogFaner.get(tabId)?.boks;
-  if (staaende && !staaende.lukket && !staaende.besvaretAf && !staaende.mistet) return false;
+  // Her stod en kortslutning: «staar der allerede en ubesvaret boks, saa spring Page.enable over,
+  // for den svarer foerst naar boksen er besvaret». Den er FJERNET, og det er en rettelse, ikke et tab.
+  //
+  // MAALT (panelets sonde, efterproevet): en session, der frigives uden at fanen kan lukkes (#13), kobler
+  // fejlfinderen fra UDEN at Chrome sender onDetach - og boksen bliver staaende i koordinatoren uden at
+  // blive markeret `mistet`. Ved naeste tilkobling saa kortslutningen en «staaende» boks og sprang enable
+  // over. For altid. Den nye CDP-session havde dermed Page slaaet FRA, javascriptDialogOpening fyrede
+  // aldrig, og #100 var tilbage ad en tredje vej - indfoert af selve rettelsen.
+  //
+  // Kortslutningen var kun noedvendig, da kaldet blev AWAITET paa hvert inputsted, hvor 3 sekunders
+  // ophold var en reel pris. Her afventes det ikke: haenger enable bag en boks, venter ingen paa den,
+  // og naar boksen besvares, bliver domaenet slaaet til. Det er praecis det, vi vil have.
   // cdpMedFrist, ikke cdpSend: cdpSend kalder debuggerAttach, og vi staar inde i den.
   const r = await venteMedFrist(cdpMedFrist(tabId, 'Page.enable', {}).then(() => true, () => false), 3000);
   return r === true;

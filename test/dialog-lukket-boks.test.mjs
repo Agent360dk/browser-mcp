@@ -138,11 +138,17 @@ test('Page-domaenet slaas til ved HVER tilkobling - ogsaa efter en genkobling', 
     + 'ellers er dialogopdagelsen blind: ' + sendt.join(','));
 });
 
-// B-07, nu med et bevis: staar der allerede en ubesvaret boks, svarer Page.enable
-// foerst naar den er besvaret - den HAENGER bag boksen. At sende den alligevel ville
-// binde tilkoblingen til fristen paa et svar, vi kender paa forhaand. Mutanten, der
-// fjerner kortslutningen, overlevede foer denne proeve.
-test('staar der allerede en ubesvaret dialog, sendes Page.enable ikke', async () => {
+// Regressionsvagt (panelets sonde, efterproevet): en boks, koordinatoren stadig kender,
+// maa ALDRIG stoppe Page.enable ved en ny tilkobling.
+//
+// Her stod foer en kortslutning, der sprang enable over, naar en ubesvaret boks stod.
+// Men en session, der frigives uden at fanen kan lukkes (#13), kobler fejlfinderen fra
+// UDEN at Chrome sender onDetach - og boksen bliver staaende uden at blive markeret
+// `mistet`. Saa sprang kortslutningen enable over for ALTID: den nye CDP-session havde
+// Page slaaet fra, javascriptDialogOpening fyrede aldrig, og #100 var tilbage.
+// Kortslutningen er fjernet. Haenger enable bag en boks, venter ingen paa den - kaldet
+// afventes ikke - og naar boksen besvares, slaas domaenet til.
+test('en boks, koordinatoren kender, stopper IKKE Page.enable ved en ny tilkobling', async () => {
   const u = indlaesUdvidelse({ kilde: KOPIER[0], svar: {
     'debugger.attach': undefined,
     'debugger.detach': undefined,
@@ -156,8 +162,9 @@ test('staar der allerede en ubesvaret dialog, sendes Page.enable ikke', async ()
   u.hent('dialogFaner').set(1, { boks: { type: 'confirm', message: 'Delete this order?' } });
   await u.hent('debuggerAttach')(1);
 
-  assert.equal(sendt.filter((k) => k === 'Page.enable').length, 0,
-    'Page.enable haenger bag en aaben boks - den maa ikke sendes: ' + sendt.join(','));
+  assert.equal(sendt.filter((k) => k === 'Page.enable').length, 1,
+    'en staaende boks maa ikke blokere domaenet - saa ville en fane, hvis fejlfinder faldt af '
+    + 'med boksen stadig registreret, vaere blind for dialoger for altid: ' + sendt.join(','));
 });
 
 test('er boksen besvaret, sendes Page.enable igen', async () => {
