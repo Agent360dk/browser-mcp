@@ -72,7 +72,9 @@ test('museklik uden armeret dialog gaar den direkte vej', async () => {
   } });
   const r = await u.hent('dispatchTaalmodigt')(1, { type: 'mousePressed' });
   assert.deepEqual(r, { ok: 1 }, 'uden dialog skal svaret komme uaendret igennem');
-  assert.ok(u.optager.antal('debugger.sendCommand') >= 1);
+  // #100: taeller kun klikket - tilkoblingen sender ogsaa Page.enable, saa «alle kald >= 1» var sand uden noget klik.
+  assert.equal(u.optager.til('debugger.sendCommand').filter((k) => k.args[1] === 'Input.dispatchMouseEvent').length, 1,
+    'klikket skal sendes praecis én gang');
 });
 
 test('museklik med armeret dialog venter kort og melder at den blev blokeret', async () => {
