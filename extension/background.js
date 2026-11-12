@@ -3107,7 +3107,57 @@ async function laesTastBevis(tabId, bevis, { enhverTast = false } = {}) {
   return { landed: false };
 }
 
-async function scriptingClick(tabId, selector) {
+// R8: én venten og én polltimer; det uafklarede scriptloefte faar kun ét saet reaktioner.
+// Fristen er modtaget + 25 s (ogsaa tiden foer reserven). Serveren afviser efter 30 s
+// i mcp-server/index.js:1105-1114; de sidste 5 s er margin til returvejen.
+function scriptingClickMedDialog(tabId, selector, slut) {
+  const foer = dialogFaner.get(tabId)?.boks || null;
+  const varTilsluttet = debuggerAttached.has(tabId);
+  let stoppet = false, sendt = false, ur;
+  return new Promise((opfyld) => {
+    const afslut = (udfald) => {
+      if (stoppet) return;
+      stoppet = true;
+      clearTimeout(ur);
+      chrome.tabs.onRemoved.removeListener(faneLukket);
+      chrome.debugger.onDetach.removeListener(frakoblet);
+      opfyld({ ...udfald, sendt });
+    };
+    const faneLukket = (id) => { if (id === tabId) afslut({ stop: 'tab-closed' }); };
+    const frakoblet = (source) => { if (source.tabId === tabId) afslut({ stop: 'debugger-detached' }); };
+    const tjek = () => {
+      if (stoppet) return true;
+      if (fanerUnderLukning.has(tabId)) afslut({ stop: 'tab-closing' });
+      else if (varTilsluttet && !debuggerAttached.has(tabId)) afslut({ stop: 'debugger-detached' });
+      else if (Date.now() >= slut) afslut({ stop: 'timeout' });
+      else {
+        const boks = nyUbesvaretBoks(tabId, foer);
+        if (boks) afslut({ boks });
+      }
+      return stoppet;
+    };
+    const poll = () => {
+      if (!tjek()) ur = setTimeout(poll, Math.min(40, Math.max(0, slut - Date.now())));
+    };
+    chrome.tabs.onRemoved.addListener(faneLukket);
+    chrome.debugger.onDetach.addListener(frakoblet);
+    poll();
+    if (stoppet) return;
+    scriptingClick(tabId, selector, (options) => {
+      // Efter elementopslaget, uden await mellem sidste kontrol og den faktiske afsendelse.
+      // Et afsluttet kald maa aldrig sende klikket, heller ikke naar opslaget svarer sent.
+      if (tjek()) return [];
+      const kald = chrome.scripting.executeScript(options);
+      sendt = true;
+      return kald;
+    }).then(
+      (svar) => { if (!tjek()) afslut({ svar }); },
+      (fejl) => { if (!tjek()) afslut({ afvist: true, fejl }); },
+    );
+  });
+}
+
+async function scriptingClick(tabId, selector, sendKlik = (options) => chrome.scripting.executeScript(options)) {
   try {
     // R57 (Opus, maalt i Chrome): reserven havde sin egen soegning (foerste eksakte match i en fast liste) og klikkede
     // med el.click(), som ikke rammer-tester - saa den klikkede sidens knap gennem en modal dialogs overlay. Maalet findes
@@ -3121,7 +3171,7 @@ async function scriptingClick(tabId, selector) {
     if (!info) return { ok: false, reason: 'not_found' };
     if (info.hidden) return { ok: false, reason: 'hidden', tag: info.tag };
     if (info.covered) return { ok: false, reason: 'covered', tag: info.tag, covered: info.covered, ...(info.text ? { text: info.text } : {}) };
-    const [result] = await chrome.scripting.executeScript({
+    const [result] = await sendKlik({
       target: { tabId },
       world: 'MAIN',
       func: () => {
@@ -6962,25 +7012,34 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           // fjernede rammen foer scriptet koerte, og reglen svarede ok:true med nul handlinger. En afvisning beviser ikke at
           // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
           // #100: el.click() kan holde executeScript aabent paa confirm() i en baggrundsfane.
-          // Tag boksen FOER reserven, og lyt ogsaa efter en ny boks mens scriptet venter.
-          // Loeftet har begge haandteringer fra start: et sent svar/en sen fejl gentager intet klik.
-          const foer = dialogFaner.get(tab.id)?.boks || null;
-          let faerdig = false, r, fejl, afvist = false, dialogBoks = null;
-          const kald = scriptingClick(tab.id, params.selector).then(
-            (svar) => { faerdig = true; r = svar; },
-            (e) => { faerdig = true; afvist = true; fejl = e; },
-          );
-          while (!faerdig) {
-            dialogBoks = nyUbesvaretBoks(tab.id, foer);
-            if (dialogBoks) break;
-            await Promise.race([kald, new Promise((r) => setTimeout(r, 40))]);
-          }
-          dialogBoks = dialogBoks || nyUbesvaretBoks(tab.id, foer);
-          if (dialogBoks) {
-            const vurdering = dialogKlikVurdering(tab.id, dialogBoks, true);
+          // R8: afsendelsen maales inde i scriptingClick, efter opslaget; stop rydder timer og lyttere.
+          const udfald = await scriptingClickMedDialog(tab.id, params.selector, modtaget + 25000);
+          if (udfald.boks) {
+            const vurdering = dialogKlikVurdering(tab.id, udfald.boks, udfald.sendt);
+            if (!udfald.sendt) {
+              return { method: 'scripting-fallback', ok: false, error: 'dialog-before-click',
+                fallbackFired: false, landed: false, maybe_landed: false,
+                ...(vurdering.dialogInfo ? { dialog_open: vurdering.dialogInfo } : {}),
+                note: 'A dialog appeared before the script click was sent. The click was not sent. ' +
+                  (vurdering.dialogInfo
+                    ? 'The page is paused: call browser_handle_dialog (accept or dismiss), then check the page.'
+                    : vurdering.dialogUafgjort
+                      ? 'The dialog state is unconfirmed. If the page is frozen, ask the user (browser_ask_user) to answer it in Chrome.'
+                      : 'The dialog is gone; do not answer it again. Check the page.') };
+            }
             return { method: 'scripting-fallback', ...vurdering, ok: false, ...uvisVurdering(vurdering) };
           }
-          if (afvist) throw fejl;
+          if (udfald.stop) {
+            const hvorfor = { 'tab-closed': 'The tab was closed.', 'tab-closing': 'The tab is closing.',
+              'debugger-detached': 'The debugger detached.', 'timeout': 'The click call reached its 25 second deadline.' }[udfald.stop];
+            return { method: 'scripting-fallback', ok: false, error: udfald.stop, fallbackFired: udfald.sendt,
+              landed: udfald.sendt ? null : false, maybe_landed: udfald.sendt,
+              note: hvorfor + (udfald.sendt
+                ? ' A script click was sent and may have landed. It is not repeated. Check the page before clicking again.'
+                : ' The click was not sent.') };
+          }
+          if (udfald.afvist) throw udfald.fejl;
+          const r = udfald.svar;
           if (r.reason === 'covered') return daekketSvar(params.selector, r, 'scripting-fallback');
           if (r.reason === 'hidden') {
             return { ok: false, method: 'scripting-fallback', hidden: true, tag: r.tag,

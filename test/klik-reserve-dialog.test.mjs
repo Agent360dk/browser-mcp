@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
+import vm from 'node:vm';
 import { indlaesUdvidelse, medVagt } from './hjaelp/udvidelses-sele.mjs';
 
 const vent = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -20,7 +21,7 @@ async function inden(loefte, ms = 2000) {
   } finally { clearTimeout(ur); }
 }
 
-function sele(kilde, rigtigFrist = false) {
+function sele(kilde, rigtigFrist = false, holdOpslag = false) {
   const fane = { id: 1, url: 'https://x.example', windowId: 1, active: false };
   let script;
   const u = indlaesUdvidelse({ kilde, svar: {
@@ -35,7 +36,10 @@ function sele(kilde, rigtigFrist = false) {
       return { result: { value: null } };
     }),
     'scripting.executeScript': (o) => {
-      if (o.func.name === 'klikMaal') return [{ result: { tag: 'BUTTON', x: 10, y: 10 } }];
+      if (o.func.name === 'klikMaal') {
+        script.opslagStart.ok();
+        return holdOpslag ? script.opslagSvar.loefte : [{ result: { tag: 'BUTTON', x: 10, y: 10 } }];
+      }
       script.start.ok();
       return script.svar.loefte;
     },
@@ -48,13 +52,172 @@ function sele(kilde, rigtigFrist = false) {
       u.hent('dialogKoordinator')({ tabId: 1 }, 'Page.javascriptDialogOpening', { type: 'confirm', message });
       return u.hent('dialogFaner').get(1).boks;
     },
-    klik() {
-      script = { start: udskudt(), svar: udskudt() };
+    klik(modtaget) {
+      script = { start: udskudt(), svar: udskudt(), opslagStart: udskudt(), opslagSvar: udskudt() };
       const nu = script;
-      return { ...nu, kald: u.hent('dispatch')(9876, 'click', { selector: '#cfBtn' }),
+      return { ...nu, kald: u.hent('dispatch')(9876, 'click', { selector: '#cfBtn' }, modtaget),
+        opslaa: () => nu.opslagSvar.ok([{ result: { tag: 'BUTTON', x: 10, y: 10 } }]),
         slut: (result = { ok: true, tag: 'BUTTON', landed: true }) => nu.svar.ok([{ result }]) };
     },
   };
+}
+
+// R8: maal alle worker-timere i reserveforloebet, inklusive resttimere ved hurtige udfald.
+// CDP-fejlen gives direkte, saa tidligere CDP-polling ikke taelles som reservens oprydning.
+function reserveSele(kilde, holdOpslag = false) {
+  const s = sele(kilde, false, holdOpslag);
+  s.u.ctx.debuggerClick = async () => { throw s.u.hent('cdpFristFejl')('CDP did not respond within 1500 ms: Input.dispatchMouseEvent'); };
+  const aktive = new Set();
+  let oprettet = 0;
+  const reaktioner = new WeakMap();
+  let flestReaktioner = 0;
+  s.u.ctx.maalReaktion = (p) => {
+    const antal = (reaktioner.get(p) || 0) + 1;
+    reaktioner.set(p, antal);
+    flestReaktioner = Math.max(flestReaktioner, antal);
+  };
+  vm.runInContext(`{
+    const then = Promise.prototype.then;
+    Promise.prototype.then = function (...args) { maalReaktion(this); return then.apply(this, args); };
+  }`, s.u.ctx);
+  s.u.ctx.setTimeout = (fn, ms, ...args) => {
+    oprettet++;
+    const ur = setTimeout(() => { aktive.delete(ur); fn(...args); }, ms);
+    aktive.add(ur);
+    return ur;
+  };
+  s.u.ctx.clearTimeout = (ur) => { aktive.delete(ur); clearTimeout(ur); };
+  const lyttereFoer = [...s.u.lyttere].map(([sti, fns]) => [sti, fns.length]);
+  return Object.assign(s, {
+    antalKlik: () => s.u.optager.til('scripting.executeScript').filter((k) => k.args[0].func.name !== 'klikMaal').length,
+    flestReaktioner: () => flestReaktioner,
+    async ryddet() {
+      assert.equal(aktive.size, 0, 'timer-taelling skal vaere 0 straks ved kaldets afslutning');
+      assert.deepEqual([...s.u.lyttere].map(([sti, fns]) => [sti, fns.length]), lyttereFoer, 'ingen ekstra lyttere efter svar');
+      const foer = oprettet;
+      await vent(95);
+      assert.equal(oprettet, foer, 'ingen nye timere efter afslutning');
+      assert.equal(aktive.size, 0, 'timer-taelling skal stadig vaere 0');
+    },
+    rydProeve() { for (const ur of aktive) clearTimeout(ur); aktive.clear(); },
+  });
+}
+
+async function reserveProeve(kilde, options, proeve) {
+  const s = reserveSele(kilde, options.holdOpslag);
+  const k = s.klik(options.modtaget);
+  // Ogsaa en tidlig afvisning er observeret, mens proeven venter paa scriptstart.
+  k.kald.catch(() => {});
+  try { await proeve(s, k); }
+  finally { k.opslaa(); k.slut(); await inden(k.kald).catch(() => {}); s.rydProeve(); }
+}
+
+for (const kilde of ['extension/background.js', 'mcp-server/extension/background.js']) {
+  for (const felt of ['armering', 'besvaretAf']) {
+    test(`${kilde}: R8 ${felt} FOER opdagelse ignoreres; timer-taelling 0 ved succes`, async () => {
+      await reserveProeve(kilde, {}, async (s, k) => {
+        await inden(k.start.loefte);
+        const b = s.aabn();
+        b[felt] = felt === 'armering' ? {} : 'handle_dialog';
+        assert.equal(await Promise.race([k.kald.then(() => 'svar'), vent(95).then(() => 'venter')]), 'venter');
+        k.slut();
+        const r = await inden(k.kald);
+        assert.equal(r.ok, true);
+        assert.equal(r.dialog_open, undefined);
+        assert.equal(s.antalKlik(), 1);
+        await s.ryddet();
+      });
+    });
+  }
+
+  test(`${kilde}: R8 dialog under elementopslag stopper klikket og siger ikke sendt`, async () => {
+    await reserveProeve(kilde, { holdOpslag: true }, async (s, k) => {
+      await inden(k.opslagStart.loefte);
+      s.aabn('Independent dialog');
+      const r = await inden(k.kald, 500);
+      assert.equal(r.fallbackFired, false);
+      assert.equal(r.landed, false);
+      assert.equal(r.maybe_landed, false);
+      assert.equal(r.dialog_open?.message, 'Independent dialog');
+      assert.match(r.note, /click was not sent/i);
+      assert.doesNotMatch(r.note, /opened from the click/i);
+      assert.equal(s.antalKlik(), 0);
+      await s.ryddet();
+      s.u.hent('dialogKoordinator')({ tabId: 1 }, 'Page.javascriptDialogClosed', { result: false });
+      k.opslaa();
+      await vent(60);
+      assert.equal(s.antalKlik(), 0, 'intet klik efter kaldets svar, heller ikke efter dialoglukning');
+      await s.ryddet();
+    });
+  });
+
+  test(`${kilde}: R8 dialog og opslagsresultat i samme tur sender intet klik`, async () => {
+    await reserveProeve(kilde, { holdOpslag: true }, async (s, k) => {
+      await inden(k.opslagStart.loefte);
+      s.aabn();
+      k.opslaa(); // microtasken kommer foer naeste 40 ms-poll
+      const r = await inden(k.kald, 500);
+      assert.equal(s.antalKlik(), 0);
+      assert.equal(r.fallbackFired, false);
+      assert.match(r.note, /click was not sent/i);
+      await s.ryddet();
+    });
+  });
+
+  for (const udfald of ['succes', 'afvisning', 'dialog']) {
+    test(`${kilde}: R8 ${udfald} rydder alle timere straks og gentager intet`, async () => {
+      await reserveProeve(kilde, {}, async (s, k) => {
+        await inden(k.start.loefte);
+        if (udfald === 'dialog') {
+          await vent(180);
+          assert.ok(s.flestReaktioner() <= 2, 'ventetiden maa ikke samle reaktioner paa samme loefte');
+        }
+        if (udfald === 'succes') k.slut();
+        if (udfald === 'afvisning') k.svar.fejl(new Error('script rejected'));
+        if (udfald === 'dialog') s.aabn();
+        if (udfald === 'afvisning') await assert.rejects(inden(k.kald), /CDP did not respond/);
+        else {
+          const r = await inden(k.kald);
+          if (udfald === 'dialog') dialogSvar(r);
+          else assert.equal(r.ok, true);
+        }
+        await s.ryddet();
+        if (udfald === 'dialog') k.svar.fejl(new Error('late rejection'));
+        await vent(60);
+        assert.equal(s.antalKlik(), 1);
+        await s.ryddet();
+      });
+    });
+  }
+
+  for (const holdOpslag of [false, true]) {
+    for (const udfald of ['tab-closed', 'tab-closing', 'debugger-detached', 'timeout']) {
+      test(`${kilde}: R8 ${udfald} ${holdOpslag ? 'foer' : 'efter'} afsendelse stopper polling og rydder timere`, async () => {
+        // Fristen traekker tidligere arbejde fra: her er kun 70 ms af de 25 s tilbage.
+        await reserveProeve(kilde, { holdOpslag, modtaget: udfald === 'timeout' ? Date.now() - 24930 : undefined }, async (s, k) => {
+          await inden(holdOpslag ? k.opslagStart.loefte : k.start.loefte);
+          // En anden fanes haendelser maa ikke afslutte dette kald.
+          await s.u.fyr('tabs.onRemoved', 2);
+          await s.u.fyr('debugger.onDetach', { tabId: 2 }, 'canceled_by_user');
+          if (udfald === 'tab-closed') await s.u.fyr('tabs.onRemoved', 1);
+          if (udfald === 'tab-closing') vm.runInContext('fanerUnderLukning.add(1)', s.u.ctx);
+          if (udfald === 'debugger-detached') await s.u.fyr('debugger.onDetach', { tabId: 1 }, 'canceled_by_user');
+          const r = await inden(k.kald, 500);
+          assert.equal(r.ok, false);
+          assert.equal(r.error, udfald);
+          assert.equal(r.fallbackFired, !holdOpslag);
+          assert.equal(r.maybe_landed, !holdOpslag);
+          assert.equal(r.landed, holdOpslag ? false : null);
+          assert.match(r.note, holdOpslag ? /click was not sent/i : /may have landed/i);
+          await s.ryddet();
+          k.opslaa(); k.slut();
+          await vent(60);
+          assert.equal(s.antalKlik(), holdOpslag ? 0 : 1, 'ingen afsendelse efter svaret');
+          await s.ryddet();
+        });
+      });
+    }
+  }
 }
 
 function dialogSvar(r, message = 'Testbench confirm?') {
