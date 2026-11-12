@@ -407,8 +407,14 @@ export const TOOLS = [
   },
   {
     name: 'browser_get_new_tab',
-    description: 'Get the most recently opened tab (useful after clicking links that open new tabs, OAuth popups, etc.).',
-    inputSchema: { type: 'object', properties: {} },
+    description: 'Get the tab that one of your own tabs opened since your last click, key press, script or list choice - a link with target=_blank, an OAuth popup. If none has opened yet, it waits up to wait_ms and answers error no-new-tab-yet, with earlier_new_tabs: tabs your tabs opened before that, which you can take by passing one as tab_id. Only tabs opened from your tabs count: a new tab the user opens with Ctrl/Cmd+T, a tab opened from the user\'s own tabs, and another session\'s tab are never returned. A link the user opens in a new tab from one of your tabs, or an address the user types into your tab\'s address bar and opens with Alt+Enter, counts as yours.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        wait_ms: { type: 'number', description: 'How long to wait for the new tab to open, in ms (default 3000, max 10000). Pages often open it a moment after the click.' },
+        tab_id: { type: 'number', description: 'Take one of the earlier_new_tabs from a no-new-tab-yet answer instead of waiting for a new one.' }
+      }
+    },
   },
   {
     name: 'browser_switch_tab',

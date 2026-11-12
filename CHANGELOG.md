@@ -4,6 +4,17 @@ Browser MCP by Agent360 (`@agent360/browser-mcp` on npm, "Agent360 Browser MCP" 
 Dates are when the version was published on GitHub. The full notes for each release are on the [releases page](https://github.com/Agent360dk/browser-mcp/releases).
 
 
+## 1.34.0 (not released yet)
+
+**`browser_get_new_tab` returns the tab your click opened (#89).** It looked up the most recent tab anywhere in Chrome, with
+no link to the agent's input. When a page opened its tab a moment after the click, the agent got an older tab with fields that
+looked like success, or "Tab no longer exists" if that older tab had closed. Now only a tab that one of the session's own tabs
+opened since its last click, key press, script or list choice counts. If none has opened yet, the call waits up to `wait_ms`
+(default 3 s, at most 10 s) and answers `no-new-tab-yet`, listing the session's earlier new tabs in `earlier_new_tabs`;
+`tab_id` takes one of them. A new tab the user opens with Ctrl/Cmd+T, a tab from the user's own tabs, or another session's -
+also one left on a port another chat used before - is never an answer, so there is no `not-ours` answer naming someone else's
+tab any more. Thanks to [@arasmileska](https://github.com/arasmileska) for the report and the direction of the fix.
+
 ## 1.33.0 (not released yet)
 
 Most of the 1.33 work in this first part answers a private report (thank you), checked item by item and reviewed in several rounds. The 1.32 work, never released on its own, follows below.
