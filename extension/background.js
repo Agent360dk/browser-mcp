@@ -1067,6 +1067,8 @@ function dialogKoordinator(source, method, p) {
       else if (flyttet) afvaebnDialog(tabId, 'the session moved to another tab before a dialog appeared, so the arming was dropped');
       if (s.ejer && s.ejer.sent && boks.type === 'beforeunload') dialogSvar(tabId, boks, s.ejer.leave === true, '', 'navigate');
     }
+    // R10: behold en ny ubesvaret boks til slutvurdering, ogsaa naar den siden besvares eller bortfald rydder s.boks.
+    if (!boks.armering && !boks.besvaretAf) s.senesteUbesvaredeBoks = boks;
     vaekDialogVentere(s, null);
   } else if (method === 'Page.frameNavigated') {
     // R173 (Astra, MAALT): efter et dokumentskift i fanen svarede armeringen den nye sides confirm (og med leave_page dens
@@ -1768,7 +1770,7 @@ function nyUbesvaretBoks(tabId, foer) {
   const b = dialogFaner.get(tabId)?.boks;
   return b && b !== foer && !b.lukket && !b.armering && !b.besvaretAf ? b : null;
 }
-function dialogKlikVurdering(tabId, dialogBoks, fallbackFired = false) {
+function dialogKlikVurdering(tabId, dialogBoks, fallbackFired = false, stop = null) {
   // #100: svaret skal beskrive boksen som den staar NAAR svaret skrives - ikke som den saa ud, da vi fangede den.
   // TRE udfald, ikke to (panelet, runde 1b):
   //   staar     -> nutid med dialog_open, saa agenten kan besvare den.
@@ -1780,9 +1782,14 @@ function dialogKlikVurdering(tabId, dialogBoks, fallbackFired = false) {
   // Og boksen laeses FORFRA: lukkes boks1 midt i klikket, mens siden aabner boks2, er det boks2 der staar nu.
   // Foer svarede vi paa den gamle reference - «den er vaek, svar den ikke igen» - mens boks2 holdt fanen.
   const nu = dialogFaner.get(tabId)?.boks || null;
-  const aaben = nu && !nu.lukket && !nu.besvaretAf && !nu.mistet ? nu : null;
-  const uafgjort = !aaben && ((dialogBoks.besvaretAf && !dialogBoks.lukket) || dialogBoks.mistet === 'debugger-detached');
+  // onDetach(target_closed) afklarer fanens eksistens asynkront; eventet alene beviser kun frakobling.
+  const bortfald = stop === 'tab-closed' || stop === 'debugger-detached';
+  const mistet = bortfald ? stop : dialogBoks.mistet;
+  const aaben = !bortfald && nu && !nu.lukket && !nu.besvaretAf && !nu.mistet ? nu : null;
+  const uafgjort = !aaben && !dialogBoks.lukket && mistet !== 'tab-closed' &&
+    (dialogBoks.besvaretAf || mistet === 'debugger-detached');
   return { landed: null, fallbackFired, unverified: true, dialog: true,
+    ...dialogFelter(aaben || dialogBoks),
     ...(aaben
       ? { dialogInfo: { type: aaben.type, message: aaben.message } }
       : uafgjort
@@ -3111,7 +3118,9 @@ async function laesTastBevis(tabId, bevis, { enhverTast = false } = {}) {
 // Fristen er modtaget + 25 s (ogsaa tiden foer reserven). Serveren afviser efter 30 s
 // i mcp-server/index.js:1105-1114; de sidste 5 s er margin til returvejen.
 function scriptingClickMedDialog(tabId, selector, slut) {
-  const foer = dialogFaner.get(tabId)?.boks || null;
+  const dialogTilstand = dialogFane(tabId);
+  const foer = dialogTilstand.boks || null;
+  const senesteFoer = dialogTilstand.senesteUbesvaredeBoks;
   const varTilsluttet = debuggerAttached.has(tabId);
   let stoppet = false, sendt = false, ur;
   return new Promise((opfyld) => {
@@ -3121,6 +3130,10 @@ function scriptingClickMedDialog(tabId, selector, slut) {
       clearTimeout(ur);
       chrome.tabs.onRemoved.removeListener(faneLukket);
       chrome.debugger.onDetach.removeListener(frakoblet);
+      const boks = dialogTilstand.senesteUbesvaredeBoks;
+      if (udfald.stop && sendt && boks && boks !== foer && boks !== senesteFoer && !boks.armering) {
+        udfald.boks = boks;
+      }
       opfyld({ ...udfald, sendt });
     };
     const faneLukket = (id) => { if (id === tabId) afslut({ stop: 'tab-closed' }); };
@@ -7014,7 +7027,7 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           // #100: el.click() kan holde executeScript aabent paa confirm() i en baggrundsfane.
           // R8: afsendelsen maales inde i scriptingClick, efter opslaget; stop rydder timer og lyttere.
           const udfald = await scriptingClickMedDialog(tab.id, params.selector, modtaget + 25000);
-          if (udfald.boks) {
+          if (udfald.boks && !udfald.stop) {
             const vurdering = dialogKlikVurdering(tab.id, udfald.boks, udfald.sendt);
             if (!udfald.sendt) {
               return { method: 'scripting-fallback', ok: false, error: 'dialog-before-click',
@@ -7032,6 +7045,12 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           if (udfald.stop) {
             const hvorfor = { 'tab-closed': 'The tab was closed.', 'tab-closing': 'The tab is closing.',
               'debugger-detached': 'The debugger detached.', 'timeout': 'The click call reached its 25 second deadline.' }[udfald.stop];
+            if (udfald.boks) {
+              const vurdering = dialogKlikVurdering(tab.id, udfald.boks, udfald.sendt, udfald.stop);
+              const uvis = uvisVurdering(vurdering);
+              return { method: 'scripting-fallback', error: udfald.stop, ...vurdering, ok: false,
+                ...uvis, note: hvorfor + ' ' + uvis.note };
+            }
             return { method: 'scripting-fallback', ok: false, error: udfald.stop, fallbackFired: udfald.sendt,
               landed: udfald.sendt ? null : false, maybe_landed: udfald.sendt,
               note: hvorfor + (udfald.sendt

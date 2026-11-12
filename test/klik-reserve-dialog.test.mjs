@@ -68,7 +68,7 @@ function reserveSele(kilde, holdOpslag = false) {
   const s = sele(kilde, false, holdOpslag);
   s.u.ctx.debuggerClick = async () => { throw s.u.hent('cdpFristFejl')('CDP did not respond within 1500 ms: Input.dispatchMouseEvent'); };
   const aktive = new Set();
-  let oprettet = 0;
+  let oprettet = 0, udloest = 0;
   const reaktioner = new WeakMap();
   let flestReaktioner = 0;
   s.u.ctx.maalReaktion = (p) => {
@@ -82,7 +82,7 @@ function reserveSele(kilde, holdOpslag = false) {
   }`, s.u.ctx);
   s.u.ctx.setTimeout = (fn, ms, ...args) => {
     oprettet++;
-    const ur = setTimeout(() => { aktive.delete(ur); fn(...args); }, ms);
+    const ur = setTimeout(() => { aktive.delete(ur); udloest++; fn(...args); }, ms);
     aktive.add(ur);
     return ur;
   };
@@ -90,6 +90,7 @@ function reserveSele(kilde, holdOpslag = false) {
   const lyttereFoer = [...s.u.lyttere].map(([sti, fns]) => [sti, fns.length]);
   return Object.assign(s, {
     antalKlik: () => s.u.optager.til('scripting.executeScript').filter((k) => k.args[0].func.name !== 'klikMaal').length,
+    udloesteTimere: () => udloest,
     flestReaktioner: () => flestReaktioner,
     async ryddet() {
       assert.equal(aktive.size, 0, 'timer-taelling skal vaere 0 straks ved kaldets afslutning');
@@ -105,6 +106,7 @@ function reserveSele(kilde, holdOpslag = false) {
 
 async function reserveProeve(kilde, options, proeve) {
   const s = reserveSele(kilde, options.holdOpslag);
+  options.foerKlik?.(s);
   const k = s.klik(options.modtaget);
   // Ogsaa en tidlig afvisning er observeret, mens proeven venter paa scriptstart.
   k.kald.catch(() => {});
@@ -113,6 +115,99 @@ async function reserveProeve(kilde, options, proeve) {
 }
 
 for (const kilde of ['extension/background.js', 'mcp-server/extension/background.js']) {
+  for (const [stop, grund] of [['debugger-detached', 'canceled_by_user'], ['debugger-detached', 'target_closed'], ['tab-closed', null]]) {
+    test(`${kilde}: R10 afsendt, dialog, ${stop} (${grund}) 5 ms senere foer naeste poll`, async () => {
+      await reserveProeve(kilde, {}, async (s, k) => {
+        await inden(k.start.loefte);
+        s.aabn('R10 observed confirm');
+        const timereFoer = s.udloesteTimere();
+        await vent(5);
+        assert.equal(s.udloesteTimere(), timereFoer, 'stophaendelsen skal komme foer naeste poll');
+        if (stop === 'tab-closed') await s.u.fyr('tabs.onRemoved', 1);
+        else await s.u.fyr('debugger.onDetach', { tabId: 1 }, grund);
+        const r = await inden(k.kald, 500);
+        assert.equal(r.error, stop);
+        assert.equal(r.ok, false);
+        assert.equal(r.method, 'scripting-fallback');
+        assert.equal(r.fallbackFired, true);
+        assert.equal(r.landed, null);
+        assert.equal(r.maybe_landed, true);
+        assert.equal(r.dialog_type, 'confirm');
+        assert.equal(r.message, 'R10 observed confirm');
+        assert.equal(r.dialog_open, undefined, 'bortfald beviser ikke, at boksen stadig staar');
+        if (stop === 'tab-closed') {
+          assert.equal(r.dialogLukket, true);
+          assert.match(r.note, /It is gone/);
+          assert.doesNotMatch(r.note, /browser_handle_dialog|browser_ask_user/);
+        } else {
+          assert.equal(r.dialogUafgjort, true);
+          assert.match(r.note, /browser_ask_user/);
+          assert.match(r.note, /Do not arm browser_handle_dialog blindly/);
+          assert.doesNotMatch(r.note, /It is gone|is waiting for an answer/);
+        }
+        await s.ryddet();
+        k.slut();
+        await vent(60);
+        assert.equal(s.antalKlik(), 1, 'sent scriptsvar maa ikke udloese et ekstra klik');
+        await s.ryddet();
+      });
+    });
+  }
+
+  test(`${kilde}: R10 gammel lukket boks tilskrives ikke naeste klik ved frakobling`, async () => {
+    await reserveProeve(kilde, { foerKlik(s) {
+      s.aabn('Old closed dialog');
+      s.u.hent('dialogKoordinator')({ tabId: 1 }, 'Page.javascriptDialogClosed', { result: false });
+    } }, async (s, k) => {
+      await inden(k.start.loefte);
+      await s.u.fyr('debugger.onDetach', { tabId: 1 }, 'canceled_by_user');
+      const r = await inden(k.kald);
+      assert.equal(r.error, 'debugger-detached');
+      assert.equal(r.maybe_landed, true);
+      assert.equal(r.dialog, undefined);
+      assert.equal(r.dialog_type, undefined);
+      assert.doesNotMatch(r.note, /browser_ask_user|Old closed dialog/);
+      await s.ryddet();
+    });
+  });
+
+  test(`${kilde}: R10 bekraeftet dialoglukning foer frakobling beskrives som vaek`, async () => {
+    await reserveProeve(kilde, {}, async (s, k) => {
+      await inden(k.start.loefte);
+      s.aabn('Closed before detach');
+      s.u.hent('dialogKoordinator')({ tabId: 1 }, 'Page.javascriptDialogClosed', { result: false });
+      await s.u.fyr('debugger.onDetach', { tabId: 1 }, 'canceled_by_user');
+      const r = await inden(k.kald);
+      assert.equal(r.error, 'debugger-detached');
+      assert.equal(r.dialog_type, 'confirm');
+      assert.equal(r.message, 'Closed before detach');
+      assert.equal(r.dialog_open, undefined);
+      assert.equal(r.dialogLukket, true);
+      assert.equal(r.dialogUafgjort, undefined);
+      assert.match(r.note, /It is gone/);
+      assert.doesNotMatch(r.note, /browser_handle_dialog|browser_ask_user/);
+      await s.ryddet();
+    });
+  });
+
+  test(`${kilde}: R10 ubekraeftet svar paa ny dialog foer frakobling bevarer uvished og raad`, async () => {
+    await reserveProeve(kilde, {}, async (s, k) => {
+      await inden(k.start.loefte);
+      const boks = s.aabn('Answer not confirmed');
+      s.u.hent('dialogSvar')(1, boks, false, '', 'handle_dialog');
+      await s.u.fyr('debugger.onDetach', { tabId: 1 }, 'canceled_by_user');
+      const r = await inden(k.kald);
+      assert.equal(r.error, 'debugger-detached');
+      assert.equal(r.dialog_type, 'confirm');
+      assert.equal(r.message, 'Answer not confirmed');
+      assert.equal(r.dialog_open, undefined);
+      assert.equal(r.dialogUafgjort, true);
+      assert.match(r.note, /browser_ask_user/);
+      assert.doesNotMatch(r.note, /It is gone|is waiting for an answer/);
+      await s.ryddet();
+    });
+  });
+
   for (const felt of ['armering', 'besvaretAf']) {
     test(`${kilde}: R8 ${felt} FOER opdagelse ignoreres; timer-taelling 0 ved succes`, async () => {
       await reserveProeve(kilde, {}, async (s, k) => {
