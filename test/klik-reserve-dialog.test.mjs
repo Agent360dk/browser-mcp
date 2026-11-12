@@ -115,6 +115,103 @@ async function reserveProeve(kilde, options, proeve) {
 }
 
 for (const kilde of ['extension/background.js', 'mcp-server/extension/background.js']) {
+  for (const tilstand of ['lukket', 'besvaret']) {
+    for (const stop of ['debugger-detached', 'tab-closed']) {
+      test(`${kilde}: R13 ${tilstand} dialog under opslag tilskrives ikke senere klik ved ${stop}`, async () => {
+        await reserveProeve(kilde, { holdOpslag: true }, async (s, k) => {
+          await inden(k.opslagStart.loefte);
+          const boks = s.aabn('Independent BEFORE script send');
+          assert.equal(s.antalKlik(), 0);
+          if (tilstand === 'lukket') {
+            s.u.hent('dialogKoordinator')({ tabId: 1 }, 'Page.javascriptDialogClosed', { result: false });
+          } else {
+            s.u.hent('dialogSvar')(1, boks, false, '', 'handle_dialog');
+          }
+          k.opslaa();
+          await inden(k.start.loefte);
+          assert.equal(s.antalKlik(), 1);
+          if (stop === 'tab-closed') await s.u.fyr('tabs.onRemoved', 1);
+          else await s.u.fyr('debugger.onDetach', { tabId: 1 }, 'canceled_by_user');
+          const r = await inden(k.kald, 500);
+          assert.equal(r.error, stop);
+          assert.equal(r.ok, false);
+          assert.equal(r.fallbackFired, true);
+          assert.equal(r.maybe_landed, true);
+          assert.equal(r.landed, null);
+          assert.equal(r.dialog, undefined, 'dialogen fra foer scriptafsendelsen er ikke klikkets');
+          assert.equal(r.dialog_type, undefined);
+          assert.equal(r.message, undefined);
+          assert.equal(r.dialog_open, undefined);
+          assert.doesNotMatch(r.note, /opened from the click|browser_ask_user|browser_handle_dialog/);
+          await s.ryddet();
+          k.slut();
+          await vent(60);
+          assert.equal(s.antalKlik(), 1, 'et sent scriptsvar maa ikke gentage klikket');
+          await s.ryddet();
+        });
+      });
+    }
+  }
+
+  for (const tilstand of ['uafklaret', 'fanen-lukket', 'dialog-lukket', 'tilsluttet']) {
+    test(`${kilde}: R13 CDP-dialog ved ${tilstand} target_closed`, async () => {
+      const s = sele(kilde);
+      const inputSvar = udskudt();
+      s.u.hent('debuggerAttached').add(1);
+      const mus = [];
+      let boks;
+      s.u.chrome.debugger.sendCommand = medVagt(async (_, metode, p) => {
+        if (metode === 'Input.dispatchMouseEvent') {
+          mus.push(p.type);
+          if (p.type === 'mouseMoved') {
+            boks = s.aabn('Debugger observed');
+            return inputSvar.loefte;
+          }
+          if (p.type === 'mouseReleased' && tilstand !== 'tilsluttet') {
+            // onDetach skal naa frem, mens Chrome stadig ikke har afklaret fanens eksistens.
+            s.u.chrome.tabs.get = () => new Promise(() => {});
+            if (tilstand === 'dialog-lukket') {
+              s.u.hent('dialogKoordinator')({ tabId: 1 }, 'Page.javascriptDialogClosed', { result: false });
+            }
+            if (tilstand === 'fanen-lukket') await s.u.fyr('tabs.onRemoved', 1);
+            await s.u.fyr('debugger.onDetach', { tabId: 1 }, 'target_closed');
+          }
+        }
+        return { result: { value: null } };
+      });
+      const k = s.klik();
+      try {
+        const r = await inden(k.kald);
+        assert.equal(r.method, 'debugger');
+        assert.equal(r.ok, false);
+        assert.equal(r.maybe_landed, true);
+        assert.equal(r.message, 'Debugger observed');
+        assert.equal(s.u.optager.antal('scripting.executeScript'), 0, 'ingen script-reserve efter CDP-klikket');
+        assert.deepEqual(mus, ['mouseMoved', 'mousePressed', 'mouseReleased']);
+        if (tilstand === 'tilsluttet') {
+          assert.equal(r.dialog_open?.message, 'Debugger observed');
+          assert.match(r.note, /call browser_handle_dialog/);
+        } else {
+          assert.equal(s.u.hent('debuggerAttached').has(1), false);
+          if (tilstand === 'uafklaret') {
+            assert.equal(boks.mistet, undefined, 'tabs.get har endnu ikke afklaret tilstanden');
+            assert.equal(r.dialogUafgjort, true);
+            assert.equal(r.dialogLukket, undefined);
+            assert.match(r.note, /browser_ask_user/);
+            assert.match(r.note, /Do not arm browser_handle_dialog blindly/);
+          } else {
+            assert.equal(r.dialogLukket, true);
+            assert.equal(r.dialogUafgjort, undefined);
+            assert.match(r.note, /It is gone/);
+            assert.doesNotMatch(r.note, /browser_ask_user/);
+          }
+          assert.equal(r.dialog_open, undefined);
+          assert.doesNotMatch(r.note, /call browser_handle_dialog|is waiting for an answer/);
+        }
+      } finally { inputSvar.ok({}); await inden(k.kald).catch(() => {}); }
+    });
+  }
+
   for (const [stop, grund] of [['debugger-detached', 'canceled_by_user'], ['debugger-detached', 'target_closed'], ['tab-closed', null]]) {
     test(`${kilde}: R10 afsendt, dialog, ${stop} (${grund}) 5 ms senere foer naeste poll`, async () => {
       await reserveProeve(kilde, {}, async (s, k) => {

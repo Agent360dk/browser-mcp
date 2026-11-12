@@ -2030,7 +2030,9 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // reserve. Svaret er uvist med dialogen navngivet, saa agenten kalder browser_handle_dialog i stedet for at vente.
     if (dialogBoks) {
       vagtArmet = false;
-      return dialogKlikVurdering(tabId, dialogBoks);
+      // target_closed fjerner tilkoblingen straks; tabs.get kan stadig vente paa at afklare fanen.
+      const stop = !debuggerAttached.has(tabId) ? (dialogBoks.mistet || 'debugger-detached') : null;
+      return dialogKlikVurdering(tabId, dialogBoks, false, stop);
     }
     if (trykFejl) throw trykFejl;
     // 3. Framework fallback — only if the captured target is STILL connected (i.e.
@@ -3120,7 +3122,7 @@ async function laesTastBevis(tabId, bevis, { enhverTast = false } = {}) {
 function scriptingClickMedDialog(tabId, selector, slut) {
   const dialogTilstand = dialogFane(tabId);
   const foer = dialogTilstand.boks || null;
-  const senesteFoer = dialogTilstand.senesteUbesvaredeBoks;
+  let senesteFoer;
   const varTilsluttet = debuggerAttached.has(tabId);
   let stoppet = false, sendt = false, ur;
   return new Promise((opfyld) => {
@@ -3160,6 +3162,8 @@ function scriptingClickMedDialog(tabId, selector, slut) {
       // Efter elementopslaget, uden await mellem sidste kontrol og den faktiske afsendelse.
       // Et afsluttet kald maa aldrig sende klikket, heller ikke naar opslaget svarer sent.
       if (tjek()) return [];
+      // Historikken foer selve afsendelsen tilhoerer ikke klikket, heller ikke en boks besvaret under opslaget.
+      senesteFoer = dialogTilstand.senesteUbesvaredeBoks;
       const kald = chrome.scripting.executeScript(options);
       sendt = true;
       return kald;
