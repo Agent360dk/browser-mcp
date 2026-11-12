@@ -13,8 +13,12 @@ Most of the 1.33 work in this first part answers a private report (thank you), c
 when a click opened an `alert`, `confirm` or `prompt`, nothing was listening: the call ran into its timeout and
 the tab stayed frozen. The domain is now
 enabled when the debugger attaches, so every input path sees the dialog - click, key press, double-click,
-right-click and hover alike. `browser_click` answers `maybe_landed: true` with `dialog_open` naming the
-dialog's type and message, so you can call `browser_handle_dialog` instead of waiting. If the dialog was
+right-click and hover alike. When a click opens a new, unarmed dialog that is still waiting for an answer,
+`browser_click` answers `ok: false`, `maybe_landed: true` with `dialog_open` naming the dialog's type and
+message, so you can call `browser_handle_dialog` instead of waiting. This also covers the script fallback
+in a background tab: after the mouse-input timeout, the fallback reports the registered dialog without
+waiting for the script to finish. It does not repeat the click; answer the dialog, then check the page.
+If the dialog was
 already answered or closed before the reply was written, there is no `dialog_open` and the note says it is
 gone, so the advice cannot make an agent arm a window that answers the *next* dialog by accident. If an
 answer we sent was never confirmed, or the debugger came off the tab, the answer says that too rather than

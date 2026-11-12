@@ -39,9 +39,9 @@ let n = 0;
 const rpc = (method, params, ms = 70000) => new Promise((res) => { const id = ++n; venter.set(id, res); setTimeout(() => { if (venter.delete(id)) res({ klientfrist: true }); }, ms); srv.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
 const kald = async (name, args, ms) => {
   const t0 = Date.now(); const r = await rpc('tools/call', { name, arguments: args }, ms);
-  const tekst = r.klientfrist ? '<ingen svar inden klientens frist>' : (r.result?.content?.map((c) => c.text ?? `<${c.type}>`).join('\n') ?? JSON.stringify(r.error));
+  const tekst = r.klientfrist ? '<ingen svar inden klientens frist>' : (r.result?.content?.map((c) => c.text ?? `<${c.type}>`).join('\n') ?? JSON.stringify(r.error) ?? '<ugyldigt svar>');
   let data = null; try { data = JSON.parse(tekst); } catch {}
-  return { ms: Date.now() - t0, tekst, data, fejl: !!r.result?.isError || r.klientfrist };
+  return { ms: Date.now() - t0, tekst, data, fejl: !!(r.result?.isError || r.error || r.klientfrist || !r.result) };
 };
 const kort = (r) => `${r.ms} ms · ${r.fejl ? 'FEJL' : 'ok'} · ${r.tekst.replace(/\s+/g, ' ').slice(0, 220)}`;
 
@@ -59,17 +59,33 @@ for (const [variant, nr] of runder) {
   const nav = await kald('browser_navigate', { url: URL_, new_tab: true });
   console.log('  navigate     :', kort(nav));
   const tab = nav.data?.tab_id;
-  if (variant === 'B' && tab != null) console.log('  switch_tab   :', kort(await kald('browser_switch_tab', { tab_id: tab })));
+  let skift = null;
+  if (variant === 'B' && tab != null) {
+    skift = await kald('browser_switch_tab', { tab_id: tab });
+    console.log('  switch_tab   :', kort(skift));
+  }
   const klik = await kald('browser_click', { selector: '#cfBtn' });
   console.log('  click        :', kort(klik));
   const dlg = await kald('browser_handle_dialog', { action: 'dismiss' });
   console.log('  handle_dialog:', kort(dlg));
   const efter = await kald('browser_execute_script', { code: 'document.title' }, 45000);
   console.log('  efter (title):', kort(efter));
-  const titel = efter.tekst;
+  // Serveren JSON-koder document.title; sammenlign den afkodede streng uden trim/delstreng.
+  const titel = typeof efter.data?.result === 'string' ? efter.data.result
+    : typeof efter.data === 'string' ? efter.data : efter.tekst;
   const laast = efter.fejl || /timed out|tab-not-responding|did not respond/i.test(efter.tekst);
-  const besvaret = /RESULT false/.test(titel);
-  const dom = laast ? 'LAAST' : besvaret ? 'BESVARET (dismiss -> RESULT false), fanen svarer' : 'svarer, men dialogens udfald ukendt';
+  const trinfejl = [];
+  if (nav.fejl || nav.data?.ok === false || nav.data?.error || !Number.isInteger(tab) || tab < 0) trinfejl.push('navigate');
+  if (variant === 'B' && (!skift || skift.fejl || skift.data?.ok === false || skift.data?.error)) trinfejl.push('switch_tab');
+  // Klikket kan svare ok:false, fordi confirm holder siden. Kun den konkrete dialogmelding er forventet.
+  const forventetDialog = klik.data?.ok === false && klik.data?.maybe_landed === true && klik.data?.dialog_open?.type === 'confirm';
+  const klikFrist = klik.fejl && klik.tekst === 'Error: Command timed out after 30000ms: click';
+  if (!klikFrist && (klik.fejl || klik.data?.error || !(klik.data?.ok === true || forventetDialog))) trinfejl.push('click');
+  if (dlg.fejl || dlg.data?.error || dlg.data?.ok !== true || dlg.data?.dialog_type !== 'confirm') trinfejl.push('handle_dialog');
+  const besvaret = titel === 'RESULT false';
+  const dom = laast ? 'LAAST' : trinfejl.length ? `UGYLDIG RUNDE (${trinfejl.join(', ')})`
+    : !besvaret ? 'svarer, men dialogens udfald ukendt'
+    : klikFrist ? 'KLIK-FRIST, BESVARET' : 'BESVARET (dismiss -> RESULT false), fanen svarer';
   console.log('  DOM          :', dom);
   domme.push(`${variant}${nr}: ${dom}`);
   if (tab != null) await kald('browser_close_tab', { tab_id: tab }, 20000);
@@ -80,8 +96,18 @@ console.log(`REPRO-100-DOM: ${laaste === 0 ? 'IKKE LAAST' : `LAAST i ${laaste} a
 // B-10: scriptet afsluttede FOER altid med exit(0) - ogsaa naar fanen kilede. Saa kunne det
 // aldrig bruges som port: en koersel, der GENSKABTE fejlen, meldte groent. Og nul runder er
 // heller ikke groent; da har instrumentet maalt ingenting.
+// Codex R3: alle trin skal vaere gyldige OG titlen praecis RESULT false. Trinfejl har egen exitkode 6;
+// laast = 1, isolation mangler = 2, ingen forbindelse = 3, nul runder = 4, ukendt udfald = 5.
+// R6: en besvaret confirm efter klikfristen er en gyldig maaling med exit 7.
+// Laasningsporten accepterer 0/7; loeftet om et klik-svar uden frist kraever 0; 1-6 blokerer begge.
+const ukendte = domme.filter((d) => d.includes('udfald ukendt')).length;
+const ugyldige = domme.filter((d) => d.includes('UGYLDIG RUNDE')).length;
+const klikFrister = domme.filter((d) => d.includes('KLIK-FRIST, BESVARET')).length;
 let kode = 0;
 if (domme.length === 0) { console.log('\u26d4 ingen runder koert - instrumentet maalte INGENTING'); kode = 4; }
 else if (laaste > 0) { console.log(`\u26d4 #100 genskabt: ${laaste} af ${domme.length} faner kilede`); kode = 1; }
-else { console.log(`\u2705 ingen fane kilede i ${domme.length} runder`); }
+else if (ugyldige > 0) { console.log(`\u26d4 ${ugyldige} af ${domme.length} runder havde fejl i de kraevede trin`); kode = 6; }
+else if (ukendte > 0) { console.log(`\u26d4 ${ukendte} af ${domme.length} runder svarede, men dialogen blev ikke bevist besvaret (ingen RESULT false)`); kode = 5; }
+else if (klikFrister > 0) { console.log(`KLIK-FRIST, BESVARET i ${klikFrister} af ${domme.length} runder; ingen fane kilede`); kode = 7; }
+else { console.log(`\u2705 ingen fane kilede, og dialogen blev besvaret (RESULT false) i alle ${domme.length} runder`); }
 srv.kill(); web.close(); process.exit(kode);

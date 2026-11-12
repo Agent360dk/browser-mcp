@@ -1768,6 +1768,27 @@ function nyUbesvaretBoks(tabId, foer) {
   const b = dialogFaner.get(tabId)?.boks;
   return b && b !== foer && !b.lukket && !b.armering && !b.besvaretAf ? b : null;
 }
+function dialogKlikVurdering(tabId, dialogBoks, fallbackFired = false) {
+  // #100: svaret skal beskrive boksen som den staar NAAR svaret skrives - ikke som den saa ud, da vi fangede den.
+  // TRE udfald, ikke to (panelet, runde 1b):
+  //   staar     -> nutid med dialog_open, saa agenten kan besvare den.
+  //   uafgjort  -> vi har SENDT et svar, som Chrome ikke har bekraeftet (besvaretAf uden lukket), eller
+  //                fejlfinderen faldt af (mistet === 'debugger-detached'). Dialogen kan stadig staa paa
+  //                skaermen, og vores vaerktoejer kan ikke naa den - samme sandhed som reattach_debugger
+  //                selv skriver. At kalde det «vaek» var en loegn i den dyre retning.
+  //   vaek      -> lukket, eller fanen lukket: datid, uden raad.
+  // Og boksen laeses FORFRA: lukkes boks1 midt i klikket, mens siden aabner boks2, er det boks2 der staar nu.
+  // Foer svarede vi paa den gamle reference - «den er vaek, svar den ikke igen» - mens boks2 holdt fanen.
+  const nu = dialogFaner.get(tabId)?.boks || null;
+  const aaben = nu && !nu.lukket && !nu.besvaretAf && !nu.mistet ? nu : null;
+  const uafgjort = !aaben && ((dialogBoks.besvaretAf && !dialogBoks.lukket) || dialogBoks.mistet === 'debugger-detached');
+  return { landed: null, fallbackFired, unverified: true, dialog: true,
+    ...(aaben
+      ? { dialogInfo: { type: aaben.type, message: aaben.message } }
+      : uafgjort
+        ? { dialogUafgjort: true, dialogType: dialogBoks.type }
+        : { dialogLukket: true, dialogType: dialogBoks.type }) };
+}
 async function dispatchTaalmodigt(tabId, params) {
   const foer = dialogFaner.get(tabId)?.boks || null;
   const armeret = armeredeDialoger.has(tabId);
@@ -2002,25 +2023,7 @@ async function debuggerClick(tabId, x, y, bundet = false) {
     // reserve. Svaret er uvist med dialogen navngivet, saa agenten kalder browser_handle_dialog i stedet for at vente.
     if (dialogBoks) {
       vagtArmet = false;
-      // #100: svaret skal beskrive boksen som den staar NAAR svaret skrives - ikke som den saa ud, da vi fangede den.
-      // TRE udfald, ikke to (panelet, runde 1b):
-      //   staar     -> nutid med dialog_open, saa agenten kan besvare den.
-      //   uafgjort  -> vi har SENDT et svar, som Chrome ikke har bekraeftet (besvaretAf uden lukket), eller
-      //                fejlfinderen faldt af (mistet === 'debugger-detached'). Dialogen kan stadig staa paa
-      //                skaermen, og vores vaerktoejer kan ikke naa den - samme sandhed som reattach_debugger
-      //                selv skriver. At kalde det «vaek» var en loegn i den dyre retning.
-      //   vaek      -> lukket, eller fanen lukket: datid, uden raad.
-      // Og boksen laeses FORFRA: lukkes boks1 midt i klikket, mens siden aabner boks2, er det boks2 der staar nu.
-      // Foer svarede vi paa den gamle reference - «den er vaek, svar den ikke igen» - mens boks2 holdt fanen.
-      const nu = dialogFaner.get(tabId)?.boks || null;
-      const aaben = nu && !nu.lukket && !nu.besvaretAf && !nu.mistet ? nu : null;
-      const uafgjort = !aaben && ((dialogBoks.besvaretAf && !dialogBoks.lukket) || dialogBoks.mistet === 'debugger-detached');
-      return { landed: null, fallbackFired: false, unverified: true, dialog: true,
-        ...(aaben
-          ? { dialogInfo: { type: aaben.type, message: aaben.message } }
-          : uafgjort
-            ? { dialogUafgjort: true, dialogType: dialogBoks.type }
-            : { dialogLukket: true, dialogType: dialogBoks.type }) };
+      return dialogKlikVurdering(tabId, dialogBoks);
     }
     if (trykFejl) throw trykFejl;
     // 3. Framework fallback — only if the captured target is STILL connected (i.e.
@@ -6958,7 +6961,26 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
           // Ingen "ny adresse = klikket navigerede"-regel her. Astra (efterproevning af c1496d4): en UAFHAENGIG navigation
           // fjernede rammen foer scriptet koerte, og reglen svarede ok:true med nul handlinger. En afvisning beviser ikke at
           // scriptet koerte, og en ny adresse beviser ikke at det var klikket.
-          const r = await scriptingClick(tab.id, params.selector);
+          // #100: el.click() kan holde executeScript aabent paa confirm() i en baggrundsfane.
+          // Tag boksen FOER reserven, og lyt ogsaa efter en ny boks mens scriptet venter.
+          // Loeftet har begge haandteringer fra start: et sent svar/en sen fejl gentager intet klik.
+          const foer = dialogFaner.get(tab.id)?.boks || null;
+          let faerdig = false, r, fejl, afvist = false, dialogBoks = null;
+          const kald = scriptingClick(tab.id, params.selector).then(
+            (svar) => { faerdig = true; r = svar; },
+            (e) => { faerdig = true; afvist = true; fejl = e; },
+          );
+          while (!faerdig) {
+            dialogBoks = nyUbesvaretBoks(tab.id, foer);
+            if (dialogBoks) break;
+            await Promise.race([kald, new Promise((r) => setTimeout(r, 40))]);
+          }
+          dialogBoks = dialogBoks || nyUbesvaretBoks(tab.id, foer);
+          if (dialogBoks) {
+            const vurdering = dialogKlikVurdering(tab.id, dialogBoks, true);
+            return { method: 'scripting-fallback', ...vurdering, ok: false, ...uvisVurdering(vurdering) };
+          }
+          if (afvist) throw fejl;
           if (r.reason === 'covered') return daekketSvar(params.selector, r, 'scripting-fallback');
           if (r.reason === 'hidden') {
             return { ok: false, method: 'scripting-fallback', hidden: true, tag: r.tag,
