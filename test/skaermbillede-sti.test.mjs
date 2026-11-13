@@ -35,10 +35,16 @@ linkSync(join(udenfor, 'vigtig.png'), join(arbejd, 'haard.png'));   // hardlink:
 
 const boern = [];
 const sokler = [];
-after(() => {
+after(async () => {
   for (const s of sokler) try { s.terminate(); } catch {}
-  for (const b of boern) try { b.kill('SIGKILL'); } catch {}
-  rmSync(arbejd, { recursive: true, force: true }); rmSync(udenfor, { recursive: true, force: true });
+  // 20/10 (GitHubs Windows-job, run 39471383314): rmSync kom foer et draebt barn havde sluppet mappen - EBUSY paa rmdir.
+  // Vent paa at hvert barn er lukket (hoejst 5 s), og lad rmSync proeve igen et par gange.
+  await Promise.all(boern.map((b) => new Promise((ok) => {
+    if (b.exitCode !== null || b.signalCode !== null) return ok();
+    b.once('exit', ok); setTimeout(ok, 5000);
+    try { b.kill('SIGKILL'); } catch { ok(); }
+  })));
+  for (const d of [arbejd, udenfor]) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 /** Falsk udvidelse: ringer op til spaendet, hilser, og svarer paa hvert kald. */

@@ -1,4 +1,4 @@
-// KILDE: permissions verbatim fra extension/manifest.json (tabs, tabGroups, cookies, scripting, activeTab, storage, alarms, offscreen, notifications, webNavigation, debugger + host_permissions <all_urls>). "100% local" fra README (verificeret 2026-07-21; "nothing leaves your machine" trukket tilbage 10/9 - agenten sender det den laeser videre til AI-klienten). Uninstall-trin fra CWS + npm standard.
+// KILDE: permissions verbatim fra extension/manifest.json (tabs, tabGroups, cookies, scripting, storage, alarms, offscreen, notifications, webNavigation, debugger + host_permissions <all_urls>). "100% local" fra README (verificeret 2026-07-21; "nothing leaves your machine" trukket tilbage 10/9 - agenten sender det den laeser videre til AI-klienten). Uninstall-trin fra CWS + npm standard.
 
 # Uninstall, and what it touches
 
@@ -32,8 +32,8 @@ Browser MCP requests broad permissions for one reason: its whole job is to opera
 
 | Permission | Why it's needed |
 |---|---|
-| `tabs`, `tabGroups`, `activeTab` | See and switch between your tabs; group concurrent sessions |
-| `scripting`, `debugger` | Click, type, read pages, run scripts and read network responses via trusted events (works on React/Angular and CSP-strict sites) |
+| `tabs`, `tabGroups` | See and switch between your tabs; group concurrent sessions |
+| `scripting`, `debugger` | Click, type, read pages and read network responses via trusted events (works on React/Angular and CSP-strict sites); the JavaScript your agent sends runs only through `debugger` |
 | `cookies` | Read and set cookies when you ask the agent to (`browser_get_cookies`, `browser_set_cookies`). Staying logged in does not need it: Chrome sends your cookies with every page the agent opens |
 | `webNavigation` | List a page's frames, so a tool can reach into an iframe |
 | `storage`, `alarms`, `offscreen`, `notifications` | Local extension state, two timers (keep the bridge alive; release a port when a session's last tab closes), the WebSocket bridge, and status prompts |

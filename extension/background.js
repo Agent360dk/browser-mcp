@@ -614,8 +614,10 @@ const CDP_FRIST_TUNG_MS = 20000;   // under serverens 30 s, men over alt lovligt
 
 function cdpFrist(method, params) {
   const m = String(method);
-  // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte".
-  if (m === 'Runtime.evaluate' && params && params.awaitPromise) return CDP_FRIST_TUNG_MS;
+  // Brugerens egen kode maa vente: awaitPromise betyder "vent paa dette loefte". R131 (Opus, maalt i Chrome): 20 s skar et
+  // loefte paa 21 s over, som 1.30.3 besvarede (MAIN-vejen havde ingen frist under serverens). Fristen foelger derfor
+  // serverens egen frist minus hjemrejsen - samme udledning som skaermbilledets budget. Kun koerAgentKode bruger awaitPromise.
+  if (m === 'Runtime.evaluate' && params && params.awaitPromise) return SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS;
   if (m === 'Page.captureScreenshot' || m === 'Network.getResponseBody') return CDP_FRIST_TUNG_MS;
   return m.startsWith('Input.') ? CDP_FRIST_INPUT_MS : CDP_FRIST_MS;
 }
@@ -676,11 +678,13 @@ function erCdpFrist(e) {
   return /did not respond within|svarede ikke inden/.test((e && e.message) || '');
 }
 
-function cdpMedFrist(tabId, method, params) {
+// sessionId (1.31.0): en frame fra et andet domaene (OOPIF) er sit eget maal i debuggeren. Den naas gennem fanens egen
+// tilslutning med flade sessioner (Target.setAutoAttach, flatten:true, Chrome 125+), ved at sende sessionId med.
+function cdpMedFrist(tabId, method, params, sessionId = null, fristMs = null) {
   let ur;
-  const frist = cdpFrist(method, params);
+  const frist = fristMs != null ? fristMs : cdpFrist(method, params);
   return Promise.race([
-    chrome.debugger.sendCommand({ tabId }, method, params),
+    chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, method, params),
     new Promise((_, afvis) => {
       // MAALT 11/9 (raa CDP-proeve i Chrome for Testing): Chrome leverer ikke Input.* til en fane i baggrunden.
       // Kaldet haenger, og efter aktivering svarer det paa millisekunder. Fejlen siger det, saa agenten ved hvad den goer.
@@ -694,7 +698,16 @@ function cdpMedFrist(tabId, method, params) {
   ]).finally(() => clearTimeout(ur));
 }
 
-async function cdpSend(tabId, method, params = {}) {
+// Fejl FOER noget er sendt til Chrome (kaldets tid er brugt): kalderen ved, at intet er koert.
+function ikkeSendtFejl(besked) {
+  const e = new Error(besked);
+  e.ikkeSendt = true;
+  return e;
+}
+
+// slut (R133, Astra): kaldets sluttid. Fristen regnes EFTER tilslutningen herunder, ved hvert forsoeg, og er tiden brugt,
+// sendes intet - ellers kunne en langsom tilslutning skubbe afsendelsen forbi serverens frist.
+async function cdpSend(tabId, method, params = {}, sessionId = null, slut = null, vagt = null) {
   await debuggerAttach(tabId);
   let lastMsg = '';
   // 4 total attempts (initial + 3 retries) for read-only methods; backoff 100/300/500ms.
@@ -702,7 +715,17 @@ async function cdpSend(tabId, method, params = {}) {
   // where Chrome re-detaches between attach and command execution.
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return await cdpMedFrist(tabId, method, params);
+      let frist = null;
+      if (slut != null) {
+        frist = Math.min(cdpFrist(method, params), slut - Date.now());
+        if (frist <= 0) throw ikkeSendtFejl(`the call ran out of time before ${method} could be sent`);
+      }
+      // Den sidste afsendelseskontrol (R134): har kaldets ydre frist allerede svaret, sendes agentkoden ikke.
+      if (vagt) {
+        if (vagt.lukket) throw ikkeSendtFejl('the call had already answered that its time ran out; the code was not sent');
+        vagt.sendt = true;
+      }
+      return await cdpMedFrist(tabId, method, params, sessionId, frist);
     } catch (e) {
       const msg = e?.message || String(e);
       const isDetachError =
@@ -3381,6 +3404,56 @@ function genbygOffscreen() {
   });
 }
 
+// ── Installationens identitet (1.31, #58) ─────────────────────────────────────
+// Chrome Web Store-udvidelsen har samme id i alle profiler, saa serveren kunne ikke se HVILKEN profil en forbindelse kom
+// fra. Hver installation (én pr. Chrome-profil) faar derfor:
+//   instance - 16 tilfaeldige hex-tegn, lavet ÉN gang og gemt i chrome.storage.local (ikke sync: hver profil sin egen).
+//              Den laves her, FOER offscreen-dokumentet, og foelger med i dokumentets adresse (&i=): et offscreen-dokument
+//              har kun chrome.runtime og kan ikke selv laese lageret (R106 - samme fejl som 1.30.0's parring maalte).
+//   profile  - brugerens betegnelse fra popuppen, ^[A-Za-z0-9._-]{1,32}$ eller null (&p=). Den er et VALG, ikke en noegle:
+//              hilsenen er usigneret, og et andet program paa maskinen kan paastaa samme betegnelse (README).
+const PROFIL_MOENSTER = /^[A-Za-z0-9._-]{1,32}$/;
+const INSTANS_MOENSTER = /^[0-9a-f]{16}$/;
+
+function rensProfil(v) {
+  const t = typeof v === 'string' ? v.trim() : '';
+  return PROFIL_MOENSTER.test(t) ? t : null;
+}
+
+// Samtidige kald deler ét opslag, saa to kaldere aldrig laver hver sit id.
+let identitetIGang = null;
+function installationsIdentitet() {
+  if (!identitetIGang) {
+    identitetIGang = (async () => {
+      const { bmcpInstans = null, bmcpProfil = null } = await chrome.storage.local.get({ bmcpInstans: null, bmcpProfil: null });
+      let instans = INSTANS_MOENSTER.test(String(bmcpInstans ?? '')) ? bmcpInstans : null;
+      if (!instans) {
+        const b = new Uint8Array(8);
+        crypto.getRandomValues(b);
+        instans = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+        await chrome.storage.local.set({ bmcpInstans: instans });
+      }
+      return { instans, profil: rensProfil(bmcpProfil) };
+    })().finally(() => { identitetIGang = null; });
+  }
+  return identitetIGang;
+}
+
+// Omdoebning fra popuppen: gem betegnelsen, og send den til offscreen-dokumentet, som sender en ny hilsen paa alle aabne
+// forbindelser. Dokumentet genskabes IKKE - det ville afbryde alle chats' igangvaerende kald (R107). Er en opbygning af
+// broen i gang, ventes den ud foerst (ensureOffscreen slutter sig til den), saa beskeden ikke kommer foer dokumentet lytter;
+// et dokument, der bygges bagefter, laeser den nye betegnelse fra lageret.
+async function saetProfil(raa) {
+  const t = typeof raa === 'string' ? raa.trim() : '';
+  if (t && !PROFIL_MOENSTER.test(t)) return { ok: false, error: 'profile-invalid' };
+  const profil = t || null;
+  await chrome.storage.local.set({ bmcpProfil: profil });
+  try { await ensureOffscreen(); } catch (e) { console.warn('[BG] broen kunne ikke bygges efter omdoebning:', e?.message || e); }
+  try { await chrome.runtime.sendMessage({ type: 'bmcp_profil', profile: profil }); } catch { /* intet dokument lytter */ }
+  const { instans } = await installationsIdentitet();
+  return { ok: true, profile: profil, instance: instans };
+}
+
 async function ensureOffscreenIndre() {
   const findes = await chrome.offscreen.hasDocument();
 
@@ -3444,9 +3517,15 @@ async function ensureOffscreenIndre() {
   // er repoets filer byte-identiske, og udgivelsens kode-aftryk er uroert. (Mit foerste forslag, at flytte portene
   // til manifestet, ville have fjernet dem fra aftrykket - Astra maalte at de ligger i offscreen.js, som hashes.)
   const porteParam = await portOmraadeFraLager();
+  // 1.31 (#58): installationens id og betegnelse (se installationsIdentitet). Kan lageret ikke laeses, sendes ingen - saa
+  // hilser broen som en udvidelse fra foer 1.31, i stedet for at broen ikke bygges.
+  let ident = null;
+  try { ident = await installationsIdentitet(); } catch (e) { console.warn('[BG] installationens id kunne ikke laeses:', e?.message || e); }
+  const identParam = (ident ? '&i=' + ident.instans : '') + (ident && ident.profil ? '&p=' + encodeURIComponent(ident.profil) : '');
+  const forespoergsel = [minVersion ? 'v=' + encodeURIComponent(minVersion) : '', porteParam ? 'porte=' + porteParam : '']
+    .filter(Boolean).join('&') + identParam;
   await chrome.offscreen.createDocument({
-    url: 'offscreen.html' + (minVersion ? '?v=' + encodeURIComponent(minVersion) : '')
-         + (porteParam ? (minVersion ? '&' : '?') + 'porte=' + porteParam : ''),
+    url: 'offscreen.html' + (forespoergsel ? '?' + forespoergsel.replace(/^&/, '') : ''),
     reasons: ['WORKERS'],
     justification: 'Maintain persistent WebSocket connection to local MCP server',
   });
@@ -3454,7 +3533,8 @@ async function ensureOffscreenIndre() {
 
 // ── Action Logging ─────────────────────────────────────────────────────────
 
-const SENSITIVE = new Set(['get_cookies', 'get_local_storage', 'execute_script', 'extract_token']);
+// 1.31.0: select_frame koerer ogsaa agentens JavaScript (R129-ASTRA D40) og fremhaeves som execute_script.
+const SENSITIVE = new Set(['get_cookies', 'get_local_storage', 'execute_script', 'select_frame', 'extract_token']);
 
 // MAALT 11/9 (Astra, efterproevet): her stod `params: JSON.stringify(params).slice(0, 200)`.
 // De foerste 200 tegn af ALLE parametre — ogsaa vaerdien til fill (adgangskoder), cookie-
@@ -3500,26 +3580,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 26/9: parringen er trukket tilbage i 1.30.1 - baggrunden udleverer ingen noegle.
   if (msg.type === 'mcp_command') {
     const port = msg.port;
+    // R133 (Astra): kaldets ur starter HER, naar udvidelsen modtager det - foer sessionsgendannelse og adoption.
+    const modtaget = Date.now();
     logAction(port, msg.method);
+    // R134: agentkodens to vaerktoejer svarer altid inden for budgettet (se AGENTKODE_FRIST). Kun det foerste svar sendes.
+    const vagt = AGENTKODE_METODER.has(msg.method) ? { sendt: false, lukket: false } : null;
+    let svaret = false;
+    const svar = (r) => { if (svaret) return; svaret = true; sendResponse(r); };
     // Restore sessions from storage (service worker may have restarted), then take over any
     // session orphaned by an unclean disconnect so navigate→click keeps hitting the same tab.
-    restoreSessions()
+    const arbejde = restoreSessions()
       .then(() => adoptOrphanedSession(port, msg.pid).catch(() => null)) // adoption is best-effort, never fatal
       .then(() => {
         // Stempl pid'en ÉT sted, foer dispatch. De fem nedstroems getSession(port)-kald
         // arver den derfra, saa ingen af dem behoever at kende til pid-begrebet.
         getSession(port, msg.pid);
-        dispatch(port, msg.method, msg.params)
-          .then(result => sendResponse(result))
-          .catch(err => sendResponse({ __error: err.message || String(err) }));
-      })
-      .catch(err => sendResponse({ __error: err.message || String(err) })); // else a storage-restore reject hangs the caller
+        return dispatch(port, msg.method, msg.params, modtaget, vagt);
+      });
+    arbejde.then((r) => svar(r)).catch((err) => svar({ __error: err.message || String(err) })); // ogsaa en afvist sessionsgendannelse svares
+    if (vagt) {
+      const ur = setTimeout(() => {
+        vagt.lukket = true;
+        svar(vagt.sendt
+          ? { __error: 'The code was sent to the page, but no answer came back within the call\'s time. It MAY already have run. ' +
+              'It is not repeated automatically - call again only if it is safe to run twice.' }
+          : { ok: false, error: 'call-timeout', sent: false, retry: true,
+              note: 'Nothing was run; the call ran out of time before the code could be sent. Call again.' });
+      }, Math.max(0, agentKodeSlut(modtaget) - Date.now()));
+      arbejde.catch(() => {}).then(() => clearTimeout(ur));
+    }
     return true; // async response
   }
 
   if (msg.type === 'session_disconnect') {
     releaseSession(msg.port);
     return;
+  }
+
+  // 1.31 (#58): popuppen viser installationens id og betegnelse og kan omdoebe den.
+  if (msg.type === 'bmcp_identitet') {
+    installationsIdentitet()
+      .then(({ instans, profil }) => sendResponse({ ok: true, instance: instans, profile: profil }))
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
+  }
+  if (msg.type === 'bmcp_saet_profil') {
+    saetProfil(msg.profile)
+      .then(sendResponse)
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
   }
 
   if (msg.type === 'reconnect') {
@@ -5028,7 +5137,266 @@ async function interceptFileChooser(tabId, selector, fileList) {
 
 // ── Command Dispatcher ──────────────────────────────────────────────────────
 
-async function dispatch(port, method, params) {
+// ── Agentens JavaScript: KUN gennem chrome.debugger (1.31.0) ─────────────────────────────────────────────────────────────
+// Chrome Web Stores MV3-regler: kode, der ikke ligger i pakken, maa kun koeres gennem et API, der er lavet til det (Debugger
+// API eller User Scripts API), og «exemptions apply solely to the specific section of code covered by these APIs». Til og med
+// 1.30.3 gik browser_execute_script foerst gennem chrome.scripting og en streng kompileret i ISOLATED og MAIN, og
+// browser_select_frame kun den vej (R129b, Astra og Opus uafhaengigt). Nu gaar begge vaerktoejer gennem Runtime.evaluate i
+// sidens eller framens standardkontekst: koden ser sidens egne globale variabler som i MAIN, og sidens CSP stopper den ikke.
+// Ingen streng kompileres i udvidelsen selv (test/agentkode-debugger.test.mjs holder det fast).
+const FRAME_TEKST_UDTRYK = 'document.body.innerText.slice(0, 5000)';
+const AGENTKODE_KASTEDE = 'The code threw an error (or did not compile). It is not run again automatically: anything it did before the error has already happened.';
+
+// Fejlen fra Runtime.evaluate (exceptionDetails) som besked og navn - samme form som en fanget Error: «boom», «TypeError».
+function agentKodeFejl(ex) {
+  const e = (ex && ex.exception) || {};
+  const navn = e.className || undefined;
+  if (typeof e.description === 'string' && e.description) {
+    let besked = e.description.split('\n')[0];
+    if (navn && besked.startsWith(navn + ': ')) besked = besked.slice(navn.length + 2);
+    return { besked, navn };
+  }
+  if ('value' in e) return { besked: String(e.value), navn };   // throw 'tekst' eller et tal
+  return { besked: (ex && ex.text) || 'Script exception', navn };
+}
+
+// Hele vaerktoejskaldet har serverens budget (SERVER_FRIST_MS minus svarets hjemrejse), regnet fra udvidelsen MODTOG kaldet
+// (onMessage, foer sessionsgendannelse og adoption). R132/R133 (Astra): fristen gaelder forarbejdet, den sidste
+// afsendelseskontrol (efter tilslutningen i cdpSend) og svaret; oprydningen koerer videre efter svaret uden at holde det.
+// R134 (Astra): trin-for-trin-fristerne kunne ikke holde svaret inden for budgettet - tilslutning, gentilslutning,
+// sessionsgendannelse, getSessionTab og getAllFrames kan vente uden graense. Derfor ét ydre Promise.race om hele kaldet
+// (onMessage, AGENTKODE_METODER): naar budgettet er brugt, svares der straks og sandt om, hvorvidt agentkoden er sendt.
+// En vagt { sendt, lukket } foelger kaldet: cdpSend saetter sendt lige foer agentkoden gaar til Chrome, og racen saetter
+// lukket, naar den har svaret - derefter sender cdpSend aldrig agentkoden. budget er et objekt, saa proever kan korte det.
+const AGENTKODE_FRIST = { budget: SERVER_FRIST_MS - SVARETS_HJEMREJSE_MS };
+const AGENTKODE_METODER = new Set(['execute_script', 'select_frame']);
+function agentKodeSlut(start) { return start + AGENTKODE_FRIST.budget; }
+
+// kontekst: {} = hovedsidens standardkontekst; { sessionId, uniqueContextId } = en bestemt frame (sessionId for en OOPIF).
+// R133 (Astra): CDP's numeriske executionContextId kan genbruges paa tvaers af processer ved navigation; uniqueContextId kan
+// ikke, og et forsvundet svarer «uniqueContextId not found» (maalt 19/10, Chrome 155) i stedet for at ramme en anden kontekst.
+// slut: kaldets sluttid (agentKodeSlut); uden det faar koden cdpFrist's frist.
+async function koerAgentKode(tabId, kode, { sessionId = null, uniqueContextId = null } = {}, slut = null, vagt = null) {
+  const p = { expression: '(' + kode + '\n)', returnByValue: true, awaitPromise: true };
+  if (uniqueContextId != null) p.uniqueContextId = uniqueContextId;
+  // R135 (Astra): «sendt» er ét sted - vagten, som cdpSend saetter LIGE foer Runtime.evaluate gaar til Chrome (efter cdpSends
+  // egen tilslutning). En lokal markering foer cdpSend sagde «MAY already have run», naar den tilslutning fejlede og intet
+  // var sendt. Uden en ydre vagt faar kaldet sin egen.
+  const v = vagt || { sendt: false, lukket: false };
+  let raw, fejl = '';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      await debuggerAttach(tabId);
+      if (slut != null && slut - Date.now() <= 0) { fejl = 'the call had used its time before the code could be sent'; break; }
+      raw = await cdpSend(tabId, 'Runtime.evaluate', p, sessionId, slut, v);
+      break;
+    } catch (e) {
+      fejl = String(e?.message || e);
+      // R132 (maalt i Opus' karrusel): forsvandt konteksten, foer Chrome slog den op, er udtrykket aldrig oversat eller
+      // koert - V8 afviser kaldet ved opslaget. Saa er intet koert, og kalderen maa gerne proeve igen.
+      if (/Cannot find context with specified id|uniqueContextId not found/i.test(fejl)) { v.sendt = false; break; }
+      // MAALT 10/9 af Astra: faldt debuggeren af EFTER at koden var sendt, koerte en gentagelse BRUGERENS kode igen - op til
+      // fire gange. Vi kan ikke se, om et vilkaarligt script muterer. Er det sendt, gentages det ikke; kun en fejl FOER
+      // afsendelsen proeves igen. (Samme regel som for Runtime.evaluate i cdpSend.)
+      if (v.sendt) break;
+      if (e && e.ikkeSendt) break;   // tiden slap op foer afsendelsen
+      if (!/detach|attach|gone|given id|not attached/i.test(fejl)) break;
+    }
+    await new Promise((r) => setTimeout(r, 200 + attempt * 200));
+  }
+  const sendt = v.sendt;
+  if (raw && raw.exceptionDetails) {
+    const { besked, navn } = agentKodeFejl(raw.exceptionDetails);
+    return { ok: false, error: besked, ...(navn ? { name: navn } : {}), method: 'debugger', note: AGENTKODE_KASTEDE };
+  }
+  // FIX (2026-07-16): paa nogle sider falder debuggeren af midt i kaldet, og sendCommand svarer `undefined` i stedet for at
+  // afvise. Et svar UDEN result er derfor ikke et tomt resultat. Et result af typen undefined er derimod kodens eget svar.
+  if (raw && raw.result) return { result: raw.result.value, method: 'debugger' };
+  if (!sendt) {
+    const e = new Error('The code was not run (nothing was sent): ' + (fejl || 'the Chrome debugger could not attach to the tab'));
+    e.ikkeSendt = true;
+    throw e;
+  }
+  throw new Error('The code was sent to the page, but no answer came back (' + (fejl || 'empty debugger response: ' + JSON.stringify(raw)) +
+    '). It MAY already have run. It is not repeated automatically - call again only if it is safe to run twice.');
+}
+
+// ── Hvilken debugger-frame ER udvidelsens frame? Et engangsmaerke i framens dokument (R132, Astra og Opus) ───────────────
+// 866c49a parrede paa adresse og position, 5b66c97 paa placering (plads i window.frames). Begge kunne koere agentens kode i
+// en SOESKENDE-frame med et normalt svar: Chromium melder OOPIF-maal i en udokumenteret raekkefoelge, og en side, der
+// fjerner én frame og tilfoejer en anden mellem de to maalinger, giver en anden frame samme plads (Opus' karrusel, maalt i
+// Chrome: 4-31 af 40 forkerte ved 26-261 udskiftninger i sekundet). Placering er ikke identitet.
+// Nu er beviset et tilfaeldigt engangsmaerke:
+//   1. udvidelsen saetter maerket i udvidelsens ISOLATED-verden i netop den valgte frame (chrome.scripting, frameIds) -
+//      Chrome selv vaelger dokumentet ud fra udvidelsens frameId;
+//   2. debuggeren ser udvidelsens egen isolerede verden i hver frame (Runtime.executionContextCreated, type isolated, origin
+//      chrome-extension://<vores id>; maalt 19/10 i Chrome 155, ogsaa i OOPIF og i lukkede shadow roots) og spoerger hver af
+//      dem, om den har maerket (callFunctionOn med maerket som ARGUMENT - ingen streng bygges);
+//   3. kun den kontekst, der har maerket, er det dokument; agentens kode koerer i samme frames standardkontekst (isDefault)
+//      fra samme melding. Maerket fjernes bagefter.
+// Siden kan hverken se eller saette maerket: det ligger i udvidelsens isolerede verden, ikke i DOM'en.
+// handling 0 = saet, 1 = har framen maerket?, 2 = fjern.
+function frameMaerke(handling, maerke) {
+  const m = globalThis.__bmcpFrameMaerker || (globalThis.__bmcpFrameMaerker = new Set());
+  // R134 (Opus): adressen paa det dokument, maerket blev sat i - framen kan have navigeret siden getAllFrames.
+  if (handling === 0) { m.add(maerke); return String(location.href); }
+  if (handling === 2) { m.delete(maerke); return true; }
+  return m.has(maerke);
+}
+
+function nytFrameMaerke() {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+// Fejl ved framevalget. varig = et nyt forsoeg giver samme svar (agenten skal ikke gaa i ring); ellers kan det hjaelpe.
+function frameFejl(besked, varig) {
+  const e = new Error(besked);
+  e.varig = varig;
+  return e;
+}
+
+// Et loefte, der hoeist maa vente til sluttiden; derefter en forbigaaende fejl (intet er sendt endnu i opslaget).
+function inden(loefte, slut, hvad) {
+  if (slut == null) return loefte;
+  const rest = slut - Date.now();
+  if (rest <= 0) return Promise.reject(frameFejl(`the call ran out of time while ${hvad}`, false));
+  let ur;
+  return Promise.race([loefte, new Promise((_, afvis) => { ur = setTimeout(() => afvis(frameFejl(`the call ran out of time while ${hvad}`, false)), rest); })])
+    .finally(() => clearTimeout(ur));
+}
+
+async function maerkFramen(tabId, frameId, maerke, handling, slut = null) {
+  try {
+    const [r] = await inden(chrome.scripting.executeScript({ target: { tabId, frameIds: [frameId] }, world: 'ISOLATED', func: frameMaerke, args: [handling, maerke] }),
+      slut, 'marking the frame');
+    if (!r || (handling === 0 ? typeof r.result !== 'string' : r.result !== true)) throw new Error('no answer from the frame');
+    return r.result;
+  } catch (e) {
+    if (e && e.varig !== undefined) throw e;
+    const m = String(e?.message || e);
+    // «Cannot access contents of ...»: udvidelsen maa ikke koere i den frame (fx en anden udvidelses side) - varigt.
+    throw frameFejl(`the extension could not mark the frame (${m})`, /cannot access|permission/i.test(m));
+  }
+}
+
+// Alle kontekster i en session, som Runtime.enable melder dem. Runtime.enable melder kun de eksisterende kontekster, naar
+// domaenet ikke allerede er slaaet til (maalt 19/10), saa det slaas fra foerst og fra igen bagefter; en kontekst kan stadig
+// bruges efter Runtime.disable (maalt 19/10). chrome.debugger lover ikke, at haendelserne kommer foer svaret, saa der ventes,
+// til der ikke kommer flere. executionContextsCleared (R133, Astra) toemmer listen: alle kendte kontekster er vaek.
+async function konteksterISession(tabId, sid, slut = null) {
+  const ctx = new Map();
+  const lyt = (kilde, metode, ep) => {
+    if (kilde.tabId !== tabId || (kilde.sessionId || null) !== sid) return;
+    if (metode === 'Runtime.executionContextCreated' && ep && ep.context) ctx.set(ep.context.id, ep.context);
+    if (metode === 'Runtime.executionContextDestroyed' && ep) ctx.delete(ep.executionContextId);
+    if (metode === 'Runtime.executionContextsCleared') ctx.clear();
+  };
+  chrome.debugger.onEvent.addListener(lyt);
+  try {
+    await cdpSend(tabId, 'Runtime.disable', {}, sid, slut).catch(() => {});
+    await cdpSend(tabId, 'Runtime.enable', {}, sid, slut);
+    let foer = -1;
+    for (let i = 0; i < 10 && ctx.size !== foer && (slut == null || Date.now() + 50 < slut); i++) {
+      foer = ctx.size;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  } finally {
+    chrome.debugger.onEvent.removeListener(lyt);
+    // Oprydning: ikke bundet af kaldets sluttid (intet agentarbejde), og den holder ikke svaret, hvis den haenger.
+    cdpSend(tabId, 'Runtime.disable', {}, sid).catch(() => {});
+  }
+  return [...ctx.values()];
+}
+
+// Frames fra andre domaener (OOPIF) er egne maal i debuggeren. Target.setAutoAttach med flatten:true (Chrome 125+)
+// tilslutter dem som sessioner under fanens tilslutning og melder dem med Target.attachedToTarget - ogsaa inde i hinanden.
+// Auto-attach slaas foerst fra: staar det allerede til, melder Chrome ikke de tilsluttede igen (maalt 19/10).
+// Ét niveau ad gangen, alle sessioner paa niveauet samtidig (R133, Opus G: 45 fremmede frames tog 2,5-2,8 s, og et loft paa 40
+// sessioner lod frames i de fremmede frames' egne fremmede boern ude). R134 (Astra): et loft paa 500 gav en falsk permanent
+// fejl - det er fjernet; kun kaldets tid begraenser soegningen, og en soegning, der ikke blev faerdig, er forbigaaende.
+async function tilknytFremmedeFrames(tabId, slut = null) {
+  const alle = [];
+  let niveau = [null];
+  await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }, null, slut).catch(() => {});
+  while (niveau.length) {
+    const nye = [];
+    const fra = new Set(niveau);
+    const lyt = (kilde, metode, ep) => {
+      if (kilde.tabId !== tabId || !fra.has(kilde.sessionId || null) || metode !== 'Target.attachedToTarget') return;
+      if (ep && ep.sessionId && ep.targetInfo && ep.targetInfo.type === 'iframe') nye.push(ep.sessionId);
+    };
+    chrome.debugger.onEvent.addListener(lyt);
+    try {
+      await Promise.all(niveau.map((sid) => cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sid, slut).catch(() => {})));
+      await inden(new Promise((r) => setTimeout(r, 100)), slut, 'attaching frames from other sites');   // haendelserne naar udvidelsen hver for sig
+    } finally {
+      chrome.debugger.onEvent.removeListener(lyt);
+    }
+    alle.push(...nye);
+    niveau = nye;
+  }
+  return alle;
+}
+
+// Kontekster i sessionen, hvis udvidelses-verden har maerket -> [{ sid, standard }]. Opslag og koersel bruger uniqueId.
+async function findMaerket(tabId, sid, maerke, slut = null) {
+  const egen = 'chrome-extension://' + chrome.runtime.id;
+  const ctxs = await konteksterISession(tabId, sid, slut);
+  const fund = [];
+  for (const c of ctxs) {
+    if (!c.auxData || c.auxData.isDefault || c.origin !== egen || !c.uniqueId) continue;
+    const r = await cdpSend(tabId, 'Runtime.callFunctionOn', { functionDeclaration: frameMaerke.toString(), uniqueContextId: c.uniqueId,
+      arguments: [{ value: 1 }, { value: maerke }], returnByValue: true }, sid, slut).catch((e) => { if (e && e.ikkeSendt) throw frameFejl(e.message, false); return null; });
+    if (!r || !r.result || r.result.value !== true) continue;
+    fund.push({ sid, standard: ctxs.find((d) => d.auxData && d.auxData.isDefault === true && d.auxData.frameId === c.auxData.frameId) || null });
+  }
+  return fund;
+}
+
+// Fanens igangvaerende oprydning (maerke og auto-attach) fra et tidligere kald. Et nyt kald venter kort paa den, saa et sent
+// «auto-attach fra» ikke kobler det nye kalds frame-sessioner af.
+const fanensOprydning = new Map();
+
+// Udvidelsens frame (webNavigation) -> { kontekst: { sessionId, uniqueContextId }, ryd, adresse }. Alle frames, ogsaa
+// hovedsiden, findes ved maerket. ryd() fjerner maerket og slaar auto-attach fra igen; den afventes ikke af svaret.
+async function findFrameKontekst(tabId, frames, valgt, slut = null) {
+  // R135 (Astra): ogsaa hovedsiden (frame 0) faar maerket - saa er frame_url dokumentets egen adresse, og navigerer siden
+  // mellem getAllFrames og koersel, er uniqueContextId vaek, og intet koeres.
+  const forrige = fanensOprydning.get(tabId);
+  if (forrige) await inden(forrige, slut == null ? Date.now() + 1000 : Math.min(slut, Date.now() + 1000), 'waiting for the previous call to clean up').catch(() => {});
+  try { await inden(debuggerAttach(tabId), slut, 'attaching the debugger'); } catch (e) { throw frameFejl(String(e?.message || e), false); }
+  const maerke = nytFrameMaerke();
+  const adresse = await maerkFramen(tabId, valgt.frameId, maerke, 0, slut);
+  let tilknyttet = false;
+  const ryd = () => {
+    const opr = (async () => {
+      await maerkFramen(tabId, valgt.frameId, maerke, 2).catch(() => {});
+      if (tilknyttet) await cdpSend(tabId, 'Target.setAutoAttach', { autoAttach: false, waitForDebuggerOnStart: false, flatten: true }).catch(() => {});
+    })();
+    fanensOprydning.set(tabId, opr);
+    opr.finally(() => { if (fanensOprydning.get(tabId) === opr) fanensOprydning.delete(tabId); });
+    return opr;
+  };
+  try {
+    let fund = await findMaerket(tabId, null, maerke, slut);
+    if (!fund.length) {
+      tilknyttet = true;
+      const sessioner = await tilknytFremmedeFrames(tabId, slut);
+      fund = (await Promise.all(sessioner.map((sid) => findMaerket(tabId, sid, maerke, slut)))).flat();
+    }
+    if (fund.length > 1) throw frameFejl(`${fund.length} debugger contexts carry the frame's mark (frame ${valgt.frameId})`, false);
+    if (!fund.length) throw frameFejl(`frame ${valgt.frameId} (${valgt.url}) was not found in the debugger (it may have navigated or closed)`, false);
+    if (!fund[0].standard || !fund[0].standard.uniqueId) throw frameFejl(`the frame has no default execution context in the debugger (frame ${valgt.frameId})`, false);
+    return { kontekst: { sessionId: fund[0].sid, uniqueContextId: fund[0].standard.uniqueId }, ryd, adresse };
+  } catch (e) {
+    ryd().catch(() => {});
+    throw e;
+  }
+}
+
+async function dispatch(port, method, params, modtaget = Date.now(), vagt = null) {
   switch (method) {
     case 'navigate': {
       const session = getSession(port);
@@ -5632,157 +6000,19 @@ async function dispatch(port, method, params) {
     }
 
     case 'execute_script': {
-      // v1.22.2 (DIAGNOSTIC): Try scripting paths but log all errors so we can see WHY they fail
-      // v1.26: accept `script` as alias for `code` — the historic param-name mismatch caused
+      const start = modtaget;
+      // v1.26: accept `script` as alias for `code` - the historic param-name mismatch caused
       // silent "unserializable"/undefined failures that read as "execute_script is broken".
       if (params.code == null && typeof params.script === 'string') params.code = params.script;
       if (typeof params.code !== 'string' || !params.code.trim()) {
-        return { ok: false, error: 'Missing code. Pass a JavaScript EXPRESSION in `code` (e.g. an IIFE: (() => {...; return x;})()). `return ...` at top level is invalid — the handler wraps code in parentheses.' };
+        return { ok: false, error: 'Missing code. Pass a JavaScript EXPRESSION in `code` (e.g. an IIFE: (() => {...; return x;})()). `return ...` at top level is invalid - the handler wraps code in parentheses.' };
       }
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot execute scripts on chrome:// pages');
-
-      const diag = { tried: [] };
-
-      // MAALT 10/9 af Astra (anden runde), reproduceret med en taeller: kode der udfoerte en
-      // effekt og SAA kastede, blev koert igen via debuggeren - to effekter. `sendt` beskyttede
-      // kun debugger-loekken. Er koden koert, er dens fejl svaret; den koeres ikke igen.
-      // Samme runde: scripting-stierne afventede ikke et Promise ("Promise.resolve(42)" gav {}).
-      // Den injicerede funktion er nu async og afventer resultatet.
-      const koertOgFejlede = (r) => ({
-        ok: false, error: r.message, name: r.name,
-        method: r.world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
-        note: 'The code RAN and threw an error. It is not run again through the debugger, because what it ' +
-              'did manage before the error would then happen twice.',
-      });
-      // MAALT 11/9 af Astra (R5 F4), reproduceret: scriptet sendte en POST og returnerede et
-      // Promise; mens scripting-stien ventede, forsvandt dokumentet, og Chrome afviste med
-      // "Frame with ID 0 was removed." Handleren gik saa videre til debuggeren, som koerte koden
-      // igen - to POST'er. Forsvinder siden EFTER at koden er startet, kan den have koert, og
-      // den koeres ikke igen. Blev den aldrig indsproejtet, maa debuggeren stadig proeve.
-      const sidenForsvandt = (m) => /was removed|execution context was destroyed|document (was )?unloaded/i.test(m);
-      const maaskeKoert = (world, m) => ({
-        ok: false, error: m, maybe_ran: true,
-        method: world === 'MAIN' ? 'scripting-main' : 'scripting-isolated',
-        note: 'The page changed or closed while the code was running. It may already have run, so it ' +
-              'is not run again through the debugger. Call again only if it is safe to run twice.',
-      });
-      // Step 1: try ISOLATED world
-      try {
-        const [result] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          world: 'ISOLATED',
-          args: [params.code],
-          func: async (codeStr) => {
-            // Oversaettelse og koersel er adskilt: fejler oversaettelsen (CSP, syntaks), koerte
-            // intet, og debuggeren maa proeve. Fejler KOERSLEN, er koden allerede koert.
-            let fn;
-            try { fn = new Function('return (' + codeStr + ')'); }
-            catch (e) { return { __kompilering: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' }; }
-            try { return { __ok: true, value: await fn() }; }
-            catch (e) { return { __scriptingError: true, koerte: true, message: String(e?.message || e), name: e?.name, world: 'ISOLATED' }; }
-          },
-        });
-        const r = result?.result;
-        diag.tried.push({ world: 'ISOLATED', result_keys: r ? Object.keys(r) : null, r_type: typeof r });
-        if (r && typeof r === 'object' && r.__ok) {
-          return { result: r.value, method: 'scripting-isolated' };
-        }
-        if (r && typeof r === 'object' && r.__scriptingError && r.koerte) return koertOgFejlede(r);
-        if (r && typeof r === 'object' && (r.__scriptingError || r.__kompilering)) {
-          diag.isolated_error = r.message;
-        }
-      } catch (e) {
-        // Ingen maybe_ran her. MAALT 11/9 i Chrome for Testing 153: `new Function` i ISOLATED afvises af udvidelsens
-        // CSP ('unsafe-eval'), saa brugerens kode kan aldrig have koert i denne verden. Sign-off (Astra): en afvisning
-        // med "Frame with ID 0 was removed." foer start gav maybe_ran og nul koersler, hvor 1.29.0 koerte koden via MAIN.
-        diag.isolated_throw = String(e?.message || e);
-      }
-
-      // Step 2: try MAIN world
-      try {
-        const [result] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          world: 'MAIN',
-          args: [params.code],
-          func: async (codeStr) => {
-            // Oversaettelse og koersel er adskilt: fejler oversaettelsen (CSP, syntaks), koerte
-            // intet, og debuggeren maa proeve. Fejler KOERSLEN, er koden allerede koert.
-            let fn;
-            try { fn = new Function('return (' + codeStr + ')'); }
-            catch (e) { return { __kompilering: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' }; }
-            try { return { __ok: true, value: await fn() }; }
-            catch (e) { return { __scriptingError: true, koerte: true, message: String(e?.message || e), name: e?.name, world: 'MAIN' }; }
-          },
-        });
-        const r = result?.result;
-        diag.tried.push({ world: 'MAIN', result_keys: r ? Object.keys(r) : null, r_type: typeof r });
-        if (r && typeof r === 'object' && r.__ok) {
-          return { result: r.value, method: 'scripting-main' };
-        }
-        if (r && typeof r === 'object' && r.__scriptingError && r.koerte) return koertOgFejlede(r);
-        if (r && typeof r === 'object' && (r.__scriptingError || r.__kompilering)) {
-          diag.main_error = r.message;
-        }
-      } catch (e) {
-        const m = String(e?.message || e);
-        if (sidenForsvandt(m)) return maaskeKoert('MAIN', m);
-        diag.main_throw = m;
-      }
-
-      // Step 3: debugger fallback — the ONLY universal path for arbitrary STRING code
-      // (both scripting worlds block `new Function`: ISOLATED via MV3 extension-CSP,
-      // MAIN via the page\'s own unsafe-eval CSP). CDP Runtime.evaluate bypasses CSP.
-      // FIX (2026-07-16): retry on an EMPTY/undefined CDP response. On some pages the
-      // debugger auto-detaches mid-command and `chrome.debugger.sendCommand` RESOLVES
-      // with `undefined` instead of rejecting, so cdpSend's throw-based retry never
-      // fires and debuggerEval silently returned undefined → the caller saw a bare
-      // `{method:"debugger"}` with no result. Also surface script exceptions + raw
-      // diagnostics so a genuine failure is never mistaken for an empty success.
-      let rawDbg, dbgErr = '', sendt = false;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          await debuggerAttach(tab.id);
-          // MAALT 10/9 af Astra: faldt debuggeren af EFTER at scriptet var sendt, loeb loekken
-          // videre og koerte BRUGERENS kode igen — op til fire gange. Vi kan ikke se om et
-          // vilkaarligt script muterer. Samme regel som for Runtime.evaluate i cdpSend: er det
-          // sendt, gentages det ikke automatisk. Kun en fejl FOER afsendelse proeves igen.
-          sendt = true;
-          rawDbg = await cdpSend(tab.id, 'Runtime.evaluate', {
-            expression: '(' + params.code + '\n)',
-            returnByValue: true,
-            awaitPromise: true,
-          });
-          if (rawDbg && rawDbg.exceptionDetails) {
-            const ex = rawDbg.exceptionDetails;
-            await debuggerDetach(tab.id).catch(() => {});
-            throw new Error('__SCRIPT_EX__' + (ex.exception?.description || ex.text || 'Script exception'));
-          }
-          if (rawDbg && rawDbg.result && rawDbg.result.type !== 'undefined') {
-            await debuggerDetach(tab.id).catch(() => {});
-            return { result: rawDbg.result.value, method: 'debugger' };
-          }
-          dbgErr = 'empty/undefined CDP response: ' + JSON.stringify(rawDbg);
-          break;   // tomt svar efter afsendelse: scriptet kan have koert — gentag ikke
-        } catch (e) {
-          const m = String(e?.message || e);
-          if (m.startsWith('__SCRIPT_EX__')) {
-            throw new Error(m.slice('__SCRIPT_EX__'.length) + ' | scripting-diag: ' + JSON.stringify(diag));
-          }
-          dbgErr = m;
-          if (sendt) break;   // sendt = maaske koert — se kommentaren ved afsendelsen
-          if (!/detach|attach|empty|gone|given id|not attached/i.test(m)) break;
-        }
-        await debuggerDetach(tab.id).catch(() => {});
-        await new Promise(r => setTimeout(r, 200 + attempt * 200));
-      }
-      throw new Error(
-        'execute_script failed on all paths. debugger: ' + dbgErr +
-        (sendt ? ' | Note: the script was sent to the page before it failed and MAY already have run. ' +
-                 'It is not repeated automatically - call again only if it is safe to run twice.' : '') +
-        ' | raw: ' + JSON.stringify(rawDbg) +
-        ' | scripting-diag: ' + JSON.stringify(diag)
-      );
+      // 1.31.0: kun gennem debuggeren, i hovedsidens standardkontekst (sidens egne globale variabler, som MAIN foer).
+      // Til og med 1.30.3 stod her to forsoeg gennem chrome.scripting med strengkompilering (ISOLATED og MAIN) foer
+      // debuggeren - se koerAgentKode for hvorfor de er vaek, og for beskyttelsen mod at koere koden to gange.
+      return koerAgentKode(tab.id, params.code, {}, agentKodeSlut(start), vagt);
     }
 
     case 'click': {
@@ -7374,6 +7604,8 @@ async function dispatch(port, method, params) {
     }
 
     case 'select_frame': {
+      const start = modtaget;
+      const slut = agentKodeSlut(start);
       const tab = await getSessionTab(port);
       if (tab.url.startsWith('chrome://')) throw new Error('Cannot access chrome:// pages');
       const frameIndex = params.frame_index ?? 0;
@@ -7381,36 +7613,45 @@ async function dispatch(port, method, params) {
       if (!frames || frameIndex >= frames.length) {
         return { error: `Frame ${frameIndex} not found. Available: ${frames?.length || 0} frames`, frames: frames?.map((f, i) => ({ index: i, url: f.url })) };
       }
-      const frameId = frames[frameIndex].frameId;
-      // MAALT 21/8: her stod `func: new Function('return (' + code + ')')`. Den byggede
-      // funktionen i SERVICE-WORKEREN, hvor udvidelsens egen CSP forbyder eval — saa
-      // vaerktoejet fejlede paa hver eneste side, ogsaa med koden '1+1':
-      //   "Evaluating a string as JavaScript violates ... 'unsafe-eval' is not allowed".
-      // execute_script loeser det samme problem korrekt: send koden med som ARGUMENT og
-      // byg funktionen INDE i den injicerede func, hvor sidens egen CSP gaelder. Samme
-      // vej her.
-      //
-      // Og som i execute_script (v1.26): accepter `script` som alias for `code`. Samme
-      // navne-uoverensstemmelse har foer faaet vaerktoejer til at se brudte ud i tavshed.
+      const valgt = frames[frameIndex];
+      // Som i execute_script (v1.26): accepter `script` som alias for `code`. Samme navne-uoverensstemmelse har foer
+      // faaet vaerktoejer til at se brudte ud i tavshed.
       if (params.code == null && typeof params.script === 'string') params.code = params.script;
-      const code = params.code || 'document.body.innerText.slice(0, 5000)';
-      const [result] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id, frameIds: [frameId] },
-        world: 'MAIN',
-        args: [code],
-        func: (codeStr) => {
-          try {
-            return { __ok: true, value: new Function('return (' + codeStr + ')')() };
-          } catch (e) {
-            return { __scriptingError: true, message: String(e?.message || e) };
-          }
-        },
-      });
-      const r = result?.result;
-      if (r && r.__scriptingError) {
-        return { ok: false, error: r.message, frame_url: frames[frameIndex].url };
+      // 1.31.0: kun gennem debuggeren, i framens STANDARDkontekst (framens egne globale variabler, som MAIN foer). Uden
+      // kode laeses framens tekst med et fast udtryk fra pakken - ingen streng bygges eller kompileres i udvidelsen.
+      const code = params.code || FRAME_TEKST_UDTRYK;
+      let maal;
+      try {
+        maal = await findFrameKontekst(tab.id, frames, valgt, slut);
+      } catch (e) {
+        // Er framen vaek i mellemtiden, er fejlen forbigaaende, uanset hvad opslaget sagde. Opslaget er ogsaa bundet af tiden.
+        const findes = !!(e && e.varig) && await inden(Promise.resolve().then(() => chrome.webNavigation.getFrame({ tabId: tab.id, frameId: valgt.frameId })),
+          Math.min(slut, Date.now() + 300), 'checking the frame').catch(() => null);
+        const varig = !!(e && e.varig) && !!findes;
+        return { ok: false, error: 'frame-not-reachable', sent: false, retry: !varig, frame_url: valgt.url, detail: String(e?.message || e),
+          note: varig
+            ? 'Nothing was run. The extension may not run in this frame, so it cannot be identified through the Chrome ' +
+              'debugger, and calling again will give the same answer. Work with it from the page instead (browser_execute_script, ' +
+              'or tools such as browser_click and browser_get_page_content).'
+            : 'Nothing was run. The frame was not found, or the search was incomplete when the call ran out of time (the frame ' +
+              'may still be loading, or it navigated, closed or was replaced). Call browser_list_frames and try once more.' };
       }
-      return { result: r?.value, frame_url: frames[frameIndex].url };
+      try {
+        // frame_url er adressen paa det dokument, maerket blev sat i (og koden koerte i) - ikke getAllFrames' aeldre bud.
+        return { ...(await koerAgentKode(tab.id, code, maal.kontekst, slut, vagt)), frame_url: maal.adresse || valgt.url };
+      } catch (e) {
+        // Framens kontekst forsvandt, mellem den blev fundet og koden blev sendt (fx en side, der udskifter sine frames):
+        // intet er koert, og et nyt forsoeg kan lykkes.
+        if (e && e.ikkeSendt) {
+          return { ok: false, error: 'frame-not-reachable', sent: false, retry: true, frame_url: maal.adresse || valgt.url, detail: e.message,
+            note: 'Nothing was run; the frame changed or the call ran out of time before the code could be sent. Call ' +
+                  'browser_list_frames and try once more.' };
+        }
+        throw e;
+      } finally {
+        // Oprydningen (maerket, auto-attach) koerer videre efter svaret og holder det ikke (R133, Astra).
+        maal.ryd().catch(() => {});
+      }
     }
 
     case 'list_frames': {

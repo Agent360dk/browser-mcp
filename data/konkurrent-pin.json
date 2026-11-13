@@ -8,6 +8,7 @@
       "close_heapsnapshot",
       "close_page",
       "compare_heapsnapshots",
+      "configure_webauthn",
       "drag",
       "emulate",
       "evaluate_script",

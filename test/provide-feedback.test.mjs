@@ -46,6 +46,8 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
   const src = [
     udtraek('cmpVersion'), udtraek('liveConnections'),
     udtraek('activeConnection'), udtraek('distinctExtensions'), udtraek('forbindelsesAdvarsel'),
+    // 1.31 (R117): diagnosen af profilvalget koerer, saa snart der er forbindelser.
+    udtraek('profilDiagnose'), udtraek('profilKandidater'), udtraek('beskrivInstallation'),
     udtraek('skaerTegn'), udtraek('rensFritekst'), udtraek('fingeraftryk'), udtraek('afkortUrl'), udtraek('skrivTilLogbog'),
     udtraek('handleProvideFeedback'),
   ].join('\n\n');
@@ -57,7 +59,11 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
   const fabrik = new Function(
     'connections', 'PKG_VERSION', 'activePort', 'REPO_URL', 'ISSUE_TEMPLATES', 'npmLatestVersion', 'process',
     'appendFileSync', 'mkdirSync', 'dirname', 'join', 'homedir', 'Date',
-    `let laastForbindelse = null, harSendtKommando = false;
+    `// 1.31 (S1a): forbindelserne, laasen og porten bor paa standardbanen, bygget med kildens egen lavBane.
+    ${udtraek('lavBane')}
+    const standardBane = lavBane('default');
+    standardBane.activePort = activePort;
+    for (const c of connections) standardBane.connections.add(c);
     // PARRINGSNOEGLE er ogsaa en modul-konstant i index.js, og liveConnections laeser den.
     // Den skal erklaeres her, ellers koerer den udtrukne kilde i en scope der ikke findes
     // i produktionen. null = ingen noegle, som er standarden.
@@ -76,7 +82,8 @@ function byg({ serverVersion = '1.28.0', npmLatest = '1.28.0', udvidelser = [ext
     (_sti, linje) => { const f = skrivFejl(); if (f) throw new Error(f); skrevet.push(JSON.parse(linje)); },   // appendFileSync
     () => {},                                                 // mkdirSync
     (x) => x, (...x) => x.join('/'), () => '/attrap',          // dirname, join, homedir
-    class { toISOString() { return '2026-08-21T00:00:00.000Z'; } },
+    // Fast tidsstempel til logbogen; Date.now er den rigtige (forbindelsesAdvarsel maaler en forbindelses alder, R117).
+    class { static now() { return Date.now(); } toISOString() { return '2026-08-21T00:00:00.000Z'; } },
   );
   const kald = async (args) => JSON.parse((await h(args)).content[0].text);
   kald.skrevet = skrevet;

@@ -13,9 +13,9 @@
  * install silently did nothing while printing success.
  */
 
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, statSync, lstatSync, realpathSync } from 'fs';
 import { execFileSync } from 'child_process';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 
@@ -76,8 +76,57 @@ function koerKlient(kommando, args, valg = {}) {
   // som try/catch'en herunder laeser som "klienten er ikke installeret" - samme tavse fejl
   // vi er ved at rette, bare med en ny aarsag.
   if (process.platform !== 'win32') return execFileSync(kommando, args, valg);
+  // R163 (Opus, 20/10): gennem cmd.exe er en manglende klient et ikke-nul exit, ikke ENOENT, og installeren skrev «Codex is
+  // installed, but registration failed» til hver Windows-bruger uden Codex. Kommandoen slaas derfor op foerst; findes den ikke,
+  // er svaret ENOENT som paa macOS og Linux.
+  // SIKKERHED (20/10): cmd.exe og CreateProcess soeger i arbejdsmappen foer PATH. En codex.bat i den mappe, brugeren koerer
+  // `install` fra, maa aldrig koere. Opslaget sker derfor her, i PATH's absolutte mapper med PATHEXT's endelser - aldrig i
+  // arbejdsmappen selv eller i dens node_modules (npx laegger node_modules\.bin paa PATH) - og klienten koeres ved den fundne
+  // fulde sti gennem System32's cmd.exe med NoDefaultCurrentDirectoryInExePath.
+  // R165 (Astra + Opus): where.exe's tekst bruges ikke: den kommer i konsollens tegntabel (en sti med ø blev oedelagt), dens
+  // foerste linje kan vaere npm's skript uden endelse, og et praefiks-filter paa den afviste klienter under hjemmemappen.
+  // R166 (Astra): mapperne sammenlignes paa deres aegte sti (realpath: 8.3-navne, \\?\-stier og junctions til arbejdsmappen er
+  // samme mappe), og et traef skal vaere en fil - en mappe ved navn codex.exe maa ikke skygge for codex.cmd. En App Execution
+  // Alias kan ikke stat'es (EACCES), men lstat'es; den regnes som et program.
+  const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+  const env = { ...process.env, ...(valg.env || {}), NoDefaultCurrentDirectoryInExePath: '1' };
+  const variabel = (navn) => { const k = Object.keys(env).find((x) => x.toUpperCase() === navn); return k ? String(env[k]) : ''; };
+  // R167 (Astra): filteret gaelder baade den skrevne og den aegte sti - en junction maa ikke foere node_modules\.bin uden om det - og
+  // kan realpath ikke laese en mappe (EACCES paa et netdrev), bruges den skrevne. Kun en adgangsfejl (App Execution Alias) giver
+  // lstat-vejen; et doedt symlink (ENOENT) er intet program.
+  const aegte = (p) => { try { return realpathSync.native(p).toLowerCase(); } catch { return null; } };
+  const skrevet = (p) => resolve(p).toLowerCase();
+  const arbejdsmapper = [...new Set([skrevet(process.cwd()), aegte(process.cwd())].filter(Boolean))];
+  const arbejdsmappens = (m) => m.endsWith('\\node_modules\\.bin') || arbejdsmapper.some((a) => {
+    const nodeModules = a.replace(/\\$/, '') + '\\node_modules';
+    return m === a || m === nodeModules || m.startsWith(nodeModules + '\\');
+  });
+  const erProgram = (f) => {
+    // R167 (Opus L3b): en libuv, der selv falder tilbage til lstat for en App Execution Alias, svarer stat med et link.
+    try { const s = statSync(f); return s.isFile() || s.isSymbolicLink(); } catch (err) {
+      // R168 (Opus): kun App Execution Aliasens egen fejl (EACCES); EPERM og UNKNOWN kommer ogsaa fra mappe-links og doede links.
+      if (!err || err.code !== 'EACCES') return false;
+      try { return !lstatSync(f).isDirectory(); } catch { return false; }
+    }
+  };
+  const endelser = (variabel('PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').map((e) => e.trim()).filter((e) => /^\.[^\s\\/:*?"<>|.]+$/.test(e));
+  let sti = null;
+  for (const post of variabel('PATH').split(';')) {
+    const mappe = post.trim().replace(/^"(.*)"$/, '$1');
+    // En relativ post (bin, C:bin) peger ind i arbejdsmappen, en rodrelativ (\tools) ind i dens drev - R169 (Opus). Posten
+    // vurderes normaliseret, saa ///tools og // (som join goer til \tools og \) ogsaa er rodrelative - R170 (Astra); UNC og \\?\ er ikke.
+    const normal = mappe && join(mappe);
+    if (!mappe || !isAbsolute(normal) || /^[\\/](?![\\/])/.test(normal)) continue;
+    // Arbejdsmappen, dens node_modules og - R166 (Opus) - enhver node_modules\.bin: npx laegger hver forfaders paa PATH, og
+    // C:\node_modules kan oprettes af enhver bruger.
+    if ([skrevet(mappe), aegte(mappe) || skrevet(mappe)].some(arbejdsmappens)) continue;
+    sti = endelser.map((e) => join(mappe, kommando + e)).find(erProgram);
+    if (sti) break;
+  }
+  if (!sti) throw Object.assign(new Error(`${kommando} is not on PATH`), { code: 'ENOENT' });
   const citer = (a) => '"' + String(a).replace(/(["\\])/g, '\\$1') + '"';
-  return execFileSync(kommando, args.map(citer), { ...valg, shell: true });
+  // En Windows-sti kan ikke indeholde anfoerselstegn; den citeres uden escaping (citer fordobler \\, som ville bryde \\\\server\\-stier).
+  return execFileSync(`"${sti}"`, args.map(citer), { ...valg, env, shell: join(system32, 'cmd.exe') });
 }
 
 function registerWithClaudeCode() {

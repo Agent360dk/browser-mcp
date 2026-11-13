@@ -90,6 +90,43 @@ function renderLog() {
 
 renderLog();
 
+// ── This Chrome profile (1.31, #58) ────────────────────────────────────────
+// The name lets a server pick this profile (BROWSER_MCP_PROFILE). The background keeps it in chrome.storage.local and sends
+// it to the bridge, which greets every connected server again with the new name - no connection is dropped.
+const PROFILE_PATTERN = /^[A-Za-z0-9._-]{1,32}$/;
+const profileNote = document.getElementById('profileNote');
+const profileNoteText = profileNote.innerHTML;
+
+function showIdentity(r) {
+  if (!r || !r.ok) return;
+  document.getElementById('instanceId').textContent = r.instance || 'not created yet';
+  document.getElementById('profileName').value = r.profile || '';
+}
+
+chrome.runtime.sendMessage({ type: 'bmcp_identitet' }).then(showIdentity).catch(() => {});
+
+document.getElementById('saveProfile').addEventListener('click', async () => {
+  const name = document.getElementById('profileName').value.trim();
+  if (name && !PROFILE_PATTERN.test(name)) {
+    profileNote.className = 'fejl';
+    profileNote.textContent = 'Not saved: use only letters, digits, dot, dash and underscore, up to 32 characters.';
+    return;
+  }
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'bmcp_saet_profil', profile: name });
+    if (!r || !r.ok) throw new Error(r?.error || 'no answer');
+    showIdentity(r);
+    profileNote.className = '';
+    profileNote.textContent = r.profile
+      ? `Saved. A server with BROWSER_MCP_PROFILE=${r.profile} picks this profile, as long as no other profile has the same name.`
+      : 'Saved without a name. A server with BROWSER_MCP_PROFILE set will not pick this profile.';
+    setTimeout(() => { profileNote.className = ''; profileNote.innerHTML = profileNoteText; }, 6000);
+  } catch (e) {
+    profileNote.className = 'fejl';
+    profileNote.textContent = `Not saved: ${e?.message || e}`;
+  }
+});
+
 // ── Buttons ─────────────────────────────────────────────────────────────────
 
 document.getElementById('reconnect').addEventListener('click', () => {

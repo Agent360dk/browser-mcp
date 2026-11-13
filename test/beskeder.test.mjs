@@ -40,6 +40,8 @@ async function send(besked, { dispatchSvar = { ok: true }, dispatchFejler = null
   const fn = new Function(
     'restoreSessions', 'adoptOrphanedSession', 'getSession', 'dispatch',
     'logAction', 'releaseSession', 'chrome', 'console',
+    // 1.31 (R134): lytteren lægger én ydre frist om agentkodens to vaerktoejer.
+    'AGENTKODE_METODER', 'agentKodeSlut',
     `return (${udklipLytter(0)});`,
   )(
     async () => {},
@@ -50,6 +52,8 @@ async function send(besked, { dispatchSvar = { ok: true }, dispatchFejler = null
     () => {},
     { runtime: { lastError: null } },
     { log() {}, warn() {}, error() {} },
+    new Set(['execute_script', 'select_frame']),
+    (start) => start + 29500,
   );
 
   const retur = fn(besked, {}, sendResponse);
