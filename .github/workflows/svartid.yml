@@ -6,6 +6,9 @@
 #
 # Dagligt, ikke maanedligt: en frist paa 72 timer kan ikke vogtes én gang om maaneden.
 # Den BLOKERER ikke noget - den goer tavsheden synlig, og det er hele opgaven.
+# ⛔ MAALT 13/11-2026: «synlig» var et roedt kryds paa Actions-fanen, og den saa ingen. Roed 5-13/11
+# med #99 og #100 over fristen, uden at nogen fik besked. Nu aabner en roed koersel én issue til et
+# menneske (scripts/vagt-besked.sh), nye traade over fristen kommenterer den, og groen lukker den.
 name: svartid
 
 on:
@@ -15,8 +18,13 @@ on:
 
 permissions:
   contents: read
-  issues: read
+  issues: write          # kun til vagt-besked.sh: «vagt roed: svartid» oprettes, opdateres og lukkes
   pull-requests: read
+
+# Review #107 R2: to samtidige koersler maa ikke oprette to issues.
+concurrency:
+  group: vagt-svartid
+  cancel-in-progress: false
 
 jobs:
   svartid:
@@ -24,10 +32,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: dage til foerste svar
+        id: maal
         env:
           GH_TOKEN: ${{ github.token }}
         # ⛔ Scriptet koerer sin egen selvtest foerst og afviser at udskrive tal hvis den
         # fejler. Uden den kunne vagten ikke blive roed: 21/9 var begge aabne traade
         # besvaret, saa flag-grenen blev aldrig naaet og "0 over fristen" saa groent ud
         # ved enhver frist - ogsaa én time.
-        run: python3 scripts/svartid.py --repo "${{ github.repository }}"
+        # pipefail: uden den ville tee's exit 0 skjule en roed svartid.
+        run: |
+          set -o pipefail
+          python3 scripts/svartid.py --repo "${{ github.repository }}" 2>&1 | tee "$RUNNER_TEMP/svartid.txt"
+      - name: besked til et menneske (roed -> issue, groen -> luk den)
+        if: ${{ !cancelled() }}   # review #107 R3: en annulleret koersel er ikke et fund
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Fundet er traadene over fristen UDEN dagetallet, som vokser hver dag - ellers ville
+        # samme to traade give en ny besked hver morgen. Ny traad over fristen = nyt fund = ny besked.
+        run: |
+          { sed -nE 's/^ +(#[0-9]+) +[0-9.]+ dage +(.*)$/\1 \2/p' "$RUNNER_TEMP/svartid.txt"
+            grep -E '✗|UMAALT|gh fejlede' "$RUNNER_TEMP/svartid.txt" || true; } > "$RUNNER_TEMP/fund.txt"
+          bash scripts/vagt-besked.sh svartid "${{ steps.maal.outcome == 'success' && 'ok' || 'roed' }}" "$RUNNER_TEMP/fund.txt"
