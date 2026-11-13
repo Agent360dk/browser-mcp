@@ -148,15 +148,15 @@ The pattern: **many of the browser tasks you would do yourself, on sites you are
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.31.0 (2026-10-28) | Actively (Microsoft) | Last commit Apr 2025 |
+| **Maintained** | Actively - latest release v1.31.0 (2026-10-29) | Actively (Microsoft) | Actively - latest npm `2.5.0` (2026-11-12), after no public commits from 2025-04-24 to 2026-10-27 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
-| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Single session |
-| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 72 documented tools, none that can ask the person (checked 2026-09-19) | None |
-| **Token-finding guides** | 9 built-in (Stripe, HubSpot, Slack...) | None | None |
-| **CORS bypass** | `browser_fetch` from extension background | N/A | Limited |
-| **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | None |
-| **CSP-strict sites** | Chrome Debugger API throughout | Works | Limited |
-| **Custom dropdowns** | Angular Material, React Select support | Works | Limited |
+| **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Supported: each AI app gets tabs of its own; no limit documented |
+| **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | None: 72 documented tools, none that can ask the person (checked 2026-09-19) | A pairing click at setup; no mid-task prompt documented |
+| **Token-finding guides** | 9 built-in (Stripe, HubSpot, Slack...) | None | Not documented |
+| **CORS bypass** | `browser_fetch` from extension background | N/A | Not documented |
+| **Network monitoring** | `browser_wait_for_network` via CDP | Built-in | `requests` lists a tab's last 500 requests |
+| **CSP-strict sites** | Chrome Debugger API throughout | Works | Chrome Debugger API, via Playwright over CDP |
+| **Custom dropdowns** | Angular Material, React Select support | Works | Not measured |
 | **Install** | `claude mcp add` + extension from the Chrome Web Store | `npx @playwright/mcp` | `npx @browsermcp/mcp` + Chrome Web Store |
 
 ### The pages that defeat everything else
@@ -218,7 +218,7 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 72 documented tools (counted 2026-09-19)
 > and none of them can stop and ask the person for a code.
 
-> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project with no commits since April 2025. This is Browser MCP by Agent360 (`@agent360/browser-mcp`) - actively maintained. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
+> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project - larger than this one (100,000 Chrome Web Store users to our 2,000) and, after eighteen months without a commit in its public GitHub repo (24 April 2025 to 27 October 2026), shipping again: six npm versions, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. Their `2.0.0` replaced the thirteen named tools with a single `browser` tool that takes command lines, so a config written for `0.1.3` no longer matches. This is Browser MCP by Agent360 (`@agent360/browser-mcp`). The BrowserMCP.io column in the table above was read from their published `2.5.0` package; all figures measured 13 November 2026. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
 ### Environment variables
 

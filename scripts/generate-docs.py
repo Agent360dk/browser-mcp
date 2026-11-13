@@ -123,7 +123,11 @@ LABELS={url:label for _,_,label,url in LIVE}
 # <title> overrides (SEO length fixes applied directly to the tag; H1/og:title keep the draft's long form).
 # 8/10-2026: synlige h1 er kortet til <=7 ord (Gustav: «mindre tekst i h1»). Sider der ikke havde en title-override,
 # fik deres gamle h1 her, saa <title> og dermed SEO-titlen er uaendret.
-TITLE_TAG={'/compare/browsermcp-io':'Browser MCP vs. browsermcp.io - which is maintained? (2026)',
+# MAALT 4/11 og 13/11-2026: denne tabel vinder over markdown-filens egen «Suggested title tag», saa den der
+# retter KILDEN kan tro at titlen foelger med. browsermcp-io-titlen sagde «which is maintained?» laenge efter
+# at tesen var doed (browsermcp.io udgav igen fra 26/10-2026) - paa den flade Google og enhver AI laeser FOERST.
+# Retter du en sides vinkel, saa ret dens linje HER i samme commit.
+TITLE_TAG={'/compare/browsermcp-io':'Browser MCP by Agent360 vs. browsermcp.io - The Actual Numbers (2026)',
  '/compare/browser-automation-mcp-servers':'Best Browser Automation MCP Servers (2026) - Compared',
  '/docs/install-claude-code':'Browser MCP for Claude Code - Give Claude Your Real, Logged-In Chrome',
  '/compare/playwright-mcp':'Browser MCP vs Playwright MCP (2026): Logged-In vs Headless',

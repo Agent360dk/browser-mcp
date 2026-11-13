@@ -58,7 +58,7 @@ That last one is the difference that does not show up in a feature table. A scri
 
 browser-use can also drive an existing Chrome if you point it at one with remote debugging enabled, and it has an MCP mode. So the line is not absolute. What differs is the default and the shape of the work: theirs is a program you write and run; ours is a tool your editor already has.
 
-If you want the same comparison against the other MCP servers - Playwright MCP, Chrome DevTools MCP, the unmaintained `@browsermcp/mcp` - that is on [/compare/browser-mcp-alternatives/](https://browsermcp.dev/compare/browser-mcp-alternatives/), with downloads and maintenance status measured the same day.
+If you want the same comparison against the other MCP servers - Playwright MCP, Chrome DevTools MCP and `@browsermcp/mcp` - that is on [/compare/browser-mcp-alternatives/](https://browsermcp.dev/compare/browser-mcp-alternatives/), with downloads and maintenance status measured the same day.
 
 ## Frequently asked questions
 
