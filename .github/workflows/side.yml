@@ -68,9 +68,15 @@ jobs:
           npm ci --prefix mcp-server --ignore-scripts --no-audit --no-fund
           node --test test/forside.test.mjs
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      # 13/11: samme Jekyll-byg som Pages' grenudgivelse i dag, så skiftet til Actions ikke ændrer siden: uden det
+      # bliver /llms-install.html (Jekyll laver den af docs/llms-install.md, live 200 i dag) til 404.
+      - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
+        with:
+          source: ./docs
+          destination: ./_site
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: docs
+          path: _site
 
   udgiv:
     needs: byg
