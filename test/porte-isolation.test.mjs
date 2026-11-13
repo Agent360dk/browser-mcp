@@ -74,6 +74,12 @@ async function opretMed(lagerVaerdi) {
     'let offscreenIGang = null;',
     // 26/9: koeen har faaet sin egen funktion (iOffscreenKoe) - den skal med.
     udklip('iOffscreenKoe'),
+    // R138-R144: genopbygningen og hjerteslaget markerer en erstattet bro - de aegte hjaelpere skal med.
+    'let broensDokument = null;',
+    udklip('doedeDokumenter', false),
+    udklip('dokumentDoedt'),
+    udklip('broenErstattes'),
+    udklip('broenErVaek'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',

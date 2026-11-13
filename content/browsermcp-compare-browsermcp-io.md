@@ -29,7 +29,7 @@ Every number below was measured on **2026-11-13**, both columns the same hour, f
 | Published GitHub releases | **0** (one tag, `v2.1.0`) | 14 (latest `v1.31.0`) |
 | Open / closed GitHub issues | 1 / 183 | 8 / 24 |
 | License | Apache-2.0 | MIT |
-| Tool surface | one tool, `browser`, taking command lines: **30 commands** in `2.5.0`, plus `help` | **40 tools**, each separately named, listed at [`/docs/tools`](/docs/tools) |
+| Tool surface | one tool, `browser`, taking command lines: **30 commands** in `2.5.0`, plus `help` | **41 tools**, each separately named, listed at [`/docs/tools`](/docs/tools) |
 | Agents at once | each AI app gets tabs of its own; no limit documented | up to 20, each in its own colour-coded tab group |
 | Chrome profiles at once | up to 8, from one daemon | one per client, named with `BROWSER_MCP_PROFILE` (from 1.31); no limit documented |
 | Asks you mid-task | a pairing click at setup; nothing mid-task in their README | `browser_ask_user` - a 2FA code, a CAPTCHA, a choice |
@@ -72,7 +72,7 @@ The scale numbers are theirs, and we publish them as-is:
 
 Three differences worth weighing:
 
-**Tool surface: 40 tools vs. one tool with 30 commands.** Neither is wrong. A single dispatching tool keeps the client's tool list short, which matters when a model has limited room for tool definitions. Separate named tools let the model pick from descriptions it can read, and let a client allow or deny them individually. Pick the one that fits how your client handles tools.
+**Tool surface: 41 tools vs. one tool with 30 commands.** Neither is wrong. A single dispatching tool keeps the client's tool list short, which matters when a model has limited room for tool definitions. Separate named tools let the model pick from descriptions it can read, and let a client allow or deny them individually. Pick the one that fits how your client handles tools.
 
 **Release record.** They have published zero GitHub releases and ten npm versions; we have published 14 releases and 20 npm versions. If you pin versions and read changelogs before upgrading, that difference is the one to weigh - and it is checkable in two minutes on either repo.
 
@@ -109,7 +109,7 @@ Read the section above where every scale number favours them. The one thing we w
 claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 ```
 
-Two parts, both required. MIT licensed, 40 tools, runs on your own machine. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that is the right call for you](https://browsermcp.io) - we mean that.
+Two parts, both required. MIT licensed, 41 tools, runs on your own machine. [Full install guide →](/docs/install-claude-code) · [Or install browsermcp.io if that is the right call for you](https://browsermcp.io) - we mean that.
 
 ---
 

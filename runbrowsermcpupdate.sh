@@ -639,7 +639,7 @@ run node -e "
 "
 
 # 1d. tool-count sweep: fix '<n> tools' / '<n> browser tools' everywhere it drifts.
-TOOLCOUNT_FILES="README.md mcp-server/README.md llms-install.md extension/manifest.json mcp-server/extension/manifest.json mcp-server/server.json mcp-server/bin/cli.js docs/index.html gemini-extension.json"
+TOOLCOUNT_FILES="README.md mcp-server/README.md mcp-server/package.json llms-install.md extension/manifest.json mcp-server/extension/manifest.json mcp-server/server.json mcp-server/bin/cli.js docs/index.html gemini-extension.json"
 say "sweep tool-count → '${TOOL_COUNT} tools' across: $TOOLCOUNT_FILES"
 for f in $TOOLCOUNT_FILES; do
   [[ -f "$f" ]] || continue
