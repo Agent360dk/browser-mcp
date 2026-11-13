@@ -52,7 +52,7 @@ how to keep the run comparable month to month.
 
 If your brand name is shared with another project, a mention is ambiguous - the assistant may be citing your competitor. Read the actual cited hostname, not the chip label.
 
-We hit this ourselves: on a prompt describing our core use case, ChatGPT named "Browser MCP" second - and only by checking the cited hosts could we confirm it pointed at **our** domain and not the similarly-named project. Same run, in July 2026, Perplexity didn't mention us at all, and called a competitor actively maintained when its repository's last commit was 24 April 2025. Both facts were only visible because we logged the citation, not just the mention.
+We hit this ourselves: on a prompt describing our core use case, ChatGPT named "Browser MCP" second - and only by checking the cited hosts could we confirm it pointed at **our** domain and not the similarly-named project. Same run, in July 2026, Perplexity didn't mention us at all, and called a competitor actively maintained when its public repository's last commit was 24 April 2025. Both facts were only visible because we logged the citation, not just the mention.
 
 There is a second lesson in that one, and it is on us. That competitor started shipping again on 26 October 2026 - six npm versions between then and 12 November 2026 - so the answer we had logged as wrong turned out to be right ahead of time. **Log the date beside every judgement, and re-check the ones that flatter you.** Our own pages kept the old claim after it stopped being true; the dated log is what let us find them all and correct them.
 

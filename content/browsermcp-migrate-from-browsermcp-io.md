@@ -10,7 +10,7 @@
 
 ## Why you might be here
 
-`@browsermcp/mcp` went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. It got 33,714 npm downloads in the week of 6-12 November 2026, and its tracker shows 1 open issue and 183 closed (measured 13 November 2026).
+`@browsermcp/mcp`'s public GitHub repo went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and it has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. It got 33,714 npm downloads in the week of 6-12 November 2026, and its tracker shows 1 open issue and 183 closed (measured 13 November 2026).
 
 **Which version you are on changes this page.** The tool-name mapping below was measured against `0.1.3`, the version that stood through those eighteen months. `2.0.0` replaced those thirteen tools with a single tool called `browser` that takes command lines (30 commands in `2.5.0`), and every 2.x since keeps that shape. So if `npx @browsermcp/mcp@latest` has already upgraded you, none of the old names exist on their side any more, and your prompts need rewriting whichever way you go.
 

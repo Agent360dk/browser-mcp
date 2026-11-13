@@ -6,7 +6,7 @@
 
 ---
 
-**If you are here because `@browsermcp/mcp` stopped working:** it went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. The rewrite landed in `2.0.0`: it replaced the thirteen named tools with a single `browser` tool that takes command lines. So there are two different situations. On the old `0.1.3`, the recurring failures all trace to the same cause. On 2.x, the tool names your config or prompts reference no longer exist. Either way, you are not doing anything wrong.
+**If you are here because `@browsermcp/mcp` stopped working:** its public GitHub repo went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and it has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. The rewrite landed in `2.0.0`: it replaced the thirteen named tools with a single `browser` tool that takes command lines. So there are two different situations. On the old `0.1.3`, the recurring failures looked to us like one cause. On 2.x, the tool names your config or prompts reference no longer exist. Either way, you are not doing anything wrong.
 
 If you are here to compare before choosing, the table below is measured, not ranked.
 
@@ -41,16 +41,16 @@ Downloads are for the week of 6-12 November 2026, all fetched the same minute. T
 
 Because downloads measure installed base, not fit. It was the obvious answer from its first npm release in April 2025, and every config that references `@browsermcp/mcp@latest` re-fetches it on each run.
 
-Through those eighteen months without a commit, the failures people reported there were all one bug wearing different clothes:
+Through those eighteen months without a public commit, these were the failures people reported there. Our reading of them at the time, not re-measured since, was one bug wearing different clothes:
 
 - *"No connection to browser extension"*
 - *"MV3 service worker killed on idle"*
 - *"No tab with given id"* - always the **same** stale id
 - *"Read operations work but write operations fail"*
 
-Chrome evicts an MV3 service worker after about 30 seconds idle. That worker holds the socket to the local server and the tab id it was given. When it dies, the socket dies with it and the stored id goes stale, while the connection looks fine from outside. Reads survive because they resolve the active tab at call time; writes do not, because they use the stored id.
+Chrome evicts an MV3 service worker after about 30 seconds idle. In our reading, that worker held the socket to the local server and the tab id it was given. When it dies, the socket dies with it and the stored id goes stale, while the connection looks fine from outside. Reads survive because they resolve the active tab at call time; writes do not, because they use the stored id.
 
-It could not be fixed by configuration. Their 2.x line is a rewrite, and its published `2.5.0` README describes a daemon that waits up to 10 seconds for a browser whose service worker restarted and keeps each session's tabs meanwhile. We have not run `2.5.0`, so we have not measured whether that ends the failure.
+If that reading is right, no configuration could fix it. Their 2.x line is a rewrite, and its published `2.5.0` README describes a daemon that waits up to 10 seconds for a browser whose service worker restarted and keeps each session's tabs meanwhile. We have not run `2.5.0`, so we have not measured whether that ends the failure.
 
 ## Choosing, in one pass
 

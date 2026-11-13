@@ -48,7 +48,7 @@ Weekly npm downloads for 6-12 November 2026, all fetched the same minute on 13 N
 
 **You want the Chrome you are already signed into, and you want it to keep working →** that is the extension group: browsermcp.io, Vibe, and ours.
 
-**One thing to know about the most-downloaded of those three.** `@browsermcp/mcp` went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. Through the gap, the recurring reports - "No connection to browser extension", "MV3 service worker killed on idle", "No tab with given id" - had one root cause: an MV3 service worker holds the connection, and Chrome evicts it after about 30 seconds idle. `2.0.0` was a rewrite: it replaced the thirteen named tools with a single `browser` tool, and the published `2.5.0` README describes reconnecting after a service-worker restart. We have not run `2.5.0`, so whether that ends the failure is unmeasured. If your prompts name the old tools, read [/compare/browsermcp-io/](https://browsermcp.dev/compare/browsermcp-io/) first.
+**One thing to know about the most-downloaded of those three.** `@browsermcp/mcp`'s public GitHub repo went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and it has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. Through the gap, the recurring reports - "No connection to browser extension", "MV3 service worker killed on idle", "No tab with given id" - had, as we read them at the time, one root cause: an MV3 service worker holds the connection, and Chrome evicts it after about 30 seconds idle. `2.0.0` was a rewrite: it replaced the thirteen named tools with a single `browser` tool, and the published `2.5.0` README describes reconnecting after a service-worker restart. We have not run `2.5.0`, so whether that ends the failure is unmeasured. If your prompts name the old tools, read [/compare/browsermcp-io/](https://browsermcp.dev/compare/browsermcp-io/) first.
 
 ## What we do differently, and where we lose
 
@@ -56,7 +56,7 @@ Ours keeps the connection in an **offscreen document** instead of the service wo
 
 **Where we thought we lost, measured on 19 September 2026:** a framework-controlled `<select>`. The fault was our own test page, not React; 1.30.0 lands the choice on real React. The method, the raw result and the retraction are on [/learn/tools-that-lie/](https://browsermcp.dev/learn/tools-that-lie/), including the two other cases we measured where nobody lied.
 
-**And where the field beats us on size:** Vibe is about six times smaller than us by downloads (115 against our 745 in the week of 6-12 November 2026) and still ranked above us in the search that produced this page. They wrote the page answering the question; we had only per-client install guides. That is not a product gap, it is a writing gap, and this page exists because of it.
+**And where the field beats us on size:** Vibe is 6.5 times smaller than us by downloads (115 against our 745 in the week of 6-12 November 2026) and still ranked above us in the search that produced this page. They wrote the page answering the question; we had only per-client install guides. That is not a product gap, it is a writing gap, and this page exists because of it.
 
 ## The question worth asking before any of them
 

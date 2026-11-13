@@ -6,7 +6,7 @@
 
 ---
 
-**Short answer:** for CI/CD and headless scale, use **Playwright MCP**. For performance tracing and DevTools-grade debugging, use **Chrome DevTools MCP**. For a Python agent framework with an optional cloud browser, use **Browser Use**. If the job needs your **real, already-logged-in Chrome** - your cookies, your 2FA, your sessions - that is the niche the two projects named "Browser MCP" occupy: **browsermcp.io** (much larger, and shipping again since 26 October 2026 after eighteen months without a commit) and **Browser MCP by Agent360** (this site - smaller). The table below was pulled from public APIs on 2026-11-13; other figures on the page carry their own dates.
+**Short answer:** for CI/CD and headless scale, use **Playwright MCP**. For performance tracing and DevTools-grade debugging, use **Chrome DevTools MCP**. For a Python agent framework with an optional cloud browser, use **Browser Use**. If the job needs your **real, already-logged-in Chrome** - your cookies, your 2FA, your sessions - that is the niche the two projects named "Browser MCP" occupy: **browsermcp.io** (much larger, and shipping again since 26 October 2026 after eighteen months without a commit in its public GitHub repo) and **Browser MCP by Agent360** (this site - smaller). The table below was pulled from public APIs on 2026-11-13; other figures on the page carry their own dates.
 
 ## The five projects at a glance
 
@@ -47,7 +47,7 @@ Honest note: Playwright MCP does offer an opt-in `--extension` mode to connect t
 
 ## What about the two projects both called "Browser MCP"?
 
-An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way - a Chrome extension plus a local stdio MCP server. Both are maintained: browsermcp.io went without a commit from 2025-04-24 to 2026-10-27 and has shipped six npm versions since, `2.0.0` (2026-10-26) to `2.5.0` (2026-11-12), still with no GitHub release (checked 2026-11-13). The practical difference is shape: since `2.0.0` theirs exposes a single `browser` tool that takes command lines, and it is far larger (100,000 Chrome Web Store users to our 2,000, measured 2026-11-13); this project exposes 40 tools in the current release, each separately named. We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
+An accident of naming: [browsermcp.io](https://browsermcp.io) (`@browsermcp/mcp`) and this project (`@agent360/browser-mcp`) are unaffiliated but solve the same problem the same way - a Chrome extension plus a local stdio MCP server. Both are maintained: browsermcp.io's public GitHub repo went without a commit from 2025-04-24 to 2026-10-27, and it has shipped six npm versions since, `2.0.0` (2026-10-26) to `2.5.0` (2026-11-12), still with no GitHub release (checked 2026-11-13). The practical difference is shape: since `2.0.0` theirs exposes a single `browser` tool that takes command lines, and it is far larger (100,000 Chrome Web Store users to our 2,000, measured 2026-11-13); this project exposes 40 tools in the current release, each separately named. We keep a dated, sourced side-by-side on the [dedicated comparison page](/compare/browsermcp-io/).
 
 ## Which is most actively maintained?
 
