@@ -26,7 +26,8 @@ ejer=${VAGT_EJER:-GLouv}
 titel="vagt roed: $vagt"
 koersel="$GITHUB_SERVER_URL/$repo/actions/runs/$GITHUB_RUN_ID"
 
-nr=$(gh issue list --repo "$repo" --state open --limit 200 --json number,title \
+# Review #107 R4: kun issues, som Actions-botten selv har oprettet - en fremmeds issue med samme titel overtages aldrig.
+nr=$(gh issue list --repo "$repo" --state open --limit 200 --author "app/github-actions" --json number,title \
        --jq "[.[] | select(.title == \"$titel\")][0].number // empty")
 
 if [ "$status" = ok ]; then
@@ -48,6 +49,7 @@ if [ -z "$nr" ]; then
 elif gh issue view "$nr" --repo "$repo" --json body --jq .body | grep -qF "<!-- aftryk:$aftryk -->"; then
   echo "samme fund som sidst (aftryk $aftryk, issue #$nr) - ingen ny besked"
 else
-  gh issue edit "$nr" --repo "$repo" --body "$krop"
+  # Review #107 R1: kommentér FØR redigering - fejler kommentaren efter en redigering, er det nye aftryk gemt og beskeden tabt for altid.
   gh issue comment "$nr" --repo "$repo" --body "Fundene har aendret sig: $koersel"
+  gh issue edit "$nr" --repo "$repo" --body "$krop"
 fi

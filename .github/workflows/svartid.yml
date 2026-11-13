@@ -21,6 +21,11 @@ permissions:
   issues: write          # kun til vagt-besked.sh: «vagt roed: svartid» oprettes, opdateres og lukkes
   pull-requests: read
 
+# Review #107 R2: to samtidige koersler maa ikke oprette to issues.
+concurrency:
+  group: vagt-svartid
+  cancel-in-progress: false
+
 jobs:
   svartid:
     runs-on: ubuntu-latest
@@ -39,7 +44,7 @@ jobs:
           set -o pipefail
           python3 scripts/svartid.py --repo "${{ github.repository }}" 2>&1 | tee "$RUNNER_TEMP/svartid.txt"
       - name: besked til et menneske (roed -> issue, groen -> luk den)
-        if: always()
+        if: ${{ !cancelled() }}   # review #107 R3: en annulleret koersel er ikke et fund
         env:
           GH_TOKEN: ${{ github.token }}
         # Fundet er traadene over fristen UDEN dagetallet, som vokser hver dag - ellers ville
