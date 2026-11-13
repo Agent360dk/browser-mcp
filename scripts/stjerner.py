@@ -15,7 +15,13 @@ def hent(url, forsoeg=3):
     # Tre forsoeg: et enkelt timeout maa ikke stoppe en daglig koersel. Fejler alle, skrives intet.
     for i in range(forsoeg):
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'browsermcp.dev-stjerner', 'Accept': 'application/json'})
+            h = {'User-Agent': 'browsermcp.dev-stjerner', 'Accept': 'application/json'}
+            # MAALT 28/10-2026: koerslen doede paa «HTTP Error 403: rate limit exceeded». Uden token deler
+            # runneren GitHubs graense paa 60 kald i timen med alle andre paa samme IP, og tre forsoeg med
+            # 5-10 sekunders pause hjaelper ikke mod en timegraense. Med jobbets eget token er graensen 1.000.
+            if url.startswith('https://api.github.com/') and os.environ.get('GH_TOKEN'):
+                h['Authorization'] = 'Bearer ' + os.environ['GH_TOKEN']
+            req = urllib.request.Request(url, headers=h)
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.load(r)
         except Exception:

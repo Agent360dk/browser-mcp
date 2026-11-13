@@ -8,8 +8,11 @@ name: side
 # genererer sitemappen igen, kører de samme tjek som før og udgiver docs/ som Pages-artefakt. Intet skrives tilbage til repoet.
 #
 # Kører dagligt, ved hvert skub til main der rører siden, og ved håndkørsel. Fejler en kilde eller et tjek, udgives intet,
-# og den forrige udgave står. Actions er låst til SHA (som udgivelse.yml); checkout gemmer ikke tokenet, npm kører uden
-# install-scripts, og jobbet har kun læseret til indholdet.
+# den forrige udgave står, og jobbet «besked» åbner én issue til et menneske (scripts/vagt-besked.sh). Actions er låst til
+# SHA (som udgivelse.yml); checkout gemmer ikke tokenet, npm kører uden install-scripts, og jobbet har kun læseret til indholdet.
+#
+# ⛔ Kræver Settings → Pages → Source = «GitHub Actions» (før: «Deploy from a branch», main, /docs). Skift kilden først
+# EFTER denne fil er flettet til main, og kør så `side` med hånden; tilbage = sæt kilden til main, /docs igen.
 
 on:
   schedule:
@@ -45,6 +48,8 @@ jobs:
         with:
           node-version: '22'
       - name: bag tallene ind
+        env:
+          GH_TOKEN: ${{ github.token }}   # GitHub-API'et: 1.000 kald/time i stedet for 60 pr. IP (403 den 28/10)
         run: python3 scripts/stjerner.py
       - name: generer siderne igen (sitemappens lastmod)
         run: |
@@ -55,6 +60,8 @@ jobs:
             *) echo "uventede filer efter generering: $aendret"; exit 1 ;;
           esac
       - name: tjek og proever
+        env:
+          GH_TOKEN: ${{ github.token }}   # GitHub-API'et: 1.000 kald/time i stedet for 60 pr. IP (403 den 28/10)
         run: |
           python3 scripts/stjerner.py --tjek
           python3 scripts/check-docs.py
@@ -74,3 +81,35 @@ jobs:
     steps:
       - id: udgivelse
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # ⛔ MAALT 13/11-2026: tal.yml var roed 32 af 32 dage (13/10-13/11), og ingen fik det at vide. En roed
+  # koersel aabner derfor én issue til et menneske; samme fund dagen efter giver ingen ny besked, et nyt
+  # fund gør, og den foerste groenne koersel lukker issuen (scripts/vagt-besked.sh).
+  besked:
+    needs: [byg, udgiv]
+    if: ${{ !cancelled() }}   # som svartid (review #107 R3): en annulleret koersel er ikke et fund
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      actions: read           # kun til at laese hvilke trin der fejlede i denne koersel
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: roed -> issue til et menneske, groen -> luk den
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BYG: ${{ needs.byg.result }}
+          UDGIV: ${{ needs.udgiv.result }}
+        # Fundet er de trin der fejlede, ikke kun jobbets udfald: tal.yml doede tre forskellige steder
+        # (skub 13/10, 403 den 28/10, docs-gaten fra 30/10). Med «byg: failure» alene var en ny aarsag
+        # blevet til «samme fund som sidst» og aldrig naaet nogen.
+        run: |
+          { echo "byg: $BYG · udgiv: $UDGIV"
+            gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --json jobs \
+              --jq '.jobs[] | .name as $j | .steps[]? | select(.conclusion == "failure") | "fejlede: \($j) / \(.name)"' \
+              || echo "fejlede trin: kunne ikke laeses - aabn koerslen"
+          } > "$RUNNER_TEMP/fund.txt"
+          if [ "$BYG" = success ] && [ "$UDGIV" = success ]; then s=ok; else s=roed; fi
+          bash scripts/vagt-besked.sh side "$s" "$RUNNER_TEMP/fund.txt"
