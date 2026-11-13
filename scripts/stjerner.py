@@ -77,8 +77,45 @@ def vist(s):
     c = re.search(r'<span class="n" title="GitHub stars on [^"]*">([\d,]+)</span>', s)
     return [int(x.group(1).replace(',', '')) if x else None for x in (a, b, c)]
 
+# Hvert felt skriv()/skriv_butik() saetter, som (foran)(vaerdi)(bagved). DATO er maaledatoen i stjernetekstens title.
+DATO = r'(<span class="n" title="GitHub stars on )([^"]*)(">)'
+FELTER = [r'(<b data-tal="stjerner">)([\d,]+)(</b>)', r'(<b data-tal="npm-maaned">)([\d,]+)(</b>)',
+          r'(aria-label="Browser MCP on GitHub, )([\d,]+)( stars")', DATO,
+          r'(<span class="n" title="GitHub stars on [^"]*">)([\d,]+)(</span>)', r'(<b data-tal="cws-brugere">)([\d,]+)(</b>)',
+          r'(<b data-tal="cws-rating">)([\d.]+)(</b>)', r'(<span data-tal="cws-antal">)([\d,]+ ratings?)(</span>)']
+
+def som_udgivet(s, p):
+    # s med den UDGIVNE forsides tal og maaledato (p), eller None hvis p mangler et felt, s har.
+    for f in FELTER:
+        if re.search(f, s):
+            u = re.search(f, p)
+            if not u:
+                return None
+            s = re.sub(f, lambda m: m.group(1) + u.group(2) + m.group(3), s)
+    return s
+
 if __name__ == '__main__':
     s = open(SIDE, encoding='utf-8').read()
+    if '--udgivet' in sys.argv:
+        # python3 scripts/stjerner.py --udgivet <udgivet forside> [--behold-tal]
+        # Siden (side.yml) udgives uden commit, saa repoets forside kan baere uger gamle tal. To brug af den udgivne side:
+        #  - dagligt: har tallene IKKE flyttet sig siden sidste udgivelse, beholdes den udgivne maaledato. Saa er forsiden
+        #    byte-ens med den udgivne, og sitemappens lastmod staar stille (tal.yml's vagt «kun datoen er ny», nu holdt op
+        #    mod den udgivne side i stedet for HEAD).
+        #  - --behold-tal: kilderne svarede ikke. De sidst udgivne tal og deres dato skrives ind i stedet for repoets, saa
+        #    indholdet stadig udgives uden at tallene springer tilbage.
+        p = open(sys.argv[sys.argv.index('--udgivet') + 1], encoding='utf-8').read()
+        k = som_udgivet(s, p)
+        udateret = lambda x: re.sub(DATO, lambda m: m.group(1) + m.group(3), x)
+        if k is None:
+            print('den udgivne forside kunne ikke laeses (felt mangler) - siden er uaendret')
+        elif '--behold-tal' in sys.argv or udateret(k) == udateret(s):
+            if k != s:
+                open(SIDE, 'w', encoding='utf-8').write(k)
+            print('de udgivne tal og dato er skrevet ind' if '--behold-tal' in sys.argv else 'kun datoen er ny - den udgivne beholdes')
+        else:
+            print('tallene har flyttet sig siden udgivelsen - dagens dato staar')
+        sys.exit(0)
     stjerner, npm = tal()
     brugere, rating, antal = butik()
     if '--tjek' in sys.argv:

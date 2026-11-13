@@ -7,12 +7,15 @@ name: side
 # tjekker main ud, bager stjerner, npm-hentninger og Chrome Web Store-brugere ind i docs/index.html (scripts/stjerner.py),
 # genererer sitemappen igen, kører de samme tjek som før og udgiver docs/ som Pages-artefakt. Intet skrives tilbage til repoet.
 #
-# Kører dagligt, ved hvert skub til main der rører siden, og ved håndkørsel. Fejler en kilde eller et tjek, udgives intet,
-# den forrige udgave står, og jobbet «besked» åbner én issue til et menneske (scripts/vagt-besked.sh). Actions er låst til
-# SHA (som udgivelse.yml); checkout gemmer ikke tokenet, npm kører uden install-scripts, og jobbet har kun læseret til indholdet.
+# Kører dagligt, ved hvert skub til main der rører siden, og ved håndkørsel. Svarer GitHub, npm eller Chrome Web Store ikke,
+# udgives indholdet alligevel med de sidst udgivne tal, og kørslen bliver rød bagefter (Gustavs valg 13/11: svigtende tal
+# må ikke fryse indholdet). Fejler et tjek, udgives intet, og den forrige udgave står. I begge tilfælde åbner jobbet «besked»
+# én issue til et menneske (scripts/vagt-besked.sh). Actions er låst til SHA (som udgivelse.yml); checkout gemmer ikke
+# tokenet, npm kører uden install-scripts, og hvert job har kun de rettigheder, det selv bruger.
 #
 # ⛔ Kræver Settings → Pages → Source = «GitHub Actions» (før: «Deploy from a branch», main, /docs). Skift kilden først
-# EFTER denne fil er flettet til main, og kør så `side` med hånden; tilbage = sæt kilden til main, /docs igen.
+# EFTER denne fil er flettet til main, og kør så `side` med hånden. Tilbage = kilden til main, /docs igen OG
+# `gh workflow disable side.yml` (ellers udgiver den daglige kørsel stadig), og bestil et grenbyg (POST pages/builds).
 
 on:
   schedule:
@@ -28,9 +31,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: read   # hvert job saetter sine egne; pages/id-token kun i udgiv (review #81 R1)
 
 concurrency:
   group: pages
@@ -39,6 +40,11 @@ concurrency:
 jobs:
   byg:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read          # configure-pages laeser sidens opsaetning (getPages) og fejler uden
+    outputs:
+      tal: ${{ steps.tal.outcome }}   # success = friske tal; ellers er siden bygget med de sidst udgivne (besked goer koerslen roed)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,23 +53,51 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
+      - name: hent den udgivne forside og sitemap
+        # Til vagten «kun datoen er ny» og til reserven, hvis kilderne ikke svarer. Fejler hentningen, er filerne tomme:
+        # saa faar forsiden dagens lastmod, og reserven er repoets tal.
+        run: |
+          curl -fsS --max-time 30 "https://browsermcp.dev/?side=$GITHUB_RUN_ID" -o "$RUNNER_TEMP/udgivet.html" \
+            || { echo "::warning::den udgivne forside kunne ikke hentes"; : > "$RUNNER_TEMP/udgivet.html"; }
+          curl -fsS --max-time 30 "https://browsermcp.dev/sitemap.xml?side=$GITHUB_RUN_ID" -o "$RUNNER_TEMP/udgivet-sitemap.xml" \
+            || { echo "::warning::det udgivne sitemap kunne ikke hentes"; : > "$RUNNER_TEMP/udgivet-sitemap.xml"; }
       - name: bag tallene ind
+        id: tal
+        continue-on-error: true   # svigtende kilder maa ikke stoppe indholdet; besked goer koerslen roed bagefter
         env:
-          GH_TOKEN: ${{ github.token }}   # GitHub-API'et: 1.000 kald/time i stedet for 60 pr. IP (403 den 28/10)
-        run: python3 scripts/stjerner.py
+          GH_TOKEN: ${{ github.token }}   # kun her: GitHub-API'et giver 1.000 kald/time i stedet for 60 pr. IP (403 den 28/10)
+        run: |
+          python3 scripts/stjerner.py
+          python3 scripts/stjerner.py --tjek
+      - name: kilderne svarede ikke - de sidst udgivne tal
+        if: steps.tal.outcome != 'success'
+        run: |
+          echo "::error::tallene kunne ikke hentes eller passede ikke; siden udgives med de sidst udgivne tal"
+          git checkout -- docs/index.html
+          python3 scripts/stjerner.py --udgivet "$RUNNER_TEMP/udgivet.html" --behold-tal
+      - name: kun datoen er ny? saa beholdes den udgivne
+        # tal.yml commitede ikke, naar kun maaledatoen var ny. Uden den vagt fik forsiden ny lastmod hver dag.
+        if: steps.tal.outcome == 'success'
+        run: python3 scripts/stjerner.py --udgivet "$RUNNER_TEMP/udgivet.html"
       - name: generer siderne igen (sitemappens lastmod)
         run: |
           python3 scripts/generate-docs.py > /dev/null
+          # Er forsiden byte-ens med den udgivne, er intet nyt paa den: dens lastmod er den udgivne, ikke dagens.
+          if [ -s "$RUNNER_TEMP/udgivet.html" ] && cmp -s docs/index.html "$RUNNER_TEMP/udgivet.html"; then
+            lm=$(grep -oE '<loc>https://browsermcp\.dev/</loc><lastmod>[0-9]{4}-[0-9]{2}-[0-9]{2}</lastmod>' "$RUNNER_TEMP/udgivet-sitemap.xml" \
+                 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true)
+            if [ -n "$lm" ]; then
+              LM="$lm" perl -pi -e 's#(<loc>https://browsermcp\.dev/</loc><lastmod>)\d{4}-\d{2}-\d{2}(</lastmod>)#$1$ENV{LM}$2#' docs/sitemap.xml
+              echo "forsiden er uaendret siden udgivelsen: lastmod $lm"
+            fi
+          fi
           aendret=$(git status --porcelain | awk '{print $2}' | sort | tr '\n' ' ')
           case "$aendret" in
             ""|"docs/index.html "|"docs/sitemap.xml "|"docs/index.html docs/sitemap.xml ") echo "aendret: ${aendret:-intet}" ;;
             *) echo "uventede filer efter generering: $aendret"; exit 1 ;;
           esac
       - name: tjek og proever
-        env:
-          GH_TOKEN: ${{ github.token }}   # GitHub-API'et: 1.000 kald/time i stedet for 60 pr. IP (403 den 28/10)
         run: |
-          python3 scripts/stjerner.py --tjek
           python3 scripts/check-docs.py
           npm ci --prefix mcp-server --ignore-scripts --no-audit --no-fund
           node --test test/forside.test.mjs
@@ -81,6 +115,9 @@ jobs:
   udgiv:
     needs: byg
     runs-on: ubuntu-latest
+    permissions:
+      pages: write      # udgiv til Pages
+      id-token: write   # bevis at udgivelsen kommer fra denne workflow (deploy-pages' minimum)
     environment:
       name: github-pages
       url: ${{ steps.udgivelse.outputs.page_url }}
@@ -108,14 +145,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BYG: ${{ needs.byg.result }}
           UDGIV: ${{ needs.udgiv.result }}
+          TAL: ${{ needs.byg.outputs.tal }}
         # Fundet er de trin der fejlede, ikke kun jobbets udfald: tal.yml doede tre forskellige steder
         # (skub 13/10, 403 den 28/10, docs-gaten fra 30/10). Med «byg: failure» alene var en ny aarsag
         # blevet til «samme fund som sidst» og aldrig naaet nogen.
         run: |
           { echo "byg: $BYG · udgiv: $UDGIV"
+            if [ "$BYG" = success ] && [ "$TAL" != success ]; then
+              echo "tal: kilderne svarede ikke eller passede ikke - udgivet med de sidst udgivne tal"
+            fi
             gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --json jobs \
               --jq '.jobs[] | .name as $j | .steps[]? | select(.conclusion == "failure") | "fejlede: \($j) / \(.name)"' \
               || echo "fejlede trin: kunne ikke laeses - aabn koerslen"
           } > "$RUNNER_TEMP/fund.txt"
-          if [ "$BYG" = success ] && [ "$UDGIV" = success ]; then s=ok; else s=roed; fi
+          if [ "$BYG" = success ] && [ "$UDGIV" = success ] && [ "$TAL" = success ]; then s=ok; else s=roed; fi
           bash scripts/vagt-besked.sh side "$s" "$RUNNER_TEMP/fund.txt"
+      # Indholdet er udgivet, men tallene er ikke friske: koerslen skal vaere roed, ellers ser Actions-fanen groen ud
+      # paa en side med gamle tal. Kommer efter issuen, saa beskeden altid er sendt foerst.
+      - name: roed - siden er udgivet uden friske tal
+        if: needs.byg.result == 'success' && needs.byg.outputs.tal != 'success'
+        run: |
+          echo "::error::siden er udgivet, men med de sidst udgivne tal; se issuen «vagt roed: side»"
+          exit 1
