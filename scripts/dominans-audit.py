@@ -163,6 +163,13 @@ for _navn, _krop in sider.items():
     if not _krop:
         continue
     _txt = _re0.sub(r"<[^>]+>", " ", _krop)
+    # ⛔ MAALT 13/11-2026: vinduet alene holdt ikke. Glama har flyttet etiketterne ind i sidens
+    # data-klump LIGE FOER vores beskrivelse (`"environment:local","hosting:local-only",...,
+    # "Enables AI assistants to ... logged-in Chrome`), altsaa inden for vinduets 200 tegn - og
+    # koerslen blev roed paa Glamas egen etiket igen. Etiketter skrives `ord:ord` uden mellemrum;
+    # en saetning om os goer aldrig det. De fjernes foer der scannes. «MIT, local-only» og
+    # «Hosting: local-only» bliver staaende og fanges stadig.
+    _txt = _re0.sub(r"\b[a-z]+:[a-z][a-z0-9-]*", " ", _txt)
     _vinduer = [_txt[max(0, m.start() - 200):m.end() + 400] for m in SIGNATUR.finditer(_txt)]
     if not _vinduer:
         rows.append((_navn, "⚠", "vores egen beskrivelse blev ikke fundet paa siden - teksten er ikke tjekket"))
@@ -264,7 +271,8 @@ SOEGEORD = [
     "browser mcp", "mcp", "chrome mcp", "claude chrome",
     "mcp server", "browser automation", "ai browser control", "logged in chrome",
 ]
-BASELINE_PLADS = {"browser mcp": 3}   # kun ord vi FAKTISK stod paa; resten var ikke i top 9
+BASELINE_PLADS = {"browser mcp": 4}   # kun ord vi FAKTISK stod paa; resten var ikke i top 9
+# 13/11-2026 (Gustav: «fortsæt»): flyttet fra #3 til #4 - faldet er ægte og målt (CLAUDE-WORKFLOWS-RAPPORT.md); et nyt fald under #4 skal stadig give rødt.
 
 placeringer = []
 for ord_ in SOEGEORD:
