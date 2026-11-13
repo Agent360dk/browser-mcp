@@ -104,7 +104,7 @@ if __name__ == '__main__':
         #    mod den udgivne side i stedet for HEAD).
         #  - --behold-tal: kilderne svarede ikke. De sidst udgivne tal og deres dato skrives ind i stedet for repoets, saa
         #    indholdet stadig udgives uden at tallene springer tilbage.
-        p = open(sys.argv[sys.argv.index('--udgivet') + 1], encoding='utf-8').read()
+        p = open(sys.argv[sys.argv.index('--udgivet') + 1], encoding='utf-8', errors='replace').read()   # review D1: en ikke-utf-8-side må ikke stoppe udgivelsen
         k = som_udgivet(s, p)
         udateret = lambda x: re.sub(DATO, lambda m: m.group(1) + m.group(3), x)
         if k is None:
