@@ -11,7 +11,12 @@ workflow fails and GitHub emails the repo owner. Full report goes to the job sum
 
 Baseline captured 2026-07-21:
   registry v1.23.0 · npm 1.23.0 · 40 tools · mcpservers.org live · punkpeye PR #10565 open
-  browsermcp.io (the dead twin) last commit 2025-04-24 - if it moves, our compare pages lie.
+  browsermcp.io last commit 2025-04-24 - if it moves, our compare pages lie.
+
+Rebaselined 2026-11-13: browsermcp.io DID move (last commit before the gap 2025-04-24, first after it
+2026-10-27, npm 2.0.0 on 2026-10-26 to 2.5.0 on 2026-11-12). The tripwire fired on 2026-11-01 and
+stayed red on a fixed past date. Competitor last-commit baselines now live in SIDST_SET below and
+are compared by difference, not against a fixed date - see the note there for why.
 """
 import json, os, re, sys, time, urllib.request, urllib.error
 
@@ -301,6 +306,26 @@ competitors = [
     ("hangwin/mcp-chrome",                   None),
     ("Agent360dk/browser-mcp",               "@agent360%2Fbrowser-mcp"),
 ]
+# ⛔ OMLAGT 13/11-2026. Her stod: `if repo == "BrowserMCP/mcp" and last > "2025-04-24"`. Vagten
+# VIRKEDE - den fyrede 2026-11-01 - men graensen var en FAST dato, der nu er passeret for altid, saa
+# koerslen var roed 1/8, 1/9, 1/10 OG 1/11 og kunne aldrig blive groen igen. En vagt der ikke kan blive
+# groen, er stoej. Nu sammenlignes der med SIDST SETE commit pr. projekt (maalt 13/11-2026 med
+# /commits?per_page=1 paa default-grenen): groen i dag, roed paa naeste AENDRING. Fyrer den: genmaal
+# siderne i SIDST_SET_HVAD, ret dem, og flyt datoen her i SAMME commit.
+SIDST_SET = {
+    "BrowserMCP/mcp":     "2026-11-12",
+    "hangwin/mcp-chrome": "2026-01-06",
+}
+SIDST_SET_HVAD = {
+    "BrowserMCP/mcp":
+        "Rammer /compare/browsermcp-io/, /migrate/from-browsermcp-io/, /compare/browser-mcp-alternatives/, "
+        "/learn/control-your-real-chrome/, /compare/browser-automation-mcp-servers/, forsidens BrowserMCP.io-"
+        "kolonne, README's sammenligningstabel + navne-note (ogsaa npm-README'en) og llms.txt - alle dateret 13/11.",
+    "hangwin/mcp-chrome":
+        "Rammer /compare/mcp-chrome/ - inkl. dens <title> «Is mcp-chrome Still Maintained?» og "
+        "«no commits since 6 January 2026» paa siden.",
+}
+
 comp_rows = []
 for repo, pkg in competitors:
     gh, _ = fetch("https://api.github.com/repos/%s" % repo, True)
@@ -312,9 +337,10 @@ for repo, pkg in competitors:
         d, _ = fetch("https://api.npmjs.org/downloads/point/last-week/%s" % pkg, True)
         dl = d.get("downloads", "?") if d else "?"
     comp_rows.append((repo, stars, last, dl))
-    if repo == "BrowserMCP/mcp" and last != "?" and last > "2025-04-24":
-        red.append("⚠️ browsermcp.io GENOPSTOD: commit %s (nyere end 2025-04-24) → "
-                    "vores compare-siders «actively maintained»-vinkel er nu FALSK - opdatér STRAKS" % last)
+    if repo in SIDST_SET and last != "?" and last != SIDST_SET[repo]:
+        red.append("⚠️ %s har committet siden sidst: %s (vi stod paa %s) → %s "
+                   "Genmaal, ret siderne, og flyt datoen i SIDST_SET i samme commit."
+                   % (repo, last, SIDST_SET[repo], SIDST_SET_HVAD[repo]))
 
 # ---- REPORT ----
 def build():
@@ -341,7 +367,8 @@ def build():
     o += ["| %s | %s | %s | %s |" % r for r in comp_rows]
     o.append("\n---\n⚠️ **Husk det manuelle 16-prompt AI-citations-panel** (Perplexity / ChatGPT / "
              "Claude / Copilot) - kræver login, kan ikke køre headless. Baseline 21/7: 0/2 nævnt, "
-             "mcp-chrome vandt USP-prompten, Perplexity kaldte fejlagtigt browsermcp.io vedligeholdt. "
+             "mcp-chrome vandt USP-prompten, Perplexity kaldte browsermcp.io vedligeholdt (21/7 var sidste "
+             "commit 24/4-2025; de udgav igen fra 26/10-2026, saa svaret blev rigtigt bagefter). "
              "Tjek om compare-siderne har flyttet det.")
     return "\n".join(o)
 

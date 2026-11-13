@@ -7,8 +7,9 @@ name: dominans-audit
 #   1. A monthly ISSUE with the full report - so the run reaches a human every month,
 #      including the reminder to run the manual AI-citations panel. Without this, a
 #      green month is silent and the reminder never lands.
-#   2. A FAILED run on any 🔴 finding (registry drift, catalog regression, or the dead
-#      twin browsermcp.io resurrecting) - GitHub emails the repo owner.
+#   2. A FAILED run on any 🔴 finding (registry drift, catalog regression, or a competitor we
+#      make dated claims about committing since the pinned date: browsermcp.io, mcp-chrome)
+#      - GitHub emails the repo owner.
 #
 # Manual run any time from the Actions tab (workflow_dispatch).
 

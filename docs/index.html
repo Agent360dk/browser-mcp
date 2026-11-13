@@ -539,16 +539,16 @@ html:not(.js) #pauselbl{display:none}
     <h2>How it compares</h2>
     <div class="tw" tabindex="0" role="region" aria-label="Comparison table, scrolls sideways on small screens">
       <table>
-        <caption>At a glance; every figure is dated and sourced on our <a href="/compare/browser-automation-mcp-servers/">comparison pages</a>. BrowserMCP.io cells marked “Not documented” were not audited, not confirmed absent.</caption>
+        <caption>At a glance; every figure is dated and sourced on our <a href="/compare/browser-automation-mcp-servers/">comparison pages</a>. The BrowserMCP.io column was read from their published <code translate="no">@browsermcp/mcp</code> <code translate="no">2.5.0</code> package and README on 13 November 2026. “Not documented” means it is absent from that README, not that the feature is absent: we have not run their <code translate="no">2.5.0</code>.</caption>
         <thead><tr><th scope="col"><span class="vh">Feature</span></th><th scope="col"><span translate="no">Browser MCP</span> (this)</th><th scope="col"><a href="https://github.com/microsoft/playwright-mcp" translate="no">Playwright MCP</a></th><th scope="col"><a href="https://browsermcp.io" translate="no">BrowserMCP.io</a></th></tr></thead>
         <tbody>
           <tr><th scope="row">Browser</th><td class="us">Your real Chrome</td><td>Own profile by default; your real Chrome via their extension</td><td>Your real Chrome</td></tr>
           <tr><th scope="row">Already logged in</th><td class="us"><span class="check">Yes</span></td><td><span class="check">Yes, in extension mode</span></td><td><span class="check">Yes</span></td></tr>
           <tr><th scope="row">CAPTCHA assistance</th><td class="us"><span class="check">Checkbox click, screenshot, then you</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
-          <tr><th scope="row">Multi-session</th><td class="us"><span class="check">Up to 20</span></td><td><span class="check">One tab group per client</span></td><td>Not documented</td></tr>
-          <tr><th scope="row">Human-in-the-loop</th><td class="us"><span class="check">browser_ask_user</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
+          <tr><th scope="row">Multi-session</th><td class="us"><span class="check">Up to 20</span></td><td><span class="check">One tab group per client</span></td><td><span class="check">Tabs of its own per AI app, up to 8 Chrome profiles</span></td></tr>
+          <tr><th scope="row">Human-in-the-loop</th><td class="us"><span class="check">browser_ask_user, any time mid-task</span></td><td><span class="cross">None</span></td><td>A pairing click at setup; no mid-task prompt documented</td></tr>
           <tr><th scope="row">Token-finding guides</th><td class="us"><span class="check">9 providers</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
-          <tr><th scope="row">Tool count</th><td class="us"><span class="check">40 tools</span></td><td>72 (counted 2026-09-19)</td><td>Not published</td></tr>
+          <tr><th scope="row">Tool count</th><td class="us"><span class="check">40 tools</span></td><td>72 (counted 2026-09-19)</td><td>One tool (<code translate="no">browser</code>) with 30 commands in <code translate="no">2.5.0</code></td></tr>
           <tr><th scope="row">Install</th><td class="us"><code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code></td><td><code translate="no">npx @playwright/mcp</code></td><td>npm + extension</td></tr>
         </tbody>
       </table>

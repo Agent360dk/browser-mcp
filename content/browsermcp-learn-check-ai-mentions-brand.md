@@ -1,4 +1,4 @@
-// KILDE: metoden er den vi FAKTISK kørte 21-22/7 (16-prompt-panel, Perplexity + ChatGPT, citations-log). Fund citeret er vores egne målte (ChatGPT nævnte os #2 og citerede browsermcp.dev; Perplexity nævnte os ikke og påstod fejlagtigt at en død konkurrent var vedligeholdt). INGEN opdigtede tal - kun hvad vi selv målte.
+// KILDE: metoden er den vi FAKTISK kørte 21-22/7 (16-prompt-panel, Perplexity + ChatGPT, citations-log). Fund citeret er vores egne målte (ChatGPT nævnte os #2 og citerede browsermcp.dev; Perplexity nævnte os ikke og kaldte en konkurrent vedligeholdt, selvom dens repo ikke havde haft et commit siden 24/4-2025). INGEN opdigtede tal - kun hvad vi selv målte. ⛔ RETTET 2026-11-13: konkurrenten (@browsermcp/mcp) udgav igen fra 26/10-2026 (npm 2.0.0; første commit efter hullet 27/10), så Perplexitys svar blev rigtigt bagefter - skriv den aldrig som død.
 
 # Does AI mention your brand?
 
@@ -52,7 +52,9 @@ how to keep the run comparable month to month.
 
 If your brand name is shared with another project, a mention is ambiguous - the assistant may be citing your competitor. Read the actual cited hostname, not the chip label.
 
-We hit this ourselves: on a prompt describing our core use case, ChatGPT named "Browser MCP" second - and only by checking the cited hosts could we confirm it pointed at **our** domain and not the similarly-named project. Same run, Perplexity didn't mention us at all, and stated that a competitor was actively maintained when its repository had been silent for over a year. Both facts were only visible because we logged the citation, not just the mention.
+We hit this ourselves: on a prompt describing our core use case, ChatGPT named "Browser MCP" second - and only by checking the cited hosts could we confirm it pointed at **our** domain and not the similarly-named project. Same run, in July 2026, Perplexity didn't mention us at all, and called a competitor actively maintained when its repository's last commit was 24 April 2025. Both facts were only visible because we logged the citation, not just the mention.
+
+There is a second lesson in that one, and it is on us. That competitor started shipping again on 26 October 2026 - six npm versions between then and 12 November 2026 - so the answer we had logged as wrong turned out to be right ahead of time. **Log the date beside every judgement, and re-check the ones that flatter you.** Our own pages kept the old claim after it stopped being true; the dated log is what let us find them all and correct them.
 
 ## Automating the run
 

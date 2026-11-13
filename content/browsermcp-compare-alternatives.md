@@ -1,12 +1,12 @@
-// KILDE: alle tal MAALT 19-20/9-2026, samme minut for alle projekter: api.npmjs.org (ugentlige hentninger + 90-dages dagsserie), GitHub-API (stjerner, sidste push, aabne issues), npm-registret (udgivelsesdatoer). ⚠️ Siden findes fordi en soegning paa VORES eget pitch 19/9 gav ni resultater uden os. ⚠️ Hentninger er IKKE brugere - npm skelner ikke menneske fra CI, og en udgivelsesdag oppuster ethvert projekts tal, ogsaa vores. Det skal blive staaende paa siden. ⚠️ Opdater naar `konkurrent-vagt.py` bliver roed.
+// KILDE: tabellen GENMAALT 2026-11-13 kl. 14.44 UTC, samme minut for alle fem: api.npmjs.org/downloads/point/last-week (= 6.-12. nov.) og npm-registrets `time` for latest. browsermcp.io's stilhed maalt i hele GitHub /commits-listen: sidste commit foer 9db12f2 2025-04-24, foerste efter 43bcd1d 2026-10-27; npm 2.0.0 2026-10-26 til 2.5.0 2026-11-12. Deres 2.x-genforbindelse laest i den UDGIVNE 2.5.0-README paa npm 13/11 - IKKE koert. ⛔ Ingen relative tider. Resten af siden (Vibe-fundet, select-tilbagetraekningen) er fra 19-20/9-2026. ⚠️ Siden findes fordi en soegning paa VORES eget pitch 19/9 gav ni resultater uden os. ⚠️ Hentninger er IKKE brugere - npm skelner ikke menneske fra CI, og en udgivelsesdag oppuster ethvert projekts tal, ogsaa vores. Det skal blive staaende paa siden. ⚠️ Opdater naar `konkurrent-vagt.py` bliver roed.
 
 # Browser MCP alternatives, measured
 
-*Suggested URL: `/compare/browser-mcp-alternatives` · Suggested title tag: "Browser MCP Alternatives (2026): Five Options, Measured" · Suggested meta description: "Looking for an alternative to Browser MCP? Five real options with downloads, maintenance status and what each one costs you - including where ours loses." · Last verified: September 20, 2026*
+*Suggested URL: `/compare/browser-mcp-alternatives` · Suggested title tag: "Browser MCP Alternatives (2026): Five Options, Measured" · Suggested meta description: "Looking for an alternative to Browser MCP? Five real options with downloads, maintenance status and what each one costs you - including where ours loses." · Last verified: November 13, 2026*
 
 ---
 
-**If you are here because `@browsermcp/mcp` stopped working, the short version is: it has had no commit since 24 April 2025**, its tracker has 150 open issues, and the recurring ones all trace to the same cause. You are not doing anything wrong, and there is no setting that fixes it.
+**If you are here because `@browsermcp/mcp` stopped working:** it went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. The rewrite landed in `2.0.0`: it replaced the thirteen named tools with a single `browser` tool that takes command lines. So there are two different situations. On the old `0.1.3`, the recurring failures all trace to the same cause. On 2.x, the tool names your config or prompts reference no longer exist. Either way, you are not doing anything wrong.
 
 If you are here to compare before choosing, the table below is measured, not ranked.
 
@@ -25,23 +25,23 @@ The right tool:
 
 Every option below can give you the second answer. They differ in what it costs you.
 
-## The five, measured 20 September 2026
+## The five, measured 13 November 2026
 
-Downloads are weekly, all fetched the same minute. They count downloads, not people: npm cannot tell a human from a CI job.
+Downloads are for the week of 6-12 November 2026, all fetched the same minute. They count downloads, not people: npm cannot tell a human from a CI job.
 
 | Project | Downloads/week | Last release | Drives your existing Chrome |
 |---|---|---|---|
-| **Playwright MCP** (Microsoft) | 4,693,665 | active | Optional - extension mode, or a CDP attach you set up |
-| **Chrome DevTools MCP** (Google) | 1,054,261 | active | Optional - `--remote-debugging-port` |
-| **`@browsermcp/mcp`** (browsermcp.io) | 7,532 | **11 April 2025** | Yes, extension |
-| **Browser MCP by Agent360** (ours) | 1,737 | active | Yes, extension |
-| **`@vibebrowser/mcp`** (Vibe) | 112 | 21 August 2026 | Yes, extension |
+| **Playwright MCP** (Microsoft) | 10,630,264 | `0.0.85`, 9 November 2026 | Optional - extension mode, or a CDP attach you set up |
+| **Chrome DevTools MCP** (Google) | 2,304,340 | `1.13.0`, 11 November 2026 | Optional - `--remote-debugging-port` |
+| **`@browsermcp/mcp`** (browsermcp.io) | 33,714 | `2.5.0`, 12 November 2026 | Yes, extension |
+| **Browser MCP by Agent360** (ours) | 745 | `1.31.0`, 29 October 2026 | Yes, extension |
+| **`@vibebrowser/mcp`** (Vibe) | 115 | `0.3.6`, 21 August 2026 | Yes, extension |
 
-## Why the unmaintained one still has the most downloads
+## Why it has the most downloads of the extension-based three
 
-Because downloads measure installs, not health. It had a year of being the obvious answer, and every config that still references it re-fetches it on each run. Its daily number has been flat for two months at roughly 1,500 - which is what an installed base looks like, not growth.
+Because downloads measure installed base, not fit. It was the obvious answer from its first npm release in April 2025, and every config that references `@browsermcp/mcp@latest` re-fetches it on each run.
 
-The failures people report there are all one bug wearing different clothes:
+Through those eighteen months without a commit, the failures people reported there were all one bug wearing different clothes:
 
 - *"No connection to browser extension"*
 - *"MV3 service worker killed on idle"*
@@ -50,7 +50,7 @@ The failures people report there are all one bug wearing different clothes:
 
 Chrome evicts an MV3 service worker after about 30 seconds idle. That worker holds the socket to the local server and the tab id it was given. When it dies, the socket dies with it and the stored id goes stale, while the connection looks fine from outside. Reads survive because they resolve the active tab at call time; writes do not, because they use the stored id.
 
-It cannot be fixed by configuration, and it will not be fixed there.
+It could not be fixed by configuration. Their 2.x line is a rewrite, and its published `2.5.0` README describes a daemon that waits up to 10 seconds for a browser whose service worker restarted and keeps each session's tabs meanwhile. We have not run `2.5.0`, so we have not measured whether that ends the failure.
 
 ## Choosing, in one pass
 
@@ -68,7 +68,7 @@ It cannot be fixed by configuration, and it will not be fixed there.
 
 ## If you are switching from `@browsermcp/mcp`
 
-Seven of the thirteen tool names are identical, so an existing config is mostly a one-line change. The full diff, including the three of theirs that do not exist here, is on [/migrate/from-browsermcp-io/](https://browsermcp.dev/migrate/from-browsermcp-io/).
+If your prompts were written for their `0.1.3`, seven of its thirteen tool names are identical here, so the move is mostly a one-line config change. The full diff, including the three of theirs that do not exist here, is on [/migrate/from-browsermcp-io/](https://browsermcp.dev/migrate/from-browsermcp-io/).
 
 ## Frequently asked questions
 
