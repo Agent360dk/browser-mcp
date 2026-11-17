@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>text= and page source | demo</title>
+<style>
+  /* The export-button styles: "Export data" appears here, in CSS, and nowhere on the page. */
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+  .row { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; max-width: 640px; margin-bottom: 10px; }
+  button { font: inherit; padding: 6px 14px; border-radius: 999px; border: 1px solid #6001d2; color: #6001d2; background: #fff; cursor: pointer; }
+  #log { font: 12px/1.4 ui-monospace, monospace; background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px;
+         white-space: pre-wrap; max-width: 640px; min-height: 40px; }
+</style>
+<!-- Like an app that ships its UI strings in an inline script: none of these is shown on this page. -->
+<script>
+  window.i18n = { deleteAccount: 'Delete account', changePassword: 'Change password' };
+</script>
+</head>
+<body>
+<!--
+  Three labels exist only in the page's source - a <script>, a <style> and a <noscript> - and are not shown anywhere:
+  "Delete account", "Export data", "Continue". textContent includes the source of those elements, so on main
+  text= picked them and answered "Element found but not visible (0x0)" with tag SCRIPT / STYLE / NOSCRIPT, for a label
+  the user cannot see. The honest answer is "Element not found".
+  One label, "Change password", is on the page AND in the script: the button must still be found (control).
+  The selectors to try are in README.md and check.mjs; keep them out of the visible text here.
+-->
+<noscript>Enable JavaScript to Continue</noscript>
+<h1 style="font-size:20px">Account settings</h1>
+<div class="row"><button id="change" type="button">Change password</button></div>
+<div class="row">Danger zone: removing your account is done by support.</div>
+<div id="log"></div>
+<script>
+  document.getElementById('change').addEventListener('click', () => {
+    document.getElementById('log').textContent += 'clicked #change\n';
+  });
+</script>
+</body>
+</html>
