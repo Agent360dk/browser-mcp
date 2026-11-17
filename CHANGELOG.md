@@ -85,7 +85,7 @@ anything itself.
 
 **Smaller fixes.** `browser_navigate` with `new_tab` says the tab opened in the background (`active: false`). The "not
 connected" error says that Chrome needs a window in the profile where the extension is installed, and that an unpacked
-install has its own id. The server's install advice names its own version, so a pinned version stays pinned. The `@modelcontextprotocol/sdk` floor is raised to 1.32.1 (supersedes #80).
+install has its own id. The server's install advice names its own version, so a pinned version stays pinned. The `@modelcontextprotocol/sdk` floor is raised to 1.32.2 (supersedes #80 and #98).
 
 ### Also in 1.33.0: the 1.32 work (prepared as 1.32.0, never released on its own)
 
