@@ -6133,11 +6133,19 @@ async function dispatch(port, method, params, modtaget = Date.now(), vagt = null
                 note: 'The tab was in the background, so mouse events did not arrive. The click was performed with a script instead.',
               };
             }
+            // MEASURED 2026-10-22 (developer.apple.com expedite-review form; demo/click-background-submit): the script
+            // click submitted the form, but the page showed its spinner a moment after the click, and the fingerprint is
+            // taken in the same instant as the click. The answer was ok:false with an error saying "try again", and the
+            // agent's reflex is to click again - on a form without double-submit protection that sends it twice
+            // (reproduced: two requests). No change at the moment of the click is no proof that nothing happened: it is
+            // the third outcome, as in the debugger-blocked branch above (⛔ not ok:false).
             return {
-              ok: false, method: 'scripting-fallback', tag: r.tag, landed: false, maybe_landed: true, error: e.message,
-              note: 'The tab was in the background, so mouse events did not arrive. A script click was sent, but the click itself ' +
-                    'produced no visible effect: either the page requires a real click, or the click worked without a visible change. Check the page, ' +
-                    'and call browser_switch_tab and click again only if nothing happened.',
+              ok: true, method: 'scripting-fallback', tag: r.tag, landed: null, maybe_landed: true,
+              note: 'The tab was in the background, so mouse events did not arrive and the click was sent with a script. ' +
+                    'The page showed no change at the moment of the click - which is also what a page that reacts a moment ' +
+                    'later looks like (a form that starts a request, a framework that renders after the event), so it may ' +
+                    'well have worked. Check the page before clicking again: a second click can submit twice. If nothing ' +
+                    'happened, the page may need a real click - call browser_switch_tab and click once more.',
             };
           }
         }
