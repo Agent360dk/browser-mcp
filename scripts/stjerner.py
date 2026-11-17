@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # stjerner.py - bager GitHub-stjerner og npm-downloads (sidste maaned) ind i docs/index.html.
 #
-# Forsiden maa ikke kalde nogen tredjepart ved indlaesning (test/forside.test.mjs), saa tallene kan ikke
-# hentes i browseren. De hentes her og skrives ind i siden. Stod der 49 i hånden, viste siden 49 laenge
-# efter at repoet havde 52 (maalt 8/10-2026). Idempotent: samme tal giver samme fil.
+# 17/11-2026 (Gustav: «programmatiske tal hentet direkte paa tvaers af alle siderne»): forsiden henter selv tallene ved
+# hvert besoeg fra gustavlouv.com/tal.json (samme fil som agent360.dk; se bundscriptet i docs/index.html og
+# test/forside.test.mjs). Tallene i HTML'en er reserven, som vises, til hentningen svarer, og hvis den fejler. Dette script
+# holder reserven frisk. Stod der 49 i hånden, viste siden 49 laenge efter at repoet havde 52 (maalt 8/10-2026).
+# Idempotent: samme tal giver samme fil.
 #   python3 scripts/stjerner.py            skriv tallene ind
 #   python3 scripts/stjerner.py --tjek     exit 1 hvis siden viser andre tal end kilderne
 import html, json, os, re, sys, time, urllib.request, datetime
