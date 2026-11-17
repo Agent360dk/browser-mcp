@@ -401,7 +401,7 @@ html:not(.js) #pauselbl{display:none}
       <a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a>
       <a href="/docs/install-claude-code/">Docs</a>
       <a class="navcta" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome</a>
-      <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 60 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 30 Oct 2026">60</span></a>
+      <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 64 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 17 Nov 2026">64</span></a>
     </nav>
   </div>
 </header>
@@ -439,7 +439,7 @@ html:not(.js) #pauselbl{display:none}
     <div class="hero-t">
       <ul class="proof">
         <li><b data-tal="cws-ugentlige">2,776</b><span title="Users active in the 7 days to 15 Nov 2026, from the Chrome Web Store">weekly users · 15&nbsp;Nov&nbsp;2026</span></li>
-        <li><b data-tal="npm-maaned">3,849</b><span>npm downloads last month</span></li>
+        <li><b data-tal="npm-maaned">4,933</b><span>npm downloads last month</span></li>
         <li><b>MIT</b><span>no account, no paid tier</span></li>
       </ul>
       <p class="works">Works with Claude Code · Cursor · Codex · VS Code · Windsurf</p>
@@ -663,6 +663,33 @@ if (film && pz) {
   if (reduceret) { pz.checked = true; mark(); } else { spil(); }
   pz.addEventListener('change', function () { if (pz.checked) { film.pause(); mark(); } else { spil(); } });
 }
+// Tallene hentes ved hvert besoeg fra gustavlouv.com/tal.json (Gustav 17/11-2026: «programmatiske tal hentet direkte paa
+// tvaers af alle siderne»). Samme fil som agent360.dk, saa alle sider viser samme tal og samme maaledag. Tallene i HTML'en er
+// reserven: fejler hentningen, eller er et felt ikke et positivt heltal, staar de. Chrome-tallet skiftes kun, naar cws_dato er
+// en dato (ugentlige brugere fra Googles API, med Googles dato). Ingen cookies og ingen henvisning sendes med.
+(function () {
+  if (!window.fetch) return;
+  var mdr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var dato = function (s) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof s === 'string' ? s : ''); return m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31 ? +m[3] + ' ' + mdr[+m[2] - 1] + ' ' + m[1] : null; };
+  var heltal = function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; };
+  var vis = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+  window.fetch('https://gustavlouv.com/tal.json', { credentials: 'omit', referrerPolicy: 'no-referrer' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || typeof d !== 'object') return;
+      var b = d.browser || {}, cd = dato(d.cws_dato), md = dato(d.maalt);
+      var cws = document.querySelector('[data-tal="cws-ugentlige"]'), npm = document.querySelector('[data-tal="npm-maaned"]');
+      var gh = document.querySelector('a.gh'), n = gh && gh.querySelector('.n');
+      if (cws && heltal(d.cws) && cd) {
+        cws.textContent = vis(d.cws);
+        var s = cws.nextElementSibling;
+        if (s) { s.title = 'Users active in the 7 days to ' + cd + ', from the Chrome Web Store'; s.textContent = 'weekly users · ' + cd.replace(/ /g, '\u00a0'); }
+      }
+      if (npm && heltal(b.npm_30_dage)) npm.textContent = vis(b.npm_30_dage);
+      if (n && heltal(b.stjerner) && md) { n.textContent = vis(b.stjerner); n.title = 'GitHub stars on ' + md; gh.setAttribute('aria-label', 'Browser MCP on GitHub, ' + vis(b.stjerner) + ' stars'); }
+    })
+    .catch(function () {});
+})();
 </script>
 </body>
 </html>

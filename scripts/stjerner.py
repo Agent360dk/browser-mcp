@@ -7,10 +7,12 @@
 #   python3 scripts/stjerner.py            skriv tallene ind
 #   python3 scripts/stjerner.py --tjek     exit 1 hvis siden viser andre tal end kilderne
 #
-# Chrome-tallet (data-tal="cws-ugentlige") er IKKE dette scripts: Gustav valgte 16/11-2026 «ugentlige brugere»
-# (users-7d) fra Chrome Web Store API v2 (publishers.items.queryMetrics) frem for butikssidens afrundede tal.
-# API'et kraever en OAuth-noegle (chromewebstore.readonly), som ikke ligger i Actions; tallet skrives derfor
-# i haanden med dataens dato ved siden af («weekly users · 15 Nov 2026»). Butikssiden laeses ikke laengere.
+# 17/11-2026 (Gustav: «programmatiske tal hentet direkte paa tvaers af alle siderne»): forsiden henter selv alle tre tal
+# ved hvert besoeg fra gustavlouv.com/tal.json (samme fil som agent360.dk; se bundscriptet i docs/index.html og
+# test/forside.test.mjs). Tallene i HTML'en er reserven, som vises, til hentningen svarer, og hvis den fejler.
+# Dette script holder stjerne- og npm-reserven frisk. Chrome-reserven (data-tal="cws-ugentlige", «ugentlige brugere»
+# = users-7d fra Chrome Web Store API v2, Gustavs valg 16/11) er IKKE dette scripts: API'et kraever en OAuth-noegle,
+# som ikke ligger i Actions, saa reserven skrives i haanden med Googles dato ved siden af.
 import json, os, re, sys, time, urllib.request, datetime
 
 ROD = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')

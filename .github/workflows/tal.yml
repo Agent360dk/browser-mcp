@@ -1,9 +1,9 @@
 name: tal
 
-# Daglige tal paa browsermcp.dev (Gustav 10/10: «ja til daglig stjernekoersel»). Siden lover ingen kald til
-# tredjepart ved indlaesning, saa GitHub-stjerner og npm-hentninger sidste maaned bages ind i docs/index.html
-# af scripts/stjerner.py - én gang i doegnet i stedet for live i browseren.
-# NB: Chrome-tallet («weekly users», data-tal="cws-ugentlige") er ikke dette jobs: det kommer fra Chrome Web Store
+# Daglige tal paa browsermcp.dev (Gustav 10/10: «ja til daglig stjernekoersel»). Siden 17/11-2026 henter forsiden selv
+# tallene ved hvert besoeg fra gustavlouv.com/tal.json; GitHub-stjerner og npm-hentninger sidste maaned bages her kun ind
+# i docs/index.html som reserve (vises til hentningen svarer, og hvis den fejler) af scripts/stjerner.py.
+# NB: Chrome-reserven («weekly users», data-tal="cws-ugentlige") er ikke dette jobs: den kommer fra Chrome Web Store
 # API v2 (users-7d) og kraever en OAuth-noegle, der ikke ligger her; se kommentaren i scripts/stjerner.py.
 #
 # Vagter:

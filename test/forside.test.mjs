@@ -70,7 +70,11 @@ test('softwareVersion staar som X.Y.Z og er pakkens version', () => {
 
 test('forsiden kalder ingen tredjepart ved indlaesning', () => {
   assert.doesNotMatch(html, /<script[^>]+\ssrc=/i, 'ekstern/ekstra script-fil');
-  assert.doesNotMatch(html, /\bfetch\s*\(|XMLHttpRequest|api\.github\.com|googletagmanager|google-analytics|fonts\.(googleapis|gstatic)/i);
+  assert.doesNotMatch(html, /XMLHttpRequest|api\.github\.com|googletagmanager|google-analytics|fonts\.(googleapis|gstatic)/i);
+  // 17/11-2026 (Gustav: tal hentet direkte paa alle sider): ét kald, og kun til husets egen talfil paa gustavlouv.com.
+  // Den ligger hos GitHub Pages ligesom browsermcp.dev selv, saa ingen ny part ser besoeget.
+  assert.equal((html.match(/\bfetch\s*\(/g) || []).length, 1, 'praecis ét fetch-kald paa forsiden');
+  assert.deepEqual([...html.matchAll(/\bfetch\s*\(\s*'([^']*)'/g)].map((m) => m[1]), ['https://gustavlouv.com/tal.json']);
   const udefra = [...html.matchAll(/\s(?:src|srcset)="(https?:)?\/\/[^"]+"/g)].map((m) => m[0]);
   assert.deepEqual(udefra, [], 'billede/medie hentet udefra');
   const link = [...html.matchAll(/<link\b[^>]*\bhref="https?:\/\/[^"]+"[^>]*>/g)].map((m) => m[0]).filter((l) => !/rel="canonical"/.test(l));
@@ -240,6 +244,79 @@ test('toppen: «send linket» deler browsermcp.dev, og uden deling kopieres adre
   b.klik(); await new Promise((ok) => setTimeout(ok, 0));
   assert.deepEqual(b.kopieret, ['https://browsermcp.dev/']);
   assert.match(b.knap.textContent, /Link copied/);
+});
+
+// ---- Tallene (17/11-2026, Gustav: «programmatiske tal hentet direkte paa tvaers af alle siderne»). Proeverne koerer sidens
+// EGET bundscript mod en falsk tal.json. Reserven er tallene i HTML'en; de maa kun skiftes ud med et positivt heltal, og
+// Chrome-tallet kun naar cws_dato er en dato (den 17/11 havde filen cws 2500 UDEN cws_dato - et tal der ikke er users-7d).
+const reserve = {
+  cws: html.match(/<b data-tal="cws-ugentlige">([\d,]+)<\/b>/)[1],
+  cwsTekst: html.match(/<b data-tal="cws-ugentlige">[\d,]+<\/b><span title="([^"]*)">([^<]*)<\/span>/).slice(1),
+  npm: html.match(/<b data-tal="npm-maaned">([\d,]+)<\/b>/)[1],
+  stjerner: html.match(/<span class="n" title="([^"]*)">([\d,]+)<\/span>/).slice(1),
+  aria: html.match(/<a class="gh" href="[^"]+" aria-label="([^"]+)"/)[1],
+};
+async function simulerTal(svar) {
+  const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
+  const ent = (s) => s.replace(/&nbsp;/g, '\u00a0');
+  const span = { title: reserve.cwsTekst[0], textContent: ent(reserve.cwsTekst[1]) };
+  const cws = { textContent: reserve.cws, nextElementSibling: span }, npm = { textContent: reserve.npm };
+  const n = { title: reserve.stjerner[0], textContent: reserve.stjerner[1] };
+  const gh = { aria: reserve.aria, querySelector: (s) => (s === '.n' ? n : null), setAttribute(k, v) { if (k === 'aria-label') this.aria = v; } };
+  const el = { '[data-tal="cws-ugentlige"]': cws, '[data-tal="npm-maaned"]': npm, 'a.gh': gh };
+  const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], querySelector: (s) => el[s] || null, getElementById: () => null };
+  const kald = [];
+  const fetch = (url, opt) => { kald.push({ url, opt }); return svar === 'netfejl' ? Promise.reject(new Error('net')) : Promise.resolve({ ok: svar.ok !== false, json: () => Promise.resolve(svar.data) }); };
+  new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, { fetch }, () => ({ matches: false }), {});
+  for (let i = 0; i < 5; i++) await new Promise((ok) => setTimeout(ok, 0));
+  return { cws: cws.textContent, cwsTitel: span.title, cwsTekst: span.textContent, npm: npm.textContent, stjerner: n.textContent, stjerneTitel: n.title, aria: gh.aria, kald };
+}
+const uroert = { cws: reserve.cws, cwsTitel: reserve.cwsTekst[0], cwsTekst: reserve.cwsTekst[1].replace(/&nbsp;/g, '\u00a0'), npm: reserve.npm, stjerner: reserve.stjerner[1], stjerneTitel: reserve.stjerner[0], aria: reserve.aria };
+const udenKald = ({ kald, ...r }) => r;
+
+test('tallene: henter gustavlouv.com/tal.json én gang, uden cookies og uden henvisning', async () => {
+  const r = await simulerTal({ data: {} });
+  assert.deepEqual(r.kald.map((k) => k.url), ['https://gustavlouv.com/tal.json']);
+  assert.equal(r.kald[0].opt.credentials, 'omit');
+  assert.equal(r.kald[0].opt.referrerPolicy, 'no-referrer');
+});
+
+test('tallene: en fuld fil skifter alle tre, med Googles dato ved Chrome-tallet og maaledagen ved stjernerne', async () => {
+  const r = await simulerTal({ data: { maalt: '2026-11-16', cws: 2901, cws_dato: '2026-11-15', browser: { npm_30_dage: 4933, stjerner: 64 } } });
+  assert.deepEqual(udenKald(r), {
+    cws: '2,901', cwsTitel: 'Users active in the 7 days to 15 Nov 2026, from the Chrome Web Store', cwsTekst: 'weekly users · 15\u00a0Nov\u00a02026',
+    npm: '4,933', stjerner: '64', stjerneTitel: 'GitHub stars on 16 Nov 2026', aria: 'Browser MCP on GitHub, 64 stars',
+  });
+});
+
+test('tallene: uden cws_dato (filen 17/11: cws 2500) staar Chrome-reserven; npm og stjerner skiftes', async () => {
+  const r = await simulerTal({ data: { maalt: '2026-11-16', cws: 2500, cws_butik: 2000, browser: { npm_i_alt: 20090, npm_30_dage: 4933, stjerner: 64, forks: 17 } } });
+  assert.equal(r.cws, reserve.cws); assert.equal(r.cwsTitel, uroert.cwsTitel); assert.equal(r.cwsTekst, uroert.cwsTekst);
+  assert.equal(r.npm, '4,933'); assert.equal(r.stjerner, '64');
+});
+
+test('tallene: netfejl og HTTP-fejl lader alle reserver staa', async () => {
+  assert.deepEqual(udenKald(await simulerTal('netfejl')), uroert);
+  assert.deepEqual(udenKald(await simulerTal({ ok: false, data: { maalt: '2026-11-16', cws: 9, cws_dato: '2026-11-15', browser: { npm_30_dage: 9, stjerner: 9 } } })), uroert);
+  assert.deepEqual(udenKald(await simulerTal({ data: null })), uroert);
+});
+
+test('tallene: kun positive heltal og rigtige datoer erstatter en reserve', async () => {
+  const daarlige = [
+    { maalt: '2026-11-16', cws: '2901', cws_dato: '2026-11-15', browser: { npm_30_dage: 0, stjerner: -1 } },
+    { maalt: '2026-11-16', cws: 2901.5, cws_dato: '2026-11-15', browser: { npm_30_dage: '4933', stjerner: 64.2 } },
+    { maalt: 'i gaar', cws: 2901, cws_dato: '2026-13-01', browser: { npm_30_dage: null, stjerner: 64 } },
+    { maalt: '2026-11-16', cws: 2901, cws_dato: '15 Nov 2026', browser: null },
+  ];
+  for (const data of daarlige) assert.deepEqual(udenKald(await simulerTal({ data })), uroert, JSON.stringify(data));
+});
+
+test('tallene: reserven i HTML\'en svarer til det scriptet skriver (samme form, saa intet hopper)', () => {
+  assert.match(reserve.cws, /^\d{1,3}(,\d{3})*$/); assert.match(reserve.npm, /^\d{1,3}(,\d{3})*$/);
+  assert.match(reserve.cwsTekst[0], /^Users active in the 7 days to \d{1,2} [A-Z][a-z]{2} 20\d\d, from the Chrome Web Store$/);
+  assert.match(reserve.cwsTekst[1], /^weekly users · \d{1,2}&nbsp;[A-Z][a-z]{2}&nbsp;20\d\d$/);
+  assert.match(reserve.stjerner[0], /^GitHub stars on \d{1,2} [A-Z][a-z]{2} 20\d\d$/);
+  assert.equal(reserve.aria, `Browser MCP on GitHub, ${reserve.stjerner[1]} stars`);
 });
 
 test('toppen: begge trin i heroen paa en computer; paa en beroeringsskaerm i stedet telefonkortet uden butiksknap', () => {
