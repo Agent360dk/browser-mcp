@@ -27,7 +27,10 @@ titel="vagt roed: $vagt"
 koersel="$GITHUB_SERVER_URL/$repo/actions/runs/$GITHUB_RUN_ID"
 
 # Review #107 R4: kun issues, som Actions-botten selv har oprettet - en fremmeds issue med samme titel overtages aldrig.
-nr=$(gh issue list --repo "$repo" --state open --limit 200 --author "app/github-actions" --json number,title \
+# Botten hedder «github-actions[bot]» i filteret (maalt 17/11-2026): med «app/github-actions» fandt listen INGEN af
+# bottens issues, saa #108 blev aldrig lukket af den groenne koersel 15/11, og naeste roede ville have aabnet en ny.
+# Ingen person kan hedde noget med [bot], saa en fremmeds issue med samme titel overtages stadig aldrig.
+nr=$(gh issue list --repo "$repo" --state open --limit 200 --author "github-actions[bot]" --json number,title \
        --jq "[.[] | select(.title == \"$titel\")][0].number // empty")
 
 if [ "$status" = ok ]; then
