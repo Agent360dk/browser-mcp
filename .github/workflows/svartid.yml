@@ -30,7 +30,7 @@ jobs:
   svartid:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - name: dage til foerste svar
         id: maal
         env:
