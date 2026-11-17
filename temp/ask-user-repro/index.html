@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ask_user focus repro</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .scen { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .scen a { padding: 4px 10px; border: 1px solid #cbd5e1; border-radius: 6px; text-decoration: none; color: #0f172a; background: #fff; }
+  .scen a.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+  #form { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; max-width: 420px; }
+  #form input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; }
+  #log { font: 12px/1.4 ui-monospace, monospace; background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px;
+         height: 260px; overflow: auto; white-space: pre-wrap; margin-top: 12px; max-width: 760px; }
+  #active { font: 12px ui-monospace, monospace; color: #475569; }
+  dialog::backdrop { background: rgba(15, 23, 42, 0.35); }
+</style>
+</head>
+<body>
+<h1>ask_user focus repro</h1>
+<div>Scenario: <b id="name"></b> · <span id="active"></span></div>
+<div class="scen" id="scen"></div>
+
+<!-- The page's own "challenge" form, like login.yahoo.com/account/challenge/web-authn -->
+<div id="form-home">
+  <div id="form">
+    <div style="font-weight:600;margin-bottom:6px">Verify it's you</div>
+    <input id="code" placeholder="Page input that wants focus" autocomplete="off">
+    <button id="passkey" type="button" style="margin-top:8px">Use passkey (navigator.credentials.get)</button>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<script>
+(() => {
+  const SCENARIOS = {
+    none:            'Baseline: nothing steals focus',
+    refocus:         'input re-focuses itself on blur + every 50 ms',
+    focustrap:       'document focusin (capture) pulls focus back to the input',
+    'capture-pd':    'window capture pointerdown/mousedown: preventDefault + focus input',
+    'capture-click': 'window capture click: stopImmediatePropagation outside #form',
+    dialog:          'form lives in a showModal() <dialog> (rest of page inert, top layer)',
+    popover:         'form lives in a manual popover (top layer, not inert), full-width bottom',
+    all:             'refocus + focustrap + capture-pd + capture-click + dialog',
+    // What login.yahoo.com/myaccount/security/app-password/ does (Ariakit Dialog, measured 2026-10-22):
+    // a few seconds after load a modal opens and sets element.inert = true on every <body> child that
+    // existed when it opened, except its own portal. Elements added after that are left alone.
+    ariakit:         'a modal opens 1.5 s after the card appears and sets inert on every <body> child present then (Yahoo / Ariakit)',
+    // Not a blocker: a global ::backdrop rule (common for styling <dialog>) also matches a popover's
+    // backdrop. Look at the page while the card is up: is it tinted red?
+    'backdrop-css':  'the page styles every ::backdrop red (as sites do for their dialogs); nothing else',
+  };
+  const params = new URLSearchParams(location.search);
+  const s = SCENARIOS[params.get('s')] ? params.get('s') : 'none';
+  const on = (k) => s === k || (s === 'all' && ['refocus', 'focustrap', 'capture-pd', 'capture-click', 'dialog'].includes(k));
+
+  document.getElementById('name').textContent = `${s} — ${SCENARIOS[s]}`;
+  const nav = document.getElementById('scen');
+  for (const k of Object.keys(SCENARIOS)) {
+    const a = document.createElement('a');
+    a.href = '?s=' + k; a.textContent = k; if (k === s) a.className = 'on';
+    nav.appendChild(a);
+  }
+
+  const logEl = document.getElementById('log');
+  const t0 = performance.now();
+  const log = (m) => {
+    logEl.textContent += `${((performance.now() - t0) / 1000).toFixed(2)}s  ${m}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+  const desc = (el) => {
+    if (!el || el === document) return String(el && el.nodeName);
+    if (el === window) return 'window';
+    if (el.id === 'a360-overlay') return '#a360-overlay (ask_user host)';
+    return el.nodeName.toLowerCase() + (el.id ? '#' + el.id : '');
+  };
+  window.__repro = { scenario: s, log };
+
+  const code = document.getElementById('code');
+  const form = document.getElementById('form');
+
+  // Observe (never interfere) what the page can see of events aimed at the prompt.
+  for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click', 'focusin', 'keydown']) {
+    window.addEventListener(type, (e) => {
+      const t = e.composedPath()[0];
+      const host = e.target && e.target.id === 'a360-overlay';
+      if (host || type === 'click') log(`[observe] ${type} target=${desc(e.target)} trusted=${e.isTrusted}${host ? ' (inner ' + (t && t.nodeName) + ')' : ''}`);
+    }, true);
+  }
+  new MutationObserver((muts) => {
+    for (const m of muts) {
+      for (const n of m.addedNodes) if (n.id === 'a360-overlay') {
+        log('[observe] ask_user host ADDED to ' + desc(m.target));
+        if (on('backdrop-css')) setTimeout(() => log('[backdrop-css] the card\'s ::backdrop is ' + getComputedStyle(n, '::backdrop').backgroundColor + (n.matches(':popover-open') ? '' : ' (not a popover)')), 300);
+      }
+      for (const n of m.removedNodes) if (n.id === 'a360-overlay') log('[observe] ask_user host REMOVED');
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
+
+  if (on('refocus')) {
+    code.addEventListener('blur', () => { code.focus(); log('[refocus] blur -> focus()'); });
+    setInterval(() => { if (document.activeElement !== code) code.focus(); }, 50);
+  }
+  if (on('focustrap')) {
+    document.addEventListener('focusin', (e) => {
+      if (e.target !== code) { log('[focustrap] focusin on ' + desc(e.target) + ' -> back to input'); code.focus(); }
+    }, true);
+  }
+  if (on('capture-pd')) {
+    for (const type of ['pointerdown', 'mousedown']) {
+      window.addEventListener(type, (e) => {
+        if (form.contains(e.target)) return;
+        e.preventDefault(); code.focus(); log(`[capture-pd] ${type} on ${desc(e.target)} preventDefault`);
+      }, true);
+    }
+  }
+  if (on('capture-click')) {
+    window.addEventListener('click', (e) => {
+      if (form.contains(e.target) || e.target.closest?.('.scen')) return;
+      e.stopImmediatePropagation(); log('[capture-click] click on ' + desc(e.target) + ' swallowed');
+    }, true);
+  }
+  if (on('backdrop-css')) {
+    const st = document.createElement('style');
+    st.textContent = '::backdrop { background: rgba(220, 38, 38, 0.35); }';
+    document.head.appendChild(st);
+  }
+    if (on('dialog') || on('popover')) {
+    const box = document.createElement(on('dialog') ? 'dialog' : 'div');
+    box.appendChild(form);
+    document.body.appendChild(box);
+    if (on('dialog')) {
+      box.addEventListener('cancel', (e) => { e.preventDefault(); log('[dialog] Esc blocked'); });
+      box.showModal();
+    } else {
+      box.popover = 'manual';
+      box.style.cssText = 'inset:auto 0 0 0;width:100%;margin:0;padding:24px;border:0;background:#e2e8f0;box-sizing:border-box';
+      box.showPopover();
+    }
+    log(`[${s}] form moved into top layer`);
+  }
+
+  if (on('ariakit')) {
+    // Yahoo order: the prompt is redrawn on the new document first, the React modal opens after.
+    const openModal = () => {
+      const portal = document.createElement('div');
+      portal.id = 'portal';
+      portal.innerHTML = '<div style="position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:50">' +
+        '<div role="dialog" style="background:#fff;padding:20px;border-radius:10px;width:320px">Generate an app password<br>' +
+        '<input id="app-name" placeholder="App name" style="width:100%;margin-top:8px"></div></div>';
+      const snapshot = [...document.body.children];
+      document.body.appendChild(portal);
+      let n = 0;
+      for (const el of snapshot) if (!['SCRIPT', 'STYLE'].includes(el.tagName)) { el.inert = true; n++; }
+      portal.querySelector('#app-name').focus();
+      const host = document.getElementById('a360-overlay');
+      log(`[ariakit] modal open, inert set on ${n} body children; ask_user host ${host ? (host.inert ? 'IS inert' : 'not inert') : 'not on page yet'}`);
+      setInterval(() => {
+        const h = document.getElementById('a360-overlay');
+        if (!h) return;
+        const at = document.elementFromPoint(100, innerHeight - 60);
+        log(`[ariakit] host inert=${h.inert}; at the card: ${at === h ? 'ask_user card (clickable)' : desc(at) + ' (card NOT reachable)'}`);
+      }, 2000);
+    };
+    const wait = new MutationObserver(() => {
+      if (!document.getElementById('a360-overlay')) return;
+      wait.disconnect();
+      setTimeout(openModal, 1500);
+    });
+    wait.observe(document.body, { childList: true });
+  }
+
+  document.getElementById('passkey').addEventListener('click', async () => {
+    log('[passkey] navigator.credentials.get() ...');
+    try {
+      await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)), timeout: 60000, userVerification: 'preferred' } });
+      log('[passkey] resolved');
+    } catch (e) { log('[passkey] rejected: ' + e.name); }
+    code.focus();
+  });
+
+  const active = document.getElementById('active');
+  setInterval(() => { active.textContent = 'activeElement: ' + desc(document.activeElement); }, 200);
+  code.focus();
+  log('scenario ' + s + ' ready');
+})();
+</script>
+</body>
+</html>
