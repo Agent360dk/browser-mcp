@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>invalid selector | demo</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
+  [role=dialog] { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; width: 380px; }
+  [role=dialog] input { width: 100%; box-sizing: border-box; padding: 8px; font: inherit; margin-top: 4px; }
+  .w-full { width: 100%; margin-top: 12px; padding: 10px; border: 0; border-radius: 999px; background: #6001d2; color: #fff; font: inherit; cursor: pointer; }
+  #log { font: 12px/1.4 ui-monospace, monospace; background: #0f172a; color: #e2e8f0; padding: 10px; border-radius: 8px;
+         white-space: pre-wrap; max-width: 600px; min-height: 60px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<!--
+  The dialog Yahoo opens on login.yahoo.com/myaccount/security/app-password/ (measured 2026-10-22): its name field has
+  no name, no placeholder and no <label for>, so an agent tried several ways at once:
+      input[name="appName"], input[placeholder="App name"], text=App name
+  text= is Browser MCP's own syntax, and a text selector only when it is the whole string. Inside a comma-separated
+  list the string goes to querySelector, which throws on it. See README.md for what each tool answered.
+-->
+<div role="dialog" aria-label="Generate an app password">
+  <b>Generate an app password</b>
+  <p>Some apps require a separate, one-time password to sign in.</p>
+  <div><span>App name</span></div>
+  <input type="text" autocomplete="off">
+  <div style="margin-top:10px"><span>Expires on</span></div>
+  <input type="date" id="expires">
+  <button id="generate" class="w-full" type="button">Generate</button>
+</div>
+<div id="log"></div>
+
+<script>
+  const logEl = document.getElementById('log');
+  const input = document.querySelector('[role=dialog] input[type=text]');
+  document.getElementById('generate').addEventListener('click', () => { logEl.textContent += 'clicked #generate\n'; });
+  input.addEventListener('input', () => { logEl.textContent += 'app name is now ' + JSON.stringify(input.value) + '\n'; });
+</script>
+</body>
+</html>
