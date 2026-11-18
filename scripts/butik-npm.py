@@ -2,8 +2,8 @@
 """butik-npm.py - udleverer Chrome Web Store den samme version af udvidelsen, som npm har af serveren?
 
 Findes fordi (maalt 18/11-2026): serveren 1.31.0 kom paa npm 29/10, butikken afviste udvidelsen samme dag
-(soegeord i beskrivelsen), ingen sendte den ind igen, og i 20 dage udleverede butikken 1.30.3. Profilvalget og
-sikkerhedsrettelsen GHSA-687q naaede aldrig butiksbrugerne, og ingen opdagede det. Regel 10 (Gustav 18/11):
+(soegeord i beskrivelsen), ingen sendte den ind igen, og i 20 dage udleverede butikken 1.30.3. Profilvalget (som
+kraever udvidelsens popup) naaede aldrig butiksbrugerne, og ingen opdagede det. Regel 10 (Gustav 18/11):
 dele, der skal passe sammen, gaar live sammen - butikken foerst.
 
   python3 scripts/butik-npm.py            maal og doem (exit 1 = roed)
