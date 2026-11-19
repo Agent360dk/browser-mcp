@@ -174,6 +174,10 @@ function cmpVersion(a, b) {
 // R189: foerste udvidelse, der selv afviser en accept af «Leave site?» uden leave_page og loefter armeringen til 30 s.
 // R190: den melder det i hilsenen (dialog_leave_page: true); nummeret er kun reserve for en udvidelse, der ikke melder.
 const DIALOG_VAERN_FRA = '1.33.0';
+// 1.33-F13 (19/11): samme skel for browser_wait. En udvidelse fra foer 1.33 (v1.30.3:background.js:6191-6212, v1.31.0:6421)
+// svarer found:true, saa snart selektoren matcher noget - ogsaa display:none - og kender ikke state. 1.33's vaerktoejstekst
+// lover kun synlige. dialog_leave_page i hilsenen er 1.33-udvidelsens kendetegn (R190: grenens 1.33 hedder 1.31.0 til --prepare).
+function foer133(conn) { return !conn.dialogVaern && (!conn.version || cmpVersion(conn.version, DIALOG_VAERN_FRA) < 0); }
 
 // #58 (1.30.2): Web Store-udvidelsen har SAMME id i alle Chrome-profiler og browsere. distinctExtensions() grupperer paa id,
 // saa tre profiler talte som én, og ingen advarsel kom - mens kommandoerne gik til én af dem, og hvilken profil det var,
@@ -1088,7 +1092,7 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
   // armering 60 s - ogsaa hen over et sideskift (v1.30.3:background.js:6846-6849). Butikken er dage bagud, npm minutter,
   // saa serveren holder vaerktoejstekstens loefte, til udvidelsen kan: accept uden leave_page:true sendes ikke, og
   // armeringen er hoejst 30 s. test/dialog-gammel-udvidelse.test.mjs
-  if (method === 'handle_dialog' && !conn.dialogVaern && (!conn.version || cmpVersion(conn.version, DIALOG_VAERN_FRA) < 0)) {
+  if (method === 'handle_dialog' && foer133(conn)) {
     params = params || {};
     if (params.action !== 'dismiss' && params.leave_page !== true) {
       throw new ProfilFejl({ ok: false, error: 'extension-too-old-for-leave-page', sent: false,
@@ -1100,7 +1104,13 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     }
     params = { ...params, timeout: Math.min(Number(params.timeout) > 0 ? Number(params.timeout) : 30000, 30000) };
   }
-  return new Promise((resolve, reject) => {
+  const gammelVent = method === 'wait' && foer133(conn);
+  if (gammelVent && params?.state != null && params.state !== 'visible' && params.state !== 'attached') {
+    // Samme svar som 1.33-udvidelsen giver; den gamle ville stille have behandlet fx 'hidden' som «findes» (R173).
+    throw new Error(`state must be "visible" or "attached", not ${JSON.stringify(params.state)}. browser_wait waits for ` +
+      'something to appear; to wait for something to go away, poll browser_get_page_content or browser_execute_script.');
+  }
+  const svar = new Promise((resolve, reject) => {
     const id = ++cmdId;
     const timer = setTimeout(() => {
       pending.delete(id);
@@ -1137,6 +1147,13 @@ async function sendTilBane(bane, method, params, timeoutMs, _retries = 5, _ekstr
     }
     conn.ws.send(JSON.stringify({ id, method, params, pid: bane.medPid ? process.ppid : null }));
   });
+  if (!gammelVent || params?.state === 'attached') return svar;
+  return svar.then((r) => (r && r.found === true && r.visible === undefined ? { ...r, visible: 'unknown', visibility_checked: false,
+    extension_version: conn.version || null, needs: DIALOG_VAERN_FRA,
+    note: `The connected extension (${conn.version ? 'v' + conn.version : 'version not reported'}) only checks that the selector ` +
+      'matches something on the page, not that it can be seen: the match may be display:none, hidden or outside the page. ' +
+      'Check it before acting on it (browser_get_page_content or browser_screenshot). The extension\'s update to ' +
+      `${DIALOG_VAERN_FRA} (Chrome Web Store) checks visibility itself.` } : r));
 }
 
 // ── 1.32 (S5, #20): partitioner ─────────────────────────────────────────────

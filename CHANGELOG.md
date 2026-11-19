@@ -46,14 +46,17 @@ counts: text whose own element can be seen (also through a closed `<details>`, `
 hidden matches exist when the time is up, the answer is `found: false` with `on_page_but_hidden: true`. `state: "attached"`
 keeps the old wait for existence (for example a hidden file input before `browser_upload_file`); any other `state` is an
 error. The page is no longer scrolled while waiting, and the timeout is at most 60 seconds - the server now waits as long.
+An extension older than 1.33.0 still answers `found: true` for any match, seen or not, so from such an extension the
+server adds `visible: "unknown"`, `visibility_checked: false` and a note to check the match before acting on it, and it
+refuses a `state` other than `visible` or `attached` before sending, as the new extension does.
 
 **`browser_handle_dialog` arms for one moment on one page.** An arming lasted 60 seconds with no cap and accepted any dialog,
 "Leave site?" included, also on a page loaded after it was set. Now it lasts 30 seconds at most, and it is dropped when a new
 document loads or becomes active in the tab (a reload or a prerendered page too - not an address change within the same page, and not a frame) or the session moves
 to another tab. A page that changes while the arming is being set answers `page-changed`, and a tab switch meanwhile
 `session-changed`. An accept answers "Leave site?" - armed or already open - only with `leave_page: true`
-(otherwise `leave-page-required`); a dismiss is unchanged. The new server reaches npm days before the extension clears
-the Chrome Web Store review, and an older extension does not enforce `leave_page` when accepting dialogs. So until the
+(otherwise `leave-page-required`); a dismiss is unchanged. Chrome updates an installed extension on its own schedule,
+so the new server can meet an older extension for a while, and an older extension does not enforce `leave_page` when accepting dialogs. So until the
 extension is 1.33.0, the server does not send it an accept without `leave_page: true` (`extension-too-old-for-leave-page`,
 nothing sent) - pass `leave_page: true` when you do mean to leave the page, or wait for the store update - and caps
 its arming at 30 seconds; on the older extension that arming still survives a page or tab change.
