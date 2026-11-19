@@ -30,8 +30,20 @@ test('butik-npm: samme version er groen; npm foran i hoejst 3 dage er groen', ()
   assert.equal(py(`print(b.dom('1.31.0', '1.33.0', ${tid('2026-11-14T11:00:00+00:00')}, ${NU})[0])`), 'True', 'over 3 dage skal vaere roedt');
 });
 
-test('butik-npm: butikken foran npm er groen (butikken foerst)', () => {
-  assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${tid('2026-10-29T00:00:00+00:00')}, ${NU})[0])`), 'False');
+test('butik-npm: butikken foran npm er groen i hoejst 3 dage, derefter roed; ukendt dato er roed', () => {
+  const npm = tid('2026-10-29T00:00:00+00:00');
+  assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${npm}, ${NU}, ${tid('2026-11-17T00:00:00+00:00')})[0])`), 'False', 'butikken foerst: npm foelger efter');
+  assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${npm}, ${NU}, ${tid('2026-11-14T11:00:00+00:00')})[0])`), 'True', 'npm-trinnet glemt i over 3 dage');
+  assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${npm}, ${NU})[0])`), 'True', 'butikkens dato ukendt');
+});
+
+test('butik-npm: butikkens 4. versionsdel og npm-prereleases vaelter ikke dommen', () => {
+  assert.equal(py(`print(b.dom('1.33.0.5', '1.33.0', ${tid('2026-11-01T00:00:00+00:00')}, ${NU})[0])`), 'False');
+  assert.equal(py(`print(b.dom('1.33.0', '1.34.0-beta.1', ${tid('2026-11-17T00:00:00+00:00')}, ${NU})[0])`), 'False');
+});
+
+test('butik-npm: uden en adresse at laese datoen fra er datoen ukendt (og dommen dermed roed, se ovenfor)', () => {
+  assert.equal(py(`print(b.hent_dato(''))`), 'None');
 });
 
 test('butik-npm: et svar, der ikke kan laeses, er aldrig groent', () => {
