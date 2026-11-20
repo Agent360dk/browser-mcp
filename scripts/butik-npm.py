@@ -15,9 +15,12 @@ Dom:
   * npm er foran butikken i mere end GRAENSE dage   -> ROED (det, der skete med 1.31)
   * butikken er foran npm i hoejst GRAENSE dage    -> groen med note (npm-trinnet efter godkendelsen mangler)
   * butikken er foran npm i mere end GRAENSE dage  -> ROED (npm-trinnet blev aldrig koert; regel 10 gaelder begge veje)
-    (butikkens dato = Last-Modified paa den .crx, butikken udleverer; maalt 19/11: 1.30.3 -> 15/10 06:14 UTC)
-  * samme tal, men npm latest er en prerelease     -> ROED straks (fx butik 1.33.0, npm 1.33.0-rc.1: en prerelease paa
-    latest er altid en fejl; panel 20/11 fandt, at den ellers stod groen som «samme version» for altid)
+    (butikkens dato = Last-Modified paa den .crx, butikken udleverer = filens UPLOADTID, ikke den dag butikken begyndte at
+    udlevere den: 1.31.0-filen har 29/10 11:42 UTC, men butikken udleverede den foerst 20/11 (panel 20/11, maalt). Alarmen
+    kan derfor komme for tidligt, aldrig for sent.)
+  * npm latest er en prerelease                    -> ROED straks (fx 1.33.0-rc.1 eller 1.34.0-beta.1; build-metadata efter
+    «+» er ikke en prerelease, SemVer 2.0.0 par. 9-10). En prerelease paa latest er altid en fejl; panel 20/11 fandt, at
+    butik 1.33.0 mod npm 1.33.0-rc.1 ellers stod groen som «samme version» for altid.
   * en kilde kunne ikke laeses                     -> ROED (UMAALT): et ukendt svar er aldrig et groent svar
 """
 import datetime, email.utils, json, re, sys, urllib.error, urllib.request
@@ -50,10 +53,10 @@ def dom(butik, npm, npm_tid, nu, butik_tid=None):
         return True, '✗ UMAALT: butikkens version kunne ikke laeses'
     if not npm or npm_tid is None or tal(npm) is None:
         return True, '✗ UMAALT: npm latest kunne ikke laeses'
+    if '-' in npm.split('+', 1)[0]:
+        return True, (f'✗ npm latest er prereleasen {npm} (Chrome Web Store udleverer {butik}) - en prerelease paa latest er '
+                      f'en fejl: find den seneste stabile udgave paa npm, og saet latest tilbage til den')
     if tal(butik) == tal(npm):
-        if '-' in npm:
-            return True, (f'✗ npm latest er prereleasen {npm}, Chrome Web Store udleverer {butik} - en prerelease paa '
-                          f'latest er en fejl: flyt dist-tagget latest til {butik}')
         return False, f'✓ samme version: Chrome Web Store {butik}, npm {npm}'
     dage = (nu - npm_tid).total_seconds() / 86400
     if tal(npm) > tal(butik):
@@ -65,9 +68,9 @@ def dom(butik, npm, npm_tid, nu, butik_tid=None):
         return True, f'✗ UMAALT: Chrome Web Store {butik} er foran npm {npm}, men butikkens dato kunne ikke laeses'
     bdage = (nu - butik_tid).total_seconds() / 86400
     if bdage > GRAENSE:
-        return True, (f'✗ Chrome Web Store {butik} siden {butik_tid.date()} ({bdage:.0f} dage), men npm har {npm} '
+        return True, (f'✗ Chrome Web Store {butik} (filen uploadet {butik_tid.date()}, {bdage:.0f} dage siden), men npm har {npm} '
                       f'- serveren til den nye udvidelse blev aldrig udgivet. Koer npm-trinnet')
-    return False, f'· Chrome Web Store {butik} er foran npm {npm} i {bdage:.1f} dage: npm-trinnet efter godkendelsen mangler (graense {GRAENSE} dage)'
+    return False, f'· Chrome Web Store {butik} er foran npm {npm} (filen uploadet for {bdage:.1f} dage siden): npm-trinnet efter godkendelsen mangler (graense {GRAENSE} dage)'
 
 
 def selvtest():
@@ -82,8 +85,10 @@ def selvtest():
         (('1.33.0', '1.31.0', dag(1), dag(14)), True),   # butikken foran i 4 dage: npm-trinnet glemt
         (('1.33.0', '1.31.0', dag(1), None), True),      # butikken foran, dato ukendt
         (('1.33.0.5', '1.33.0', dag(1)), False),         # butikkens 4. del er samme udgivelse
-        (('1.33.0', '1.34.0-beta.1', dag(17)), False),   # prerelease gaar ikke ned
+        (('1.33.0', '1.34.0-beta.1', dag(17)), True),    # prerelease paa latest: roed straks, ogsaa naar den er hoejere
         (('1.33.0', '1.33.0-rc.1', dag(1)), True),       # samme tal, prerelease paa latest: aldrig «samme version»
+        (('1.33.0', '1.32.0-rc.1', dag(1), dag(17)), True),  # ogsaa naar den er lavere
+        (('1.33.0', '1.33.0+build-7', dag(1)), False),   # build-metadata (efter «+») er ikke en prerelease
         ((None, '1.31.0', dag(1)), True),
         (('1.31.0', None, None), True),
         (('1.9.0', '1.10.0', dag(1)), True),        # tal, ikke tekst: 1.10 > 1.9
@@ -116,7 +121,7 @@ def hent_butik():
 
 
 def hent_dato(sted):
-    """Last-Modified paa den .crx, butikken udleverer = hvornaar butikken begyndte at udlevere den. Ukendt -> None."""
+    """Last-Modified paa den .crx, butikken udleverer = filens uploadtid (butikken kan foerst udlevere den dage senere). Ukendt -> None."""
     if not sted.startswith('https://'):
         return None
     for _ in range(3):

@@ -37,9 +37,26 @@ test('butik-npm: butikken foran npm er groen i hoejst 3 dage, derefter roed; uke
   assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${npm}, ${NU})[0])`), 'True', 'butikkens dato ukendt');
 });
 
-test('butik-npm: butikkens 4. versionsdel og npm-prereleases vaelter ikke dommen', () => {
+test('butik-npm: butikkens 4. versionsdel og npm-build-metadata vaelter ikke dommen', () => {
   assert.equal(py(`print(b.dom('1.33.0.5', '1.33.0', ${tid('2026-11-01T00:00:00+00:00')}, ${NU})[0])`), 'False');
-  assert.equal(py(`print(b.dom('1.33.0', '1.34.0-beta.1', ${tid('2026-11-17T00:00:00+00:00')}, ${NU})[0])`), 'False');
+  assert.equal(py(`print(b.dom('1.33.0', '1.33.0+build-7', ${tid('2026-11-01T00:00:00+00:00')}, ${NU})[0])`), 'False', 'efter «+» er build-metadata, ikke prerelease');
+});
+
+test('butik-npm: butikken foran npm er groen paa praecis 3 dage og roed et sekund efter', () => {
+  const npm = tid('2026-10-29T00:00:00+00:00');
+  assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${npm}, ${NU}, ${tid('2026-11-15T12:00:00+00:00')})[0])`), 'False', 'praecis 3 dage');
+  assert.equal(py(`print(b.dom('1.33.0', '1.31.0', ${npm}, ${NU}, ${tid('2026-11-15T11:59:59+00:00')})[0])`), 'True', '3 dage + 1 sekund');
+});
+
+test('butik-npm: hent_butik sender butikkens adresse videre til hent_dato og beholder datoen', () => {
+  const ud = py(`import urllib.error
+class Aabn:
+    def open(self, *a, **k):
+        raise urllib.error.HTTPError('u', 302, 'Found', {'Location': 'https://h/JDEH_1_33_0_0.crx'}, None)
+b.urllib.request.build_opener = lambda *a: Aabn()
+b.hent_dato = lambda sted: 'DATO:' + sted
+print(b.hent_butik())`);
+  assert.equal(ud, "('1.33.0', 'DATO:https://h/JDEH_1_33_0_0.crx')");
 });
 
 test('butik-npm: uden en adresse at laese datoen fra er datoen ukendt (og dommen dermed roed, se ovenfor)', () => {
@@ -56,9 +73,11 @@ print(b.hent_dato('https://h/JDEH_1_30_3_0.crx').isoformat())`);
   assert.equal(ud, '2025-10-15T06:14:00+00:00');
 });
 
-test('butik-npm: samme tal, men en prerelease paa npm latest, er roedt straks (panel 20/11)', () => {
-  assert.equal(py(`print(b.dom('1.33.0', '1.33.0-rc.1', ${tid('2026-11-17T00:00:00+00:00')}, ${NU})[0])`), 'True');
-  assert.equal(py(`print(b.dom('1.34.0', '1.34.0-beta.1', ${tid('2026-11-17T00:00:00+00:00')}, ${NU}, ${tid('2026-11-17T00:00:00+00:00')})[0])`), 'True');
+test('butik-npm: en prerelease paa npm latest er roed straks - lavere, samme eller hoejere tal (panel 20/11)', () => {
+  const t1 = tid('2026-11-17T00:00:00+00:00');
+  assert.equal(py(`print(b.dom('1.33.0', '1.33.0-rc.1', ${t1}, ${NU})[0])`), 'True', 'samme tal');
+  assert.equal(py(`print(b.dom('1.33.0', '1.34.0-beta.1', ${t1}, ${NU})[0])`), 'True', 'hoejere');
+  assert.equal(py(`print(b.dom('1.33.0', '1.32.0-rc.1', ${t1}, ${NU}, ${t1})[0])`), 'True', 'lavere');
 });
 
 test('butik-npm: et svar, der ikke kan laeses, er aldrig groent', () => {
