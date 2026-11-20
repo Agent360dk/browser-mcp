@@ -29,4 +29,9 @@ test('panel 20/11: browser_wait siger selv, at en udvidelse foer 1.33 ikke tjekk
   const w = TOOLS.find((t) => t.name === 'browser_wait');
   assert.ok(/older than 1\.33[\s\S]*visibility is not checked[\s\S]*visibility_checked:false/.test(w.description), 'beskrivelsen mangler forbeholdet for gamle udvidelser');
   assert.ok(/older than 1\.33/.test(w.inputSchema.properties.state.description), 'state-teksten mangler forbeholdet');
+  assert.ok(/state "attached" the answer has no visible field/.test(w.description), 'beskrivelsen skal sige, at attached-svaret ikke har visible (index.js springer det over)');
+  for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md']) {
+    const linje = readFileSync(join(rod, f), 'utf8').split('\n').find((l) => l.startsWith('| `browser_wait` |')) ?? '';
+    assert.ok(/older than 1\.33[^|]*visib[^|]*visible: "unknown"/.test(linje), `${f}: browser_wait-raekken mangler forbeholdet for udvidelser foer 1.33`);
+  }
 });
