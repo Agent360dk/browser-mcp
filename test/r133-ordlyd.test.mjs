@@ -32,6 +32,7 @@ test('panel 20/11: browser_wait siger selv, at en udvidelse foer 1.33 ikke tjekk
   assert.ok(/state "attached" the answer has no visible field/.test(w.description), 'beskrivelsen skal sige, at attached-svaret ikke har visible (index.js springer det over)');
   for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md']) {
     const linje = readFileSync(join(rod, f), 'utf8').split('\n').find((l) => l.startsWith('| `browser_wait` |')) ?? '';
-    assert.ok(/older than 1\.33[^|]*visib[^|]*visible: "unknown"/.test(linje), `${f}: browser_wait-raekken mangler forbeholdet for udvidelser foer 1.33`);
+    assert.ok(/older than 1\.33[^|]*visib[^|]*default wait[^|]*visible: "unknown"[^|]*state: "attached"[^|]*no `visible` field/.test(linje),
+      `${f}: browser_wait-raekken skal sige, at kun en almindelig ventning faar visible: "unknown", og at attached ikke har visible (panel 20/11)`);
   }
 });
