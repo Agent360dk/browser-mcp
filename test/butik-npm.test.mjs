@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const rod = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SKRIPT = join(rod, 'scripts/butik-npm.py');
 const py = (kode) => {
-  const r = spawnSync('python3', ['-c', `import importlib.util, datetime as d\ns = importlib.util.spec_from_file_location('b', ${JSON.stringify(SKRIPT)}); b = importlib.util.module_from_spec(s); s.loader.exec_module(b)\n${kode}`], { encoding: 'utf8' });
+  const r = spawnSync('python3', ['-c', `import importlib.util, datetime as d\ns = importlib.util.spec_from_file_location('b', ${JSON.stringify(SKRIPT)}); b = importlib.util.module_from_spec(s); s.loader.exec_module(b)\n${kode}`], { encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout.trim();
 };
