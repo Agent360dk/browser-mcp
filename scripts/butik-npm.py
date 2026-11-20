@@ -16,6 +16,8 @@ Dom:
   * butikken er foran npm i hoejst GRAENSE dage    -> groen med note (npm-trinnet efter godkendelsen mangler)
   * butikken er foran npm i mere end GRAENSE dage  -> ROED (npm-trinnet blev aldrig koert; regel 10 gaelder begge veje)
     (butikkens dato = Last-Modified paa den .crx, butikken udleverer; maalt 19/11: 1.30.3 -> 15/10 06:14 UTC)
+  * samme tal, men npm latest er en prerelease     -> ROED straks (fx butik 1.33.0, npm 1.33.0-rc.1: en prerelease paa
+    latest er altid en fejl; panel 20/11 fandt, at den ellers stod groen som «samme version» for altid)
   * en kilde kunne ikke laeses                     -> ROED (UMAALT): et ukendt svar er aldrig et groent svar
 """
 import datetime, email.utils, json, re, sys, urllib.error, urllib.request
@@ -49,6 +51,9 @@ def dom(butik, npm, npm_tid, nu, butik_tid=None):
     if not npm or npm_tid is None or tal(npm) is None:
         return True, '✗ UMAALT: npm latest kunne ikke laeses'
     if tal(butik) == tal(npm):
+        if '-' in npm:
+            return True, (f'✗ npm latest er prereleasen {npm}, Chrome Web Store udleverer {butik} - en prerelease paa '
+                          f'latest er en fejl: flyt dist-tagget latest til {butik}')
         return False, f'✓ samme version: Chrome Web Store {butik}, npm {npm}'
     dage = (nu - npm_tid).total_seconds() / 86400
     if tal(npm) > tal(butik):
@@ -78,6 +83,7 @@ def selvtest():
         (('1.33.0', '1.31.0', dag(1), None), True),      # butikken foran, dato ukendt
         (('1.33.0.5', '1.33.0', dag(1)), False),         # butikkens 4. del er samme udgivelse
         (('1.33.0', '1.34.0-beta.1', dag(17)), False),   # prerelease gaar ikke ned
+        (('1.33.0', '1.33.0-rc.1', dag(1)), True),       # samme tal, prerelease paa latest: aldrig «samme version»
         ((None, '1.31.0', dag(1)), True),
         (('1.31.0', None, None), True),
         (('1.9.0', '1.10.0', dag(1)), True),        # tal, ikke tekst: 1.10 > 1.9

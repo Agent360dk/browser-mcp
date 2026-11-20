@@ -46,6 +46,21 @@ test('butik-npm: uden en adresse at laese datoen fra er datoen ukendt (og dommen
   assert.equal(py(`print(b.hent_dato(''))`), 'None');
 });
 
+test('butik-npm: en gyldig Last-Modified bliver til butikkens dato (panel 20/11: en datolaesning, der altid gav None, slap igennem)', () => {
+  const ud = py(`class R:
+    headers = {'Last-Modified': 'Wed, 15 Oct 2025 06:14:00 GMT'}
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+b.urllib.request.urlopen = lambda *a, **k: R()
+print(b.hent_dato('https://h/JDEH_1_30_3_0.crx').isoformat())`);
+  assert.equal(ud, '2025-10-15T06:14:00+00:00');
+});
+
+test('butik-npm: samme tal, men en prerelease paa npm latest, er roedt straks (panel 20/11)', () => {
+  assert.equal(py(`print(b.dom('1.33.0', '1.33.0-rc.1', ${tid('2026-11-17T00:00:00+00:00')}, ${NU})[0])`), 'True');
+  assert.equal(py(`print(b.dom('1.34.0', '1.34.0-beta.1', ${tid('2026-11-17T00:00:00+00:00')}, ${NU}, ${tid('2026-11-17T00:00:00+00:00')})[0])`), 'True');
+});
+
 test('butik-npm: et svar, der ikke kan laeses, er aldrig groent', () => {
   assert.equal(py(`print(b.dom(None, '1.31.0', ${tid('2026-11-17T00:00:00+00:00')}, ${NU})[0])`), 'True');
   assert.equal(py(`print(b.dom('1.31.0', None, None, ${NU})[0])`), 'True');
