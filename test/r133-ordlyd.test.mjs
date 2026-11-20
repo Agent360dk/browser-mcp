@@ -24,3 +24,9 @@ test('F3: ingen vaerktoejsbeskrivelse naevner 1.32, som aldrig blev udgivet', ()
   const med = TOOLS.filter((t) => /\b1\.32\b/.test(JSON.stringify(t))).map((t) => t.name);
   assert.deepEqual(med, []);
 });
+
+test('panel 20/11: browser_wait siger selv, at en udvidelse foer 1.33 ikke tjekker synlighed', () => {
+  const w = TOOLS.find((t) => t.name === 'browser_wait');
+  assert.ok(/older than 1\.33[\s\S]*visibility is not checked[\s\S]*visibility_checked:false/.test(w.description), 'beskrivelsen mangler forbeholdet for gamle udvidelser');
+  assert.ok(/older than 1\.33/.test(w.inputSchema.properties.state.description), 'state-teksten mangler forbeholdet');
+});

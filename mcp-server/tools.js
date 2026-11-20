@@ -167,13 +167,13 @@ export const TOOLS = [
   },
   {
     name: 'browser_wait',
-    description: 'Wait for an element or a text to be visible on the page. Supports CSS and text-based selectors. found is true only for a match that can be seen: one that is display:none, visibility:hidden, opacity 0 (itself or a parent), smaller than 2 px, inside a closed box, or moved outside the page does not count, and the page is not scrolled. If only such matches exist when the time is up, the answer is found:false with on_page_but_hidden:true. Pass state: "attached" to wait only for the match to exist; visible then says whether it can be seen - for example a hidden file input (input[type=file]) before browser_upload_file, an <option>, or a hidden token field. A fixed element counts only inside the window.',
+    description: 'Wait for an element or a text to be visible on the page. Supports CSS and text-based selectors. found is true only for a match that can be seen: one that is display:none, visibility:hidden, opacity 0 (itself or a parent), smaller than 2 px, inside a closed box, or moved outside the page does not count, and the page is not scrolled. If only such matches exist when the time is up, the answer is found:false with on_page_but_hidden:true. Pass state: "attached" to wait only for the match to exist; visible then says whether it can be seen - for example a hidden file input (input[type=file]) before browser_upload_file, an <option>, or a hidden token field. A fixed element counts only inside the window. With a Chrome extension older than 1.33 (the Chrome Web Store may still serve one) visibility is not checked: found:true then comes with visible:"unknown" and visibility_checked:false, so check the element before you act on it.',
     inputSchema: {
       type: 'object',
       properties: {
         selector: { type: 'string', description: 'CSS selector or text selector (e.g. "text=Success", "button:text(Next)") to wait for' },
         timeout: { type: 'number', description: 'Max wait time in ms (default: 10000, at most 60000)' },
-        state: { type: 'string', enum: ['visible', 'attached'], description: 'visible (default): wait until a match can be seen. attached: wait until a match exists on the page, seen or not.' },
+        state: { type: 'string', enum: ['visible', 'attached'], description: 'visible (default): wait until a match can be seen (with an extension older than 1.33: until it exists, see visible in the answer). attached: wait until a match exists on the page, seen or not.' },
       },
       required: ['selector'],
     },
