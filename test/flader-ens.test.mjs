@@ -78,7 +78,7 @@ test('flader-ens: siden laeses kun fra gyldig ld+json for Browser MCP (ikke komm
     blok(app('1.31.0')) + blok(app('1.33.0')),                                   // to versioner
     '<html></html>',                                                             // ingenting
   ];
-  const ud = py(`import json\nfor h in json.loads(${JSON.stringify(JSON.stringify(sider))}): print(f.side_version(h))`).split('\n');
+  const ud = py(`import json\nfor h in json.loads(${JSON.stringify(JSON.stringify(sider))}): print(f.side_version(h))`).split(/\r?\n/);
   assert.deepEqual(ud, ['1.31.0', '1.31.0', 'None', 'None', 'None', 'None', 'None', 'None']);
 });
 
@@ -121,7 +121,7 @@ print(f.hent('https://api.github.com/repos/x/releases/latest', 'GitHub release')
 print(f.hent('https://registry.npmjs.org/x', 'npm'))
 print(sorted(set(kald)))
 print(f.GRUND)
-print(f.dom(None, None, {}, ${NU}, f.GRUND)[1][0])`).split('\n');
+print(f.dom(None, None, {}, ${NU}, f.GRUND)[1][0])`).split(/\r?\n/);
   assert.equal(ud[0], "{'tag_name': 'v1.31.0'}");
   assert.equal(ud[1], 'None');
   assert.equal(ud[2], "[('api.github.com', 'Bearer noegle-x'), ('registry.npmjs.org', None)]", 'noeglen maa kun sendes til GitHubs API');
