@@ -1,0 +1,39 @@
+# Viser MCP-registret, GitHubs seneste udgivelse og browsermcp.dev den samme version som npm? (Gustav 19/11-2026:
+# «… og alt andet er ens e2e»). Butikken mod npm vogtes af butik-npm.yml.
+#
+# Afviger en flade, og er npm latest mere end 1 dag gammel, aabner koerslen én issue til et menneske
+# (scripts/vagt-besked.sh); groen lukker den igen. Et svar, der ikke kan laeses, er roedt (UMAALT), aldrig groent.
+name: flader-ens
+
+on:
+  schedule:
+    - cron: "45 6 * * *"   # dagligt 06:45 UTC = 07:45 Europe/Copenhagen (efter butik-npm 06:30)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write          # kun til vagt-besked.sh: «vagt roed: flader-ens» oprettes, opdateres og lukkes
+
+concurrency:
+  group: vagt-flader-ens
+  cancel-in-progress: false
+
+jobs:
+  flader-ens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: alle flader mod npm
+        id: maal
+        # pipefail: uden den ville tee's exit 0 skjule en roed dom.
+        run: |
+          set -o pipefail
+          python3 scripts/flader-ens.py 2>&1 | tee "$RUNNER_TEMP/flader-ens.txt"
+      - name: besked til et menneske (roed -> issue, groen -> luk den)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Fundet uden dagetallet, som vokser hver dag - ellers ville samme afvigelse give en ny besked hver morgen.
+        run: |
+          { grep -E '✗' "$RUNNER_TEMP/flader-ens.txt" | sed -E 's/ \([0-9]+ dage\)//' || true; } > "$RUNNER_TEMP/fund.txt"
+          bash scripts/vagt-besked.sh flader-ens "${{ steps.maal.outcome == 'success' && 'ok' || 'roed' }}" "$RUNNER_TEMP/fund.txt"
