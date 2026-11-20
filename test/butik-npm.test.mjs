@@ -80,6 +80,22 @@ test('butik-npm: en prerelease paa npm latest er roed straks - lavere, samme ell
   assert.equal(py(`print(b.dom('1.33.0', '1.32.0-rc.1', ${t1}, ${NU}, ${t1})[0])`), 'True', 'lavere');
 });
 
+test('butik-npm: samme fejl giver samme fund to dage i traek, efter arbejdsgangens eget filter (panel 20/11)', () => {
+  const wf = readFileSync(join(rod, '.github/workflows/butik-npm.yml'), 'utf8');
+  const m = wf.match(/sed -E 's\/(.+?)\/\/'/);
+  assert.ok(m, 'arbejdsgangens filter (sed -E) blev ikke fundet');
+  const filter = (s) => s.replace(new RegExp(m[1], 'g'), '');
+  const dag1 = tid('2026-11-18T12:00:00+00:00'), dag2 = tid('2026-11-19T12:00:00+00:00');
+  const butikForan = (nu) => py(`print(b.dom('1.33.0', '1.31.0', ${tid('2026-10-29T00:00:00+00:00')}, ${nu}, ${tid('2026-11-10T00:00:00+00:00')})[1])`);
+  const npmForan = (nu) => py(`print(b.dom('1.31.0', '1.33.0', ${tid('2026-11-10T00:00:00+00:00')}, ${nu})[1])`);
+  for (const [navn, f] of [['butikken foran', butikForan], ['npm foran', npmForan]]) {
+    const a = f(dag1), b2 = f(dag2);
+    assert.ok(a.startsWith('✗') && b2.startsWith('✗'), `${navn}: begge dage skal vaere roede`);
+    assert.notEqual(a, b2, `${navn}: dagetallet skal aendre sig (ellers maaler proeven intet)`);
+    assert.equal(filter(a), filter(b2), `${navn}: efter filteret skal fundet vaere ens, ellers kommer en ny besked hver morgen`);
+  }
+});
+
 test('butik-npm: et svar, der ikke kan laeses, er aldrig groent', () => {
   assert.equal(py(`print(b.dom(None, '1.31.0', ${tid('2026-11-17T00:00:00+00:00')}, ${NU})[0])`), 'True');
   assert.equal(py(`print(b.dom('1.31.0', None, None, ${NU})[0])`), 'True');

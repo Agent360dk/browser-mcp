@@ -68,7 +68,7 @@ def dom(butik, npm, npm_tid, nu, butik_tid=None):
         return True, f'✗ UMAALT: Chrome Web Store {butik} er foran npm {npm}, men butikkens dato kunne ikke laeses'
     bdage = (nu - butik_tid).total_seconds() / 86400
     if bdage > GRAENSE:
-        return True, (f'✗ Chrome Web Store {butik} (filen uploadet {butik_tid.date()}, {bdage:.0f} dage siden), men npm har {npm} '
+        return True, (f'✗ Chrome Web Store {butik} (filen uploadet {butik_tid.date()}) ({bdage:.0f} dage), men npm har {npm} '
                       f'- serveren til den nye udvidelse blev aldrig udgivet. Koer npm-trinnet')
     return False, f'· Chrome Web Store {butik} er foran npm {npm} (filen uploadet for {bdage:.1f} dage siden): npm-trinnet efter godkendelsen mangler (graense {GRAENSE} dage)'
 
