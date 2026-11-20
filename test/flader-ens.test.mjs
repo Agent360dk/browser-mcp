@@ -63,3 +63,74 @@ test('flader-ens: selvtesten er groen, og arbejdsgangen sender roedt til vagt-be
   assert.match(wf, /set -o pipefail/);
   assert.match(wf, /bash scripts\/vagt-besked\.sh flader-ens /);
 });
+
+// Astras gennemgang af dc8ab79 (20/11-2026, panel-2026-11-20/astra-114.md): fire fund og tre overlevende mutanter.
+test('flader-ens: siden laeses kun fra gyldig ld+json for Browser MCP (ikke kommentar, broedtekst eller andet produkt)', () => {
+  const blok = (o) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`;
+  const app = (v, name = 'Browser MCP') => ({ '@context': 'https://schema.org', '@type': 'SoftwareApplication', name, softwareVersion: v });
+  const sider = [
+    blok(app('1.31.0')),                                                         // gyldig
+    blok({ '@graph': [{ '@type': 'FAQPage' }, app('1.31.0')] }),                 // indlejret i @graph
+    '<!-- "softwareVersion": "1.31.0" -->',                                      // kun en kommentar
+    '<p>"softwareVersion": "1.31.0"</p>',                                        // kun broedtekst
+    blok(app('1.31.0')) + '<script type="application/ld+json">{ikke json</script>', // en oedelagt blok
+    blok(app('1.31.0', 'Computer MCP')),                                         // et andet produkt
+    blok(app('1.31.0')) + blok(app('1.33.0')),                                   // to versioner
+    '<html></html>',                                                             // ingenting
+  ];
+  const ud = py(`import json\nfor h in json.loads(${JSON.stringify(JSON.stringify(sider))}): print(f.side_version(h))`).split('\n');
+  assert.deepEqual(ud, ['1.31.0', '1.31.0', 'None', 'None', 'None', 'None', 'None', 'None']);
+});
+
+test('flader-ens: et npm-svar, der ikke er en version, mangler tidszone eller ligger i fremtiden, er roedt', () => {
+  const ok = alle("'1.31.0'");
+  assert.equal(py(`print(f.dom('latest', ${tid('2026-11-20T09:00:00+00:00')}, ${ok}, ${NU})[0])`), 'True', '«latest» er ikke en version');
+  assert.equal(py(`print(f.dom('1.31.0', ${tid('2027-11-20T12:00:00+00:00')}, ${ok}, ${NU})[0])`), 'True', 'et aar frem');
+  assert.equal(py(`print(f.dom('1.31.0', ${tid('2026-11-20T12:59:00+00:00')}, ${ok}, ${NU})[0])`), 'False', 'under en time frem (urforskel) er ok');
+  assert.equal(py(`print(f.dom('1.31.0', ${tid('2026-11-01T00:00:00')}, ${ok}, ${NU})[0])`), 'True', 'uden tidszone: roedt, ingen TypeError');
+});
+
+test('flader-ens: en flade, der ikke kan laeses, er roed ogsaa i det foerste doegn efter npm', () => {
+  assert.equal(py(`print(f.dom('1.33.0', ${tid('2026-11-20T09:00:00+00:00')}, {'MCP-registret': '1.33.0', 'GitHub release': None, 'browsermcp.dev': '1.31.0'}, ${NU})[0])`), 'True');
+});
+
+test('flader-ens: en udgivelse midt i maalingen giver ikke falsk alarm, og alt ulaeseligt er roedt', () => {
+  const maal = (npmSvar, flader) => py(`\nsvar = iter(${npmSvar})\nnu = ${NU}\nprint(f.maal(lambda: next(svar), lambda: ${flader}, lambda: nu)[1])`);
+  const gammel = `('1.31.0', ${tid('2026-11-01T00:00:00+00:00')})`;
+  const ny = `('1.33.0', ${tid('2026-11-20T09:00:00+00:00')})`;
+  assert.equal(maal(`[${gammel}, ${ny}]`, alle("'1.33.0'")), 'False', 'npm skiftede, mens fladerne blev laest');
+  assert.equal(maal(`[${gammel}, ${gammel}]`, alle("'1.33.0'")), 'True', 'npm staar stille: fladerne er foran');
+  assert.equal(maal(`[(None, None), (None, None)]`, alle('None')), 'True', 'alle hentninger fejlede');
+});
+
+test('flader-ens: kun GitHubs API faar noeglen, og en fejlet hentning gemmer sin aarsag', () => {
+  const ud = py(`
+import os, io, urllib.error
+os.environ['GH_TOKEN'] = 'noegle-x'
+kald = []
+class Svar(io.BytesIO):
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+def falsk(req, timeout=None):
+    kald.append((req.full_url.split('/')[2], req.get_header('Authorization')))
+    if 'npmjs' in req.full_url: raise urllib.error.HTTPError(req.full_url, 403, 'Forbidden', {}, None)
+    return Svar(b'{"tag_name": "v1.31.0"}')
+f.urllib.request.urlopen = falsk
+f.time.sleep = lambda s: None
+print(f.hent('https://api.github.com/repos/x/releases/latest', 'GitHub release'))
+print(f.hent('https://registry.npmjs.org/x', 'npm'))
+print(sorted(set(kald)))
+print(f.GRUND)
+print(f.dom(None, None, {}, ${NU}, f.GRUND)[1][0])`).split('\n');
+  assert.equal(ud[0], "{'tag_name': 'v1.31.0'}");
+  assert.equal(ud[1], 'None');
+  assert.equal(ud[2], "[('api.github.com', 'Bearer noegle-x'), ('registry.npmjs.org', None)]", 'noeglen maa kun sendes til GitHubs API');
+  assert.equal(ud[3], "{'npm': 'HTTP 403'}");
+  assert.equal(ud[4], '✗ UMAALT: npm latest kunne ikke laeses (HTTP 403)', 'den roede besked skal sige aarsagen');
+});
+
+test('flader-ens: arbejdsgangen sender maalingens udfald videre og giver noeglen til maalingen', () => {
+  const wf = readFileSync(join(rod, '.github/workflows/flader-ens.yml'), 'utf8');
+  assert.match(wf, /id: maal\n\s+env:\n(?:\s+#[^\n]*\n)*\s+GH_TOKEN: \$\{\{ github\.token \}\}/, 'maalingen skal have GH_TOKEN');
+  assert.ok(wf.includes(`"\${{ steps.maal.outcome == 'success' && 'ok' || 'roed' }}"`), 'beskeden skal faa maalingens udfald, ikke et fast «ok»');
+});

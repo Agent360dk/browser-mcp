@@ -25,6 +25,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: alle flader mod npm
         id: maal
+        env:
+          # Kun til GitHubs API (releases/latest): delte loebere deler graensen paa 60 anonyme kald i timen pr. IP-adresse.
+          GH_TOKEN: ${{ github.token }}
         # pipefail: uden den ville tee's exit 0 skjule en roed dom.
         run: |
           set -o pipefail
