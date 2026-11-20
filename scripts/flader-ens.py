@@ -11,8 +11,10 @@ MCP-registret, GitHubs seneste udgivelse og browsermcp.dev (softwareVersion i si
 
 Dom:
   * alle flader = npm latest                                 -> groen
-  * en flade afviger, og npm latest er hoejst 1 dag gammel   -> groen med note (udgivelsen er i gang:
-    npm kommer foerst, registret, GitHub og siden foelger inden for timer)
+  * en flade afviger, og npm latest er hoejst 1 dag gammel   -> groen med note (udgivelsen er i gang: registret
+    og siden foelger npm inden for timer)
+  * NB: runbrowsermcpupdate.sh laver GitHub-udgivelsen (trin 4) FOER npm publish (trin 5). Rammer den daglige koersel
+    netop de minutter, er GitHub foran en gammel npm, og dommen er roed; naeste groenne koersel lukker beskeden igen
   * en flade afviger, og npm latest er mere end 1 dag gammel -> ROED (en flade blev glemt, eller en udgivelse
     stoppede halvvejs - fx siden live foer npm)
   * en kilde kunne ikke laeses                               -> ROED (UMAALT): et ukendt svar er aldrig et groent svar
@@ -70,10 +72,12 @@ def side_version(html):
 def dom(npm, npm_tid, flader, nu, grunde=None):
     """(roed, linjer). flader = {navn: version eller None}. npm_tid og nu er datetime med tidszone."""
     grunde = grunde or {}
-    hvorfor = lambda navn: f' ({grunde[navn]})' if grunde.get(navn) else ''
+    # Aarsagen staar paa sin egen linje uden ✗: den ses i koerslens log, men er ikke en del af fundet. Ellers ville et udfald, hvor
+    # fejltypen skifter (HTTP 503 -> URLError -> timeout), give en ny besked hver morgen trods dubletfilteret (Opus 20/11, #114 R2).
+    hvorfor = lambda navn: [f'    aarsag: {grunde[navn]}'] if grunde.get(navn) else []
     linjer, roed = [], False
     if npm_tid is None or not isinstance(npm, str) or ren(npm) is None or npm_tid.tzinfo is None:
-        return True, [f'✗ UMAALT: npm latest kunne ikke laeses{hvorfor("npm")}']
+        return True, ['✗ UMAALT: npm latest kunne ikke laeses'] + hvorfor('npm')
     npm = ren(npm)
     if npm_tid > nu + FREMTID:
         return True, [f'✗ UMAALT: npm latest {npm} har udgivelsestidspunktet {npm_tid.isoformat()}, der ligger i fremtiden']
@@ -81,7 +85,8 @@ def dom(npm, npm_tid, flader, nu, grunde=None):
     for navn, v in flader.items():
         if v is None:
             roed = True
-            linjer.append(f'✗ UMAALT: {navn} kunne ikke laeses{hvorfor(navn)}')
+            linjer.append(f'✗ UMAALT: {navn} kunne ikke laeses')
+            linjer += hvorfor(navn)
         elif v == npm:
             linjer.append(f'✓ {navn} {v}')
         elif alder > GRAENSE_DAGE:
