@@ -438,8 +438,8 @@ html:not(.js) #pauselbl{display:none}
 
     <div class="hero-t">
       <ul class="proof">
-        <li><b data-tal="cws-brugere">2,000</b><span>Chrome users</span></li>
-        <li><b data-tal="npm-maaned">4,888</b><span>npm downloads last month</span></li>
+        <li><b data-tal="cws-ugentlige">2,776</b><span title="Users active in the 7 days to 15 Nov 2026, from the Chrome Web Store">weekly users · 15&nbsp;Nov&nbsp;2026</span></li>
+        <li><b data-tal="npm-maaned">4,933</b><span>npm downloads last month</span></li>
         <li><b>MIT</b><span>no account, no paid tier</span></li>
       </ul>
       <p class="works">Works with Claude Code · Cursor · Codex · VS Code · Windsurf</p>
@@ -664,9 +664,9 @@ if (film && pz) {
   pz.addEventListener('change', function () { if (pz.checked) { film.pause(); mark(); } else { spil(); } });
 }
 // Tallene hentes ved hvert besoeg fra gustavlouv.com/tal.json (Gustav 17/11-2026: «programmatiske tal hentet direkte paa
-// tvaers af alle siderne»). Samme fil som agent360.dk, saa alle sider viser samme tal. Tallene i HTML'en er reserven: fejler
-// hentningen, eller er et felt ikke et positivt heltal, staar de. Chrome-tallet er butikkens eget afrundede tal (cws_butik).
-// Ingen cookies og ingen henvisning sendes med.
+// tvaers af alle siderne»). Samme fil som agent360.dk, saa alle sider viser samme tal og samme maaledag. Tallene i HTML'en er
+// reserven: fejler hentningen, eller er et felt ikke et positivt heltal, staar de. Chrome-tallet skiftes kun, naar cws_dato er
+// en dato (ugentlige brugere fra Googles API, med Googles dato). Ingen cookies og ingen henvisning sendes med.
 (function () {
   if (!window.fetch) return;
   var mdr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -677,10 +677,14 @@ if (film && pz) {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
       if (!d || typeof d !== 'object') return;
-      var b = d.browser || {}, md = dato(d.maalt);
-      var cws = document.querySelector('[data-tal="cws-brugere"]'), npm = document.querySelector('[data-tal="npm-maaned"]');
+      var b = d.browser || {}, cd = dato(d.cws_dato), md = dato(d.maalt);
+      var cws = document.querySelector('[data-tal="cws-ugentlige"]'), npm = document.querySelector('[data-tal="npm-maaned"]');
       var gh = document.querySelector('a.gh'), n = gh && gh.querySelector('.n');
-      if (cws && heltal(d.cws_butik)) cws.textContent = vis(d.cws_butik);
+      if (cws && heltal(d.cws) && cd) {
+        cws.textContent = vis(d.cws);
+        var s = cws.nextElementSibling;
+        if (s) { s.title = 'Users active in the 7 days to ' + cd + ', from the Chrome Web Store'; s.textContent = 'weekly users · ' + cd.replace(/ /g, '\u00a0'); }
+      }
       if (npm && heltal(b.npm_30_dage)) npm.textContent = vis(b.npm_30_dage);
       if (n && heltal(b.stjerner) && md) { n.textContent = vis(b.stjerner); n.title = 'GitHub stars on ' + md; gh.setAttribute('aria-label', 'Browser MCP on GitHub, ' + vis(b.stjerner) + ' stars'); }
     })

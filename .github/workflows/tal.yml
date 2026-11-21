@@ -1,10 +1,10 @@
 name: tal
 
 # Daglige tal paa browsermcp.dev (Gustav 10/10: «ja til daglig stjernekoersel»). Siden 17/11-2026 henter forsiden selv
-# tallene ved hvert besoeg fra gustavlouv.com/tal.json; GitHub-stjerner, npm-hentninger sidste maaned og Chrome Web
-# Store-brugere bages her kun ind i docs/index.html som reserve (vises til hentningen svarer, og hvis den fejler).
-# NB: Chrome Web Store viser offentligt kun et afrundet tal («1,000 users»); det praecise staar kun i
-# udviklerkonsollen, som ikke har et aabent API.
+# tallene ved hvert besoeg fra gustavlouv.com/tal.json; GitHub-stjerner og npm-hentninger sidste maaned bages her kun ind
+# i docs/index.html som reserve (vises til hentningen svarer, og hvis den fejler) af scripts/stjerner.py.
+# NB: Chrome-reserven («weekly users», data-tal="cws-ugentlige") er ikke dette jobs: den kommer fra Chrome Web Store
+# API v2 (users-7d) og kraever en OAuth-noegle, der ikke ligger her; se kommentaren i scripts/stjerner.py.
 #
 # Vagter:
 # - commit KUN naar et tal har aendret sig (en ny maaledato alene giver ingen commit);
