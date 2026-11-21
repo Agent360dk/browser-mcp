@@ -1060,7 +1060,8 @@ test('--prepare og --ship sammen afvises, og --prepare naegtes paa main', { skip
   try {
     // ⛔ Astra 26/9: `--branch main` kraevede en LOKAL main i kilden - en PR-checkout paa CI har ingen.
     // main oprettes derfor i fixturen selv.
-    execFileSync('git', ['clone', '-q', '--local', rod, d]);
+    // 1/11 (CI, node 24): --local hardlinker objekterne, og det fejler, naar /tmp er en anden disk (Invalid cross-device link).
+    execFileSync('git', ['clone', '-q', '--local', '--no-hardlinks', rod, d]);
     execFileSync('git', ['-C', d, 'checkout', '-q', '-B', 'main']);
     execFileSync('cp', [join(rod, 'runbrowsermcpupdate.sh'), join(d, 'runbrowsermcpupdate.sh')]);
     const paaMain = (() => { try { execFileSync('bash', ['runbrowsermcpupdate.sh', '9.9.9', '--prepare'], { cwd: d, encoding: 'utf8', stdio: 'pipe', env: { PATH: process.env.PATH, HOME: tmpdir() } }); return { kode: 0, ud: '' }; } catch (e) { return { kode: e.status, ud: String(e.stdout) + String(e.stderr) }; } })();

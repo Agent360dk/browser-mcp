@@ -41,11 +41,11 @@ You get an image back instead of *"I don't have browser access"*. **That's it - 
 
 Windsurf's own wording: *"Cascade has a limit of 100 total tools that it has access to at any given time."*
 
-Browser MCP is 40 of them. That is a large share of the budget, and it is a real trade-off rather than something to hide:
+Browser MCP is 41 of them. That is a large share of the budget, and it is a real trade-off rather than something to hide:
 
 - Running Browser MCP plus two or three other large servers will push you over, and tools start disappearing from Cascade's view rather than announcing themselves.
 - If you are near the limit, turn off servers you are not using in that session instead of trying to guess which tools got dropped.
-- If you only ever use Browser MCP for logged-in pages and screenshots, you are still paying for all 40 definitions. Browser MCP always offers all 40. Whether you can switch single tools off depends on the client, and we have not found that switch in Windsurf.
+- If you only ever use Browser MCP for logged-in pages and screenshots, you are still paying for all 41 definitions. Browser MCP always offers all 41. Whether you can switch single tools off depends on the client, and we have not found that switch in Windsurf.
 
 We would rather you knew that before installing than found it as a mystery three servers later.
 

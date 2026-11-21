@@ -570,7 +570,13 @@ test('en dialog, der holder siden under efterkontrollen, giver uvist med vagten 
   const svar = await b.koer('click', { selector: '#gem' });
   assert.equal(svar.landed, null, JSON.stringify(svar));
   assert.equal(svar.maybe_landed, true);
-  assert.match(svar.note, /A dialog opened during the click/);
+  // Runde 1b: her gav svaret foer ordret raadet «Answer the dialog with browser_handle_dialog» -
+  // uden at nogen boks var registreret. Foelger agenten det paa en fane uden dialog, ARMERER den i
+  // stedet den naeste. Nu siger svaret, at dialogen ikke kunne identificeres, og peger paa brugeren.
+  assert.match(svar.note, /dialog is holding the page/, svar.note);
+  assert.match(svar.note, /browser_ask_user/, svar.note);
+  assert.doesNotMatch(svar.note, /Answer the dialog with browser_handle_dialog/,
+    'det raad armerer et nyt vindue paa en fane, hvor vi ikke kan se nogen boks: ' + svar.note);
 });
 
 // ── R67, mutanter der overlevede ───────────────────────────────────────────
@@ -993,4 +999,80 @@ test('en button og et form-associeret custom-felt som maal i en rolle-boks: et k
     assert.notEqual(svar.landed, true, tag + ' ' + JSON.stringify(svar));
     assert.ok(!b.side.includes('click:cb'), String(b.side));
   }
+});
+
+// ── #100 / B-01: boksens tilstand NAAR svaret skrives ──────────────────────
+// dispatchTaalmodigt fanger kun en AABEN boks (nyUbesvaretBoks kraever det), men
+// mellem fangsten og svaret kan brugeren naa at besvare den. Sagde vi alligevel
+// "besvar den nu", armerede agenten et nyt 30-sekunders vindue, der kunne
+// auto-besvare den NAESTE dialog paa fanen. Denne proeve koerer det ægte
+// klik-forloeb og lukker boksen midtvejs.
+test('#100: en dialog, der lukkes MENS klikket koerer, meldes i datid og uden raad om at besvare den', async () => {
+  const d = knapside();
+  const b = browser(d);
+  const dialogFaner = b.u.hent('dialogFaner');
+  const boks = { type: 'confirm', message: 'Delete this order?' };
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  let trin = 0;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent') {
+      trin += 1;
+      if (trin === 1) dialogFaner.set(1, { boks });        // dialogen aabner under klikket
+      if (trin === 3) boks.lukket = { result: true };      // og er besvaret foer svaret skrives
+    }
+    return send(m, metode, p);
+  };
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.maybe_landed, true, JSON.stringify(svar));
+  assert.equal(svar.dialog_open, undefined,
+    'boksen er vaek - dialog_open paastaar at den staar NU: ' + JSON.stringify(svar));
+  assert.doesNotMatch(svar.note, /browser_handle_dialog/,
+    'raadet armerer et nyt 30-sekunders vindue: ' + svar.note);
+  assert.match(svar.note, /already closed or answered/, svar.note);
+});
+
+// ── #100, runde 1b: svaret skal beskrive den boks, der staar NU ────────────
+test('#100: lukkes den fangede dialog, mens siden aabner en NY, navngives den nye', async () => {
+  const d = knapside();
+  const b = browser(d);
+  const dialogFaner = b.u.hent('dialogFaner');
+  const boks1 = { type: 'confirm', message: 'Discard unsaved changes?' };
+  const boks2 = { type: 'confirm', message: 'Are you sure?' };
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  let trin = 0;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent') {
+      trin += 1;
+      if (trin === 1) dialogFaner.set(1, { boks: boks1 });
+      if (trin === 3) { boks1.lukket = { result: true }; dialogFaner.set(1, { boks: boks2 }); }
+    }
+    return send(m, metode, p);
+  };
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.ok(svar.dialog_open, 'boks2 staar og holder fanen: ' + JSON.stringify(svar));
+  assert.equal(svar.dialog_open.message, 'Are you sure?',
+    'svaret maa ikke beskrive den boks, vi fangede - men den der staar nu: ' + JSON.stringify(svar));
+  assert.doesNotMatch(svar.note, /It is gone/, svar.note);
+});
+
+test('#100: et svar, Chrome ikke har bekraeftet, meldes uafgjort - ikke som vaek', async () => {
+  const d = knapside();
+  const b = browser(d);
+  const dialogFaner = b.u.hent('dialogFaner');
+  const boks = { type: 'confirm', message: 'Delete this order?' };
+  const send = b.u.ctx.chrome.debugger.sendCommand;
+  let trin = 0;
+  b.u.ctx.chrome.debugger.sendCommand = (m, metode, p) => {
+    if (metode === 'Input.dispatchMouseEvent') {
+      trin += 1;
+      if (trin === 1) dialogFaner.set(1, { boks });
+      // Vi har SENDT et svar, men Chrome har ikke bekraeftet det med Closed.
+      if (trin === 3) { boks.besvaretAf = 'agent'; dialogFaner.set(1, { boks: null }); }
+    }
+    return send(m, metode, p);
+  };
+  const svar = await b.koer('click', { selector: '#gem' });
+  assert.equal(svar.dialog_open, undefined, JSON.stringify(svar));
+  assert.doesNotMatch(svar.note, /It is gone/, svar.note);
+  assert.match(svar.note, /browser_ask_user/, svar.note);
 });

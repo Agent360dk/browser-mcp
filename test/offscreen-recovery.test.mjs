@@ -38,8 +38,9 @@ function udklip(navn, erFunktion = true) {
  * Rejser den aegte ensureOffscreen med en stubbet chrome, og rapporterer hvad
  * funktionen faktisk gjorde.
  */
-async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion = '9.9.9', vores = '9.9.9' } = {}) {
-  const log = { lukket: 0, oprettet: 0, advarsler: [] };
+// pingForsinkelser: [ms, ...] - den n'te ping besvares efter ms (null = aldrig); pings ud over listen besvares straks.
+async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion = '9.9.9', vores = '9.9.9', pingForsinkelser = null } = {}) {
+  const log = { lukket: 0, oprettet: 0, advarsler: [], pings: 0 };
   const gemt = { ...lager };
 
   const chrome = {
@@ -49,9 +50,16 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
       createDocument: async () => { log.oprettet++; findes = true; },
     },
     runtime: {
-      sendMessage: async () => (pingSvarer
-        ? { ok: true, ...(broVersion === null ? {} : { version: broVersion }) }
-        : Promise.reject(new Error('ingen modtager'))),
+      sendMessage: async () => {
+        const n = log.pings++;
+        const svar = { ok: true, ...(broVersion === null ? {} : { version: broVersion }) };
+        if (pingForsinkelser) {
+          const ms = n < pingForsinkelser.length ? pingForsinkelser[n] : 0;
+          if (ms === null) return new Promise(() => {});
+          return new Promise((ok) => setTimeout(() => ok(svar), ms));
+        }
+        return pingSvarer ? svar : Promise.reject(new Error('ingen modtager'));
+      },
       getManifest: () => ({ version: vores }),
     },
     storage: {
@@ -80,6 +88,12 @@ async function koer({ findes = true, pingSvarer = false, lager = {}, broVersion 
     'let offscreenIGang = null;',
     // 26/9: koeen har faaet sin egen funktion (iOffscreenKoe) - den skal med.
     udklip('iOffscreenKoe'),
+    // R138: en genopbygning goer det gamle bro-dokuments forbindelser lukkede (broenErstattes) - den aegte kode skal med.
+    'let broensDokument = null;',
+    udklip('doedeDokumenter', false),
+    udklip('dokumentDoedt'),
+    udklip('broenErstattes'),
+    udklip('broenErVaek'),
     udklip('ensureOffscreenIndre'),
     udklip('ensureOffscreen'),
     'return ensureOffscreen();',
@@ -213,4 +227,30 @@ test('en genindlaesning tvinger altid en frisk bro - men en NY installation lukk
     'installations-grenen skal vende tilbage FOER broen lukkes - ellers lukker en ny installation '
     + 'den bro den selv er ved at bygge');
   assert.match(blok, /offscreenGenskabt: 0/, 'og taelleren skal nulstilles, ellers arver den nye bro en gammel pause');
+});
+
+// ── R137 (maalt 19/10, R137-hang/ud: «offscreen-dokumentet svarer ikke — erstatter det» i 6 koersler): under en lammet
+//    browsertraad kom ét ping-svar for sent (over 1,5 s), og broen blev revet ned - med WebSocket-forbindelsen og de svar,
+//    der var paa vej. Broen genopbygges derfor kun efter to mistede svar i traek.
+//    Mutations-verificeret (H3, mut132.py): én ping med 1,5 s gav roed.
+test('R137: et svar efter 2 s én gang river ikke broen ned', async () => {
+  const r = await koer({ findes: true, pingForsinkelser: [2000] });
+  assert.equal(r.lukket, 0, 'ét for sent svar gav closeDocument - broen og dens forbindelse blev revet ned');
+  assert.equal(r.oprettet, 0);
+});
+
+// R138 (Astra, mutant «kun den anden ping taeller» overlevede): foerste pings svar efter 2 s skal taelle, ogsaa naar den anden
+// aldrig svarer - ellers er det den anden pings svar, der redder broen, ikke det sene svar.
+test('R137/R138: den foerste pings sene svar taeller, selv om den anden ping aldrig svarer', async () => {
+  const r = await koer({ findes: true, pingForsinkelser: [2000, null] });
+  assert.equal(r.pings, 2, 'der blev ikke spurgt en gang til efter 1,5 s');
+  assert.equal(r.lukket, 0, 'det sene svar paa foerste ping blev ignoreret, og broen blev revet ned');
+  assert.equal(r.oprettet, 0);
+});
+
+test('R137: to mistede svar i traek erstatter stadig broen', async () => {
+  const r = await koer({ findes: true, pingForsinkelser: [null, null] });
+  assert.equal(r.pings, 2, 'der blev ikke spurgt to gange');
+  assert.equal(r.lukket, 1, 'en bro der ikke svarer to gange i traek skal lukkes');
+  assert.equal(r.oprettet, 1);
 });

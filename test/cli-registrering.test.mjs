@@ -281,6 +281,11 @@ test('SIKKERHED (Windows): installeren koerer aldrig en klient fra arbejdsmappen
   lig(koert(lav({ path: '\\\\srv\\share\\tools', filer: ['\\\\srv\\share\\tools\\codex.cmd'] })).k, '"\\\\srv\\share\\tools\\codex.cmd"');
   lig(koert(lav({ path: '//srv/share/tools', filer: ['\\\\srv\\share\\tools\\codex.cmd'] })).k, '"\\\\srv\\share\\tools\\codex.cmd"');
   lig(koert(lav({ path: '\\\\?\\C:\\tools', aliaser: { '\\\\?\\C:\\tools': 'C:\\tools' }, filer: ['C:\\tools\\codex.cmd'] })).k, '"\\\\?\\C:\\tools\\codex.cmd"');
+  // R171 (Opus): ogsaa \\.\ og \\?\UNC\ er enhedsstier, ikke rodrelative - klienter dér findes.
+  lig(koert(lav({ path: '\\\\.\\C:\\tools', aliaser: { '\\\\.\\C:\\tools': 'C:\\tools' }, filer: ['C:\\tools\\codex.cmd'] })).k, '"\\\\.\\C:\\tools\\codex.cmd"');
+  lig(koert(lav({ path: '\\\\?\\UNC\\srv\\share\\tools', aliaser: { '\\\\?\\UNC\\srv\\share\\tools': '\\\\srv\\share\\tools' }, filer: ['\\\\srv\\share\\tools\\codex.cmd'] })).k, '"\\\\?\\UNC\\srv\\share\\tools\\codex.cmd"');
+  // R171 (Astra): .bin-reglen gaelder segmentet node_modules - en mappe som my_node_modules\.bin er en almindelig mappe.
+  lig(koert(lav({ path: 'C:\\my_node_modules\\.bin', filer: ['C:\\my_node_modules\\.bin\\codex.cmd'] })).k, '"C:\\my_node_modules\\.bin\\codex.cmd"');
   // R170 (Astra/Opus O5): et WSL-symlink (EACCES ogsaa paa lstat) springes over; den gyldige codex.cmd i en senere mappe vaelges.
   lig(koert(lav({ path: 'C:\\A;C:\\B', mapper: ['C:\\A'], wsl: ['C:\\A\\codex.exe'], filer: ['C:\\B\\codex.cmd'] })).k, '"C:\\B\\codex.cmd"');
   // R170 (Astra/Opus O9): kun arbejdsmappens node_modules og dens undermapper - ikke en soeskendemappe som node_modulesX.

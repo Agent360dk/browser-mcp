@@ -4,7 +4,7 @@
 *Suggested meta description: "Copilot gets your real, already-logged-in Chrome rather than a fresh profile, so it can work on pages that need a session."*
 
 
-**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome in four steps.** 40 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
+**Give VS Code's Copilot agent mode control of your real, already-logged-in Chrome in four steps.** 41 browser tools, your actual cookies and sessions, works on 2FA and CAPTCHA-gated sites where headless tools (Playwright, Puppeteer) get blocked. MIT-licensed, free, and runs on your machine - no account, no telemetry, nothing sent to us.
 
 **You need:** Chrome, and Node.js 20 or newer for `npx` (`node -v` shows your version).
 
@@ -110,7 +110,7 @@ Don't want Developer mode on? Use the [Chrome Web Store install](#no-developer-m
 
 - After you save the config (Step 2), start the server: run **MCP: List Servers** from the Command Palette and choose **Start**/**Enable** (VS Code may also show an inline Start action directly above the server entry when you open the config file - check for it, but `MCP: List Servers` always works). A trust prompt appears the first time; approve it.
 - Open Copilot Chat and switch the mode dropdown to **Agent**.
-- The extension shows a green badge with the number of connected agents once your agent first uses the browser. 40 browser tools are now available in Agent mode.
+- The extension shows a green badge with the number of connected agents once your agent first uses the browser. 41 browser tools are now available in Agent mode.
 
 ### Verify it's working
 
@@ -175,7 +175,7 @@ This is the reason people install Browser MCP: Copilot Chat (Agent mode) hits a 
 
 The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites that block Playwright and Puppeteer - it is not a fresh anonymous session, it is yours. (We do not build detection-evasion; see when-not-to-use.)
 
-### 40 tools
+### 41 tools
 
 | Category | Tools |
 |---|---|
@@ -186,6 +186,7 @@ The same real-session advantage is why it works on 2FA- and CAPTCHA-gated sites 
 | **CAPTCHA assistance** | `browser_solve_captcha` - detects reCAPTCHA v2/v3, hCaptcha, Turnstile and FunCaptcha; the agent can try the reCAPTCHA checkbox, click reCAPTCHA grid cells it chooses, or ask you to solve it with `browser_ask_user`, one step per call. No third-party solving service |
 | **Human-in-the-loop** | `browser_ask_user` - a card you can drag aside while you log in or solve a CAPTCHA, or a dialog with fields for a 2FA code, right inside the page |
 | **Meta & recovery** | `browser_about` - version and links to report a bug or wish · `browser_provide_feedback` - checks the install and drafts an issue · `browser_reattach_debugger` - recovery when actions start timing out |
+| **Parallel agents** | `browser_partition` - from 1.33, gives a parallel agent its own tab group and active tab; every tool then takes `partition` |
 
 `browser_extract_token` opens the API page of 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn) and returns instructions for finding or creating the credentials there; it reads nothing itself. Any other provider answers `Unknown provider`, and the agent can use `browser_navigate` + `browser_get_page_content` on that provider's own dashboard instead.
 
@@ -238,7 +239,7 @@ Workspace (`.vscode/mcp.json`) if you want the server scoped to one project and 
 That's VS Code's own convention - Claude Code and Cursor use `mcpServers` as the root key, VS Code uses `servers`. Same server, same package (`@agent360/browser-mcp`), different config wrapper. Don't copy a Claude Code config block into `.vscode/mcp.json` verbatim - swap the root key.
 
 **What is Browser MCP?**
-An MCP (Model Context Protocol) server that gives VS Code's Copilot agent mode - or any MCP client that can run local stdio servers, including Claude Code and Cursor - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 40 tools, MIT-licensed, runs on your own machine.
+An MCP (Model Context Protocol) server that gives VS Code's Copilot agent mode - or any MCP client that can run local stdio servers, including Claude Code and Cursor - control of your actual, already-logged-in Chrome: your cookies, your sessions, your 2FA. 41 tools, MIT-licensed, runs on your own machine.
 
 **Is it free?**
 Yes. MIT license, no account, no paid tier. (GitHub Copilot's free tier is enough to use Agent mode.)

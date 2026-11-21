@@ -71,6 +71,9 @@ test('en fane der aldrig kan vedhaeftes giver en brugbar fejl', async () => {
 });
 
 // ── cdpSend: sideeffekt-metoder maa ikke gentages i blinde ──────────────────
+// #100 (11/11): debuggerAttach sender nu ogsaa Page.enable paa hver ny session. De to proever herunder talte
+// ALLE sendCommand-kald som forsoeg; klikproeven blev roed (1 klik + 2 Page.enable = 3), og laeseproeven blev
+// blind (Page.enable alene gav > 1, ogsaa hvis laesekaldet aldrig blev gentaget). De taeller nu kun metoden selv.
 
 test('et museklik gentages IKKE automatisk naar debuggeren falder af', async () => {
   // Et gentaget Input.dispatchMouseEvent er et EKSTRA klik i brugerens browser.
@@ -79,7 +82,10 @@ test('et museklik gentages IKKE automatisk naar debuggeren falder af', async () 
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 8, attached: true }],
-    'debugger.sendCommand': () => { forsoeg++; throw new Error('Debugger is not attached to the tab'); },
+    'debugger.sendCommand': (_maal, m) => {
+      if (m === 'Input.dispatchMouseEvent') forsoeg++;
+      throw new Error('Debugger is not attached to the tab');
+    },
   } });
   const send = u.hent('cdpSend');
   await assert.rejects(() => send(8, 'Input.dispatchMouseEvent', {}));
@@ -88,14 +94,19 @@ test('et museklik gentages IKKE automatisk naar debuggeren falder af', async () 
 
 test('et laesekald gentages derimod gerne', async () => {
   let forsoeg = 0;
+  let metode = null;
   const u = indlaesUdvidelse({ svar: {
     'debugger.attach': undefined,
     'debugger.getTargets': [{ tabId: 9, attached: true }],
-    'debugger.sendCommand': () => { forsoeg++; throw new Error('Debugger is not attached to the tab'); },
+    'debugger.sendCommand': (_maal, m) => {
+      if (m === metode) forsoeg++;
+      throw new Error('Debugger is not attached to the tab');
+    },
   } });
   const send = u.hent('cdpSend');
   const kanGentages = u.hent('RETRYABLE_CDP_METHODS');
-  const metode = kanGentages ? [...kanGentages][0] : 'Runtime.evaluate';
+  metode = kanGentages ? [...kanGentages][0] : 'Runtime.evaluate';
+  assert.notEqual(metode, 'Page.enable', 'proeven skal maale et laesekald, ikke den Page.enable, tilkoblingen selv sender');
   await assert.rejects(() => send(9, metode, {}));
   assert.ok(forsoeg > 1, `et laesekald skal gentages, blev proevet ${forsoeg} gang`);
 });

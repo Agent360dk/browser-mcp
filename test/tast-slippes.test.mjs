@@ -53,5 +53,6 @@ test('kalenderens PageUp/PageDown sender ingen keyDown uden om hjaelperen', () =
   const blok = kilde.slice(i, kilde.indexOf('\n}\n', i));
   assert.ok(i > -1 && blok.length > 100, 'setDatePicker blev ikke fundet');
   assert.doesNotMatch(blok, /type: 'keyDown'/, 'et raat keyDown her kan efterlade tasten nede');
-  assert.match(blok, /tastParAttached\(tabId, \{ key, code: key \}/, 'PageUp/PageDown skal sendes via hjaelperen - ikke fjernes');
+  // #76: tasten baerer nu ogsaa sin tastkode (tastkodeFelter), saa objektet slutter ikke laengere efter code.
+  assert.match(blok, /tastParAttached\(tabId, \{ key, code: key\b/, 'PageUp/PageDown skal sendes via hjaelperen - ikke fjernes');
 });

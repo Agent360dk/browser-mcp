@@ -273,8 +273,10 @@ test('set_combobox videregiver hver parameter den annoncerer', async () => {
   const blok = bg.slice(i, bg.indexOf("case '", i + 20));
 
   // value/values haandteres saerskilt (samles til en liste), resten skal videregives.
+  // 1.32: `partition` vaelger serverens bane og fjernes, foer kaldet sendes (se test/partitioner.test.mjs) - den naar aldrig
+  // udvidelsen og skal derfor ikke staa i handleren.
   const skalVidere = Object.keys(t.inputSchema.properties)
-    .filter((k) => !['selector', 'value', 'values'].includes(k));
+    .filter((k) => !['selector', 'value', 'values', 'partition'].includes(k));
 
   for (const p of skalVidere) {
     assert.match(blok, new RegExp(p),

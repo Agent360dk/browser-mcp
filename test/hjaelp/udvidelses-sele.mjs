@@ -83,6 +83,9 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       lastError: null,
       getManifest: (...a) => { optager.kald.push({ sti: 'runtime.getManifest', args: a }); return svar['runtime.getManifest'] ?? { version: '1.28.1' }; },
       sendMessage: kald('runtime.sendMessage'),
+      // R143/R144: broenErVaek spoerger ogsaa Chromes kontekster. Uden svar i proeven findes broens offscreen-kontekst (som i Chrome,
+      // naar en bro sender kommandoer); en proeve, der vil vise en LUKKET bro, angiver den tomme liste selv.
+      getContexts: async (...a) => { optager.kald.push({ sti: 'runtime.getContexts', args: a }); const v = svar['runtime.getContexts']; return typeof v === 'function' ? v(...a) : (v ?? [{ contextType: 'OFFSCREEN_DOCUMENT' }]); },
       reload: kald('runtime.reload'),
       getURL: (p) => 'chrome-extension://test/' + p,
       onMessage: haendelse('runtime.onMessage'),
@@ -97,7 +100,7 @@ export function byggChrome(svar = {}, optager = new Optager()) {
       onUpdated: haendelse('tabs.onUpdated'),
     },
     tabGroups: { update: kald('tabGroups.update'), query: kald('tabGroups.query') },
-    windows: { update: kald('windows.update'), get: kald('windows.get'), getLastFocused: kald('windows.getLastFocused'), create: kald('windows.create') },
+    windows: { update: kald('windows.update'), get: kald('windows.get'), getLastFocused: kald('windows.getLastFocused'), create: kald('windows.create'), getAll: kald('windows.getAll') },
     debugger: {
       attach: kald('debugger.attach'), detach: kald('debugger.detach'),
       sendCommand: kald('debugger.sendCommand'), getTargets: kald('debugger.getTargets'),
@@ -190,7 +193,7 @@ export function indlaesUdvidelse({ svar = {}, kilde = 'extension/background.js',
   const loeft = [
     'armeredeDialoger', 'dialogLoefter', 'sessions', 'debuggerAttached',
     'agentLukkedeFaner', 'SELECT_ALL_MODS', 'CDP_CHAR_CODES', 'RETRYABLE_CDP_METHODS',
-    'pendingAsks', 'NAV_FRISTER', 'dialogFaner', 'AGENTKODE_FRIST',
+    'pendingAsks', 'NAV_FRISTER', 'dialogFaner', 'AGENTKODE_FRIST', 'LUK_FANE',
   ];
   const hale = '\n;' + loeft.map((n) => `try { globalThis.__t_${n} = ${n}; } catch (e) {}`).join('\n');
 
