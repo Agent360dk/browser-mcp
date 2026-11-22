@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BrowserMCP (Browser MCP) - your AI agent in your real Chrome</title>
 <link rel="canonical" href="https://browsermcp.dev/">
-<meta name="description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, any MCP client.">
+<meta name="description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, for MCP clients that run local servers.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121418" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Give Claude Code Your Real, Logged-In Chrome">
-<meta property="og:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, any MCP client.">
+<meta property="og:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, for MCP clients that run local servers.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Browser MCP">
 <meta property="og:locale" content="en_US">
@@ -21,7 +21,7 @@
 <meta property="og:image:alt" content="Browser MCP: an AI agent asks you for a 2FA code in your own Chrome, then carries on">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Give Claude Code Your Real, Logged-In Chrome">
-<meta name="twitter:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, any MCP client.">
+<meta name="twitter:description" content="Your agent works in your signed-in Chrome. It can read an emailed 2FA code, tick a reCAPTCHA checkbox, and ask you when it can’t. Free, MIT, for MCP clients that run local servers.">
 <meta name="twitter:image" content="https://browsermcp.dev/og-image.jpg">
 <meta name="twitter:image:alt" content="Browser MCP: an AI agent asks you for a 2FA code in your own Chrome, then carries on">
 <link rel="icon" type="image/svg+xml" href="/logo.svg">
@@ -548,7 +548,7 @@ html:not(.js) #pauselbl{display:none}
           <tr><th scope="row">Multi-session</th><td class="us"><span class="check">Up to 20</span></td><td><span class="check">One tab group per client</span></td><td><span class="check">Tabs of its own per AI app; no limit documented</span></td></tr>
           <tr><th scope="row">Human-in-the-loop</th><td class="us"><span class="check">browser_ask_user, any time mid-task</span></td><td><span class="cross">None</span></td><td>A pairing click at setup; no mid-task prompt documented</td></tr>
           <tr><th scope="row">Token-finding guides</th><td class="us"><span class="check">9 providers</span></td><td><span class="cross">None</span></td><td>Not documented</td></tr>
-          <tr><th scope="row">Tool count</th><td class="us"><span class="check">40 tools</span></td><td>72 (counted 2026-09-19)</td><td>One tool (<code translate="no">browser</code>) with 30 commands in <code translate="no">2.5.0</code></td></tr>
+          <tr><th scope="row">Tool count</th><td class="us"><span class="check">40 tools</span></td><td>72 (counted 2026-11-22)</td><td>One tool (<code translate="no">browser</code>) with 30 commands in <code translate="no">2.5.0</code> (counted 2026-11-22)</td></tr>
           <tr><th scope="row">Install</th><td class="us"><code translate="no">claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest</code></td><td><code translate="no">npx @playwright/mcp</code></td><td>npm + extension</td></tr>
         </tbody>
       </table>
