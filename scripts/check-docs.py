@@ -122,7 +122,9 @@ KONKURRENT_TAL = {
     72,   # microsoft/playwright-mcp, genoptalt 2026-09-19 EFTER at vagten fyrede: de fjernede
           # browser_webmcp_call + browser_webmcp_list og tilfoejede browser_emulate_media samme dag
     73,   # samme, foer den aendring - beholdt saa gamle henvisninger ikke bliver falsk roede
-    59,   # ChromeDevTools/chrome-devtools-mcp, genoptalt 2026-09-24 af konkurrent-vagten.
+    61,   # ChromeDevTools/chrome-devtools-mcp, genoptalt 2026-11-22 i tagget chrome-devtools-mcp-v1.13.0
+          # (npm latest, udgivet 2026-11-11): +mock_network, remove_network_mock, set_logpoints. 59 (2026-09-24)
+          # er fjernet fra listen, saa det gamle tal ikke er fredet.
           # ⛔ Her stod 52, og det tal var FREDET: vagten sprang det over som «verificeret
           # konkurrent-tal», saa vores side sagde 52 i ugevis mens de voksede til 59. Et tal paa
           # denne liste skal genmaales naar konkurrent-vagten melder nye vaerktoejer - ellers
