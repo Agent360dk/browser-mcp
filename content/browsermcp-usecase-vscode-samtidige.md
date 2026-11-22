@@ -76,7 +76,7 @@ Two consequences worth knowing:
 
 This is not something only we do. Microsoft's Playwright extension gives each connected client its own coloured tab group too - their own README says so, and we measured it on 19 September. If tab-group isolation is your whole requirement, both tools have it.
 
-What differs is what happens when a run needs a human: none of Playwright MCP's 72 tools (counted 2026-11-22) can stop and ask you for a code. [The full comparison, with the parts that go against us](/compare/playwright-mcp/).
+What differs is what happens when a run needs a human: among Playwright MCP's 72 tools (counted 2026-11-22) there is no tool that asks you a question mid-task and takes your answer; `browser_annotate` (opt-in, `--caps=devtools`) waits for you to mark up the page, but asks nothing (checked 2026-11-22). [The full comparison, with the parts that go against us](/compare/playwright-mcp/).
 
 ## Two things to know before you rely on it
 
