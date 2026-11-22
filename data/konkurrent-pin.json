@@ -41,6 +41,7 @@
       "list_network_requests",
       "list_pages",
       "list_webmcp_tools",
+      "mock_network",
       "navigate_page",
       "new_page",
       "performance_analyze_insight",
@@ -49,10 +50,12 @@
       "press_key",
       "query_heapsnapshot_objects",
       "reload_extension",
+      "remove_network_mock",
       "resize_page",
       "screencast_start",
       "screencast_stop",
       "select_page",
+      "set_logpoints",
       "take_heapsnapshot",
       "take_screenshot",
       "take_snapshot",
@@ -145,7 +148,7 @@
   },
   "playwright-udvidelse": {
     "citater": {
-      "its own tab group": "you to control which specific page the AI assistant will interact with during the session. ### Multiple Clients Several clients can be connected at the same time. Each one gets its own tab group, named after the client and colored apart from the other groups, and only sees the tabs in that group \u2014 a tab can belong to a single client at a time. Drag tabs in and out of a gr"
+      "its own tab group": "ad browser-wide data such as cookies, but they cannot change browser-wide state: adding or clearing cookies and granting permissions are refused. ### Tab Groups Each client gets its own tab group. Drag tabs in and out of a group to change what a client can reach; dragging a tab from the group of one client to the group of another moves it between the clients. The group tak"
     },
     "vaerktoejer": []
   }
