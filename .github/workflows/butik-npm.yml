@@ -1,0 +1,39 @@
+# Udleverer Chrome Web Store samme version af udvidelsen, som npm har af serveren? (regel 10, Gustav 18/11-2026)
+#
+# Findes fordi serveren 1.31.0 kom paa npm 29/10, butikken afviste udvidelsen samme dag, og i 20 dage udleverede
+# butikken 1.30.3 uden at nogen opdagede det. Er npm foran butikken i mere end 3 dage, aabner koerslen én issue til et
+# menneske (scripts/vagt-besked.sh); groen lukker den igen. Et svar, der ikke kan laeses, er roedt (UMAALT), aldrig groent.
+name: butik-npm
+
+on:
+  schedule:
+    - cron: "30 6 * * *"   # dagligt 06:30 UTC = 07:30 Europe/Copenhagen
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write          # kun til vagt-besked.sh: «vagt roed: butik-npm» oprettes, opdateres og lukkes
+
+concurrency:
+  group: vagt-butik-npm
+  cancel-in-progress: false
+
+jobs:
+  butik-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: butik mod npm
+        id: maal
+        # pipefail: uden den ville tee's exit 0 skjule en roed dom.
+        run: |
+          set -o pipefail
+          python3 scripts/butik-npm.py 2>&1 | tee "$RUNNER_TEMP/butik-npm.txt"
+      - name: besked til et menneske (roed -> issue, groen -> luk den)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Fundet uden dagetallet, som vokser hver dag - ellers ville samme afvigelse give en ny besked hver morgen.
+        run: |
+          { grep -E '✗' "$RUNNER_TEMP/butik-npm.txt" | sed -E 's/ \([0-9]+ dage\)//' || true; } > "$RUNNER_TEMP/fund.txt"
+          bash scripts/vagt-besked.sh butik-npm "${{ steps.maal.outcome == 'success' && 'ok' || 'roed' }}" "$RUNNER_TEMP/fund.txt"
