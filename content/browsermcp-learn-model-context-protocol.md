@@ -50,7 +50,7 @@ Neither is better; they answer different questions. A server that needs to touch
 
 ## What it looks like when you ship one
 
-We maintain [Browser MCP](/docs/what-is-browser-mcp/), a local stdio server that gives an agent control of the real Chrome you're already signed into. From the inside, the protocol's value is exactly the boring promise above: we implemented the tool interface once, and it works in Claude Code, Cursor, VS Code, Codex and anything else that speaks MCP - without us shipping five integrations. Servers are also discoverable through the official MCP registry, so clients can find them rather than requiring hand-configuration forever.
+We maintain [Browser MCP](/docs/what-is-browser-mcp/), a local stdio server that gives an agent control of the real Chrome you're already signed into. From the inside, the protocol's value is exactly the boring promise above: we implemented the tool interface once, and it works in Claude Code, Cursor, VS Code, Codex and any other MCP client that runs local servers - without us shipping five integrations. Servers are also discoverable through the official MCP registry, so clients can find them rather than requiring hand-configuration forever.
 
 ## FAQ
 

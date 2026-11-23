@@ -198,7 +198,7 @@ Full source: [github.com/Agent360dk/browser-mcp](https://github.com/Agent360dk/b
 | Browser | Your real Chrome, always | Its own browser by default. Your real Chrome too, via their Chrome extension |
 | Logins/cookies | Your existing session | A persistent profile keeps logins between runs, or your own session via their extension |
 | 2FA / CAPTCHA-gated sites | Works, and `browser_ask_user` can ask you for the code mid-run | Reachable in extension mode, but nothing can ask you for a code |
-| Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | None. 72 tools, none of which can ask the person anything (checked 2026-09-19) |
+| Human-in-the-loop | `browser_ask_user` pauses, asks you for a code, and continues in the same tab | 72 tools (counted 2026-11-22), with no tool that asks you a question mid-task and takes your answer; `browser_annotate` (opt-in, `--caps=devtools`) waits for you to mark up the page, but asks nothing (checked 2026-11-22) |
 | Several agents at once | 20 concurrent, color-coded tab groups | Also supported via their extension: one tab group per connected client |
 | Provider shortcuts | 9 known providers (Stripe, HubSpot, Slack, Shopify, Pipedrive, Calendly, Mailchimp, Google, LinkedIn); any other through browser_navigate and reading the page | None |
 | Install | Chrome extension + `code --add-mcp` | `npx @playwright/mcp` |
@@ -217,9 +217,9 @@ Each running MCP server - whether spawned by VS Code, Claude Code, or Cursor - b
 
 ---
 
-## Works with any MCP client
+## Works with MCP clients that run local servers
 
-Browser MCP is a standard MCP server over stdio - nothing about it is VS Code-specific under the hood. The exact same `npx @agent360/browser-mcp` command works in Claude Code, Cursor, or any other MCP-compatible client; only the config file, and its root key (`servers` here vs. `mcpServers` elsewhere), differs. Also using Claude Code? See the [Claude Code install guide](/docs/install-claude-code).
+Browser MCP is a standard MCP server over stdio - nothing about it is VS Code-specific under the hood. The exact same `npx @agent360/browser-mcp` command works in Claude Code, Cursor, or any other MCP client that runs local servers; only the config file, and its root key (`servers` here vs. `mcpServers` elsewhere), differs. Also using Claude Code? See the [Claude Code install guide](/docs/install-claude-code).
 
 ---
 
