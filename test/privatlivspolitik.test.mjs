@@ -27,7 +27,7 @@ test('privatlivspolitikken: historik, tilladelser, agentens JavaScript, dialogen
   // Googles Limited Use-erklaering, ordret.
   assert.ok(tekst.includes("Browser MCP's use and transfer of user data complies with the Chrome Web Store User Data Policy, including the Limited Use requirements."),
     'Limited Use-erklaeringen mangler eller er omformuleret');
-  assert.match(tekst, /Last updated: October 19, 2026/);
+  assert.match(tekst, /Last updated: November 20, 2026/);
   // 1.31: profilnavnet og installations-id'et gaar med i browser_about og profile-*-svarene (mcp-server/index.js, browser_about).
   assert.match(tekst, /name you give a Chrome profile[^.]*installation id[^.]*browser_about[^.]*profile-\*[^.]*reach your AI client/);
   // Ingen tilladelse paa listen, som manifestet ikke har - og ingen fra manifestet mangler.
