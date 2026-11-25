@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://browsermcp.dev/</loc><lastmod>2026-11-25</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://browsermcp.dev/privacy.html</loc><lastmod>2026-11-25</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://browsermcp.dev/privacy.html</loc><lastmod>2026-11-20</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://browsermcp.dev/docs/install-claude-code/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/docs/install-codex/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/docs/install-cursor/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
@@ -23,7 +23,7 @@
   <url><loc>https://browsermcp.dev/docs/when-not-to-use/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/docs/capability-matrix/</loc><lastmod>2026-10-19</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/docs/troubleshooting/</loc><lastmod>2026-10-20</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/migrate/from-browsermcp-io/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/migrate/from-browsermcp-io/</loc><lastmod>2026-11-22</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/compare/browsermcp-io/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/compare/playwright-mcp/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/compare/browser-automation-mcp-servers/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
@@ -32,9 +32,9 @@
   <url><loc>https://browsermcp.dev/compare/mcp-chrome/</loc><lastmod>2026-10-15</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/claude-code-login-wall/</loc><lastmod>2026-10-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/cursor-captcha/</loc><lastmod>2026-10-10</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/use-cases/vscode-concurrent-sessions/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/use-cases/vscode-concurrent-sessions/</loc><lastmod>2026-11-22</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/codex-2fa/</loc><lastmod>2026-10-10</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://browsermcp.dev/use-cases/read-2fa-from-gmail/</loc><lastmod>2026-11-25</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://browsermcp.dev/use-cases/read-2fa-from-gmail/</loc><lastmod>2026-11-22</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/concurrent-sessions/</loc><lastmod>2026-10-08</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/test-your-signup-flow/</loc><lastmod>2026-10-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://browsermcp.dev/use-cases/pull-numbers-from-dashboards/</loc><lastmod>2026-10-09</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
