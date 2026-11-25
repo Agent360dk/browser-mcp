@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Flow-test: alle 43 vaerktoejer mod en ægte Chrome.
+ * Flow-test: alle vaerktoejer (tools.js) mod en ægte Chrome.
  *
  * Hvorfor den findes (21/8): repoet havde tre testfiler, og ingen af dem roerte en
  * browser. Alt var kilde-inspektion. Det betoed at en fejl som "click svarer ok:true
@@ -575,6 +575,21 @@ try {
       : 'genindlaes udvidelsen';
     skalVaere(kode === repoAftryk,
       `udvidelsens kode-aftryk er ${kode ?? 'ukendt efter 5 s'}, repoets er ${repoAftryk} - Chrome koerer ikke kandidatens kode (${raad})`);
+  });
+  // 1.32 (#20): en partition er sin egen fanegruppe. Proeven aabner én, navigerer i den, ser at fanen er partitionens og
+  // ikke standardpartitionens, og lukker den igen - med tabs_closed: true, som kun gives, naar udvidelsen bekraefter det.
+  await proev('browser_partition', 'aabner en partition med egen fane, og lukker den med dens faner', async () => {
+    const ny = await kald('browser_partition', { action: 'new', label: 'flow' }, 40000);
+    const id = ny.data?.partition;
+    skalVaere(/^p\d+$/.test(id || ''), `ingen partition: ${ny.tekst.slice(0, 200)}`);
+    await kald('browser_navigate', { url: BASE + '/?partition=1', new_tab: true, partition: id });
+    const egne = await kald('browser_list_tabs', { partition: id });
+    skalVaere(/partition=1/.test(egne.tekst), `partitionens fane er ikke i dens egen liste: ${egne.tekst.slice(0, 200)}`);
+    const standard = await kald('browser_list_tabs', {});
+    skalVaere(!/partition=1/.test(standard.tekst), 'partitionens fane staar i standardpartitionens liste');
+    const luk = await kald('browser_partition', { action: 'close', partition: id }, 40000);
+    skalVaere(luk.data?.tabs_closed === true && luk.data?.port_released === true,
+      `lukningen bekraeftede ikke faner og port: ${luk.tekst.slice(0, 200)}`);
   });
   await proev('#shadow-dom', 'selektorer naar ind i shadow DOM', async () => {
     await kald('browser_click', { selector: '#ishadow' });

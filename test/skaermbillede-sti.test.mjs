@@ -47,6 +47,7 @@ after(async () => {
   for (const d of [arbejd, udenfor]) rmSync(d, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
+let billederTaget = 0;   // R173: hvor mange skaermbilleder den falske udvidelse blev bedt om
 /** Falsk udvidelse: ringer op til spaendet, hilser, og svarer paa hvert kald. */
 function falskUdvidelse() {
   let stop = false;
@@ -62,6 +63,7 @@ function falskUdvidelse() {
       ws.on('message', (d) => {
         let m; try { m = JSON.parse(d); } catch { return; }
         if (m.id === undefined) return;
+        if (m.method === 'screenshot') billederTaget++;
         const result = m.method === 'screenshot' ? { image: 'data:image/png;base64,' + PNG } : {};
         ws.send(JSON.stringify({ id: m.id, result }));
       });
@@ -72,7 +74,7 @@ function falskUdvidelse() {
   return () => { stop = true; };
 }
 
-function skaermbillede(sti, cwd = arbejd) {
+function skaermbillede(sti, cwd = arbejd, ekstra = {}) {
   const p = spawn(process.execPath, [SRV], { cwd, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, BROWSER_MCP_BASE_PORT: String(BASE), BROWSER_MCP_MAX_PORT: String(MAX) } });
   boern.push(p); p.stderr.on('data', () => {});
@@ -91,7 +93,7 @@ function skaermbillede(sti, cwd = arbejd) {
       params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 't', version: '1' } } }) + '\n');
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
     p.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call',
-      params: { name: 'browser_screenshot', arguments: { path: sti } } }) + '\n');
+      params: { name: 'browser_screenshot', arguments: { path: sti, ...ekstra } } }) + '\n');
   });
 }
 
@@ -172,4 +174,70 @@ test('#70: en absolut sti gennem et alias for arbejdsmappen (/var, 8.3-kortnavn)
   const svar = await skaermbillede(join(alias, 'inde', 'alias.png'), arbejdReel);
   assert.match(svar, /successfully saved/, `afvist paa stavemaaden alene: ${svar.slice(0, 240)}`);
   assert.ok(existsSync(join(arbejdReel, 'inde', 'alias.png')));
+});
+
+// 1.33 (R172, MAALT af begge bedoemmere paa d002938): package.json og .vscode/tasks.json i arbejdsmappen blev overskrevet med
+// PNG-bytes, og serveren svarede «successfully saved». Stien kommer fra en model, der laeser fremmede sider.
+test('1.33: en sti uden billedendelse afvises - projektets filer roeres ikke', { timeout: 45000 }, async () => {
+  writeFileSync(join(arbejd, 'package.json'), '{"name":"brugerens"}');
+  mkdirSync(join(arbejd, '.vscode'), { recursive: true });
+  writeFileSync(join(arbejd, '.vscode', 'tasks.json'), '{"tasks":[]}');
+  // R173 (Opus S1): 'billede.png.json' fanger en endelsesregel uden $-anker.
+  // R173 (Opus S3): en afvist sti maa heller ikke efterlade en ny mappe ('nymappe/x.json').
+  // R173 (Opus): .jpg/.webp holdt PNG-bytes - billedet er altid PNG, saa kun .png.
+  const foer = billederTaget;
+  for (const sti of ['package.json', '.vscode/tasks.json', 'ny.txt', 'billede.png.json', 'nymappe/x.json', 'foto.jpg', 'foto.webp']) {
+    const svar = await skaermbillede(sti);
+    assert.match(JSON.stringify(svar), /must end in \.png/, `${sti}: ${JSON.stringify(svar).slice(0, 200)}`);
+  }
+  assert.equal(readFileSync(join(arbejd, 'package.json'), 'utf8'), '{"name":"brugerens"}');
+  assert.equal(readFileSync(join(arbejd, '.vscode', 'tasks.json'), 'utf8'), '{"tasks":[]}');
+  assert.ok(!existsSync(join(arbejd, 'ny.txt')));
+  assert.ok(!existsSync(join(arbejd, 'billede.png.json')));
+  assert.ok(!existsSync(join(arbejd, 'nymappe')), 'en afvist sti oprettede en mappe');
+  assert.equal(billederTaget, foer, 'et skaermbillede blev taget, selv om stien blev afvist (R173, Opus)');
+});
+
+test('1.33: et billede, der findes, overskrives kun med overwrite: true', { timeout: 45000 }, async () => {
+  writeFileSync(join(arbejd, 'inde', 'gammel.png'), 'GAMMELT-BILLEDE');
+  const foer = billederTaget;
+  const nej = await skaermbillede('inde/gammel.png');
+  assert.equal(billederTaget, foer, 'et skaermbillede blev taget til en fil, der findes');
+  assert.match(JSON.stringify(nej), /already exists[^"]*Pass overwrite: true/, JSON.stringify(nej).slice(0, 300));
+  assert.equal(readFileSync(join(arbejd, 'inde', 'gammel.png'), 'utf8'), 'GAMMELT-BILLEDE');
+  const ja = await skaermbillede('inde/gammel.png', arbejd, { overwrite: true });
+  assert.match(JSON.stringify(ja), /successfully saved/, JSON.stringify(ja).slice(0, 200));
+  // R173 (Astra): ogsaa de skrevne bytes - ikke kun at filen aendrede sig.
+  assert.deepEqual(readFileSync(join(arbejd, 'inde', 'gammel.png')), Buffer.from(PNG, 'base64'));
+});
+
+test('R173: overwrite skal vaere true - en sandhedsvaerdi som "yes" erstatter ikke', { timeout: 45000 }, async () => {
+  writeFileSync(join(arbejd, 'inde', 'ja.png'), 'BEHOLD');
+  const svar = await skaermbillede('inde/ja.png', arbejd, { overwrite: 'yes' });
+  assert.match(JSON.stringify(svar), /already exists/, JSON.stringify(svar).slice(0, 200));
+  assert.equal(readFileSync(join(arbejd, 'inde', 'ja.png'), 'utf8'), 'BEHOLD');
+});
+
+test('R173 (Opus S4): en billedendelse med store bogstaver godtages', { timeout: 45000 }, async () => {
+  // Et navn ingen anden proeve bruger: macOS skelner ikke store og smaa bogstaver, og 'inde/stor.png' skrives ovenfor.
+  const svar = await skaermbillede('inde/STORE-BOGSTAVER.PNG');
+  assert.match(JSON.stringify(svar), /successfully saved/, JSON.stringify(svar).slice(0, 200));
+  assert.ok(existsSync(join(arbejd, 'inde', 'STORE-BOGSTAVER.PNG')));
+});
+
+test('R174 (Opus): en mappe ved navn x.png afvises som mappe - uden optagelse', { timeout: 45000 }, async () => {
+  mkdirSync(join(arbejd, 'inde', 'mappe.png'), { recursive: true });
+  const foer = billederTaget;
+  const svar = await skaermbillede('inde/mappe.png');
+  assert.match(JSON.stringify(svar), /is a folder, not a file/, JSON.stringify(svar).slice(0, 200));
+  assert.equal(billederTaget, foer);
+});
+
+test('R175 (Astra): en sti uden for arbejdsmappen afvises foer optagelsen - ogsaa gennem et link', { timeout: 45000 }, async () => {
+  const foer = billederTaget;
+  for (const sti of ['../ude.png', 'ud/x.png', 'haard.png']) {
+    const svar = await skaermbillede(sti);
+    assert.match(JSON.stringify(svar), /points outside/, `${sti}: ${JSON.stringify(svar).slice(0, 200)}`);
+  }
+  assert.equal(billederTaget, foer, 'et skaermbillede blev taget til en sti, der blev afvist');
 });

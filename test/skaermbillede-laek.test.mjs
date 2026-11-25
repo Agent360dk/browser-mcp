@@ -126,6 +126,9 @@ test('den haevede runde: en optagelse der allerede loeb, taeller stadig med', as
   u.chrome.windows.update = (...a) => { haevet = true; svarPaaFoerste.forEach((f) => f()); return opdater(...a); };
   const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /FOERSTE-(STANDARD|RESERVE)/, `billedet fra de igangvaerende optagelser blev smidt vaek: ${JSON.stringify(svar).slice(0, 200)}`);
+  // R126 (Opus): billedet er fra foer haevningen - svaret skal sige det, ellers handler agenten paa noget, der maaske er vaek.
+  assert.equal(svar.stale, true, `et aeldre billede blev leveret uden markering: ${JSON.stringify(svar).slice(0, 200)}`);
+  assert.match(String(svar.note), /before the window was raised/i, String(svar.note));
 });
 
 // MAALT 12/9 af Astra (efterproevning af 19d036a): de igangvaerende optagelser blev baaret med over i den HAEVEDE runde,
@@ -141,13 +144,17 @@ test('den haevede runde: et frisk billede slaar et gammelt, forsinket et', async
     if (haevet) return new Promise((ok) => setTimeout(() => ok({ data: 'EFTER-HAEVNINGEN' }), 200));
     return new Promise((ok) => svarPaaFoerste.push(() => ok({ data: 'FOER-HAEVNINGEN' })));
   } });
-  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 4000, haevMs: 1500 });
+  // R126 (Opus, MAALT: 1 falsk roed i en fuld suite under belastning): den friske optagelse (200 ms) skal naa frem foer den
+  // haevede runde er brugt. Med 15 s er der rigelig margin - og en groen proeve venter ikke laengere, for den friske kommer
+  // efter 200 ms. Vinder det gamle billede (reglen brudt), fejler proeven stadig hver gang.
+  u.ctx.skaermbilledeFrister = () => ({ foersteMs: 150, samletMs: 30000, haevMs: 15000 });
   const opdater = u.chrome.windows.update;
   // Haevningen aendrer hvad der staar paa skaermen - og lige dér svarer de gamle optagelser med det GAMLE indhold.
   u.chrome.windows.update = (...a) => { haevet = true; svarPaaFoerste.forEach((f) => f()); return opdater(...a); };
   const svar = await u.hent('dispatch')(9876, 'screenshot', { bring_to_front: true }).catch((e) => ({ fejl: e.message }));
   assert.match(String(svar.image), /EFTER-HAEVNINGEN/,
     `et forældet billede fra foer haevningen blev leveret: ${JSON.stringify(svar).slice(0, 200)}`);
+  assert.equal(svar.stale, undefined, 'et frisk billede blev markeret som aeldre');
 });
 
 test('en frist paa standardoptagelsen giver 1.29.0-reserven en chance - og hoejst én runde med haevet vindue', async () => {

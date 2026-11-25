@@ -4,7 +4,10 @@ Browser MCP drives a real, signed-in Chrome, so a security problem in it can rea
 
 ## How to report
 
-Email **hello@agent360.dk** with:
+Use GitHub's private vulnerability reporting: **[Report a vulnerability](https://github.com/Agent360dk/browser-mcp/security/advisories/new)**
+(the Security tab of this repository). Only the maintainers see the report. If you cannot use GitHub, email **hello@agent360.dk**.
+
+Include:
 
 - what an attacker could do, and what they need first (for example: a web page the agent visits, another program on the same machine, a malicious MCP client),
 - the steps to reproduce it,

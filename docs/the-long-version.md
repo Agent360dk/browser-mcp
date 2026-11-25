@@ -33,7 +33,7 @@ It copies the extension to `~/.browser-mcp/extension/` and **prints that path in
    - On Linux: Type `~/.browser-mcp/extension/` in the path field
 5. **Restart Claude Code** so it picks up the new MCP server
 
-That's it. The Browser MCP icon will appear in your toolbar, and 40 browser tools are now available in Claude Code.
+That's it. The Browser MCP icon will appear in your toolbar, and 41 browser tools are now available in Claude Code.
 
 ### Alternative: Manual zip download (no npm)
 

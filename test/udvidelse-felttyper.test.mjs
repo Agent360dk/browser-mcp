@@ -113,10 +113,12 @@ test('filslip leder ogsaa efter et skjult input i undertraeet', () => {
 
 // ── detectCaptcha ───────────────────────────────────────────────────────────
 
+// 1.33 (2.2): genkendelsen bor i captchaFund, som detectCaptcha koerer i siden.
 test('captcha-genkendelse daekker de udbredte udbydere', () => {
   const u = indlaesUdvidelse();
-  const kilde = u.hent('detectCaptcha')?.toString() ?? '';
-  assert.ok(kilde.length > 50, 'detectCaptcha skal findes');
+  assert.match(u.hent('detectCaptcha')?.toString() ?? '', /\$\{captchaFund\}/, 'detectCaptcha skal koere captchaFund i siden');
+  const kilde = u.hent('captchaFund')?.toString() ?? '';
+  assert.ok(kilde.length > 50, 'captchaFund skal findes');
   const skalDaekke = ['recaptcha', 'hcaptcha', 'turnstile'];
   const manglende = skalDaekke.filter((n) => !new RegExp(n, 'i').test(kilde));
   assert.deepEqual(manglende, [],
@@ -125,7 +127,7 @@ test('captcha-genkendelse daekker de udbredte udbydere', () => {
 
 test('captcha-genkendelse melder tilbage hvad den fandt, ikke bare ja/nej', () => {
   const u = indlaesUdvidelse();
-  const kilde = u.hent('detectCaptcha')?.toString() ?? '';
+  const kilde = u.hent('captchaFund')?.toString() ?? '';
   assert.match(kilde, /type|provider|kind|navn/i,
     'kalderen skal vide HVILKEN captcha, ellers kan den ikke vaelge fremgangsmaade');
 });

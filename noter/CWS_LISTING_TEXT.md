@@ -1,5 +1,9 @@
 # Chrome Web Store listing - full audit and paste-ready text
 
+> **Outdated (19 Oct 2026, R104).** This audit and its paste-ready text are from September and describe 1.29. The text used for
+> 1.31.0 and later is maintained with its measured claims outside the repo (the store package for each release); do not paste from
+> this file. Kept as history.
+
 Rewritten 2026-09-08. The listing lives in the CWS dashboard, **not in this repo**, so none of it
 can be fixed by a commit: <https://chrome.google.com/webstore/devconsole/> → Agent360 Browser MCP.
 

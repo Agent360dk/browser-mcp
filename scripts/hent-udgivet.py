@@ -99,7 +99,7 @@ def hent_udvidelse(version: str, ud: str, repo: str) -> str:
     mappe = ny_mappe(ud, 'udvidelse')
     crx = urllib.request.urlopen(CRX_URL.format(id=UDVIDELSES_ID), timeout=60).read()
     pak_crx_ud(crx, mappe)
-    fik = json.load(open(os.path.join(mappe, 'manifest.json'))).get('version')
+    fik = json.load(open(os.path.join(mappe, 'manifest.json'), encoding='utf-8')).get('version')
     if fik != version:
         raise SystemExit(f'butikken udleverer {fik}, ikke {version}')
     forskelle = forskelle_mod_tag(mappe, version, repo)
@@ -114,12 +114,12 @@ def hent_server(version: str, ud: str) -> str:
     subprocess.run(['npm', 'install', '--prefix', mappe, '--no-audit', '--no-fund', '--silent',
                     f'@agent360/browser-mcp@{version}'], check=True)
     pakke = os.path.join(mappe, 'node_modules', '@agent360', 'browser-mcp')
-    fik = json.load(open(os.path.join(pakke, 'package.json'))).get('version')
+    fik = json.load(open(os.path.join(pakke, 'package.json'), encoding='utf-8')).get('version')
     if fik != version:
         raise SystemExit(f'npm udleverede {fik}, ikke {version}')
     # 27/9 (Astra): en fremmed starter serveren gennem pakkens «bin» (npx), ikke index.js. Er bin
     # defekt, virker index.js stadig - og spaerren saa intet. Brugerindgangen proeves og bruges.
-    bin_felt = json.load(open(os.path.join(pakke, 'package.json'))).get('bin')
+    bin_felt = json.load(open(os.path.join(pakke, 'package.json'), encoding='utf-8')).get('bin')
     rel = bin_felt.get('browser-mcp') if isinstance(bin_felt, dict) else bin_felt
     if not rel:
         raise SystemExit('npm-pakken erklaerer ingen brugerindgang «browser-mcp» i package.json «bin»')

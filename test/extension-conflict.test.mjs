@@ -356,8 +356,9 @@ function bygForklaring(version) {
   const i = kilde.indexOf('function forklarSkaevhed');
   let d = 0, j = kilde.indexOf('{', i);
   for (; j < kilde.length; j++) { if (kilde[j] === '{') d++; else if (kilde[j] === '}' && --d === 0) break; }
-  return new Function('activeConnection', kilde.slice(a, j + 1) + '; return forklarSkaevhed;')(
-    () => (version === undefined ? null : { version }),
+  // 1.33 (4.1): raadet naevner serverens egen version (PKG_VERSION).
+  return new Function('activeConnection', 'PKG_VERSION', kilde.slice(a, j + 1) + '; return forklarSkaevhed;')(
+    () => (version === undefined ? null : { version }), '9.9.9',
   );
 }
 
@@ -368,6 +369,7 @@ test('gammel udvidelse: ukendt metode forklares, ikke bare rapporteres', () => {
   assert.match(svar, /1-3 days/, 'vinduets laengde naevnes ikke');
   assert.match(svar, /Until then: /, 'ingen erstatning tilbudt');
   assert.ok(!svar.startsWith('Error: Unknown method'), 'den gaadefulde besked staar stadig');
+  assert.match(svar, /npx @agent360\/browser-mcp@9\.9\.9 install/, 'raadet skal bruge serverens egen version (4.1)');
 });
 
 test('alle otte metoder fra v1.26.0 har en erstatning', () => {
@@ -475,7 +477,8 @@ test('agenten faar advarslen i vaerktoejssvaret én gang pr. aendring', () => {
 
 test('alle tre svarveje i vaerktoejskaldet gaar gennem medForbindelsesNote, og stderr faar den ogsaa', () => {
   // R63 (Astra): alle svar - ogsaa de tidlige (afvist upload, ukendt vaerktoej, browser_about) - gaar gennem én indpakning.
-  assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => medForbindelsesNote\(await kaldVaerktoej\(request\)\)\);/);
+  // 1.32 (S5): indpakningen faar den bane kaldet gik til (en partition har sine egne noter); den er stadig den eneste vej ud.
+  assert.match(kilde, /mcpServer\.setRequestHandler\(CallToolRequestSchema, async \(request\) => \{\n  const kald = \{ bane: standardBane \};\n  return medForbindelsesNote\(await kaldVaerktoej\(request, kald\), kald\.bane\);\n\}\);/);
   assert.equal((kilde.match(/setRequestHandler\(CallToolRequestSchema/g) || []).length, 1);
   assert.equal((kilde.match(/medForbindelsesNote\(/g) || []).length, 2, 'kun definitionen og indpakningen - ingen svarvej skal huske den selv');
   assert.match(udtraek('advarOmKonflikt'), /const profiler = [^;]*forbindelsesAdvarsel\(bane\);[\s\S]*process\.stderr\.write\(`\[MCP\] WARNING: \$\{profiler\}/);

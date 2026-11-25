@@ -1,0 +1,200 @@
+/**
+ * close_tab lukker ikke Chrome (1.33, privat rapport 3.1).
+ *
+ * MAALT paa 1.30.1 (7/10): browser_close_tab paa den sidste fane i et vindue lukkede vinduet; var det profilens sidste
+ * vindue, lukkede Chrome (Windows), og naeste kald fik «extension not connected». close_tab fjernede fanen uden at se paa
+ * vinduet. Nu bliver en tom fane staaende, naar fanen er den sidste i Chromes sidste vindue - og kun da.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { indlaesUdvidelse } from './hjaelp/udvidelses-sele.mjs';
+
+// vinduer: { vinduesId: [faneId, ...] }
+function chrome(vinduer, fejl = {}, typer = {}) {
+  const log = [];
+  const fanensVindue = (id) => Number(Object.keys(vinduer).find((w) => vinduer[w].includes(id)));
+  const u = indlaesUdvidelse({ svar: {
+    'tabs.get': (id) => { const w = fanensVindue(id); if (!w) throw new Error('No tab with id: ' + id); return { id, windowId: w, url: 'https://x.example/' }; },
+    // Som Chrome: windowTypes filtrerer, og med populate er fanerne dem, der var der, da der blev spurgt - svaret kommer lidt senere.
+    'windows.getAll': async (q) => {
+      if (fejl.query) throw new Error('query afvist');
+      if (fejl.foersteQuery && !fejl.brugt) { fejl.brugt = true; throw new Error('query afvist'); }
+      const nu = Object.keys(vinduer).map((w) => ({ id: Number(w), type: typer[w] || 'normal', tabs: vinduer[w].map((id) => ({ id })) }))
+        .filter((v) => !q || !q.windowTypes || q.windowTypes.includes(v.type));
+      await new Promise((r) => setTimeout(r, fejl.langsomMs || 5));
+      return nu;
+    },
+    'tabs.create': (o) => { if (fejl.create) throw new Error('create afvist'); log.push(['create', o.windowId, o.url, o.active]); const id = 900 + log.length; vinduer[o.windowId].push(id); return { id, windowId: o.windowId, url: o.url }; },
+    'tabs.remove': (id) => { if (fejl.haenger === id) { log.push(['remove-haenger', id]); return new Promise(() => {}); } log.push(['remove', id]); const w = fanensVindue(id); vinduer[w] = vinduer[w].filter((x) => x !== id); },
+  } });
+  return { u, log, luk: (id, faner) => {
+    u.hent('sessions').set(9876, { tabIds: new Set(faner), activeTabId: faner[0], groupId: 1, label: 'Claude 1', color: 'blue' });
+    return u.hent('dispatch')(9876, 'close_tab', { tab_id: id });
+  } };
+}
+
+test('3.1: den sidste fane i Chromes sidste vindue - en tom fane bliver staaende, og svaret siger det', async () => {
+  const c = chrome({ 1: [11] });
+  const r = await c.luk(11, [11]);
+  assert.deepEqual(c.log, [['create', 1, 'about:blank', false], ['remove', 11]], 'den tomme fane skal laves FOER lukningen - og i baggrunden');
+  assert.equal(r.ok, true);
+  assert.equal(r.kept_window_open, true);
+  assert.match(r.note, /closed Chrome/);
+});
+
+test('3.1: flere faner i vinduet - ingen ekstra fane', async () => {
+  const c = chrome({ 1: [11, 12] });
+  const r = await c.luk(11, [11]);
+  assert.deepEqual(c.log, [['remove', 11]]);
+  assert.equal(r.kept_window_open, undefined);
+});
+
+test('3.1: sidste fane i et vindue, men Chrome har et andet vindue - vinduet maa lukke, ingen ekstra fane', async () => {
+  const c = chrome({ 1: [11], 2: [21] });
+  const r = await c.luk(11, [11]);
+  assert.deepEqual(c.log, [['remove', 11]]);
+  assert.equal(r.kept_window_open, undefined);
+});
+
+test('3.1: en fane uden for sessionen lukkes stadig ikke', async () => {
+  const c = chrome({ 1: [11, 12] });
+  await assert.rejects(c.luk(12, [11]), /does not belong to this session/);
+  assert.deepEqual(c.log, []);
+});
+
+// R173 (Astra, MAALT): fejl blev slugt, og samtidige lukninger saa hinandens faner.
+test('R173: afvises opslaget eller oprettelsen, lukkes intet', async () => {
+  for (const f of ['query', 'create']) {
+    const c = chrome({ 1: [11] }, { [f]: true });
+    await assert.rejects(c.luk(11, [11]), new RegExp(`${f} afvist`));
+    assert.deepEqual(c.log.filter((x) => x[0] === 'remove'), [], `${f} afvist: fanen blev lukket alligevel`);
+  }
+});
+
+test('R173: to samtidige lukninger i det sidste vindue efterlader en tom fane - ogsaa fra to sessioner', async () => {
+  // To sessioner med hver sin fane i samme (sidste) vindue: deres kald koerer ikke i samme koe.
+  const vinduer = { 1: [11, 12] };
+  const c = chrome(vinduer);
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  c.u.hent('sessions').set(9877, { tabIds: new Set([12]), activeTabId: 12, groupId: 2, label: 'Claude 2', color: 'red' });
+  const d = c.u.hent('dispatch');
+  const [a, b] = await Promise.all([d(9876, 'close_tab', { tab_id: 11 }), d(9877, 'close_tab', { tab_id: 12 })]);
+  assert.equal(vinduer[1].length, 1, `vinduet skal have én tom fane tilbage: ${JSON.stringify(vinduer)}`);
+  assert.equal([a, b].filter((r) => r.kept_window_open).length, 1);
+});
+
+test('R173 (Opus L5, MAALT i Chrome): et popup-vindue holder ogsaa Chrome i live - ingen unoedig tom fane', async () => {
+  // Den eneste fane i et popup-vindue, mens et normalt vindue findes: Chrome lukker ikke, og en tom fane ville lande i
+  // brugerens normale vindue.
+  const c = chrome({ 1: [11], 2: [21] }, {}, { 2: 'popup' });
+  const r = await c.luk(21, [21]);
+  assert.equal(r.kept_window_open, undefined, JSON.stringify(r));
+  assert.deepEqual(c.log, [['remove', 21]]);
+  const d = chrome({ 1: [11], 2: [21] }, {}, { 2: 'popup' });
+  assert.equal((await d.luk(11, [11])).kept_window_open, undefined, 'popup-vinduet holder Chrome, saa det normale vindue maa lukke');
+});
+
+test('R173 (Opus): lukker agenten sin aktive fane, siger svaret, at sessionen nu ikke har en aktiv fane', async () => {
+  const c = chrome({ 1: [11, 12, 13] });
+  const r = await c.luk(11, [11, 12]);           // 11 er aktiv (foerste i listen)
+  assert.equal(r.active_tab, null, JSON.stringify(r));
+  assert.match(r.active_note, /browser_switch_tab/);
+  const ikkeAktiv = await chrome({ 1: [11, 12, 13] }).luk(12, [11, 12]);
+  assert.equal(ikkeAktiv.active_note, undefined, 'en anden fane end den aktive giver ingen note');
+});
+
+test('R174 (Astra L2): en lukning, der fejler, spaerrer ikke de naeste i koeen', async () => {
+  const fejl = { foersteQuery: true };
+  const c = chrome({ 1: [11, 12, 13] }, fejl);
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const d = c.u.hent('dispatch');
+  const [a, b] = await Promise.allSettled([d(9876, 'close_tab', { tab_id: 11 }), d(9876, 'close_tab', { tab_id: 12 })]);
+  assert.equal(a.status, 'rejected', 'den foerste fejler (opslaget afvises)');
+  assert.equal(b.status, 'fulfilled', `den anden skal gennemfoeres: ${JSON.stringify(b.reason?.message)}`);
+  assert.deepEqual(c.log.filter((x) => x[0] === 'remove'), [['remove', 12]]);
+});
+
+// R174 (Opus, MAALT i Chrome 155): chrome.tabs.remove svarer aldrig, mens «Leave site?» staar aaben eller siden er travl. Med
+// én faelles koe stoppede én saadan lukning alle close_tab i alle sessioner.
+test('R174: en lukning, der aldrig svarer, svarer tab-not-closed - og spaerrer ikke andre sessioners lukninger', { timeout: 5000 }, async () => {
+  const vinduer = { 1: [11, 12, 13] };
+  const c = chrome(vinduer, { haenger: 11 });
+  c.u.hent('LUK_FANE').ms = 300;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  c.u.hent('sessions').set(9877, { tabIds: new Set([12]), activeTabId: 12, groupId: 2, label: 'Claude 2', color: 'red' });
+  const d = c.u.hent('dispatch');
+  const t0 = Date.now();
+  const a = d(9876, 'close_tab', { tab_id: 11 });
+  await new Promise((r) => setTimeout(r, 20));
+  const b = await d(9877, 'close_tab', { tab_id: 12 });
+  const tB = Date.now() - t0;
+  assert.equal(b.ok, true, JSON.stringify(b));
+  assert.ok(tB < 250, `den anden sessions lukning ventede paa den hængende: ${tB} ms`);
+  const ra = await a;
+  assert.equal(ra.error, 'tab-not-closed', JSON.stringify(ra));
+  assert.ok(c.u.hent('sessions').get(9876).tabIds.has(11), 'en fane, der ikke blev lukket, er stadig sessionens');
+});
+
+test('R174: en fane under lukning taeller ikke som tilbage i vinduet - to lukninger efterlader stadig én tom fane', { timeout: 5000 }, async () => {
+  const vinduer = { 1: [11, 12] };
+  const c = chrome(vinduer, { haenger: 11 });
+  c.u.hent('LUK_FANE').ms = 300;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const d = c.u.hent('dispatch');
+  const a = d(9876, 'close_tab', { tab_id: 11 });       // haenger (fanen er stadig i vinduet)
+  await new Promise((r) => setTimeout(r, 30));
+  const b = await d(9876, 'close_tab', { tab_id: 12 });
+  assert.equal(b.kept_window_open, true, `11 er ved at blive lukket, saa 12 er den sidste: ${JSON.stringify(b)}`);
+  await a;
+});
+
+// R176 (Astra, MAALT i modellen): en udloebet frist er ikke bevis for, at lukningen er opgivet. Fjernelsen kan gaa igennem
+// bagefter (svarer brugeren Leave), og en lukning af vinduets anden fane imens maa ikke regne med, at den holder vinduet aabent.
+test('R176: en fane, hvis lukning ikke er afsluttet, holder ikke vinduet aabent - den tomme fane laves, og noten siger hvorfor', { timeout: 5000 }, async () => {
+  const vinduer = { 1: [11, 12] };
+  const c = chrome(vinduer, { haenger: 11 });
+  c.u.hent('LUK_FANE').ms = 200;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11, 12]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const d = c.u.hent('dispatch');
+  const a = await d(9876, 'close_tab', { tab_id: 11 });
+  assert.equal(a.error, 'tab-not-closed', JSON.stringify(a));
+  const b = await d(9876, 'close_tab', { tab_id: 12 });
+  assert.equal(b.kept_window_open, true, `fane 11 kan stadig forsvinde: ${JSON.stringify(b)}`);
+  assert.match(b.note, /still being closed/);
+});
+
+test('R175: tab-not-closed siger det, hvis der allerede blev lavet en tom fane', { timeout: 5000 }, async () => {
+  const c = chrome({ 1: [11] }, { haenger: 11 });
+  c.u.hent('LUK_FANE').ms = 200;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const r = await c.u.hent('dispatch')(9876, 'close_tab', { tab_id: 11 });
+  assert.equal(r.error, 'tab-not-closed');
+  assert.equal(r.kept_window_open, true);
+  assert.match(r.note, /empty tab was already left/);
+});
+
+test('R176 (Astra): close_tab-fristen er 4 s og regnes fra kaldets start - inden for serverens 5 s', () => {
+  const c = chrome({ 1: [11] });
+  assert.equal(c.u.hent('LUK_FANE').ms, 4000);
+  // R176 (Opus, LAEST): fladerne sagde 5 s, koden 4000 ms. Hver flade skal naevne kodens frist.
+  const sek = c.u.hent('LUK_FANE').ms / 1000;
+  const rod = new URL('..', import.meta.url);
+  for (const f of ['README.md', 'mcp-server/README.md', 'content/browsermcp-docs-tools.md', 'docs/docs/tools/index.html', 'mcp-server/tools.js', 'CHANGELOG.md']) {
+    const tekst = readFileSync(new URL(f, rod), 'utf8').replace(/\s+/g, ' ');
+    const m = tekst.match(/does not (?:close the tab|close|complete) within (\d+) (?:s|seconds)\b/g) || [];
+    assert.ok(m.length >= 1, f + ' naevner ikke close_tab-fristen');
+    for (const x of m) assert.match(x, new RegExp(`within ${sek} (s|seconds)$`), f + ': ' + x);
+  }
+});
+
+test('R176 (Astra, MAALT): fristen regnes fra kaldets start - et langsomt vindueopslag forlaenger den ikke', { timeout: 5000 }, async () => {
+  const c = chrome({ 1: [11, 12] }, { haenger: 11, langsomMs: 400 });
+  c.u.hent('LUK_FANE').ms = 300;
+  c.u.hent('sessions').set(9876, { tabIds: new Set([11]), activeTabId: 11, groupId: 1, label: 'Claude 1', color: 'blue' });
+  const t0 = Date.now();
+  const r = await c.u.hent('dispatch')(9876, 'close_tab', { tab_id: 11 });
+  const t = Date.now() - t0;
+  assert.equal(r.error, 'tab-not-closed', JSON.stringify(r));
+  assert.ok(t < 600, `svaret kom efter ${t} ms - fristen begyndte foerst efter opslaget`);
+});

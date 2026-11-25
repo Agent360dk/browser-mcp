@@ -21,7 +21,7 @@ const spaerretrin = (wf) => { const fra = wf.indexOf('- name: spaerren, isoleret
 const py = (kode) => execFileSync('python3', ['-c', `import importlib.util, sys, json
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
-${kode}`], { encoding: 'utf8' }).trim();
+${kode}`], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } }).trim();   // en Latin-1-Python paa Mac (10/10) laeste ellers forkert
 
 function repoMedTag(filer) {
   const d = mkdtempSync(join(tmpdir(), 'hent-tag-'));
@@ -138,10 +138,10 @@ print(h.hent_udvidelse('9.9.9', ${JSON.stringify(ud)}, ${JSON.stringify(repo)}))
 });
 
 /** Et falsk `npm` der «installerer» en pakke med den givne package.json og brugerindgang. */
-function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `#!/usr/bin/env node\nconsole.log('9.9.9')`, link = true } = {}) {
+function koerHentServer({ version = '9.9.9', bin = { 'browser-mcp': './bin/cli.js' }, cli = `#!/usr/bin/env node\nconsole.log('9.9.9')`, link = true, description, cp1252 = false } = {}) {
   const d = mkdtempSync(join(tmpdir(), 'hent-server-'));
   const shim = join(d, 'shim'); mkdirSync(shim);
-  const pakke = JSON.stringify({ name: '@agent360/browser-mcp', version, bin });
+  const pakke = JSON.stringify({ name: '@agent360/browser-mcp', version, bin, ...(description ? { description } : {}) });
   writeFileSync(join(shim, 'npm'), `#!/bin/bash
 while [[ $# -gt 0 ]]; do [[ "$1" == --prefix ]] && { P="$2"; shift; }; shift; done
 M="$P/node_modules/@agent360/browser-mcp"; mkdir -p "$M/bin"
@@ -156,7 +156,7 @@ ${link ? `mkdir -p "$P/node_modules/.bin"; ln -sf ../@agent360/browser-mcp/bin/c
     return spawnSync('python3', ['-c', `import importlib.util
 spec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(rod, 'scripts/hent-udgivet.py'))})
 h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
-print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PATH: `${shim}:${process.env.PATH}` } });
+${cp1252 ? `import builtins\nh.open = lambda f, *a, **k: builtins.open(f, *a, **{'encoding': 'cp1252', **k})\n` : ''}print(h.hent_server('9.9.9', ${JSON.stringify(join(d, 'ud'))}))`], { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1', PATH: `${shim}:${process.env.PATH}` } });
   } finally { rmSync(d, { recursive: true, force: true }); }
 }
 
@@ -181,6 +181,11 @@ test('hent_server: den udgivne servers BRUGERINDGANG (bin) proeves og bruges - i
   assert.notEqual(forkertFortolker.status, 0, 'en shebang til en fortolker der ikke findes blev godkendt');
   const intetLink = koerHentServer({ link: false });
   assert.match(intetLink.stderr, /npm lavede ingen kommando «browser-mcp»/, 'en pakke uden npm-kommando blev godkendt');
+  // R152 (Astra + Opus): PYTHONUTF8=1 i prøverne skjulte rettelsen - uden `encoding='utf-8'` i scriptet var alle stadig grønne.
+  // Her laaner scriptets `open` en Windows-standard (cp1252), og npm-beskrivelsen indeholder «Ł» (UTF-8 C5 81; 0x81 findes ikke
+  // i cp1252). Proeven vogter mod et tilbagefald til Windows-standarden; latin-1 ville ogsaa komme igennem.
+  const windowsTegnsaet = koerHentServer({ description: 'Łódź: 41 tools', cp1252: true });
+  assert.equal(windowsTegnsaet.status, 0, `package.json blev ikke laest som UTF-8 under et cp1252-standardtegnsaet: ${windowsTegnsaet.stderr.slice(-300)}`);
   const forkertVersion = koerHentServer({ version: '9.9.8' });
   assert.match(forkertVersion.stderr, /npm udleverede 9\.9\.8, ikke 9\.9\.9/);
 });
@@ -265,4 +270,49 @@ test('spaerre.yml: et flow med FEJL er roedt, ogsaa med fuld daekning (Astra R2:
     const kastede = koer('DAEKNING: 40/40 vaerktoejer beroert · 52 OK · 0 FEJL · 0 SPRUNGET\n', 3);
     assert.notEqual(kastede.status, 0, 'et flow der sluttede med exit 3 blev groent');
   } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+// R153 (Opus): cp1252-proeven laaner kun `open` i hent_server - manifest.json (hent_udvidelse) og en `Path.read_text()` uden tegnsaet
+// slap igennem. Hver tekstlaesning i scriptet skal derfor selv naevne sit tegnsaet.
+test('hent-udgivet.py: hver tekstlaesning angiver encoding', () => {
+  // R154 (Astra): en tekstsoegning efter «encoding=» gav falsk roedt paa «encoding = 'utf-8'» og lod en kommentar taelle som argument.
+  // Pythons egen parser afgoer det nu: hvert open/read_text/write_text-kald uden binaer tilstand skal have et encoding-noegleord.
+  // R155-R156 (Astra): signaturer kan ikke gaettes ud fra et attributnavn (io.open, builtins.open, codecs.open, en alias). Reglen er
+  // derfor en liste over TILLADTE former: open(...) (indbygget), Path(...).open/read_text/write_text. Enhver anden «.open»-form er
+  // roed til review. Tekst skal angive encoding som en navngiven streng; kun open kan vaere binaer.
+  const ud = execFileSync('python3', ['-c', `import ast, sys
+t = ast.parse(open(sys.argv[1], encoding='utf-8').read())
+kald = uden = 0
+def arg(n, pos, navn):
+    for k in n.keywords:
+        if k.arg == navn:
+            return k.value
+    return n.args[pos] if len(n.args) > pos else None
+def er_path(v):
+    return isinstance(v, ast.Call) and isinstance(v.func, ast.Name) and v.func.id in ('Path', 'PurePath')
+for n in ast.walk(t):
+    if not isinstance(n, ast.Call):
+        continue
+    f = n.func
+    if isinstance(f, ast.Name) and f.id == 'open':
+        mode, enc = arg(n, 1, 'mode'), arg(n, 3, 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr in ('open', 'read_text', 'write_text') and er_path(f.value):
+        mode = arg(n, 0, 'mode') if f.attr == 'open' else None
+        enc = arg(n, {'open': 2, 'read_text': 0, 'write_text': 1}[f.attr], 'encoding')
+    elif isinstance(f, ast.Attribute) and f.attr in ('open', 'read_text', 'write_text', 'read_bytes'):
+        kald += 1; uden += 1
+        print('UKENDT', n.lineno)
+        continue
+    else:
+        continue
+    if isinstance(mode, ast.Constant) and 'b' in str(mode.value):
+        continue
+    kald += 1
+    if not (isinstance(enc, ast.Constant) and isinstance(enc.value, str) and enc.value.lower() != 'locale'):   # R156 (Opus): 'locale' er det lokale tegnsaet
+        uden += 1
+        print('UDEN', n.lineno)
+print('KALD', kald, 'UDEN', uden)`, join(rod, 'scripts/hent-udgivet.py')], { encoding: 'utf8' });
+  const [, kald, uden] = ud.match(/KALD (\d+) UDEN (\d+)/);
+  assert.ok(Number(kald) >= 3, `fandt kun ${kald} tekstlaesninger - parseren maaler ikke scriptet`);
+  assert.equal(Number(uden), 0, `tekstlaesninger uden encoding eller i en ukendt form (review): ${ud.match(/(?:UDEN|UKENDT) \d+/g)?.join(', ')}`);
 });
