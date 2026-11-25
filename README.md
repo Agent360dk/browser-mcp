@@ -1,4 +1,6 @@
-# Browser MCP by [Agent360](https://agent360.dk)
+# [Agent360 Browser MCP](https://agent360.dk)
+
+> Not browsermcp.io - this is Agent360 Browser MCP (@agent360/browser-mcp).
 
 **The browser tool that can stop and ask you.** A 2FA code, a CAPTCHA, a choice only you can
 make: it asks on your own screen, then carries on in the same signed-in Chrome.
@@ -16,6 +18,7 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io)
 [![Chrome Web Store](https://img.shields.io/badge/Chrome_Web_Store-live-green)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
+[![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/jdehgalffmffhfhmmhaokfbfnafnmgcl)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl)
 
 
 [![Add to Cursor](https://img.shields.io/badge/Add%20to-Cursor-000?logo=cursor)](https://cursor.com/install-mcp?name=browser-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBhZ2VudDM2MC9icm93c2VyLW1jcEBsYXRlc3QiXX0%3D)
@@ -26,7 +29,7 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 
 ▶ **[Watch the 15-second film →](https://browsermcp.dev/film.mp4)**
 
-Browser MCP gives Claude Code (and MCP clients that run local servers, such as Cursor and VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
+Agent360 Browser MCP gives Claude Code (and MCP clients that run local servers, such as Cursor and VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
 The killer move: it hits a login wall, opens your Gmail, reads the verification code, and continues the sign-in. There is no email API to set up. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
 
@@ -42,7 +45,7 @@ The killer move: it hits a login wall, opens your Gmail, reads the verification 
 
 It reads the same guide the four steps below spell out by hand. One step stays yours either way: Chrome will not let an extension install itself, so you load it once.
 
-**1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? See the unpacked install below.
+**1 - Install the Chrome extension.** One click from the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl); Chrome keeps it updated. No store? See the [unpacked install](https://github.com/Agent360dk/browser-mcp/blob/main/docs/the-long-version.md#step-2-load-the-extension-in-chrome).
 
 **2 - Add the MCP server.** Paste this in a terminal. Required - the extension does nothing on its own:
 
@@ -58,75 +61,11 @@ claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
 
 You get an image back instead of *"I don't have browser access"*. **That's it - you're running.** → [What else to say](#youre-in-now-what)
 
-Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config - the prompt at the top handles it, or see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Everything below is the long version.
+Using Cursor, VS Code, Codex or Windsurf? Same server, that client's own config - the prompt at the top handles it, or see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-cursor/). Unpacked install, the zip, and the store path on its own: [the long version](https://github.com/Agent360dk/browser-mcp/blob/main/docs/the-long-version.md).
 
 ## The long version - install, step by step
 
-> **Browser MCP is two halves and you need both:** a **Chrome extension** (drives the browser) and a **local MCP server** (what your agent actually talks to). Installing only the extension - e.g. straight from the Chrome Web Store - leaves it stuck on *"Not connected"*, because there is no server for it to reach. Chrome cannot install the server, and npm cannot install the extension. Hence two steps.
-
-### Step 1: Register the MCP server with Claude Code
-
-```bash
-claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
-```
-
-That is Claude Code's own MCP command, so the entry lands in the config Claude Code actually reads. `--scope user` makes it available in every project.
-
-Want the extension files on disk for the unpacked install in Step 2? Also run:
-
-```bash
-npx @agent360/browser-mcp install
-```
-
-It copies the extension to `~/.browser-mcp/extension/` and **prints that path in the terminal - copy it.** (It also registers the server with Claude Code, Codex, VS Code and Cursor if it finds them.)
-
-### Step 2: Load the extension in Chrome
-
-> Chrome won't let extensions install themselves from npm - you load it manually one time. To **update** later, re-run the install command and reload it (see [Keeping it updated](#keeping-it-updated)). Prefer the [Chrome Web Store](#chrome-web-store-no-developer-mode-auto-updating-extension) install if you'd rather have the extension auto-update.
-
-1. **Open Chrome** and type `chrome://extensions` in the address bar
-2. **Toggle "Developer mode"** ON (top right corner)
-3. **Click "Load unpacked"** (top left, next to "Pack extension")
-4. **Navigate to `~/.browser-mcp/extension/`** and click "Select"
-   - On Mac: Press `Cmd+Shift+G` in the file picker, paste `~/.browser-mcp/extension/`, press Enter
-   - On Windows: Paste `%USERPROFILE%\.browser-mcp\extension\` in the address bar (Windows is not yet verified: our automated tests do not pass there)
-   - On Linux: Type `~/.browser-mcp/extension/` in the path field
-5. **Restart Claude Code** so it picks up the new MCP server
-
-That's it. The Browser MCP icon will appear in your toolbar, and 40 browser tools are now available in Claude Code.
-
-### Alternative: Manual zip download (no npm)
-
-If you don't want to use npm, download the extension directly:
-
-1. [Download the extension zip](https://github.com/Agent360dk/browser-mcp/releases/latest) (`agent360-browser-mcp-<version>.zip`) from the latest GitHub release
-2. Unzip the file (anywhere - e.g. `~/Downloads/browser-mcp-extension/`)
-3. Follow Step 2 above, but select the unzipped folder instead of `~/.browser-mcp/extension/`
-4. Register the server - run `claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest`, or add this to `~/.claude.json` by hand:
-   ```json
-   {
-     "mcpServers": {
-       "browser-mcp": {
-         "command": "npx",
-         "args": ["@agent360/browser-mcp@latest"]
-       }
-     }
-   }
-   ```
-
-### Chrome Web Store (no Developer mode, auto-updating extension)
-
-**This replaces Step 2 only - you still need Step 1.**
-
-1. [**Install the extension from the Chrome Web Store →**](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl) - no Developer mode toggle, and Chrome keeps it updated for you.
-2. Register the MCP server:
-   ```bash
-   claude mcp add --scope user browser-mcp -- npx @agent360/browser-mcp@latest
-   ```
-   (For Cursor / VS Code / Codex, use that client's own MCP config instead - see [browsermcp.dev/docs](https://browsermcp.dev/docs/install-claude-code/).)
-3. Restart Claude Code.
-
-Skip step 2 and the extension icon will sit on **"Not connected"** forever - that is the symptom of a missing MCP server, not a broken extension.
+The four steps above are the install. File-picker details, the zip, and the store path on its own are in [the long version](https://github.com/Agent360dk/browser-mcp/blob/main/docs/the-long-version.md). Same text, including the two-halves warning: the extension alone sits on "Not connected" until the server is registered.
 
 ## You're in. Now what?
 
@@ -217,7 +156,7 @@ down: see [#19](https://github.com/Agent360dk/browser-mcp/issues/19).
 > human-in-the-loop, and it is the one we measured: the Playwright MCP README lists 72 documented tools (counted 2026-11-22)
 > and no tool that asks you a question mid-task and takes your answer; `browser_annotate` (opt-in, `--caps=devtools`) waits for you to mark up the page, but asks nothing (checked 2026-11-22).
 
-> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project - larger than this one (100,000 Chrome Web Store users to our 2,000) and, after eighteen months without a commit in its public GitHub repo (24 April 2025 to 27 October 2026), shipping again: six npm versions, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. Their `2.0.0` replaced the thirteen named tools with a single `browser` tool that takes command lines, so a config written for `0.1.3` no longer matches. This is Browser MCP by Agent360 (`@agent360/browser-mcp`). The BrowserMCP.io column in the table above was read from their published `2.5.0` package; all figures measured 13 November 2026. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
+> **On the name:** the similarly-named `browsermcp.io` (`@browsermcp/mcp`) is a different, unaffiliated project - larger than this one (100,000 Chrome Web Store users to our 2,000) and, after eighteen months without a commit in its public GitHub repo (24 April 2025 to 27 October 2026), shipping again: six npm versions, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. Their `2.0.0` replaced the thirteen named tools with a single `browser` tool that takes command lines, so a config written for `0.1.3` no longer matches. This is Agent360 Browser MCP (`@agent360/browser-mcp`). The BrowserMCP.io column in the table above was read from their published `2.5.0` package; all figures measured 13 November 2026. [Full side-by-side →](https://browsermcp.dev/compare/browsermcp-io/)
 
 ### Environment variables
 
@@ -480,19 +419,17 @@ Browser MCP is built in the open and shaped by the people using it.
 - 💡 [Wish for a feature](https://github.com/Agent360dk/browser-mcp/issues/new?template=wish.yml)
 - 🎯 [Share a use-case](https://github.com/Agent360dk/browser-mcp/issues/new?template=use-case.yml)
 - 🐛 [Report a bug](https://github.com/Agent360dk/browser-mcp/issues/new?template=bug.yml)
+- 🌱 [Good first issues](https://github.com/Agent360dk/browser-mcp/issues?q=is%3Aissue+is%3Aopen+label%3A%22good%20first%20issue%22) - the `good first issue` label. How a change lands is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Or just **ask Claude** - it knows about the `browser_about` tool and will draft the report and hand you a link to review and submit when you say things like *"I wish browser-mcp could …"* or *"share my browser-mcp use-case"*.
 
 ### If it works for you
 
-The Chrome Web Store ranks on ratings, and we have none - so a sentence from you moves this
-further than anything we can write. [Leave a review](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl/reviews)
-if it earned one, and say so honestly if it did not. No signup, no reward, nothing gated
-behind it - we just have no signal at all right now.
+[![Chrome Web Store users](https://img.shields.io/chrome-web-store/users/jdehgalffmffhfhmmhaokfbfnafnmgcl)](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl) use the extension, and 4 have rated it. If it saved you a login dance, a ⭐ on GitHub or a line in the [Chrome Web Store](https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl/reviews) helps the next person find it.
 
-## The same idea, for the rest of your Mac
+## Sister project
 
-This drives your browser. [Computer MCP](https://computermcp.dev) drives everything
+The same idea, for the rest of your Mac. This drives your browser. [Agent360 Computer MCP](https://github.com/Agent360dk/computerMCP) ([computermcp.dev](https://computermcp.dev)) drives everything
 else on macOS - menus, windows, the Dock, any app's accessibility tree - with the same
 stance: password fields are blacked out in memory before a screenshot is written, writes
 go through a consent gate, and every action lands in an append-only log. It runs in the
