@@ -1,6 +1,6 @@
 # What Is Browser MCP?
 
-**Browser MCP is an MCP (Model Context Protocol) server that hands any MCP-connected AI agent - Claude Code, Cursor, or any other MCP client - the wheel of your real, already-logged-in Chrome browser, instead of spinning up a fresh, unauthenticated headless browser.** It runs as a Chrome extension paired with a local MCP server (package: `@agent360/browser-mcp`), exposes 41 tools over the protocol, and sends nothing to Agent360 - what your agent reads goes only to your own AI client, like anything else you show it.
+**Browser MCP is an MCP (Model Context Protocol) server that hands the AI agent in an MCP client that runs local servers - Claude Code, Cursor, and others - the wheel of your real, already-logged-in Chrome browser, instead of spinning up a fresh, unauthenticated headless browser.** It runs as a Chrome extension paired with a local MCP server (package: `@agent360/browser-mcp`), exposes 41 tools over the protocol, and sends nothing to Agent360 - what your agent reads goes only to your own AI client, like anything else you show it.
 
 That one distinction - *your* browser versus *a* browser - is the whole reason it exists. A headless tool like Playwright or Puppeteer starts a browser with no cookies, no session, and no identity. Browser MCP starts from the browser you were already signed into. The agent inherits your logins, your 2FA-trusted device, and your session state, so it can act on sites that have no API and no tolerance for bots.
 
@@ -21,7 +21,7 @@ An AI agent connected to it can navigate pages, read and fill forms, click by CS
 
 ## How does Browser MCP work, mechanically?
 
-1. Your MCP client - Claude Code, Cursor, VS Code agent mode, or any other MCP-compatible client - starts a conversation and spawns the Browser MCP server as a subprocess over stdio.
+1. Your MCP client - Claude Code, Cursor, VS Code agent mode, or any other MCP client that runs local servers - starts a conversation and spawns the Browser MCP server as a subprocess over stdio.
 2. The first time a tool actually needs the browser, that server binds the first free port in its 9876-9895 range.
 3. The Chrome extension's offscreen document polls that port range every ~2 seconds and opens a WebSocket connection once it finds a live server.
 4. From then on, tool calls flow: **your AI client → MCP server → Chrome extension → Chrome's extension/debugger APIs → the page.**
@@ -44,7 +44,7 @@ the login screen as a stranger.
 
 ## Browser MCP vs. headless automation (Playwright, Puppeteer)
 
-Headless frameworks like Playwright and Puppeteer are excellent at what they were built for: fast, disposable, CI-friendly browser instances for testing your own app. The table below compares that headless mode, because it is still the default. One thing it does not cover: Playwright MCP also ships a Chrome extension that drives the browser you are already signed into, so "only we can use your real session" is not true and this page does not claim it. What stays different is the human - none of its 72 tools can stop and ask you for a code (checked 2026-09-19):
+Headless frameworks like Playwright and Puppeteer are excellent at what they were built for: fast, disposable, CI-friendly browser instances for testing your own app. The table below compares that headless mode, because it is still the default. One thing it does not cover: Playwright MCP also ships a Chrome extension that drives the browser you are already signed into, so "only we can use your real session" is not true and this page does not claim it. What stays different is the human - among its 72 tools (counted 2026-11-22) there is no tool that asks you a question mid-task and takes your answer; `browser_annotate` (opt-in, `--caps=devtools`) waits for you to mark up the page, but asks nothing (checked 2026-11-22):
 
 | | Browser MCP | Playwright / Puppeteer (headless) |
 |---|---|---|
@@ -96,7 +96,7 @@ No. Those expose one product's API through MCP. Browser MCP exposes *browser con
 Not for testing your own app in a clean environment - that's still Playwright's job. It replaces headless tools for the specific case of acting as an authenticated human on a site you don't control.
 
 **Which AI clients can use Browser MCP?**
-Any MCP-compatible client: Claude Code, Cursor, VS Code in agent mode, and others that implement the [Model Context Protocol](https://modelcontextprotocol.io) client side.
+MCP clients that run local servers: Claude Code, Cursor, VS Code in agent mode, and others that implement the [Model Context Protocol](https://modelcontextprotocol.io) client side.
 
 **How many tools does it expose?**
 40, spanning navigation, page content, interaction (click/fill/select/date-pickers), tabs and iframes, cookies and storage, network waiting, CAPTCHA assistance, and human-in-the-loop handoff. Full reference: [/docs/tools](/docs/tools).

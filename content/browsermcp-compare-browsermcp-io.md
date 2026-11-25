@@ -1,4 +1,4 @@
-// KILDE: HELE siden genmaalt 2026-11-13 (ca. 14.40 UTC) mod GitHub REST API (repos, /commits for hele listen, search/issues med is:issue, /releases, /tags), npm registry API (versioner + time), npm downloads API (last-week = 6.-12. nov.) og de to Chrome Web Store-sider (raa HTML). Deres vaerktoej laest i den UDGIVNE pakke `@browsermcp/mcp@2.5.0` (npm-tarball, dist/daemon.js: COMMANDS = 27 poster + back/forward/reload = 30 kommandoer, plus `help`; MAX_BROWSERS 8 staar i deres udgivne README). 0.1.3 og 2.0.0 ogsaa laest: 0.1.3 har 13 browser_*-navne, 2.0.0 har 0 og ét vaerktoej `browser`. Stilheden: sidste commit foer = 9db12f2 2025-04-24, foerste efter = 43bcd1d 2026-10-27; npm 2.0.0 2026-10-26 23.33 UTC. ⛔ RETTET 13/11 efter review (PR #102): deres GitHub-repo er et Copybara-SPEJL af et privat repo (9fcac1a «mirror oss/ to BrowserMCP/mcp with Copybara», 43bcd1d = ét commit med 153 filer; 33 af 34 commits fra 27/10 har GitOrigin-RevId, maalt 13/11) - commit-antal maaler spejlet, ikke hvor tit de udgiver, saa brug dem ALDRIG som maal for udgivelsestakt. Hullet gaelder det OFFENTLIGE repo; npm 2.0.0 kom 9,5 time foer foerste offentlige commit. Deres 8 er et loft over Chrome-profiler, ikke sessioner. ⛔ Skriv ALDRIG at de er forladt, tavse eller uvedligeholdte. ⛔ Brug ALDRIG relative tider («last week», «nine days since») - skriv datoparret. ⛔ Og skriv ALDRIG siden som et angreb: de har 100.000 butiksbrugere mod vores 2.000.
+// KILDE: HELE siden genmaalt 2026-11-13 (ca. 14.40 UTC) mod GitHub REST API (repos, /commits for hele listen, search/issues med is:issue, /releases, /tags), npm registry API (versioner + time), npm downloads API (last-week = 6.-12. nov.) og de to Chrome Web Store-sider (raa HTML). Deres vaerktoej laest i den UDGIVNE pakke `@browsermcp/mcp@2.5.0` (npm-tarball, dist/daemon.js: COMMANDS = 27 poster + back/forward/reload = 30 kommandoer, plus `help`; genoptalt 2026-11-22, 2.5.0 stadig npm latest; MAX_BROWSERS 8 staar i deres udgivne README). 0.1.3 og 2.0.0 ogsaa laest: 0.1.3 har 13 browser_*-navne, 2.0.0 har 0 og ét vaerktoej `browser`. Stilheden: sidste commit foer = 9db12f2 2025-04-24, foerste efter = 43bcd1d 2026-10-27; npm 2.0.0 2026-10-26 23.33 UTC. ⛔ RETTET 13/11 efter review (PR #102): deres GitHub-repo er et Copybara-SPEJL af et privat repo (9fcac1a «mirror oss/ to BrowserMCP/mcp with Copybara», 43bcd1d = ét commit med 153 filer; 33 af 34 commits fra 27/10 har GitOrigin-RevId, maalt 13/11) - commit-antal maaler spejlet, ikke hvor tit de udgiver, saa brug dem ALDRIG som maal for udgivelsestakt. Hullet gaelder det OFFENTLIGE repo; npm 2.0.0 kom 9,5 time foer foerste offentlige commit. Deres 8 er et loft over Chrome-profiler, ikke sessioner. ⛔ Skriv ALDRIG at de er forladt, tavse eller uvedligeholdte. ⛔ Brug ALDRIG relative tider («last week», «nine days since») - skriv datoparret. ⛔ Og skriv ALDRIG siden som et angreb: de har 100.000 butiksbrugere mod vores 2.000.
 
 # Browser MCP vs browsermcp.io
 
@@ -10,7 +10,7 @@
 
 Until November 2026 this page argued one thing: that they had stopped shipping and we had not. **That argument is dead, and we have rewritten the page rather than leave it standing.** browsermcp.io's public GitHub repo went eighteen months without a commit - 24 April 2025 to 27 October 2026 - and it has shipped six npm versions since, `2.0.0` on 26 October to `2.5.0` on 12 November 2026. Both projects are maintained. So the question is not "which one is alive", it is **which shape fits your setup**, and that is what the numbers below are for.
 
-We are **Browser MCP by Agent360** (`@agent360/browser-mcp`, [browsermcp.dev](https://browsermcp.dev)) - a standard stdio MCP server that gives any MCP client control of your real, already-logged-in Chrome instead of a fresh headless session.
+We are **Browser MCP by Agent360** (`@agent360/browser-mcp`, [browsermcp.dev](https://browsermcp.dev)) - a standard stdio MCP server that gives MCP clients that run local servers control of your real, already-logged-in Chrome instead of a fresh headless session.
 
 ## The two projects, side by side
 
@@ -29,7 +29,7 @@ Every number below was measured on **2026-11-13**, both columns the same hour, f
 | Published GitHub releases | **0** (one tag, `v2.1.0`) | 14 (latest `v1.31.0`) |
 | Open / closed GitHub issues | 1 / 183 | 8 / 24 |
 | License | Apache-2.0 | MIT |
-| Tool surface | one tool, `browser`, taking command lines: **30 commands** in `2.5.0`, plus `help` | **41 tools**, each separately named, listed at [`/docs/tools`](/docs/tools) |
+| Tool surface | one tool, `browser`, taking command lines: **30 commands** in `2.5.0`, plus `help` (counted 2026-11-22) | **41 tools**, each separately named, listed at [`/docs/tools`](/docs/tools) |
 | Agents at once | each AI app gets tabs of its own; no limit documented | up to 20, each in its own colour-coded tab group |
 | Chrome profiles at once | up to 8, from one daemon | one per client, named with `BROWSER_MCP_PROFILE` (from 1.31); no limit documented |
 | Asks you mid-task | a pairing click at setup; nothing mid-task in their README | `browser_ask_user` - a 2FA code, a CAPTCHA, a choice |
@@ -72,7 +72,7 @@ The scale numbers are theirs, and we publish them as-is:
 
 Three differences worth weighing:
 
-**Tool surface: 41 tools vs. one tool with 30 commands.** Neither is wrong. A single dispatching tool keeps the client's tool list short, which matters when a model has limited room for tool definitions. Separate named tools let the model pick from descriptions it can read, and let a client allow or deny them individually. Pick the one that fits how your client handles tools.
+**Tool surface: 41 tools vs. one tool with 30 commands (counted 2026-11-22).** Neither is wrong. A single dispatching tool keeps the client's tool list short, which matters when a model has limited room for tool definitions. Separate named tools let the model pick from descriptions it can read, and let a client allow or deny them individually. Pick the one that fits how your client handles tools.
 
 **Release record.** They have published zero GitHub releases and ten npm versions; we have published 14 releases and 20 npm versions. If you pin versions and read changelogs before upgrading, that difference is the one to weigh - and it is checkable in two minutes on either repo.
 
@@ -121,7 +121,7 @@ All figures were pulled directly on **2026-11-13**, from primary sources only - 
 - **Release counts:** `api.github.com/repos/<repo>/releases?per_page=100`, counted. browsermcp.io returns an empty array; `/tags` returns one tag, `v2.1.0`.
 - **Open and closed issues:** the search API with `is:issue`, so pull requests are excluded. The repo object's `open_issues_count` counts PRs as issues and is not what the table uses.
 - **npm versions, publish dates and download counts:** `registry.npmjs.org/<package>` for `dist-tags.latest`, the full version list and the `time` map; `api.npmjs.org/downloads/point/last-week/<package>` for downloads (the week of 6-12 November 2026).
-- **Their tool surface:** read in their published packages from the npm registry - `0.1.3` and `2.0.0` for the change, and `2.5.0`'s `dist/daemon.js`, which registers one tool named `browser` and defines its 30 commands. The eight-profile limit (`MAX_BROWSERS`) and the reconnect behaviour are from the `2.5.0` README as published on npm.
+- **Their tool surface:** read in their published packages from the npm registry - `0.1.3` and `2.0.0` for the change, and `2.5.0`'s `dist/daemon.js`, which registers one tool named `browser` and defines its 30 commands (counted again on 2026-11-22, with `2.5.0` still the npm latest). The eight-profile limit (`MAX_BROWSERS`) and the reconnect behaviour are from the `2.5.0` README as published on npm.
 - **Chrome Web Store users and rating:** the live public listing pages for extension IDs `bjfgambnhccakkhmkepdoekmckoijdlc` (browsermcp.io) and `jdehgalffmffhfhmmhaokfbfnafnmgcl` (Agent360). Chrome blocks extensions from scripting the store, so the figures were read out of the raw HTML rather than the rendered DOM.
 
 This table will go stale - that is the nature of a dated comparison, and an earlier version of this page went stale in a way that flattered us. The sources above take about five minutes to re-check yourself.

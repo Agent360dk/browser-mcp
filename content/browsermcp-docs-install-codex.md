@@ -122,9 +122,9 @@ This is what a fresh headless browser without your login can't do: Codex hits a 
 
 Runs up to 20 concurrent browser sessions with color-coded Chrome tab groups, so parallel Codex tasks don't step on each other's tabs.
 
-## Works with any MCP client
+## Works with MCP clients that run local servers
 
-Browser MCP is a standard stdio MCP server - it doesn't know or care which client is talking to it. The same `~/.codex/config.toml` entry is shared by the **ChatGPT desktop app**, **Codex CLI**, and the **Codex IDE extension**, so one setup unlocks all three. Outside the Codex/ChatGPT family it works identically with Claude Code, Claude Desktop, Cursor, Cline, Continue, or anything else that speaks MCP - same package, same extension, same `npx @agent360/browser-mcp` command, just wired in with that client's own config format instead of `codex mcp add`.
+Browser MCP is a standard stdio MCP server - it doesn't know or care which client is talking to it. The same `~/.codex/config.toml` entry is shared by the **ChatGPT desktop app**, **Codex CLI**, and the **Codex IDE extension**, so one setup unlocks all three. Outside the Codex/ChatGPT family it works identically with Claude Code, Claude Desktop, Cursor, Cline, Continue, or any other MCP client that runs local servers - same package, same extension, same `npx @agent360/browser-mcp` command, just wired in with that client's own config format instead of `codex mcp add`.
 
 ## FAQ
 

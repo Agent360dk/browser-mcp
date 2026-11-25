@@ -1,4 +1,4 @@
-// KILDE: tabellen GENMAALT 2026-11-13 ca. 14.45 UTC for alle fem raekker paa én gang: GitHub REST API (stjerner + /commits?per_page=1 = nyeste commit paa default-grenen, ikke pushed_at), npm downloads API last-week (= 6.-12. nov.), npm-registrets latest + time, PyPI JSON for browser-use. browsermcp.io's hul: sidste commit foer 9db12f2 2025-04-24, foerste efter 43bcd1d 2026-10-27. De oevrige tal i teksten (72 vaerktoejer, Puppeteer, CrUX) er fra 2026-07-21/09-19 og staar med deres egen dato. ⛔ Ingen relative tider.
+// KILDE: tabellen GENMAALT 2026-11-13 ca. 14.45 UTC for alle fem raekker paa én gang: GitHub REST API (stjerner + /commits?per_page=1 = nyeste commit paa default-grenen, ikke pushed_at), npm downloads API last-week (= 6.-12. nov.), npm-registrets latest + time, PyPI JSON for browser-use. browsermcp.io's hul: sidste commit foer 9db12f2 2025-04-24, foerste efter 43bcd1d 2026-10-27. De oevrige tal i teksten (Puppeteer, CrUX) er fra 2026-07-21/09-19 og staar med deres egen dato; Playwrights 72 vaerktoejer er genoptalt 2026-11-22 i den udgivne `@playwright/mcp@0.0.86` (npm latest). ⛔ Ingen relative tider.
 
 # Browser MCP servers, compared
 
@@ -60,7 +60,7 @@ Every tool on this page loses somewhere. Playwright MCP is the wrong tool if the
 ## FAQ
 
 **Which MCP server should I use for browser automation in CI?**
-Playwright MCP - managed profiles, headless mode, 72 documented tools, and the scale evidence of 10.6M npm downloads in the week of 6-12 November 2026. It also ships a Chrome extension for using your own logged-in browser, so that is no longer a reason to pick us over it.
+Playwright MCP - managed profiles, headless mode, 72 documented tools (counted 2026-11-22), and the scale evidence of 10.6M npm downloads in the week of 6-12 November 2026. It also ships a Chrome extension for using your own logged-in browser, so that is no longer a reason to pick us over it.
 
 **Which MCP server can use my existing Chrome logins?**
 The two "Browser MCP" projects drive your real Chrome by default. Both are shipping code: browsermcp.io's last commit was 2026-11-12 and ours 2026-10-29 (checked 2026-11-13).

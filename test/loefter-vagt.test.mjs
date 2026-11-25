@@ -247,7 +247,9 @@ test('en side der lister vaerktoejerne, lister alle i tools.js og intet andet', 
     const navne = new Set(readFileSync(join(rod, 'content', fil), 'utf8').match(/\bbrowser_[a-z0-9_]+\b/g) ?? []);
     if (navne.size < 30) continue;
     const mangler = [...alle].filter((n) => !navne.has(n));
-    const ukendte = [...navne].filter((n) => !alle.has(n) && !/^browser_(go_|drag|wait_for$|tab_|snapshot|type$|navigate_back)/.test(n));
+    // 22/11-2026: Playwright MCP's browser_annotate staar i sammenligningsraekken om mennesket paa de installationssider, der
+    // ogsaa lister vores 40. Det er deres vaerktoej, ikke en paastand om vores, saa navnet undtages - kun det eksakte navn.
+    const ukendte = [...navne].filter((n) => !alle.has(n) && !/^browser_(go_|drag|wait_for$|tab_|snapshot|type$|navigate_back|annotate$)/.test(n));
     if (mangler.length) fund.push(`content/${fil} mangler ${mangler.join(', ')}`);
     if (ukendte.length) fund.push(`content/${fil} naevner ${ukendte.join(', ')}, som ikke findes`);
   }
