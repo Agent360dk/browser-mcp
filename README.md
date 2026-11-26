@@ -25,6 +25,11 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 [![Add to VS Code](https://img.shields.io/badge/Add%20to-VS%20Code-0098FF?logo=visualstudiocode)](https://vscode.dev/redirect/mcp/install?name=browser-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40agent360%2Fbrowser-mcp%40latest%22%5D%7D)
 [![Glama quality](https://glama.ai/mcp/servers/Agent360dk/browser-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Agent360dk/browser-mcp)
 
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.Agent360dk%2Fbrowser--mcp-blue)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.Agent360dk%2Fbrowser-mcp/versions/latest)
+[![PulseMCP](https://img.shields.io/badge/PulseMCP-Agent360_Browser-blue)](https://www.pulsemcp.com/servers/agent360dk-browser)
+[![mcp.so](https://img.shields.io/badge/mcp.so-Agent360_Browser-blue)](https://mcp.so/servers/browser-mcp-agent360dk)
+[![mcpservers.org](https://img.shields.io/badge/mcpservers.org-Browser_MCP-blue)](https://mcpservers.org/servers/agent360dk/browser-mcp)
+
 [![Four agents, each in its own tab group. One reaches a 2FA code, asks you, and carries on](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)
 
 ▶ **[Watch the 15-second film →](https://browsermcp.dev/film.mp4)**
