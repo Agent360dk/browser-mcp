@@ -1,9 +1,9 @@
 # [Agent360 Browser MCP](https://agent360.dk)
 
-> Not browsermcp.io - this is Agent360 Browser MCP (@agent360/browser-mcp).
-
 **The browser tool that can stop and ask you.** A 2FA code, a CAPTCHA, a choice only you can
 make: it asks on your own screen, then carries on in the same signed-in Chrome.
+
+> Not browsermcp.io - this is Agent360 Browser MCP (@agent360/browser-mcp).
 
 It drives the Chrome you are already signed into: no login step to fail, no API key to wire
 up, no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
@@ -28,6 +28,8 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 [![Four agents, each in its own tab group. One reaches a 2FA code, asks you, and carries on](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)
 
 ▶ **[Watch the 15-second film →](https://browsermcp.dev/film.mp4)**
+
+⭐ **If it saves you a login dance, [star it on GitHub](https://github.com/Agent360dk/browser-mcp)** - it helps the next person find it. Weighing it up? See [how it compares with Playwright MCP and BrowserMCP.io](#why-this-over-playwright-mcp--browsermcp).
 
 Agent360 Browser MCP gives Claude Code (and MCP clients that run local servers, such as Cursor and VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
