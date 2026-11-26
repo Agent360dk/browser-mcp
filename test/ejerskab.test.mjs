@@ -40,8 +40,10 @@ function sele(faneSvar) {
 test('en fane BRUGEREN aabnede bliver ikke agentens', async () => {
   const u = sele({ id: 99, url: 'https://brugerens-netbank.example', windowId: 1, active: true });
   await u.fyr('tabs.onCreated', { id: 99, url: 'https://brugerens-netbank.example', windowId: 1 });
-  const r = await u.hent('dispatch')(9876, 'get_new_tab', {});
-  assert.equal(r.error, 'not-ours', 'en fane uden opener i sessionen tilhoerer brugeren');
+  const r = await u.hent('dispatch')(9876, 'get_new_tab', { wait_ms: 0 });
+  // 1.34 (#89): brugerens fane er aldrig et svar - heller ikke et not-ours med hendes fane-id. Sessionen fik ingen ny fane.
+  assert.equal(r.error, 'no-new-tab-yet', 'en fane uden opener i sessionen tilhoerer brugeren');
+  assert.equal(r.tab_id, undefined, 'svaret naevner brugerens fane');
   assert.ok(!u.hent('sessions').get(9876).tabIds.has(99),
     'og den maa ikke ende i sessionen - saa ville skaermbillede og sidetekst vaere lovligt');
 });
