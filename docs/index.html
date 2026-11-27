@@ -401,7 +401,7 @@ html:not(.js) #pauselbl{display:none}
       <a class="opt" href="/learn/what-is-an-mcp-server/">Guides</a>
       <a href="/docs/install-claude-code/">Docs</a>
       <a class="navcta" href="https://chromewebstore.google.com/detail/agent360-browser-mcp/jdehgalffmffhfhmmhaokfbfnafnmgcl" target="_blank" rel="noopener">Add to Chrome</a>
-      <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 64 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 17 Nov 2026">64</span></a>
+      <a class="gh" href="https://github.com/Agent360dk/browser-mcp" aria-label="Browser MCP on GitHub, 68 stars"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span class="n" title="GitHub stars on 27 Nov 2026">68</span></a>
     </nav>
   </div>
 </header>
@@ -437,9 +437,9 @@ html:not(.js) #pauselbl{display:none}
     </figure>
 
     <div class="hero-t">
-      <ul class="proof">
-        <li><b data-tal="cws-brugere">2,000</b><span>Chrome users</span></li>
-        <li><b data-tal="npm-maaned">4,888</b><span>npm downloads last month</span></li>
+      <ul class="proof" data-maalt="2026-11-27" data-cws-dato="2026-11-25">
+        <li><b data-tal="cws" title="Weekly users in Chrome on 25 Nov 2026">2,968</b><span>weekly users in Chrome</span></li>
+        <li><b data-tal="npm" title="Downloads since the first release, 2 Apr 2026">23,555</b><span>downloads from npm</span></li>
         <li><b>MIT</b><span>no account, no paid tier</span></li>
       </ul>
       <p class="works">Works with Claude Code · Cursor · Codex · VS Code · Windsurf</p>
@@ -663,9 +663,12 @@ if (film && pz) {
   if (reduceret) { pz.checked = true; mark(); } else { spil(); }
   pz.addEventListener('change', function () { if (pz.checked) { film.pause(); mark(); } else { spil(); } });
 }
-// Tallene hentes ved hvert besoeg fra gustavlouv.com/tal.json (Gustav 17/11-2026: «programmatiske tal hentet direkte paa
-// tvaers af alle siderne»). Samme fil som agent360.dk, saa alle sider viser samme tal. Tallene i HTML'en er reserven: fejler
-// hentningen, eller er et felt ikke et positivt heltal, staar de. Chrome-tallet er butikkens eget afrundede tal (cws_butik).
+// Samme kilder og felter som gustavlouv.com (forsiden og maal-tal.py). Tallene i HTML'en er reserven.
+// Chrome: ugentlige brugere, feltet cws i gustavlouv.com/tal.json (users-7d). Ikke butikkens afrundede tal.
+// npm: hentninger siden 2026-04-02, foerst browser.npm_i_alt, derefter summen af api.npmjs.org/downloads/range.
+//      Et lavere tal beholdes, for et afkortet svar ligner et fald.
+// Stjerner: foerst browser.stjerner, derefter api.github.com stargazers_count.
+// Fejler et kald, eller er tallet ikke et positivt heltal, staar det forrige. En aeldre tal.json ruller ikke et nyere tal tilbage.
 // Ingen cookies og ingen henvisning sendes med.
 (function () {
   if (!window.fetch) return;
@@ -673,18 +676,55 @@ if (film && pz) {
   var dato = function (s) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof s === 'string' ? s : ''); return m && +m[2] >= 1 && +m[2] <= 12 && +m[3] >= 1 && +m[3] <= 31 ? +m[3] + ' ' + mdr[+m[2] - 1] + ' ' + m[1] : null; };
   var heltal = function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; };
   var vis = function (n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
-  window.fetch('https://gustavlouv.com/tal.json', { credentials: 'omit', referrerPolicy: 'no-referrer' })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) {
-      if (!d || typeof d !== 'object') return;
-      var b = d.browser || {}, md = dato(d.maalt);
-      var cws = document.querySelector('[data-tal="cws-brugere"]'), npm = document.querySelector('[data-tal="npm-maaned"]');
-      var gh = document.querySelector('a.gh'), n = gh && gh.querySelector('.n');
-      if (cws && heltal(d.cws_butik)) cws.textContent = vis(d.cws_butik);
-      if (npm && heltal(b.npm_30_dage)) npm.textContent = vis(b.npm_30_dage);
-      if (n && heltal(b.stjerner) && md) { n.textContent = vis(b.stjerner); n.title = 'GitHub stars on ' + md; gh.setAttribute('aria-label', 'Browser MCP on GitHub, ' + vis(b.stjerner) + ' stars'); }
-    })
-    .catch(function () {});
+  var talNu = function (el) { var x = el && parseInt(String(el.textContent).replace(/,/g, ''), 10); return x > 0 ? x : 0; };
+  var cws = document.querySelector('[data-tal="cws"]'), npm = document.querySelector('[data-tal="npm"]');
+  var gh = document.querySelector('a.gh'), n = gh && gh.querySelector('.n');
+  var bagt = document.querySelector('[data-maalt]');
+  var laest = function (k) { return bagt && bagt.getAttribute ? (bagt.getAttribute(k) || '') : ''; };
+  var nyNok = function (iso, b) { return !!dato(iso) && (!b || iso >= b); };
+  var saetCws = function (v, md) { if (cws && heltal(v) && md) { cws.textContent = vis(v); cws.title = 'Weekly users in Chrome on ' + md; } };
+  var saetNpm = function (v) { if (npm && heltal(v) && v >= talNu(npm)) npm.textContent = vis(v); };
+  var saetStjerner = function (v, md) { if (n && gh && heltal(v) && md) { n.textContent = vis(v); n.title = 'GitHub stars on ' + md; gh.setAttribute('aria-label', 'Browser MCP on GitHub, ' + vis(v) + ' stars'); } };
+  var hent = function (url) {
+    return window.fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' }).then(function (r) {
+      if (!r || !r.ok) throw new Error('http');
+      return r.json();
+    });
+  };
+  // Samme vinduer som gustavlouv.com: npm svarer hoejst 18 maaneder ad gangen, saa 364 dage ad gangen fra 2026-04-02.
+  var npmIalt = function () {
+    var iso = function (d) { return d.toISOString().slice(0, 10); };
+    var a = new Date('2026-04-02T00:00:00Z'), slut = new Date(), dage = [];
+    var skridt = function () {
+      if (a > slut) {
+        var sum = 0;
+        for (var i = 0; i < dage.length; i++) sum += dage[i].downloads || 0;
+        return Promise.resolve(sum);
+      }
+      var b = new Date(Math.min(a.getTime() + 364 * 864e5, slut.getTime()));
+      var url = 'https://api.npmjs.org/downloads/range/' + iso(a) + ':' + iso(b) + '/@agent360/browser-mcp';
+      var naeste = new Date(b.getTime() + 864e5);
+      return hent(url).then(function (j) {
+        if (!j || !j.downloads || !j.downloads.length) throw new Error('npm');
+        dage = dage.concat(j.downloads);
+        a = naeste;
+        return skridt();
+      });
+    };
+    return skridt();
+  };
+  var idag = function () { var d = new Date(); return d.getUTCDate() + ' ' + mdr[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); };
+  hent('https://gustavlouv.com/tal.json').then(function (d) {
+    if (!d || typeof d !== 'object') return;
+    var b = d.browser || {};
+    if (nyNok(d.cws_dato, laest('data-cws-dato'))) saetCws(d.cws, dato(d.cws_dato));
+    if (nyNok(d.maalt, laest('data-maalt'))) { saetNpm(b.npm_i_alt); saetStjerner(b.stjerner, dato(d.maalt)); }
+  }).catch(function () {}).then(function () {
+    return Promise.all([
+      npmIalt().then(saetNpm).catch(function () {}),
+      hent('https://api.github.com/repos/Agent360dk/browser-mcp').then(function (j) { if (j) saetStjerner(j.stargazers_count, idag()); }).catch(function () {})
+    ]);
+  }).catch(function () {});
 })();
 </script>
 </body>

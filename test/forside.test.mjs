@@ -68,12 +68,15 @@ test('softwareVersion staar som X.Y.Z og er pakkens version', () => {
   assert.equal(m[1], JSON.parse(readFileSync(join(rod, 'mcp-server/package.json'), 'utf8')).version);
 });
 
-test('forsiden kalder kun gustavlouv.com/tal.json ved indlaesning', () => {
+test('forsiden henter kun de samme talkilder som gustavlouv.com', () => {
   assert.doesNotMatch(html, /<script[^>]+\ssrc=/i, 'ekstern/ekstra script-fil');
-  assert.doesNotMatch(html, /XMLHttpRequest|api\.github\.com|googletagmanager|google-analytics|fonts\.(googleapis|gstatic)/i);
-  // 17/11-2026: det ene kald er tallene fra gustavlouv.com/tal.json (Gustavs egen fil, samme som agent360.dk), uden cookies.
+  assert.doesNotMatch(html, /XMLHttpRequest|googletagmanager|google-analytics|fonts\.(googleapis|gstatic)/i);
+  // 27/11-2026: samme adresser som gustavlouv.com. Ét fetch, inde i hent(). Ingen cookies.
   assert.equal((html.match(/\bfetch\s*\(/g) || []).length, 1, 'praecis ét fetch-kald paa forsiden');
-  assert.deepEqual([...html.matchAll(/\bfetch\s*\(\s*'([^']*)'/g)].map((m) => m[1]), ['https://gustavlouv.com/tal.json']);
+  assert.match(html, /hent\('https:\/\/gustavlouv\.com\/tal\.json'\)/);
+  assert.match(html, /https:\/\/api\.npmjs\.org\/downloads\/range\//);
+  assert.match(html, /hent\('https:\/\/api\.github\.com\/repos\/Agent360dk\/browser-mcp'\)/);
+  assert.doesNotMatch(html, /chromewebstore\.google\.com\/detail\/[^"']+users|cws_butik|npm_30_dage/);
   const udefra = [...html.matchAll(/\s(?:src|srcset)="(https?:)?\/\/[^"]+"/g)].map((m) => m[0]);
   assert.deepEqual(udefra, [], 'billede/medie hentet udefra');
   const link = [...html.matchAll(/<link\b[^>]*\bhref="https?:\/\/[^"]+"[^>]*>/g)].map((m) => m[0]).filter((l) => !/rel="canonical"/.test(l));
@@ -444,61 +447,118 @@ test('hele generatoren: nyt asset giver ny noegle paa hver henvisning, og sitema
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
-// ---- Tallene (17/11-2026, Gustav: «programmatiske tal hentet direkte paa tvaers af alle siderne»). Proeverne koerer sidens
-// EGET bundscript mod en falsk tal.json. Reserven er tallene i HTML'en; de maa kun skiftes ud med et positivt heltal, og
-// stjernerne kun med en rigtig maaledag (den staar i deres title).
+// ---- Tallene. Samme felter som gustavlouv.com: cws, browser.npm_i_alt, browser.stjerner, og de samme live-kald
+// for npm (downloads/range fra 2026-04-02) og GitHub (stargazers_count). Proeverne koerer sidens EGET bundscript.
+// Reserven er tallene i HTML'en. De maa kun skiftes ud med et positivt heltal, stjernerne kun med en rigtig maaledag,
+// npm kun naar det nye tal er mindst lige saa hoejt, og en aeldre tal.json ruller ikke et nyere tal tilbage.
 const reserve = {
-  cws: html.match(/<b data-tal="cws-brugere">([\d,]+)<\/b>/)[1],
-  npm: html.match(/<b data-tal="npm-maaned">([\d,]+)<\/b>/)[1],
+  cws: html.match(/<b data-tal="cws" title="([^"]*)">([\d,]+)<\/b>/).slice(1),
+  npm: html.match(/<b data-tal="npm"[^>]*>([\d,]+)<\/b>/)[1],
   stjerner: html.match(/<span class="n" title="([^"]*)">([\d,]+)<\/span>/).slice(1),
   aria: html.match(/<a class="gh" href="[^"]+" aria-label="([^"]+)"/)[1],
+  maalt: (html.match(/data-maalt="(\d{4}-\d{2}-\d{2})"/) || [])[1] || '',
+  cwsDato: (html.match(/data-cws-dato="(\d{4}-\d{2}-\d{2})"/) || [])[1] || '',
 };
 async function simulerTal(svar) {
   const bund = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).pop();
-  const cws = { textContent: reserve.cws }, npm = { textContent: reserve.npm };
+  const cws = { textContent: reserve.cws[1], title: reserve.cws[0] }, npm = { textContent: reserve.npm };
   const n = { title: reserve.stjerner[0], textContent: reserve.stjerner[1] };
   const gh = { aria: reserve.aria, querySelector: (s) => (s === '.n' ? n : null), setAttribute(k, v) { if (k === 'aria-label') this.aria = v; } };
-  const el = { '[data-tal="cws-brugere"]': cws, '[data-tal="npm-maaned"]': npm, 'a.gh': gh };
+  const bagt = { getAttribute: (k) => (k === 'data-maalt' ? reserve.maalt : k === 'data-cws-dato' ? reserve.cwsDato : null) };
+  const el = { '[data-tal="cws"]': cws, '[data-tal="npm"]': npm, 'a.gh': gh, '[data-maalt]': bagt };
   const doc = { documentElement: { classList: { add() {} } }, querySelectorAll: () => [], querySelector: (s) => el[s] || null, getElementById: () => null };
   const kald = [];
-  const fetch = (url, opt) => { kald.push({ url, opt }); return svar === 'netfejl' ? Promise.reject(new Error('net')) : Promise.resolve({ ok: svar.ok !== false, json: () => Promise.resolve(svar.data) }); };
+  const valgt = (url) => {
+    if (svar === 'netfejl') return 'netfejl';
+    if (svar && svar.ruter) {
+      for (const [k, v] of Object.entries(svar.ruter)) if (url.includes(k)) return v;
+      return { ok: false, data: null };
+    }
+    return svar;
+  };
+  const fetch = (url, opt) => {
+    kald.push({ url, opt });
+    const v = valgt(url);
+    if (v === 'netfejl') return Promise.reject(new Error('net'));
+    return Promise.resolve({ ok: v.ok !== false, json: () => Promise.resolve(v.data) });
+  };
   new Function('document', 'window', 'matchMedia', 'navigator', bund)(doc, { fetch }, () => ({ matches: false }), {});
-  for (let i = 0; i < 5; i++) await new Promise((ok) => setTimeout(ok, 0));
-  return { cws: cws.textContent, npm: npm.textContent, stjerner: n.textContent, stjerneTitel: n.title, aria: gh.aria, kald };
+  for (let i = 0; i < 8; i++) await new Promise((ok) => setTimeout(ok, 0));
+  return { cws: cws.textContent, cwsTitel: cws.title, npm: npm.textContent, stjerner: n.textContent, stjerneTitel: n.title, aria: gh.aria, kald };
 }
-const uroert = { cws: reserve.cws, npm: reserve.npm, stjerner: reserve.stjerner[1], stjerneTitel: reserve.stjerner[0], aria: reserve.aria };
+const uroert = { cws: reserve.cws[1], cwsTitel: reserve.cws[0], npm: reserve.npm, stjerner: reserve.stjerner[1], stjerneTitel: reserve.stjerner[0], aria: reserve.aria };
 const udenKald = ({ kald, ...r }) => r;
-
-test('tallene: henter gustavlouv.com/tal.json én gang, uden cookies og uden henvisning', async () => {
-  const r = await simulerTal({ data: {} });
-  assert.deepEqual(r.kald.map((k) => k.url), ['https://gustavlouv.com/tal.json']);
-  assert.equal(r.kald[0].opt.credentials, 'omit');
-  assert.equal(r.kald[0].opt.referrerPolicy, 'no-referrer');
+const talKilder = (kald) => ({
+  tal: kald.filter((k) => k.url === 'https://gustavlouv.com/tal.json').length,
+  github: kald.filter((k) => k.url === 'https://api.github.com/repos/Agent360dk/browser-mcp').length,
+  npm: kald.filter((k) => k.url.startsWith('https://api.npmjs.org/downloads/range/') && k.url.endsWith('/@agent360/browser-mcp')).length,
 });
 
-test('tallene: en fuld fil skifter alle tre, med maaledagen ved stjernerne', async () => {
-  const r = await simulerTal({ data: { maalt: '2026-11-16', cws: 2776, cws_dato: '2026-11-15', cws_butik: 3000, browser: { npm_i_alt: 20090, npm_30_dage: 4933, stjerner: 64, forks: 17 } } });
-  assert.deepEqual(udenKald(r), { cws: '3,000', npm: '4,933', stjerner: '64', stjerneTitel: 'GitHub stars on 16 Nov 2026', aria: 'Browser MCP on GitHub, 64 stars' });
+test('tallene: henter tal.json, npm-intervallet og GitHub, uden cookies og uden henvisning', async () => {
+  const r = await simulerTal({ data: {} });
+  const k = talKilder(r.kald);
+  assert.equal(k.tal, 1);
+  assert.equal(k.github, 1);
+  assert.ok(k.npm >= 1);
+  assert.equal(r.kald.length, k.tal + k.github + k.npm);
+  for (const kald of r.kald) {
+    assert.equal(kald.opt.credentials, 'omit');
+    assert.equal(kald.opt.referrerPolicy, 'no-referrer');
+  }
+});
+
+test('tallene: en fuld fil bruger cws, npm_i_alt og stjerner, ikke de afrundede eller 30-dages felter', async () => {
+  const r = await simulerTal({ data: { maalt: '2099-06-02', cws: 2776, cws_dato: '2099-06-01', cws_butik: 3000, browser: { npm_i_alt: 90000, npm_30_dage: 4933, stjerner: 80, forks: 17 } } });
+  assert.deepEqual(udenKald(r), { cws: '2,776', cwsTitel: 'Weekly users in Chrome on 1 Jun 2099', npm: '90,000', stjerner: '80', stjerneTitel: 'GitHub stars on 2 Jun 2099', aria: 'Browser MCP on GitHub, 80 stars' });
 });
 
 test('tallene: netfejl og HTTP-fejl lader alle reserver staa', async () => {
   assert.deepEqual(udenKald(await simulerTal('netfejl')), uroert);
-  assert.deepEqual(udenKald(await simulerTal({ ok: false, data: { maalt: '2026-11-16', cws_butik: 9, browser: { npm_30_dage: 9, stjerner: 9 } } })), uroert);
+  assert.deepEqual(udenKald(await simulerTal({ ok: false, data: { maalt: '2099-06-02', cws: 9, cws_dato: '2099-06-01', browser: { npm_i_alt: 9, stjerner: 9 } } })), uroert);
   assert.deepEqual(udenKald(await simulerTal({ data: null })), uroert);
 });
 
-test('tallene: kun positive heltal og en rigtig maaledag erstatter en reserve', async () => {
+test('tallene: kun positive heltal, en rigtig maaledag og et npm-tal der ikke falder, erstatter en reserve', async () => {
   const daarlige = [
-    { maalt: '2026-11-16', cws_butik: '2000', browser: { npm_30_dage: 0, stjerner: -1 } },
-    { maalt: '2026-11-16', cws_butik: 2000.5, browser: { npm_30_dage: '4933', stjerner: 64.2 } },
-    { maalt: 'i gaar', cws_butik: null, browser: { npm_30_dage: null, stjerner: 64 } },
-    { maalt: '2026-13-01', cws_butik: 0, browser: null },
+    { maalt: '2099-06-02', cws: '2000', cws_dato: '2099-06-01', browser: { npm_i_alt: 0, stjerner: -1 } },
+    { maalt: '2099-06-02', cws: 2000.5, cws_dato: '2099-06-01', browser: { npm_i_alt: '4933', stjerner: 64.2 } },
+    { maalt: 'i gaar', cws: null, cws_dato: '2099-06-01', browser: { npm_i_alt: null, stjerner: 80 } },
+    { maalt: '2099-13-01', cws: 0, cws_dato: '2099-06-01', browser: null },
+    { maalt: '2099-06-02', cws_butik: 9000, cws_dato: '2099-06-01', browser: { npm_30_dage: 999999 } },
+    { maalt: '2020-01-02', cws: 100, cws_dato: '2020-01-01', browser: { npm_i_alt: 999999, stjerner: 9 } },
   ];
   for (const data of daarlige) assert.deepEqual(udenKald(await simulerTal({ data })), uroert, JSON.stringify(data));
 });
 
+test('tallene: et live GitHub- og npm-svar overskriver reserven, et lavere npm-tal goer ikke', async () => {
+  const npmNu = Number(reserve.npm.replace(/,/g, ''));
+  const d = new Date();
+  const mdr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const idag = `${d.getUTCDate()} ${mdr[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  const hoej = await simulerTal({ ruter: {
+    'tal.json': { data: {} },
+    'api.github.com': { data: { stargazers_count: 70, forks_count: 19 } },
+    'api.npmjs.org': { data: { downloads: [{ day: '2026-04-02', downloads: npmNu + 10 }] } },
+  } });
+  assert.equal(hoej.stjerner, '70');
+  assert.equal(hoej.stjerneTitel, `GitHub stars on ${idag}`);
+  assert.equal(hoej.aria, 'Browser MCP on GitHub, 70 stars');
+  assert.equal(hoej.npm, (npmNu + 10).toLocaleString('en-US'));
+  assert.equal(hoej.cws, reserve.cws[1]);
+  const lav = await simulerTal({ ruter: {
+    'tal.json': { data: {} },
+    'api.github.com': { ok: false, data: null },
+    'api.npmjs.org': { data: { downloads: [{ day: '2026-04-02', downloads: Math.max(1, npmNu - 1) }] } },
+  } });
+  assert.deepEqual(udenKald(lav), uroert);
+});
+
 test('tallene: reserven i HTML\'en har samme form som det scriptet skriver (saa intet hopper)', () => {
-  for (const t of [reserve.cws, reserve.npm, reserve.stjerner[1]]) assert.match(t, /^\d{1,3}(,\d{3})*$/);
+  for (const t of [reserve.cws[1], reserve.npm, reserve.stjerner[1]]) assert.match(t, /^\d{1,3}(,\d{3})*$/);
   assert.match(reserve.stjerner[0], /^GitHub stars on \d{1,2} [A-Z][a-z]{2} 20\d\d$/);
+  assert.match(reserve.cws[0], /^Weekly users in Chrome on \d{1,2} [A-Z][a-z]{2} 20\d\d$/);
   assert.equal(reserve.aria, `Browser MCP on GitHub, ${reserve.stjerner[1]} stars`);
+  assert.match(html, /weekly users in Chrome/);
+  assert.match(html, /downloads from npm/);
+  assert.doesNotMatch(html, /npm downloads last month|Chrome users<\/span>/);
 });
