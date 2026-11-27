@@ -14,7 +14,7 @@ const SKRIPT = join(rod, 'scripts/stjerner.py');
 const py = (kode) => {
   const r = spawnSync('python3', ['-c', `import importlib.util, datetime as d\ns = importlib.util.spec_from_file_location('st', ${JSON.stringify(SKRIPT)}); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)\n${kode}`], { encoding: 'utf8', env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
   assert.equal(r.status, 0, r.stderr);
-  return r.stdout.trim();
+  return r.stdout.replace(/\r\n/g, '\n').trim();
 };
 
 test('stjerner: et manglende tal beholder det forrige, og npm kan kun vokse', () => {
