@@ -62,7 +62,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "ws": "^8.22.0"
+    "ws": "^8.23.0"
   },
   "overrides": {
     "fast-uri": "^3.1.9",
