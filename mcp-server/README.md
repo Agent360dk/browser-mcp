@@ -1,9 +1,9 @@
 # [Agent360 Browser MCP](https://agent360.dk)
 
-> Not browsermcp.io - this is Agent360 Browser MCP (@agent360/browser-mcp).
-
 **The browser tool that can stop and ask you.** A 2FA code, a CAPTCHA, a choice only you can
 make: it asks on your own screen, then carries on in the same signed-in Chrome.
+
+> Not browsermcp.io - this is Agent360 Browser MCP (@agent360/browser-mcp).
 
 It drives the Chrome you are already signed into: no login step to fail, no API key to wire
 up, no fresh profile that is a stranger to every account you have. Up to 20 agents at once, each
@@ -28,6 +28,8 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 [![Four agents, each in its own tab group. One reaches a 2FA code, asks you, and carries on](https://raw.githubusercontent.com/Agent360dk/browser-mcp/main/assets/demo.gif)](https://browsermcp.dev)
 
 ▶ **[Watch the 15-second film →](https://browsermcp.dev/film.mp4)**
+
+⭐ **If it saves you a login dance, [star it on GitHub](https://github.com/Agent360dk/browser-mcp)** - it helps the next person find it. Weighing it up? See [how it compares with Playwright MCP and BrowserMCP.io](#why-this-over-playwright-mcp--browsermcp).
 
 Agent360 Browser MCP gives Claude Code (and MCP clients that run local servers, such as Cursor and VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
@@ -87,7 +89,7 @@ The pattern: **many of the browser tasks you would do yourself, on sites you are
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.31.0 (2026-10-29) | Actively (Microsoft) | Actively - latest npm `2.5.0` (2026-11-12), after no public commits from 2025-04-24 to 2026-10-27 |
+| **Maintained** | Actively - latest release v1.33.0 (2026-11-27) | Actively (Microsoft) | Actively - latest npm `2.5.0` (2026-11-12), after no public commits from 2025-04-24 to 2026-10-27 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Supported: each AI app gets tabs of its own; no limit documented |
 | **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | 72 documented tools (counted 2026-11-22), with no tool that asks you a question mid-task and takes your answer; `browser_annotate` (opt-in, `--caps=devtools`) waits for you to mark up the page, but asks nothing (checked 2026-11-22) | A pairing click at setup; no mid-task prompt documented |

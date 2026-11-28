@@ -91,7 +91,7 @@ The pattern: **many of the browser tasks you would do yourself, on sites you are
 | | Browser MCP | Playwright MCP | BrowserMCP.io |
 |---|---|---|---|
 | **Browser** | Your real Chrome, via extension | Persistent profile by default, or your Chrome via their extension | Your real Chrome |
-| **Maintained** | Actively - latest release v1.31.0 (2026-10-29) | Actively (Microsoft) | Actively - latest npm `2.5.0` (2026-11-12), after no public commits from 2025-04-24 to 2026-10-27 |
+| **Maintained** | Actively - latest release v1.33.0 (2026-11-27) | Actively (Microsoft) | Actively - latest npm `2.5.0` (2026-11-12), after no public commits from 2025-04-24 to 2026-10-27 |
 | **Logins/cookies** | Your existing session | Persistent profile keeps logins between runs | Already authenticated |
 | **Several agents, one logged-in profile** | 20 concurrent, each with its own color-coded tab group | Also supported: their extension gives each connected client its own coloured tab group | Supported: each AI app gets tabs of its own; no limit documented |
 | **Human-in-the-loop** | `browser_ask_user` - 2FA, CAPTCHA, credential input | 72 documented tools (counted 2026-11-22), with no tool that asks you a question mid-task and takes your answer; `browser_annotate` (opt-in, `--caps=devtools`) waits for you to mark up the page, but asks nothing (checked 2026-11-22) | A pairing click at setup; no mid-task prompt documented |
