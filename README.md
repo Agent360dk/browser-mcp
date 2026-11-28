@@ -31,6 +31,8 @@ wall, marked *measured*, *by design*, *not yet*, or *won't*. Including the ones 
 
 ⭐ **If it saves you a login dance, [star it on GitHub](https://github.com/Agent360dk/browser-mcp)** - it helps the next person find it. Weighing it up? See [how it compares with Playwright MCP and BrowserMCP.io](#why-this-over-playwright-mcp--browsermcp).
 
+🖥️ **Beyond the browser:** [Agent360 Computer MCP](https://github.com/Agent360dk/computerMCP) is the sister project for the rest of your Mac - Finder, Mail, System Settings, any app's accessibility tree - with password fields blacked out before a screenshot is written. Run both and let each do its half: [how they split the work](https://computermcp.dev/use-cases/with-browser-mcp/).
+
 Agent360 Browser MCP gives Claude Code (and MCP clients that run local servers, such as Cursor and VS Code agent mode) control of your actual Chrome: your cookies, your sessions, your 2FA. So it works on CAPTCHA, 2FA and anti-bot sites where Playwright and Puppeteer get blocked - because it's *you* browsing.
 
 The killer move: it hits a login wall, opens your Gmail, reads the verification code, and continues the sign-in. There is no email API to set up. Operate platforms with no API, QA your own web app end-to-end, or work dashboards, LinkedIn and Reddit at human pace - with you approving the sensitive steps.
